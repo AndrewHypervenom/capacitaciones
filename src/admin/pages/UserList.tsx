@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Loader2, UserPlus, Shield, User, RefreshCw, Trash2 } from 'lucide-react'
+import { Loader2, UserPlus, Shield, User, RefreshCw, Trash2, Copy, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { createClient } from '@supabase/supabase-js'
 
 function generateTempPassword(): string {
   return Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6).toUpperCase()
 }
+
+// Cliente sin persistencia de sesión para crear usuarios sin afectar la sesión actual
+const supabaseAdmin = createClient(
+  import.meta.env.VITE_SUPABASE_URL as string,
+  import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+  { auth: { persistSession: false, autoRefreshToken: false } },
+)
+
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { Profile, Campaign } from '@/types/database'
@@ -28,6 +37,13 @@ export default function UserList() {
   const [createdEmail, setCreatedEmail] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [copied, setCopied] = useState<'email' | 'pass' | 'url' | null>(null)
+
+  const copyToClipboard = (text: string, key: 'email' | 'pass' | 'url') => {
+    navigator.clipboard.writeText(text)
+    setCopied(key)
+    setTimeout(() => setCopied(null), 2000)
+  }
 
   useEffect(() => {
     Promise.all([
@@ -56,7 +72,7 @@ export default function UserList() {
         }
       }
 
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await supabaseAdmin.auth.signUp({
         email: inviteEmail.trim(),
         password: invitePassword.trim(),
         options: {
@@ -173,15 +189,31 @@ export default function UserList() {
 
           {inviteSuccess ? (
             <div className="rounded-xl p-4" style={{ background: 'rgba(0,194,40,0.08)', border: '1px solid rgba(0,194,40,0.2)' }}>
-              <div className="text-green-500 text-[13px] font-medium mb-2">✓ Usuario creado</div>
-              <div className="text-text-muted text-[12px]">Comparte estas credenciales con el usuario:</div>
-              <div className="mt-2 font-mono text-[12px] text-text-muted space-y-0.5">
-                <div>Email: <span className="text-text">{createdEmail || '—'}</span></div>
-                <div>Contraseña: <span className="text-text">{invitePassword}</span></div>
+              <div className="text-green-500 text-[13px] font-medium mb-3">✓ Usuario creado — comparte estas credenciales</div>
+              <div className="space-y-2">
+                {[
+                  { label: 'Sitio', value: 'https://capacitaciones-chi.vercel.app/', key: 'url' as const },
+                  { label: 'Email', value: createdEmail, key: 'email' as const },
+                  { label: 'Contraseña', value: invitePassword, key: 'pass' as const },
+                ].map(({ label, value, key }) => (
+                  <div key={key} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 bg-subtle">
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase tracking-wider text-text-muted mr-2">{label}</span>
+                      <span className="font-mono text-[12px] text-text">{value}</span>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(value, key)}
+                      className="shrink-0 text-text-subtle hover:text-text transition-colors"
+                      title="Copiar"
+                    >
+                      {copied === key ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                ))}
               </div>
               <button
                 onClick={() => { setInviting(false); setInviteSuccess(false) }}
-                className="mt-3 text-[12px] text-text-subtle hover:text-text transition-colors"
+                className="mt-4 text-[12px] text-text-subtle hover:text-text transition-colors"
               >
                 Cerrar
               </button>
