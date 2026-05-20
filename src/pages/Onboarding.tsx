@@ -20,9 +20,7 @@ export function Onboarding() {
     setError(null)
 
     try {
-      const { error: authError } = await supabase.auth.updateUser({ password })
-      if (authError) throw authError
-
+      // Primero marcar onboarded en DB para que el re-fetch de onAuthStateChange ya lo vea en true
       const { error: dbError } = await supabase
         .from('profiles')
         .update({ onboarded: true })
@@ -30,6 +28,9 @@ export function Onboarding() {
       if (dbError) throw dbError
 
       setProfile({ ...profile, onboarded: true })
+
+      const { error: authError } = await supabase.auth.updateUser({ password })
+      if (authError) throw authError
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al actualizar contraseña')
     } finally {
