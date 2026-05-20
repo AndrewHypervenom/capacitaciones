@@ -50,7 +50,7 @@ async function fetchProfile(userId: string) {
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single()
+    .maybeSingle()
 
   let profile = existing ?? null
 
