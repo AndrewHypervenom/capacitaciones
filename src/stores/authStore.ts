@@ -58,13 +58,14 @@ async function fetchProfile(userId: string) {
   const needsCampaign = !profile?.campaign_id && profile?.role !== 'superadmin'
 
   if (needsCampaign) {
-    const { data: activeCampaign } = await supabase
+    const { data: campaignRows } = await supabase
       .from('campaigns')
       .select('id')
       .eq('is_active', true)
       .order('created_at')
       .limit(1)
-      .single()
+
+    const activeCampaign = campaignRows?.[0] ?? null
 
     if (activeCampaign?.id) {
       if (profile) {
