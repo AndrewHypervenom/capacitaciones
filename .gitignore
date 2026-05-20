@@ -9,3 +9,7 @@ yarn-debug.log*
 yarn-error.log*
 .claude
 supabase
+*.xlsx
+*.docx
+*.pdf
+*.doc
