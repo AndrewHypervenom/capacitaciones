@@ -381,6 +381,7 @@ export interface Database {
           language: string | null
           role: 'superadmin' | 'admin' | 'capacitador' | 'learner'
           campaign_id: string | null
+          onboarded: boolean
           created_at: string
           updated_at: string
         }
@@ -391,6 +392,7 @@ export interface Database {
           language?: string | null
           role?: 'superadmin' | 'admin' | 'capacitador' | 'learner'
           campaign_id?: string | null
+          onboarded?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -400,6 +402,7 @@ export interface Database {
           language?: string | null
           role?: 'superadmin' | 'admin' | 'capacitador' | 'learner'
           campaign_id?: string | null
+          onboarded?: boolean
           updated_at?: string
         }
         Relationships: []

@@ -3,10 +3,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Navbar } from './Navbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { Onboarding } from '@/pages/Onboarding';
 
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, profile } = useAuth();
   const reducedMotion = useReducedMotion();
 
   // Esperar a que se inicialice la sesión antes de redirigir
@@ -14,6 +15,10 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
 
   if (requireAuth && !isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (requireAuth && profile && profile.onboarded === false) {
+    return <Onboarding />;
   }
 
   return (

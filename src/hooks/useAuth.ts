@@ -8,6 +8,7 @@ export function useAuth() {
     user: session?.user ?? null,
     profile,
     loading,
+    onboarded: profile?.onboarded ?? true,
     isAuthenticated: !!session,
     role,
     campaignId: profile?.campaign_id ?? null,
