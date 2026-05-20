@@ -94,4 +94,10 @@ async function fetchProfile(userId: string) {
 
   useAuthStore.getState().setProfile(profile)
   useAuthStore.getState().setLoading(false)
+
+  // Sesión sin perfil (usuario borrado o sin campaña activa): limpiar sesión localmente
+  // para que el router redirija al login limpio en lugar de quedar en pantalla en blanco.
+  if (!profile) {
+    supabase.auth.signOut({ scope: 'local' })
+  }
 }
