@@ -214,7 +214,7 @@ export default function Dashboard() {
                     {t('dashboard.cert_req_modules_sub', { done, total })}
                   </div>
                 </div>
-                <NeonBadge color={allModulesDone ? 'green' : 'default'} className="shrink-0 tabular-nums">
+                <NeonBadge color={allModulesDone ? 'green' : 'neutral'} className="shrink-0 tabular-nums">
                   {done}/{total}
                 </NeonBadge>
               </div>
@@ -255,7 +255,7 @@ export default function Dashboard() {
                     }
                   </div>
                 </div>
-                <NeonBadge color={hasSimulatorScore ? 'green' : 'default'} className="shrink-0 tabular-nums">
+                <NeonBadge color={hasSimulatorScore ? 'green' : 'neutral'} className="shrink-0 tabular-nums">
                   {bestScore}/100
                 </NeonBadge>
               </div>

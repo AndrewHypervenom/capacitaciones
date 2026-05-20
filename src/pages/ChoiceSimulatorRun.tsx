@@ -210,7 +210,7 @@ export default function ChoiceSimulatorRun() {
     setWaitingForUser(false);
     setEarlyEnd(true);
     setEndType('poor');
-    setEndMessage('');
+    setEndMessage(null);
     setPhase('result');
   }, []);
 
