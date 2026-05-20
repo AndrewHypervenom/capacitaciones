@@ -1,22 +1,14 @@
-import { useEffect } from 'react';
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Navbar } from './Navbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Onboarding } from '@/pages/Onboarding';
-import { supabase } from '@/lib/supabase';
 
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
   const { isAuthenticated, loading, profile } = useAuth();
   const reducedMotion = useReducedMotion();
-
-  // Sesión válida pero sin perfil → limpiar sesión para forzar login limpio
-  const orphanSession = !loading && requireAuth && isAuthenticated && !profile;
-  useEffect(() => {
-    if (orphanSession) supabase.auth.signOut({ scope: 'local' });
-  }, [orphanSession]);
 
   const blank = <div className="min-h-screen bg-bg" />;
 
@@ -26,8 +18,7 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
     return <Navigate to="/login" replace />;
   }
 
-  // Sesión sin perfil: redirigir al login (signOut corre en el efecto de arriba)
-  if (orphanSession) return <Navigate to="/login" replace />;
+  if (requireAuth && isAuthenticated && !profile) return blank;
 
   if (requireAuth && profile && !profile.onboarded) {
     return <Onboarding />;
