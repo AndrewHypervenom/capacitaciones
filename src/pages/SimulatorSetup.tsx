@@ -137,6 +137,7 @@ function ChoiceScenariosSection({
   nav: ReturnType<typeof useNavigate>
   choiceScenarios: ChoiceScenario[]
 }) {
+  const language = useUserStore((s) => s.language);
   const levels = (['basico', 'medio', 'avanzado'] as const).filter((lvl) =>
     choiceScenarios.some((s) => s.level === lvl),
   );
