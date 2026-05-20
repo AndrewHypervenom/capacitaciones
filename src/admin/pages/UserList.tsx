@@ -86,7 +86,7 @@ export default function UserList() {
       if (data.user?.id) {
         await supabase
           .from('profiles')
-          .update({ role: inviteRole, campaign_id: inviteCampaign || null })
+          .update({ role: inviteRole, campaign_id: inviteCampaign || null, onboarded: false })
           .eq('id', data.user.id)
       }
 
