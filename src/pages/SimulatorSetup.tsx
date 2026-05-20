@@ -181,6 +181,7 @@ function ChoiceScenariosSection({
                     index={i}
                     color={meta.color}
                     onClick={() => nav(`/simulator/choice/${scn.id}`)}
+                    language={language}
                   />
                 ))}
               </div>
@@ -197,11 +198,13 @@ function ChoiceScenarioCard({
   index,
   color,
   onClick,
+  language,
 }: {
   scn: ChoiceScenario;
   index: number;
   color: string;
   onClick: () => void;
+  language: 'es' | 'en' | 'pt';
 }) {
   return (
     <Reveal delay={index * 60}>

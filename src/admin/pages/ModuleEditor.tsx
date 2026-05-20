@@ -1142,6 +1142,7 @@ export default function ModuleEditor() {
         media_shadow: false,
         section_style: sectionStyle,
         video_markers: template === 'video-interactive' ? [] : null,
+        blocks_data: null,
         section_quizzes: hasQuiz ? [{
           id: '',
           section_id: newSection.id,
