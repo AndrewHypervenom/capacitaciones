@@ -35,6 +35,7 @@ export default function UserList() {
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [createdEmail, setCreatedEmail] = useState('')
+  const [createdPassword, setCreatedPassword] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [copied, setCopied] = useState<'email' | 'pass' | 'url' | null>(null)
@@ -90,6 +91,7 @@ export default function UserList() {
       }
 
       setCreatedEmail(inviteEmail.trim())
+      setCreatedPassword(invitePassword.trim())
       setInviteSuccess(true)
       setInviteEmail('')
       setInvitePassword(generateTempPassword())
@@ -194,7 +196,7 @@ export default function UserList() {
                 {[
                   { label: 'Sitio', value: 'https://capacitaciones-chi.vercel.app/', key: 'url' as const },
                   { label: 'Email', value: createdEmail, key: 'email' as const },
-                  { label: 'Contraseña', value: invitePassword, key: 'pass' as const },
+                  { label: 'Contraseña', value: createdPassword, key: 'pass' as const },
                 ].map(({ label, value, key }) => (
                   <div key={key} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 bg-subtle">
                     <div className="min-w-0">
