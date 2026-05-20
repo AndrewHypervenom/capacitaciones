@@ -54,8 +54,8 @@ async function fetchProfile(userId: string) {
 
   let profile = existing ?? null
 
-  // Si no tiene campaña asignada, auto-asignar la primera campaña activa
-  const needsCampaign = !profile?.campaign_id && profile?.role !== 'superadmin'
+  // Si tiene perfil pero sin campaña asignada (y no es superadmin), auto-asignar la primera campaña activa
+  const needsCampaign = !!existing && !existing.campaign_id && existing.role !== 'superadmin'
 
   if (needsCampaign) {
     const { data: campaignRows } = await supabase
