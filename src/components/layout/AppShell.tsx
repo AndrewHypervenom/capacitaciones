@@ -17,6 +17,9 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
     return <Navigate to="/login" replace />;
   }
 
+  // Si está autenticado pero el profile aún no cargó, esperar
+  if (requireAuth && isAuthenticated && !profile) return null;
+
   if (requireAuth && profile && !profile.onboarded) {
     return <Onboarding />;
   }
