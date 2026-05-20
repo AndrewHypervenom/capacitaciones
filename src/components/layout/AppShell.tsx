@@ -1,16 +1,23 @@
+import { useEffect } from 'react';
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Navbar } from './Navbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Onboarding } from '@/pages/Onboarding';
+import { signOut } from '@/services/auth.service';
 
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
   const { isAuthenticated, loading, profile } = useAuth();
   const reducedMotion = useReducedMotion();
 
-  // Esperar a que se inicialice la sesión antes de redirigir
+  // Sesión válida pero sin perfil → limpiar sesión para forzar login limpio
+  const orphanSession = !loading && requireAuth && isAuthenticated && !profile;
+  useEffect(() => {
+    if (orphanSession) signOut().catch(() => {});
+  }, [orphanSession]);
+
   const blank = <div className="min-h-screen bg-bg" />;
 
   if (loading) return blank;
@@ -19,8 +26,8 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
     return <Navigate to="/login" replace />;
   }
 
-  // Si está autenticado pero el profile aún no cargó, esperar
-  if (requireAuth && isAuthenticated && !profile) return blank;
+  // Sesión sin perfil: redirigir al login (signOut corre en el efecto de arriba)
+  if (orphanSession) return <Navigate to="/login" replace />;
 
   if (requireAuth && profile && !profile.onboarded) {
     return <Onboarding />;
