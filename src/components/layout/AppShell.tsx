@@ -11,14 +11,16 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const reducedMotion = useReducedMotion();
 
   // Esperar a que se inicialice la sesión antes de redirigir
-  if (loading) return null;
+  const blank = <div className="min-h-screen bg-bg" />;
+
+  if (loading) return blank;
 
   if (requireAuth && !isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
   // Si está autenticado pero el profile aún no cargó, esperar
-  if (requireAuth && isAuthenticated && !profile) return null;
+  if (requireAuth && isAuthenticated && !profile) return blank;
 
   if (requireAuth && profile && !profile.onboarded) {
     return <Onboarding />;
