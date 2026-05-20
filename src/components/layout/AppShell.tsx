@@ -17,7 +17,7 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (requireAuth && profile && profile.onboarded === false) {
+  if (requireAuth && profile && !profile.onboarded) {
     return <Onboarding />;
   }
 
