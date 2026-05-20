@@ -49,7 +49,7 @@ export async function upsertProgress(
       campaign_id: campaignId,
       completed_modules: progress.completedModules,
       check_answers: progress.checkAnswers,
-      attempts: progress.attempts,
+      attempts: progress.attempts as unknown as import('@/types/database').Json,
       xp_total: progress.xp,
       streak_days: progress.streak,
       last_activity: progress.lastActivityDate,
