@@ -5,7 +5,7 @@ import { Navbar } from './Navbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Onboarding } from '@/pages/Onboarding';
-import { signOut } from '@/services/auth.service';
+import { supabase } from '@/lib/supabase';
 
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
@@ -15,7 +15,7 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   // Sesión válida pero sin perfil → limpiar sesión para forzar login limpio
   const orphanSession = !loading && requireAuth && isAuthenticated && !profile;
   useEffect(() => {
-    if (orphanSession) signOut().catch(() => {});
+    if (orphanSession) supabase.auth.signOut({ scope: 'local' });
   }, [orphanSession]);
 
   const blank = <div className="min-h-screen bg-bg" />;
