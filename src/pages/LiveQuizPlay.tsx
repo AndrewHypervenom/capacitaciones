@@ -675,7 +675,7 @@ export default function LiveQuizPlay() {
             const isCorrectOpt = oi === currentQ.correctIndex
             const inAnswered   = phase === 'answered'
 
-            let bg = color
+            let bg: string = color
             let opacity = 1
             let shadow: string | undefined
             let scale = 1

@@ -14,13 +14,14 @@ function dbRowToChoiceScenario(row: {
   start_node_id: string
   nodes: Json
 }): ChoiceScenario {
+  const t = (v: string | null) => ({ es: v ?? '', en: v ?? '', pt: v ?? '' })
   return {
     id: row.slug,
-    title: row.title_es,
-    description: row.description ?? '',
+    title: t(row.title_es),
+    description: t(row.description),
     clientName: row.client_name ?? '',
-    clientCompany: row.client_company ?? '',
-    objective: row.objective ?? '',
+    clientCompany: t(row.client_company),
+    objective: t(row.objective),
     startId: row.start_node_id,
     level: row.level as 'basico' | 'medio' | 'avanzado',
     nodes: row.nodes as unknown as ChoiceScenario['nodes'],

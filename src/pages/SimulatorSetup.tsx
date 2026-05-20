@@ -228,10 +228,10 @@ function ChoiceScenarioCard({
         </div>
 
         <h3 className="text-[15px] font-semibold tracking-tight mb-1.5 text-text">
-          {scn.title}
+          {scn.title[language]}
         </h3>
         <p className="text-[13px] text-text-muted leading-relaxed line-clamp-3 mb-4">
-          {scn.description}
+          {scn.description[language]}
         </p>
 
         <div className="flex items-center justify-between pt-3 border-t border-line">
