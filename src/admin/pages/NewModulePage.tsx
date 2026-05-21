@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { createModule, upsertSection } from '@/services/modules.service'
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
+import { GenerationProgress, MODULE_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -403,25 +404,12 @@ function AIModeForm({
         )}
       </AnimatePresence>
 
-      {/* Loading */}
-      <AnimatePresence>
-        {generating && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="flex items-center gap-3 py-4 px-5 rounded-2xl bg-brand-violet/6 border border-brand-violet/15"
-          >
-            <Loader2 className="h-4 w-4 animate-spin text-brand-violet shrink-0" />
-            <div>
-              <p className="text-[13px] text-text font-medium">Generando módulo...</p>
-              <p className="text-[11px] text-text-muted mt-0.5">
-                Claude está estructurando el contenido en 3 idiomas. 30–50 segundos.
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Generation progress */}
+      <GenerationProgress
+        steps={MODULE_GENERATION_STEPS}
+        active={generating}
+        title="Generando módulo con Claude..."
+      />
 
       {/* Preview */}
       <AnimatePresence>
