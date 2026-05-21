@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderOpen, Users, LogOut, ArrowLeft, Zap, BookOpen, PhoneCall, Sparkles } from 'lucide-react'
+import { LayoutDashboard, FolderOpen, Users, LogOut, ArrowLeft, Zap, BookOpen, PhoneCall } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
@@ -19,7 +19,6 @@ export function AdminNav() {
     { to: '/admin', label: t('admin.nav.panel'), icon: LayoutDashboard, end: true },
     { to: '/admin/campaigns', label: t('admin.nav.campaigns'), icon: FolderOpen, end: false },
     { to: '/admin/modules', label: t('admin.nav.modules'), icon: BookOpen, end: false },
-    { to: '/admin/modules/generate', label: t('admin.nav.generate_module'), icon: Sparkles, end: false },
     { to: '/admin/users', label: t('admin.nav.users'), icon: Users, end: false },
     { to: '/admin/quiz', label: t('admin.nav.quiz_live'), icon: Zap, end: false },
     { to: '/admin/simulations', label: t('admin.nav.simulations'), icon: PhoneCall, end: false },

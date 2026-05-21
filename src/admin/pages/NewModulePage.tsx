@@ -1,19 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Loader2, Minus, Plus } from 'lucide-react'
-import { motion } from 'framer-motion'
+import {
+  ArrowLeft, ChevronRight, Clock, FileText, Loader2, Minus,
+  Plus, RotateCcw, Sparkles, Upload, X,
+} from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { createModule } from '@/services/modules.service'
+import { createModule, upsertSection } from '@/services/modules.service'
+import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
+import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 
 // ─── Constants ────────────────────────────────────────────────
 
 type Lang = 'es' | 'en' | 'pt'
+type Mode = 'manual' | 'ai'
 
 const ICONS = [
   '📚', '📖', '🎯', '💡', '🔧', '📊', '📱', '🤝',
@@ -25,6 +32,9 @@ const ICONS = [
 const LANG_LABELS: Record<Lang, string> = { es: 'ES', en: 'EN', pt: 'PT' }
 const LANG_NAMES: Record<Lang, string> = { es: 'Español', en: 'English', pt: 'Português' }
 
+const CACHE_KEY = 'ai_module_cache_expires'
+const CACHE_DURATION_MS = 5 * 60 * 1000
+
 function slugify(text: string) {
   return text
     .toLowerCase()
@@ -33,6 +43,44 @@ function slugify(text: string) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
+}
+
+function formatMs(ms: number) {
+  const s = Math.ceil(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+// ─── Cache timer hook ─────────────────────────────────────────
+
+function useCacheTimer() {
+  const [remaining, setRemaining] = useState(0)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const notifyCache = useCallback((usage: CacheUsage) => {
+    if (usage.cache_creation_input_tokens > 0) {
+      localStorage.setItem(CACHE_KEY, String(Date.now() + CACHE_DURATION_MS))
+    }
+  }, [])
+
+  useEffect(() => {
+    const tick = () => {
+      const stored = localStorage.getItem(CACHE_KEY)
+      if (!stored) { setRemaining(0); return }
+      const rem = Number(stored) - Date.now()
+      if (rem <= 0) {
+        setRemaining(0)
+        localStorage.removeItem(CACHE_KEY)
+        if (intervalRef.current) clearInterval(intervalRef.current)
+      } else {
+        setRemaining(rem)
+      }
+    }
+    tick()
+    intervalRef.current = setInterval(tick, 1000)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [])
+
+  return { remaining, notifyCache }
 }
 
 // ─── Sub-components ───────────────────────────────────────────
@@ -46,11 +94,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function GlassInput({
-  value,
-  onChange,
-  placeholder,
-  required,
-  maxLength,
+  value, onChange, placeholder, required, maxLength,
 }: {
   value: string
   onChange: (v: string) => void
@@ -83,13 +127,7 @@ function GlassInput({
   )
 }
 
-function LangTabs({
-  active,
-  onChange,
-}: {
-  active: Lang
-  onChange: (l: Lang) => void
-}) {
+function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => void }) {
   return (
     <div className="flex gap-1 mb-3">
       {(['es', 'en', 'pt'] as Lang[]).map((lang) => (
@@ -111,12 +149,423 @@ function LangTabs({
   )
 }
 
+// ─── AI Mode ─────────────────────────────────────────────────
+
+function AIModeForm({
+  campaignId,
+  campaigns,
+  isSuperAdmin,
+  onSelectCampaign,
+  onCreated,
+}: {
+  campaignId: string
+  campaigns: Campaign[]
+  isSuperAdmin: boolean
+  onSelectCampaign: (id: string) => void
+  onCreated: (moduleId: string) => void
+}) {
+  const { remaining, notifyCache } = useCacheTimer()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [description, setDescription] = useState('')
+  const [documentText, setDocumentText] = useState('')
+  const [docMode, setDocMode] = useState<'none' | 'paste' | 'file'>('none')
+  const [fileName, setFileName] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [generated, setGenerated] = useState<GeneratedModule | null>(null)
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    setDocMode('file')
+    const reader = new FileReader()
+    reader.onload = (ev) => setDocumentText(String(ev.target?.result ?? ''))
+    reader.readAsText(file)
+  }
+
+  const clearDocument = () => {
+    setDocumentText(''); setFileName(''); setDocMode('none')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleGenerate = async () => {
+    if (!description.trim()) return
+    setGenerating(true); setError(null); setGenerated(null)
+    try {
+      const result = await generateModule({
+        description,
+        documentText: documentText.trim() || undefined,
+      })
+      setGenerated(result.data)
+      notifyCache(result.usage)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleCreate = async () => {
+    if (!generated || !campaignId) return
+    setSaving(true)
+    try {
+      const { metadata, sections } = generated
+      const { id: moduleId } = await createModule(campaignId, {
+        slug: metadata.slug || slugify(metadata.title_es),
+        icon: metadata.icon,
+        duration_min: metadata.duration_min,
+        title_es: metadata.title_es,
+        title_en: metadata.title_en,
+        title_pt: metadata.title_pt,
+        subtitle_es: metadata.subtitle_es,
+        subtitle_en: metadata.subtitle_en,
+        subtitle_pt: metadata.subtitle_pt,
+      })
+      await supabase.from('modules').update({
+        objectives_es: metadata.objectives_es,
+        objectives_en: metadata.objectives_en,
+        objectives_pt: metadata.objectives_pt,
+        key_takeaways_es: metadata.key_takeaways_es,
+        key_takeaways_en: metadata.key_takeaways_en,
+        key_takeaways_pt: metadata.key_takeaways_pt,
+      }).eq('id', moduleId)
+      for (let i = 0; i < sections.length; i++) {
+        const s = sections[i]
+        await upsertSection({
+          module_id: moduleId,
+          sort_order: i + 1,
+          heading_es: s.heading_es,
+          heading_en: s.heading_en,
+          heading_pt: s.heading_pt,
+          body_es: s.body_es,
+          body_en: s.body_en,
+          body_pt: s.body_pt,
+          section_style: (s.section_style as 'default') ?? 'default',
+          callout_kind: s.callout_kind as 'tip' | 'important' | 'warning' | 'success' | 'note' | null,
+          callout_es: s.callout_es,
+          callout_en: s.callout_en,
+          callout_pt: s.callout_pt,
+        })
+      }
+      toast.success('Módulo creado. Abriendo editor...')
+      onCreated(moduleId)
+    } catch (e) {
+      toast.error(`Error: ${(e as Error).message}`)
+      setSaving(false)
+    }
+  }
+
+  const calloutColor: Record<string, string> = {
+    tip: 'text-brand-cyan bg-brand-cyan/8 border-brand-cyan/20',
+    important: 'text-brand-amber bg-brand-amber/8 border-brand-amber/20',
+    warning: 'text-danger bg-danger/8 border-danger/20',
+    success: 'text-brand-green bg-brand-green/8 border-brand-green/20',
+    note: 'text-text-muted bg-glass/8 border-glass-border/20',
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Campaign selector */}
+      {isSuperAdmin && campaigns.length > 0 && (
+        <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+          <SectionLabel>Campaña destino</SectionLabel>
+          <select
+            value={campaignId}
+            onChange={(e) => onSelectCampaign(e.target.value)}
+            className={cn(
+              'w-full rounded-xl px-4 py-3 text-[14px] text-text',
+              'bg-glass/5 border border-glass-border/10',
+              'focus:border-neon-green/30 focus:outline-none transition-colors appearance-none cursor-pointer',
+            )}
+          >
+            <option value="">— Seleccionar campaña —</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id} className="bg-surface text-text">{c.name}</option>
+            ))}
+          </select>
+        </GlassCard>
+      )}
+
+      {/* Description input */}
+      <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+        <div className="flex items-center justify-between mb-3">
+          <SectionLabel>¿Qué debe aprender el agente?</SectionLabel>
+          {remaining > 0 && (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-green/8 border border-brand-green/20 text-brand-green text-[10px] font-medium">
+              <Clock className="h-3 w-3" />
+              Caché · {formatMs(remaining)}
+            </div>
+          )}
+        </div>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Ej: Módulo sobre manejo de objeciones en ventas telefónicas. Cubre técnicas de escucha activa, cómo rebatir objeciones de precio y tiempo, y cómo cerrar la llamada de forma positiva aunque no haya venta..."
+          rows={5}
+          className={cn(
+            'w-full rounded-xl px-4 py-3 text-[14px] text-text resize-none',
+            'bg-glass/5 border border-glass-border/10',
+            'focus:border-brand-violet/30 focus:bg-glass/8 focus:outline-none',
+            'placeholder:text-text-subtle transition-colors leading-relaxed',
+          )}
+        />
+
+        {/* Document attachment */}
+        <div className="mt-4 pt-4 border-t border-glass-border/8">
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[11px] text-text-muted font-medium">
+              Documento fuente <span className="text-text-subtle font-normal">(opcional — .txt o .md)</span>
+            </span>
+            {(documentText || fileName) && (
+              <button
+                onClick={clearDocument}
+                className="flex items-center gap-1 text-[11px] text-text-muted hover:text-danger transition-colors"
+              >
+                <X className="h-3 w-3" /> Quitar
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDocMode(docMode === 'paste' ? 'none' : 'paste')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-all',
+                docMode === 'paste'
+                  ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
+                  : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
+              )}
+            >
+              <FileText className="h-3.5 w-3.5" /> Pegar texto
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-all',
+                docMode === 'file' && fileName
+                  ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
+                  : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
+              )}
+            >
+              <Upload className="h-3.5 w-3.5" /> Subir archivo
+            </button>
+            <input ref={fileInputRef} type="file" accept=".txt,.md" className="hidden" onChange={handleFileUpload} />
+          </div>
+          <AnimatePresence>
+            {docMode === 'paste' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <textarea
+                  value={documentText}
+                  onChange={(e) => setDocumentText(e.target.value)}
+                  placeholder="Pega aquí el contenido del documento. Para PDFs, copia el texto desde el visor."
+                  rows={5}
+                  className={cn(
+                    'w-full mt-2.5 rounded-xl px-4 py-3 text-[13px] text-text resize-none',
+                    'bg-glass/5 border border-glass-border/10',
+                    'focus:border-brand-violet/30 focus:outline-none',
+                    'placeholder:text-text-subtle transition-colors',
+                  )}
+                />
+              </motion.div>
+            )}
+            {docMode === 'file' && fileName && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-2.5 flex items-center gap-2 text-[12px] text-brand-violet px-3 py-2 rounded-xl bg-brand-violet/6 border border-brand-violet/15"
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0" />
+                {fileName} — {(documentText.length / 1000).toFixed(1)}k caracteres
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </GlassCard>
+
+      {/* Error */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="rounded-xl px-4 py-3 text-[13px] text-danger bg-danger/8 border border-danger/20"
+          >
+            {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Loading */}
+      <AnimatePresence>
+        {generating && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="flex items-center gap-3 py-4 px-5 rounded-2xl bg-brand-violet/6 border border-brand-violet/15"
+          >
+            <Loader2 className="h-4 w-4 animate-spin text-brand-violet shrink-0" />
+            <div>
+              <p className="text-[13px] text-text font-medium">Generando módulo...</p>
+              <p className="text-[11px] text-text-muted mt-0.5">
+                Claude está estructurando el contenido en 3 idiomas. 30–50 segundos.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Preview */}
+      <AnimatePresence>
+        {generated && !generating && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <GlassCard intensity="subtle" padding="lg" rounded="2xl" className="border border-brand-violet/15">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
+                  <span className="text-[12px] font-semibold text-text">Módulo listo para crear</span>
+                </div>
+                <button
+                  onClick={handleGenerate}
+                  className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text transition-colors px-2 py-1 rounded-lg hover:bg-glass/8"
+                >
+                  <RotateCcw className="h-3 w-3" /> Regenerar
+                </button>
+              </div>
+
+              {/* Module header */}
+              <div className="flex items-start gap-3 mb-4 p-3 rounded-xl bg-glass/4 border border-glass-border/8">
+                <span className="text-3xl leading-none">{generated.metadata.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-semibold text-text leading-snug">
+                    {generated.metadata.title_es}
+                  </p>
+                  <p className="text-[12px] text-text-muted mt-0.5 leading-snug">
+                    {generated.metadata.subtitle_es}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <NeonBadge color="cyan" className="text-[9px]">
+                      {generated.metadata.duration_min} min
+                    </NeonBadge>
+                    <span className="text-[10px] font-mono text-text-subtle">
+                      {generated.metadata.slug}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sections list */}
+              <div className="space-y-1.5 mb-4">
+                <p className="text-[10px] uppercase tracking-widest text-text-subtle font-semibold mb-2">
+                  {generated.sections.length} secciones generadas
+                </p>
+                {generated.sections.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2.5 py-2 px-3 rounded-xl bg-glass/3 border border-glass-border/6">
+                    <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">{i + 1}</span>
+                    <span className="text-[12px] text-text flex-1 truncate">{s.heading_es}</span>
+                    {s.callout_kind && (
+                      <span className={cn(
+                        'text-[9px] px-1.5 py-0.5 rounded border font-medium shrink-0',
+                        calloutColor[s.callout_kind] ?? calloutColor.note,
+                      )}>
+                        {s.callout_kind}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Objectives preview */}
+              {generated.metadata.objectives_es?.length > 0 && (
+                <div className="mb-5">
+                  <p className="text-[10px] uppercase tracking-widest text-text-subtle font-semibold mb-2">
+                    Objetivos
+                  </p>
+                  <ul className="space-y-1">
+                    {generated.metadata.objectives_es.slice(0, 3).map((obj, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-[11px] text-text-muted">
+                        <span className="text-brand-green shrink-0">✓</span> {obj}
+                      </li>
+                    ))}
+                    {generated.metadata.objectives_es.length > 3 && (
+                      <li className="text-[10px] text-text-subtle ml-4">
+                        +{generated.metadata.objectives_es.length - 3} más...
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </GlassCard>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Action buttons */}
+      <motion.div
+        layout
+        className="flex items-center justify-between pt-1"
+      >
+        <Link to="/admin/modules">
+          <Button type="button" variant="ghost" size="md">
+            <ArrowLeft className="h-4 w-4 mr-1.5" /> Cancelar
+          </Button>
+        </Link>
+
+        {!generated ? (
+          <Button
+            type="button"
+            variant="neon"
+            size="md"
+            disabled={!description.trim() || !campaignId || generating}
+            onClick={handleGenerate}
+            className="min-w-[180px] flex items-center justify-center gap-2"
+          >
+            {generating ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</>
+            ) : (
+              <><Sparkles className="h-4 w-4" /> Generar módulo</>
+            )}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="neon"
+            size="md"
+            disabled={saving || !campaignId}
+            onClick={handleCreate}
+            className="min-w-[200px] flex items-center justify-center gap-2"
+          >
+            {saving ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Creando módulo...</>
+            ) : (
+              <>Crear y abrir en editor <ChevronRight className="h-4 w-4" /></>
+            )}
+          </Button>
+        )}
+      </motion.div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────
 
 export default function NewModulePage() {
   const navigate = useNavigate()
   const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
 
+  const [mode, setMode] = useState<Mode>('manual')
   const [icon, setIcon] = useState('📚')
   const [titleLang, setTitleLang] = useState<Lang>('es')
   const [title, setTitle] = useState<Record<Lang, string>>({ es: '', en: '', pt: '' })
@@ -130,21 +579,15 @@ export default function NewModulePage() {
 
   useEffect(() => {
     if (!isSuperAdmin) return
-    supabase
-      .from('campaigns')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        setCampaigns(data ?? [])
-        if (!campaignId && data?.[0]) setCampaignId(data[0].id)
-      })
+    supabase.from('campaigns').select('*').order('name').then(({ data }) => {
+      setCampaigns(data ?? [])
+      if (!campaignId && data?.[0]) setCampaignId(data[0].id)
+    })
   }, [isSuperAdmin, campaignId])
 
   const canCreate = title.es.trim().length > 0 && campaignId
-
-  const adjustDuration = (delta: number) => {
+  const adjustDuration = (delta: number) =>
     setDuration((prev) => Math.min(240, Math.max(5, prev + delta)))
-  }
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -171,10 +614,7 @@ export default function NewModulePage() {
     }
   }
 
-  const fadeUp = {
-    initial: { opacity: 0, y: 16 },
-    animate: { opacity: 1, y: 0 },
-  }
+  const fadeUp = { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } }
 
   return (
     <div className="p-8 max-w-2xl mx-auto">
@@ -194,225 +634,241 @@ export default function NewModulePage() {
           Crear módulo
         </GradientHeading>
         <p className="text-text-muted text-[13px] mt-1">
-          Completa la información básica. Luego podrás agregar secciones, objetivos y contenido.
+          Completa la información manualmente o deja que la IA genere el módulo completo.
         </p>
       </motion.div>
 
-      <form onSubmit={handleCreate} className="space-y-5">
+      {/* Mode switcher */}
+      <motion.div {...fadeUp} transition={{ duration: 0.3, delay: 0.04 }} className="mb-6">
+        <div className="flex gap-2 p-1.5 rounded-2xl glass border border-glass-border/10 w-fit">
+          <button
+            onClick={() => setMode('manual')}
+            className={cn(
+              'px-5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200',
+              mode === 'manual'
+                ? 'bg-glass-border/12 text-text shadow-sm'
+                : 'text-text-muted hover:text-text',
+            )}
+          >
+            Manual
+          </button>
+          <button
+            onClick={() => setMode('ai')}
+            className={cn(
+              'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200',
+              mode === 'ai'
+                ? 'bg-brand-violet/12 text-brand-violet border border-brand-violet/20'
+                : 'text-text-muted hover:text-text',
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Generar con IA
+          </button>
+        </div>
+      </motion.div>
 
-        {/* ── Identidad visual ── */}
-        <motion.div {...fadeUp} transition={{ duration: 0.3, delay: 0.05 }}>
-          <GlassCard intensity="subtle" padding="lg" rounded="2xl">
-            <SectionLabel>Identidad visual</SectionLabel>
-
-            {/* Icon preview + picker */}
-            <div className="flex flex-col items-center mb-5">
-              <div
-                className={cn(
+      <AnimatePresence mode="wait">
+        {mode === 'manual' ? (
+          <motion.form
+            key="manual"
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            transition={{ duration: 0.2 }}
+            onSubmit={handleCreate}
+            className="space-y-5"
+          >
+            {/* ── Identidad visual ── */}
+            <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+              <SectionLabel>Identidad visual</SectionLabel>
+              <div className="flex flex-col items-center mb-5">
+                <div className={cn(
                   'w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-4',
                   'bg-glass/6 border border-glass-border/10 shadow-inner',
-                )}
-              >
-                {icon}
+                )}>
+                  {icon}
+                </div>
+                <div className="grid grid-cols-10 gap-1.5">
+                  {ICONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setIcon(emoji)}
+                      className={cn(
+                        'w-8 h-8 rounded-lg text-lg flex items-center justify-center transition-all hover:bg-glass/10',
+                        icon === emoji ? 'bg-neon-green/15 ring-1 ring-neon-green/40 scale-110' : 'bg-glass/4',
+                      )}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-10 gap-1.5">
-                {ICONS.map((emoji) => (
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[12px] font-medium text-text-muted">
+                    Título <span className="text-danger">*</span>
+                  </label>
+                  <LangTabs active={titleLang} onChange={setTitleLang} />
+                </div>
+                <GlassInput
+                  key={`title-${titleLang}`}
+                  value={title[titleLang]}
+                  onChange={(v) => setTitle((prev) => ({ ...prev, [titleLang]: v }))}
+                  placeholder={
+                    titleLang === 'es'
+                      ? 'Ej: Introducción a Ventas Consultivas'
+                      : `Título en ${LANG_NAMES[titleLang]} (opcional)`
+                  }
+                  required={titleLang === 'es'}
+                  maxLength={120}
+                />
+                {titleLang !== 'es' && (
+                  <p className="text-[11px] text-text-subtle mt-1.5">
+                    Si lo dejas vacío, se mostrará el título en español.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[12px] font-medium text-text-muted">
+                    Subtítulo <span className="text-text-subtle text-[11px]">(opcional)</span>
+                  </label>
+                  <LangTabs active={subtitleLang} onChange={setSubtitleLang} />
+                </div>
+                <GlassInput
+                  key={`subtitle-${subtitleLang}`}
+                  value={subtitle[subtitleLang]}
+                  onChange={(v) => setSubtitle((prev) => ({ ...prev, [subtitleLang]: v }))}
+                  placeholder={
+                    subtitleLang === 'es'
+                      ? 'Ej: Aprende a conectar con el cliente desde la empatía'
+                      : `Subtítulo en ${LANG_NAMES[subtitleLang]}`
+                  }
+                  maxLength={200}
+                />
+              </div>
+            </GlassCard>
+
+            {/* ── Configuración ── */}
+            <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+              <SectionLabel>Configuración</SectionLabel>
+
+              <div className="mb-5">
+                <label className="text-[12px] font-medium text-text-muted block mb-3">
+                  Duración estimada
+                </label>
+                <div className="flex items-center gap-4">
                   <button
-                    key={emoji}
                     type="button"
-                    onClick={() => setIcon(emoji)}
+                    onClick={() => adjustDuration(-5)}
+                    disabled={duration <= 5}
                     className={cn(
-                      'w-8 h-8 rounded-lg text-lg flex items-center justify-center transition-all',
-                      'hover:bg-glass/10',
-                      icon === emoji
-                        ? 'bg-neon-green/15 ring-1 ring-neon-green/40 scale-110'
-                        : 'bg-glass/4',
+                      'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
+                      'bg-glass/5 border border-glass-border/10 hover:bg-glass/10',
+                      'disabled:opacity-30 disabled:cursor-not-allowed',
                     )}
                   >
-                    {emoji}
+                    <Minus className="h-4 w-4 text-text" />
                   </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Título */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[12px] font-medium text-text-muted">
-                  Título <span className="text-danger">*</span>
-                </label>
-                <LangTabs active={titleLang} onChange={setTitleLang} />
-              </div>
-              <GlassInput
-                key={`title-${titleLang}`}
-                value={title[titleLang]}
-                onChange={(v) => setTitle((prev) => ({ ...prev, [titleLang]: v }))}
-                placeholder={
-                  titleLang === 'es'
-                    ? 'Ej: Introducción a Ventas Consultivas'
-                    : `Título en ${LANG_NAMES[titleLang]} (opcional)`
-                }
-                required={titleLang === 'es'}
-                maxLength={120}
-              />
-              {titleLang !== 'es' && (
-                <p className="text-[11px] text-text-subtle mt-1.5">
-                  Si lo dejas vacío, se mostrará el título en español.
-                </p>
-              )}
-            </div>
-
-            {/* Subtítulo */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[12px] font-medium text-text-muted">
-                  Subtítulo <span className="text-text-subtle text-[11px]">(opcional)</span>
-                </label>
-                <LangTabs active={subtitleLang} onChange={setSubtitleLang} />
-              </div>
-              <GlassInput
-                key={`subtitle-${subtitleLang}`}
-                value={subtitle[subtitleLang]}
-                onChange={(v) => setSubtitle((prev) => ({ ...prev, [subtitleLang]: v }))}
-                placeholder={
-                  subtitleLang === 'es'
-                    ? 'Ej: Aprende a conectar con el cliente desde la empatía'
-                    : `Subtítulo en ${LANG_NAMES[subtitleLang]}`
-                }
-                maxLength={200}
-              />
-            </div>
-          </GlassCard>
-        </motion.div>
-
-        {/* ── Configuración ── */}
-        <motion.div {...fadeUp} transition={{ duration: 0.3, delay: 0.1 }}>
-          <GlassCard intensity="subtle" padding="lg" rounded="2xl">
-            <SectionLabel>Configuración</SectionLabel>
-
-            {/* Duración */}
-            <div className="mb-5">
-              <label className="text-[12px] font-medium text-text-muted block mb-3">
-                Duración estimada
-              </label>
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => adjustDuration(-5)}
-                  disabled={duration <= 5}
-                  className={cn(
-                    'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
-                    'bg-glass/5 border border-glass-border/10 hover:bg-glass/10',
-                    'disabled:opacity-30 disabled:cursor-not-allowed',
-                  )}
-                >
-                  <Minus className="h-4 w-4 text-text" />
-                </button>
-                <div className="flex-1 text-center">
-                  <span className="text-[32px] font-bold text-text tabular-nums">{duration}</span>
-                  <span className="text-[13px] text-text-muted ml-2">min</span>
+                  <div className="flex-1 text-center">
+                    <span className="text-[32px] font-bold text-text tabular-nums">{duration}</span>
+                    <span className="text-[13px] text-text-muted ml-2">min</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => adjustDuration(5)}
+                    disabled={duration >= 240}
+                    className={cn(
+                      'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
+                      'bg-glass/5 border border-glass-border/10 hover:bg-glass/10',
+                      'disabled:opacity-30 disabled:cursor-not-allowed',
+                    )}
+                  >
+                    <Plus className="h-4 w-4 text-text" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => adjustDuration(5)}
-                  disabled={duration >= 240}
-                  className={cn(
-                    'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
-                    'bg-glass/5 border border-glass-border/10 hover:bg-glass/10',
-                    'disabled:opacity-30 disabled:cursor-not-allowed',
-                  )}
-                >
-                  <Plus className="h-4 w-4 text-text" />
-                </button>
+                <input
+                  type="range" min={5} max={240} step={5} value={duration}
+                  onChange={(e) => setDuration(Number(e.target.value))}
+                  className="w-full mt-3 accent-neon-green h-1 rounded-full cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-text-subtle mt-1">
+                  <span>5 min</span><span>4 h</span>
+                </div>
               </div>
-              <input
-                type="range"
-                min={5}
-                max={240}
-                step={5}
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full mt-3 accent-neon-green h-1 rounded-full cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-text-subtle mt-1">
-                <span>5 min</span>
-                <span>4 h</span>
-              </div>
-            </div>
 
-            {/* Campaña (solo superadmin) */}
-            {isSuperAdmin && campaigns.length > 0 && (
-              <div>
-                <label className="text-[12px] font-medium text-text-muted block mb-2">
-                  Campaña
-                </label>
-                <select
-                  value={campaignId}
-                  onChange={(e) => setCampaignId(e.target.value)}
-                  required
-                  className={cn(
-                    'w-full rounded-xl px-4 py-3 text-[14px] text-text',
-                    'bg-glass/5 border border-glass-border/10',
-                    'focus:border-neon-green/30 focus:outline-none',
-                    'transition-colors appearance-none cursor-pointer',
-                  )}
-                >
-                  {campaigns.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-surface text-text">
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {isSuperAdmin && campaigns.length > 0 && (
+                <div>
+                  <label className="text-[12px] font-medium text-text-muted block mb-2">Campaña</label>
+                  <select
+                    value={campaignId}
+                    onChange={(e) => setCampaignId(e.target.value)}
+                    required
+                    className={cn(
+                      'w-full rounded-xl px-4 py-3 text-[14px] text-text',
+                      'bg-glass/5 border border-glass-border/10',
+                      'focus:border-neon-green/30 focus:outline-none transition-colors appearance-none cursor-pointer',
+                    )}
+                  >
+                    {campaigns.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-surface text-text">{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </GlassCard>
+
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="rounded-xl px-4 py-3 text-[13px] text-danger bg-danger/8 border border-danger/20"
+              >
+                {error}
+              </motion.div>
             )}
-          </GlassCard>
-        </motion.div>
 
-        {/* ── Error ── */}
-        {error && (
+            <div className="flex items-center justify-between pt-1">
+              <Link to="/admin/modules">
+                <Button type="button" variant="ghost" size="md">
+                  <ArrowLeft className="h-4 w-4 mr-1.5" /> Cancelar
+                </Button>
+              </Link>
+              <Button
+                type="submit"
+                variant="neon"
+                size="md"
+                disabled={!canCreate || saving}
+                className="min-w-[160px] flex items-center justify-center gap-2"
+              >
+                {saving
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando…</>
+                  : <>Crear módulo <ChevronRight className="h-4 w-4" /></>
+                }
+              </Button>
+            </div>
+          </motion.form>
+        ) : (
           <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="rounded-xl px-4 py-3 text-[13px] text-danger bg-danger/8 border border-danger/20"
+            key="ai"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 12 }}
+            transition={{ duration: 0.2 }}
           >
-            {error}
+            <AIModeForm
+              campaignId={campaignId}
+              campaigns={campaigns}
+              isSuperAdmin={isSuperAdmin}
+              onSelectCampaign={setCampaignId}
+              onCreated={(id) => navigate(`/admin/modules/${id}`)}
+            />
           </motion.div>
         )}
-
-        {/* ── Acciones ── */}
-        <motion.div
-          {...fadeUp}
-          transition={{ duration: 0.3, delay: 0.15 }}
-          className="flex items-center justify-between pt-1"
-        >
-          <Link to="/admin/modules">
-            <Button type="button" variant="ghost" size="md">
-              <ArrowLeft className="h-4 w-4 mr-1.5" />
-              Cancelar
-            </Button>
-          </Link>
-
-          <Button
-            type="submit"
-            variant="neon"
-            size="md"
-            disabled={!canCreate || saving}
-            className="min-w-[160px] flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Creando…
-              </>
-            ) : (
-              <>
-                Crear módulo
-                <ChevronRight className="h-4 w-4" />
-              </>
-            )}
-          </Button>
-        </motion.div>
-      </form>
+      </AnimatePresence>
     </div>
   )
 }
