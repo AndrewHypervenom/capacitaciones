@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { MicOff, PauseCircle, PhoneForwarded, PhoneOff } from 'lucide-react';
 import { getScenario } from '@/data/scenarios';
+import { useScenarios } from '@/hooks/useScenarios';
 import { useUserStore } from '@/stores/userStore';
 import { useSimStore } from '@/stores/simStore';
 import { endSim, startSim, stepSim, type SimState } from '@/lib/simulator';
@@ -19,8 +20,14 @@ export default function SimulatorRun() {
   const nav = useNavigate();
   const language = useUserStore((s) => s.language);
   const { active, setActive, setLastResult } = useSimStore();
+  const { scenarios: dbScenarios, loading: scenariosLoading } = useScenarios();
 
-  const scenario = useMemo(() => (id ? getScenario(id) : undefined), [id]);
+  // Prefer DB scenario (from campaign), fall back to hardcoded
+  const scenario = useMemo(() => {
+    if (!id) return undefined;
+    const fromDb = dbScenarios.find((s) => s.id === id);
+    return fromDb ?? getScenario(id);
+  }, [id, dbScenarios]);
   const [state, setState] = useState<SimState | null>(
     active && active.scenarioId === id && active.language === language ? active : null,
   );
@@ -52,6 +59,10 @@ export default function SimulatorRun() {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, []);
+
+  if (scenariosLoading) {
+    return <div className="mx-auto max-w-3xl px-5 pt-20 text-text-muted">{t('common.loading')}</div>;
+  }
 
   if (!scenario || !state) {
     return <div className="mx-auto max-w-3xl px-5 pt-20 text-text-muted">{t('common.loading')}</div>;

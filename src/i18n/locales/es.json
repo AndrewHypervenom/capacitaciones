@@ -223,6 +223,8 @@
       "import": "Importar",
       "users": "Usuarios",
       "quiz_live": "Quiz en Vivo",
+      "simulations": "Simulaciones",
+      "generate_module": "Generar módulo IA",
       "back_to_app": "Volver a la app"
     },
     "dashboard": {
