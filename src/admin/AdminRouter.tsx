@@ -12,7 +12,6 @@ import ModulePreview from './pages/ModulePreview'
 import SimulationList from './pages/SimulationList'
 import SimulationEditor from './pages/SimulationEditor'
 import ChoiceSimEditor from './pages/ChoiceSimEditor'
-import ModuleGenerator from './pages/ModuleGenerator'
 
 export default function AdminRouter() {
   const { loading, isAuthenticated, isAdmin, isCapacitador } = useAuth()
@@ -34,7 +33,6 @@ export default function AdminRouter() {
           <Route index element={restricted ?? <AdminDashboard />} />
           <Route path="campaigns" element={restricted ?? <CampaignList />} />
           <Route path="modules" element={restricted ?? <ModuleList />} />
-          <Route path="modules/generate" element={restricted ?? <ModuleGenerator />} />
           <Route path="modules/new" element={restricted ?? <NewModulePage />} />
           <Route path="modules/:moduleId" element={restricted ?? <ModuleEditor />} />
           <Route path="modules/:moduleId/preview" element={restricted ?? <ModulePreview />} />
