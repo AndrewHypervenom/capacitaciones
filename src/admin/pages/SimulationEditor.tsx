@@ -1,0 +1,605 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import {
+  ArrowLeft, CheckCircle2, Eye, EyeOff, Loader2, Plus, Save, Trash2, X,
+} from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
+import {
+  getScenarioAdmin, createScenario, updateScenario, type ScenarioRow,
+} from '@/services/scenarios.admin.service'
+import { type GeneratedDialogue } from '@/services/ai.service'
+import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
+import {
+  DialogueNodeForm, type DialogueNodeData,
+} from '@/admin/components/simulation/DialogueNodeForm'
+import { GlassCard } from '@/components/ui/GlassCard'
+import { GradientHeading } from '@/components/ui/GradientHeading'
+import { NeonBadge } from '@/components/ui/NeonBadge'
+import { Button } from '@/components/ui/Button'
+import { cn } from '@/lib/cn'
+import { toast } from '@/stores/toastStore'
+
+type Lang = 'es' | 'en' | 'pt'
+type Tab = 'meta' | 'nodes' | 'checklist'
+
+interface MetaState {
+  slug: string; country: 'CO' | 'MX' | 'AR'; difficulty: 1 | 2 | 3
+  title_es: string; title_en: string; title_pt: string
+  summary_es: string; summary_en: string; summary_pt: string
+  customer_name: string; customer_phone: string
+  customer_reason_es: string; customer_reason_en: string; customer_reason_pt: string
+  avatar_seed: number; max_turns: number
+  empathy_keywords: string[]
+  start_node_id: string
+  is_published: boolean
+}
+
+type ChecklistItem = { id: string; label: Record<Lang, string>; keywords: string[] }
+type NodesMap = Record<string, DialogueNodeData>
+
+const slugify = (s: string) =>
+  s.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 60)
+
+const defaultMeta = (): MetaState => ({
+  slug: '',
+  country: 'CO',
+  difficulty: 2,
+  title_es: '', title_en: '', title_pt: '',
+  summary_es: '', summary_en: '', summary_pt: '',
+  customer_name: '', customer_phone: '',
+  customer_reason_es: '', customer_reason_en: '', customer_reason_pt: '',
+  avatar_seed: Math.floor(Math.random() * 99) + 1,
+  max_turns: 10,
+  empathy_keywords: ['entiendo', 'comprendo', 'lamento', 'disculpa', 'sorry', 'understand', 'entendo'],
+  start_node_id: 'start',
+  is_published: false,
+})
+
+const defaultNodes = (): NodesMap => ({
+  start: {
+    customerLine: { es: '', en: '', pt: '' },
+    branches: [],
+    fallback: undefined,
+    terminal: undefined,
+  },
+})
+
+const defaultChecklist = (): ChecklistItem[] => [
+  { id: 'greeting', label: { es: 'Saludo con marca', en: 'Branded greeting', pt: 'Saudação com marca' }, keywords: ['hola', 'buenos dias', 'buenas tardes'] },
+  { id: 'identity', label: { es: 'Verificación de identidad', en: 'Identity verification', pt: 'Verificação de identidade' }, keywords: ['nombre', 'documento', 'cedula'] },
+  { id: 'empathy', label: { es: 'Empatía y escucha', en: 'Empathy & listening', pt: 'Empatia e escuta' }, keywords: ['entiendo', 'comprendo', 'lamento'] },
+  { id: 'diagnosis', label: { es: 'Diagnóstico', en: 'Diagnosis', pt: 'Diagnóstico' }, keywords: ['cuentame', 'explicame', 'que paso'] },
+  { id: 'resolution', label: { es: 'Solución', en: 'Resolution', pt: 'Solução' }, keywords: ['voy a', 'podemos', 'i will'] },
+  { id: 'closing', label: { es: 'Cierre profesional', en: 'Professional closing', pt: 'Encerramento profissional' }, keywords: ['algo mas', 'feliz dia', 'anything else'] },
+]
+
+function rowToState(row: ScenarioRow): { meta: MetaState; nodes: NodesMap; checklist: ChecklistItem[] } {
+  return {
+    meta: {
+      slug: row.slug,
+      country: row.country,
+      difficulty: row.difficulty as 1 | 2 | 3,
+      title_es: row.title_es, title_en: row.title_en ?? '', title_pt: row.title_pt ?? '',
+      summary_es: row.summary_es ?? '', summary_en: row.summary_en ?? '', summary_pt: row.summary_pt ?? '',
+      customer_name: row.customer_name ?? '', customer_phone: row.customer_phone ?? '',
+      customer_reason_es: row.customer_reason_es ?? '',
+      customer_reason_en: row.customer_reason_en ?? '',
+      customer_reason_pt: row.customer_reason_pt ?? '',
+      avatar_seed: row.avatar_seed ?? 1,
+      max_turns: row.max_turns ?? 10,
+      empathy_keywords: row.empathy_keywords ?? [],
+      start_node_id: row.start_node_id,
+      is_published: row.is_published,
+    },
+    nodes: row.nodes as unknown as NodesMap,
+    checklist: (row.checklist_items as unknown as ChecklistItem[]) ?? defaultChecklist(),
+  }
+}
+
+const inputClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
+const selectClass = 'glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none'
+
+function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => void }) {
+  return (
+    <div className="flex gap-0.5 p-0.5 rounded-lg glass w-fit mb-2">
+      {(['es', 'en', 'pt'] as Lang[]).map((l) => (
+        <button key={l} onClick={() => onChange(l)}
+          className={cn('px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors uppercase tracking-wide',
+            active === l ? 'bg-glass-border/15 text-text' : 'text-text-subtle hover:text-text-muted')}>
+          {l}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export default function SimulationEditor() {
+  const { id } = useParams<{ id: string }>()
+  const nav = useNavigate()
+  const { campaignId } = useAuth()
+  const isNew = id === 'new' || !id
+
+  const [loading, setLoading] = useState(!isNew)
+  const [saving, setSaving] = useState(false)
+  const [tab, setTab] = useState<Tab>('meta')
+  const [meta, setMeta] = useState<MetaState>(defaultMeta)
+  const [nodes, setNodes] = useState<NodesMap>(defaultNodes)
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(defaultChecklist)
+  const [selectedNodeId, setSelectedNodeId] = useState<string>('start')
+  const [rowId, setRowId] = useState<string | null>(isNew ? null : id ?? null)
+  const [metaLang, setMetaLang] = useState<Lang>('es')
+  const [aiBanner, setAiBanner] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  const slugManualRef = useRef(!isNew)
+  const nodeIds = Object.keys(nodes)
+
+  useEffect(() => {
+    if (isNew) return
+    getScenarioAdmin(id!)
+      .then((row) => {
+        const { meta: m, nodes: n, checklist: c } = rowToState(row)
+        setMeta(m); setNodes(n); setChecklist(c)
+        setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
+      })
+      .catch(() => toast.error('Error cargando escenario'))
+      .finally(() => setLoading(false))
+  }, [id, isNew])
+
+  const handleSave = async () => {
+    if (!campaignId) return toast.error('Sin campaña asignada')
+    if (!meta.title_es.trim()) return toast.error('El título en español es requerido')
+    const finalSlug = meta.slug.trim() || slugify(meta.title_es)
+    if (!finalSlug) return toast.error('Agrega un título para generar el identificador')
+    if (!meta.start_node_id || !nodes[meta.start_node_id]) return toast.error('El paso inicial no existe')
+
+    setSaving(true)
+    try {
+      const payload = {
+        campaign_id: campaignId,
+        slug: finalSlug,
+        country: meta.country,
+        difficulty: meta.difficulty,
+        title_es: meta.title_es,
+        title_en: meta.title_en || null,
+        title_pt: meta.title_pt || null,
+        summary_es: meta.summary_es || null,
+        summary_en: meta.summary_en || null,
+        summary_pt: meta.summary_pt || null,
+        customer_name: meta.customer_name || null,
+        customer_phone: meta.customer_phone || null,
+        customer_reason_es: meta.customer_reason_es || null,
+        customer_reason_en: meta.customer_reason_en || null,
+        customer_reason_pt: meta.customer_reason_pt || null,
+        avatar_seed: meta.avatar_seed,
+        max_turns: meta.max_turns,
+        empathy_keywords: meta.empathy_keywords,
+        start_node_id: meta.start_node_id,
+        checklist_items: checklist as unknown as import('@/types/database').Json,
+        nodes: nodes as unknown as import('@/types/database').Json,
+        is_published: meta.is_published,
+      }
+
+      if (rowId) {
+        await updateScenario(rowId, payload)
+        toast.success('Guardado')
+      } else {
+        const row = await createScenario(payload)
+        setRowId(row.id)
+        nav(`/admin/simulations/${row.id}`, { replace: true })
+        toast.success('Creado')
+      }
+    } catch (e) {
+      toast.error(`Error: ${(e as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleApplyGenerated = useCallback((gen: GeneratedDialogue | import('@/services/ai.service').GeneratedChoice) => {
+    const g = gen as GeneratedDialogue
+    const m = g.metadata
+    setMeta((prev) => ({
+      ...prev,
+      title_es: m.title_es, title_en: m.title_en, title_pt: m.title_pt,
+      summary_es: m.summary_es, summary_en: m.summary_en, summary_pt: m.summary_pt,
+      country: m.country, difficulty: m.difficulty,
+      customer_name: m.customer_name, customer_phone: m.customer_phone,
+      customer_reason_es: m.customer_reason_es, customer_reason_en: m.customer_reason_en, customer_reason_pt: m.customer_reason_pt,
+      avatar_seed: m.avatar_seed ?? prev.avatar_seed,
+      max_turns: m.max_turns ?? prev.max_turns,
+      empathy_keywords: m.empathy_keywords ?? prev.empathy_keywords,
+      start_node_id: g.start_node_id,
+      slug: prev.slug || slugify(m.title_es),
+    }))
+    setNodes(g.nodes as unknown as NodesMap)
+    if (Array.isArray(m.checklist_items) && m.checklist_items.length > 0) {
+      setChecklist(m.checklist_items as ChecklistItem[])
+    }
+    setSelectedNodeId(g.start_node_id)
+    setTab('meta')
+    setAiBanner(true)
+    toast.success('Escenario cargado — revisa los datos en "General"')
+  }, [])
+
+  const addNode = () => {
+    const nid = `node_${Date.now()}`
+    setNodes((prev) => ({ ...prev, [nid]: { customerLine: { es: '', en: '', pt: '' }, branches: [] } }))
+    setSelectedNodeId(nid)
+  }
+
+  const removeNode = (nid: string) => {
+    if (nodeIds.length <= 1) return toast.error('Debe haber al menos un paso')
+    setNodes((prev) => {
+      const next = { ...prev }
+      delete next[nid]
+      return next
+    })
+    setSelectedNodeId(nodeIds.find((n) => n !== nid) ?? '')
+  }
+
+  const handleNodeChange = (nid: string, data: DialogueNodeData) => {
+    setNodes((prev) => ({ ...prev, [nid]: data }))
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-6 w-6 animate-spin text-text-muted" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-8 max-w-6xl mx-auto">
+      {/* Top bar */}
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => nav('/admin/simulations')}
+          className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="flex-1">
+          <GradientHeading as="h1" className="text-xl">
+            {isNew ? 'Nueva simulación de llamada' : meta.title_es || 'Editor de simulación'}
+          </GradientHeading>
+        </div>
+        <div className="flex items-center gap-2">
+          <NeonBadge color={meta.is_published ? 'green' : 'neutral'} className="text-[9px]">
+            {meta.is_published ? 'Publicado' : 'Borrador'}
+          </NeonBadge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMeta((m) => ({ ...m, is_published: !m.is_published }))}
+          >
+            {meta.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {meta.is_published ? 'Despublicar' : 'Publicar'}
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Guardar
+          </Button>
+        </div>
+      </div>
+
+      {/* AI Generator — abierto por defecto en nuevas simulaciones */}
+      <AIGeneratorPanel type="dialogue" onApply={handleApplyGenerated} defaultOpen={isNew} />
+
+      {/* Banner post-IA */}
+      {aiBanner && (
+        <div className="flex items-start gap-3 mb-5 p-3.5 rounded-xl bg-brand-green/6 border border-brand-green/20">
+          <CheckCircle2 className="h-4 w-4 text-brand-green shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm">
+            <span className="text-text font-medium">Escenario cargado. </span>
+            <span className="text-text-muted">Revisa los datos en "General", ajusta lo que necesites y luego guarda.</span>
+          </div>
+          <button onClick={() => setAiBanner(false)} className="text-text-subtle hover:text-text transition-colors shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 p-1 rounded-xl glass w-fit border border-glass-border/10">
+        {([
+          ['meta', 'General'],
+          ['nodes', 'Conversación'],
+          ['checklist', 'Evaluación'],
+        ] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={cn('px-4 py-2 rounded-lg text-sm transition-all',
+              tab === key ? 'bg-glass-border/10 text-text font-medium' : 'text-text-muted hover:text-text')}>
+            {label}
+            {key === 'nodes' && <span className="ml-1 text-xs text-text-subtle">{nodeIds.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* General tab */}
+      {tab === 'meta' && (
+        <div className="grid grid-cols-2 gap-6">
+          <GlassCard className="p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-text mb-3">Configuración del escenario</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">País</label>
+                <select value={meta.country} onChange={(e) => setMeta((m) => ({ ...m, country: e.target.value as 'CO' | 'MX' | 'AR' }))} className={cn(selectClass, 'w-full')}>
+                  <option value="CO">Colombia (CO)</option>
+                  <option value="MX">México (MX)</option>
+                  <option value="AR">Argentina (AR)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">Dificultad</label>
+                <select value={meta.difficulty} onChange={(e) => setMeta((m) => ({ ...m, difficulty: Number(e.target.value) as 1 | 2 | 3 }))} className={cn(selectClass, 'w-full')}>
+                  <option value={1}>Fácil</option>
+                  <option value={2}>Media</option>
+                  <option value={3}>Difícil</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">Máximo de turnos</label>
+              <input type="number" min={3} max={30} value={meta.max_turns} onChange={(e) => setMeta((m) => ({ ...m, max_turns: Number(e.target.value) }))} className={inputClass} />
+              <p className="text-[11px] text-text-subtle mt-1">Número máximo de intercambios entre agente y cliente.</p>
+            </div>
+
+            <button
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="text-xs text-text-subtle hover:text-text-muted transition-colors flex items-center gap-1"
+            >
+              {showAdvanced ? '▲ Ocultar opciones avanzadas' : '▼ Opciones avanzadas'}
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-3 pt-1 border-t border-glass-border/10">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Identificador URL</label>
+                  <input
+                    value={meta.slug}
+                    onChange={(e) => {
+                      slugManualRef.current = true
+                      setMeta((m) => ({ ...m, slug: e.target.value }))
+                    }}
+                    placeholder="cobro-inesperado-co"
+                    className={inputClass}
+                  />
+                  <p className="text-[11px] text-text-subtle mt-1">Se genera automáticamente desde el título. Edita solo si necesitas personalizarlo.</p>
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Paso de inicio</label>
+                  <select value={meta.start_node_id} onChange={(e) => setMeta((m) => ({ ...m, start_node_id: e.target.value }))} className={cn(selectClass, 'w-full')}>
+                    {nodeIds.map((nid) => <option key={nid} value={nid}>{nid}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+          </GlassCard>
+
+          <GlassCard className="p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-text mb-1">Título y resumen</h3>
+            <LangTabs active={metaLang} onChange={setMetaLang} />
+            {metaLang === 'es' && (
+              <>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Título</label>
+                  <input
+                    value={meta.title_es}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setMeta((m) => ({
+                        ...m,
+                        title_es: val,
+                        slug: slugManualRef.current ? m.slug : slugify(val),
+                      }))
+                    }}
+                    placeholder="Ej: Cobro no reconocido en factura"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Resumen del escenario</label>
+                  <textarea rows={2} value={meta.summary_es} onChange={(e) => setMeta((m) => ({ ...m, summary_es: e.target.value }))} className={cn(inputClass, 'resize-none')} placeholder="Breve descripción de qué ocurre en este escenario..." />
+                </div>
+              </>
+            )}
+            {metaLang === 'en' && (
+              <>
+                <div><label className="text-xs text-text-muted mb-1 block">Title (English)</label><input value={meta.title_en} onChange={(e) => setMeta((m) => ({ ...m, title_en: e.target.value }))} className={inputClass} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">Summary (English)</label><textarea rows={2} value={meta.summary_en} onChange={(e) => setMeta((m) => ({ ...m, summary_en: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
+              </>
+            )}
+            {metaLang === 'pt' && (
+              <>
+                <div><label className="text-xs text-text-muted mb-1 block">Título (Português)</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">Resumo (Português)</label><textarea rows={2} value={meta.summary_pt} onChange={(e) => setMeta((m) => ({ ...m, summary_pt: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
+              </>
+            )}
+          </GlassCard>
+
+          <GlassCard className="p-5 col-span-2 space-y-4">
+            <h3 className="text-sm font-semibold text-text mb-0">Datos del cliente ficticio</h3>
+            <p className="text-xs text-text-muted">Esta información aparece en la pantalla del agente durante la simulación.</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">Nombre</label>
+                <input value={meta.customer_name} onChange={(e) => setMeta((m) => ({ ...m, customer_name: e.target.value }))} placeholder="María García" className={inputClass} />
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">Teléfono</label>
+                <input value={meta.customer_phone} onChange={(e) => setMeta((m) => ({ ...m, customer_phone: e.target.value }))} placeholder="+57 300 •••• 1234" className={inputClass} />
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">Avatar (número del 1 al 99)</label>
+                <input type="number" min={1} max={99} value={meta.avatar_seed} onChange={(e) => setMeta((m) => ({ ...m, avatar_seed: Number(e.target.value) }))} className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">Motivo de la llamada (español)</label>
+              <input value={meta.customer_reason_es} onChange={(e) => setMeta((m) => ({ ...m, customer_reason_es: e.target.value }))} placeholder="Ej: Reclama un cobro extra en su factura de internet" className={inputClass} />
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-5 col-span-2">
+            <h3 className="text-sm font-semibold text-text mb-1">Palabras de empatía</h3>
+            <p className="text-xs text-text-muted mb-3">El sistema cuenta cuántas veces el agente usa estas palabras. Escríbelas separadas por coma, en minúsculas y sin tildes.</p>
+            <input
+              value={meta.empathy_keywords.join(', ')}
+              onChange={(e) => setMeta((m) => ({
+                ...m, empathy_keywords: e.target.value.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean),
+              }))}
+              placeholder="entiendo, comprendo, lamento, disculpa, sorry"
+              className={inputClass}
+            />
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Conversación tab */}
+      {tab === 'nodes' && (
+        <div className="flex gap-5">
+          {/* Node list */}
+          <div className="w-56 shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="text-xs font-medium text-text">Pasos ({nodeIds.length})</span>
+                <p className="text-[11px] text-text-subtle mt-0.5">Momentos de la llamada</p>
+              </div>
+              <button
+                onClick={addNode}
+                className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors"
+                title="Agregar paso"
+              >
+                <Plus className="h-3.5 w-3.5" /> Agregar
+              </button>
+            </div>
+            <div className="space-y-1">
+              {nodeIds.map((nid) => {
+                const node = nodes[nid]
+                const isStart = nid === meta.start_node_id
+                const isTerminal = Boolean(node?.terminal)
+                const linePreview = node?.customerLine?.es?.slice(0, 48)
+                return (
+                  <button
+                    key={nid}
+                    onClick={() => setSelectedNodeId(nid)}
+                    className={cn(
+                      'w-full text-left px-3 py-2.5 rounded-xl text-xs transition-all border',
+                      selectedNodeId === nid
+                        ? 'bg-glass-border/12 border-glass-border/20 text-text'
+                        : 'border-transparent text-text-muted hover:text-text hover:bg-glass/4',
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
+                        isStart ? 'bg-brand-green' : isTerminal ? 'bg-brand-magenta' : 'bg-glass-border/40')} />
+                      <span className="font-mono font-medium truncate">{nid}</span>
+                      {isStart && <span className="text-[9px] text-brand-green shrink-0">INICIO</span>}
+                      {isTerminal && <span className="text-[9px] text-brand-magenta shrink-0">{node.terminal === 'resolved' ? 'FIN ✓' : 'FIN ✗'}</span>}
+                    </div>
+                    {linePreview
+                      ? <div className="text-[10px] text-text-subtle truncate mt-1 ml-3 italic">"{linePreview}{(node.customerLine.es?.length ?? 0) > 48 ? '…' : ''}"</div>
+                      : <div className="text-[10px] text-text-subtle mt-1 ml-3">{node?.branches?.length ?? 0} rutas</div>
+                    }
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Node editor */}
+          <div className="flex-1">
+            {selectedNodeId && nodes[selectedNodeId] ? (
+              <GlassCard className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-text-muted">Paso:</span>
+                    <span className="font-mono text-sm text-text">{selectedNodeId}</span>
+                    {selectedNodeId === meta.start_node_id && (
+                      <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">INICIO</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeNode(selectedNodeId)}
+                    className="p-1.5 hover:text-danger text-text-subtle transition-colors"
+                    title="Eliminar paso"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <DialogueNodeForm
+                  nodeId={selectedNodeId}
+                  data={nodes[selectedNodeId]}
+                  allNodeIds={nodeIds}
+                  onChange={handleNodeChange}
+                />
+              </GlassCard>
+            ) : (
+              <div className="text-center py-16 text-text-muted text-sm">
+                Selecciona un paso para editarlo
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Evaluación tab */}
+      {tab === 'checklist' && (
+        <div className="space-y-3">
+          <div className="mb-2 p-3.5 rounded-xl bg-glass/6 border border-glass-border/10">
+            <p className="text-xs text-text-muted">
+              <span className="font-medium text-text">¿Qué es la evaluación?</span>{' '}
+              Al terminar la simulación, el sistema verifica si el agente usó las palabras clave de cada ítem. Edita los ítems o agrega nuevos según el protocolo de tu empresa.
+            </p>
+          </div>
+          {checklist.map((item, idx) => (
+            <GlassCard key={item.id} className="p-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Nombre del ítem</label>
+                  <input
+                    value={item.label.es}
+                    onChange={(e) => setChecklist((prev) => prev.map((it, i) => i === idx ? { ...it, label: { ...it.label, es: e.target.value } } : it))}
+                    placeholder="Ej: Saludo con marca"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Palabras clave que lo activan</label>
+                  <input
+                    value={item.keywords.join(', ')}
+                    onChange={(e) => setChecklist((prev) => prev.map((it, i) => i === idx ? { ...it, keywords: e.target.value.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean) } : it))}
+                    placeholder="hola, buenos dias, buen dia"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">ID interno</label>
+                  <input
+                    value={item.id}
+                    onChange={(e) => setChecklist((prev) => prev.map((it, i) => i === idx ? { ...it, id: e.target.value } : it))}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            </GlassCard>
+          ))}
+          <Button variant="ghost" size="sm" onClick={() => setChecklist((prev) => [
+            ...prev,
+            { id: `item_${Date.now()}`, label: { es: '', en: '', pt: '' }, keywords: [] },
+          ])}>
+            <Plus className="h-4 w-4" /> Agregar ítem
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}

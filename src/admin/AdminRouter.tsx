@@ -9,6 +9,10 @@ import LiveQuizAdmin from './pages/LiveQuizAdmin'
 import ModuleList from './pages/ModuleList'
 import ModuleEditor from './pages/ModuleEditor'
 import ModulePreview from './pages/ModulePreview'
+import SimulationList from './pages/SimulationList'
+import SimulationEditor from './pages/SimulationEditor'
+import ChoiceSimEditor from './pages/ChoiceSimEditor'
+import ModuleGenerator from './pages/ModuleGenerator'
 
 export default function AdminRouter() {
   const { loading, isAuthenticated, isAdmin, isCapacitador } = useAuth()
@@ -30,11 +34,17 @@ export default function AdminRouter() {
           <Route index element={restricted ?? <AdminDashboard />} />
           <Route path="campaigns" element={restricted ?? <CampaignList />} />
           <Route path="modules" element={restricted ?? <ModuleList />} />
+          <Route path="modules/generate" element={restricted ?? <ModuleGenerator />} />
           <Route path="modules/new" element={restricted ?? <NewModulePage />} />
           <Route path="modules/:moduleId" element={restricted ?? <ModuleEditor />} />
           <Route path="modules/:moduleId/preview" element={restricted ?? <ModulePreview />} />
           <Route path="users" element={restricted ?? <UserList />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
+          <Route path="simulations" element={restricted ?? <SimulationList />} />
+          <Route path="simulations/new" element={restricted ?? <SimulationEditor />} />
+          <Route path="simulations/:id" element={restricted ?? <SimulationEditor />} />
+          <Route path="simulations/choice/new" element={restricted ?? <ChoiceSimEditor />} />
+          <Route path="simulations/choice/:id" element={restricted ?? <ChoiceSimEditor />} />
         </Routes>
       </div>
     </div>
