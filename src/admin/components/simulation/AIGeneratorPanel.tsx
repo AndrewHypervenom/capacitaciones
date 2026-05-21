@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Sparkles, ChevronDown, ChevronUp, Loader2, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock } from 'lucide-react'
+import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock } from 'lucide-react'
+import { GenerationProgress, SIMULATION_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { generateSimulation, getModuleContextText, type CacheUsage, type GeneratedDialogue, type GeneratedChoice } from '@/services/ai.service'
@@ -161,15 +162,11 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
             </div>
           )}
 
-          {loading && (
-            <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-brand-violet/6 border border-brand-violet/15">
-              <Loader2 className="h-4 w-4 animate-spin text-brand-violet shrink-0" />
-              <div>
-                <p className="text-sm text-text">Generando escenario...</p>
-                <p className="text-xs text-text-muted">Claude está construyendo el flujo de conversación. Puede tardar 20-30 segundos.</p>
-              </div>
-            </div>
-          )}
+          <GenerationProgress
+            steps={SIMULATION_GENERATION_STEPS}
+            active={loading}
+            title="Generando escenario con Claude..."
+          />
 
           {preview && !loading && (
             <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleGenerate} />
