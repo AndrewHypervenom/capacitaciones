@@ -64,7 +64,7 @@ const slugify = (s: string) =>
 
 export default function ModuleGenerator() {
   const nav = useNavigate()
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { campaignId: authCampaignId, isAdmin } = useAuth()
   const { remaining, notifyCache } = useCacheTimer()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -81,12 +81,12 @@ export default function ModuleGenerator() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!isSuperAdmin) return
+    if (!isAdmin) return
     supabase.from('campaigns').select('*').order('name').then(({ data }) => {
       setCampaigns(data ?? [])
       if (!selectedCampaignId && data?.[0]) setSelectedCampaignId(data[0].id)
     })
-  }, [isSuperAdmin, selectedCampaignId])
+  }, [isAdmin, selectedCampaignId])
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -196,7 +196,7 @@ export default function ModuleGenerator() {
       </div>
 
       {/* Campaign selector (superadmin only) */}
-      {isSuperAdmin && campaigns.length > 0 && (
+      {isAdmin && campaigns.length > 0 && (
         <GlassCard className="p-4 mb-4">
           <label className="text-xs font-medium text-text-muted mb-1.5 block">Campaña destino</label>
           <select
