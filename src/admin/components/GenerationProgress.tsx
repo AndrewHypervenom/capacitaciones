@@ -86,7 +86,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
         transition={{ duration: 0.3 }}
         className="rounded-2xl border border-brand-violet/20 bg-brand-violet/5 overflow-hidden"
       >
-        {/* Header */}
+        {/* Encabezado */}
         <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-brand-violet/10">
           <motion.div
             animate={{ rotate: phase === 'running' ? 360 : 0 }}
@@ -110,7 +110,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
           )}
         </div>
 
-        {/* Steps */}
+        {/* Pasos */}
         <div className="px-5 py-4 space-y-2.5">
           {steps.map((step, i) => {
             const isDone = phase === 'done' || i < currentStep
@@ -125,7 +125,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
                 transition={{ duration: 0.3 }}
                 className="flex items-center gap-2.5"
               >
-                {/* Icon */}
+                {/* Ícono */}
                 <div className="w-4 h-4 shrink-0 flex items-center justify-center">
                   {isDone ? (
                     <motion.div
@@ -146,7 +146,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
                   )}
                 </div>
 
-                {/* Label */}
+                {/* Etiqueta */}
                 <span className={cn(
                   'text-[12px] transition-colors',
                   isDone && 'text-brand-green',
@@ -161,7 +161,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
           })}
         </div>
 
-        {/* Progress bar */}
+        {/* Barra de progreso */}
         <div className="px-5 pb-4">
           <div className="h-1 rounded-full bg-glass-border/10 overflow-hidden">
             <motion.div
@@ -180,7 +180,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
   )
 }
 
-// ─── Preset step configs ──────────────────────────────────────
+// ─── Configuraciones predefinidas de pasos ────────────────────
 
 export const MODULE_GENERATION_STEPS: GenerationStep[] = [
   { label: 'Analizando la descripción',         durationMs: 2500  },
@@ -190,6 +190,12 @@ export const MODULE_GENERATION_STEPS: GenerationStep[] = [
   { label: 'Generando contenido en 3 idiomas',   durationMs: 15000 },
   { label: 'Revisando coherencia pedagógica',    durationMs: 8000  },
   { label: 'Finalizando respuesta',              durationMs: 99999 },
+]
+
+export const ASSIST_STEPS: GenerationStep[] = [
+  { label: 'Analizando el contenido',   durationMs: 1500  },
+  { label: 'Procesando con Claude',     durationMs: 5000  },
+  { label: 'Finalizando respuesta',     durationMs: 99999 },
 ]
 
 export const SIMULATION_GENERATION_STEPS: GenerationStep[] = [

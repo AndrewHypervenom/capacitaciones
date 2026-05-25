@@ -11,7 +11,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D']
 const OPTION_COLORS = ['#ef4444', '#3b82f6', '#eab308', '#22c55e']
-const MEDAL_COLORS = ['#fde68a', '#d1d5db', '#cd7c2a']
+const MEDAL_COLORS = ['#ca8a04', '#6b7280', '#b45309']
 
 function generatePin(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -34,13 +34,13 @@ export default function LiveQuizAdmin() {
   const [filterCampaign, setFilterCampaign] = useState<string>('all')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
-  // Create form
+  // Formulario de creación
   const [formTitle, setFormTitle] = useState('')
   const [formCampaign, setFormCampaign] = useState(campaignId ?? '')
   const [formQuestions, setFormQuestions] = useState<QuizQuestion[]>([emptyQuestion()])
   const [creating, setCreating] = useState(false)
 
-  // Session
+  // Sesión
   const [activeQuiz, setActiveQuiz] = useState<LiveQuiz | null>(null)
   const [answerCounts, setAnswerCounts] = useState<AnswerCount>([])
   const [totalAnswers, setTotalAnswers] = useState(0)
@@ -50,7 +50,7 @@ export default function LiveQuizAdmin() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [leaderboard, setLeaderboard] = useState<QuizLeaderboardEntry[]>([])
 
-  // ── Load list ──────────────────────────────────────────────────────────────
+  // ── Cargar lista ──────────────────────────────────────────────────────────────
   const loadQuizzes = useCallback(async () => {
     setLoadingList(true)
     const query = supabase.from('live_quizzes').select('*').order('created_at', { ascending: false })
@@ -69,7 +69,7 @@ export default function LiveQuizAdmin() {
     }
   }, [loadQuizzes, isSuperAdmin])
 
-  // ── Answer counts + realtime for active session ────────────────────────────
+  // ── Conteo de respuestas + tiempo real para sesión activa ────────────────────
   const fetchAnswerCounts = useCallback(async (quiz: LiveQuiz) => {
     if (quiz.current_question < 0) return
     const { data } = await supabase
@@ -147,7 +147,7 @@ export default function LiveQuizAdmin() {
     }
   }, [activeQuiz?.id, activeQuiz?.current_question, fetchAnswerCounts]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Create ─────────────────────────────────────────────────────────────────
+  // ── Crear ─────────────────────────────────────────────────────────────────
   const handleCreate = async () => {
     if (!formTitle.trim() || formQuestions.some((q) => !q.text.trim())) return
     const targetCampaign = formCampaign || campaignId
@@ -176,7 +176,7 @@ export default function LiveQuizAdmin() {
     void loadQuizzes()
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
+  // ── Eliminar ─────────────────────────────────────────────────────────────────
   const handleDelete = async (id: string) => {
     await supabase.from('live_quiz_answers').delete().eq('quiz_id', id)
     await supabase.from('live_quizzes').delete().eq('id', id)
@@ -184,7 +184,7 @@ export default function LiveQuizAdmin() {
     void loadQuizzes()
   }
 
-  // ── Duplicate ──────────────────────────────────────────────────────────────
+  // ── Duplicar ──────────────────────────────────────────────────────────────
   const handleDuplicate = async (q: LiveQuiz) => {
     if (!profile?.id) return
     const pin = generatePin()
@@ -198,7 +198,7 @@ export default function LiveQuizAdmin() {
     void loadQuizzes()
   }
 
-  // ── Session controls ───────────────────────────────────────────────────────
+  // ── Controles de sesión ───────────────────────────────────────────────────────
   const startQuiz = async () => {
     if (!activeQuiz) return
     setAdvancing(true)
@@ -265,7 +265,7 @@ export default function LiveQuizAdmin() {
     setTimeout(() => setPinCopied(false), 2000)
   }
 
-  // ── Question builder helpers ───────────────────────────────────────────────
+  // ── Helpers del constructor de preguntas ────────────────────────────────────
   const updateQuestion = (idx: number, patch: Partial<QuizQuestion>) =>
     setFormQuestions((prev) => prev.map((q, i) => i === idx ? { ...q, ...patch } : q))
 
@@ -276,7 +276,7 @@ export default function LiveQuizAdmin() {
       ),
     )
 
-  // ── Filtered list ──────────────────────────────────────────────────────────
+  // ── Lista filtrada ──────────────────────────────────────────────────────────
   const filteredQuizzes = filterCampaign === 'all'
     ? quizzes
     : quizzes.filter((q) => q.campaign_id === filterCampaign)
@@ -285,7 +285,7 @@ export default function LiveQuizAdmin() {
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
 
-  // ── List view ──────────────────────────────────────────────────────────────
+  // ── Vista de lista ──────────────────────────────────────────────────────────
   if (view === 'list') return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
@@ -303,7 +303,7 @@ export default function LiveQuizAdmin() {
         </button>
       </div>
 
-      {/* Campaign filter — superadmin only */}
+      {/* Filtro de campaña — solo superadmin */}
       {isSuperAdmin && campaigns.length > 1 && (
         <div className="flex gap-2 flex-wrap mb-5">
           <button
@@ -411,7 +411,7 @@ export default function LiveQuizAdmin() {
     </div>
   )
 
-  // ── Create view ────────────────────────────────────────────────────────────
+  // ── Vista de creación ────────────────────────────────────────────────────────
   if (view === 'create') return (
     <div className="p-8 max-w-2xl">
       <button onClick={() => setView('list')} className="flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
@@ -524,7 +524,7 @@ export default function LiveQuizAdmin() {
     </div>
   )
 
-  // ── Session view ───────────────────────────────────────────────────────────
+  // ── Vista de sesión ───────────────────────────────────────────────────────────
   if (!activeQuiz) return null
   const q = activeQuiz.current_question >= 0 ? activeQuiz.questions[activeQuiz.current_question] : null
   const isLast = activeQuiz.current_question >= activeQuiz.questions.length - 1
@@ -566,7 +566,7 @@ export default function LiveQuizAdmin() {
         </div>
       </div>
 
-      {/* Lobby state */}
+      {/* Estado de lobby */}
       {activeQuiz.status === 'lobby' && (
         <div className="rounded-2xl p-8 text-center mb-6 bg-subtle border border-line">
           <div className="text-text-muted text-[14px] mb-4">Comparte el PIN con los participantes y luego inicia.</div>
@@ -582,7 +582,7 @@ export default function LiveQuizAdmin() {
         </div>
       )}
 
-      {/* Active question */}
+      {/* Pregunta activa */}
       {activeQuiz.status === 'active' && q && (
         <div className="rounded-2xl p-5 mb-4 bg-subtle border border-line">
           <div className="flex items-center justify-between mb-3">
@@ -623,7 +623,7 @@ export default function LiveQuizAdmin() {
         </div>
       )}
 
-      {/* Active controls */}
+      {/* Controles activos */}
       {activeQuiz.status === 'active' && (
         <div className="flex gap-3 flex-wrap">
           <button
@@ -653,7 +653,7 @@ export default function LiveQuizAdmin() {
         </div>
       )}
 
-      {/* Ended state */}
+      {/* Estado terminado */}
       {activeQuiz.status === 'ended' && (
         <div className="rounded-2xl p-6 bg-subtle border border-line">
           <div className="text-[16px] font-semibold text-text mb-1">Quiz terminado</div>
@@ -679,7 +679,7 @@ export default function LiveQuizAdmin() {
         </div>
       )}
 
-      {/* Leaderboard slide panel */}
+      {/* Panel deslizante de clasificación */}
       <AnimatePresence>
         {showLeaderboard && (
           <>

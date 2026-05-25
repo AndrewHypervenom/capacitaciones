@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Campaign } from '@/types/database'
-import { GlassCard } from '@/components/ui/GlassCard'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { Button } from '@/components/ui/Button'
@@ -51,8 +50,8 @@ function GlassInput({
         onChange={(e) => onChange(e.target.value)}
         className={cn(
           'w-full rounded-xl px-4 py-3 text-[14px] text-text',
-          'bg-glass/5 border border-glass-border/10',
-          'focus:border-neon-green/30 focus:bg-glass/8 focus:outline-none',
+          'bg-subtle border border-line',
+          'focus:border-neon-green/50 focus:outline-none',
           'placeholder:text-text-subtle transition-all duration-200',
           className,
         )}
@@ -79,8 +78,8 @@ function GlassTextarea({
       rows={3}
       className={cn(
         'w-full rounded-xl px-4 py-3 text-[14px] text-text resize-none',
-        'bg-glass/5 border border-glass-border/10',
-        'focus:border-neon-green/30 focus:bg-glass/8 focus:outline-none',
+        'bg-subtle border border-line',
+        'focus:border-neon-green/50 focus:outline-none',
         'placeholder:text-text-subtle transition-all duration-200',
       )}
     />
@@ -139,24 +138,21 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     if (!name.trim() || !slug.trim()) return
     setSubmitting(true)
     setError('')
-    const { data, error: err } = await supabase
-      .from('campaigns')
-      .insert({
-        name: name.trim(),
-        slug: slug.trim(),
-        description: description.trim() || null,
-        logo_url: logoUrl.trim() || null,
-        is_active: isActive,
-      })
-      .select()
-      .single()
+    const { data, error: err } = await supabase.rpc('create_campaign', {
+      p_name:        name.trim(),
+      p_slug:        slug.trim(),
+      p_description: description.trim() || null,
+      p_logo_url:    logoUrl.trim() || null,
+      p_is_active:   isActive,
+    })
 
     setSubmitting(false)
-    if (err || !data) {
+    const created = Array.isArray(data) ? data[0] : data
+    if (err || !created) {
       setError('Error al crear la campaña. Verifica que el slug sea único e inténtalo de nuevo.')
       return
     }
-    onCreated({ ...data, moduleCount: 0 })
+    onCreated({ ...created, moduleCount: 0 })
     handleClose()
   }
 
@@ -182,7 +178,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          {/* Backdrop */}
+          {/* Fondo oscuro */}
           <motion.div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={handleClose}
@@ -196,7 +192,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
-            <GlassCard intensity="strong" rounded="3xl" className="overflow-hidden">
+            <div className="relative overflow-hidden rounded-3xl bg-surface border border-line shadow-[0_24px_64px_-12px_rgb(0_0_0/0.18),0_0_0_1px_rgb(var(--line)/0.6)]">
               {/* Borde superior neón */}
               <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neon-green/40 to-transparent" />
 
@@ -213,7 +209,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                   </div>
                   <button
                     onClick={handleClose}
-                    className="p-2 rounded-xl glass text-text-muted hover:text-text transition-colors"
+                    className="p-2 rounded-xl bg-subtle hover:bg-line/50 text-text-muted hover:text-text transition-colors"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -327,7 +323,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                       <p className="text-[14px] text-text-muted mb-4">
                         Revisa los datos antes de crear la campaña.
                       </p>
-                      <div className="glass rounded-2xl divide-y divide-glass-border/8">
+                      <div className="bg-subtle/60 border border-line rounded-2xl divide-y divide-line/50">
                         {[
                           { label: 'Nombre', value: name },
                           { label: 'Slug', value: slug, mono: true },
@@ -399,7 +395,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                   )}
                 </div>
               </div>
-            </GlassCard>
+            </div>
           </motion.div>
         </motion.div>
       )}

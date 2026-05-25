@@ -29,7 +29,7 @@ interface CampaignWithModules extends Campaign {
 }
 
 export default function CampaignList() {
-  const { isSuperAdmin } = useAuth()
+  const { isSuperAdmin, isAdminOrCapacitador } = useAuth()
   const { t } = useTranslation()
   const [campaigns, setCampaigns] = useState<CampaignWithModules[]>([])
   const [loading, setLoading] = useState(true)
@@ -81,7 +81,7 @@ export default function CampaignList() {
 
   return (
     <div className="p-8">
-      {/* Header */}
+      {/* Encabezado */}
       <div className="relative mb-10">
         <div
           className="absolute -top-8 right-0 h-40 w-72 rounded-full pointer-events-none"
@@ -100,7 +100,7 @@ export default function CampaignList() {
             </GradientHeading>
             <p className="text-text-muted text-[13px] mt-1">{t('admin.campaigns.subtitle')}</p>
           </div>
-          {isSuperAdmin && (
+          {isAdminOrCapacitador && (
             <Button variant="neon" onClick={() => setWizardOpen(true)} className="shrink-0">
               <Plus className="h-4 w-4" />
               Nueva campaña
@@ -109,7 +109,7 @@ export default function CampaignList() {
         </div>
       </div>
 
-      {/* Loading skeleton */}
+      {/* Esqueleto de carga */}
       {loading ? (
         <div className="space-y-3">
           {[...Array(2)].map((_, i) => (
@@ -128,7 +128,7 @@ export default function CampaignList() {
           <p className="text-text-muted text-[14px] mb-6">
             Crea la primera campaña para comenzar a agregar módulos y aprendices.
           </p>
-          {isSuperAdmin && (
+          {isAdminOrCapacitador && (
             <Button variant="neon" onClick={() => setWizardOpen(true)}>
               <Plus className="h-4 w-4" /> Nueva campaña
             </Button>
@@ -147,7 +147,7 @@ export default function CampaignList() {
                 rounded="2xl"
                 className="transition-all duration-300"
               >
-                {/* Campaign header row */}
+                {/* Fila de encabezado de campaña */}
                 <div className="flex items-center gap-4 px-5 py-4">
                   {/* Avatar */}
                   <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-neon-violet/20 to-neon-green/10 border border-glass-border/10 flex items-center justify-center shrink-0 text-[13px] font-bold text-text">
@@ -228,7 +228,7 @@ export default function CampaignList() {
                   </div>
                 </div>
 
-                {/* Expanded panel */}
+                {/* Panel expandido */}
                 <AnimatePresence initial={false}>
                   {expanded === c.id && (
                     <motion.div
@@ -288,7 +288,7 @@ export default function CampaignList() {
         </div>
       )}
 
-      {/* Wizard */}
+      {/* Asistente de creación */}
       <CampaignWizard
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}

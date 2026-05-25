@@ -12,10 +12,13 @@ import {
   ChevronUp,
   Upload,
   Video,
+  Languages,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { uploadSectionMedia } from '@/services/modules.service'
 import type { VideoMarkerRaw, VideoQuestionRaw } from '@/services/modules.service'
+import { moduleAiAssist } from '@/services/ai.service'
 
 type Lang = 'es' | 'en' | 'pt'
 
@@ -53,6 +56,10 @@ function newQuestionId() {
   return `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 }
 
+function markerTitle(m: VideoMarkerRaw, l: Lang): string {
+  return (m as Record<string, string>)[`title_${l}`] || m.title_es || ''
+}
+
 function emptyQuestion(): VideoQuestionRaw {
   return {
     id: newQuestionId(),
@@ -63,7 +70,7 @@ function emptyQuestion(): VideoQuestionRaw {
   }
 }
 
-// ─── Subcomponent: question editor ────────────────────────────
+// ─── Subcomponente: editor de preguntas ───────────────────────
 
 function QuestionEditor({
   q,
@@ -183,7 +190,7 @@ function QuestionEditor({
   )
 }
 
-// ─── Subcomponent: inline marker edit form ─────────────────────
+// ─── Subcomponente: formulario de edición de marcador ──────────
 
 function MarkerEditForm({
   marker,
@@ -198,7 +205,48 @@ function MarkerEditForm({
   onSave: (m: VideoMarkerRaw) => void
   onCancel: () => void
 }) {
-  const [draft, setDraft] = useState<VideoMarkerRaw>(JSON.parse(JSON.stringify(marker)))
+  const [draft, setDraft] = useState<VideoMarkerRaw>(() => JSON.parse(JSON.stringify(marker)))
+  const [translating, setTranslating] = useState(false)
+  const [translateError, setTranslateError] = useState<string | null>(null)
+
+  const handleAutoTranslate = async () => {
+    if (!draft.title_es) return
+    setTranslating(true)
+    setTranslateError(null)
+    try {
+      const fields: Record<string, string> = { title: draft.title_es }
+      if (draft.type === 'quiz' && draft.questions) {
+        draft.questions.forEach((q, i) => {
+          fields[`q${i}`] = q.question_es
+          ;(q.options_es ?? []).forEach((opt, j) => { fields[`q${i}o${j}`] = opt })
+          if (q.explanation_es) fields[`q${i}exp`] = q.explanation_es
+        })
+      }
+      const res = await moduleAiAssist({ action: 'translate', contentType: 'meta', sourceLang: 'es', targetLangs: ['en', 'pt'], fields })
+      const data = res.data as Record<string, Record<string, string>>
+      setDraft(p => {
+        const updated: VideoMarkerRaw = { ...p }
+        if (data.en?.title) updated.title_en = data.en.title
+        if (data.pt?.title) updated.title_pt = data.pt.title
+        if (p.questions) {
+          updated.questions = p.questions.map((q, i) => ({
+            ...q,
+            question_en: data.en?.[`q${i}`] || q.question_en,
+            question_pt: data.pt?.[`q${i}`] || q.question_pt,
+            options_en: (q.options_en ?? ['','','','']).map((_, j) => data.en?.[`q${i}o${j}`] || q.options_en?.[j] || ''),
+            options_pt: (q.options_pt ?? ['','','','']).map((_, j) => data.pt?.[`q${i}o${j}`] || q.options_pt?.[j] || ''),
+            explanation_en: data.en?.[`q${i}exp`] || q.explanation_en,
+            explanation_pt: data.pt?.[`q${i}exp`] || q.explanation_pt,
+          }))
+        }
+        return updated
+      })
+    } catch {
+      setTranslateError('Error al traducir. Intenta de nuevo.')
+    } finally {
+      setTranslating(false)
+    }
+  }
   const titleField = `title_${lang}` as 'title_es' | 'title_en' | 'title_pt'
   const [timeInput, setTimeInput] = useState(formatTime(draft.timeSeconds))
 
@@ -250,27 +298,45 @@ function MarkerEditForm({
         </div>
       </div>
 
-      {/* Multilingual titles for EN and PT */}
-      <div className="grid grid-cols-2 gap-2">
-        {(['en', 'pt'] as const).filter((l) => l !== lang).map((l) => {
-          const f = `title_${l}` as 'title_en' | 'title_pt'
-          return (
-            <div key={l}>
-              <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
-                Título ({l.toUpperCase()})
-              </label>
-              <input
-                value={draft[f]}
-                onChange={(e) => setDraft((p) => ({ ...p, [f]: e.target.value }))}
-                className="w-full rounded-lg px-2.5 py-1.5 text-[12px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none placeholder:text-text-subtle"
-                placeholder={`Título en ${l.toUpperCase()}`}
-              />
-            </div>
-          )
-        })}
+      {/* Títulos en los otros dos idiomas */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">Otros idiomas</span>
+          <button
+            type="button"
+            onClick={handleAutoTranslate}
+            disabled={translating || !draft.title_es}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-400/8 border border-blue-400/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {translating
+              ? <><Loader2 className="h-3 w-3 animate-spin" /> Traduciendo…</>
+              : <><Languages className="h-3 w-3" /> Traducir con IA</>}
+          </button>
+        </div>
+        {translateError && (
+          <p className="text-[11px] text-danger">{translateError}</p>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          {(['es', 'en', 'pt'] as const).filter((l) => l !== lang).map((l) => {
+            const f = `title_${l}` as 'title_es' | 'title_en' | 'title_pt'
+            return (
+              <div key={l}>
+                <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
+                  Título ({l.toUpperCase()})
+                </label>
+                <input
+                  value={draft[f]}
+                  onChange={(e) => setDraft((p) => ({ ...p, [f]: e.target.value }))}
+                  className="w-full rounded-lg px-2.5 py-1.5 text-[12px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none placeholder:text-text-subtle"
+                  placeholder={`Título en ${l.toUpperCase()}`}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      {/* Quiz questions */}
+      {/* Preguntas del quiz */}
       {draft.type === 'quiz' && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -328,7 +394,7 @@ function MarkerEditForm({
   )
 }
 
-// ─── Main component ────────────────────────────────────────────
+// ─── Componente principal ──────────────────────────────────────
 
 export function VideoMarkerEditor({
   sectionId,
@@ -347,6 +413,54 @@ export function VideoMarkerEditor({
   const [videoDuration, setVideoDuration] = useState(0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addingType, setAddingType] = useState<'chapter' | 'quiz' | null>(null)
+  const [translatingAll, setTranslatingAll] = useState(false)
+  const [translateAllError, setTranslateAllError] = useState<string | null>(null)
+
+  const handleTranslateAllMarkers = async () => {
+    const withEs = markers.filter(m => m.title_es?.trim())
+    if (!withEs.length) return
+    setTranslatingAll(true)
+    setTranslateAllError(null)
+    try {
+      const fields: Record<string, string> = {}
+      withEs.forEach((m, i) => {
+        fields[`m${i}_title`] = m.title_es
+        if (m.type === 'quiz' && m.questions) {
+          m.questions.forEach((q, qi) => {
+            if (q.question_es) fields[`m${i}q${qi}`] = q.question_es
+            ;(q.options_es ?? []).forEach((opt, oi) => { if (opt) fields[`m${i}q${qi}o${oi}`] = opt })
+            if (q.explanation_es) fields[`m${i}q${qi}exp`] = q.explanation_es
+          })
+        }
+      })
+      const res = await moduleAiAssist({ action: 'translate', contentType: 'meta', sourceLang: 'es', targetLangs: ['en', 'pt'], fields })
+      const data = res.data as Record<string, Record<string, string>>
+      const updated = markers.map(m => {
+        const idx = withEs.findIndex(x => x.id === m.id)
+        if (idx === -1) return m
+        const next: VideoMarkerRaw = { ...m }
+        if (data.en?.[`m${idx}_title`]) next.title_en = data.en[`m${idx}_title`]
+        if (data.pt?.[`m${idx}_title`]) next.title_pt = data.pt[`m${idx}_title`]
+        if (m.questions) {
+          next.questions = m.questions.map((q, qi) => ({
+            ...q,
+            question_en: data.en?.[`m${idx}q${qi}`] || q.question_en,
+            question_pt: data.pt?.[`m${idx}q${qi}`] || q.question_pt,
+            options_en: (q.options_en ?? ['','','','']).map((_, oi) => data.en?.[`m${idx}q${qi}o${oi}`] || q.options_en?.[oi] || ''),
+            options_pt: (q.options_pt ?? ['','','','']).map((_, oi) => data.pt?.[`m${idx}q${qi}o${oi}`] || q.options_pt?.[oi] || ''),
+            explanation_en: data.en?.[`m${idx}q${qi}exp`] || q.explanation_en,
+            explanation_pt: data.pt?.[`m${idx}q${qi}exp`] || q.explanation_pt,
+          }))
+        }
+        return next
+      })
+      onMarkersChange(updated)
+    } catch {
+      setTranslateAllError('Error al traducir. Intenta de nuevo.')
+    } finally {
+      setTranslatingAll(false)
+    }
+  }
 
   const sortedMarkers = [...markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
 
@@ -413,7 +527,7 @@ export function VideoMarkerEditor({
 
   return (
     <div className="space-y-5">
-      {/* Video upload / preview */}
+      {/* Subida / vista previa del video */}
       <div>
         <label className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
           Video del módulo
@@ -497,7 +611,7 @@ export function VideoMarkerEditor({
         )}
       </div>
 
-      {/* Timeline */}
+      {/* Línea de tiempo */}
       {videoUrl && videoDuration > 0 && (
         <div>
           <label className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
@@ -507,17 +621,17 @@ export function VideoMarkerEditor({
             className="relative h-8 rounded-full bg-glass/8 border border-glass-border/10 cursor-pointer"
             onClick={handleTimelineClick}
           >
-            {/* Progress line */}
+            {/* Línea de progreso */}
             <div className="absolute inset-0 flex items-center px-3">
               <div className="h-1 w-full rounded-full bg-glass-border/15" />
             </div>
-            {/* Marker dots */}
+            {/* Puntos de marcadores */}
             {sortedMarkers.map((m) => {
               const pct = (m.timeSeconds / videoDuration) * 100
               return (
                 <div
                   key={m.id}
-                  title={`${m.type === 'chapter' ? '●' : '📝'} ${m.title_es || '—'} (${formatTime(m.timeSeconds)})`}
+                  title={`${m.type === 'chapter' ? '●' : '📝'} ${markerTitle(m, lang) || '—'} (${formatTime(m.timeSeconds)})`}
                   className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10"
                   style={{ left: `${pct}%` }}
                   onClick={(e) => { e.stopPropagation(); setEditingId(m.id) }}
@@ -529,7 +643,7 @@ export function VideoMarkerEditor({
                 </div>
               )
             })}
-            {/* Time labels */}
+            {/* Etiquetas de tiempo */}
             <div className="absolute inset-0 flex items-end pb-0.5 px-2 pointer-events-none">
               <span className="text-[9px] text-text-subtle font-mono">0:00</span>
               <span className="ml-auto text-[9px] text-text-subtle font-mono">{formatTime(videoDuration)}</span>
@@ -548,7 +662,7 @@ export function VideoMarkerEditor({
         </div>
       )}
 
-      {/* Add marker buttons */}
+      {/* Botones para agregar marcador */}
       {videoUrl && (
         <div className="flex gap-2">
           <button
@@ -575,12 +689,27 @@ export function VideoMarkerEditor({
         </div>
       )}
 
-      {/* Markers list */}
+      {/* Lista de marcadores */}
       {sortedMarkers.length > 0 && (
         <div>
-          <label className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
-            Marcadores ({sortedMarkers.length})
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+              Marcadores ({sortedMarkers.length})
+            </label>
+            <button
+              type="button"
+              onClick={handleTranslateAllMarkers}
+              disabled={translatingAll || !markers.some(m => m.title_es?.trim())}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-400/8 border border-blue-400/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {translatingAll
+                ? <><Loader2 className="h-3 w-3 animate-spin" /> Traduciendo…</>
+                : <><Languages className="h-3 w-3" /> Traducir todos con IA</>}
+            </button>
+          </div>
+          {translateAllError && (
+            <p className="text-[11px] text-danger mb-2">{translateAllError}</p>
+          )}
           <div className="space-y-2">
             {sortedMarkers.map((m) => (
               <div key={m.id} className="rounded-xl border border-glass-border/8 bg-glass/3 overflow-visible">
@@ -596,7 +725,7 @@ export function VideoMarkerEditor({
                     {formatTime(m.timeSeconds)}
                   </span>
                   <span className="flex-1 text-[13px] text-text truncate">
-                    {m.title_es || <span className="text-text-subtle italic">Sin título</span>}
+                    {markerTitle(m, lang) || <span className="text-text-subtle italic">—</span>}
                   </span>
                   {m.type === 'quiz' && (
                     <span className="text-[11px] text-amber-400/70 shrink-0">

@@ -119,7 +119,41 @@ export async function generateModule(opts: {
   return { data: result.data as GeneratedModule, usage: result.usage as CacheUsage }
 }
 
-/** Fetch module sections and build a text context for the AI prompt. */
+export interface AssistRequest {
+  action: 'translate' | 'improve'
+  contentType: 'section' | 'meta'
+  sourceLang: string
+  targetLangs?: string[]
+  fields: Record<string, string>
+  moduleTitle?: string
+}
+
+export async function moduleAiAssist(opts: AssistRequest): Promise<{ data: Record<string, unknown>; usage: CacheUsage }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('No autenticado')
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/module-ai-assist`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(opts),
+    },
+  )
+
+  const result = await response.json()
+  if (!response.ok || result.error) {
+    throw new Error(result.error ?? 'Error procesando contenido')
+  }
+
+  return { data: result.data, usage: result.usage as CacheUsage }
+}
+
+/** Obtiene las secciones del módulo y construye el contexto de texto para el prompt de IA. */
 export async function getModuleContextText(moduleId: string): Promise<string> {
   const { data, error } = await supabase
     .from('module_sections')

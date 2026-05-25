@@ -13,7 +13,7 @@ const GREEN = '#00C228';
 const MAGENTA = '#C2185B';
 const ease = [0.16, 1, 0.3, 1] as const;
 
-/* ── Input style helpers ─────────────────────────────────────────────── */
+/* ── Helpers de estilo para inputs ──────────────────────────────────── */
 const inputBase: React.CSSProperties = {
   width: '100%',
   borderRadius: 14,
@@ -26,7 +26,7 @@ const inputBase: React.CSSProperties = {
   transition: 'border-color 0.2s ease, background-color 0.2s ease',
 };
 
-/* ── Stagger variants for login form elements ────────────────────────── */
+/* ── Variantes escalonadas para elementos del formulario ─────────────── */
 const stagger = {
   container: {
     hidden: {},
@@ -72,7 +72,7 @@ export default function Welcome() {
     });
   }, [t]);
 
-  /* ── Typewriter ─────────────────────────────────────────────────────── */
+  /* ── Animación de máquina de escribir ───────────────────────────────── */
   const [headline] = useState(() => t('welcome.title_lead') + '\n' + t('welcome.title_accent'));
   const [displayed, setDisplayed] = useState('');
   const [typingDone, setTypingDone] = useState(false);
@@ -95,7 +95,7 @@ export default function Welcome() {
     return () => clearInterval(iv);
   }, []);
 
-  /* ── Login & transition state ───────────────────────────────────────── */
+  /* ── Estado del login y transición ──────────────────────────────────── */
   const [showLogin, setShowLogin] = useState(false);
   const [rippling, setRippling] = useState(false);
   const [email, setEmail] = useState('');
@@ -112,7 +112,7 @@ export default function Welcome() {
     }
   }, [showLogin]);
 
-  /* Click "Comenzar": ripple → hero exits → login enters */
+  /* Click "Comenzar": efecto ripple → hero sale → login entra */
   const handleStart = () => {
     setRippling(true);
     setTimeout(() => setShowLogin(true), 380);
@@ -141,10 +141,10 @@ export default function Welcome() {
     }
   };
 
-  /* ── Render ─────────────────────────────────────────────────────────── */
+  /* ── Renderizado ────────────────────────────────────────────────────── */
   return (
     <div className="relative min-h-screen overflow-hidden flex flex-col bg-bg transition-colors duration-200">
-      {/* Dot grid */}
+      {/* Cuadrícula de puntos */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -156,7 +156,7 @@ export default function Welcome() {
         }}
       />
 
-      {/* Green glow */}
+      {/* Resplandor verde */}
       <div
         aria-hidden
         className="pointer-events-none absolute -top-56 -left-56 w-[750px] h-[750px] rounded-full"
@@ -165,7 +165,7 @@ export default function Welcome() {
           animation: 'bgPulse 7s ease-in-out infinite',
         }}
       />
-      {/* Magenta glow */}
+      {/* Resplandor magenta */}
       <div
         aria-hidden
         className="pointer-events-none absolute -bottom-56 -right-56 w-[750px] h-[750px] rounded-full"
@@ -175,7 +175,7 @@ export default function Welcome() {
         }}
       />
 
-      {/* ── WOW ripple — expands from center on "Comenzar" click ──────── */}
+      {/* ── Efecto ripple — se expande desde el centro al hacer clic ─── */}
       <AnimatePresence>
         {rippling && (
           <motion.div
@@ -198,7 +198,7 @@ export default function Welcome() {
         )}
       </AnimatePresence>
 
-      {/* ── Navbar ──────────────────────────────────────────────────────── */}
+      {/* ── Barra de navegación ─────────────────────────────────────────── */}
       <header
         className="fixed top-0 inset-x-0 z-50 flex items-center justify-between px-6 h-14"
         style={{
@@ -231,7 +231,7 @@ export default function Welcome() {
         </div>
       </header>
 
-      {/* ── Main ────────────────────────────────────────────────────────── */}
+      {/* ── Contenido principal ─────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 pt-14 pb-32 text-center">
         <div className="w-full max-w-4xl">
           <AnimatePresence mode="wait">
@@ -248,7 +248,7 @@ export default function Welcome() {
                   transition: { duration: 0.4, ease: [0.55, 0, 1, 0.5] },
                 }}
               >
-                {/* Eyebrow */}
+                {/* Texto superior */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -266,7 +266,7 @@ export default function Welcome() {
                   </span>
                 </motion.div>
 
-                {/* Headline */}
+                {/* Titular */}
                 <h1
                   className="font-bold whitespace-pre-line text-text mb-8"
                   style={{
@@ -288,7 +288,7 @@ export default function Welcome() {
                   )}
                 </h1>
 
-                {/* Subtitle */}
+                {/* Subtítulo */}
                 <AnimatePresence>
                   {showSub && (
                     <motion.p
@@ -302,7 +302,7 @@ export default function Welcome() {
                   )}
                 </AnimatePresence>
 
-                {/* CTA */}
+                {/* Botón principal */}
                 <AnimatePresence>
                   {showCTA && (
                     <motion.div
@@ -338,7 +338,7 @@ export default function Welcome() {
               </motion.div>
             )}
 
-            {/* ─────────────────────── LOGIN CARD ───────────────────────── */}
+            {/* ─────────────────────── TARJETA DE LOGIN ─────────────────── */}
             {showLogin && (
               <motion.div
                 key="login"
@@ -377,7 +377,7 @@ export default function Welcome() {
                     ].join(', '),
                   }}
                 >
-                  {/* Inner depth */}
+                  {/* Profundidad interna */}
                   <div
                     aria-hidden
                     className="absolute inset-0 pointer-events-none"
@@ -387,7 +387,7 @@ export default function Welcome() {
                     }}
                   />
 
-                  {/* Breathing top accent line */}
+                  {/* Línea de acento superior animada */}
                   <motion.div
                     className="absolute top-0 inset-x-0 h-px pointer-events-none"
                     style={{ background: `linear-gradient(90deg, transparent 5%, ${GREEN}80 50%, transparent 95%)` }}
@@ -396,14 +396,14 @@ export default function Welcome() {
                   />
 
 
-                  {/* Form elements stagger in one by one */}
+                  {/* Elementos del formulario se revelan de a uno */}
                   <motion.div
                     variants={stagger.container}
                     initial="hidden"
                     animate="show"
                     className="relative z-10"
                   >
-                    {/* Logo + title */}
+                    {/* Logo + título */}
                     <motion.div
                       variants={stagger.item}
                       className="flex items-center gap-3.5"
@@ -425,7 +425,7 @@ export default function Welcome() {
                     </motion.div>
 
                     <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-                      {/* Email */}
+                      {/* Correo electrónico */}
                       <motion.div variants={stagger.item}>
                         <label
                           className="block mb-2"
@@ -501,15 +501,14 @@ export default function Welcome() {
                             initial={{ opacity: 0, y: -8, height: 0 }}
                             animate={{ opacity: 1, y: 0, height: 'auto' }}
                             exit={{ opacity: 0, height: 0, transition: { duration: 0.15 } }}
-                            className="text-[12.5px] tracking-wide overflow-hidden"
-                            style={{ color: '#f87171' }}
+                            className="text-[12.5px] tracking-wide overflow-hidden text-danger"
                           >
                             {loginError}
                           </motion.p>
                         )}
                       </AnimatePresence>
 
-                      {/* Submit */}
+                      {/* Botón de envío */}
                       <motion.div variants={stagger.item}>
                         <motion.button
                           type="submit"

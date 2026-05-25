@@ -146,18 +146,18 @@ export default function UserList() {
     }
   }
 
-  // Brand-color role indicators (intentionally dark — work on both themes)
+  // Colores del badge de rol — tonos medios que funcionan en temas claro y oscuro
   const roleColors: Record<Profile['role'], string> = {
-    superadmin: 'rgba(250,204,21,0.2)',
-    admin: 'rgba(96,165,250,0.2)',
-    capacitador: 'rgba(134,239,172,0.15)',
-    learner: 'rgba(255,255,255,0.08)',
+    superadmin: 'rgba(245,158,11,0.15)',
+    admin: 'rgba(99,102,241,0.15)',
+    capacitador: 'rgba(34,197,94,0.15)',
+    learner: 'rgba(100,116,139,0.12)',
   }
   const roleText: Record<Profile['role'], string> = {
-    superadmin: '#fde68a',
-    admin: '#93c5fd',
-    capacitador: '#86efac',
-    learner: 'rgba(255,255,255,0.5)',
+    superadmin: '#d97706',
+    admin: '#4f46e5',
+    capacitador: '#16a34a',
+    learner: '#64748b',
   }
   const roleLabel: Record<Profile['role'], string> = {
     superadmin: t('roles.superadmin'),

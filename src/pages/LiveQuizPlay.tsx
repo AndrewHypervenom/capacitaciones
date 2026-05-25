@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import type { LiveQuiz, LiveQuizAnswer, QuizQuestion, QuizLeaderboardEntry } from '@/types/database'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
-// ─── Audio engine ─────────────────────────────────────────────────────────────
+// ─── Motor de audio ─────────────────────────────────────────────────────────────
 class QuizAudio {
   private ctx: AudioContext | null = null
   private _muted = false
@@ -54,7 +54,7 @@ class QuizAudio {
 }
 const sfx = new QuizAudio()
 
-// ─── Confetti ─────────────────────────────────────────────────────────────────
+// ─── Confeti ─────────────────────────────────────────────────────────────────
 const CC = ['#00C228', '#3b82f6', '#fde68a', '#ef4444', '#a855f7', '#f97316', '#06b6d4']
 
 function Confetti({ active }: { active: boolean }) {
@@ -82,7 +82,7 @@ function Confetti({ active }: { active: boolean }) {
   )
 }
 
-// ─── Option config ────────────────────────────────────────────────────────────
+// ─── Configuración de opciones ────────────────────────────────────────────────
 const OPTS = [
   { label: 'A', Icon: Triangle, color: '#ef4444', dim: 'rgba(239,68,68,0.82)',  glow: 'rgba(239,68,68,0.55)' },
   { label: 'B', Icon: Diamond,  color: '#3b82f6', dim: 'rgba(59,130,246,0.82)', glow: 'rgba(59,130,246,0.55)' },
@@ -90,22 +90,22 @@ const OPTS = [
   { label: 'D', Icon: Square,   color: '#22c55e', dim: 'rgba(34,197,94,0.82)',  glow: 'rgba(34,197,94,0.55)' },
 ] as const
 
-const MEDALS = ['#fde68a', '#d1d5db', '#cd7c2a']
+const MEDALS = ['#ca8a04', '#6b7280', '#b45309']
 
 type Phase = 'join' | 'lobby' | 'question' | 'answered' | 'leaderboard' | 'ended'
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Componente ────────────────────────────────────────────────────────────────
 export default function LiveQuizPlay() {
   const navigate = useNavigate()
   const { profile } = useAuth()
 
-  // Join
+  // Unirse
   const [phase, setPhase]         = useState<Phase>('join')
   const [pin, setPin]             = useState('')
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joining, setJoining]     = useState(false)
 
-  // Quiz state
+  // Estado del quiz
   const [quiz, setQuiz]               = useState<LiveQuiz | null>(null)
   const [campaign, setCampaign]       = useState<{ name: string; logo_url: string | null } | null>(null)
   const [currentQ, setCurrentQ]       = useState<QuizQuestion | null>(null)
@@ -118,7 +118,7 @@ export default function LiveQuizPlay() {
   const [submitting, setSubmitting]   = useState(false)
   const [participantCount, setParticipantCount] = useState(0)
 
-  // UI
+  // Interfaz
   const [muted, setMuted]           = useState(false)
   const [showFlash, setShowFlash]   = useState(false)
   const [confetti, setConfetti]     = useState(false)
@@ -129,7 +129,7 @@ export default function LiveQuizPlay() {
   const lbTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confettiTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Timer ──────────────────────────────────────────────────────────────────
+  // ── Temporizador ──────────────────────────────────────────────────────────────
   const startTimer = useCallback((secs: number) => {
     if (timerRef.current) clearInterval(timerRef.current)
     setTimeLeft(secs)
@@ -144,7 +144,7 @@ export default function LiveQuizPlay() {
     }, 1000)
   }, [])
 
-  // ── Leaderboard ───────────────────────────────────────────────────────────
+  // ── Clasificación ───────────────────────────────────────────────────────────
   const loadLeaderboard = useCallback(async (quizId: string) => {
     const { data } = await supabase
       .from('live_quiz_answers')
@@ -165,7 +165,7 @@ export default function LiveQuizPlay() {
     )
   }, [])
 
-  // ── State machine ─────────────────────────────────────────────────────────
+  // ── Máquina de estados ─────────────────────────────────────────────────────────
   const applyQuizState = useCallback((q: LiveQuiz, resetAnswer: boolean) => {
     setQuiz(q)
     if (q.status === 'ended') {
@@ -185,7 +185,7 @@ export default function LiveQuizPlay() {
     if (lbTimerRef.current) clearTimeout(lbTimerRef.current)
 
     if (q.current_question === 0) {
-      // First question — skip leaderboard flash
+      // Primera pregunta — omitir flash de clasificación
       setMyAnswer(null); setIsCorrect(null); setQuestionScore(null)
       setPhase('question')
       startTimer(question.timeLimitSec)
@@ -204,7 +204,7 @@ export default function LiveQuizPlay() {
     }
   }, [loadLeaderboard, startTimer])
 
-  // ── Join ──────────────────────────────────────────────────────────────────
+  // ── Unirse ──────────────────────────────────────────────────────────────────
   const handleJoin = async () => {
     const code = pin.trim().toUpperCase()
     if (code.length !== 6) { setJoinError('El PIN debe tener 6 caracteres'); return }
@@ -261,7 +261,7 @@ export default function LiveQuizPlay() {
     setJoining(false)
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
+  // ── Enviar respuesta ────────────────────────────────────────────────────────────
   const submitAnswer = async (optionIdx: number) => {
     if (!quiz || !currentQ || !profile || myAnswer !== null || submitting) return
     setSubmitting(true)
@@ -295,7 +295,7 @@ export default function LiveQuizPlay() {
     setSubmitting(false)
   }
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
+  // ── Limpieza ───────────────────────────────────────────────────────────────
   useEffect(() => () => {
     if (channelRef.current) void supabase.removeChannel(channelRef.current)
     if (timerRef.current) clearInterval(timerRef.current)
@@ -303,18 +303,18 @@ export default function LiveQuizPlay() {
     if (confettiTimer.current) clearTimeout(confettiTimer.current)
   }, [])
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  // ── Valores derivados ───────────────────────────────────────────────────────────
   const myName   = profile?.display_name ?? profile?.id?.slice(0, 8) ?? ''
   const total    = quiz?.questions.length ?? 1
   const timerPct = currentQ ? timeLeft / currentQ.timeLimitSec : 0
   const timerColor = timeLeft > 10 ? '#00C228' : timeLeft > 5 ? '#fbbf24' : '#ef4444'
 
   // ══════════════════════════════════════════════════════════════════════════
-  // JOIN
+  // UNIRSE
   // ══════════════════════════════════════════════════════════════════════════
   if (phase === 'join') return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg relative overflow-hidden">
-      {/* Background radial glow */}
+      {/* Resplandor radial de fondo */}
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 100%, rgba(0,194,40,0.07) 0%, transparent 70%)' }} />
 
@@ -332,7 +332,7 @@ export default function LiveQuizPlay() {
         <div className="text-[11px] uppercase tracking-[0.2em] text-text-subtle mb-2">Quiz en Vivo</div>
         <h1 className="text-[30px] font-black text-text mb-8 tracking-tight">Ingresa el PIN</h1>
 
-        {/* PIN input */}
+        {/* Entrada de PIN */}
         <div className="relative mb-3">
           <input
             autoFocus
@@ -408,7 +408,7 @@ export default function LiveQuizPlay() {
           <span className="text-[13px] font-semibold" style={{ color: '#00C228' }}>¡Estas dentro!</span>
         </div>
 
-        {/* Participant pulse ring */}
+        {/* Anillo pulsante de participantes */}
         <div className="relative flex items-center justify-center w-28 h-28 mx-auto mb-6">
           {[1, 2].map((ring) => (
             <motion.div key={ring}
@@ -447,11 +447,11 @@ export default function LiveQuizPlay() {
   )
 
   // ══════════════════════════════════════════════════════════════════════════
-  // LEADERBOARD FLASH
+  // FLASH DE CLASIFICACIÓN
   // ══════════════════════════════════════════════════════════════════════════
   if (phase === 'leaderboard') {
     const top3 = leaderboard.slice(0, 3)
-    // Podium display order: silver(1), gold(0), bronze(2)
+    // Orden del podio: plata(1), oro(0), bronce(2)
     const order = [1, 0, 2]
     const podiumH = [88, 120, 64]
     return (
@@ -521,13 +521,13 @@ export default function LiveQuizPlay() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // QUESTION + ANSWERED
+  // PREGUNTA + RESPONDIDO
   // ══════════════════════════════════════════════════════════════════════════
   if ((phase === 'question' || phase === 'answered') && currentQ) {
     return (
       <div className="min-h-screen flex flex-col bg-bg select-none">
 
-        {/* Confetti & flash */}
+        {/* Confeti y destello */}
         <Confetti active={confetti} />
         <AnimatePresence>
           {showFlash && (
@@ -541,7 +541,7 @@ export default function LiveQuizPlay() {
           )}
         </AnimatePresence>
 
-        {/* Timer bar — full width strip at very top */}
+        {/* Barra del temporizador — franja a todo el ancho en la parte superior */}
         <div className="w-full h-1.5 bg-line flex-shrink-0">
           <div
             className="h-full transition-all ease-linear"
@@ -554,9 +554,9 @@ export default function LiveQuizPlay() {
           />
         </div>
 
-        {/* Header */}
+        {/* Encabezado */}
         <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 border-b border-line">
-          {/* Score */}
+          {/* Puntuación */}
           <div className="flex items-center gap-1.5 min-w-[80px]">
             {myScore > 0 && (
               <motion.div
@@ -566,18 +566,18 @@ export default function LiveQuizPlay() {
                 transition={{ duration: 0.4 }}
                 className="flex items-center gap-1 text-[13px] font-bold tabular-nums text-text-muted"
               >
-                <Star className="h-3.5 w-3.5 fill-current" style={{ color: '#fde68a' }} />
+                <Star className="h-3.5 w-3.5 fill-current" style={{ color: '#d97706' }} />
                 {myScore.toLocaleString()}
               </motion.div>
             )}
           </div>
 
-          {/* Question counter */}
+          {/* Contador de preguntas */}
           <span className="text-[13px] font-semibold text-text">
             {questionIdx + 1} <span className="text-text-subtle font-normal">/ {total}</span>
           </span>
 
-          {/* Timer + mute */}
+          {/* Temporizador + silencio */}
           <div className="flex items-center gap-3 min-w-[80px] justify-end">
             <motion.span
               key={timeLeft}
@@ -598,7 +598,7 @@ export default function LiveQuizPlay() {
           </div>
         </div>
 
-        {/* Question card */}
+        {/* Tarjeta de pregunta */}
         <div className="flex-shrink-0 px-3 pt-3 pb-2">
           <AnimatePresence mode="wait">
             {phase === 'answered' ? (
@@ -656,8 +656,7 @@ export default function LiveQuizPlay() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="rounded-2xl px-4 py-4"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                className="rounded-2xl px-4 py-4 bg-subtle border border-line"
               >
                 <p className="text-[18px] md:text-[22px] font-bold text-text text-center leading-snug">
                   {currentQ.text}
@@ -667,7 +666,7 @@ export default function LiveQuizPlay() {
           </AnimatePresence>
         </div>
 
-        {/* Options 2×2 grid */}
+        {/* Cuadrícula 2×2 de opciones */}
         <div className="flex-1 grid grid-cols-2 gap-0.5 min-h-0">
           {currentQ.options.map((opt, oi) => {
             const { label, Icon, color, glow } = OPTS[oi]
@@ -708,16 +707,16 @@ export default function LiveQuizPlay() {
                 className="relative flex flex-col p-4 gap-2 items-start justify-start transition-shadow"
                 style={{ background: bg, boxShadow: shadow }}
               >
-                {/* Icon + label */}
+                {/* Ícono + etiqueta */}
                 <div className="flex items-center gap-2">
                   <Icon className="h-6 w-6 text-white/85 flex-shrink-0" />
                   <span className="text-[11px] font-black text-white/65">{label}</span>
                 </div>
-                {/* Option text */}
+                {/* Texto de opción */}
                 <span className="text-[14px] md:text-[16px] font-semibold text-white leading-snug">
                   {opt}
                 </span>
-                {/* State icon top-right */}
+                {/* Ícono de estado arriba a la derecha */}
                 {inAnswered && isSelected && (
                   <motion.div
                     initial={{ scale: 0 }}
@@ -750,7 +749,7 @@ export default function LiveQuizPlay() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ENDED
+  // TERMINADO
   // ══════════════════════════════════════════════════════════════════════════
   if (phase === 'ended') {
     const myPos = leaderboard.findIndex((e) => e.display_name === myName)
