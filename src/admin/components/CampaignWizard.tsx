@@ -138,7 +138,8 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     if (!name.trim() || !slug.trim()) return
     setSubmitting(true)
     setError('')
-    const { data, error: err } = await supabase.rpc('create_campaign', {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error: err } = await (supabase.rpc as any)('create_campaign', {
       p_name:        name.trim(),
       p_slug:        slug.trim(),
       p_description: description.trim() || null,

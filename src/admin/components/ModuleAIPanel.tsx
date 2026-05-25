@@ -203,16 +203,16 @@ export function ModuleAIPanel({
     if (!markers?.length) return sectionFields
     const markerFields: Record<string, string> = {}
     markers.forEach((m, i) => {
-      const title = (m as Record<string, string>)[`title_${lang}`] || ''
+      const title = (m as unknown as Record<string, string>)[`title_${lang}`] || ''
       if (title) markerFields[`${MKR}${i}_title`] = title
       if (m.type === 'quiz' && m.questions) {
         m.questions.forEach((q, qi) => {
-          const qText = (q as Record<string, string>)[`question_${lang}`] || ''
+          const qText = (q as unknown as Record<string, string>)[`question_${lang}`] || ''
           if (qText) markerFields[`${MKR}${i}_q${qi}`] = qText
-          ;((q as Record<string, string[]>)[`options_${lang}`] ?? []).forEach((opt, oi) => {
+          ;((q as unknown as Record<string, string[]>)[`options_${lang}`] ?? []).forEach((opt, oi) => {
             if (opt) markerFields[`${MKR}${i}_q${qi}_o${oi}`] = opt
           })
-          const exp = (q as Record<string, string>)[`explanation_${lang}`] || ''
+          const exp = (q as unknown as Record<string, string>)[`explanation_${lang}`] || ''
           if (exp) markerFields[`${MKR}${i}_q${qi}_exp`] = exp
         })
       }
@@ -278,7 +278,7 @@ export function ModuleAIPanel({
             if (qVal) (updatedQ as Record<string, unknown>)[qLang as string] = qVal
             const expVal = allFields[`${MKR}${i}_q${qi}_exp`]
             if (expVal) (updatedQ as Record<string, unknown>)[expLang as string] = expVal
-            const opts = [...(((q as Record<string, string[]>)[`options_${lang}`]) ?? ['', '', '', ''])]
+            const opts = [...(((q as unknown as Record<string, string[]>)[`options_${lang}`]) ?? ['', '', '', ''])]
             opts.forEach((_, oi) => {
               const oVal = allFields[`${MKR}${i}_q${qi}_o${oi}`]
               if (oVal) opts[oi] = oVal
