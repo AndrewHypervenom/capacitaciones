@@ -195,7 +195,7 @@ function PreviewBox({
 }) {
   const { metadata, nodes } = generated
   const nodeEntries = Object.entries(nodes as Record<string, Record<string, unknown>>)
-  const meta = metadata as Record<string, unknown>
+  const meta = metadata as unknown as Record<string, unknown>
 
   return (
     <div className="bg-glass/6 border border-brand-violet/20 rounded-xl p-4 space-y-4">

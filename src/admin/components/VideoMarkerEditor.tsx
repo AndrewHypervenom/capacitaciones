@@ -57,7 +57,7 @@ function newQuestionId() {
 }
 
 function markerTitle(m: VideoMarkerRaw, l: Lang): string {
-  return (m as Record<string, string>)[`title_${l}`] || m.title_es || ''
+  return (m as unknown as Record<string, string>)[`title_${l}`] || m.title_es || ''
 }
 
 function emptyQuestion(): VideoQuestionRaw {
