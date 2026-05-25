@@ -13,3 +13,5 @@ supabase
 *.docx
 *.pdf
 *.doc
+
+.env
