@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, XCircle, PlayCircle, ChevronRight, Trophy } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -45,6 +46,7 @@ function ConfettiPiece({ color, angle, delay, isBar }: { color: string; angle: n
 type Phase = 'question' | 'summary'
 
 export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOverlayProps) {
+  const { t } = useTranslation()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selected, setSelected] = useState<number | null>(null)
   const [answered, setAnswered] = useState<Record<number, number>>({})
@@ -95,7 +97,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
       exit={{ opacity: 0 }}
       transition={{ duration: 0.22 }}
     >
-      {/* Amber accent strip */}
+      {/* Franja de acento ámbar */}
       <div className="h-px w-full bg-gradient-to-r from-transparent via-amber-400 to-transparent shrink-0" />
 
       <AnimatePresence mode="wait">
@@ -108,12 +110,12 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
-            {/* Top bar */}
+            {/* Barra superior */}
             <div className="flex items-center justify-between px-8 py-5 border-b border-zinc-800/60 shrink-0">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  Verificación
+                  {t('video.quiz_tag')}
                 </span>
                 <span className="text-zinc-700">·</span>
                 <span className="text-[13px] text-zinc-400 truncate max-w-[240px]">
@@ -140,7 +142,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
               </div>
             </div>
 
-            {/* Content — fills remaining space, centered */}
+            {/* Contenido — ocupa el espacio restante, centrado */}
             <div className="flex-1 flex flex-col justify-center px-8 py-6 max-w-2xl mx-auto w-full min-h-0">
               <p className="text-[22px] font-semibold text-white leading-snug mb-7">
                 {questionText}
@@ -202,7 +204,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
                     )}
                   >
                     <span className="font-semibold text-white mr-1.5">
-                      {isCorrect ? '✓ Correcto.' : 'Respuesta correcta:'}
+                      {isCorrect ? t('video.correct') : t('video.correct_answer')}
                     </span>
                     {explanation}
                   </motion.div>
@@ -210,7 +212,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
               </AnimatePresence>
             </div>
 
-            {/* Bottom CTA */}
+            {/* Botón de acción inferior */}
             <AnimatePresence>
               {isAnswered && (
                 <motion.div
@@ -225,7 +227,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
                       onClick={handleNext}
                       className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-white bg-zinc-800 hover:bg-zinc-700 transition-colors"
                     >
-                      Siguiente pregunta <ChevronRight className="h-4 w-4" />
+                      {t('video.next_question')} <ChevronRight className="h-4 w-4" />
                     </button>
                   ) : (
                     <button
@@ -233,7 +235,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
                       onClick={handleFinish}
                       className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-amber-400 hover:bg-amber-300 transition-colors"
                     >
-                      <Trophy className="h-4 w-4" /> Ver resultado
+                      <Trophy className="h-4 w-4" /> {t('video.see_result')}
                     </button>
                   )}
                 </motion.div>
@@ -273,7 +275,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
               </div>
 
               <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                Verificación completa
+                {t('video.quiz_complete')}
               </p>
               <p className="text-[52px] font-bold text-white leading-none mb-1 tabular-nums">
                 {score}
@@ -281,10 +283,10 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
               </p>
               <p className="text-[14px] text-zinc-500 mb-6">
                 {score === questions.length
-                  ? '¡Perfecto! Todas correctas.'
+                  ? t('video.all_correct')
                   : score / questions.length >= 0.75
-                    ? 'Buen resultado. Puedes continuar.'
-                    : 'Repasa el material e inténtalo de nuevo.'}
+                    ? t('video.good_result')
+                    : t('video.review_material')}
               </p>
 
               <div className="h-1 w-full rounded-full bg-zinc-800 mb-8 overflow-hidden">
@@ -325,7 +327,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
                 className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-neon-green hover:bg-neon-green/90 transition-colors"
               >
                 <PlayCircle className="h-4 w-4" />
-                Continuar video
+                {t('video.continue_video')}
               </button>
             </div>
           </motion.div>

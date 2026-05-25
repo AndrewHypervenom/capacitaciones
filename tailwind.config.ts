@@ -33,7 +33,7 @@ export default {
         },
         success: 'rgb(var(--success) / <alpha-value>)',
         danger: 'rgb(var(--danger) / <alpha-value>)',
-        // Glassmorphism tokens
+        // Tokens de glassmorphism
         glass: 'rgb(var(--glass-bg) / <alpha-value>)',
         'glass-border': 'rgb(var(--glass-border) / <alpha-value>)',
         neon: {
@@ -42,7 +42,7 @@ export default {
           cyan:    'rgb(var(--neon-cyan) / <alpha-value>)',
           magenta: 'rgb(var(--neon-magenta) / <alpha-value>)',
         },
-        // Hero / landing static palette (Positivo S+ brand)
+        // Paleta estática para hero / landing (marca Positivo S+)
         'positivo-green': '#00C228',
         'positivo-magenta': '#E11D74',
         'apple-gray': '#86868b',
@@ -63,12 +63,12 @@ export default {
         apple: 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
       boxShadow: {
-        glass:        '0 8px 32px -4px rgb(0 0 0 / 0.4), 0 1px 0 0 rgb(255 255 255 / 0.06) inset',
-        'glass-lg':   '0 20px 60px -10px rgb(0 0 0 / 0.6), 0 1px 0 0 rgb(255 255 255 / 0.08) inset',
-        'neon-green':  '0 4px 16px rgb(0 0 0 / 0.25)',
-        'neon-violet': '0 4px 16px rgb(0 0 0 / 0.25)',
-        'neon-cyan':   '0 4px 16px rgb(0 0 0 / 0.2)',
-        'card-hover':  '0 24px 48px -8px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(255 255 255 / 0.07)',
+        glass:        '0 8px 24px -4px rgb(0 0 0 / 0.1), 0 1px 0 0 rgb(0 0 0 / 0.04) inset',
+        'glass-lg':   '0 16px 48px -10px rgb(0 0 0 / 0.15), 0 1px 0 0 rgb(0 0 0 / 0.05) inset',
+        'neon-green':  '0 4px 16px rgb(0 0 0 / 0.12)',
+        'neon-violet': '0 4px 16px rgb(0 0 0 / 0.12)',
+        'neon-cyan':   '0 4px 16px rgb(0 0 0 / 0.1)',
+        'card-hover':  '0 12px 32px -8px rgb(0 0 0 / 0.1), 0 0 0 1px rgb(0 0 0 / 0.05)',
       },
       backdropBlur: {
         xs:   '4px',

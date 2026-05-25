@@ -63,10 +63,11 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { BlockEditor } from '@/admin/components/BlockEditor'
+import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
 import type { BlockWithId } from '@/types/blocks'
 import { toast } from '@/stores/toastStore'
 
-// ─── Types ────────────────────────────────────────────────────
+// ─── Tipos ────────────────────────────────────────────────────
 
 type Lang = 'es' | 'en' | 'pt'
 type SectionStyleOption = 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive'
@@ -84,7 +85,7 @@ const MEDIA_SIZES: { value: MediaSize; label: string }[] = [
   { value: 'bleed', label: 'Bleed' },
 ]
 
-// ─── Small reusable UI components ─────────────────────────────
+// ─── Componentes UI pequeños reutilizables ─────────────────────
 
 function LangTabs({
   active,
@@ -250,11 +251,12 @@ function GlassToggle({
   )
 }
 
-// ─── Section Editor Panel ─────────────────────────────────────
+// ─── Panel editor de sección ─────────────────────────────────
 
 interface SectionEditorPanelProps {
   section: DbSectionRow
   campaignId: string
+  moduleTitle?: string
   onSaved: (updated: DbSectionRow) => void
   onDirty: (dirty: boolean) => void
   onRegisterSave: (fn: (() => void) | null) => void
@@ -263,6 +265,7 @@ interface SectionEditorPanelProps {
 function SectionEditorPanel({
   section,
   campaignId,
+  moduleTitle,
   onSaved,
   onDirty,
   onRegisterSave,
@@ -288,7 +291,7 @@ function SectionEditorPanel({
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleSaveRef2 = useRef<(() => Promise<void>) | null>(null)
 
-  // Content
+  // Contenido
   const [heading, setHeading] = useState<Record<Lang, string>>({
     es: section.heading_es,
     en: section.heading_en ?? '',
@@ -325,7 +328,7 @@ function SectionEditorPanel({
   const [mediaAlign, setMediaAlign] = useState<MediaAlign>(section.media_align ?? 'center')
   const [mediaShadow, setMediaShadow] = useState(section.media_shadow ?? false)
 
-  // Video markers (for video-interactive sections)
+  // Marcadores de video (para secciones de video interactivo)
   const [videoMarkers, setVideoMarkers] = useState<VideoMarkerRaw[]>(
     () => Array.isArray(section.video_markers) ? (section.video_markers as VideoMarkerRaw[]) : [],
   )
@@ -357,7 +360,7 @@ function SectionEditorPanel({
   useEffect(() => {
     if (!isFirstRender.current) {
       onDirty(true)
-      // Auto-save debounce
+      // Debounce de autoguardado
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
       setAutoSaveStatus('idle')
       autoSaveTimerRef.current = setTimeout(() => {
@@ -483,7 +486,7 @@ function SectionEditorPanel({
     }
   }
 
-  // Register save function with parent toolbar
+  // Registrar función de guardado en la barra de herramientas del padre
   const handleSaveRef = useRef(handleSave)
   handleSaveRef.current = handleSave
   handleSaveRef2.current = handleSave
@@ -510,11 +513,11 @@ function SectionEditorPanel({
     pt: !!(heading.pt || body.pt),
   }
 
-  // ── Video-interactive mode: show special editor ──────────────
+  // ── Modo video interactivo: mostrar editor especial ──────────────
   if (sectionStyle === 'video-interactive') {
     return (
       <div className="p-6 space-y-5">
-        {/* Section header */}
+        {/* Encabezado de sección */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <NeonBadge color="cyan">Video Interactivo</NeonBadge>
@@ -522,7 +525,27 @@ function SectionEditorPanel({
           <LangTabs active={lang} onChange={setLang} />
         </div>
 
-        {/* Title (used as section label above the video) */}
+        <ModuleAIPanel
+          type="section"
+          content={{ heading }}
+          activeLang={lang}
+          moduleTitle={moduleTitle}
+          markers={videoMarkers}
+          onApplyTranslation={(l, fields) => {
+            if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
+            onDirty(true)
+          }}
+          onApplyImprovement={(l, fields) => {
+            if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
+            onDirty(true)
+          }}
+          onApplyMarkerTranslation={(l, updated) => {
+            setVideoMarkers(updated)
+            onDirty(true)
+          }}
+        />
+
+        {/* Título (etiqueta mostrada sobre el video) */}
         <div>
           <FieldLabel>Título de la sección ({lang.toUpperCase()})</FieldLabel>
           <GlassInput
@@ -532,7 +555,7 @@ function SectionEditorPanel({
           />
         </div>
 
-        {/* Video marker editor */}
+        {/* Editor de marcadores de video */}
         {section.id ? (
           <VideoMarkerEditor
             sectionId={section.id}
@@ -558,7 +581,7 @@ function SectionEditorPanel({
           </div>
         )}
 
-        {/* Save button */}
+        {/* Botón guardar */}
         <div className="flex items-center gap-3 pt-2">
           {error && <p className="text-danger text-[12px] flex-1">{error}</p>}
           <button
@@ -581,7 +604,7 @@ function SectionEditorPanel({
   return (
     <div className="p-6 space-y-6">
 
-      {/* ── Header ── */}
+      {/* ── Encabezado ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <NeonBadge color="cyan">Sección</NeonBadge>
@@ -599,6 +622,29 @@ function SectionEditorPanel({
         </div>
         <LangTabs active={lang} onChange={setLang} hasContent={langHasContent} />
       </div>
+
+      <ModuleAIPanel
+        type="section"
+        content={{
+          heading,
+          body,
+          ...(hasCallout ? { callout } : {}),
+        }}
+        activeLang={lang}
+        moduleTitle={moduleTitle}
+        onApplyTranslation={(l, fields) => {
+          if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
+          if (fields.body !== undefined) setBody(p => ({ ...p, [l]: fields.body }))
+          if (fields.callout !== undefined) setCallout(p => ({ ...p, [l]: fields.callout }))
+          onDirty(true)
+        }}
+        onApplyImprovement={(l, fields) => {
+          if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
+          if (fields.body !== undefined) setBody(p => ({ ...p, [l]: fields.body }))
+          if (fields.callout !== undefined) setCallout(p => ({ ...p, [l]: fields.callout }))
+          onDirty(true)
+        }}
+      />
 
       {/* ── CONTENIDO ── */}
       <div className="space-y-5">
@@ -823,7 +869,7 @@ function SectionEditorPanel({
         />
       </div>
 
-      {/* ── Save footer ── */}
+      {/* ── Pie de guardado ── */}
       <div className="pt-5 border-t border-glass-border/8 flex items-center gap-3">
         {error && <p className="text-[12px] text-danger flex-1">{error}</p>}
         <Button
@@ -841,7 +887,7 @@ function SectionEditorPanel({
   )
 }
 
-// ─── Meta Editor Panel ────────────────────────────────────────
+// ─── Panel editor de metadatos ────────────────────────────────────────
 
 interface MetaEditorPanelProps {
   mod: DbModuleRow
@@ -954,6 +1000,32 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
         <LangTabs active={lang} onChange={setLang} />
       </div>
 
+      <ModuleAIPanel
+        type="meta"
+        content={{
+          title,
+          subtitle,
+          objectives,
+          key_takeaways: keyTakeaways,
+        }}
+        activeLang={lang}
+        moduleTitle={mod.title_es}
+        onApplyTranslation={(l, fields) => {
+          if (fields.title !== undefined) setTitle(p => ({ ...p, [l]: fields.title }))
+          if (fields.subtitle !== undefined) setSubtitle(p => ({ ...p, [l]: fields.subtitle }))
+          if (fields.objectives !== undefined) setObjectives(p => ({ ...p, [l]: fields.objectives }))
+          if (fields.key_takeaways !== undefined) setKeyTakeaways(p => ({ ...p, [l]: fields.key_takeaways }))
+          onDirty(true)
+        }}
+        onApplyImprovement={(l, fields) => {
+          if (fields.title !== undefined) setTitle(p => ({ ...p, [l]: fields.title }))
+          if (fields.subtitle !== undefined) setSubtitle(p => ({ ...p, [l]: fields.subtitle }))
+          if (fields.objectives !== undefined) setObjectives(p => ({ ...p, [l]: fields.objectives }))
+          if (fields.key_takeaways !== undefined) setKeyTakeaways(p => ({ ...p, [l]: fields.key_takeaways }))
+          onDirty(true)
+        }}
+      />
+
       <div className="space-y-5">
         <div>
           <FieldLabel>{t('admin.modules.field_title')}</FieldLabel>
@@ -1021,7 +1093,7 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
   )
 }
 
-// ─── Main export ──────────────────────────────────────────────
+// ─── Exportación principal ──────────────────────────────────────────
 
 export default function ModuleEditor() {
   const { moduleId } = useParams<{ moduleId: string }>()
@@ -1185,7 +1257,7 @@ export default function ModuleEditor() {
     }
   }
 
-  // DnD for left panel
+  // Arrastrar y soltar para el panel izquierdo
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -1228,9 +1300,9 @@ export default function ModuleEditor() {
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
 
-      {/* ── LEFT PANEL ── */}
+      {/* ── PANEL IZQUIERDO ── */}
       <div className="w-60 flex flex-col glass-strong border-r border-glass-border/8 shrink-0 overflow-hidden">
-        {/* Back + module info */}
+        {/* Atrás + info del módulo */}
         <div className="px-4 pt-4 pb-3 border-b border-glass-border/8">
           <button
             onClick={() => navigate('/admin/modules')}
@@ -1248,7 +1320,7 @@ export default function ModuleEditor() {
           </p>
         </div>
 
-        {/* Sections list header */}
+        {/* Encabezado de lista de secciones */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-glass-border/8">
           <span className="text-[10px] uppercase tracking-wider text-text-subtle font-semibold">
             Secciones
@@ -1263,7 +1335,7 @@ export default function ModuleEditor() {
           </button>
         </div>
 
-        {/* Module meta item */}
+        {/* Ítem de metadatos del módulo */}
         <button
           onClick={() => handleSelectSection(null)}
           className={cn(
@@ -1282,7 +1354,7 @@ export default function ModuleEditor() {
           <span className="text-[12px] font-medium">Metadatos del módulo</span>
         </button>
 
-        {/* DnD section list */}
+        {/* Lista de secciones con arrastrar y soltar */}
         <div className="flex-1 overflow-y-auto">
           {sections.length === 0 ? (
             <div className="px-4 py-6 text-center text-[11px] text-text-subtle">
@@ -1358,9 +1430,9 @@ export default function ModuleEditor() {
         </div>
       </div>
 
-      {/* ── CENTER PANEL ── */}
+      {/* ── PANEL CENTRAL ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Editor Toolbar */}
+        {/* Barra de herramientas del editor */}
         <div className="flex items-center gap-3 px-5 h-14 glass-md border-b border-glass-border/8 shrink-0">
           <div className="flex-1 min-w-0 flex items-center gap-2">
             <span className="text-[14px] font-medium text-text truncate">{mod.title_es}</span>
@@ -1407,14 +1479,14 @@ export default function ModuleEditor() {
           </div>
         </div>
 
-        {/* Error banner */}
+        {/* Aviso de error */}
         {error && (
           <div className="mx-5 mt-4 px-4 py-2.5 rounded-xl glass border border-danger/20 text-danger text-[13px] shrink-0">
             {error}
           </div>
         )}
 
-        {/* Editor content */}
+        {/* Contenido del editor */}
         <div className="flex-1 overflow-y-auto">
           {selectedSectionId === null ? (
             <MetaEditorPanel
@@ -1429,6 +1501,7 @@ export default function ModuleEditor() {
                 key={selectedSectionId}
                 section={sections.find((s) => s.id === selectedSectionId)!}
                 campaignId={mod.campaign_id}
+                moduleTitle={mod.title_es}
                 onSaved={handleSectionSaved}
                 onDirty={setIsDirty}
                 onRegisterSave={(fn) => { saveFnRef.current = fn }}
@@ -1438,7 +1511,7 @@ export default function ModuleEditor() {
         </div>
       </div>
 
-      {/* ── RIGHT PANEL: Live preview ── */}
+      {/* ── PANEL DERECHO: Preview en vivo ── */}
       {splitView && (
         <div className="w-96 xl:w-[480px] flex flex-col glass-md border-l border-glass-border/8 shrink-0 overflow-hidden">
           <div className="flex items-center gap-2 px-4 h-14 border-b border-glass-border/8 shrink-0">
@@ -1508,7 +1581,7 @@ export default function ModuleEditor() {
         </div>
       )}
 
-      {/* Template gallery */}
+      {/* Galería de plantillas */}
       <SectionTemplateGallery
         open={galleryOpen}
         onClose={() => setGalleryOpen(false)}

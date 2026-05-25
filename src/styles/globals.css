@@ -66,7 +66,7 @@
     --brand-magenta: 194 24 91;
     --success: 0 184 85;
     --danger: 215 0 21;
-    /* Glassmorphism tokens — light mode */
+    /* Tokens de glassmorphism — modo claro */
     --glass-bg: 0 0 0;
     --glass-border: 0 0 0;
     --neon-green: 0 170 36;
@@ -90,7 +90,7 @@
     --brand-magenta: 225 29 116;
     --success: 0 194 40;
     --danger: 255 69 58;
-    /* Glassmorphism tokens — dark mode (Positivo S+ brand: green + magenta) */
+    /* Tokens de glassmorphism — modo oscuro (marca Positivo S+: verde + magenta) */
     --glass-bg: 255 255 255;
     --glass-border: 255 255 255;
     --neon-green: 0 194 40;
@@ -182,7 +182,7 @@
     -webkit-backdrop-filter: saturate(180%) blur(20px);
   }
 
-  /* Glassmorphism base classes */
+  /* Clases base de glassmorphism */
   .glass {
     background: rgb(var(--glass-bg) / 0.04);
     backdrop-filter: saturate(150%) blur(24px);
@@ -204,21 +204,21 @@
     border: 1px solid rgb(var(--glass-border) / 0.14);
   }
 
-  /* Subtle elevation — no color tint */
+  /* Elevación sutil — modo claro: sombra suave; modo oscuro: resplandor dramático */
   .glass-glow-green,
   .glass-glow-violet,
   .glass-glow-cyan {
     box-shadow:
-      0 0 0 1px rgb(255 255 255 / 0.06),
-      0 1px 0 0 rgb(255 255 255 / 0.08) inset,
-      0 24px 48px -8px rgb(0 0 0 / 0.45);
+      0 0 0 1px rgb(var(--line) / 0.5),
+      0 1px 0 0 rgb(var(--glass-border) / 0.06) inset,
+      0 12px 32px -8px rgb(0 0 0 / 0.12);
   }
 
-  /* Dark mesh gradient background */
+  /* Fondo con degradado mesh — se adapta al tema mediante variables CSS */
   .dark-mesh-bg {
     background:
-      radial-gradient(ellipse 80% 50% at 20% -20%, rgba(0, 194, 40, 0.04) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 80% 110%, rgba(225, 29, 116, 0.03) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 50% at 20% -20%, rgb(var(--neon-green) / 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 110%, rgb(var(--neon-magenta) / 0.03) 0%, transparent 60%),
       rgb(var(--bg));
   }
 }
@@ -240,7 +240,7 @@
       transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  /* Paragraph stagger reveal — triggers when ancestor section gets reveal-in */
+  /* Revelación escalonada de párrafos — se activa cuando el padre tiene la clase reveal-in */
   .stagger-p > p,
   .stagger-p > li {
     opacity: 0;
@@ -254,7 +254,7 @@
   .reveal-in .stagger-p > p:nth-child(4), .reveal-in .stagger-p > li:nth-child(4) { opacity: 1; transform: none; transition-delay: 290ms; }
   .reveal-in .stagger-p > p:nth-child(5), .reveal-in .stagger-p > li:nth-child(5) { opacity: 1; transform: none; transition-delay: 360ms; }
 
-  /* 3D tilt card */
+  /* Tarjeta con inclinación 3D */
   .tilt-card {
     transform-style: preserve-3d;
     transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 300ms ease;
@@ -263,7 +263,22 @@
     box-shadow: 0 20px 60px -12px rgb(0 0 0 / 0.4);
   }
 
-  /* Gradient text */
+  /* Modo oscuro: restaurar sombras de vidrio dramáticas completas */
+  .dark .glass-glow-green,
+  .dark .glass-glow-violet,
+  .dark .glass-glow-cyan {
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.06),
+      0 1px 0 0 rgb(255 255 255 / 0.08) inset,
+      0 24px 48px -8px rgb(0 0 0 / 0.45);
+  }
+
+  /* Modo oscuro: sombra al pasar el cursor sobre la tarjeta */
+  .dark .hover\:shadow-card-hover:hover {
+    box-shadow: 0 24px 48px -8px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.07);
+  }
+
+  /* Texto con degradado */
   .gradient-text-green {
     background: linear-gradient(135deg, rgb(var(--neon-green)), rgb(var(--neon-cyan)));
     -webkit-background-clip: text;
@@ -271,7 +286,7 @@
     background-clip: text;
   }
 
-  /* Neon underline on hover */
+  /* Subrayado neón al pasar el cursor */
   .neon-underline {
     position: relative;
   }

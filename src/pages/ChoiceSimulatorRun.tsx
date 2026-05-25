@@ -28,7 +28,7 @@ function getClockTime() {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-/* ── SVG icons for status bar ── */
+/* ── Íconos SVG para la barra de estado ── */
 function SignalBars() {
   return (
     <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
@@ -49,7 +49,7 @@ function BatteryIcon() {
   );
 }
 
-/* ── Typing indicator (3 bouncing dots) ── */
+/* ── Indicador de escritura (3 puntos rebotando) ── */
 function TypingIndicator() {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginBottom: 12 }}>
@@ -77,7 +77,7 @@ function TypingIndicator() {
   );
 }
 
-/* ── Result stars ── */
+/* ── Estrellas de resultado ── */
 function ResultStars({ endType }: { endType: 'excellent' | 'good' | 'poor' }) {
   const count = endType === 'excellent' ? 5 : endType === 'good' ? 3 : 1;
   return (
@@ -257,7 +257,7 @@ export default function ChoiceSimulatorRun() {
     >
       <AnimatePresence mode="wait">
 
-        {/* ══════════ PHASE: INTRO ══════════ */}
+        {/* ══════════ FASE: INTRO ══════════ */}
         {phase === 'intro' && (
           <motion.div
             key="intro"
@@ -335,7 +335,7 @@ export default function ChoiceSimulatorRun() {
           </motion.div>
         )}
 
-        {/* ══════════ PHASE: CALL ══════════ */}
+        {/* ══════════ FASE: LLAMADA ══════════ */}
         {phase === 'call' && (
           <motion.div
             key="call"
@@ -347,7 +347,7 @@ export default function ChoiceSimulatorRun() {
           >
             <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8 w-full max-w-[900px]">
 
-              {/* ── LEFT: iPhone frame ── */}
+              {/* ── IZQUIERDA: Marco de iPhone ── */}
               <div
                 className="relative shrink-0"
                 style={{
@@ -358,13 +358,13 @@ export default function ChoiceSimulatorRun() {
                   boxShadow: '0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1)',
                 }}
               >
-                {/* Physical buttons — left side */}
+                {/* Botones físicos — lado izquierdo */}
                 <div style={{ position: 'absolute', left: -4, top: 118, width: 4, height: 30, background: 'linear-gradient(90deg,#111,#2d2d2d)', borderRadius: '3px 0 0 3px' }} />
                 <div style={{ position: 'absolute', left: -4, top: 168, width: 4, height: 58, background: 'linear-gradient(90deg,#111,#2d2d2d)', borderRadius: '3px 0 0 3px' }} />
                 <div style={{ position: 'absolute', left: -4, top: 242, width: 4, height: 58, background: 'linear-gradient(90deg,#111,#2d2d2d)', borderRadius: '3px 0 0 3px' }} />
                 <div style={{ position: 'absolute', right: -4, top: 178, width: 4, height: 82, background: 'linear-gradient(-90deg,#111,#2d2d2d)', borderRadius: '0 3px 3px 0' }} />
 
-                {/* Screen */}
+                {/* Pantalla */}
                 <div
                   style={{
                     position: 'absolute',
@@ -376,7 +376,7 @@ export default function ChoiceSimulatorRun() {
                     flexDirection: 'column',
                   }}
                 >
-                  {/* Status bar */}
+                  {/* Barra de estado */}
                   <div
                     style={{
                       height: 52,
@@ -422,7 +422,7 @@ export default function ChoiceSimulatorRun() {
                     </div>
                   </div>
 
-                  {/* Call header */}
+                  {/* Encabezado de llamada */}
                   <div
                     style={{
                       display: 'flex',
@@ -462,7 +462,7 @@ export default function ChoiceSimulatorRun() {
                     </p>
                   </div>
 
-                  {/* Chat area */}
+                  {/* Área de chat */}
                   <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 8px' }}>
                     {messages.map((msg) => (
                       <motion.div
@@ -530,7 +530,7 @@ export default function ChoiceSimulatorRun() {
                     <div ref={messagesEndRef} />
                   </div>
 
-                  {/* Hang up button */}
+                  {/* Botón de colgar */}
                   <div
                     style={{
                       height: 80,
@@ -562,7 +562,7 @@ export default function ChoiceSimulatorRun() {
                 </div>
               </div>
 
-              {/* ── RIGHT: Options panel ── */}
+              {/* ── DERECHA: Panel de opciones ── */}
               <div className="flex-1 flex flex-col gap-5 w-full max-w-lg">
                 <div className="bg-surface border border-line rounded-3xl p-6">
                   <p className="text-text font-bold text-lg mb-1">
@@ -582,9 +582,8 @@ export default function ChoiceSimulatorRun() {
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.08, ease: [0.16, 1, 0.3, 1], duration: 0.35 }}
                             onClick={() => handleOptionSelect(opt, scenario)}
+                            className="bg-subtle border border-line hover:bg-line"
                             style={{
-                              background: 'rgba(255,255,255,0.06)',
-                              border: '1px solid rgba(255,255,255,0.1)',
                               borderRadius: 16,
                               padding: 16,
                               textAlign: 'left',
@@ -593,7 +592,7 @@ export default function ChoiceSimulatorRun() {
                               alignItems: 'flex-start',
                               gap: 12,
                             }}
-                            whileHover={{ background: 'rgba(255,255,255,0.10)', scale: 1.01 } as never}
+                            whileHover={{ scale: 1.01 } as never}
                             whileTap={{ scale: 0.98 }}
                           >
                             <span
@@ -634,7 +633,7 @@ export default function ChoiceSimulatorRun() {
                   </AnimatePresence>
                 </div>
 
-                {/* Live score card */}
+                {/* Tarjeta de puntuación en vivo */}
                 <div className="bg-surface border border-line rounded-2xl p-4">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <span className="text-text-muted text-[13px]">{t('simulator.choice.live_score')}</span>
@@ -660,7 +659,7 @@ export default function ChoiceSimulatorRun() {
           </motion.div>
         )}
 
-        {/* ══════════ PHASE: RESULT ══════════ */}
+        {/* ══════════ FASE: RESULTADO ══════════ */}
         {phase === 'result' && (
           <motion.div
             key="result"

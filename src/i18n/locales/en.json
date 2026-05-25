@@ -215,6 +215,25 @@
     "draft": "Draft",
     "step_of": "Step {{step}} of {{total}}"
   },
+  "video": {
+    "chapters": "Chapters",
+    "content_header": "Content · {{count}} sections",
+    "section_n": "Section {{n}}",
+    "retry_quiz": "Retry quiz",
+    "resume_from": "Resume from {{time}}",
+    "resume": "Resume",
+    "from_beginning": "From the beginning",
+    "quiz_tag": "Verification",
+    "correct": "✓ Correct.",
+    "correct_answer": "Correct answer:",
+    "next_question": "Next question",
+    "see_result": "See result",
+    "quiz_complete": "Verification complete",
+    "all_correct": "Perfect! All correct.",
+    "good_result": "Good result. You can continue.",
+    "review_material": "Review the material and try again.",
+    "continue_video": "Continue video"
+  },
   "admin": {
     "nav": {
       "panel": "Dashboard",

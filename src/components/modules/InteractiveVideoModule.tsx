@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Play,
@@ -46,6 +47,7 @@ interface QuizResult {
 }
 
 export function InteractiveVideoModule({ section, language }: InteractiveVideoModuleProps) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
@@ -82,7 +84,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
     return acc
   }, -1)
 
-  // Auto-scroll chapter list to active item — only within the list, never the page
+  // Desplazar la lista de capítulos al ítem activo — solo dentro de la lista, nunca la página
   useEffect(() => {
     if (activeChapterIdx < 0 || !chapterListRef.current) return
     const container = chapterListRef.current
@@ -99,7 +101,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
     }
   }, [activeChapterIdx])
 
-  // Controls auto-hide
+  // Ocultar controles automáticamente
   const showControlsTemporarily = useCallback(() => {
     setShowControls(true)
     clearTimeout(controlsTimeout.current)
@@ -112,14 +114,14 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
     return () => clearTimeout(controlsTimeout.current)
   }, [])
 
-  // Fullscreen change listener
+  // Listener de cambio de pantalla completa
   useEffect(() => {
     const handler = () => setFullscreen(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
 
-  // Keyboard shortcuts
+  // Atajos de teclado
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!containerRef.current) return
@@ -162,7 +164,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
     if (!v) return
     setCurrentTime(v.currentTime)
 
-    // Persist position every SAVE_INTERVAL seconds
+    // Guardar posición cada SAVE_INTERVAL segundos
     if (v.currentTime - lastSaveRef.current >= SAVE_INTERVAL) {
       lastSaveRef.current = v.currentTime
       try {
@@ -170,7 +172,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
       } catch { /* ignore */ }
     }
 
-    // Check for quiz markers
+    // Verificar marcadores de quiz
     for (const m of sortedMarkers) {
       if (m.type !== 'quiz') continue
       if (triggeredRef.current.has(m.id)) continue
@@ -347,7 +349,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                   : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50',
               )}
             >
-              {/* Icon */}
+              {/* Ícono */}
               <div className={cn(
                 'mt-0.5 h-6 w-6 rounded-lg flex items-center justify-center shrink-0',
                 m.type === 'chapter'
@@ -368,7 +370,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                 }
               </div>
 
-              {/* Content */}
+              {/* Contenido */}
               <div className="flex-1 min-w-0">
                 <p className={cn(
                   'text-[13px] font-medium leading-snug',
@@ -376,7 +378,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                     ? 'text-zinc-900 dark:text-zinc-50'
                     : 'text-zinc-700 dark:text-zinc-300',
                 )}>
-                  {markerLang || `Sección ${i + 1}`}
+                  {markerLang || t('video.section_n', { n: i + 1 })}
                 </p>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">
@@ -405,11 +407,11 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
               )}
             </button>
 
-            {/* Retry button for completed quizzes */}
+            {/* Botón de reintentar para quizzes completados */}
             {m.type === 'quiz' && quizResult && (
               <button
                 type="button"
-                title="Reintentar quiz"
+                title={t('video.retry_quiz')}
                 onClick={() => handleRetryQuiz(m.id)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500"
               >
@@ -434,7 +436,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
       onMouseMove={showControlsTemporarily}
       onMouseLeave={() => playing && setShowControls(false)}
     >
-      {/* ── Video area ── */}
+      {/* ── Área de video ── */}
       <div className={cn('relative bg-black', fullscreen ? 'flex-1 flex flex-col' : 'aspect-video w-full')}>
         <video
           ref={videoRef}
@@ -449,7 +451,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
           onEnded={() => setPlaying(false)}
         />
 
-        {/* Resume toast */}
+        {/* Toast de reanudar */}
         <AnimatePresence>
           {showResumeToast && (
             <motion.div
@@ -458,13 +460,13 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
             >
-              <span className="text-[12px] text-white/80">Continuar desde <span className="font-mono text-white">{formatTime(savedTime)}</span></span>
+              <span className="text-[12px] text-white/80">{t('video.resume_from', { time: formatTime(savedTime) })}</span>
               <button
                 type="button"
                 onClick={handleResumeFromSaved}
                 className="text-[11px] font-semibold text-neon-green hover:text-neon-green/80 transition-colors"
               >
-                Continuar
+                {t('video.resume')}
               </button>
               <span className="text-white/30 text-[10px]">·</span>
               <button
@@ -472,13 +474,13 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                 onClick={handleStartFromBeginning}
                 className="text-[11px] text-white/50 hover:text-white/80 transition-colors"
               >
-                Desde el inicio
+                {t('video.from_beginning')}
               </button>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Big play button when paused */}
+        {/* Botón grande de play cuando está pausado */}
         <AnimatePresence>
           {!playing && !showOverlay && (
             <div
@@ -492,7 +494,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
           )}
         </AnimatePresence>
 
-        {/* Quiz overlay */}
+        {/* Superposición de quiz */}
         <AnimatePresence>
           {showOverlay && activeMarker && (
             <VideoQuizOverlay
@@ -504,7 +506,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
           )}
         </AnimatePresence>
 
-        {/* Fullscreen chapters drawer */}
+        {/* Panel de capítulos en pantalla completa */}
         <AnimatePresence>
           {fullscreen && showFsChapters && (
             <motion.div
@@ -516,7 +518,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                  Contenido · {sortedMarkers.length} secciones
+                  {t('video.content_header', { count: sortedMarkers.length })}
                 </p>
                 <button
                   type="button"
@@ -566,35 +568,35 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
           )}
         </AnimatePresence>
 
-        {/* Controls */}
+        {/* Controles */}
         <div
           className={cn(
             'absolute bottom-0 left-0 right-0 transition-opacity duration-300',
             showControls || !playing || seeking ? 'opacity-100' : 'opacity-0 pointer-events-none',
           )}
         >
-          {/* Gradient */}
+          {/* Degradado */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
 
           <div className="relative px-4 pb-4 pt-8 space-y-2">
-            {/* Progress bar */}
+            {/* Barra de progreso */}
             <div
               ref={progressBarRef}
               className="relative h-1.5 rounded-full bg-white/20 cursor-pointer group"
               onClick={handleProgressClick}
               onMouseDown={handleProgressMouseDown}
             >
-              {/* Filled */}
+              {/* Relleno */}
               <div
                 className="absolute h-full rounded-full bg-neon-green transition-[width] duration-100"
                 style={{ width: `${progressPct}%` }}
               />
-              {/* Thumb */}
+              {/* Indicador de posición */}
               <div
                 className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-3.5 w-3.5 rounded-full bg-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ left: `${progressPct}%` }}
               />
-              {/* Marker dots */}
+              {/* Puntos de marcadores */}
               {duration > 0 && sortedMarkers.map((m) => {
                 const pct = (m.timeSeconds / duration) * 100
                 const quizResult = m.type === 'quiz' ? completedQuizzes[m.id] : undefined
@@ -619,7 +621,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                             : 'h-3 w-3 bg-amber-400',
                       )}
                     />
-                    {/* Tooltip */}
+                    {/* Información emergente */}
                     {isHovered && (
                       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap bg-zinc-900/95 border border-white/10 text-white text-[11px] px-2.5 py-1.5 rounded-lg pointer-events-none shadow-lg">
                         <p className="font-medium">{m.title[lang] || m.title.es}</p>
@@ -631,9 +633,9 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
               })}
             </div>
 
-            {/* Controls row */}
+            {/* Fila de controles */}
             <div className="flex items-center gap-3">
-              {/* Play/Pause */}
+              {/* Play/Pausa */}
               <button
                 type="button"
                 onClick={togglePlay}
@@ -645,7 +647,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                 }
               </button>
 
-              {/* Volume */}
+              {/* Volumen */}
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
@@ -668,14 +670,14 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                 />
               </div>
 
-              {/* Time */}
+              {/* Tiempo */}
               <span className="text-[11px] text-white/60 font-mono shrink-0">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
 
               <div className="flex-1" />
 
-              {/* Chapters toggle (fullscreen only) */}
+              {/* Alternar capítulos (solo en pantalla completa) */}
               {fullscreen && sortedMarkers.length > 0 && (
                 <button
                   type="button"
@@ -683,11 +685,11 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                   className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors shrink-0"
                 >
                   <LayoutList className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Capítulos</span>
+                  <span className="hidden sm:inline">{t('video.chapters')}</span>
                 </button>
               )}
 
-              {/* Playback rate */}
+              {/* Velocidad de reproducción */}
               <div className="relative shrink-0">
                 <button
                   type="button"
@@ -716,7 +718,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                 )}
               </div>
 
-              {/* Picture-in-Picture */}
+              {/* Imagen en imagen */}
               {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
                 <button
                   type="button"
@@ -728,7 +730,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
                 </button>
               )}
 
-              {/* Fullscreen */}
+              {/* Pantalla completa */}
               <button
                 type="button"
                 onClick={handleFullscreen}
@@ -744,12 +746,12 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
         </div>
       </div>
 
-      {/* ── Chapters panel (non-fullscreen) ── */}
+      {/* ── Panel de capítulos (sin pantalla completa) ── */}
       {sortedMarkers.length > 0 && !fullscreen && (
         <div className="flex flex-col bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
           <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Contenido · {sortedMarkers.length} {sortedMarkers.length === 1 ? 'sección' : 'secciones'}
+              {t('video.content_header', { count: sortedMarkers.length })}
             </p>
           </div>
           {chapterList}

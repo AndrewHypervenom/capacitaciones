@@ -215,6 +215,25 @@
     "draft": "Borrador",
     "step_of": "Paso {{step}} de {{total}}"
   },
+  "video": {
+    "chapters": "Capítulos",
+    "content_header": "Contenido · {{count}} secciones",
+    "section_n": "Sección {{n}}",
+    "retry_quiz": "Reintentar quiz",
+    "resume_from": "Continuar desde {{time}}",
+    "resume": "Continuar",
+    "from_beginning": "Desde el inicio",
+    "quiz_tag": "Verificación",
+    "correct": "✓ Correcto.",
+    "correct_answer": "Respuesta correcta:",
+    "next_question": "Siguiente pregunta",
+    "see_result": "Ver resultado",
+    "quiz_complete": "Verificación completa",
+    "all_correct": "¡Perfecto! Todas correctas.",
+    "good_result": "Buen resultado. Puedes continuar.",
+    "review_material": "Repasa el material e inténtalo de nuevo.",
+    "continue_video": "Continuar video"
+  },
   "admin": {
     "nav": {
       "panel": "Panel",
