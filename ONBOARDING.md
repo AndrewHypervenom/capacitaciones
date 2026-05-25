@@ -175,7 +175,7 @@ El flujo es así:
 
 ### Pasos completos desde cero
 
-Cada tarea **nueva** empieza así — solo hacerlo cuando es una tarea diferente a lo que ya tenían:
+Cada tarea nueva empieza igual, desde el principio:
 
 ```bash
 # 1. Volver a main y traer los cambios más recientes
@@ -184,6 +184,20 @@ git pull origin main
 
 # 2. Crear la rama nueva y moverse a ella (-b la crea, sin -b solo cambia)
 git checkout -b su-nombre/descripcion-de-la-tarea
+
+# 3. Hacer los cambios en el código...
+
+# 4. Ver qué archivos cambiaron
+git status
+
+# 5. Preparar todos los cambios
+git add .
+
+# 6. Guardar con un mensaje descriptivo
+git commit -m "feat: descripcion de lo que hicieron"
+
+# 7. Subir la rama a GitHub
+git push origin su-nombre/descripcion-de-la-tarea
 ```
 
 Ejemplos de cómo nombrar la rama:
@@ -192,33 +206,7 @@ git checkout -b Paola/arreglar-titulo-modulos
 git checkout -b Isabela/cambiar-color-boton-guardar
 ```
 
-### Si ya crearon la rama y quieren seguir trabajando en ella
-
-No crear una rama nueva. Solo volver a la que ya tienen:
-
-```bash
-git checkout su-nombre/descripcion-de-la-tarea
-```
-
-### Guardar y subir (esto es igual siempre)
-
-Ya sea rama nueva o rama que ya existía, los pasos para guardar y subir son siempre los mismos:
-
-```bash
-# Ver qué archivos cambiaron
-git status
-
-# Preparar todos los cambios
-git add .
-
-# Guardar con un mensaje descriptivo
-git commit -m "feat: descripcion de lo que hicieron"
-
-# Subir la rama a GitHub
-git push origin su-nombre/descripcion-de-la-tarea
-```
-
-Después del último paso van a GitHub, crean el PR y me avisan. Yo lo reviso y cuando esté bien lo apruebo.
+Después del paso 7 van a GitHub, crean el PR y me avisan. Yo lo reviso y cuando esté bien lo apruebo.
 
 ### Guardar cambios
 
