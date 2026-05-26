@@ -26,7 +26,11 @@ type View = 'list' | 'create' | 'session'
 type AnswerCount = { option: number; count: number; is_correct: boolean }[]
 
 export default function LiveQuizAdmin() {
+<<<<<<< HEAD
   const { profile, campaignId, isSuperAdmin } = useAuth()
+=======
+  const { profile, campaignId, isAdmin } = useAuth()
+>>>>>>> origin/main
   const [view, setView] = useState<View>('list')
   const [quizzes, setQuizzes] = useState<LiveQuiz[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -54,6 +58,7 @@ export default function LiveQuizAdmin() {
   const loadQuizzes = useCallback(async () => {
     setLoadingList(true)
     const query = supabase.from('live_quizzes').select('*').order('created_at', { ascending: false })
+<<<<<<< HEAD
     if (!isSuperAdmin && campaignId) query.eq('campaign_id', campaignId)
     const { data } = await query
     setQuizzes((data ?? []) as unknown as LiveQuiz[])
@@ -63,11 +68,26 @@ export default function LiveQuizAdmin() {
   useEffect(() => {
     void loadQuizzes()
     if (isSuperAdmin) {
+=======
+    if (!isAdmin && campaignId) query.eq('campaign_id', campaignId)
+    const { data } = await query
+    setQuizzes((data ?? []) as unknown as LiveQuiz[])
+    setLoadingList(false)
+  }, [campaignId, isAdmin])
+
+  useEffect(() => {
+    void loadQuizzes()
+    if (isAdmin) {
+>>>>>>> origin/main
       supabase.from('campaigns').select('*').order('name').then(({ data }) => {
         setCampaigns(data ?? [])
       })
     }
+<<<<<<< HEAD
   }, [loadQuizzes, isSuperAdmin])
+=======
+  }, [loadQuizzes, isAdmin])
+>>>>>>> origin/main
 
   // ── Conteo de respuestas + tiempo real para sesión activa ────────────────────
   const fetchAnswerCounts = useCallback(async (quiz: LiveQuiz) => {
@@ -304,7 +324,11 @@ export default function LiveQuizAdmin() {
       </div>
 
       {/* Filtro de campaña — solo superadmin */}
+<<<<<<< HEAD
       {isSuperAdmin && campaigns.length > 1 && (
+=======
+      {isAdmin && campaigns.length > 1 && (
+>>>>>>> origin/main
         <div className="flex gap-2 flex-wrap mb-5">
           <button
             onClick={() => setFilterCampaign('all')}
@@ -334,9 +358,15 @@ export default function LiveQuizAdmin() {
         </div>
       ) : (
         <div className="rounded-2xl overflow-hidden border border-line">
+<<<<<<< HEAD
           <div className={`grid ${isSuperAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
             <span>Titulo</span>
             {isSuperAdmin && <span>Campaña</span>}
+=======
+          <div className={`grid ${isAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
+            <span>Titulo</span>
+            {isAdmin && <span>Campaña</span>}
+>>>>>>> origin/main
             <span>PIN</span>
             <span>Estado</span>
             <span />
@@ -346,13 +376,21 @@ export default function LiveQuizAdmin() {
             return (
               <div
                 key={q.id}
+<<<<<<< HEAD
                 className={`grid ${isSuperAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-4 items-center border-t border-line`}
+=======
+                className={`grid ${isAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-4 items-center border-t border-line`}
+>>>>>>> origin/main
               >
                 <div>
                   <div className="text-[13px] text-text">{q.title}</div>
                   <div className="text-[11px] text-text-subtle">{q.questions.length} pregunta{q.questions.length !== 1 ? 's' : ''}</div>
                 </div>
+<<<<<<< HEAD
                 {isSuperAdmin && (
+=======
+                {isAdmin && (
+>>>>>>> origin/main
                   <span className="text-[11px] text-text-muted truncate max-w-[120px]">{campName ?? '—'}</span>
                 )}
                 <span className="font-mono text-[13px] text-text-muted">{q.pin}</span>
@@ -427,7 +465,11 @@ export default function LiveQuizAdmin() {
           onChange={(e) => setFormTitle(e.target.value)}
           className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#00C228] transition-colors"
         />
+<<<<<<< HEAD
         {isSuperAdmin && campaigns.length > 0 && (
+=======
+        {isAdmin && campaigns.length > 0 && (
+>>>>>>> origin/main
           <select
             value={formCampaign}
             onChange={(e) => setFormCampaign(e.target.value)}

@@ -29,7 +29,11 @@ interface CampaignWithModules extends Campaign {
 }
 
 export default function CampaignList() {
+<<<<<<< HEAD
   const { isSuperAdmin, isAdminOrCapacitador } = useAuth()
+=======
+  const { isAdmin, isAdminOrCapacitador } = useAuth()
+>>>>>>> origin/main
   const { t } = useTranslation()
   const [campaigns, setCampaigns] = useState<CampaignWithModules[]>([])
   const [loading, setLoading] = useState(true)
@@ -192,7 +196,11 @@ export default function CampaignList() {
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
+<<<<<<< HEAD
                     {isSuperAdmin && editingId !== c.id && (
+=======
+                    {isAdmin && editingId !== c.id && (
+>>>>>>> origin/main
                       <>
                         <button
                           onClick={() => { setEditingId(c.id); setEditName(c.name) }}
