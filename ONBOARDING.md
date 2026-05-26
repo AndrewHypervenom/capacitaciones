@@ -329,5 +329,6 @@ git push origin nombre/tarea                # subir al servidor
 ---
 
 Si algo no les funciona o se traban con Git, avísenme antes de intentar arreglarlo solas. Mejor una pregunta que un historial roto.
-Realizando prueba/paola
-Holiiiii aqui estuvo isa haciendo la prueba 
+
+
+
