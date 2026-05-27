@@ -63,16 +63,6 @@ export default function UserList() {
     setInviteError(null)
 
     try {
-      if (inviteRole === 'superadmin') {
-        const { count } = await supabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true })
-          .eq('role', 'superadmin')
-        if ((count ?? 0) >= 1) {
-          throw new Error('Ya existe un superadmin. Solo puede haber uno.')
-        }
-      }
-
       const { data, error } = await supabaseAdmin.auth.signUp({
         email: inviteEmail.trim(),
         password: invitePassword.trim(),

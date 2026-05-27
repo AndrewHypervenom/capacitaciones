@@ -148,11 +148,33 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     })
 
     setSubmitting(false)
-    const created = Array.isArray(data) ? data[0] : data
-    if (err || !created) {
-      setError('Error al crear la campaña. Verifica que el slug sea único e inténtalo de nuevo.')
+
+    if (err) {
+      const isSlugDup = err.code === '23505' || err.message?.toLowerCase().includes('slug') || err.message?.toLowerCase().includes('unique')
+      setError(isSlugDup
+        ? 'El slug ya está en uso. Cambia el nombre o edita el slug manualmente.'
+        : `Error al crear la campaña: ${err.message}`)
       return
     }
+
+    const created = Array.isArray(data) ? data[0] : data
+
+    if (!created) {
+      // La RPC no devolvió la fila (RETURNS void o vacío) — la buscamos por slug
+      const { data: fetched, error: fetchErr } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('slug', slug.trim())
+        .single()
+      if (fetchErr || !fetched) {
+        setError('Error inesperado al obtener la campaña recién creada.')
+        return
+      }
+      onCreated({ ...fetched, moduleCount: 0 })
+      handleClose()
+      return
+    }
+
     onCreated({ ...created, moduleCount: 0 })
     handleClose()
   }

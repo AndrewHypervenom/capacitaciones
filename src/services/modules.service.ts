@@ -398,7 +398,8 @@ export async function createModule(
     .limit(1)
     .maybeSingle()
   const maxOrder = maxRow?.sort_order ?? 0
-  const { data: row, error } = await supabase
+  const baseSlug = data.slug
+  const tryInsert = async (slug: string) => supabase
     .from('modules')
     .insert({
       campaign_id: campaignId,
@@ -407,9 +408,19 @@ export async function createModule(
       key_takeaways_es: [],
       is_published: false,
       ...data,
+      slug,
     })
     .select('id')
     .single()
+
+  let { data: row, error } = await tryInsert(baseSlug)
+
+  // Si el slug ya existe, reintenta con sufijo único
+  if (error?.code === '23505') {
+    const fallbackSlug = `${baseSlug}-${Date.now().toString(36)}`
+    ;({ data: row, error } = await tryInsert(fallbackSlug))
+  }
+
   if (error) throw error
   return row as { id: string }
 }
