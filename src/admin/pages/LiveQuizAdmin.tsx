@@ -21,7 +21,7 @@ function generatePin(): string {
 function emptyQuestion(): QuizQuestion {
   return { text: '', options: ['', '', '', ''], correctIndex: 0, timeLimitSec: 20 }
 }
-
+ 
 type View = 'list' | 'create' | 'session'
 type AnswerCount = { option: number; count: number; is_correct: boolean }[]
 

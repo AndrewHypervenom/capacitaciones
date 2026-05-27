@@ -20,7 +20,7 @@ const CACHE_KEY = 'ai_module_cache_expires'
 const CACHE_DURATION_MS = 5 * 60 * 1000
 
 function formatMs(ms: number) {
-  const s = Math.ceil(ms / 1000)
+  const s = Math.ceil(ms / 2000)
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
