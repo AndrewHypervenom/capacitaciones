@@ -13,5 +13,8 @@ supabase
 *.docx
 *.pdf
 *.doc
+<<<<<<< HEAD
+=======
 
 .env
+>>>>>>> origin/main

@@ -19,7 +19,11 @@ import { cn } from '@/lib/cn'
 
 export default function ModuleList() {
   const { t } = useTranslation()
+<<<<<<< HEAD
+  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+=======
   const { campaignId: authCampaignId, isAdmin } = useAuth()
+>>>>>>> origin/main
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
@@ -29,7 +33,11 @@ export default function ModuleList() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+<<<<<<< HEAD
+    if (!isSuperAdmin) return
+=======
     if (!isAdmin) return
+>>>>>>> origin/main
     supabase
       .from('campaigns')
       .select('*')
@@ -41,10 +49,17 @@ export default function ModuleList() {
           setSelectedCampaignName(data[0].name)
         }
       })
+<<<<<<< HEAD
+  }, [isSuperAdmin, selectedCampaignId])
+
+  useEffect(() => {
+    if (isSuperAdmin || !authCampaignId) return
+=======
   }, [isAdmin, selectedCampaignId])
 
   useEffect(() => {
     if (isAdmin || !authCampaignId) return
+>>>>>>> origin/main
     supabase
       .from('campaigns')
       .select('name')
@@ -53,7 +68,11 @@ export default function ModuleList() {
       .then(({ data }) => {
         if (data) setSelectedCampaignName(data.name)
       })
+<<<<<<< HEAD
+  }, [isSuperAdmin, authCampaignId])
+=======
   }, [isAdmin, authCampaignId])
+>>>>>>> origin/main
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -121,7 +140,11 @@ export default function ModuleList() {
       </div>
 
       {/* Campaign selector (superadmin) */}
+<<<<<<< HEAD
+      {isSuperAdmin && campaigns.length > 1 && (
+=======
       {isAdmin && campaigns.length > 1 && (
+>>>>>>> origin/main
         <div className="mb-6">
           <select
             value={selectedCampaignId}
