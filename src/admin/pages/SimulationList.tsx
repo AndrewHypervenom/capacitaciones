@@ -29,11 +29,7 @@ const LEVEL_COLORS = { basico: 'green', medio: 'cyan', avanzado: 'magenta' } as 
 
 export default function SimulationList() {
   const nav = useNavigate()
-<<<<<<< HEAD
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
-=======
   const { campaignId: authCampaignId, isAdmin } = useAuth()
->>>>>>> origin/main
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState(authCampaignId ?? '')
@@ -45,20 +41,12 @@ export default function SimulationList() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-<<<<<<< HEAD
-    if (!isSuperAdmin) return
-=======
     if (!isAdmin) return
->>>>>>> origin/main
     supabase.from('campaigns').select('*').order('name').then(({ data }) => {
       setCampaigns(data ?? [])
       if (!selectedCampaignId && data?.[0]) setSelectedCampaignId(data[0].id)
     })
-<<<<<<< HEAD
-  }, [isSuperAdmin, selectedCampaignId])
-=======
   }, [isAdmin, selectedCampaignId])
->>>>>>> origin/main
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -157,11 +145,7 @@ export default function SimulationList() {
         </div>
       </div>
 
-<<<<<<< HEAD
-      {isSuperAdmin && campaigns.length > 0 && (
-=======
       {isAdmin && campaigns.length > 0 && (
->>>>>>> origin/main
         <div className="mb-6">
           <label className="text-xs text-text-muted mb-1 block">Campaña</label>
           <select

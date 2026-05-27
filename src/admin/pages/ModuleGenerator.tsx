@@ -20,7 +20,7 @@ const CACHE_KEY = 'ai_module_cache_expires'
 const CACHE_DURATION_MS = 5 * 60 * 1000
 
 function formatMs(ms: number) {
-  const s = Math.ceil(ms / 2000)
+  const s = Math.ceil(ms / 1000)
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
@@ -64,11 +64,7 @@ const slugify = (s: string) =>
 
 export default function ModuleGenerator() {
   const nav = useNavigate()
-<<<<<<< HEAD
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
-=======
   const { campaignId: authCampaignId, isAdmin } = useAuth()
->>>>>>> origin/main
   const { remaining, notifyCache } = useCacheTimer()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -85,20 +81,12 @@ export default function ModuleGenerator() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-<<<<<<< HEAD
-    if (!isSuperAdmin) return
-=======
     if (!isAdmin) return
->>>>>>> origin/main
     supabase.from('campaigns').select('*').order('name').then(({ data }) => {
       setCampaigns(data ?? [])
       if (!selectedCampaignId && data?.[0]) setSelectedCampaignId(data[0].id)
     })
-<<<<<<< HEAD
-  }, [isSuperAdmin, selectedCampaignId])
-=======
   }, [isAdmin, selectedCampaignId])
->>>>>>> origin/main
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -208,11 +196,7 @@ export default function ModuleGenerator() {
       </div>
 
       {/* Campaign selector (superadmin only) */}
-<<<<<<< HEAD
-      {isSuperAdmin && campaigns.length > 0 && (
-=======
       {isAdmin && campaigns.length > 0 && (
->>>>>>> origin/main
         <GlassCard className="p-4 mb-4">
           <label className="text-xs font-medium text-text-muted mb-1.5 block">Campaña destino</label>
           <select
