@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 
 type Lang = 'es' | 'en' | 'pt'
@@ -44,10 +45,6 @@ function textareaClass() {
 
 function inputClass() {
   return 'glass border border-glass-border/20 rounded-lg px-2.5 py-1.5 text-sm text-text bg-transparent focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
-}
-
-function selectClass() {
-  return 'glass border border-glass-border/20 rounded-lg px-2.5 py-1.5 text-sm text-text bg-transparent focus:outline-none'
 }
 
 export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
@@ -162,16 +159,15 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
                 </div>
                 <div>
                   <div className="text-[10px] text-text-subtle mb-1">Llevar al paso:</div>
-                  <select
+                  <FilterDropdown
                     value={branch.next}
-                    onChange={(e) => updateBranch(idx, { next: e.target.value })}
-                    className={cn(selectClass(), 'w-full')}
-                  >
-                    <option value="">— Seleccionar paso —</option>
-                    {allNodeIds.map((nid) => (
-                      <option key={nid} value={nid}>{nid}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => updateBranch(idx, { next: v })}
+                    options={[
+                      { value: '', label: '— Seleccionar paso —' },
+                      ...allNodeIds.map((nid) => ({ value: nid, label: nid })),
+                    ]}
+                    compact
+                  />
                 </div>
               </div>
               <button
@@ -189,28 +185,26 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs text-text-muted mb-1.5 block font-medium">Si ninguna ruta coincide, ir a:</label>
-          <select
+          <FilterDropdown
             value={data.fallback ?? ''}
-            onChange={(e) => update({ fallback: e.target.value || undefined })}
-            className={cn(selectClass(), 'w-full')}
-          >
-            <option value="">— Sin respaldo —</option>
-            {allNodeIds.map((nid) => (
-              <option key={nid} value={nid}>{nid}</option>
-            ))}
-          </select>
+            onChange={(v) => update({ fallback: v || undefined })}
+            options={[
+              { value: '', label: '— Sin respaldo —' },
+              ...allNodeIds.map((nid) => ({ value: nid, label: nid })),
+            ]}
+          />
         </div>
         <div>
           <label className="text-xs text-text-muted mb-1.5 block font-medium">¿La llamada termina aquí?</label>
-          <select
+          <FilterDropdown
             value={data.terminal ?? ''}
-            onChange={(e) => update({ terminal: (e.target.value || undefined) as DialogueNodeData['terminal'] })}
-            className={cn(selectClass(), 'w-full')}
-          >
-            <option value="">No termina aquí</option>
-            <option value="resolved">Llamada resuelta</option>
-            <option value="unresolved">Llamada sin resolver</option>
-          </select>
+            onChange={(v) => update({ terminal: (v || undefined) as DialogueNodeData['terminal'] })}
+            options={[
+              { value: '', label: 'No termina aquí' },
+              { value: 'resolved', label: 'Llamada resuelta' },
+              { value: 'unresolved', label: 'Llamada sin resolver' },
+            ]}
+          />
         </div>
       </div>
     </div>

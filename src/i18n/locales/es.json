@@ -243,8 +243,14 @@
       "users": "Usuarios",
       "quiz_live": "Quiz en Vivo",
       "simulations": "Simulaciones",
+      "missions": "Misiones",
+      "arena": "Arena",
+      "worlds": "Mundos",
+      "feedback": "Progreso",
       "generate_module": "Generar módulo IA",
-      "back_to_app": "Volver a la app"
+      "back_to_app": "Volver a la app",
+      "open_menu": "Abrir menú",
+      "close_menu": "Cerrar menú"
     },
     "dashboard": {
       "title": "Panel Admin",

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { generateSimulation, getModuleContextText, type CacheUsage, type GeneratedDialogue, type GeneratedChoice } from '@/services/ai.service'
 import { Button } from '@/components/ui/Button'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 
 const SIM_CACHE_KEY = 'ai_sim_cache_expires'
@@ -144,14 +145,14 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
                 <BookOpen className="h-3.5 w-3.5" />
                 Basar en módulo de capacitación <span className="text-text-subtle font-normal">(opcional)</span>
               </label>
-              <select
+              <FilterDropdown
                 value={selectedModuleId}
-                onChange={(e) => setSelectedModuleId(e.target.value)}
-                className="glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent w-full"
-              >
-                <option value="">Sin módulo — usar solo la descripción</option>
-                {modules.map((m) => <option key={m.id} value={m.id}>{m.title_es}</option>)}
-              </select>
+                onChange={setSelectedModuleId}
+                options={[
+                  { value: '', label: 'Sin módulo — usar solo la descripción' },
+                  ...modules.map((m) => ({ value: m.id, label: m.title_es })),
+                ]}
+              />
             </div>
           )}
 

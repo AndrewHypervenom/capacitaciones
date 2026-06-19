@@ -33,8 +33,8 @@ export function Navbar() {
     );
 
   return (
-    <header className="sticky top-0 z-40 nav-blur border-b border-line">
-      <div className="mx-auto max-w-7xl px-5 h-12 flex items-center justify-between">
+    <header className="sticky top-0 z-40 nav-blur border-b border-line overflow-x-hidden">
+      <div className="mx-auto max-w-7xl px-3 sm:px-5 h-12 flex items-center justify-between">
         <Link to="/dashboard" className="flex items-center gap-2 group">
           <img
             src="/logo.jpg"
@@ -43,7 +43,7 @@ export function Navbar() {
             width={24}
             height={24}
           />
-          <span className="font-semibold tracking-tight text-[14px]">{t('brand')}</span>
+          <span className="hidden min-[480px]:inline font-semibold tracking-tight text-[14px]">{t('brand')}</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-1">
@@ -60,7 +60,7 @@ export function Navbar() {
           )}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <div className="hidden sm:flex items-center gap-2 h-8 pr-1">
             <ProgressRing value={progress} size={20} stroke={2} />
             <span className="text-[12px] text-text-muted max-w-[100px] truncate">{name}</span>

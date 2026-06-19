@@ -16,6 +16,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import type { Campaign } from '@/types/database'
 
 // ─── Constants ────────────────────────────────────────────────
@@ -27,7 +28,7 @@ const ICONS = [
   '📚', '📖', '🎯', '💡', '🔧', '📊', '📱', '🤝',
   '💰', '🏆', '⭐', '🎓', '🧠', '🗣️', '📋', '✅',
   '🔑', '💼', '🌐', '🎤', '🚀', '🔍', '📝', '🎨',
-  '⚡', '🛡️', '📡', '🧩', '🗂️', '🎯',
+  '⚡', '🛡️', '📡', '🧩', '🗂️', '🌟',
 ]
 
 const LANG_LABELS: Record<Lang, string> = { es: 'ES', en: 'EN', pt: 'PT' }
@@ -271,27 +272,21 @@ function AIModeForm({
     <div className="space-y-4">
       {/* Campaign selector */}
       {isAdmin && campaigns.length > 0 && (
-        <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+        <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
           <SectionLabel>Campaña destino</SectionLabel>
-          <select
+          <FilterDropdown
             value={campaignId}
-            onChange={(e) => onSelectCampaign(e.target.value)}
-            className={cn(
-              'w-full rounded-xl px-4 py-3 text-[14px] text-text',
-              'bg-glass/5 border border-glass-border/10',
-              'focus:border-neon-green/30 focus:outline-none transition-colors appearance-none cursor-pointer',
-            )}
-          >
-            <option value="">— Seleccionar campaña —</option>
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id} className="bg-surface text-text">{c.name}</option>
-            ))}
-          </select>
+            onChange={onSelectCampaign}
+            options={[
+              { value: '', label: '— Seleccionar campaña —' },
+              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
         </GlassCard>
       )}
 
       {/* Description input */}
-      <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+      <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
         <div className="flex items-center justify-between mb-3">
           <SectionLabel>¿Qué debe aprender el agente?</SectionLabel>
           {remaining > 0 && (
@@ -333,7 +328,7 @@ function AIModeForm({
             <button
               onClick={() => setDocMode(docMode === 'paste' ? 'none' : 'paste')}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-all',
+                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all',
                 docMode === 'paste'
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
@@ -344,7 +339,7 @@ function AIModeForm({
             <button
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-all',
+                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all',
                 docMode === 'file' && fileName
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
@@ -419,7 +414,7 @@ function AIModeForm({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
           >
-            <GlassCard intensity="subtle" padding="lg" rounded="2xl" className="border border-brand-violet/15">
+            <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8 border border-brand-violet/15">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
@@ -503,10 +498,10 @@ function AIModeForm({
       {/* Action buttons */}
       <motion.div
         layout
-        className="flex items-center justify-between pt-1"
+        className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1"
       >
         <Link to="/admin/modules">
-          <Button type="button" variant="ghost" size="md">
+          <Button type="button" variant="ghost" size="md" className="w-full sm:w-auto">
             <ArrowLeft className="h-4 w-4 mr-1.5" /> Cancelar
           </Button>
         </Link>
@@ -518,7 +513,7 @@ function AIModeForm({
             size="md"
             disabled={!description.trim() || !campaignId || generating}
             onClick={handleGenerate}
-            className="min-w-[180px] flex items-center justify-center gap-2"
+            className="w-full sm:w-auto sm:min-w-[180px] flex items-center justify-center gap-2"
           >
             {generating ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</>
@@ -533,7 +528,7 @@ function AIModeForm({
             size="md"
             disabled={saving || !campaignId}
             onClick={handleCreate}
-            className="min-w-[200px] flex items-center justify-center gap-2"
+            className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2"
           >
             {saving ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Creando módulo...</>
@@ -605,9 +600,9 @@ export default function NewModulePage() {
   const fadeUp = { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-2xl mx-auto">
       {/* Header */}
-      <motion.div {...fadeUp} transition={{ duration: 0.3 }} className="mb-8">
+      <motion.div {...fadeUp} transition={{ duration: 0.3 }} className="mb-6 sm:mb-8">
         <Link
           to="/admin/modules"
           className="inline-flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors mb-4"
@@ -667,7 +662,7 @@ export default function NewModulePage() {
             className="space-y-5"
           >
             {/* ── Identidad visual ── */}
-            <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+            <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
               <SectionLabel>Identidad visual</SectionLabel>
               <div className="flex flex-col items-center mb-5">
                 <div className={cn(
@@ -676,10 +671,10 @@ export default function NewModulePage() {
                 )}>
                   {icon}
                 </div>
-                <div className="grid grid-cols-10 gap-1.5">
-                  {ICONS.map((emoji) => (
+                <div className="grid grid-cols-6 sm:grid-cols-10 gap-1.5">
+                  {ICONS.map((emoji, i) => (
                     <button
-                      key={emoji}
+                      key={`${i}-${emoji}`}
                       type="button"
                       onClick={() => setIcon(emoji)}
                       className={cn(
@@ -741,7 +736,7 @@ export default function NewModulePage() {
             </GlassCard>
 
             {/* ── Configuración ── */}
-            <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+            <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
               <SectionLabel>Configuración</SectionLabel>
 
               <div className="mb-5">
@@ -791,20 +786,11 @@ export default function NewModulePage() {
               {isAdmin && campaigns.length > 0 && (
                 <div>
                   <label className="text-[12px] font-medium text-text-muted block mb-2">Campaña</label>
-                  <select
+                  <FilterDropdown
                     value={campaignId}
-                    onChange={(e) => setCampaignId(e.target.value)}
-                    required
-                    className={cn(
-                      'w-full rounded-xl px-4 py-3 text-[14px] text-text',
-                      'bg-glass/5 border border-glass-border/10',
-                      'focus:border-neon-green/30 focus:outline-none transition-colors appearance-none cursor-pointer',
-                    )}
-                  >
-                    {campaigns.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-surface text-text">{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={setCampaignId}
+                    options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+                  />
                 </div>
               )}
             </GlassCard>

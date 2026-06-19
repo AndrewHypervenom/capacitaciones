@@ -324,8 +324,7 @@ export function MediaUploader({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => onSaved('youtube', previewVideoId)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black flex-1 justify-center"
-                    style={{ background: '#00C228' }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black bg-neon-green hover:bg-neon-green/90 transition-colors flex-1 justify-center"
                   >
                     <Youtube className="h-4 w-4" />
                     {t('admin.modules.media_save')}

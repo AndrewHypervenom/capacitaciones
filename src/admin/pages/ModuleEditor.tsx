@@ -14,14 +14,17 @@ import {
   Layers,
   Lightbulb,
   Loader2,
+  Menu,
   Plus,
   Save,
   Sparkle,
   Square,
   Star,
   Trash2,
+  X,
   ZoomIn,
 } from 'lucide-react'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useTranslation } from 'react-i18next'
 import {
   DndContext,
@@ -667,7 +670,7 @@ function SectionEditorPanel({
         </div>
         <div>
           <FieldLabel>{t('admin.modules.section_style')}</FieldLabel>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {sectionStyles.map(({ value, label, Icon }) => (
               <button
                 key={value}
@@ -778,18 +781,18 @@ function SectionEditorPanel({
           <>
             <div>
               <FieldLabel>Tipo de callout</FieldLabel>
-              <select
+              <FilterDropdown
                 value={calloutKind}
-                onChange={(e) => setCalloutKind(e.target.value as CalloutKind)}
-                className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none"
-              >
-                <option value="tip">{t('module.tip')}</option>
-                <option value="important">{t('module.important')}</option>
-                <option value="warning">{t('module.warning')}</option>
-                <option value="success">{t('module.success')}</option>
-                <option value="quote">{t('module.quote')}</option>
-                <option value="note">{t('module.note')}</option>
-              </select>
+                onChange={(v) => setCalloutKind(v as CalloutKind)}
+                options={[
+                  { value: 'tip', label: t('module.tip') },
+                  { value: 'important', label: t('module.important') },
+                  { value: 'warning', label: t('module.warning') },
+                  { value: 'success', label: t('module.success') },
+                  { value: 'quote', label: t('module.quote') },
+                  { value: 'note', label: t('module.note') },
+                ]}
+              />
             </div>
             <div>
               <FieldLabel>Texto del callout ({lang.toUpperCase()})</FieldLabel>
@@ -1111,6 +1114,7 @@ export default function ModuleEditor() {
   const [publishingMod, setPublishingMod] = useState(false)
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null)
   const [splitView, setSplitView] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const saveFnRef = useRef<(() => void) | null>(null)
 
@@ -1276,6 +1280,7 @@ export default function ModuleEditor() {
     setSelectedSectionId(id)
     setFocusedSectionId(id)
     setIsDirty(false)
+    setSidebarOpen(false)
   }
 
   if (loading) {
@@ -1297,145 +1302,242 @@ export default function ModuleEditor() {
     )
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-bg">
-
-      {/* ── PANEL IZQUIERDO ── */}
-      <div className="w-60 flex flex-col glass-strong border-r border-glass-border/8 shrink-0 overflow-hidden">
-        {/* Atrás + info del módulo */}
-        <div className="px-4 pt-4 pb-3 border-b border-glass-border/8">
-          <button
-            onClick={() => navigate('/admin/modules')}
-            className="flex items-center gap-1.5 text-[12px] text-text-muted hover:text-text transition-colors mb-3"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            {t('admin.modules.back_to_list')}
-          </button>
-          <p className="text-[10px] text-text-subtle uppercase tracking-wider mb-1.5">Editor</p>
-          <p className="text-[13px] font-semibold text-text truncate" title={mod.title_es}>
-            {mod.title_es}
-          </p>
-          <p className="text-[11px] text-text-subtle mt-0.5">
-            {sections.length} {sections.length === 1 ? 'sección' : 'secciones'}
-          </p>
-        </div>
-
-        {/* Encabezado de lista de secciones */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-glass-border/8">
-          <span className="text-[10px] uppercase tracking-wider text-text-subtle font-semibold">
-            Secciones
-          </span>
-          <button
-            onClick={() => setGalleryOpen(true)}
-            disabled={addingSection}
-            title="Agregar sección"
-            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-40 transition-colors"
-          >
-            {addingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-
-        {/* Ítem de metadatos del módulo */}
+  const sidebarContent = (
+    <>
+      {/* Atrás + info del módulo */}
+      <div className="px-4 pt-4 pb-3 border-b border-glass-border/8">
         <button
-          onClick={() => handleSelectSection(null)}
-          className={cn(
-            'w-full flex items-center gap-2.5 px-4 py-3 text-left transition-all border-b border-glass-border/8',
-            selectedSectionId === null
-              ? 'bg-glass-border/8 text-text'
-              : 'text-text-muted hover:text-text hover:bg-glass/4',
-          )}
+          onClick={() => navigate('/admin/modules')}
+          className="flex items-center gap-1.5 text-[12px] text-text-muted hover:text-text transition-colors mb-3"
         >
-          <div className={cn(
-            'h-5 w-5 rounded-md flex items-center justify-center shrink-0 transition-colors',
-            selectedSectionId === null ? 'bg-glass-border/10' : 'bg-glass/8',
-          )}>
-            <BookOpen className="h-3 w-3 text-text-subtle" />
-          </div>
-          <span className="text-[12px] font-medium">Metadatos del módulo</span>
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {t('admin.modules.back_to_list')}
         </button>
-
-        {/* Lista de secciones con arrastrar y soltar */}
-        <div className="flex-1 overflow-y-auto">
-          {sections.length === 0 ? (
-            <div className="px-4 py-6 text-center text-[11px] text-text-subtle">
-              Sin secciones.<br />Usa <Plus className="h-3 w-3 inline" /> para agregar.
-            </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                {sections.map((section, idx) => (
-                  <SortableItem key={section.id} id={section.id}>
-                    {(dragHandle) => (
-                      <div
-                        onClick={() => handleSelectSection(section.id)}
-                        className={cn(
-                          'group flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-all border-b border-glass-border/6',
-                          selectedSectionId === section.id
-                            ? 'bg-glass-border/8 text-text'
-                            : 'text-text-muted hover:text-text hover:bg-glass/4',
-                        )}
-                      >
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          {dragHandle}
-                        </div>
-                        <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">
-                          {idx + 1}
-                        </span>
-                        <span className={cn(
-                          'flex-1 text-[12px] font-medium truncate',
-                          selectedSectionId === section.id ? 'text-text' : '',
-                        )}>
-                          {section.heading_es || 'Sin título'}
-                        </span>
-                        <div className="flex items-center gap-1 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
-                          {section.media_type && <Image className="h-2.5 w-2.5 text-text-subtle" />}
-                          {section.callout_kind && <Lightbulb className="h-2.5 w-2.5 text-text-subtle" />}
-                          {(section.section_quizzes?.length ?? 0) > 0 && <HelpCircle className="h-2.5 w-2.5 text-text-subtle" />}
-                          {Array.isArray(section.blocks_data) && section.blocks_data.length > 0 && (
-                            <Layers className="h-2.5 w-2.5 text-text-subtle" />
-                          )}
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id) }}
-                          className="p-1 rounded-md opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:text-danger hover:bg-danger/8 transition-all shrink-0"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                  </SortableItem>
-                ))}
-              </SortableContext>
-            </DndContext>
-          )}
-        </div>
-
-        {/* Nueva sección CTA */}
-        <div className="p-3 border-t border-glass-border/8 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] text-text-subtle uppercase tracking-wider mb-1.5">Editor</p>
+            <p className="text-[13px] font-semibold text-text truncate" title={mod.title_es}>
+              {mod.title_es}
+            </p>
+            <p className="text-[11px] text-text-subtle mt-0.5">
+              {sections.length} {sections.length === 1 ? 'sección' : 'secciones'}
+            </p>
+          </div>
           <button
-            onClick={() => setGalleryOpen(true)}
-            disabled={addingSection}
-            className={cn(
-              'w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
-              'border border-dashed border-glass-border/15 text-text-subtle hover:text-text hover:border-glass-border/30 hover:bg-glass/4',
-              'disabled:opacity-40 disabled:cursor-not-allowed',
-            )}
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors shrink-0"
           >
-            {addingSection
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Plus className="h-3.5 w-3.5" />
-            }
-            Nueva sección
+            <X className="h-4 w-4" />
           </button>
         </div>
       </div>
 
+      {/* Encabezado de lista de secciones */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-glass-border/8">
+        <span className="text-[10px] uppercase tracking-wider text-text-subtle font-semibold">
+          Secciones
+        </span>
+        <button
+          onClick={() => setGalleryOpen(true)}
+          disabled={addingSection}
+          title="Agregar sección"
+          className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-40 transition-colors"
+        >
+          {addingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+
+      {/* Ítem de metadatos del módulo */}
+      <button
+        onClick={() => handleSelectSection(null)}
+        className={cn(
+          'w-full flex items-center gap-2.5 px-4 py-3 text-left transition-all border-b border-glass-border/8',
+          selectedSectionId === null
+            ? 'bg-glass-border/8 text-text'
+            : 'text-text-muted hover:text-text hover:bg-glass/4',
+        )}
+      >
+        <div className={cn(
+          'h-5 w-5 rounded-md flex items-center justify-center shrink-0 transition-colors',
+          selectedSectionId === null ? 'bg-glass-border/10' : 'bg-glass/8',
+        )}>
+          <BookOpen className="h-3 w-3 text-text-subtle" />
+        </div>
+        <span className="text-[12px] font-medium">Metadatos del módulo</span>
+      </button>
+
+      {/* Lista de secciones con arrastrar y soltar */}
+      <div className="flex-1 overflow-y-auto">
+        {sections.length === 0 ? (
+          <div className="px-4 py-6 text-center text-[11px] text-text-subtle">
+            Sin secciones.<br />Usa <Plus className="h-3 w-3 inline" /> para agregar.
+          </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              {sections.map((section, idx) => (
+                <SortableItem key={section.id} id={section.id}>
+                  {(dragHandle) => (
+                    <div
+                      onClick={() => handleSelectSection(section.id)}
+                      className={cn(
+                        'group flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-all border-b border-glass-border/6',
+                        selectedSectionId === section.id
+                          ? 'bg-glass-border/8 text-text'
+                          : 'text-text-muted hover:text-text hover:bg-glass/4',
+                      )}
+                    >
+                      <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
+                        {dragHandle}
+                      </div>
+                      <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">
+                        {idx + 1}
+                      </span>
+                      <span className={cn(
+                        'flex-1 text-[12px] font-medium truncate',
+                        selectedSectionId === section.id ? 'text-text' : '',
+                      )}>
+                        {section.heading_es || 'Sin título'}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0 opacity-100 md:opacity-50 md:group-hover:opacity-100 transition-opacity">
+                        {section.media_type && <Image className="h-2.5 w-2.5 text-text-subtle" />}
+                        {section.callout_kind && <Lightbulb className="h-2.5 w-2.5 text-text-subtle" />}
+                        {(section.section_quizzes?.length ?? 0) > 0 && <HelpCircle className="h-2.5 w-2.5 text-text-subtle" />}
+                        {Array.isArray(section.blocks_data) && section.blocks_data.length > 0 && (
+                          <Layers className="h-2.5 w-2.5 text-text-subtle" />
+                        )}
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id) }}
+                        className="p-2 md:p-1 rounded-md opacity-60 md:opacity-0 md:group-hover:opacity-60 hover:!opacity-100 hover:text-danger hover:bg-danger/8 transition-all shrink-0"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 md:h-3 md:w-3" />
+                      </button>
+                    </div>
+                  )}
+                </SortableItem>
+              ))}
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
+
+      {/* Nueva sección CTA */}
+      <div className="p-3 border-t border-glass-border/8 shrink-0">
+        <button
+          onClick={() => setGalleryOpen(true)}
+          disabled={addingSection}
+          className={cn(
+            'w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
+            'border border-dashed border-glass-border/15 text-text-subtle hover:text-text hover:border-glass-border/30 hover:bg-glass/4',
+            'disabled:opacity-40 disabled:cursor-not-allowed',
+          )}
+        >
+          {addingSection
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Plus className="h-3.5 w-3.5" />
+          }
+          Nueva sección
+        </button>
+      </div>
+    </>
+  )
+
+  const previewContent = (
+    <>
+      {selectedSectionId ? (
+        (() => {
+          const s = sections.find((sec) => sec.id === selectedSectionId)
+          if (!s) return <p className="text-[12px] text-text-subtle text-center pt-10">Selecciona una sección</p>
+          return (
+            <div className="space-y-4">
+              <p className="text-[10px] text-text-subtle uppercase tracking-widest font-medium">
+                {s.heading_es || 'Sin título'}
+              </p>
+              {s.body_es?.map((p: string, i: number) => (
+                <p key={i} className="text-[14px] leading-relaxed text-text-muted">{p}</p>
+              ))}
+              {s.callout_kind && s.callout_es && (
+                <div className="glass rounded-2xl px-4 py-3 border-l-2 border-neon-green/40">
+                  <p className="text-[12px] text-text-muted">{s.callout_es}</p>
+                </div>
+              )}
+              {s.media_url && s.media_type === 'image' && (
+                <img src={s.media_url} alt="" className="w-full rounded-2xl border border-line" />
+              )}
+              {s.media_url && s.media_type === 'youtube' && (
+                <div className="relative rounded-2xl overflow-hidden" style={{ paddingTop: '56.25%' }}>
+                  <iframe
+                    src={`https://www.youtube.com/embed/${s.media_url}?rel=0`}
+                    className="absolute inset-0 w-full h-full border-0"
+                    allowFullScreen
+                  />
+                </div>
+              )}
+              {(s.section_quizzes?.length ?? 0) > 0 && (
+                <div className="glass rounded-2xl px-4 py-3">
+                  <p className="text-[11px] text-text-subtle mb-2">Quiz ✓</p>
+                  <p className="text-[13px] font-medium text-text">{s.section_quizzes![0].question_es}</p>
+                  <div className="space-y-1.5 mt-3">
+                    {s.section_quizzes![0].options_es?.map((o: string, i: number) => (
+                      <div key={i} className={cn(
+                        'px-3 py-2 rounded-xl text-[12px] border',
+                        i === s.section_quizzes![0].correct_index
+                          ? 'border-neon-green/30 text-neon-green bg-neon-green/5'
+                          : 'border-glass-border/10 text-text-muted',
+                      )}>
+                        {o}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()
+      ) : (
+        <p className="text-[12px] text-text-subtle text-center pt-10">
+          Selecciona una sección para ver preview
+        </p>
+      )}
+    </>
+  )
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-bg">
+
+      {/* ── SIDEBAR OVERLAY (mobile only) ── */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── PANEL IZQUIERDO: drawer en mobile, fijo en desktop ── */}
+      <div
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-bg border-r border-glass-border/8 transition-transform duration-300 ease-in-out',
+          'md:static md:z-auto md:w-60 md:translate-x-0 md:glass-strong md:shrink-0 md:overflow-hidden',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        {sidebarContent}
+      </div>
+
       {/* ── PANEL CENTRAL ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Barra de herramientas del editor */}
-        <div className="flex items-center gap-3 px-5 h-14 glass-md border-b border-glass-border/8 shrink-0">
+        <div className="flex items-center gap-2 px-3 md:px-5 h-14 glass-md border-b border-glass-border/8 shrink-0">
+          {/* Hamburger — mobile only */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors shrink-0"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
           <div className="flex-1 min-w-0 flex items-center gap-2">
-            <span className="text-[14px] font-medium text-text truncate">{mod.title_es}</span>
+            <span className="text-[13px] md:text-[14px] font-medium text-text truncate">{mod.title_es}</span>
             {isDirty && (
               <span
                 className="h-2 w-2 rounded-full bg-amber-400 shrink-0 animate-glow-pulse"
@@ -1443,7 +1545,7 @@ export default function ModuleEditor() {
               />
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
             <button
               onClick={() => setSplitView((v) => !v)}
               title={splitView ? 'Ocultar preview' : 'Ver preview en vivo'}
@@ -1463,9 +1565,9 @@ export default function ModuleEditor() {
               {publishingMod ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : mod.is_published ? (
-                <><EyeOff className="h-3.5 w-3.5" /><span>Despublicar</span></>
+                <><EyeOff className="h-3.5 w-3.5" /><span className="hidden sm:inline">Despublicar</span></>
               ) : (
-                <><Eye className="h-3.5 w-3.5" /><span>Publicar</span></>
+                <><Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">Publicar</span></>
               )}
             </Button>
             <Button
@@ -1474,14 +1576,14 @@ export default function ModuleEditor() {
               onClick={() => saveFnRef.current?.()}
             >
               <Save className="h-3.5 w-3.5" />
-              Guardar
+              <span className="hidden sm:inline">Guardar</span>
             </Button>
           </div>
         </div>
 
         {/* Aviso de error */}
         {error && (
-          <div className="mx-5 mt-4 px-4 py-2.5 rounded-xl glass border border-danger/20 text-danger text-[13px] shrink-0">
+          <div className="mx-3 md:mx-5 mt-4 px-4 py-2.5 rounded-xl glass border border-danger/20 text-danger text-[13px] shrink-0">
             {error}
           </div>
         )}
@@ -1511,74 +1613,42 @@ export default function ModuleEditor() {
         </div>
       </div>
 
-      {/* ── PANEL DERECHO: Preview en vivo ── */}
+      {/* ── PANEL DERECHO: Preview — side panel en desktop, fullscreen overlay en mobile ── */}
       {splitView && (
-        <div className="w-96 xl:w-[480px] flex flex-col glass-md border-l border-glass-border/8 shrink-0 overflow-hidden">
-          <div className="flex items-center gap-2 px-4 h-14 border-b border-glass-border/8 shrink-0">
-            <div className="h-2 w-2 rounded-full bg-neon-green animate-[glow-pulse_2s_ease-in-out_infinite]" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
-              Preview en vivo
-            </span>
-            <span className="ml-auto text-[10px] text-text-subtle">Como lo ven los aprendices</span>
+        <>
+          {/* Desktop: side panel */}
+          <div className="hidden md:flex w-96 xl:w-[480px] flex-col glass-md border-l border-glass-border/8 shrink-0 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 h-14 border-b border-glass-border/8 shrink-0">
+              <div className="h-2 w-2 rounded-full bg-neon-green animate-[glow-pulse_2s_ease-in-out_infinite]" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
+                Preview en vivo
+              </span>
+              <span className="ml-auto text-[10px] text-text-subtle">Como lo ven los aprendices</span>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-6">
+              {previewContent}
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-6">
-            {selectedSectionId ? (
-              (() => {
-                const s = sections.find((sec) => sec.id === selectedSectionId)
-                if (!s) return <p className="text-[12px] text-text-subtle text-center pt-10">Selecciona una sección</p>
-                return (
-                  <div className="space-y-4">
-                    <p className="text-[10px] text-text-subtle uppercase tracking-widest font-medium">
-                      {s.heading_es || 'Sin título'}
-                    </p>
-                    {s.body_es?.map((p: string, i: number) => (
-                      <p key={i} className="text-[14px] leading-relaxed text-text-muted">{p}</p>
-                    ))}
-                    {s.callout_kind && s.callout_es && (
-                      <div className="glass rounded-2xl px-4 py-3 border-l-2 border-neon-green/40">
-                        <p className="text-[12px] text-text-muted">{s.callout_es}</p>
-                      </div>
-                    )}
-                    {s.media_url && s.media_type === 'image' && (
-                      <img src={s.media_url} alt="" className="w-full rounded-2xl border border-line" />
-                    )}
-                    {s.media_url && s.media_type === 'youtube' && (
-                      <div className="relative rounded-2xl overflow-hidden" style={{ paddingTop: '56.25%' }}>
-                        <iframe
-                          src={`https://www.youtube.com/embed/${s.media_url}?rel=0`}
-                          className="absolute inset-0 w-full h-full border-0"
-                          allowFullScreen
-                        />
-                      </div>
-                    )}
-                    {(s.section_quizzes?.length ?? 0) > 0 && (
-                      <div className="glass rounded-2xl px-4 py-3">
-                        <p className="text-[11px] text-text-subtle mb-2">Quiz ✓</p>
-                        <p className="text-[13px] font-medium text-text">{s.section_quizzes![0].question_es}</p>
-                        <div className="space-y-1.5 mt-3">
-                          {s.section_quizzes![0].options_es?.map((o: string, i: number) => (
-                            <div key={i} className={cn(
-                              'px-3 py-2 rounded-xl text-[12px] border',
-                              i === s.section_quizzes![0].correct_index
-                                ? 'border-neon-green/30 text-neon-green bg-neon-green/5'
-                                : 'border-glass-border/10 text-text-muted',
-                            )}>
-                              {o}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })()
-            ) : (
-              <p className="text-[12px] text-text-subtle text-center pt-10">
-                Selecciona una sección para ver preview
-              </p>
-            )}
+
+          {/* Mobile: fullscreen overlay */}
+          <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-bg">
+            <div className="flex items-center gap-2 px-4 h-14 border-b border-glass-border/8 shrink-0 glass-md">
+              <div className="h-2 w-2 rounded-full bg-neon-green animate-[glow-pulse_2s_ease-in-out_infinite]" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
+                Preview en vivo
+              </span>
+              <button
+                onClick={() => setSplitView(false)}
+                className="ml-auto h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-6">
+              {previewContent}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Galería de plantillas */}

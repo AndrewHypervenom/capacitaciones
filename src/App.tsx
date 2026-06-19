@@ -12,6 +12,10 @@ import SimulatorResult from '@/pages/SimulatorResult';
 import ChoiceSimulatorRun from '@/pages/ChoiceSimulatorRun';
 import Certificate from '@/pages/Certificate';
 import LiveQuizPlay from '@/pages/LiveQuizPlay';
+import MissionPlayer from '@/pages/MissionPlayer';
+import ArenaHub from '@/pages/ArenaHub';
+import ArenaPlayer from '@/pages/ArenaPlayer';
+import WorldMap from '@/pages/WorldMap';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { initAuth } from '@/stores/authStore';
@@ -62,6 +66,10 @@ export default function App() {
           <Route path="/certificate" element={<Certificate />} />
           <Route path="/quiz" element={<LiveQuizPlay />} />
         </Route>
+        <Route path="/mission/:id" element={<MissionPlayer />} />
+        <Route path="/arena" element={<ArenaHub />} />
+        <Route path="/arena/:id" element={<ArenaPlayer />} />
+        <Route path="/world" element={<WorldMap />} />
         {/* Admin CMS — solo accesible para admin/superadmin (AdminGuard dentro) */}
         <Route
           path="/admin/*"

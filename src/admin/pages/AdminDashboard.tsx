@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye } from 'lucide-react'
+import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -84,31 +84,49 @@ export default function AdminDashboard() {
       desc: 'Administrar roles, asignar campañas y controlar accesos',
       cta: 'Ver usuarios',
     },
+    {
+      to: '/admin/missions',
+      icon: Target,
+      iconColor: '#00C228',
+      iconBg: 'rgba(0,194,40,0.10)',
+      title: 'Learning Missions',
+      desc: 'Completa simulaciones interactivas y gana XP por campaña',
+      cta: 'Ver misiones',
+    },
+    {
+      to: '/admin/arena',
+      icon: Trophy,
+      iconColor: '#00C228',
+      iconBg: 'rgba(0,194,40,0.10)',
+      title: 'Arena',
+      desc: 'Desafíos interactivos gamificados por campaña',
+      cta: 'Ver Arena',
+    },
   ]
 
   return (
-    <div className="p-8">
-      <h1 className="text-[24px] font-bold text-text mb-1">{t('admin.dashboard.title')}</h1>
-      <p className="text-text-muted text-[13px] mb-8">{t('admin.dashboard.subtitle')}</p>
+    <div className="p-4 sm:p-8">
+      <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{t('admin.dashboard.title')}</h1>
+      <p className="text-text-muted text-[13px] mb-6 sm:mb-8">{t('admin.dashboard.subtitle')}</p>
 
       {/* Stats */}
       {loading ? (
-        <div className="grid grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-8 sm:mb-10">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-24 rounded-2xl animate-pulse bg-subtle" />
+            <div key={i} className="h-20 sm:h-24 rounded-2xl animate-pulse bg-subtle" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-8 sm:mb-10">
           {statCards.map((c) => (
             <Link
               key={c.label}
               to={c.to}
-              className="rounded-2xl p-5 transition-all hover:scale-[1.02] bg-surface border border-line"
+              className="rounded-2xl p-3 sm:p-5 transition-all hover:scale-[1.02] bg-surface border border-line"
             >
-              <c.icon className="h-5 w-5 mb-3" style={{ color: c.color }} />
-              <div className="text-[28px] font-semibold text-text tabular-nums">{c.value}</div>
-              <div className="text-[12px] text-text-muted mt-1">{c.label}</div>
+              <c.icon className="h-4 w-4 sm:h-5 sm:w-5 mb-2 sm:mb-3" style={{ color: c.color }} />
+              <div className="text-[20px] sm:text-[28px] font-semibold text-text tabular-nums">{c.value}</div>
+              <div className="text-[10px] sm:text-[12px] text-text-muted mt-1 leading-tight">{c.label}</div>
             </Link>
           ))}
         </div>
@@ -117,23 +135,23 @@ export default function AdminDashboard() {
       {/* Acceso rápido a módulos cargados */}
       {stats.modules > 0 && (
         <div
-          className="rounded-2xl p-5 mb-6 flex items-center justify-between"
+          className="rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
           style={{ background: 'rgba(0,194,40,0.06)', border: '1px solid rgba(0,194,40,0.15)' }}
         >
           <div className="flex items-center gap-3">
-            <Eye className="h-5 w-5" style={{ color: '#00C228' }} />
-            <div>
+            <Eye className="h-5 w-5 shrink-0" style={{ color: '#00C228' }} />
+            <div className="min-w-0">
               <div className="text-[14px] font-medium text-text">
                 {stats.modules} módulo{stats.modules !== 1 ? 's' : ''} cargado{stats.modules !== 1 ? 's' : ''}
               </div>
-              <div className="text-[12px] text-text-muted">
+              <div className="text-[12px] text-text-muted leading-relaxed">
                 Podés ver cómo se verían en el sitio desde la sección de módulos
               </div>
             </div>
           </div>
           <Link
             to="/admin/modules"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors shrink-0"
+            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors self-start sm:shrink-0 min-h-[44px]"
             style={{ color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.08)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
@@ -144,12 +162,13 @@ export default function AdminDashboard() {
       )}
 
       {/* Quick actions grid */}
-      <div className="grid md:grid-cols-2 gap-4">
-        {quickActions.map((a) => (
+      {/* Ocultas del panel principal a pedido de Isa - siguen disponibles en el menú lateral */}
+      <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+        {quickActions.filter((a) => a.to !== '/admin/missions' && a.to !== '/admin/arena').map((a) => (
           <Link
             key={a.to}
             to={a.to}
-            className="group rounded-2xl p-5 flex items-start gap-4 transition-all hover:scale-[1.01] bg-surface border border-line"
+            className="group rounded-2xl p-4 sm:p-5 flex items-start gap-3 sm:gap-4 transition-all hover:scale-[1.01] bg-surface border border-line"
           >
             <div
               className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"

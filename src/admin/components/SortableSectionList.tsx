@@ -45,11 +45,11 @@ export function SortableItem({ id, children }: SortableItemProps) {
     <button
       {...attributes}
       {...listeners}
-      className="p-1.5 rounded-lg text-text-subtle hover:text-text-muted hover:bg-subtle transition-colors cursor-grab active:cursor-grabbing touch-none"
+      className="p-2.5 md:p-1.5 rounded-lg text-text-subtle hover:text-text-muted hover:bg-subtle transition-colors cursor-grab active:cursor-grabbing touch-none"
       aria-label="Arrastrar para reordenar"
       tabIndex={0}
     >
-      <GripVertical className="h-3.5 w-3.5" />
+      <GripVertical className="h-4 w-4 md:h-3.5 md:w-3.5" />
     </button>
   );
 
