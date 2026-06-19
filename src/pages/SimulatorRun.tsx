@@ -120,15 +120,16 @@ export default function SimulatorRun() {
   }) => (
     <button
       onClick={onClick}
+      aria-label={label}
       className={cn(
-        'inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-[12px] font-medium transition-colors border',
+        'inline-flex items-center justify-center gap-1.5 h-11 w-11 sm:w-auto sm:h-9 sm:px-3.5 rounded-full text-[12px] font-medium transition-colors border',
         destructive
           ? 'bg-danger/10 text-danger hover:bg-danger/15 border-danger/30'
           : 'bg-surface text-text-muted hover:text-text hover:bg-subtle border-line',
       )}
     >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
+      <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 

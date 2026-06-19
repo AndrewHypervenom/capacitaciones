@@ -19,6 +19,7 @@ import {
 } from '@/types/blocks';
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
+import { FilterDropdown } from './FilterDropdown';
 import { cn } from '@/lib/cn';
 
 // Context for uploading media from within the block editor
@@ -82,14 +83,12 @@ function ParagraphEditor({ block, onChange, lang }: { block: ContentBlock & { ty
 function HeadingEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'heading' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   return (
     <div className="flex items-center gap-3">
-      <select
-        value={block.level}
-        onChange={(e) => onChange({ ...block, level: Number(e.target.value) as 2 | 3 })}
-        className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none"
-      >
-        <option value={2}>H2</option>
-        <option value={3}>H3</option>
-      </select>
+      <FilterDropdown
+        value={String(block.level)}
+        onChange={(v) => onChange({ ...block, level: Number(v) as 2 | 3 })}
+        options={[{ value: '2', label: 'H2' }, { value: '3', label: 'H3' }]}
+        compact
+      />
       <MLInput
         value={block.text[lang]}
         onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
@@ -106,14 +105,12 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
     <div className="space-y-2">
       <div className="flex items-center gap-2 mb-2">
         <label className="text-[12px] text-text-muted">Tipo:</label>
-        <select
+        <FilterDropdown
           value={block.ordered ? 'ordered' : 'bullet'}
-          onChange={(e) => onChange({ ...block, ordered: e.target.value === 'ordered' })}
-          className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none"
-        >
-          <option value="bullet">Bullet</option>
-          <option value="ordered">Numerada</option>
-        </select>
+          onChange={(v) => onChange({ ...block, ordered: v === 'ordered' })}
+          options={[{ value: 'bullet', label: 'Bullet' }, { value: 'ordered', label: 'Numerada' }]}
+          compact
+        />
       </div>
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-2">
@@ -210,17 +207,21 @@ function ImageEditor({
       <div className="flex gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
           <label className="text-[11px] text-text-muted">Tamaño:</label>
-          <select value={block.size ?? 'full'} onChange={(e) => onChange({ ...block, size: e.target.value as 'sm' | 'md' | 'lg' | 'full' })}
-            className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none">
-            {['sm','md','lg','full'].map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <FilterDropdown
+            value={block.size ?? 'full'}
+            onChange={(v) => onChange({ ...block, size: v as 'sm' | 'md' | 'lg' | 'full' })}
+            options={['sm','md','lg','full'].map(s => ({ value: s, label: s }))}
+            compact
+          />
         </div>
         <div className="flex items-center gap-1.5">
           <label className="text-[11px] text-text-muted">Alinear:</label>
-          <select value={block.align ?? 'center'} onChange={(e) => onChange({ ...block, align: e.target.value as 'left' | 'center' | 'right' })}
-            className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none">
-            {['left','center','right'].map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
+          <FilterDropdown
+            value={block.align ?? 'center'}
+            onChange={(v) => onChange({ ...block, align: v as 'left' | 'center' | 'right' })}
+            options={['left','center','right'].map(a => ({ value: a, label: a }))}
+            compact
+          />
         </div>
         <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
           <input type="checkbox" checked={block.shadow ?? false} onChange={(e) => onChange({ ...block, shadow: e.target.checked })}
@@ -668,7 +669,7 @@ function ColumnsEditor({ block, onChange, lang }: { block: ContentBlock & { type
       </div>
 
       {/* Column text areas */}
-      <div className={cn('grid gap-3', colCount === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+      <div className={cn('grid gap-3 grid-cols-1', colCount === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
         {block.columns.map((col, ci) => (
           <div key={ci} className="space-y-1">
             <p className="text-[10px] uppercase tracking-wide text-text-subtle font-semibold">
@@ -799,9 +800,9 @@ function BlockRow({
         <div
           {...attributes}
           {...listeners}
-          className="shrink-0 flex flex-col items-center gap-1 pt-0.5 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+          className="shrink-0 flex flex-col items-center gap-1 pt-0.5 cursor-grab active:cursor-grabbing opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity touch-none p-1.5 md:p-0"
         >
-          <GripVertical className="h-4 w-4 text-text-subtle" />
+          <GripVertical className="h-5 w-5 md:h-4 md:w-4 text-text-subtle" />
         </div>
 
         {/* Block icon + type label */}
@@ -820,26 +821,26 @@ function BlockRow({
         </div>
 
         {/* Actions */}
-        <div className="shrink-0 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5">
-          <button onClick={onMoveUp} className="h-6 w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
-            <ChevronUp className="h-3 w-3" />
+        <div className="shrink-0 flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity pt-0.5">
+          <button onClick={onMoveUp} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
+            <ChevronUp className="h-4 w-4 md:h-3 md:w-3" />
           </button>
-          <button onClick={onMoveDown} className="h-6 w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
-            <ChevronDown className="h-3 w-3" />
+          <button onClick={onMoveDown} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
+            <ChevronDown className="h-4 w-4 md:h-3 md:w-3" />
           </button>
-          <button onClick={onDelete} className="h-6 w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-red-400 hover:bg-red-400/8 transition-colors">
-            <Trash2 className="h-3 w-3" />
+          <button onClick={onDelete} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-red-400 hover:bg-red-400/8 transition-colors">
+            <Trash2 className="h-4 w-4 md:h-3 md:w-3" />
           </button>
         </div>
       </div>
 
       {/* Add block below trigger */}
-      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex justify-center w-full opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex justify-center w-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         <button
           onClick={onAddAfter}
-          className="h-6 px-3 glass rounded-full text-[11px] text-text-subtle hover:text-neon-green hover:border-neon-green/20 border border-transparent flex items-center gap-1 transition-colors"
+          className="h-11 md:h-6 px-3 glass rounded-full text-[11px] text-text-subtle hover:text-neon-green hover:border-neon-green/20 border border-transparent flex items-center gap-1 transition-colors"
         >
-          <Plus className="h-3 w-3" /> bloque
+          <Plus className="h-3.5 w-3.5 md:h-3 md:w-3" /> bloque
         </button>
       </div>
     </div>

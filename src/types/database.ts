@@ -509,6 +509,369 @@ export interface Database {
         }
         Relationships: []
       }
+      worlds: {
+        Row: {
+          id: string
+          campaign_id: string
+          name: string
+          description: string | null
+          color: string
+          icon: string
+          bg_type: string
+          status: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          sound_theme: string
+          transition_type: string
+          character_emoji: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          name: string
+          description?: string | null
+          color?: string
+          icon?: string
+          bg_type?: string
+          status?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+          sound_theme?: string
+          transition_type?: string
+          character_emoji?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          name?: string
+          description?: string | null
+          color?: string
+          icon?: string
+          bg_type?: string
+          status?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+          sound_theme?: string
+          transition_type?: string
+          character_emoji?: string
+        }
+        Relationships: []
+      }
+      world_regions: {
+        Row: {
+          id: string
+          world_id: string
+          name: string
+          description: string | null
+          icon: string
+          order_index: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          world_id: string
+          name: string
+          description?: string | null
+          icon?: string
+          order_index?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          world_id?: string
+          name?: string
+          description?: string | null
+          icon?: string
+          order_index?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      world_levels: {
+        Row: {
+          id: string
+          region_id: string
+          world_id: string
+          quiz_id: string | null
+          name: string
+          description: string | null
+          icon: string
+          order_index: number
+          position_x: number
+          position_y: number
+          created_at: string
+          min_score_pct: number | null
+        }
+        Insert: {
+          id?: string
+          region_id: string
+          world_id: string
+          quiz_id?: string | null
+          name: string
+          description?: string | null
+          icon?: string
+          order_index?: number
+          position_x?: number
+          position_y?: number
+          created_at?: string
+          min_score_pct?: number | null
+        }
+        Update: {
+          id?: string
+          region_id?: string
+          world_id?: string
+          quiz_id?: string | null
+          name?: string
+          description?: string | null
+          icon?: string
+          order_index?: number
+          position_x?: number
+          position_y?: number
+          created_at?: string
+          min_score_pct?: number | null
+        }
+        Relationships: []
+      }
+      world_progress: {
+        Row: {
+          id: string
+          user_id: string
+          level_id: string
+          world_id: string
+          campaign_id: string | null
+          completed: boolean
+          xp_earned: number
+          score: number
+          completed_at: string | null
+          started_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          level_id: string
+          world_id: string
+          campaign_id?: string | null
+          completed?: boolean
+          xp_earned?: number
+          score?: number
+          completed_at?: string | null
+          started_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          level_id?: string
+          world_id?: string
+          campaign_id?: string | null
+          completed?: boolean
+          xp_earned?: number
+          score?: number
+          completed_at?: string | null
+          started_at?: string
+        }
+        Relationships: []
+      }
+      arena_quizzes: {
+        Row: {
+          id: string
+          campaign_id: string | null
+          title: string
+          description: string | null
+          status: string
+          theme_icon: string
+          theme_color: string
+          theme_type: string
+          xp_per_question: number
+          steps: Json
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          min_score_pct: number | null
+        }
+        Insert: {
+          id?: string
+          campaign_id?: string | null
+          title: string
+          description?: string | null
+          status?: string
+          theme_icon?: string
+          theme_color?: string
+          theme_type?: string
+          xp_per_question?: number
+          steps?: Json
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+          min_score_pct?: number | null
+        }
+        Update: {
+          id?: string
+          campaign_id?: string | null
+          title?: string
+          description?: string | null
+          status?: string
+          theme_icon?: string
+          theme_color?: string
+          theme_type?: string
+          xp_per_question?: number
+          steps?: Json
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+          min_score_pct?: number | null
+        }
+        Relationships: []
+      }
+      arena_progress: {
+        Row: {
+          id: string
+          user_id: string
+          quiz_id: string
+          campaign_id: string | null
+          xp_earned: number
+          completed: boolean
+          score: number
+          total_questions: number
+          completed_at: string | null
+          started_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          quiz_id: string
+          campaign_id?: string | null
+          xp_earned?: number
+          completed?: boolean
+          score?: number
+          total_questions?: number
+          completed_at?: string | null
+          started_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          quiz_id?: string
+          campaign_id?: string | null
+          xp_earned?: number
+          completed?: boolean
+          score?: number
+          total_questions?: number
+          completed_at?: string | null
+          started_at?: string
+        }
+        Relationships: []
+      }
+      guided_missions: {
+        Row: {
+          id: string
+          campaign_id: string | null
+          title: string
+          description: string | null
+          category: string | null
+          status: string
+          steps: Json
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id?: string | null
+          title: string
+          description?: string | null
+          category?: string | null
+          status?: string
+          steps?: Json
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string | null
+          title?: string
+          description?: string | null
+          category?: string | null
+          status?: string
+          steps?: Json
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mission_progress: {
+        Row: {
+          id: string
+          user_id: string
+          mission_id: string
+          campaign_id: string | null
+          xp_earned: number
+          completed: boolean
+          time_seconds: number
+          quiz_score: number
+          completed_at: string | null
+          started_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          mission_id: string
+          campaign_id?: string | null
+          xp_earned?: number
+          completed?: boolean
+          time_seconds?: number
+          quiz_score?: number
+          completed_at?: string | null
+          started_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          mission_id?: string
+          campaign_id?: string | null
+          xp_earned?: number
+          completed?: boolean
+          time_seconds?: number
+          quiz_score?: number
+          completed_at?: string | null
+          started_at?: string
+        }
+        Relationships: []
+      }
+      world_level_attempts: {
+        Row: {
+          id: string
+          user_id: string
+          level_id: string
+          world_id: string
+          campaign_id: string | null
+          score: number
+          completed_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          level_id: string
+          world_id: string
+          campaign_id?: string | null
+          score?: number
+          completed_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          level_id?: string
+          world_id?: string
+          campaign_id?: string | null
+          score?: number
+          completed_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {

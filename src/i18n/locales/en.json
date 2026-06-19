@@ -243,8 +243,14 @@
       "users": "Users",
       "quiz_live": "Live Quiz",
       "simulations": "Simulations",
+      "missions": "Missions",
+      "arena": "Arena",
+      "worlds": "Worlds",
+      "feedback": "Progress",
       "generate_module": "Generate module AI",
-      "back_to_app": "Back to app"
+      "back_to_app": "Back to app",
+      "open_menu": "Open menu",
+      "close_menu": "Close menu"
     },
     "dashboard": {
       "title": "Admin Panel",

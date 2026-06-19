@@ -24,13 +24,13 @@ export function LanguageSwitcher() {
   };
 
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 text-[11px] font-medium">
+    <div className="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 text-[10px] sm:text-[11px] font-medium">
       {LANGS.map((l) => (
         <button
           key={l.code}
           onClick={() => change(l.code)}
           className={cn(
-            'h-7 w-8 rounded-full transition-colors tracking-wider',
+            'h-6 w-6 sm:h-7 sm:w-8 rounded-full transition-colors tracking-wider',
             current === l.code
               ? 'bg-text text-bg'
               : 'text-text-muted hover:text-text',

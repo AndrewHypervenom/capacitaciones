@@ -45,7 +45,7 @@ export default function ModulePreview() {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center gap-2 text-text-muted text-[14px]">
+      <div className="p-4 sm:p-8 flex items-center gap-2 text-text-muted text-[14px]">
         <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
       </div>
     )
@@ -53,7 +53,7 @@ export default function ModulePreview() {
 
   if (!mod) {
     return (
-      <div className="p-8 text-red-400 text-[14px]">
+      <div className="p-4 sm:p-8 text-danger text-[14px]">
         No se encontró el módulo.
       </div>
     )
@@ -73,23 +73,22 @@ export default function ModulePreview() {
     <div className="min-h-screen bg-bg">
       {/* Preview banner */}
       <div
-        className="sticky top-0 z-50 flex items-center justify-between px-6 py-2.5 text-[12px] font-medium"
-        style={{ background: 'rgba(96,165,250,0.12)', borderBottom: '1px solid rgba(96,165,250,0.2)' }}
+        className="sticky top-0 z-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-6 py-2.5 text-[12px] font-medium bg-brand-green/10 border-b border-brand-green/20"
       >
-        <div className="flex items-center gap-2 text-blue-300">
-          <Eye className="h-3.5 w-3.5" />
+        <div className="flex items-center gap-2 text-brand-green">
+          <Eye className="h-3.5 w-3.5 shrink-0" />
           Vista previa — así verá el aprendiz este módulo
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between sm:justify-end gap-3">
           {/* Selector de idioma */}
-          <div className="flex gap-1 p-0.5 rounded-lg bg-blue-400/10">
+          <div className="flex gap-1 p-0.5 rounded-lg bg-brand-green/10">
             {(['es', 'en', 'pt'] as Lang[]).map((l) => (
               <button
                 key={l}
                 onClick={() => setLang(l)}
                 className={cn(
-                  'px-2.5 py-1 rounded-md text-[11px] uppercase font-medium transition-colors',
-                  lang === l ? 'bg-blue-400/20 text-blue-200' : 'text-blue-400/60 hover:text-blue-300',
+                  'flex items-center justify-center px-2.5 rounded-md text-[11px] uppercase font-medium transition-colors min-h-[44px]',
+                  lang === l ? 'bg-brand-green/20 text-brand-green' : 'text-text-muted hover:text-brand-green',
                 )}
               >
                 {l}
@@ -98,7 +97,7 @@ export default function ModulePreview() {
           </div>
           <Link
             to={`/admin/modules/${moduleId}`}
-            className="flex items-center gap-1 text-blue-300 hover:text-blue-100 transition-colors"
+            className="flex items-center gap-1 min-h-[44px] text-brand-green hover:text-text transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> Volver al editor
           </Link>
@@ -124,7 +123,7 @@ export default function ModulePreview() {
 
         {/* Objectives */}
         {objectives.length > 0 && (
-          <div className="mb-14 rounded-2xl bg-subtle border border-line p-7">
+          <div className="mb-14 rounded-2xl bg-subtle border border-line p-4 sm:p-7">
             <div className="flex items-center gap-2 mb-4">
               <span className="text-[11px] uppercase tracking-wider text-text-subtle font-medium">
                 Lo que aprenderás
@@ -142,7 +141,7 @@ export default function ModulePreview() {
         )}
 
         {/* Sections layout */}
-        <div className="grid md:grid-cols-[200px_1fr] gap-12">
+        <div className="grid md:grid-cols-[200px_1fr] gap-8 md:gap-12">
           {/* Sidebar index */}
           {mod.module_sections.length > 1 && (
             <aside className="md:sticky md:top-20 self-start">
@@ -161,7 +160,7 @@ export default function ModulePreview() {
                         })
                       }}
                       className={cn(
-                        'w-full text-left pl-4 pr-2 py-2 text-[13px] transition-colors border-l-2',
+                        'w-full flex items-center text-left pl-4 pr-2 py-2 min-h-[44px] text-[13px] transition-colors border-l-2',
                         activeSection === i
                           ? 'border-brand-green text-text font-medium'
                           : 'border-transparent text-text-muted hover:text-text',
@@ -324,7 +323,7 @@ export default function ModulePreview() {
 
             {/* Key takeaways */}
             {keyTakeaways.length > 0 && (
-              <div className="rounded-2xl bg-subtle border border-line p-7">
+              <div className="rounded-2xl bg-subtle border border-line p-4 sm:p-7">
                 <div className="text-[11px] uppercase tracking-wider text-text-subtle font-medium mb-4">
                   Lo que te llevas
                 </div>
@@ -341,13 +340,13 @@ export default function ModulePreview() {
 
             {/* Empty state */}
             {mod.module_sections.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-line p-12 text-center">
+              <div className="rounded-2xl border border-dashed border-line p-6 sm:p-12 text-center">
                 <p className="text-text-muted text-[14px]">
                   Este módulo no tiene secciones todavía.
                 </p>
                 <Link
                   to={`/admin/modules/${moduleId}`}
-                  className="text-blue-400 text-[13px] mt-2 inline-block hover:underline"
+                  className="text-brand-green text-[13px] mt-2 inline-block hover:underline"
                 >
                   Ir al editor →
                 </Link>
@@ -360,8 +359,7 @@ export default function ModulePreview() {
       {/* Language note */}
       <div className="fixed bottom-4 right-4">
         <div
-          className="px-3 py-1.5 rounded-lg text-[11px] text-blue-300"
-          style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.2)' }}
+          className="px-3 py-1.5 rounded-lg text-[11px] text-brand-green bg-brand-green/10 border border-brand-green/20"
         >
           Idioma: {LANG_LABELS[lang]}
         </div>

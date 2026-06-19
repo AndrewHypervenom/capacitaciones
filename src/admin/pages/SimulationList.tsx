@@ -21,6 +21,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 
 type Tab = 'dialogue' | 'choice'
 
@@ -119,26 +120,26 @@ export default function SimulationList() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-8 max-w-5xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <GradientHeading as="h1" className="text-2xl mb-1">Simulaciones</GradientHeading>
           <p className="text-sm text-text-muted">Escenarios de llamada para agentes</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant="ghost"
-            size="sm"
             onClick={handleSeed}
             disabled={!selectedCampaignId || seeding}
             title="Importar simulaciones de muestra al DB"
+            className="w-full sm:w-auto"
           >
             {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Importar muestra
           </Button>
           <Button
-            size="sm"
             onClick={() => nav(tab === 'dialogue' ? '/admin/simulations/new' : '/admin/simulations/choice/new')}
+            className="w-full sm:w-auto"
           >
             <Plus className="h-4 w-4" /> Nueva simulación
           </Button>
@@ -148,15 +149,12 @@ export default function SimulationList() {
       {isAdmin && campaigns.length > 0 && (
         <div className="mb-6">
           <label className="text-xs text-text-muted mb-1 block">Campaña</label>
-          <select
+          <FilterDropdown
             value={selectedCampaignId}
-            onChange={(e) => setSelectedCampaignId(e.target.value)}
-            className="glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent"
-          >
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            onChange={setSelectedCampaignId}
+            options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+            className="max-w-xs"
+          />
         </div>
       )}
 
@@ -168,7 +166,7 @@ export default function SimulationList() {
               key={key}
               onClick={() => setTab(key)}
               className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all',
+                'flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-lg text-sm transition-all',
                 tab === key
                   ? 'bg-glass-border/10 text-text font-medium'
                   : 'text-text-muted hover:text-text',
@@ -209,7 +207,7 @@ export default function SimulationList() {
                         {row.is_published ? 'Publicado' : 'Borrador'}
                       </NeonBadge>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-text-muted">
+                    <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
                       <span className="font-mono">{row.slug}</span>
                       <span>·</span>
                       <span>{row.country}</span>
@@ -224,20 +222,20 @@ export default function SimulationList() {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleToggleDialogue(row)}
-                      className="p-2 rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                       title={row.is_published ? 'Despublicar' : 'Publicar'}
                     >
                       {row.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                     <button
                       onClick={() => nav(`/admin/simulations/${row.id}`)}
-                      className="p-2 rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteDialogue(row)}
-                      className="p-2 rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
+                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -261,7 +259,7 @@ export default function SimulationList() {
                         {row.level}
                       </NeonBadge>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-text-muted">
+                    <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
                       <span className="font-mono">{row.slug}</span>
                       {row.client_name && <><span>·</span><span>{row.client_name}</span></>}
                     </div>
@@ -269,19 +267,19 @@ export default function SimulationList() {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleToggleChoice(row)}
-                      className="p-2 rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                     >
                       {row.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                     <button
                       onClick={() => nav(`/admin/simulations/choice/${row.id}`)}
-                      className="p-2 rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteChoice(row)}
-                      className="p-2 rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
+                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -299,9 +297,9 @@ function EmptyState({ onNew, onSeed }: { onNew: () => void; onSeed: () => void }
   return (
     <div className="text-center py-16">
       <p className="text-text-muted text-sm mb-4">No hay simulaciones en esta campaña</p>
-      <div className="flex items-center justify-center gap-2">
-        <Button size="sm" onClick={onNew}><Plus className="h-4 w-4" /> Crear nueva</Button>
-        <Button variant="ghost" size="sm" onClick={onSeed}><Download className="h-4 w-4" /> Importar muestra</Button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button onClick={onNew}><Plus className="h-4 w-4" /> Crear nueva</Button>
+        <Button variant="ghost" onClick={onSeed}><Download className="h-4 w-4" /> Importar muestra</Button>
       </div>
     </div>
   )

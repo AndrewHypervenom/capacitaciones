@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 
 const CACHE_KEY = 'ai_module_cache_expires'
 const CACHE_DURATION_MS = 5 * 60 * 1000
@@ -172,16 +173,16 @@ export default function ModuleGenerator() {
   }
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-3xl mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-8">
+      <div className="flex items-center gap-3 mb-6 sm:mb-8">
         <button
           onClick={() => nav('/admin/modules')}
-          className="p-2 rounded-xl hover:bg-glass/8 text-text-muted hover:text-text transition-colors"
+          className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-glass/8 text-text-muted hover:text-text transition-colors shrink-0"
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <GradientHeading as="h1" className="text-2xl mb-0.5">Generar módulo con IA</GradientHeading>
           <p className="text-sm text-text-muted">
             Claude crea el módulo completo en 3 idiomas a partir de tu descripción o documento
@@ -199,19 +200,16 @@ export default function ModuleGenerator() {
       {isAdmin && campaigns.length > 0 && (
         <GlassCard className="p-4 mb-4">
           <label className="text-xs font-medium text-text-muted mb-1.5 block">Campaña destino</label>
-          <select
+          <FilterDropdown
             value={selectedCampaignId}
-            onChange={(e) => setSelectedCampaignId(e.target.value)}
-            className="glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent w-full"
-          >
-            <option value="">— Seleccionar campaña —</option>
-            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+            onChange={setSelectedCampaignId}
+            options={[{ value: '', label: '— Seleccionar campaña —' }, ...campaigns.map((c) => ({ value: c.id, label: c.name }))]}
+          />
         </GlassCard>
       )}
 
       {/* Input form */}
-      <GlassCard className="p-5 mb-4">
+      <GlassCard className="p-4 sm:p-5 mb-4">
         <label className="text-xs font-medium text-text-muted mb-1.5 block">
           ¿Sobre qué trata el módulo? <span className="text-danger">*</span>
         </label>
@@ -242,7 +240,7 @@ export default function ModuleGenerator() {
             <button
               onClick={() => setDocMode(docMode === 'paste' ? 'none' : 'paste')}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all',
+                'flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-lg text-xs border transition-all',
                 docMode === 'paste'
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/20 text-text-muted hover:text-text hover:border-glass-border/40',
@@ -253,7 +251,7 @@ export default function ModuleGenerator() {
             <button
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all',
+                'flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-lg text-xs border transition-all',
                 docMode === 'file' && fileName
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/20 text-text-muted hover:text-text hover:border-glass-border/40',
@@ -358,9 +356,9 @@ function ModulePreview({
   }
 
   return (
-    <GlassCard className="p-5 space-y-5">
+    <GlassCard className="p-4 sm:p-5 space-y-5">
       {/* Header row */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 text-brand-green" />
           <span className="text-sm font-medium text-text">Módulo generado</span>
@@ -369,17 +367,17 @@ function ModulePreview({
           {!savedModuleId && (
             <button
               onClick={onRegenerate}
-              className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors px-2 py-1.5 rounded-lg hover:bg-glass/8"
+              className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors px-2 py-1.5 rounded-lg hover:bg-glass/8 shrink-0"
             >
               <RotateCcw className="h-3 w-3" /> Regenerar
             </button>
           )}
           {savedModuleId ? (
-            <Button size="sm" onClick={onEdit}>
+            <Button onClick={onEdit} className="flex-1 sm:flex-none">
               <BookOpen className="h-4 w-4" /> Editar módulo →
             </Button>
           ) : (
-            <Button size="sm" onClick={onSave} disabled={saving || !canSave}>
+            <Button onClick={onSave} disabled={saving || !canSave} className="flex-1 sm:flex-none">
               {saving
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <BookOpen className="h-4 w-4" />}

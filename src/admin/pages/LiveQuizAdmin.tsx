@@ -4,6 +4,7 @@ import {
   Loader2, Zap, X, BarChart2, RefreshCw,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { LiveQuiz, QuizQuestion, Campaign, QuizLeaderboardEntry, LiveQuizAnswer } from '@/types/database'
@@ -287,15 +288,15 @@ export default function LiveQuizAdmin() {
 
   // ── Vista de lista ──────────────────────────────────────────────────────────
   if (view === 'list') return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-8">
+      <div className="flex items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-text">Quiz en Vivo</h1>
           <p className="text-text-muted text-[13px] mt-1">Sesiones interactivas tipo Kahoot para tus participantes.</p>
         </div>
         <button
           onClick={() => { setFormTitle(''); setFormCampaign(campaignId ?? ''); setFormQuestions([emptyQuestion()]); setView('create') }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black"
+          className="flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-medium text-black shrink-0"
           style={{ background: '#00C228' }}
         >
           <Zap className="h-4 w-4" />
@@ -308,7 +309,7 @@ export default function LiveQuizAdmin() {
         <div className="flex gap-2 flex-wrap mb-5">
           <button
             onClick={() => setFilterCampaign('all')}
-            className={`px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === 'all' ? 'text-[#00C228]' : 'bg-subtle text-text-muted hover:text-text'}`}
+            className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === 'all' ? 'text-[#00C228]' : 'bg-subtle text-text-muted hover:text-text'}`}
             style={filterCampaign === 'all' ? { background: 'rgba(0,194,40,0.12)', border: '1px solid rgba(0,194,40,0.3)' } : {}}
           >
             Todas
@@ -317,7 +318,7 @@ export default function LiveQuizAdmin() {
             <button
               key={c.id}
               onClick={() => setFilterCampaign(c.id)}
-              className={`px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === c.id ? 'text-[#00C228]' : 'bg-subtle text-text-muted hover:text-text'}`}
+              className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === c.id ? 'text-[#00C228]' : 'bg-subtle text-text-muted hover:text-text'}`}
               style={filterCampaign === c.id ? { background: 'rgba(0,194,40,0.12)', border: '1px solid rgba(0,194,40,0.3)' } : {}}
             >
               {c.name}
@@ -333,7 +334,8 @@ export default function LiveQuizAdmin() {
           {quizzes.length === 0 ? 'No hay quizzes aun. ¡Crea el primero!' : 'No hay quizzes para esta campaña.'}
         </div>
       ) : (
-        <div className="rounded-2xl overflow-hidden border border-line">
+        <div className="rounded-2xl border border-line overflow-x-auto">
+        <div className="min-w-[720px]">
           <div className={`grid ${isAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
             <span>Titulo</span>
             {isAdmin && <span>Campaña</span>}
@@ -366,40 +368,40 @@ export default function LiveQuizAdmin() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => { setActiveQuiz(q); setView('session') }}
-                    className="text-[12px] text-text-muted hover:text-text px-3 py-1 rounded-lg hover:bg-subtle transition-colors whitespace-nowrap"
+                    className="inline-flex items-center min-h-[36px] text-[12px] text-text-muted hover:text-text px-3 py-1 rounded-lg hover:bg-subtle transition-colors whitespace-nowrap"
                   >
                     Gestionar →
                   </button>
                   <button
                     onClick={() => handleDuplicate(q)}
                     title="Duplicar"
-                    className="p-1.5 rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
                   >
-                    <Copy className="h-3.5 w-3.5" />
+                    <Copy className="h-4 w-4" />
                   </button>
                   {deleteConfirm === q.id ? (
                     <>
                       <button
                         onClick={() => handleDelete(q.id)}
-                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-400/10 transition-colors"
+                        className="h-9 w-9 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-400/10 transition-colors"
                         title="Confirmar eliminación"
                       >
-                        <Check className="h-3.5 w-3.5" />
+                        <Check className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(null)}
-                        className="p-1.5 rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
+                        className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <X className="h-4 w-4" />
                       </button>
                     </>
                   ) : (
                     <button
                       onClick={() => setDeleteConfirm(q.id)}
-                      className="p-1.5 rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-400/10 transition-colors"
                       title="Eliminar"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   )}
                 </div>
@@ -407,14 +409,15 @@ export default function LiveQuizAdmin() {
             )
           })}
         </div>
+        </div>
       )}
     </div>
   )
 
   // ── Vista de creación ────────────────────────────────────────────────────────
   if (view === 'create') return (
-    <div className="p-8 max-w-2xl">
-      <button onClick={() => setView('list')} className="flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
+    <div className="p-4 sm:p-8 max-w-2xl">
+      <button onClick={() => setView('list')} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
         <ChevronLeft className="h-4 w-4" /> Volver
       </button>
       <h1 className="text-[22px] font-bold text-text mb-6">Crear quiz</h1>
@@ -425,23 +428,23 @@ export default function LiveQuizAdmin() {
           placeholder="Titulo del quiz"
           value={formTitle}
           onChange={(e) => setFormTitle(e.target.value)}
-          className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#00C228] transition-colors"
+          className="w-full rounded-xl px-4 py-2.5 min-h-[44px] text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#00C228] transition-colors"
         />
         {isAdmin && campaigns.length > 0 && (
-          <select
+          <FilterDropdown
             value={formCampaign}
-            onChange={(e) => setFormCampaign(e.target.value)}
-            className="w-full rounded-xl px-4 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none"
-          >
-            <option value="">Seleccionar campaña</option>
-            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+            onChange={setFormCampaign}
+            options={[
+              { value: '', label: 'Seleccionar campaña' },
+              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
         )}
       </div>
 
       <div className="space-y-4 mb-6">
         {formQuestions.map((q, qi) => (
-          <div key={qi} className="rounded-2xl p-5 bg-subtle border border-line">
+          <div key={qi} className="rounded-2xl p-4 sm:p-5 bg-subtle border border-line">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[12px] text-text-muted uppercase tracking-wider">Pregunta {qi + 1}</span>
               {formQuestions.length > 1 && (
@@ -458,7 +461,7 @@ export default function LiveQuizAdmin() {
               onChange={(e) => updateQuestion(qi, { text: e.target.value })}
               className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-surface border border-line outline-none focus:border-[#00C228] transition-colors mb-3"
             />
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
               {q.options.map((opt, oi) => (
                 <div key={oi} className="flex items-center gap-2">
                   <button
@@ -486,13 +489,13 @@ export default function LiveQuizAdmin() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] text-text-subtle">Tiempo:</span>
               {[10, 15, 20, 30, 45].map((t) => (
                 <button
                   key={t}
                   onClick={() => updateQuestion(qi, { timeLimitSec: t })}
-                  className="px-2.5 py-1 rounded-lg text-[11px] transition-colors"
+                  className="flex items-center justify-center min-h-[36px] px-2.5 py-1 rounded-lg text-[11px] transition-colors"
                   style={{
                     background: q.timeLimitSec === t ? 'rgba(0,194,40,0.15)' : 'rgb(var(--line))',
                     color: q.timeLimitSec === t ? '#00C228' : 'rgb(var(--text-muted))',
@@ -506,7 +509,7 @@ export default function LiveQuizAdmin() {
         ))}
         <button
           onClick={() => setFormQuestions((prev) => [...prev, emptyQuestion()])}
-          className="w-full rounded-xl py-3 text-[13px] text-text-muted hover:text-text border border-dashed border-line hover:border-line transition-colors flex items-center justify-center gap-2"
+          className="w-full rounded-xl py-3 min-h-[44px] text-[13px] text-text-muted hover:text-text border border-dashed border-line hover:border-line transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="h-4 w-4" /> Agregar pregunta
         </button>
@@ -515,7 +518,7 @@ export default function LiveQuizAdmin() {
       <button
         onClick={handleCreate}
         disabled={creating || !formTitle.trim() || formQuestions.some((q) => !q.text.trim())}
-        className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-medium text-black disabled:opacity-50"
+        className="flex items-center gap-2 px-6 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black disabled:opacity-50"
         style={{ background: '#00C228' }}
       >
         {creating && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -530,14 +533,14 @@ export default function LiveQuizAdmin() {
   const isLast = activeQuiz.current_question >= activeQuiz.questions.length - 1
 
   return (
-    <div className="p-8 max-w-2xl relative">
-      <button onClick={() => setView('list')} className="flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
+    <div className="p-4 sm:p-8 max-w-2xl relative">
+      <button onClick={() => setView('list')} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
         <ChevronLeft className="h-4 w-4" /> Volver a la lista
       </button>
 
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-[20px] font-bold text-text">{activeQuiz.title}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+        <div className="min-w-0">
+          <h1 className="text-[20px] font-bold text-text break-words">{activeQuiz.title}</h1>
           <span className={`text-[11px] px-2 py-0.5 rounded-full inline-block mt-1 ${
             activeQuiz.status === 'lobby' ? 'bg-yellow-400/10 text-yellow-400' :
             activeQuiz.status === 'active' ? 'bg-green-400/10 text-green-400' :
@@ -552,15 +555,15 @@ export default function LiveQuizAdmin() {
             </div>
           )}
         </div>
-        <div className="text-right">
+        <div className="sm:text-right">
           <div className="text-[11px] text-text-subtle uppercase tracking-wider mb-1">PIN de acceso</div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:justify-end">
             <span className="font-mono text-[28px] font-bold text-text tracking-widest">{activeQuiz.pin}</span>
-            <button onClick={copyPin} className="text-text-subtle hover:text-text transition-colors">
+            <button onClick={copyPin} className="h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors">
               {pinCopied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
             </button>
           </div>
-          <div className="text-[11px] text-text-subtle mt-1">
+          <div className="text-[11px] text-text-subtle mt-1 break-all">
             {window.location.origin}/quiz
           </div>
         </div>
@@ -568,7 +571,7 @@ export default function LiveQuizAdmin() {
 
       {/* Estado de lobby */}
       {activeQuiz.status === 'lobby' && (
-        <div className="rounded-2xl p-8 text-center mb-6 bg-subtle border border-line">
+        <div className="rounded-2xl p-4 sm:p-8 text-center mb-6 bg-subtle border border-line">
           <div className="text-text-muted text-[14px] mb-4">Comparte el PIN con los participantes y luego inicia.</div>
           <button
             onClick={startQuiz}
@@ -584,7 +587,7 @@ export default function LiveQuizAdmin() {
 
       {/* Pregunta activa */}
       {activeQuiz.status === 'active' && q && (
-        <div className="rounded-2xl p-5 mb-4 bg-subtle border border-line">
+        <div className="rounded-2xl p-4 sm:p-5 mb-4 bg-subtle border border-line">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] text-text-muted uppercase tracking-wider">
               Pregunta {activeQuiz.current_question + 1} de {activeQuiz.questions.length}
@@ -603,7 +606,7 @@ export default function LiveQuizAdmin() {
                 <div key={oi}>
                   <div className="flex items-center gap-3 mb-0.5">
                     <span className="text-[11px] font-bold w-5 shrink-0" style={{ color: OPTION_COLORS[oi] }}>{OPTION_LABELS[oi]}</span>
-                    <span className="text-[12px] text-text-muted flex-1">{opt}</span>
+                    <span className="text-[12px] text-text-muted flex-1 min-w-0">{opt}</span>
                     {isCorrect && <span className="text-[11px] text-green-400">✓ Correcta</span>}
                     <span className="text-[12px] text-text-muted tabular-nums">{count}</span>
                   </div>
@@ -629,7 +632,7 @@ export default function LiveQuizAdmin() {
           <button
             onClick={nextQuestion}
             disabled={advancing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-medium text-black"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black"
             style={{ background: '#00C228' }}
           >
             {advancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
@@ -637,7 +640,7 @@ export default function LiveQuizAdmin() {
           </button>
           <button
             onClick={() => { void loadLeaderboard(activeQuiz.id); setShowLeaderboard(true) }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle transition-colors"
           >
             <BarChart2 className="h-3.5 w-3.5" />
             Clasificacion
@@ -645,7 +648,7 @@ export default function LiveQuizAdmin() {
           <button
             onClick={endQuiz}
             disabled={advancing}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle transition-colors"
           >
             <Square className="h-3.5 w-3.5" />
             Terminar
@@ -655,13 +658,13 @@ export default function LiveQuizAdmin() {
 
       {/* Estado terminado */}
       {activeQuiz.status === 'ended' && (
-        <div className="rounded-2xl p-6 bg-subtle border border-line">
+        <div className="rounded-2xl p-4 sm:p-6 bg-subtle border border-line">
           <div className="text-[16px] font-semibold text-text mb-1">Quiz terminado</div>
           <div className="text-[13px] text-text-muted mb-5">Los participantes pueden ver su puntaje final.</div>
           <div className="flex gap-3 flex-wrap">
             <button
               onClick={() => { void loadLeaderboard(activeQuiz.id); setShowLeaderboard(true) }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium text-black"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black"
               style={{ background: '#00C228' }}
             >
               <BarChart2 className="h-4 w-4" />
@@ -670,7 +673,7 @@ export default function LiveQuizAdmin() {
             <button
               onClick={restartQuiz}
               disabled={advancing}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle border border-line transition-colors"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle border border-line transition-colors"
             >
               {advancing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Reiniciar con nuevo PIN
@@ -699,7 +702,7 @@ export default function LiveQuizAdmin() {
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0">
                 <span className="text-[14px] font-semibold text-text">Clasificacion</span>
-                <button onClick={() => setShowLeaderboard(false)} className="text-text-subtle hover:text-text transition-colors">
+                <button onClick={() => setShowLeaderboard(false)} className="h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
