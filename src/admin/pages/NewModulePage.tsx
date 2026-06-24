@@ -7,7 +7,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { createModule, upsertSection } from '@/services/modules.service'
+import { createModule, saveGeneratedModule } from '@/services/modules.service'
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
 import { confirmDialog } from '@/components/ui/ConfirmDialog'
 import i18n from '@/i18n'
@@ -221,58 +221,13 @@ function AIModeForm({
     if (!generated || !campaignId) return
     setSaving(true)
     try {
-      const { metadata, sections } = generated
-      const { id: moduleId } = await createModule(campaignId, {
-        slug: metadata.slug || slugify(metadata.title_es),
-        icon: metadata.icon,
-        duration_min: metadata.duration_min,
-        title_es: metadata.title_es,
-        title_en: metadata.title_en,
-        title_pt: metadata.title_pt,
-        subtitle_es: metadata.subtitle_es,
-        subtitle_en: metadata.subtitle_en,
-        subtitle_pt: metadata.subtitle_pt,
-      })
-      await supabase.from('modules').update({
-        objectives_es: metadata.objectives_es,
-        objectives_en: metadata.objectives_en,
-        objectives_pt: metadata.objectives_pt,
-        key_takeaways_es: metadata.key_takeaways_es,
-        key_takeaways_en: metadata.key_takeaways_en,
-        key_takeaways_pt: metadata.key_takeaways_pt,
-      }).eq('id', moduleId)
-      for (let i = 0; i < sections.length; i++) {
-        const s = sections[i]
-        await upsertSection({
-          module_id: moduleId,
-          sort_order: i + 1,
-          heading_es: s.heading_es,
-          heading_en: s.heading_en,
-          heading_pt: s.heading_pt,
-          body_es: s.body_es,
-          body_en: s.body_en,
-          body_pt: s.body_pt,
-          section_style: (s.section_style as 'default') ?? 'default',
-          callout_kind: s.callout_kind as 'tip' | 'important' | 'warning' | 'success' | 'note' | null,
-          callout_es: s.callout_es,
-          callout_en: s.callout_en,
-          callout_pt: s.callout_pt,
-        })
-      }
+      const moduleId = await saveGeneratedModule(campaignId, generated)
       toast.success('Módulo creado. Abriendo editor...')
       onCreated(moduleId)
     } catch (e) {
       toast.error(`Error: ${(e as Error).message}`)
       setSaving(false)
     }
-  }
-
-  const calloutColor: Record<string, string> = {
-    tip: 'text-brand-cyan bg-brand-cyan/8 border-brand-cyan/20',
-    important: 'text-brand-amber bg-brand-amber/8 border-brand-amber/20',
-    warning: 'text-danger bg-danger/8 border-danger/20',
-    success: 'text-brand-green bg-brand-green/8 border-brand-green/20',
-    note: 'text-text-muted bg-glass/8 border-glass-border/20',
   }
 
   return (
@@ -465,14 +420,9 @@ function AIModeForm({
                   <div key={i} className="flex items-center gap-2.5 py-2 px-3 rounded-xl bg-glass/3 border border-glass-border/6">
                     <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">{i + 1}</span>
                     <span className="text-[12px] text-text flex-1 truncate">{s.heading_es}</span>
-                    {s.callout_kind && (
-                      <span className={cn(
-                        'text-[9px] px-1.5 py-0.5 rounded border font-medium shrink-0',
-                        calloutColor[s.callout_kind] ?? calloutColor.note,
-                      )}>
-                        {s.callout_kind}
-                      </span>
-                    )}
+                    <span className="text-[9px] text-text-subtle shrink-0">
+                      {s.blocks?.length ?? 0} bloques
+                    </span>
                   </div>
                 ))}
               </div>

@@ -11,8 +11,10 @@ export interface ExtractedDocument {
   text: string
   fileName: string
   kind: 'word' | 'excel' | 'pdf' | 'text'
-  /** Imágenes/páginas para que la IA las analice visualmente (gráficos, diagramas, fotos). */
+  /** Figuras reales del documento (diagramas, fotos): se pueden insertar en las secciones. */
   images: ExtractedImage[]
+  /** Imágenes solo para que la IA "lea" el documento (páginas escaneadas): NO se insertan. */
+  contextImages: ExtractedImage[]
 }
 
 const WORD_EXT = ['.docx']
@@ -25,9 +27,12 @@ export const ACCEPTED_DOC_EXTENSIONS = [...WORD_EXT, ...EXCEL_EXT, ...PDF_EXT, .
 
 // Límites para controlar tamaño de la petición y costo de la visión.
 const MAX_IMAGES = 20
+const MIN_FIGURE_DIM = 160 // descarta logos/íconos diminutos
+const FIGURE_MAX_DIM = 1100 // techo de resolución de figuras (controla peso de la petición)
 const PDF_RENDER_MAX_DIM = 1500
 const PDF_JPEG_QUALITY = 0.72
-const MIN_EMBEDDED_IMAGE_B64 = 2000 // descarta íconos/viñetas diminutas
+const FIGURE_JPEG_QUALITY = 0.82
+const MIN_EMBEDDED_IMAGE_B64 = 2000 // descarta íconos/viñetas diminutas (Word)
 
 const SUPPORTED_IMAGE_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -70,43 +75,123 @@ async function excelToText(buffer: ArrayBuffer): Promise<string> {
     .join('\n\n')
 }
 
-/**
- * Procesa un PDF: extrae el texto de todas las páginas y renderiza las primeras
- * páginas a imagen para que la IA las analice visualmente (gráficos, layout, etc.).
- */
-async function parsePdf(buffer: ArrayBuffer): Promise<{ text: string; images: ExtractedImage[] }> {
-  const pdfjs = await import('pdfjs-dist')
-  pdfjs.GlobalWorkerOptions.workerSrc = (
-    await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
-  ).default
+// ─── PDF ──────────────────────────────────────────────────────
 
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise
-  const pages: string[] = []
-  const images: ExtractedImage[] = []
+interface PdfImageObject {
+  width?: number
+  height?: number
+  kind?: number // pdfjs ImageKind: 1=GRAYSCALE_1BPP, 2=RGB_24BPP, 3=RGBA_32BPP
+  bitmap?: CanvasImageSource
+  data?: Uint8ClampedArray | Uint8Array | number[]
+}
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i)
+/** Expande los datos crudos de una imagen de PDF a RGBA para pintarla en un canvas. */
+function pdfDataToRgba(
+  data: Uint8ClampedArray | Uint8Array | number[],
+  kind: number | undefined,
+  px: number,
+): Uint8ClampedArray<ArrayBuffer> | null {
+  const out = new Uint8ClampedArray(px * 4)
+  if (kind === 3) {
+    out.set(data as ArrayLike<number>)
+    return out
+  }
+  if (kind === 2) {
+    for (let i = 0, j = 0; i < px; i++) {
+      out[j++] = data[i * 3]
+      out[j++] = data[i * 3 + 1]
+      out[j++] = data[i * 3 + 2]
+      out[j++] = 255
+    }
+    return out
+  }
+  return null // grayscale u otros formatos: se omiten
+}
 
-    const content = await page.getTextContent()
-    const pageText = content.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join(' ')
-      .trim()
-    if (pageText) pages.push(pageText)
+/** Convierte un objeto de imagen embebida de pdf.js a JPEG base64 (sin prefijo data:). */
+function pdfImageToBase64(obj: PdfImageObject): string | null {
+  const width = obj.width ?? 0
+  const height = obj.height ?? 0
+  if (!width || !height || Math.max(width, height) < MIN_FIGURE_DIM) return null
 
-    if (images.length < MAX_IMAGES) {
-      const base64 = await renderPdfPage(page)
-      if (base64) images.push({ mediaType: 'image/jpeg', dataBase64: base64 })
+  // Pinta la imagen a su resolución nativa.
+  const src = document.createElement('canvas')
+  src.width = width
+  src.height = height
+  const sctx = src.getContext('2d')
+  if (!sctx) return null
+
+  if (obj.bitmap) {
+    sctx.drawImage(obj.bitmap, 0, 0, width, height)
+  } else if (obj.data) {
+    const rgba = pdfDataToRgba(obj.data, obj.kind, width * height)
+    if (!rgba) return null
+    sctx.putImageData(new ImageData(rgba, width, height), 0, 0)
+  } else {
+    return null
+  }
+
+  // Reduce la resolución si supera el techo, para no inflar la petición.
+  const scale = Math.min(1, FIGURE_MAX_DIM / Math.max(width, height))
+  let out = src
+  if (scale < 1) {
+    const dst = document.createElement('canvas')
+    dst.width = Math.round(width * scale)
+    dst.height = Math.round(height * scale)
+    const dctx = dst.getContext('2d')
+    if (!dctx) return null
+    dctx.drawImage(src, 0, 0, dst.width, dst.height)
+    out = dst
+  }
+
+  const base64 = out.toDataURL('image/jpeg', FIGURE_JPEG_QUALITY).split(',')[1] ?? null
+  src.width = 0
+  src.height = 0
+  return base64
+}
+
+/** Extrae las figuras embebidas (diagramas, gráficos, fotos) de un PDF. */
+async function extractPdfFigures(
+  pdf: import('pdfjs-dist').PDFDocumentProxy,
+  pdfjs: typeof import('pdfjs-dist'),
+): Promise<ExtractedImage[]> {
+  const figures: ExtractedImage[] = []
+  const seen = new Set<string>()
+  const maxPages = Math.min(pdf.numPages, 30)
+
+  for (let p = 1; p <= maxPages && figures.length < MAX_IMAGES; p++) {
+    const page = await pdf.getPage(p)
+    const ops = await page.getOperatorList()
+
+    const names: string[] = []
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      if (ops.fnArray[i] === pdfjs.OPS.paintImageXObject) {
+        const arg = ops.argsArray[i][0]
+        if (typeof arg === 'string') names.push(arg)
+      }
+    }
+
+    for (const name of names) {
+      if (figures.length >= MAX_IMAGES) break
+      try {
+        const obj = await new Promise<PdfImageObject>((res) => page.objs.get(name, res as () => void))
+        const base64 = pdfImageToBase64(obj)
+        if (!base64) continue
+        const sig = `${base64.length}:${base64.slice(0, 48)}`
+        if (seen.has(sig)) continue // misma figura repetida en varias páginas
+        seen.add(sig)
+        figures.push({ mediaType: 'image/jpeg', dataBase64: base64 })
+      } catch {
+        // imagen no decodificable: se omite
+      }
     }
   }
 
-  return { text: pages.join('\n\n'), images }
+  return figures
 }
 
 /** Renderiza una página de PDF a un JPEG en base64 (sin prefijo data:). */
-async function renderPdfPage(
-  page: import('pdfjs-dist').PDFPageProxy,
-): Promise<string | null> {
+async function renderPdfPage(page: import('pdfjs-dist').PDFPageProxy): Promise<string | null> {
   const base = page.getViewport({ scale: 1 })
   const scale = Math.min(2, PDF_RENDER_MAX_DIM / Math.max(base.width, base.height))
   const viewport = page.getViewport({ scale })
@@ -116,7 +201,6 @@ async function renderPdfPage(
   canvas.height = Math.floor(viewport.height)
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
-  // Fondo blanco: evita zonas negras en PDFs con transparencia.
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -126,6 +210,52 @@ async function renderPdfPage(
   canvas.height = 0
   return dataUrl.split(',')[1] ?? null
 }
+
+/**
+ * Procesa un PDF: extrae el texto, las figuras embebidas (insertables) y, solo si el PDF
+ * no tiene texto (escaneado), renderiza las páginas como imágenes de contexto para la visión.
+ */
+async function parsePdf(buffer: ArrayBuffer): Promise<{
+  text: string
+  figures: ExtractedImage[]
+  pageImages: ExtractedImage[]
+}> {
+  const pdfjs = await import('pdfjs-dist')
+  pdfjs.GlobalWorkerOptions.workerSrc = (
+    await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+  ).default
+
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise
+
+  const pagesText: string[] = []
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const pageText = content.items
+      .map((item) => ('str' in item ? item.str : ''))
+      .join(' ')
+      .trim()
+    if (pageText) pagesText.push(pageText)
+  }
+  const text = pagesText.join('\n\n')
+
+  const figures = await extractPdfFigures(pdf, pdfjs)
+
+  // Solo para PDFs escaneados (sin texto): renderizamos páginas para que la IA pueda leerlas.
+  const pageImages: ExtractedImage[] = []
+  if (!text) {
+    const maxPages = Math.min(pdf.numPages, MAX_IMAGES)
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await pdf.getPage(i)
+      const base64 = await renderPdfPage(page)
+      if (base64) pageImages.push({ mediaType: 'image/jpeg', dataBase64: base64 })
+    }
+  }
+
+  return { text, figures, pageImages }
+}
+
+// ─── Word ─────────────────────────────────────────────────────
 
 /** Extrae las imágenes embebidas de un .docx (gráficos, capturas, fotos). */
 async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]> {
@@ -150,17 +280,20 @@ async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]>
   return images
 }
 
+// ─── Orquestador ──────────────────────────────────────────────
+
 /**
  * Extrae texto e imágenes de un archivo Word (.docx), Excel (.xlsx/.xls/.csv),
- * PDF (.pdf) o texto (.txt/.md). Las imágenes permiten que la IA analice gráficos
- * y diagramas, no solo el texto. Lanza un error legible si el formato no está
- * soportado o no hay contenido aprovechable.
+ * PDF (.pdf) o texto (.txt/.md). Devuelve las figuras insertables por separado de
+ * las imágenes que solo sirven para que la IA lea el documento. Lanza un error
+ * legible si el formato no está soportado o no hay contenido aprovechable.
  */
 export async function extractDocumentText(file: File): Promise<ExtractedDocument> {
   const ext = extOf(file.name)
 
   let text = ''
   let images: ExtractedImage[] = []
+  let contextImages: ExtractedImage[] = []
   let kind: ExtractedDocument['kind']
 
   if (WORD_EXT.includes(ext)) {
@@ -181,7 +314,8 @@ export async function extractDocumentText(file: File): Promise<ExtractedDocument
     const buffer = await readAsArrayBuffer(file)
     const parsed = await parsePdf(buffer)
     text = parsed.text
-    images = parsed.images
+    images = parsed.figures
+    contextImages = parsed.pageImages
   } else if (TEXT_EXT.includes(ext)) {
     kind = 'text'
     text = await readAsText(file)
@@ -192,9 +326,9 @@ export async function extractDocumentText(file: File): Promise<ExtractedDocument
   }
 
   text = text.trim()
-  if (!text && images.length === 0) {
+  if (!text && images.length === 0 && contextImages.length === 0) {
     throw new Error('El archivo no contiene contenido aprovechable (ni texto ni imágenes legibles).')
   }
 
-  return { text, fileName: file.name, kind, images }
+  return { text, fileName: file.name, kind, images, contextImages }
 }

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import type { ContentBlock } from '@/types/blocks'
 
 export interface CacheUsage {
   cache_creation_input_tokens: number
@@ -49,14 +50,18 @@ export interface GeneratedModuleMeta {
   key_takeaways_es: string[]; key_takeaways_en: string[]; key_takeaways_pt: string[]
 }
 
+/**
+ * Bloque tal como lo emite la IA: idéntico a `ContentBlock` del sitio, salvo que las
+ * imágenes referencian `image_index` (la URL real se resuelve al guardar el módulo).
+ */
+export type GeneratedBlock =
+  | Exclude<ContentBlock, { type: 'image' }>
+  | { type: 'image'; image_index: number; caption?: { es: string; en: string; pt: string } }
+
 export interface GeneratedModuleSection {
   heading_es: string; heading_en: string; heading_pt: string
-  body_es: string[]; body_en: string[]; body_pt: string[]
-  section_style: string
-  callout_kind: string | null
-  callout_es: string | null; callout_en: string | null; callout_pt: string | null
-  /** Índice (0-based) de la imagen del documento que ilustra la sección, o null. */
-  image_index?: number | null
+  /** Contenido dinámico de la sección (párrafos, listas, quiz, flashcards, etc.). */
+  blocks: GeneratedBlock[]
 }
 
 export interface GeneratedModule {
@@ -98,11 +103,22 @@ export interface DocImage {
   dataBase64: string
 }
 
-export async function generateModule(opts: {
-  description: string
+/** Contexto del documento compartido por las llamadas de generación (se cachea en el servidor). */
+export interface DocContext {
   documentText?: string
   images?: DocImage[]
-}): Promise<{ data: GeneratedModule; usage: CacheUsage }> {
+  contextImages?: DocImage[]
+}
+
+/** Esquema de un módulo: metadata + títulos de sección, sin el contenido de los bloques. */
+export interface ModuleOutline {
+  metadata: GeneratedModuleMeta
+  sections: { heading_es: string; heading_en: string; heading_pt: string }[]
+}
+
+async function postGenerateModule(
+  body: Record<string, unknown>,
+): Promise<{ data: unknown; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')
 
@@ -115,7 +131,7 @@ export async function generateModule(opts: {
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(opts),
+      body: JSON.stringify(body),
     },
   )
 
@@ -123,8 +139,38 @@ export async function generateModule(opts: {
   if (!response.ok || result.error) {
     throw new Error(result.error ?? 'Error generando módulo')
   }
+  return { data: result.data, usage: result.usage as CacheUsage }
+}
 
-  return { data: result.data as GeneratedModule, usage: result.usage as CacheUsage }
+export async function generateModule(opts: {
+  description: string
+} & DocContext): Promise<{ data: GeneratedModule; usage: CacheUsage }> {
+  const { data, usage } = await postGenerateModule({ ...opts })
+  return { data: data as GeneratedModule, usage }
+}
+
+/** Paso 1 (a prueba de límites): genera solo el esquema del módulo. */
+export async function generateModuleOutline(opts: {
+  description: string
+} & DocContext): Promise<{ data: ModuleOutline; usage: CacheUsage }> {
+  const { data, usage } = await postGenerateModule({ mode: 'outline', ...opts })
+  return { data: data as ModuleOutline, usage }
+}
+
+/** Paso 2 (a prueba de límites): genera los bloques de UNA sección. */
+export async function generateModuleSection(opts: {
+  description: string
+  moduleTitle: string
+  moduleSubtitle?: string
+  objectives?: string[]
+  sectionHeading: string
+  sectionIndex: number
+  totalSections: number
+  allHeadings: string[]
+} & DocContext): Promise<{ data: { blocks: GeneratedBlock[] }; usage: CacheUsage }> {
+  const { data, usage } = await postGenerateModule({ mode: 'section', ...opts })
+  const blocks = (data as { blocks?: GeneratedBlock[] })?.blocks ?? []
+  return { data: { blocks }, usage }
 }
 
 export interface ProposedModule {
@@ -138,6 +184,7 @@ export async function analyzeDocument(opts: {
   instructions?: string
   campaignName?: string
   images?: DocImage[]
+  contextImages?: DocImage[]
 }): Promise<{ data: { modules: ProposedModule[] }; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')

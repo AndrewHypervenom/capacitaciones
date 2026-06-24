@@ -9,13 +9,13 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
   extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
-  type ExtractedDocument, type ExtractedImage,
+  type ExtractedDocument,
 } from '@/lib/documentExtract'
 import {
-  analyzeDocument, generateModule,
+  analyzeDocument, generateModuleOutline, generateModuleSection,
   type ProposedModule, type GeneratedModule,
 } from '@/services/ai.service'
-import { createModule, upsertSection, uploadSectionMedia } from '@/services/modules.service'
+import { saveGeneratedModule } from '@/services/modules.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -31,95 +31,14 @@ interface GenItem {
   proposed: ProposedModule
   status: 'pending' | 'generating' | 'done' | 'error'
   generated?: GeneratedModule
+  progress?: string
   error?: string
 }
-
-const slugify = (s: string) =>
-  s.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim().replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 60)
 
 function buildDescription(p: ProposedModule): string {
   const parts = [p.focus_es?.trim() || p.title_es]
   if (p.topics?.length) parts.push(`Subtemas a cubrir: ${p.topics.join(', ')}.`)
   return parts.join('\n')
-}
-
-function base64ToFile(base64: string, mediaType: string, baseName: string): File {
-  const ext = (mediaType.split('/')[1] ?? 'jpg').replace('jpeg', 'jpg')
-  const bin = atob(base64)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return new File([bytes], `${baseName}.${ext}`, { type: mediaType })
-}
-
-async function saveGeneratedModule(
-  campaignId: string,
-  g: GeneratedModule,
-  images: ExtractedImage[],
-): Promise<string> {
-  const { metadata, sections } = g
-  const { id: moduleId } = await createModule(campaignId, {
-    slug: metadata.slug || slugify(metadata.title_es),
-    icon: metadata.icon,
-    duration_min: metadata.duration_min,
-    title_es: metadata.title_es,
-    title_en: metadata.title_en,
-    title_pt: metadata.title_pt,
-    subtitle_es: metadata.subtitle_es,
-    subtitle_en: metadata.subtitle_en,
-    subtitle_pt: metadata.subtitle_pt,
-  })
-  await supabase.from('modules').update({
-    objectives_es: metadata.objectives_es,
-    objectives_en: metadata.objectives_en,
-    objectives_pt: metadata.objectives_pt,
-    key_takeaways_es: metadata.key_takeaways_es,
-    key_takeaways_en: metadata.key_takeaways_en,
-    key_takeaways_pt: metadata.key_takeaways_pt,
-  }).eq('id', moduleId)
-
-  const usedImages = new Set<number>()
-  for (let i = 0; i < sections.length; i++) {
-    const s = sections[i]
-    const { id: sectionId } = await upsertSection({
-      module_id: moduleId,
-      sort_order: i + 1,
-      heading_es: s.heading_es,
-      heading_en: s.heading_en,
-      heading_pt: s.heading_pt,
-      body_es: s.body_es,
-      body_en: s.body_en,
-      body_pt: s.body_pt,
-      section_style: (s.section_style as 'default') ?? 'default',
-      callout_kind: s.callout_kind as 'tip' | 'important' | 'warning' | 'success' | 'note' | null,
-      callout_es: s.callout_es,
-      callout_en: s.callout_en,
-      callout_pt: s.callout_pt,
-    })
-
-    // Inserta la imagen del documento que la IA asignó a esta sección.
-    const idx = s.image_index
-    if (typeof idx === 'number' && idx >= 0 && idx < images.length && !usedImages.has(idx)) {
-      usedImages.add(idx)
-      try {
-        const img = images[idx]
-        const file = base64ToFile(img.dataBase64, img.mediaType, `seccion-${i + 1}`)
-        const url = await uploadSectionMedia(file, campaignId, moduleId, sectionId)
-        await supabase.from('module_sections').update({
-          media_type: 'image',
-          media_url: url,
-          media_size: 'lg',
-          media_align: 'center',
-          media_shadow: true,
-        }).eq('id', sectionId)
-      } catch {
-        // Si la subida falla, la sección queda sin imagen (no aborta el guardado).
-      }
-    }
-  }
-  return moduleId
 }
 
 export default function ImportContent() {
@@ -186,6 +105,7 @@ export default function ImportContent() {
         instructions: instructions.trim() || undefined,
         campaignName,
         images: doc.images,
+        contextImages: doc.contextImages,
       })
       if (!data.modules.length) throw new Error('La IA no propuso módulos. Prueba con instrucciones más específicas.')
       setProposals(data.modules.map((m) => ({ ...m, selected: true })))
@@ -214,19 +134,50 @@ export default function ImportContent() {
     setPhase('generating')
     setError(null)
 
+    const docContext = {
+      documentText: doc.text,
+      images: doc.images,
+      contextImages: doc.contextImages,
+    }
+    const setItem = (i: number, patch: Partial<GenItem>) =>
+      setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
+
     for (let i = 0; i < selected.length; i++) {
-      setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'generating' } : it)))
+      setItem(i, { status: 'generating', progress: 'Diseñando el esquema…' })
       try {
-        const { data } = await generateModule({
-          description: buildDescription(selected[i]),
-          documentText: doc.text,
-          images: doc.images,
-        })
-        setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'done', generated: data } : it)))
+        const description = buildDescription(selected[i])
+        // Paso 1: esquema (1 llamada chica).
+        const { data: outline } = await generateModuleOutline({ description, ...docContext })
+        const headings = outline.sections.map((h) => h.heading_es)
+
+        // Paso 2: cada sección por separado (llamadas chicas, a prueba de límites).
+        const sections: GeneratedModule['sections'] = []
+        for (let s = 0; s < outline.sections.length; s++) {
+          setItem(i, { progress: `Generando sección ${s + 1}/${outline.sections.length}…` })
+          const h = outline.sections[s]
+          try {
+            const { data } = await generateModuleSection({
+              description,
+              moduleTitle: outline.metadata.title_es,
+              moduleSubtitle: outline.metadata.subtitle_es,
+              objectives: outline.metadata.objectives_es,
+              sectionHeading: h.heading_es,
+              sectionIndex: s,
+              totalSections: outline.sections.length,
+              allHeadings: headings,
+              ...docContext,
+            })
+            sections.push({ ...h, blocks: data.blocks })
+          } catch {
+            // Si una sección falla, se omite y se continúa con el resto.
+          }
+        }
+
+        if (!sections.length) throw new Error('No se pudo generar el contenido de las secciones')
+        const generated: GeneratedModule = { metadata: outline.metadata, sections }
+        setItem(i, { status: 'done', generated, progress: undefined })
       } catch (err) {
-        setItems((prev) => prev.map((it, idx) => (
-          idx === i ? { ...it, status: 'error', error: err instanceof Error ? err.message : 'Error' } : it
-        )))
+        setItem(i, { status: 'error', progress: undefined, error: err instanceof Error ? err.message : 'Error' })
       }
     }
     setPhase('preview')
@@ -307,25 +258,49 @@ export default function ImportContent() {
           Documento fuente
         </label>
         {doc ? (
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-brand-violet/6 border border-brand-violet/15">
-            {doc.kind === 'excel'
-              ? <FileSpreadsheet className="h-5 w-5 text-brand-green shrink-0" />
-              : <FileText className="h-5 w-5 text-brand-violet shrink-0" />}
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] text-text font-medium truncate">{doc.fileName}</div>
-              <div className="text-[11px] text-text-muted">
-                {(doc.text.length / 1000).toFixed(1)}k caracteres extraídos
-                {doc.images.length > 0 && ` · ${doc.images.length} imagen(es) para análisis visual`}
+          <div className="rounded-xl bg-brand-violet/6 border border-brand-violet/15">
+            <div className="flex items-center gap-3 px-4 py-3">
+              {doc.kind === 'excel'
+                ? <FileSpreadsheet className="h-5 w-5 text-brand-green shrink-0" />
+                : <FileText className="h-5 w-5 text-brand-violet shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] text-text font-medium truncate">{doc.fileName}</div>
+                <div className="text-[11px] text-text-muted">
+                  {(doc.text.length / 1000).toFixed(1)}k caracteres extraídos
+                  {doc.images.length > 0 && ` · ${doc.images.length} figura(s) del documento`}
+                  {doc.contextImages.length > 0 && ` · ${doc.contextImages.length} página(s) para análisis visual`}
+                </div>
               </div>
+              {!busy && phase === 'setup' && (
+                <button
+                  onClick={() => { setDoc(null); resetToSetup() }}
+                  className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
+                  title="Quitar archivo"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
-            {!busy && phase === 'setup' && (
-              <button
-                onClick={() => { setDoc(null); resetToSetup() }}
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
-                title="Quitar archivo"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            {(doc.images.length > 0 || doc.contextImages.length > 0) && (
+              <div className="px-4 pb-3 pt-1 border-t border-brand-violet/10">
+                {doc.images.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {doc.images.map((img, k) => (
+                      <img
+                        key={k}
+                        src={`data:${img.mediaType};base64,${img.dataBase64}`}
+                        alt={`Figura ${k + 1} del documento`}
+                        className="h-16 w-24 object-cover rounded-lg border border-glass-border/15 bg-white"
+                      />
+                    ))}
+                  </div>
+                )}
+                {doc.images.length === 0 && doc.contextImages.length > 0 && (
+                  <p className="text-[11px] text-text-subtle">
+                    No se detectaron figuras insertables; las páginas se usarán solo para el análisis de la IA.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         ) : (
@@ -524,16 +499,43 @@ export default function ImportContent() {
                         {it.generated?.metadata.title_es ?? it.proposed.title_es}
                       </span>
                     </div>
+                    {it.status === 'generating' && it.progress && (
+                      <p className="text-[11px] text-brand-violet mt-1">{it.progress}</p>
+                    )}
                     {it.status === 'done' && it.generated && (() => {
-                      const imgCount = it.generated.sections.filter((s) => typeof s.image_index === 'number').length
+                      const usedIdx = new Set<number>()
+                      it.generated.sections.forEach((s) =>
+                        (s.blocks ?? []).forEach((b) => {
+                          if (b.type === 'image' && typeof b.image_index === 'number') usedIdx.add(b.image_index)
+                        }),
+                      )
+                      const figures = [...usedIdx]
+                        .map((idx) => doc?.images[idx])
+                        .filter((img): img is NonNullable<typeof img> => !!img)
+                      const blockCount = it.generated.sections.reduce((n, s) => n + (s.blocks?.length ?? 0), 0)
                       return (
-                        <div className="flex items-center gap-2 mt-1">
-                          <NeonBadge color="cyan" className="text-[9px]">{it.generated.metadata.duration_min} min</NeonBadge>
-                          <span className="text-[11px] text-text-muted">{it.generated.sections.length} secciones</span>
-                          {imgCount > 0 && (
-                            <span className="text-[11px] text-text-muted">· {imgCount} con imagen</span>
+                        <>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <NeonBadge color="cyan" className="text-[9px]">{it.generated.metadata.duration_min} min</NeonBadge>
+                            <span className="text-[11px] text-text-muted">{it.generated.sections.length} secciones</span>
+                            <span className="text-[11px] text-text-muted">· {blockCount} bloques</span>
+                            {figures.length > 0 && (
+                              <span className="text-[11px] text-text-muted">· {figures.length} imagen(es)</span>
+                            )}
+                          </div>
+                          {figures.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2.5">
+                              {figures.map((img, k) => (
+                                <img
+                                  key={k}
+                                  src={`data:${img.mediaType};base64,${img.dataBase64}`}
+                                  alt={`Figura ${k + 1}`}
+                                  className="h-16 w-24 object-cover rounded-lg border border-glass-border/15 bg-white"
+                                />
+                              ))}
+                            </div>
                           )}
-                        </div>
+                        </>
                       )
                     })()}
                     {it.status === 'error' && (
