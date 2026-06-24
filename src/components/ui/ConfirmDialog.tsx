@@ -11,7 +11,6 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { GlassCard } from './GlassCard'
 import { Button } from './Button'
 
 export interface ConfirmOptions {
@@ -166,7 +165,7 @@ export function ConfirmDialog({
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className="relative w-full max-w-md"
           >
-            <GlassCard intensity="strong" rounded="2xl" className="p-5 sm:p-6">
+            <div className="relative overflow-hidden rounded-2xl border border-line bg-surface shadow-glass-lg p-5 sm:p-6">
               <div className="flex items-start gap-4">
                 <div
                   className={`h-11 w-11 rounded-xl ${accent.bg} ring-1 ${accent.ring} flex items-center justify-center shrink-0`}
@@ -194,7 +193,7 @@ export function ConfirmDialog({
                   {confirmLabel}
                 </button>
               </div>
-            </GlassCard>
+            </div>
           </motion.div>
         </motion.div>
       )}
