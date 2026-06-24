@@ -119,6 +119,44 @@ export async function generateModule(opts: {
   return { data: result.data as GeneratedModule, usage: result.usage as CacheUsage }
 }
 
+export interface ProposedModule {
+  title_es: string
+  focus_es: string
+  topics: string[]
+}
+
+export async function analyzeDocument(opts: {
+  documentText: string
+  instructions?: string
+  campaignName?: string
+}): Promise<{ data: { modules: ProposedModule[] }; usage: CacheUsage }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('No autenticado')
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-document`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(opts),
+    },
+  )
+
+  const result = await response.json()
+  if (!response.ok || result.error) {
+    throw new Error(result.error ?? 'Error analizando el documento')
+  }
+
+  return {
+    data: { modules: (result.data?.modules ?? []) as ProposedModule[] },
+    usage: result.usage as CacheUsage,
+  }
+}
+
 export interface AssistRequest {
   action: 'translate' | 'improve'
   contentType: 'section' | 'meta'

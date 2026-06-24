@@ -4,6 +4,7 @@ import { AdminNav } from './components/AdminNav'
 import AdminDashboard from './pages/AdminDashboard'
 import CampaignList from './pages/CampaignList'
 import NewModulePage from './pages/NewModulePage'
+import ImportContent from './pages/ImportContent'
 import UserList from './pages/UserList'
 import LiveQuizAdmin from './pages/LiveQuizAdmin'
 import ModuleList from './pages/ModuleList'
@@ -37,6 +38,7 @@ export default function AdminRouter() {
         <Routes>
           <Route index element={restricted ?? <AdminDashboard />} />
           <Route path="campaigns" element={restricted ?? <CampaignList />} />
+          <Route path="import" element={restricted ?? <ImportContent />} />
           <Route path="modules" element={restricted ?? <ModuleList />} />
           <Route path="modules/new" element={restricted ?? <NewModulePage />} />
           <Route path="modules/:moduleId" element={restricted ?? <ModuleEditor />} />

@@ -314,7 +314,7 @@ export default function CampaignList() {
                           </Link>
 
                           <Link
-                            to="/admin/import"
+                            to={`/admin/import?campaign=${c.id}`}
                             className={cn(
                               'flex items-center gap-3 p-4 rounded-xl transition-all duration-200',
                               'glass hover:border-neon-green/25 hover:bg-glass/6',
