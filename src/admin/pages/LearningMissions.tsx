@@ -163,9 +163,26 @@ export default function LearningMissions() {
       description: t('confirm.delete_mission_desc'),
     })
     if (!ok) return
-    const { error } = await supabase.from('guided_missions').delete().eq('id', m.id)
-    if (!error) setMissions(prev => prev.filter(x => x.id !== m.id))
-    else console.error('Error deleting:', error)
+    const { data, error } = await supabase
+      .from('guided_missions')
+      .delete()
+      .eq('id', m.id)
+      .select('id')
+    if (error) {
+      console.error('Error deleting mission:', error)
+      return
+    }
+    // Con RLS, un DELETE sin política permitida no da error pero borra 0 filas.
+    if (!data || data.length === 0) {
+      console.error('La misión no se borró (0 filas afectadas). Falta una política RLS DELETE en guided_missions.')
+      await confirm({
+        title: t('confirm.delete_mission_title'),
+        description: 'No se pudo borrar la misión: la base de datos rechazó la operación (permisos RLS). Avisá al superadmin.',
+        confirmLabel: 'Entendido',
+      })
+      return
+    }
+    setMissions(prev => prev.filter(x => x.id !== m.id))
   }
 
   const addStep = () =>
