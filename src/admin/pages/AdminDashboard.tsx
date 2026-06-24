@@ -63,7 +63,7 @@ export default function AdminDashboard() {
       iconColor: '#00C228',
       iconBg: 'rgba(0,194,40,0.08)',
       title: 'Importar contenido',
-      desc: 'Subir un archivo Word o Excel para agregar o actualizar módulos',
+      desc: 'Subir un archivo Word, Excel o PDF para agregar o actualizar módulos',
       cta: 'Importar',
     },
     {

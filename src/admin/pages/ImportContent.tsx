@@ -7,12 +7,15 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { extractDocumentText, ACCEPTED_DOC_EXTENSIONS, type ExtractedDocument } from '@/lib/documentExtract'
+import {
+  extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
+  type ExtractedDocument, type ExtractedImage,
+} from '@/lib/documentExtract'
 import {
   analyzeDocument, generateModule,
   type ProposedModule, type GeneratedModule,
 } from '@/services/ai.service'
-import { createModule, upsertSection } from '@/services/modules.service'
+import { createModule, upsertSection, uploadSectionMedia } from '@/services/modules.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -43,7 +46,19 @@ function buildDescription(p: ProposedModule): string {
   return parts.join('\n')
 }
 
-async function saveGeneratedModule(campaignId: string, g: GeneratedModule): Promise<string> {
+function base64ToFile(base64: string, mediaType: string, baseName: string): File {
+  const ext = (mediaType.split('/')[1] ?? 'jpg').replace('jpeg', 'jpg')
+  const bin = atob(base64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new File([bytes], `${baseName}.${ext}`, { type: mediaType })
+}
+
+async function saveGeneratedModule(
+  campaignId: string,
+  g: GeneratedModule,
+  images: ExtractedImage[],
+): Promise<string> {
   const { metadata, sections } = g
   const { id: moduleId } = await createModule(campaignId, {
     slug: metadata.slug || slugify(metadata.title_es),
@@ -64,9 +79,11 @@ async function saveGeneratedModule(campaignId: string, g: GeneratedModule): Prom
     key_takeaways_en: metadata.key_takeaways_en,
     key_takeaways_pt: metadata.key_takeaways_pt,
   }).eq('id', moduleId)
+
+  const usedImages = new Set<number>()
   for (let i = 0; i < sections.length; i++) {
     const s = sections[i]
-    await upsertSection({
+    const { id: sectionId } = await upsertSection({
       module_id: moduleId,
       sort_order: i + 1,
       heading_es: s.heading_es,
@@ -81,6 +98,26 @@ async function saveGeneratedModule(campaignId: string, g: GeneratedModule): Prom
       callout_en: s.callout_en,
       callout_pt: s.callout_pt,
     })
+
+    // Inserta la imagen del documento que la IA asignó a esta sección.
+    const idx = s.image_index
+    if (typeof idx === 'number' && idx >= 0 && idx < images.length && !usedImages.has(idx)) {
+      usedImages.add(idx)
+      try {
+        const img = images[idx]
+        const file = base64ToFile(img.dataBase64, img.mediaType, `seccion-${i + 1}`)
+        const url = await uploadSectionMedia(file, campaignId, moduleId, sectionId)
+        await supabase.from('module_sections').update({
+          media_type: 'image',
+          media_url: url,
+          media_size: 'lg',
+          media_align: 'center',
+          media_shadow: true,
+        }).eq('id', sectionId)
+      } catch {
+        // Si la subida falla, la sección queda sin imagen (no aborta el guardado).
+      }
+    }
   }
   return moduleId
 }
@@ -148,6 +185,7 @@ export default function ImportContent() {
         documentText: doc.text,
         instructions: instructions.trim() || undefined,
         campaignName,
+        images: doc.images,
       })
       if (!data.modules.length) throw new Error('La IA no propuso módulos. Prueba con instrucciones más específicas.')
       setProposals(data.modules.map((m) => ({ ...m, selected: true })))
@@ -182,6 +220,7 @@ export default function ImportContent() {
         const { data } = await generateModule({
           description: buildDescription(selected[i]),
           documentText: doc.text,
+          images: doc.images,
         })
         setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'done', generated: data } : it)))
       } catch (err) {
@@ -201,7 +240,7 @@ export default function ImportContent() {
     const ids: string[] = []
     try {
       for (const it of generatedItems) {
-        const id = await saveGeneratedModule(campaignId, it.generated!)
+        const id = await saveGeneratedModule(campaignId, it.generated!, doc?.images ?? [])
         ids.push(id)
       }
       setSavedIds(ids)
@@ -240,7 +279,7 @@ export default function ImportContent() {
           Importar contenido
         </GradientHeading>
         <p className="text-text-muted text-[13px] mt-1">
-          Sube un archivo Word o Excel. La IA lo analiza y crea uno o varios módulos en 3 idiomas.
+          Sube un archivo Word, Excel o PDF. La IA lo analiza y crea uno o varios módulos en 3 idiomas.
         </p>
       </div>
 
@@ -276,6 +315,7 @@ export default function ImportContent() {
               <div className="text-[13px] text-text font-medium truncate">{doc.fileName}</div>
               <div className="text-[11px] text-text-muted">
                 {(doc.text.length / 1000).toFixed(1)}k caracteres extraídos
+                {doc.images.length > 0 && ` · ${doc.images.length} imagen(es) para análisis visual`}
               </div>
             </div>
             {!busy && phase === 'setup' && (
@@ -305,7 +345,7 @@ export default function ImportContent() {
               <>
                 <Upload className="h-6 w-6 text-text-muted" />
                 <span className="text-[13px] text-text font-medium">Subir archivo</span>
-                <span className="text-[11px] text-text-subtle">Word (.docx), Excel (.xlsx), o texto (.txt, .md)</span>
+                <span className="text-[11px] text-text-subtle">Word (.docx), Excel (.xlsx), PDF (.pdf) o texto (.txt, .md)</span>
               </>
             )}
           </button>
@@ -484,12 +524,18 @@ export default function ImportContent() {
                         {it.generated?.metadata.title_es ?? it.proposed.title_es}
                       </span>
                     </div>
-                    {it.status === 'done' && it.generated && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <NeonBadge color="cyan" className="text-[9px]">{it.generated.metadata.duration_min} min</NeonBadge>
-                        <span className="text-[11px] text-text-muted">{it.generated.sections.length} secciones</span>
-                      </div>
-                    )}
+                    {it.status === 'done' && it.generated && (() => {
+                      const imgCount = it.generated.sections.filter((s) => typeof s.image_index === 'number').length
+                      return (
+                        <div className="flex items-center gap-2 mt-1">
+                          <NeonBadge color="cyan" className="text-[9px]">{it.generated.metadata.duration_min} min</NeonBadge>
+                          <span className="text-[11px] text-text-muted">{it.generated.sections.length} secciones</span>
+                          {imgCount > 0 && (
+                            <span className="text-[11px] text-text-muted">· {imgCount} con imagen</span>
+                          )}
+                        </div>
+                      )
+                    })()}
                     {it.status === 'error' && (
                       <p className="text-[11px] text-danger mt-1">{it.error}</p>
                     )}

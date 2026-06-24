@@ -55,6 +55,8 @@ export interface GeneratedModuleSection {
   section_style: string
   callout_kind: string | null
   callout_es: string | null; callout_en: string | null; callout_pt: string | null
+  /** Índice (0-based) de la imagen del documento que ilustra la sección, o null. */
+  image_index?: number | null
 }
 
 export interface GeneratedModule {
@@ -91,9 +93,15 @@ export async function generateSimulation(opts: {
   return { data: result.data as GeneratedScenario, usage: result.usage as CacheUsage }
 }
 
+export interface DocImage {
+  mediaType: string
+  dataBase64: string
+}
+
 export async function generateModule(opts: {
   description: string
   documentText?: string
+  images?: DocImage[]
 }): Promise<{ data: GeneratedModule; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')
@@ -129,6 +137,7 @@ export async function analyzeDocument(opts: {
   documentText: string
   instructions?: string
   campaignName?: string
+  images?: DocImage[]
 }): Promise<{ data: { modules: ProposedModule[] }; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')

@@ -326,7 +326,7 @@ export default function CampaignList() {
                             <div>
                               <div className="text-[14px] font-medium text-text">Importar contenido</div>
                               <div className="text-[12px] text-text-muted">
-                                Subir un archivo Word o Excel
+                                Subir un archivo Word, Excel o PDF
                               </div>
                             </div>
                           </Link>
