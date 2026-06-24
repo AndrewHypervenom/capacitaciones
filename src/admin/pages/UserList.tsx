@@ -8,6 +8,7 @@ function generateTempPassword(): string {
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import type { Profile, Campaign } from '@/types/database'
 
 type ProfileWithEmail = Profile & { email?: string }
@@ -15,6 +16,7 @@ type ProfileWithEmail = Profile & { email?: string }
 export default function UserList() {
   const { isSuperAdmin } = useAuth()
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,7 +31,6 @@ export default function UserList() {
   const [createdEmail, setCreatedEmail] = useState('')
   const [createdPassword, setCreatedPassword] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [copied, setCopied] = useState<'email' | 'pass' | 'url' | null>(null)
 
   const copyToClipboard = (text: string, key: 'email' | 'pass' | 'url') => {
@@ -107,9 +108,14 @@ export default function UserList() {
     )
   }
 
-  const handleDelete = async (userId: string) => {
+  const handleDelete = async (user: ProfileWithEmail) => {
+    const ok = await confirm({
+      title: t('confirm.delete_user_title'),
+      description: t('confirm.delete_user_desc', { name: user.display_name ?? user.email ?? user.id.slice(0, 8) }),
+    })
+    if (!ok) return
+    const userId = user.id
     setDeletingId(userId)
-    setConfirmDeleteId(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
@@ -342,31 +348,14 @@ export default function UserList() {
                   ))}
                 </select>
                 {isSuperAdmin && (
-                  confirmDeleteId === user.id ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        disabled={deletingId === user.id}
-                        className="flex items-center justify-center min-h-[36px] px-2 py-1 rounded-lg text-[11px] font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors"
-                      >
-                        {deletingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirmar'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="flex items-center justify-center min-h-[36px] px-2 py-1 rounded-lg text-[11px] text-text-muted hover:text-text bg-subtle transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDeleteId(user.id)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                      title="Eliminar usuario"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )
+                  <button
+                    onClick={() => handleDelete(user)}
+                    disabled={deletingId === user.id}
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+                    title="Eliminar usuario"
+                  >
+                    {deletingId === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </button>
                 )}
               </div>
             ))}

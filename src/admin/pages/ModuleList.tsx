@@ -17,9 +17,11 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 export default function ModuleList() {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const { campaignId: authCampaignId, isAdmin } = useAuth()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -78,7 +80,11 @@ export default function ModuleList() {
   }
 
   const handleDelete = async (mod: DbModuleRow) => {
-    if (!confirm(t('admin.modules.confirm_delete', { title: mod.title_es }))) return
+    const ok = await confirm({
+      title: t('confirm.delete_module_title'),
+      description: t('confirm.delete_module_desc', { title: mod.title_es }),
+    })
+    if (!ok) return
     try {
       await deleteModule(mod.id)
       setModules((prev) => prev.filter((m) => m.id !== mod.id))

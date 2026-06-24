@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useTranslation } from 'react-i18next'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import {
   DndContext,
   closestCenter,
@@ -1102,6 +1103,7 @@ export default function ModuleEditor() {
   const { moduleId } = useParams<{ moduleId: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const confirm = useConfirm()
 
   const [mod, setMod] = useState<DbModuleWithSections | null>(null)
   const [sections, setSections] = useState<DbSectionRow[]>([])
@@ -1145,7 +1147,11 @@ export default function ModuleEditor() {
   }, [])
 
   const handleDeleteSection = async (sectionId: string) => {
-    if (!confirm(t('admin.modules.confirm_delete_section'))) return
+    const ok = await confirm({
+      title: t('confirm.delete_section_title'),
+      description: t('confirm.delete_section_desc'),
+    })
+    if (!ok) return
     try {
       await deleteSection(sectionId)
       setSections((prev) => prev.filter((s) => s.id !== sectionId))

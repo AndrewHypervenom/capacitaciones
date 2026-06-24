@@ -21,6 +21,16 @@ import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
 import { FilterDropdown } from './FilterDropdown';
 import { cn } from '@/lib/cn';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
+import i18n from '@/i18n';
+
+// Helper imperativo para confirmar borrados dentro de los sub-editores de bloques.
+const confirmRemove = (titleKey: string, descKey: string) =>
+  confirmDialog({
+    title: i18n.t(titleKey),
+    description: i18n.t(descKey),
+    confirmLabel: i18n.t('confirm.remove'),
+  });
 
 // Context for uploading media from within the block editor
 interface MediaContext {
@@ -126,7 +136,7 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
             className="flex-1 bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none"
           />
           <button
-            onClick={() => onChange({ ...block, items: items.filter((_, j) => j !== i) })}
+            onClick={async () => { if (await confirmRemove('confirm.delete_option_title', 'confirm.delete_option_desc')) onChange({ ...block, items: items.filter((_, j) => j !== i) }) }}
             className="text-text-subtle hover:text-red-400 transition-colors"
           >
             <Trash2 className="h-3 w-3" />
@@ -334,7 +344,7 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-text-subtle font-medium">Tarjeta {i + 1}</span>
-            <button onClick={() => onChange({ ...block, cards: block.cards.filter((_, j) => j !== i) })}
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, cards: block.cards.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors">
               <Trash2 className="h-3 w-3" />
             </button>
@@ -371,7 +381,7 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-text-subtle">Ítem {i + 1}</span>
-            <button onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
           </div>
           <input type="text" value={item.question[lang]}
@@ -408,7 +418,7 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Pestaña {i + 1}</span>
             <button
-              onClick={() => onChange({ ...block, tabs: block.tabs.filter((_, j) => j !== i) })}
+              onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, tabs: block.tabs.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors"
             >
               <Trash2 className="h-3 w-3" />
@@ -471,7 +481,7 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
                 className="w-12 bg-transparent text-[13px] text-center text-text placeholder:text-text-subtle outline-none"
               />
               <button
-                onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+                onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
                 className="text-text-subtle hover:text-red-400 transition-colors"
               >
                 <Trash2 className="h-3 w-3" />
@@ -522,8 +532,9 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
     });
   };
 
-  const removeColumn = (ci: number) => {
+  const removeColumn = async (ci: number) => {
     if (colCount <= 1) return;
+    if (!(await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc'))) return;
     onChange({
       ...block,
       headers: block.headers.filter((_, j) => j !== ci),
@@ -535,7 +546,8 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
     onChange({ ...block, rows: [...block.rows, Array.from({ length: colCount }, emptyML)] });
   };
 
-  const removeRow = (ri: number) => {
+  const removeRow = async (ri: number) => {
+    if (!(await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc'))) return;
     onChange({ ...block, rows: block.rows.filter((_, j) => j !== ri) });
   };
 
@@ -884,7 +896,8 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
     onChange(blocks.map((b) => (b.id === id ? { ...b, data } : b)));
   };
 
-  const deleteBlock = (id: string) => {
+  const deleteBlock = async (id: string) => {
+    if (!(await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc'))) return;
     onChange(blocks.filter((b) => b.id !== id));
   };
 

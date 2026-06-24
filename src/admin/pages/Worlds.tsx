@@ -4,6 +4,8 @@ import { Plus, X, ChevronDown, Pencil, Trash2, Globe, Map } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type WorldStatus = 'draft' | 'published'
 type BgType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -66,6 +68,8 @@ function normalizeRow(row: Record<string, unknown>): World {
 
 export default function Worlds() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [worlds, setWorlds] = useState<World[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,7 +138,11 @@ export default function Worlds() {
   }
 
   const handleDelete = async (w: World) => {
-    if (!window.confirm(`¿Eliminar el mundo "${w.name}"?`)) return
+    const ok = await confirm({
+      title: t('confirm.delete_world_title'),
+      description: t('confirm.delete_world_desc', { name: w.name }),
+    })
+    if (!ok) return
     const { error } = await supabase.from('worlds').delete().eq('id', w.id)
     if (!error) setWorlds(prev => prev.filter(x => x.id !== w.id))
     else console.error('Error deleting world:', error)

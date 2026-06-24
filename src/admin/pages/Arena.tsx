@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type QuizStatus = 'draft' | 'published'
 type ThemeType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -116,6 +118,8 @@ function normalizeRow(row: Record<string, unknown>): ArenaQuiz {
 
 export default function Arena() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [quizzes, setQuizzes] = useState<ArenaQuiz[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
@@ -186,7 +190,11 @@ export default function Arena() {
   }
 
   const handleDelete = async (q: ArenaQuiz) => {
-    if (!window.confirm('¿Eliminar este quiz?')) return
+    const ok = await confirm({
+      title: t('confirm.delete_quiz_title'),
+      description: t('confirm.delete_quiz_desc'),
+    })
+    if (!ok) return
     const { error } = await supabase.from('arena_quizzes').delete().eq('id', q.id)
     if (!error) setQuizzes(prev => prev.filter(x => x.id !== q.id))
     else console.error('Error deleting quiz:', error)
@@ -210,8 +218,10 @@ export default function Arena() {
   const addStep = () =>
     setForm(f => ({ ...f, steps: [...f.steps, newStep()] }))
 
-  const removeStep = (stepId: string) =>
+  const removeStep = async (stepId: string) => {
+    if (!(await confirm({ title: t('confirm.delete_question_title'), description: t('confirm.delete_question_desc'), confirmLabel: t('confirm.remove') }))) return
     setForm(f => ({ ...f, steps: f.steps.filter(s => s.id !== stepId) }))
+  }
 
   const updateStep = (stepId: string, patch: Partial<Omit<QuizStep, 'options'>>) =>
     setForm(f => ({
@@ -229,7 +239,8 @@ export default function Arena() {
       ),
     }))
 
-  const removeOption = (stepId: string, optId: string) =>
+  const removeOption = async (stepId: string, optId: string) => {
+    if (!(await confirm({ title: t('confirm.delete_option_title'), description: t('confirm.delete_option_desc'), confirmLabel: t('confirm.remove') }))) return
     setForm(f => ({
       ...f,
       steps: f.steps.map(s =>
@@ -238,6 +249,7 @@ export default function Arena() {
           : s,
       ),
     }))
+  }
 
   const updateOption = (stepId: string, optId: string, patch: Partial<QuizOption>) =>
     setForm(f => ({

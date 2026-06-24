@@ -20,6 +20,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { initAuth } from '@/stores/authStore';
 import { Toaster } from '@/components/ui/Toast';
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 
 // Admin CMS — lazy loaded (code-split, no se carga para learners)
 const AdminRouter = lazy(() => import('@/admin/AdminRouter'));
@@ -53,6 +54,7 @@ export default function App() {
     <BrowserRouter>
       <AuthInit />
       <LanguageSync />
+      <ConfirmProvider>
       <Routes>
         <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
@@ -81,6 +83,7 @@ export default function App() {
         />
       </Routes>
       <Toaster />
+      </ConfirmProvider>
     </BrowserRouter>
   );
 }

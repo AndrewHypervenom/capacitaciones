@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 import type { LiveQuiz, QuizQuestion, Campaign, QuizLeaderboardEntry, LiveQuizAnswer } from '@/types/database'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -28,12 +30,13 @@ type AnswerCount = { option: number; count: number; is_correct: boolean }[]
 
 export default function LiveQuizAdmin() {
   const { profile, campaignId, isAdmin } = useAuth()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [view, setView] = useState<View>('list')
   const [quizzes, setQuizzes] = useState<LiveQuiz[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loadingList, setLoadingList] = useState(true)
   const [filterCampaign, setFilterCampaign] = useState<string>('all')
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // Formulario de creación
   const [formTitle, setFormTitle] = useState('')
@@ -179,9 +182,13 @@ export default function LiveQuizAdmin() {
 
   // ── Eliminar ─────────────────────────────────────────────────────────────────
   const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: t('confirm.delete_quiz_title'),
+      description: t('confirm.delete_quiz_desc'),
+    })
+    if (!ok) return
     await supabase.from('live_quiz_answers').delete().eq('quiz_id', id)
     await supabase.from('live_quizzes').delete().eq('id', id)
-    setDeleteConfirm(null)
     void loadQuizzes()
   }
 
@@ -242,6 +249,13 @@ export default function LiveQuizAdmin() {
 
   const restartQuiz = async () => {
     if (!activeQuiz) return
+    const ok = await confirm({
+      title: t('confirm.restart_quiz_title'),
+      description: t('confirm.restart_quiz_desc'),
+      confirmLabel: t('confirm.restart'),
+      tone: 'default',
+    })
+    if (!ok) return
     setAdvancing(true)
     const newPin = generatePin()
     await supabase.from('live_quiz_answers').delete().eq('quiz_id', activeQuiz.id)
@@ -379,31 +393,13 @@ export default function LiveQuizAdmin() {
                   >
                     <Copy className="h-4 w-4" />
                   </button>
-                  {deleteConfirm === q.id ? (
-                    <>
-                      <button
-                        onClick={() => handleDelete(q.id)}
-                        className="h-9 w-9 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-400/10 transition-colors"
-                        title="Confirmar eliminación"
-                      >
-                        <Check className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteConfirm(null)}
-                        className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => setDeleteConfirm(q.id)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleDelete(q.id)}
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                    title="Eliminar"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             )
@@ -448,7 +444,10 @@ export default function LiveQuizAdmin() {
             <div className="flex items-center justify-between mb-3">
               <span className="text-[12px] text-text-muted uppercase tracking-wider">Pregunta {qi + 1}</span>
               {formQuestions.length > 1 && (
-                <button onClick={() => setFormQuestions((prev) => prev.filter((_, i) => i !== qi))}
+                <button onClick={async () => {
+                    if (await confirm({ title: t('confirm.delete_question_title'), description: t('confirm.delete_question_desc') }))
+                      setFormQuestions((prev) => prev.filter((_, i) => i !== qi))
+                  }}
                   className="text-text-subtle hover:text-red-400 transition-colors">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

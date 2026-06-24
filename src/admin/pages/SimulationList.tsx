@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type Tab = 'dialogue' | 'choice'
 
@@ -30,6 +32,8 @@ const LEVEL_COLORS = { basico: 'green', medio: 'cyan', avanzado: 'magenta' } as 
 
 export default function SimulationList() {
   const nav = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { campaignId: authCampaignId, isAdmin } = useAuth()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -71,7 +75,11 @@ export default function SimulationList() {
   }
 
   const handleDeleteDialogue = async (row: ScenarioRow) => {
-    if (!confirm(`¿Eliminar "${row.title_es}"? Esta acción no se puede deshacer.`)) return
+    const ok = await confirm({
+      title: t('confirm.delete_simulation_title'),
+      description: t('confirm.delete_simulation_desc', { title: row.title_es }),
+    })
+    if (!ok) return
     try {
       await deleteScenario(row.id)
       setDialogueRows((prev) => prev.filter((r) => r.id !== row.id))
@@ -88,7 +96,11 @@ export default function SimulationList() {
   }
 
   const handleDeleteChoice = async (row: ChoiceScenarioRow) => {
-    if (!confirm(`¿Eliminar "${row.title_es}"? Esta acción no se puede deshacer.`)) return
+    const ok = await confirm({
+      title: t('confirm.delete_simulation_title'),
+      description: t('confirm.delete_simulation_desc', { title: row.title_es }),
+    })
+    if (!ok) return
     try {
       await deleteChoiceScenario(row.id)
       setChoiceRows((prev) => prev.filter((r) => r.id !== row.id))
@@ -98,7 +110,7 @@ export default function SimulationList() {
 
   const handleSeed = async () => {
     if (!selectedCampaignId) return
-    if (!confirm('¿Importar las simulaciones de muestra a esta campaña? Se sobreescribirán si ya existen.')) return
+    if (!window.confirm('¿Importar las simulaciones de muestra a esta campaña? Se sobreescribirán si ya existen.')) return
     setSeeding(true)
     try {
       const [d, c] = await Promise.all([

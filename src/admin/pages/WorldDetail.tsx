@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 interface World {
   id: string; name: string; description: string | null
@@ -21,6 +23,8 @@ const TRANS_LABELS: Record<string,string> = { clouds:'Nubes ☁️', cards:'Cart
 export default function WorldDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { user, isSuperAdmin, campaignId, loading: authLoading, profile } = useAuth()
   const isAdminOnly = !isSuperAdmin && profile?.role === 'admin'
 
@@ -119,7 +123,11 @@ export default function WorldDetail() {
     setSavingRegion(false); setRegionModal(false)
   }
   const deleteRegion = async (r: Region) => {
-    if (!confirm(`¿Eliminar la región "${r.name}" y todos sus niveles?`)) return
+    const ok = await confirm({
+      title: t('confirm.delete_region_title'),
+      description: t('confirm.delete_region_desc', { name: r.name }),
+    })
+    if (!ok) return
     await supabase.from('world_levels').delete().eq('region_id', r.id)
     await supabase.from('world_regions').delete().eq('id', r.id)
     setRegions(prev => prev.filter(x => x.id !== r.id))
@@ -160,7 +168,11 @@ export default function WorldDetail() {
     setSavingLevel(false); setLevelModal(false)
   }
   const deleteLevel = async (l: Level) => {
-    if (!confirm(`¿Eliminar el nivel "${l.name}"?`)) return
+    const ok = await confirm({
+      title: t('confirm.delete_level_title'),
+      description: t('confirm.delete_level_desc', { name: l.name }),
+    })
+    if (!ok) return
     await supabase.from('world_levels').delete().eq('id', l.id)
     setLevels(prev => prev.filter(x => x.id !== l.id))
   }

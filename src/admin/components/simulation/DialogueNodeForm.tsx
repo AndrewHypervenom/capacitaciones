@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/cn'
 
 type Lang = 'es' | 'en' | 'pt'
@@ -48,6 +50,8 @@ function inputClass() {
 }
 
 export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [lang, setLang] = useState<Lang>('es')
   const [showNudge, setShowNudge] = useState(Boolean(data.nudge))
 
@@ -65,8 +69,15 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
 
   const addBranch = () => update({ branches: [...data.branches, { keywords: [], next: '' }] })
 
-  const removeBranch = (idx: number) =>
+  const removeBranch = async (idx: number) => {
+    const ok = await confirm({
+      title: t('confirm.delete_option_title'),
+      description: t('confirm.delete_option_desc'),
+      confirmLabel: t('confirm.remove'),
+    })
+    if (!ok) return
     update({ branches: data.branches.filter((_, i) => i !== idx) })
+  }
 
   const toggleNudge = () => {
     if (showNudge) {

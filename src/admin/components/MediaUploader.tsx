@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { CheckCircle2, Image, Loader2, Trash2, Upload, Video, Youtube } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 type MediaType = 'image' | 'youtube' | 'video'
 type Tab = 'image' | 'video' | 'youtube'
@@ -134,6 +135,7 @@ export function MediaUploader({
   onCleared,
 }: MediaUploaderProps) {
   const { t } = useTranslation()
+  const confirm = useConfirm()
 
   const [activeTab, setActiveTab] = useState<Tab>(
     currentType === 'video' ? 'video' : currentType === 'youtube' ? 'youtube' : 'image',
@@ -183,6 +185,12 @@ export function MediaUploader({
   )
 
   const handleClear = async () => {
+    const ok = await confirm({
+      title: t('confirm.delete_media_title'),
+      description: t('confirm.delete_media_desc'),
+      confirmLabel: t('confirm.remove'),
+    })
+    if (!ok) return
     if (!currentUrl) { onCleared(); return }
     setClearing(true)
     try {

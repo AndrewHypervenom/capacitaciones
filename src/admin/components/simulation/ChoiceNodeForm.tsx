@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/cn'
 
 type Lang = 'es' | 'en' | 'pt'
@@ -56,6 +58,8 @@ const END_TYPE_ACTIVE_CLASSES: Record<string, string> = {
 }
 
 export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [lang, setLang] = useState<Lang>('es')
 
   const update = (patch: Partial<ChoiceNodeData>) => onChange(nodeId, { ...data, ...patch })
@@ -85,8 +89,15 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
     ],
   })
 
-  const removeOption = (idx: number) =>
+  const removeOption = async (idx: number) => {
+    const ok = await confirm({
+      title: t('confirm.delete_option_title'),
+      description: t('confirm.delete_option_desc'),
+      confirmLabel: t('confirm.remove'),
+    })
+    if (!ok) return
     update({ options: (data.options ?? []).filter((_, i) => i !== idx) })
+  }
 
   return (
     <div className="space-y-5">

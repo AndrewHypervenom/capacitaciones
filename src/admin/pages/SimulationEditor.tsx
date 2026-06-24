@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type Lang = 'es' | 'en' | 'pt'
 type Tab = 'meta' | 'nodes' | 'checklist'
@@ -122,6 +124,8 @@ function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => v
 export default function SimulationEditor() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { campaignId } = useAuth()
   const isNew = id === 'new' || !id
 
@@ -235,8 +239,13 @@ export default function SimulationEditor() {
     setSelectedNodeId(nid)
   }
 
-  const removeNode = (nid: string) => {
+  const removeNode = async (nid: string) => {
     if (nodeIds.length <= 1) return toast.error('Debe haber al menos un paso')
+    const ok = await confirm({
+      title: t('confirm.delete_node_title'),
+      description: t('confirm.delete_node_desc'),
+    })
+    if (!ok) return
     setNodes((prev) => {
       const next = { ...prev }
       delete next[nid]

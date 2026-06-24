@@ -9,6 +9,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { createModule, upsertSection } from '@/services/modules.service'
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
+import { confirmDialog } from '@/components/ui/ConfirmDialog'
+import i18n from '@/i18n'
 import { GenerationProgress, MODULE_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -188,7 +190,12 @@ function AIModeForm({
     reader.readAsText(file)
   }
 
-  const clearDocument = () => {
+  const clearDocument = async () => {
+    if (!(await confirmDialog({
+      title: i18n.t('confirm.delete_media_title'),
+      description: i18n.t('confirm.delete_media_desc'),
+      confirmLabel: i18n.t('confirm.remove'),
+    }))) return
     setDocumentText(''); setFileName(''); setDocMode('none')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }

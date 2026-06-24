@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type StepType = 'intro' | 'video' | 'pdf' | 'quiz'
 type MissionStatus = 'draft' | 'active'
@@ -91,6 +93,8 @@ function normalizeRow(row: Record<string, unknown>): Mission {
 
 export default function LearningMissions() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [missions, setMissions] = useState<Mission[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
@@ -154,7 +158,11 @@ export default function LearningMissions() {
   }
 
   const handleDelete = async (m: Mission) => {
-    if (!window.confirm('¿Eliminar esta misión?')) return
+    const ok = await confirm({
+      title: t('confirm.delete_mission_title'),
+      description: t('confirm.delete_mission_desc'),
+    })
+    if (!ok) return
     const { error } = await supabase.from('guided_missions').delete().eq('id', m.id)
     if (!error) setMissions(prev => prev.filter(x => x.id !== m.id))
     else console.error('Error deleting:', error)
@@ -163,8 +171,10 @@ export default function LearningMissions() {
   const addStep = () =>
     setForm(f => ({ ...f, steps: [...f.steps, newStep()] }))
 
-  const removeStep = (id: string) =>
+  const removeStep = async (id: string) => {
+    if (!(await confirm({ title: t('confirm.delete_block_title'), description: t('confirm.delete_block_desc'), confirmLabel: t('confirm.remove') }))) return
     setForm(f => ({ ...f, steps: f.steps.filter(s => s.id !== id) }))
+  }
 
   const updateStep = (id: string, patch: Partial<Step>) =>
     setForm(f => ({ ...f, steps: f.steps.map(s => (s.id === id ? { ...s, ...patch } : s)) }))

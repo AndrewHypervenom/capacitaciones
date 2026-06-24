@@ -19,6 +19,8 @@ import { cn } from '@/lib/cn'
 import { uploadSectionMedia } from '@/services/modules.service'
 import type { VideoMarkerRaw, VideoQuestionRaw } from '@/services/modules.service'
 import { moduleAiAssist } from '@/services/ai.service'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type Lang = 'es' | 'en' | 'pt'
 
@@ -205,6 +207,8 @@ function MarkerEditForm({
   onSave: (m: VideoMarkerRaw) => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [draft, setDraft] = useState<VideoMarkerRaw>(() => JSON.parse(JSON.stringify(marker)))
   const [translating, setTranslating] = useState(false)
   const [translateError, setTranslateError] = useState<string | null>(null)
@@ -268,7 +272,12 @@ function MarkerEditForm({
     })
   }
 
-  const deleteQuestion = (i: number) => {
+  const deleteQuestion = async (i: number) => {
+    const ok = await confirm({
+      title: t('confirm.delete_question_title'),
+      description: t('confirm.delete_question_desc'),
+    })
+    if (!ok) return
     setDraft((p) => ({ ...p, questions: (p.questions ?? []).filter((_, idx) => idx !== i) }))
   }
 
@@ -406,6 +415,8 @@ export function VideoMarkerEditor({
   onVideoChange,
   onMarkersChange,
 }: VideoMarkerEditorProps) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -511,8 +522,12 @@ export function VideoMarkerEditor({
     setEditingId(null)
   }
 
-  const handleDeleteMarker = (id: string) => {
-    if (!confirm('¿Eliminar este marcador?')) return
+  const handleDeleteMarker = async (id: string) => {
+    const ok = await confirm({
+      title: t('confirm.delete_marker_title'),
+      description: t('confirm.delete_marker_desc'),
+    })
+    if (!ok) return
     onMarkersChange(markers.filter((m) => m.id !== id))
     if (editingId === id) setEditingId(null)
   }

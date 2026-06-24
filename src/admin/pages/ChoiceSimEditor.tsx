@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type Tab = 'meta' | 'nodes'
 
@@ -65,6 +67,8 @@ const inputClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 p
 export default function ChoiceSimEditor() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { campaignId } = useAuth()
   const isNew = id === 'new' || !id
 
@@ -160,8 +164,13 @@ export default function ChoiceSimEditor() {
     setSelectedNodeId(nid)
   }
 
-  const removeNode = (nid: string) => {
+  const removeNode = async (nid: string) => {
     if (nodeIds.length <= 1) return toast.error('Debe haber al menos un paso')
+    const ok = await confirm({
+      title: t('confirm.delete_node_title'),
+      description: t('confirm.delete_node_desc'),
+    })
+    if (!ok) return
     setNodes((prev) => { const n = { ...prev }; delete n[nid]; return n })
     setSelectedNodeId(nodeIds.find((n) => n !== nid) ?? '')
   }
