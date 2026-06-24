@@ -59,15 +59,14 @@ export default function Welcome() {
   ]);
 
   useEffect(() => {
-    Promise.all([
-      supabase.from('modules').select('id', { count: 'exact', head: true }).eq('is_published', true),
-      supabase.from('section_quizzes').select('id', { count: 'exact', head: true }),
-      supabase.from('scenarios').select('id', { count: 'exact', head: true }).eq('is_published', true),
-    ]).then(([mods, quizzes, scens]) => {
+    // Aggregate counts come from a SECURITY DEFINER function so the logged-out
+    // (anon) landing page can read them despite RLS hiding the content tables.
+    supabase.rpc('public_landing_stats').then(({ data }) => {
+      const s = (data ?? {}) as { lessons?: number; questions?: number; scenarios?: number };
       setStats([
-        { value: mods.count ?? 0, label: t('welcome.stat_lessons') },
-        { value: quizzes.count ?? 0, label: t('welcome.stat_questions') },
-        { value: scens.count ?? 0, label: t('welcome.stat_scenarios') },
+        { value: s.lessons ?? 0, label: t('welcome.stat_lessons') },
+        { value: s.questions ?? 0, label: t('welcome.stat_questions') },
+        { value: s.scenarios ?? 0, label: t('welcome.stat_scenarios') },
       ]);
     });
   }, [t]);
@@ -143,7 +142,7 @@ export default function Welcome() {
 
   /* ── Renderizado ────────────────────────────────────────────────────── */
   return (
-    <div className="relative min-h-screen overflow-hidden flex flex-col bg-bg transition-colors duration-200">
+    <div className="relative h-screen overflow-hidden flex flex-col bg-bg transition-colors duration-200">
       {/* Cuadrícula de puntos */}
       <div
         aria-hidden
@@ -232,7 +231,9 @@ export default function Welcome() {
       </header>
 
       {/* ── Contenido principal ─────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 pt-14 pb-32 text-center">
+      <main className="flex-1 overflow-y-auto px-6 pt-14 pb-8 text-center">
+        <div className="min-h-full w-full flex flex-col items-center">
+        <div className="flex-1 w-full flex items-center justify-center">
         <div className="w-full max-w-4xl">
           <AnimatePresence mode="wait">
 
@@ -565,17 +566,17 @@ export default function Welcome() {
 
           </AnimatePresence>
         </div>
-      </main>
+        </div>
 
-      {/* ── Stats (solo en hero) ─────────────────────────────────────────── */}
-      <AnimatePresence>
+        {/* ── Stats (solo en hero) — en flujo, bajo el héroe, sin solaparse ── */}
+        <AnimatePresence>
         {showCTA && !showLogin && (
           <motion.div
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8, filter: 'blur(6px)', transition: { duration: 0.2 } }}
             transition={{ duration: 0.5, delay: 0.12, ease }}
-            className="fixed bottom-8 inset-x-0 flex items-center justify-center pointer-events-none"
+            className="w-full flex items-center justify-center pointer-events-none pt-10 pb-2 flex-wrap"
           >
             {stats.map((s, i) => (
               <div key={s.label} className="flex items-center">
@@ -600,7 +601,9 @@ export default function Welcome() {
             ))}
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>
+        </div>
+      </main>
     </div>
   );
 }

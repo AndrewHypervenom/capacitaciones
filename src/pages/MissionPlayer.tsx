@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -40,69 +41,22 @@ function useSFX() {
 
 /* ── TYPES ── */
 const STEPS = [
-  { id: 'intro',       label: 'Briefing',      icon: '📋' },
-  { id: 'login',       label: 'Login',         icon: '🔐' },
-  { id: 'crear',       label: 'Crear Caso',    icon: '🎫' },
-  { id: 'campos',      label: 'Campos',        icon: '📝' },
-  { id: 'seguimiento', label: 'Seguimiento',   icon: '🔍' },
-  { id: 'sla',         label: 'SLA Quiz',      icon: '⏱️' },
+  { id: 'intro',       icon: '📋' },
+  { id: 'login',       icon: '🔐' },
+  { id: 'crear',       icon: '🎫' },
+  { id: 'campos',      icon: '📝' },
+  { id: 'seguimiento', icon: '🔍' },
+  { id: 'sla',         icon: '⏱️' },
 ]
 
-const STEP_TITLES: Record<string, [string, string]> = {
-  intro:       ['BRIEFING OPERATIVO', 'Revisa tu misión antes de acceder al sistema'],
-  login:       ['AUTENTICACIÓN GLPI', 'Accede a la plataforma siguiendo el procedimiento oficial'],
-  crear:       ['CREAR CASO — Service Catalog', 'Navega al catálogo y selecciona Reporte_Amadeus'],
-  campos:      ['DILIGENCIAR FORMULARIO', 'Completa todos los campos obligatorios del ticket'],
-  seguimiento: ['SEGUIMIENTO DE CASOS', 'Consulta e interpreta el estado de los tickets'],
-  sla:         ['SLA — TIEMPOS DE RESPUESTA', 'Valida tu conocimiento sobre los acuerdos de servicio'],
-}
-
-const QUIZ_DATA = [
-  {
-    q: 'Q1 · 🚨 Un sistema de check-in de aerolínea falla completamente. Los pasajeros no pueden abordar. ¿Qué tipo de incidente es y cuál es el tiempo de respuesta?',
-    opts: [
-      { id:'a', text:'Lentitud — 15 minutos de respuesta' },
-      { id:'b', text:'Falla crítica — 5 minutos de respuesta (impacto Alto)', correct: true },
-      { id:'c', text:'Error funcional — 15 minutos de respuesta' },
-      { id:'d', text:'Error de integración — 24 horas de respuesta' },
-    ],
-    ok: '✅ Una falla crítica tiene impacto Alto: 5 min para responder y 24 hs para resolver.',
-    fail: '❌ Las fallas que interrumpen directamente la operación son "Falla crítica" con impacto Alto — 5 minutos.'
-  },
-  {
-    q: 'Q2 · 🎫 Al crear un ticket en GLPI, ¿cuál es la ruta correcta de navegación desde el menú principal?',
-    opts: [
-      { id:'a', text:'Activos → Service Catalog → Reporte_Amadeus' },
-      { id:'b', text:'Gestión → Casos → Crear ticket' },
-      { id:'c', text:'Asistencia → Service Catalog → Reporte_Amadeus', correct: true },
-      { id:'d', text:'Herramientas → Crear ticket → Amadeus' },
-    ],
-    ok: '✅ La ruta oficial es: Asistencia → Service Catalog → Reporte_Amadeus.',
-    fail: '❌ La ruta correcta es Asistencia → Service Catalog → Reporte_Amadeus.'
-  },
-  {
-    q: 'Q3 · 🏢 Un operador de Aeromexico reporta que el sistema imprime facturas duplicadas en puertas nacionales. ¿Qué seleccionas en "Reportado por"?',
-    opts: [
-      { id:'a', text:'Aeropuerto → Bandas Nacionales' },
-      { id:'b', text:'Proveedor → Mota' },
-      { id:'c', text:'Aerolínea → Aeromexico', correct: true },
-      { id:'d', text:'Aeropuerto → Puertas Nacionales' },
-    ],
-    ok: '✅ Como es un operador de aerolínea quien reporta, debes seleccionar "Aerolínea" → Aeromexico.',
-    fail: '❌ Como es un operador de aerolínea quien reporta, debes seleccionar "Aerolínea" → Aeromexico.'
-  },
-  {
-    q: 'Q4 · 📋 El técnico marcó tu ticket como "Resuelto" pero el problema persiste. ¿Qué debes hacer?',
-    opts: [
-      { id:'a', text:'Aprobar la solución y crear un ticket nuevo' },
-      { id:'b', text:'Rechazar la solución con un comentario — el ticket se reabrirá automáticamente', correct: true },
-      { id:'c', text:'Contactar al supervisor sin hacer nada en GLPI' },
-      { id:'d', text:'Esperar a que el técnico vuelva a contactarte' },
-    ],
-    ok: '✅ Rechazar la solución reabre el ticket para que el técnico continúe trabajando.',
-    fail: '❌ Si el problema persiste, debes rechazar la solución con un comentario.'
-  },
-]
+/* Quiz answer keys (text resolved via i18n at render time) */
+const QUIZ_KEYS = [
+  { key: 'q1', correct: 'b' },
+  { key: 'q2', correct: 'c' },
+  { key: 'q3', correct: 'c' },
+  { key: 'q4', correct: 'b' },
+] as const
+const QUIZ_OPT_IDS = ['a', 'b', 'c', 'd'] as const
 
 /* ── MISSION TYPE ── */
 interface Mission {
@@ -120,6 +74,7 @@ interface Mission {
 ══════════════════════════════════════════════════ */
 export default function MissionPlayer() {
   const navigate = useNavigate()
+  const { t, i18n } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const { play } = useSFX()
@@ -202,7 +157,7 @@ export default function MissionPlayer() {
       })
       if (error) {
         console.error('mission_progress insert error:', error, { userId: user.id, missionId: id })
-        showToast('❌ No se pudo guardar tu progreso, intenta de nuevo', 'err')
+        showToast(t('mission_sim.toast.save_error'), 'err')
       }
     })()
   }, [showCompletion, user, mission, quizAnswers, xp, timerSeconds, id, showToast])
@@ -235,54 +190,57 @@ export default function MissionPlayer() {
     setStepDone(prev => {
       if (prev[idx]) return prev
       addXP(xpEarned)
-      addLog(`Paso completado ✓ +${xpEarned} XP`, 'ok')
+      addLog(t('mission_sim.log.step_done', { xp: xpEarned }), 'ok')
       return { ...prev, [idx]: true }
     })
-  }, [addXP, addLog])
+  }, [addXP, addLog, t])
 
   /* Navigation */
   const goStep = useCallback((idx: number) => {
     if (idx < 0 || idx >= STEPS.length) return
     setCurrentStep(idx)
     play('step')
-    addLog(`Iniciando: ${STEPS[idx].label}`, 'new')
-  }, [play, addLog])
+    addLog(t('mission_sim.log.starting', { label: t(`mission_sim.steps.${STEPS[idx].id}`) }), 'new')
+  }, [play, addLog, t])
 
   const nextStep = useCallback(() => {
     if (currentStep >= STEPS.length - 1) {
       setShowCompletion(true)
       play('complete')
-      addLog('MISIÓN COMPLETADA — Módulo GLPI', 'ok')
+      addLog(t('mission_sim.log.completed'), 'ok')
     } else {
       goStep(currentStep + 1)
     }
-  }, [currentStep, goStep, play, addLog])
+  }, [currentStep, goStep, play, addLog, t])
 
-  /* Init log */
+  /* Init log — re-seed when the resolved language changes so the system
+     log doesn't stay in the language active at mount (the profile language
+     syncs in a later effect, after this component first renders). */
   useEffect(() => {
-    addLog('Sistema iniciado — Módulo GLPI cargado', 'new')
-    addLog('MAN-MÉX 023 V1 — versión 02', 'dim')
-    addLog('Esperando acción del operador...', 'dim')
-  }, [])
+    setLogs([])
+    addLog(t('mission_sim.log.init1'), 'new')
+    addLog(t('mission_sim.log.init2'), 'dim')
+    addLog(t('mission_sim.log.init3'), 'dim')
+  }, [i18n.resolvedLanguage, t, addLog])
 
   /* ── LOGIN ── */
   const handleLogin = () => {
-    if (!loginUser.trim()) { setLoginShake('user'); showToast('❌ Ingresa tu usuario asignado', 'err'); return }
-    if (!loginPass.trim()) { setLoginShake('pass'); showToast('❌ Ingresa tu contraseña', 'err'); return }
-    if (loginOrigin !== 'db_interna') { setLoginShake('origin'); showToast('❌ Selecciona "Base de datos interna de GLPI"', 'err'); addLog('Error: origen de inicio incorrecto', 'err'); return }
+    if (!loginUser.trim()) { setLoginShake('user'); showToast(t('mission_sim.toast.login_user'), 'err'); return }
+    if (!loginPass.trim()) { setLoginShake('pass'); showToast(t('mission_sim.toast.login_pass'), 'err'); return }
+    if (loginOrigin !== 'db_interna') { setLoginShake('origin'); showToast(t('mission_sim.toast.login_origin'), 'err'); addLog(t('mission_sim.log.login_err_origin'), 'err'); return }
     setLoginDone(true)
     setLoginShake(null)
-    showToast('✅ Sesión iniciada correctamente', 'ok')
-    addLog('Autenticación exitosa — GLPI 11', 'ok')
+    showToast(t('mission_sim.toast.login_ok'), 'ok')
+    addLog(t('mission_sim.log.login_ok'), 'ok')
     play('login')
     markStepDone(1, 40)
   }
 
   /* ── CAMPOS VALIDATION ── */
   const validateField = (val: string, correct: string, key: string) => {
-    if (!val) { setFieldErrors(e => ({ ...e, [key]: '⚠ Campo obligatorio' })); return false }
+    if (!val) { setFieldErrors(e => ({ ...e, [key]: t('mission_sim.field_err.required') })); return false }
     const ok = val === correct
-    setFieldErrors(e => ({ ...e, [key]: ok ? '' : '✕ Valor incorrecto — revisa el escenario' }))
+    setFieldErrors(e => ({ ...e, [key]: ok ? '' : t('mission_sim.field_err.incorrect') }))
     return ok
   }
 
@@ -295,29 +253,28 @@ export default function MissionPlayer() {
       validateField(fTipoInc, 'falla_critica', 'tipo_inc'),
     ]
     const descOk = fDesc.trim().length >= 20
-    if (!descOk) showToast('❌ La descripción debe tener mínimo 20 caracteres', 'err')
+    if (!descOk) showToast(t('mission_sim.toast.desc_min'), 'err')
     const allOk = checks.every(Boolean) && descOk
     if (allOk) {
       play('submit')
       const ticketId = Math.floor(800 + Math.random() * 200)
       setSubmitResult(ticketId)
-      showToast(`✅ Ticket #${ticketId} generado con éxito`, 'ok')
-      addLog(`Ticket creado exitosamente ID: ${ticketId}`, 'ok')
+      showToast(t('mission_sim.toast.ticket_ok', { id: ticketId }), 'ok')
+      addLog(t('mission_sim.log.ticket_created', { id: ticketId }), 'ok')
       markStepDone(3, 60)
     } else {
       play('wrong')
-      showToast('❌ Revisa los campos marcados en rojo', 'err')
+      showToast(t('mission_sim.toast.fields_red'), 'err')
     }
   }
 
   /* ── QUIZ ── */
   const answerQuiz = (qIdx: number, optId: string) => {
     if (quizAnswers[qIdx] !== undefined) return
-    const q = QUIZ_DATA[qIdx]
-    const isCorrect = q.opts.find(o => o.id === optId)?.correct === true
+    const isCorrect = QUIZ_KEYS[qIdx].correct === optId
     setQuizAnswers(prev => {
       const next = { ...prev, [qIdx]: isCorrect }
-      if (Object.keys(next).length >= QUIZ_DATA.length) {
+      if (Object.keys(next).length >= QUIZ_KEYS.length) {
         setTimeout(() => markStepDone(5, 50), 500)
       }
       return next
@@ -325,17 +282,18 @@ export default function MissionPlayer() {
     const xpEarned = isCorrect ? 30 : 5
     play(isCorrect ? 'correct' : 'wrong')
     addXP(xpEarned)
-    showToast(isCorrect ? `✅ ¡Correcto! +${xpEarned} XP` : `❌ Incorrecto. Revisa el feedback.`, isCorrect ? 'ok' : 'err')
-    addLog(`Quiz Q${qIdx+1}: ${isCorrect ? 'CORRECTO' : 'INCORRECTO'} +${xpEarned}XP`, isCorrect ? 'ok' : 'warn')
+    showToast(isCorrect ? t('mission_sim.toast.quiz_correct', { xp: xpEarned }) : t('mission_sim.toast.quiz_incorrect'), isCorrect ? 'ok' : 'err')
+    addLog(t('mission_sim.log.quiz_result', { n: qIdx+1, result: isCorrect ? t('mission_sim.log.quiz_correct') : t('mission_sim.log.quiz_incorrect'), xp: xpEarned }), isCorrect ? 'ok' : 'warn')
   }
 
-  const [title, desc] = STEP_TITLES[STEPS[currentStep].id] || ['', '']
+  const title = t(`mission_sim.step_titles.${STEPS[currentStep].id}_t`)
+  const desc  = t(`mission_sim.step_titles.${STEPS[currentStep].id}_s`)
   const xpPct = (xp / xpTarget) * 100
 
   if (missionLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'rgb(var(--bg))', color: '#00C228', fontFamily: 'Poppins, sans-serif', fontSize: '.85rem' }}>
-        Cargando misión...
+        {t('mission_sim.loading')}
       </div>
     )
   }
@@ -343,8 +301,8 @@ export default function MissionPlayer() {
   if (!mission) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'rgb(var(--bg))', color: '#ff3b5c', fontFamily: 'Poppins, sans-serif', fontSize: '.85rem', gap: 16 }}>
-        <div>Misión no encontrada</div>
-        <button onClick={() => navigate('/admin/missions')} style={{ color: '#00C228', background: 'transparent', border: '1px solid #00C228', borderRadius: 8, padding: '8px 20px', cursor: 'pointer', fontFamily: 'Poppins, sans-serif' }}>← Volver</button>
+        <div>{t('mission_sim.not_found')}</div>
+        <button onClick={() => navigate('/admin/missions')} style={{ color: '#00C228', background: 'transparent', border: '1px solid #00C228', borderRadius: 8, padding: '8px 20px', cursor: 'pointer', fontFamily: 'Poppins, sans-serif' }}>{t('mission_sim.back')}</button>
       </div>
     )
   }
@@ -359,9 +317,9 @@ export default function MissionPlayer() {
     return (
       <div style={{ background: 'rgb(var(--bg))', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Poppins, sans-serif', color: 'rgb(var(--text))', gap: 16 }}>
         <div style={{ fontSize: '3rem' }}>🚧</div>
-        <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600 }}>Contenido en construcción</h2>
-        <p style={{ margin: 0, color: 'rgb(var(--text-muted))', fontSize: '1rem' }}>Esta misión aún no tiene simulación configurada</p>
-        <button onClick={() => navigate('/admin/missions')} style={{ marginTop: 8, background: '#00C228', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 28px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'Poppins, sans-serif' }}>← Volver a misiones</button>
+        <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600 }}>{t('mission_sim.under_construction_title')}</h2>
+        <p style={{ margin: 0, color: 'rgb(var(--text-muted))', fontSize: '1rem' }}>{t('mission_sim.under_construction_sub')}</p>
+        <button onClick={() => navigate('/admin/missions')} style={{ marginTop: 8, background: '#00C228', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 28px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'Poppins, sans-serif' }}>{t('mission_sim.back_missions')}</button>
       </div>
     )
   }
@@ -516,7 +474,7 @@ export default function MissionPlayer() {
 
         {/* ══ HUD ══ */}
         <header className="hud">
-          <div className="hud-brand">{mission.title}<span className="hud-training"> / Training</span></div>
+          <div className="hud-brand">{mission.title}<span className="hud-training"> / {t('mission_sim.training')}</span></div>
           <div className="hud-center">
             <div className="hud-mission">🎯 {(mission.category || mission.description).slice(0, 60)}</div>
             <div className="hud-timer">{formatTimer(timerSeconds)}</div>
@@ -527,28 +485,28 @@ export default function MissionPlayer() {
               <div className="xp-track"><div className="xp-fill" style={{ width:`${xpPct}%` }} /></div>
               <span style={{ fontSize:'.7rem', color:'#5a7f8f' }}>{xpTarget}</span>
             </div>
-            <div className="step-badge">PASO {currentStep + 1}/{STEPS.length}</div>
+            <div className="step-badge">{t('mission_sim.step_word')} {currentStep + 1}/{STEPS.length}</div>
           </div>
         </header>
 
         {/* ══ NAV ══ */}
         <nav className="sim-nav">
-          <div className="nav-label">Misión — {mission.title}</div>
+          <div className="nav-label">{t('mission_sim.mission_label', { title: mission.title })}</div>
           {STEPS.map((s, i) => (
             <button
               key={s.id}
               className={`nav-btn ${i < currentStep ? 'done' : i === currentStep ? 'active' : 'locked'}`}
               onClick={() => i <= currentStep && goStep(i)}
             >
-              <span>{s.icon}</span> {s.label}
+              <span>{s.icon}</span> {t(`mission_sim.steps.${s.id}`)}
               {i < currentStep && <span style={{ position:'absolute', right:10, fontSize:'.75rem', color:'#00C228' }}>✓</span>}
               {i > currentStep && <span style={{ position:'absolute', right:8, fontSize:'.7rem' }}>🔒</span>}
             </button>
           ))}
           <div style={{ flex:1 }} />
-          <div className="nav-label">Sistema</div>
+          <div className="nav-label">{t('mission_sim.system')}</div>
           <button className="nav-btn" onClick={() => navigate('/admin/missions')} style={{ fontSize:'.8rem' }}>
-            <span>←</span> Volver
+            <span>←</span> {t('mission_sim.nav_back')}
           </button>
         </nav>
 
@@ -557,7 +515,7 @@ export default function MissionPlayer() {
 
           {/* Mission header */}
           <div className="mission-header">
-            <div className="mission-tag">▶ SIMULACIÓN ACTIVA — MAN-MÉX 023 V1</div>
+            <div className="mission-tag">{t('mission_sim.sim_active')}</div>
             <h1 className="mission-title-h">{title}</h1>
             <p className="mission-desc-p">{desc}</p>
           </div>
@@ -565,15 +523,15 @@ export default function MissionPlayer() {
           {/* Checkpoints */}
           <div className="cp-strip">
             {STEPS.map((s, i) => (
-              <>
-                {i > 0 && <div key={`line-${i}`} className={`cp-line${i <= currentStep ? ' done-line' : ''}`} />}
-                <div key={s.id} className="cp-item">
+              <Fragment key={s.id}>
+                {i > 0 && <div className={`cp-line${i <= currentStep ? ' done-line' : ''}`} />}
+                <div className="cp-item">
                   <div className={`cp-dot${i < currentStep ? ' done' : i === currentStep ? ' active' : ''}`}>
                     {i < currentStep ? '✓' : i + 1}
                   </div>
-                  <div className={`cp-label${i < currentStep ? ' done-lbl' : i === currentStep ? ' active-lbl' : ''}`}>{s.label}</div>
+                  <div className={`cp-label${i < currentStep ? ' done-lbl' : i === currentStep ? ' active-lbl' : ''}`}>{t(`mission_sim.steps.${s.id}`)}</div>
                 </div>
-              </>
+              </Fragment>
             ))}
           </div>
 
@@ -583,19 +541,19 @@ export default function MissionPlayer() {
               <div className="info-card-hdr">
                 <div className="info-card-icon icon-aqua">📋</div>
                 <div>
-                  <div className="info-card-title">Situación operativa</div>
-                  <div className="info-card-subtitle">Aeropuerto Internacional Felipe Ángeles — NLU</div>
+                  <div className="info-card-title">{t('mission_sim.briefing.situation_title')}</div>
+                  <div className="info-card-subtitle">{t('mission_sim.briefing.situation_sub')}</div>
                 </div>
               </div>
               <p style={{ fontSize:'.83rem', color:'rgb(var(--text-muted))', lineHeight:1.7, marginBottom:14 }}>
-                El sistema AMADEUS en el counter 13-16 presenta una <strong style={{ color:'#ffb800' }}>falla crítica</strong>: las impresoras ATB no responden y los agentes no pueden emitir tarjetas de embarque. Debes registrar un ticket en GLPI 11 siguiendo el procedimiento oficial.
+                {t('mission_sim.briefing.p_a')}<strong style={{ color:'#ffb800' }}>{t('mission_sim.briefing.p_bold')}</strong>{t('mission_sim.briefing.p_b')}
               </p>
               <div className="info-list">
                 {[
-                  ['🎯', 'Misión:', 'Crear un ticket en GLPI para reportar la falla en el sistema AMADEUS'],
-                  ['📍', 'Aeropuerto:', 'NLU — Aeropuerto Internacional Felipe Ángeles'],
-                  ['🚨', 'Tipo:', 'Falla crítica — impacto directo en operación aeroportuaria'],
-                  ['⏱️', 'SLA Alto:', 'Tiempo de respuesta: 5 minutos — Tiempo de solución: 24 horas'],
+                  ['🎯', t('mission_sim.briefing.item_mission_label'), t('mission_sim.briefing.item_mission_desc')],
+                  ['📍', t('mission_sim.briefing.item_airport_label'), t('mission_sim.briefing.item_airport_desc')],
+                  ['🚨', t('mission_sim.briefing.item_type_label'), t('mission_sim.briefing.item_type_desc')],
+                  ['⏱️', t('mission_sim.briefing.item_sla_label'), t('mission_sim.briefing.item_sla_desc')],
                 ].map(([dot, label, d]) => (
                   <div key={label} className="info-item">
                     <span>{dot}</span>
@@ -608,23 +566,23 @@ export default function MissionPlayer() {
               <div className="info-card-hdr">
                 <div className="info-card-icon icon-amber">📖</div>
                 <div>
-                  <div className="info-card-title">Qué aprenderás</div>
-                  <div className="info-card-subtitle">Proceso completo GLPI — Mesa de Ayuda</div>
+                  <div className="info-card-title">{t('mission_sim.briefing.learn_title')}</div>
+                  <div className="info-card-subtitle">{t('mission_sim.briefing.learn_sub')}</div>
                 </div>
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, fontSize:'.78rem' }}>
-                {['🔐 Autenticación en GLPI 11','🗺️ Navegación Service Catalog','📝 Diligenciamiento de campos','🔍 Consulta y seguimiento','✅ Validación de solución','⏱️ SLAs — Tiempos de respuesta'].map(t => (
-                  <div key={t} style={{ padding:8, background:'rgba(255,255,255,0.03)', borderRadius:6, color:'rgb(var(--text-muted))' }}>{t}</div>
+                {[t('mission_sim.briefing.learn_1'),t('mission_sim.briefing.learn_2'),t('mission_sim.briefing.learn_3'),t('mission_sim.briefing.learn_4'),t('mission_sim.briefing.learn_5'),t('mission_sim.briefing.learn_6')].map(item => (
+                  <div key={item} style={{ padding:8, background:'rgba(255,255,255,0.03)', borderRadius:6, color:'rgb(var(--text-muted))' }}>{item}</div>
                 ))}
               </div>
             </div>
-            <button className="next-btn" onClick={() => { markStepDone(0, 20); nextStep() }}>Iniciar Simulación →</button>
+            <button className="next-btn" onClick={() => { markStepDone(0, 20); nextStep() }}>{t('mission_sim.briefing.start_btn')}</button>
           </div>
 
           {/* ══ STEP 1: LOGIN ══ */}
           <div className={`step-panel${currentStep === 1 ? ' active' : ''}`}>
             <div className="info-card" style={{ borderColor:'rgba(255,184,0,0.2)', padding:'12px 16px' }}>
-              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>📋 Instrucción:</strong> Accede a GLPI usando tu usuario asignado y la base de datos interna. Completa los 3 campos correctamente.</p>
+              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>{t('mission_sim.instruction_word')}</strong> {t('mission_sim.login.instruction')}</p>
             </div>
             <div className="glpi-screen">
               <div className="glpi-topbar">
@@ -634,13 +592,13 @@ export default function MissionPlayer() {
               <div style={{ background:'#f9fafb', padding:'40px 30px', display:'flex', flexDirection:'column', alignItems:'center', gap:18, minHeight:380 }}>
                 <div style={{ textAlign:'center', marginBottom:10 }}>
                   <div style={{ fontSize:'2rem', fontWeight:800, color:'#111827', letterSpacing:-1 }}>GLPI</div>
-                  <div style={{ fontSize:'.8rem', color:'#6b7280', marginTop:4 }}>Inicie sesión con su cuenta</div>
+                  <div style={{ fontSize:'.8rem', color:'#6b7280', marginTop:4 }}>{t('mission_sim.login.sign_in_account')}</div>
                 </div>
                 <div style={{ width:'100%', maxWidth:340, display:'flex', flexDirection:'column', gap:14 }}>
                   <div>
-                    <label style={{ fontSize:'.72rem', color:'#374151', fontWeight:500, display:'block', marginBottom:4 }}>Inicio de sesión</label>
+                    <label style={{ fontSize:'.72rem', color:'#374151', fontWeight:500, display:'block', marginBottom:4 }}>{t('mission_sim.login.user_label')}</label>
                     <input
-                      type="text" placeholder="usuario.aeropuerto"
+                      type="text" placeholder={t('mission_sim.login.user_placeholder')}
                       value={loginUser} onChange={e => setLoginUser(e.target.value)}
                       disabled={loginDone}
                       className={loginShake === 'user' ? 'form-select incorrect' : 'form-select'}
@@ -648,7 +606,7 @@ export default function MissionPlayer() {
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize:'.72rem', color:'#374151', fontWeight:500, display:'block', marginBottom:4 }}>Contraseña</label>
+                    <label style={{ fontSize:'.72rem', color:'#374151', fontWeight:500, display:'block', marginBottom:4 }}>{t('mission_sim.login.pass_label')}</label>
                     <input
                       type="password" placeholder="••••••••"
                       value={loginPass} onChange={e => setLoginPass(e.target.value)}
@@ -658,17 +616,17 @@ export default function MissionPlayer() {
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize:'.72rem', color:'#374151', fontWeight:500, display:'block', marginBottom:4 }}>Origen del inicio de sesión <span style={{ color:'#dc2626' }}>*</span></label>
+                    <label style={{ fontSize:'.72rem', color:'#374151', fontWeight:500, display:'block', marginBottom:4 }}>{t('mission_sim.login.origin_label')} <span style={{ color:'#dc2626' }}>*</span></label>
                     <select
                       value={loginOrigin} onChange={e => setLoginOrigin(e.target.value)}
                       disabled={loginDone}
                       className={loginShake === 'origin' ? 'form-select incorrect' : 'form-select'}
                       style={{ background:'white', color:'#374151', border:`1px solid ${loginShake==='origin'?'#dc2626':'#d1d5db'}` }}
                     >
-                      <option value="">-- Seleccionar --</option>
-                      <option value="ldap">LDAP / Directorio activo</option>
-                      <option value="db_interna">Base de datos interna de GLPI</option>
-                      <option value="sso">SSO corporativo</option>
+                      <option value="">{t('mission_sim.login.select')}</option>
+                      <option value="ldap">{t('mission_sim.login.opt_ldap')}</option>
+                      <option value="db_interna">{t('mission_sim.login.opt_db')}</option>
+                      <option value="sso">{t('mission_sim.login.opt_sso')}</option>
                     </select>
                   </div>
                   <button
@@ -676,7 +634,7 @@ export default function MissionPlayer() {
                     disabled={loginDone}
                     style={{ width:'100%', padding:11, background:loginDone?'linear-gradient(135deg,#059669,#10b981)':'linear-gradient(135deg,#1d4ed8,#2563eb)', color:'white', border:'none', borderRadius:5, fontWeight:600, fontSize:'.85rem', cursor:loginDone?'default':'pointer' }}
                   >
-                    {loginDone ? '✓ Acceso concedido' : 'Iniciar sesión'}
+                    {loginDone ? t('mission_sim.login.granted') : t('mission_sim.login.sign_in')}
                   </button>
                 </div>
               </div>
@@ -690,18 +648,18 @@ export default function MissionPlayer() {
                 <div className="glpi-body">
                   <div className="glpi-sidebar">
                     <div className="glpi-logo">GLPI</div>
-                    {['📦 Activos','📞 Asistencia','📋 Gestión','🔧 Herramientas','⚙️ Configuración'].map(m => (
+                    {[t('mission_sim.login.menu_activos'),t('mission_sim.login.menu_asistencia'),t('mission_sim.login.menu_gestion'),t('mission_sim.login.menu_herramientas'),t('mission_sim.login.menu_config')].map(m => (
                       <div key={m} className="glpi-menu-item">{m}</div>
                     ))}
                   </div>
                   <div className="glpi-content">
-                    <div className="glpi-breadcrumb">🏠 Inicio</div>
-                    <div style={{ fontSize:'1.1rem', fontWeight:600, color:'#f9fafb', marginBottom:18 }}>Panel Principal</div>
+                    <div className="glpi-breadcrumb">{t('mission_sim.login.home')}</div>
+                    <div style={{ fontSize:'1.1rem', fontWeight:600, color:'#f9fafb', marginBottom:18 }}>{t('mission_sim.login.main_panel')}</div>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                      {['SU PLANIFICACIÓN','RECORDATORIOS'].map(t => (
-                        <div key={t} style={{ background:'#f3f4f6', borderRadius:8, padding:14, fontSize:'.75rem', color:'#6b7280' }}>
-                          <div style={{ fontWeight:600, color:'#111827', marginBottom:6 }}>{t}</div>
-                          <div style={{ color:'#9ca3af', fontSize:'.7rem' }}>Sin elementos</div>
+                      {[t('mission_sim.login.planning'),t('mission_sim.login.reminders')].map(card => (
+                        <div key={card} style={{ background:'#f3f4f6', borderRadius:8, padding:14, fontSize:'.75rem', color:'#6b7280' }}>
+                          <div style={{ fontWeight:600, color:'#111827', marginBottom:6 }}>{card}</div>
+                          <div style={{ color:'#9ca3af', fontSize:'.7rem' }}>{t('mission_sim.login.no_items')}</div>
                         </div>
                       ))}
                     </div>
@@ -709,13 +667,13 @@ export default function MissionPlayer() {
                 </div>
               </div>
             )}
-            {stepDone[1] && <button className="next-btn" onClick={nextStep}>Siguiente →</button>}
+            {stepDone[1] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
           </div>
 
           {/* ══ STEP 2: CREAR CASO ══ */}
           <div className={`step-panel${currentStep === 2 ? ' active' : ''}`}>
             <div className="info-card" style={{ borderColor:'rgba(255,184,0,0.2)', padding:'12px 16px' }}>
-              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>📋 Instrucción:</strong> Navega al menú <strong>Asistencia</strong>, luego selecciona <strong>Service Catalog</strong> y haz clic en <strong>Reporte_Amadeus</strong>.</p>
+              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>{t('mission_sim.instruction_word')}</strong> {t('mission_sim.crear.instruction_a')}<strong>{t('mission_sim.crear.instruction_asistencia')}</strong>{t('mission_sim.crear.instruction_b')}<strong>{t('mission_sim.crear.instruction_catalog')}</strong>{t('mission_sim.crear.instruction_c')}<strong>{t('mission_sim.crear.instruction_amadeus')}</strong>{t('mission_sim.crear.instruction_d')}</p>
             </div>
             <div className="glpi-screen">
               <div className="glpi-topbar">
@@ -725,32 +683,32 @@ export default function MissionPlayer() {
               <div className="glpi-body">
                 <div className="glpi-sidebar">
                   <div className="glpi-logo">GLPI</div>
-                  <div className="glpi-menu-item" onClick={() => { showToast('ℹ️ Primero ve a Asistencia → Service Catalog','info') }}>📦 Activos</div>
-                  <div className={`glpi-menu-item${menuOpen?' gm-active':' gm-highlight'}`} onClick={() => { setMenuOpen(true); showToast('ℹ️ Ahora haz clic en "Service catalog"','info'); addLog('Navegación: Asistencia','new') }}>📞 Asistencia ▾</div>
+                  <div className="glpi-menu-item" onClick={() => { showToast(t('mission_sim.toast.first_asistencia'),'info') }}>{t('mission_sim.login.menu_activos')}</div>
+                  <div className={`glpi-menu-item${menuOpen?' gm-active':' gm-highlight'}`} onClick={() => { setMenuOpen(true); showToast(t('mission_sim.toast.now_catalog'),'info'); addLog(t('mission_sim.log.nav_asistencia'),'new') }}>{t('mission_sim.login.menu_asistencia')} ▾</div>
                   {menuOpen && (
                     <>
-                      <div className="glpi-menu-item" style={{ paddingLeft:24 }}>◦ Casos</div>
-                      <div className="glpi-menu-item" style={{ paddingLeft:24 }}>◦ Crear ticket</div>
-                      <div className={`glpi-menu-item${catalogVisible?' gm-active':' gm-highlight'}`} style={{ paddingLeft:24 }} onClick={() => { setCatalogVisible(true); showToast('✅ Service Catalog abierto — haz clic en Reporte_Amadeus','ok'); addLog('Service Catalog abierto','ok') }}>◦ Service catalog ←</div>
+                      <div className="glpi-menu-item" style={{ paddingLeft:24 }}>{t('mission_sim.crear.casos')}</div>
+                      <div className="glpi-menu-item" style={{ paddingLeft:24 }}>{t('mission_sim.crear.crear_ticket')}</div>
+                      <div className={`glpi-menu-item${catalogVisible?' gm-active':' gm-highlight'}`} style={{ paddingLeft:24 }} onClick={() => { setCatalogVisible(true); showToast(t('mission_sim.toast.catalog_open'),'ok'); addLog(t('mission_sim.log.catalog_open'),'ok') }}>{t('mission_sim.crear.service_catalog_link')}</div>
                     </>
                   )}
-                  <div className="glpi-menu-item">📋 Gestión</div>
-                  <div className="glpi-menu-item">🔧 Herramientas</div>
+                  <div className="glpi-menu-item">{t('mission_sim.login.menu_gestion')}</div>
+                  <div className="glpi-menu-item">{t('mission_sim.login.menu_herramientas')}</div>
                 </div>
                 <div className="glpi-content">
-                  <div className="glpi-breadcrumb">🏠 Inicio {menuOpen&&<>/ <span>Asistencia</span></>} {catalogVisible&&<>/ <span>Service catalog</span></>}</div>
-                  {!catalogVisible && <p style={{ fontSize:'.75rem', color:'#9ca3af' }}>Selecciona "Asistencia" en el menú izquierdo para continuar.</p>}
+                  <div className="glpi-breadcrumb">{t('mission_sim.login.home')} {menuOpen&&<>/ <span>{t('mission_sim.crear.instruction_asistencia')}</span></>} {catalogVisible&&<>/ <span>{t('mission_sim.crear.service_catalog')}</span></>}</div>
+                  {!catalogVisible && <p style={{ fontSize:'.75rem', color:'#9ca3af' }}>{t('mission_sim.crear.select_asistencia_hint')}</p>}
                   {catalogVisible && !formVisible && (
                     <div style={{ marginTop:14 }}>
-                      <div style={{ fontSize:'1rem', fontWeight:600, color:'#f9fafb', margin:'10px 0 16px' }}>Service catalog</div>
+                      <div style={{ fontSize:'1rem', fontWeight:600, color:'#f9fafb', margin:'10px 0 16px' }}>{t('mission_sim.crear.service_catalog')}</div>
                       <div
-                        onClick={() => { setFormVisible(true); addLog('Reporte_Amadeus seleccionado','ok'); showToast('✅ Formulario Reporte_Amadeus abierto','ok'); markStepDone(2, 30) }}
+                        onClick={() => { setFormVisible(true); addLog(t('mission_sim.log.amadeus_selected'),'ok'); showToast(t('mission_sim.toast.form_open'),'ok'); markStepDone(2, 30) }}
                         style={{ display:'inline-flex', alignItems:'center', gap:12, padding:'14px 18px', background:'#1f2937', border:'2px solid #3b82f6', borderRadius:8, cursor:'pointer', maxWidth:260 }}
                       >
                         <div style={{ width:42, height:42, background:'#374151', borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>📋</div>
                         <div>
                           <div style={{ fontWeight:600, fontSize:'.85rem', color:'#f9fafb' }}>Reporte_Amadeus</div>
-                          <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:2 }}>Ask for support from our helpdesk team.</div>
+                          <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:2 }}>{t('mission_sim.crear.amadeus_desc')}</div>
                         </div>
                       </div>
                     </div>
@@ -758,26 +716,26 @@ export default function MissionPlayer() {
                   {formVisible && (
                     <div style={{ marginTop:16 }}>
                       <div style={{ background:'#10b981', color:'#fff', fontSize:'.75rem', fontWeight:600, padding:'8px 14px', borderRadius:6, display:'inline-block', margin:'10px 0' }}>
-                        ✅ ¡Formulario abierto! Procede al siguiente paso para diligenciarlo.
+                        {t('mission_sim.crear.form_opened')}
                       </div>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-            {stepDone[2] && <button className="next-btn" onClick={nextStep}>Siguiente →</button>}
+            {stepDone[2] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
           </div>
 
           {/* ══ STEP 3: CAMPOS ══ */}
           <div className={`step-panel${currentStep === 3 ? ' active' : ''}`}>
             <div className="info-card" style={{ borderColor:'rgba(255,184,0,0.2)', padding:'12px 16px' }}>
-              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>📋 Instrucción:</strong> Completa el formulario Reporte_Amadeus con los datos correctos para el incidente del counter 13-16 en NLU.</p>
+              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>{t('mission_sim.instruction_word')}</strong> {t('mission_sim.campos.instruction')}</p>
             </div>
             <div style={{ display:'flex', gap:16, flexWrap:'wrap', alignItems:'flex-start' }}>
               <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', color:'#1c1917', borderRadius:8, padding:14, width:160, boxShadow:'3px 3px 0 rgba(0,0,0,0.3)', fontSize:'.7rem' }}>
-                <div style={{ fontSize:'.55rem', fontWeight:700, color:'#dc2626', letterSpacing:1, textTransform:'uppercase', border:'1.5px solid #dc2626', display:'inline-block', padding:'1px 5px', borderRadius:2, marginBottom:6 }}>URGENTE</div>
-                <div style={{ fontWeight:700, color:'#92400e', marginBottom:4 }}>Reporte de campo:</div>
-                {[['Lugar:','NLU Counter 13-16'],['Sistema:','AMADEUS ATB'],['Quién:','Aerolínea reporta'],['Falla:','Impresora no responde'],['Impacto:','Pasajeros sin boarding']].map(([k,v]) => (
+                <div style={{ fontSize:'.55rem', fontWeight:700, color:'#dc2626', letterSpacing:1, textTransform:'uppercase', border:'1.5px solid #dc2626', display:'inline-block', padding:'1px 5px', borderRadius:2, marginBottom:6 }}>{t('mission_sim.campos.urgent')}</div>
+                <div style={{ fontWeight:700, color:'#92400e', marginBottom:4 }}>{t('mission_sim.campos.field_report')}</div>
+                {[[t('mission_sim.campos.fr_place'),t('mission_sim.campos.fr_place_v')],[t('mission_sim.campos.fr_system'),t('mission_sim.campos.fr_system_v')],[t('mission_sim.campos.fr_who'),t('mission_sim.campos.fr_who_v')],[t('mission_sim.campos.fr_fail'),t('mission_sim.campos.fr_fail_v')],[t('mission_sim.campos.fr_impact'),t('mission_sim.campos.fr_impact_v')]].map(([k,v]) => (
                   <div key={k} style={{ color:'#57534e', marginBottom:2 }}><strong style={{ color:'#1c1917' }}>{k}</strong> {v}</div>
                 ))}
               </div>
@@ -790,17 +748,17 @@ export default function MissionPlayer() {
                   <div style={{ fontSize:'1rem', fontWeight:700, color:'#111827', marginBottom:16 }}>Reporte_Amadeus</div>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Tipo <span style={{ color:'#f59e0b' }}>*</span></label>
+                      <label className="form-label">{t('mission_sim.campos.type_label')} <span style={{ color:'#f59e0b' }}>*</span></label>
                       <select className={`form-select${fTipo&&fTipo!=='incidente'?' incorrect':fTipo==='incidente'?' correct':''}`} value={fTipo} onChange={e => setFTipo(e.target.value)} disabled={!!submitResult}>
                         <option value="">-----</option>
-                        <option value="incidente">Incidente</option>
-                        <option value="solicitud">Solicitud</option>
+                        <option value="incidente">{t('mission_sim.campos.type_inc')}</option>
+                        <option value="solicitud">{t('mission_sim.campos.type_sol')}</option>
                       </select>
                       {fieldErrors.tipo && <div className="field-err">{fieldErrors.tipo}</div>}
-                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:3 }}>💡 Falla en sistema existente = Incidente</div>
+                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:3 }}>{t('mission_sim.campos.type_hint')}</div>
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Nombre del Aeropuerto <span style={{ color:'#f59e0b' }}>*</span></label>
+                      <label className="form-label">{t('mission_sim.campos.airport_label')} <span style={{ color:'#f59e0b' }}>*</span></label>
                       <select className={`form-select${fAeropuerto&&fAeropuerto!=='NLU'?' incorrect':fAeropuerto==='NLU'?' correct':''}`} value={fAeropuerto} onChange={e => setFAeropuerto(e.target.value)} disabled={!!submitResult}>
                         <option value="">-----</option>
                         <option value="NLU">» NLU — Felipe Ángeles</option>
@@ -813,44 +771,44 @@ export default function MissionPlayer() {
                   </div>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Reportado por <span style={{ color:'#f59e0b' }}>*</span></label>
+                      <label className="form-label">{t('mission_sim.campos.reported_label')} <span style={{ color:'#f59e0b' }}>*</span></label>
                       <select className={`form-select${fReportado&&fReportado!=='aerolinea'?' incorrect':fReportado==='aerolinea'?' correct':''}`} value={fReportado} onChange={e => setFReportado(e.target.value)} disabled={!!submitResult}>
                         <option value="">-----</option>
-                        <option value="aerolinea">» Aerolínea</option>
-                        <option value="aeropuerto">» Aeropuerto</option>
-                        <option value="proveedor">» Proveedor</option>
+                        <option value="aerolinea">{t('mission_sim.campos.reported_airline')}</option>
+                        <option value="aeropuerto">{t('mission_sim.campos.reported_airport')}</option>
+                        <option value="proveedor">{t('mission_sim.campos.reported_provider')}</option>
                       </select>
                       {fieldErrors.reportado && <div className="field-err">{fieldErrors.reportado}</div>}
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Categoría <span style={{ color:'#f59e0b' }}>*</span></label>
+                      <label className="form-label">{t('mission_sim.campos.category_label')} <span style={{ color:'#f59e0b' }}>*</span></label>
                       <select className={`form-select${fCategoria&&fCategoria!=='software'?' incorrect':fCategoria==='software'?' correct':''}`} value={fCategoria} onChange={e => setFCategoria(e.target.value)} disabled={!!submitResult}>
                         <option value="">-----</option>
-                        <option value="hardware">» Hardware</option>
-                        <option value="software">» Software</option>
-                        <option value="mixta">» Mixta</option>
+                        <option value="hardware">{t('mission_sim.campos.cat_hardware')}</option>
+                        <option value="software">{t('mission_sim.campos.cat_software')}</option>
+                        <option value="mixta">{t('mission_sim.campos.cat_mixed')}</option>
                       </select>
                       {fieldErrors.categoria && <div className="field-err">{fieldErrors.categoria}</div>}
-                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:3 }}>💡 AMADEUS = sistema (software)</div>
+                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:3 }}>{t('mission_sim.campos.cat_hint')}</div>
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Tipo de incidente <span style={{ color:'#f59e0b' }}>*</span></label>
+                    <label className="form-label">{t('mission_sim.campos.inctype_label')} <span style={{ color:'#f59e0b' }}>*</span></label>
                     <select className={`form-select${fTipoInc&&fTipoInc!=='falla_critica'?' incorrect':fTipoInc==='falla_critica'?' correct':''}`} value={fTipoInc} onChange={e => setFTipoInc(e.target.value)} disabled={!!submitResult}>
                       <option value="">-----</option>
-                      <option value="error_integracion">» Error de integración</option>
-                      <option value="error_funcional">» Error funcional</option>
-                      <option value="falla_critica">» Falla crítica</option>
-                      <option value="lentitud">» Lentitud</option>
+                      <option value="error_integracion">{t('mission_sim.campos.inc_integration')}</option>
+                      <option value="error_funcional">{t('mission_sim.campos.inc_functional')}</option>
+                      <option value="falla_critica">{t('mission_sim.campos.inc_critical')}</option>
+                      <option value="lentitud">{t('mission_sim.campos.inc_slow')}</option>
                     </select>
                     {fieldErrors.tipo_inc && <div className="field-err">{fieldErrors.tipo_inc}</div>}
-                    <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:3 }}>💡 Interrupción grave que afecta operación = Falla crítica</div>
+                    <div style={{ fontSize:'.65rem', color:'#9ca3af', marginTop:3 }}>{t('mission_sim.campos.inctype_hint')}</div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Descripción detallada <span style={{ color:'#f59e0b' }}>*</span></label>
+                    <label className="form-label">{t('mission_sim.campos.desc_label')} <span style={{ color:'#f59e0b' }}>*</span></label>
                     <textarea
                       className={`form-textarea${fieldErrors.desc?' incorrect':''}`}
-                      placeholder="Explica qué sucedió, qué estabas haciendo cuando ocurrió el error..."
+                      placeholder={t('mission_sim.campos.desc_placeholder')}
                       value={fDesc} onChange={e => setFDesc(e.target.value)}
                       disabled={!!submitResult}
                       style={{ minHeight:70, resize:'vertical', lineHeight:1.5 }}
@@ -858,27 +816,27 @@ export default function MissionPlayer() {
                   </div>
                   {!submitResult && (
                     <div style={{ display:'flex', justifyContent:'flex-end', marginTop:8 }}>
-                      <button className="glpi-submit-btn" onClick={validateForm}>✓ Submit</button>
+                      <button className="glpi-submit-btn" onClick={validateForm}>{t('mission_sim.campos.submit')}</button>
                     </div>
                   )}
                   {submitResult && (
                     <div style={{ marginTop:16, background:'#ecfdf5', border:'1px solid #6ee7b7', borderRadius:8, padding:16, textAlign:'center' }}>
                       <div style={{ fontSize:'1.5rem', marginBottom:6 }}>✅</div>
-                      <div style={{ fontWeight:700, color:'#065f46', fontSize:'.9rem' }}>Formulario enviado</div>
-                      <div style={{ fontSize:'.75rem', color:'#6b7280', margin:'4px 0 10px' }}>Su formulario ha sido enviado exitosamente.</div>
-                      <div style={{ fontSize:'.75rem', color:'#374151' }}>Número de ticket asignado: <strong style={{ color:'#1d4ed8' }}>#{submitResult}</strong></div>
+                      <div style={{ fontWeight:700, color:'#065f46', fontSize:'.9rem' }}>{t('mission_sim.campos.sent_title')}</div>
+                      <div style={{ fontSize:'.75rem', color:'#6b7280', margin:'4px 0 10px' }}>{t('mission_sim.campos.sent_sub')}</div>
+                      <div style={{ fontSize:'.75rem', color:'#374151' }}>{t('mission_sim.campos.ticket_assigned')} <strong style={{ color:'#1d4ed8' }}>#{submitResult}</strong></div>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-            {stepDone[3] && <button className="next-btn" onClick={nextStep}>Siguiente →</button>}
+            {stepDone[3] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
           </div>
 
           {/* ══ STEP 4: SEGUIMIENTO ══ */}
           <div className={`step-panel${currentStep === 4 ? ' active' : ''}`}>
             <div className="info-card" style={{ borderColor:'rgba(255,184,0,0.2)', padding:'12px 16px' }}>
-              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>📋 Instrucción:</strong> Navega a <strong>Asistencia → Casos</strong> para ver tus tickets. Haz clic en el ticket activo para ver su detalle.</p>
+              <p style={{ fontSize:'.78rem', color:'#ffb800' }}><strong>{t('mission_sim.instruction_word')}</strong> {t('mission_sim.seguimiento.instruction_a')}<strong>{t('mission_sim.seguimiento.instruction_bold')}</strong>{t('mission_sim.seguimiento.instruction_b')}</p>
             </div>
             <div className="glpi-screen">
               <div className="glpi-topbar">
@@ -886,27 +844,27 @@ export default function MissionPlayer() {
                 <div className="browser-url">glpi.amadeus.aeropuerto.mx / Asistencia / Casos</div>
               </div>
               <div style={{ padding:'16px 20px', background:'#f9fafb' }}>
-                <div className="glpi-breadcrumb" style={{ color:'#6b7280' }}>🏠 Inicio / <span>Asistencia</span> / <span>Casos</span></div>
+                <div className="glpi-breadcrumb" style={{ color:'#6b7280' }}>{t('mission_sim.login.home')} / <span>{t('mission_sim.crear.instruction_asistencia')}</span> / <span>{t('mission_sim.seguimiento.cases')}</span></div>
                 <div className="ticket-table-scroll">
                 <table className="ticket-table">
                   <thead>
-                    <tr>{['ID','TÍTULO','AEROPUERTO','ESTADO','ÚLTIMA MOD.','PRIORIDAD','SOLICITANTE'].map(h => <th key={h}>{h}</th>)}</tr>
+                    <tr>{[t('mission_sim.seguimiento.th_id'),t('mission_sim.seguimiento.th_title'),t('mission_sim.seguimiento.th_airport'),t('mission_sim.seguimiento.th_status'),t('mission_sim.seguimiento.th_lastmod'),t('mission_sim.seguimiento.th_priority'),t('mission_sim.seguimiento.th_requester')].map(h => <th key={h}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
-                    <tr className="ticket-row" style={{ animation:'fadeSlide .5s ease' }} onClick={() => { setTicketDetailVisible(true); markStepDone(4, 50); addLog('Abriendo ticket #823','new') }}>
+                    <tr className="ticket-row" style={{ animation:'fadeSlide .5s ease' }} onClick={() => { setTicketDetailVisible(true); markStepDone(4, 50); addLog(t('mission_sim.log.opening_ticket'),'new') }}>
                       <td style={{ color:'#60a5fa', fontWeight:600, fontSize:'.7rem' }}>#823</td>
-                      <td><div style={{ color:'#fbbf24', fontWeight:600, fontSize:'.72rem' }}>NLU-COUNTER 13,16-CK-REPORTE</div><div style={{ fontSize:'.62rem', color:'#9ca3af' }}>Aerolínea reporta impresora ATB sin respuesta</div></td>
+                      <td><div style={{ color:'#fbbf24', fontWeight:600, fontSize:'.72rem' }}>{t('mission_sim.seguimiento.r1_title')}</div><div style={{ fontSize:'.62rem', color:'#9ca3af' }}>{t('mission_sim.seguimiento.r1_sub')}</div></td>
                       <td style={{ fontSize:'.7rem', color:'#9ca3af' }}>NLU</td>
-                      <td><span className="status-dot s-assigned">● En curso (asignada)</span></td>
+                      <td><span className="status-dot s-assigned">{t('mission_sim.seguimiento.r1_status')}</span></td>
                       <td style={{ fontSize:'.65rem', color:'#9ca3af' }}>2026-02-16 15:12</td>
-                      <td><span className="p-badge p-alto">Alta</span></td>
+                      <td><span className="p-badge p-alto">{t('mission_sim.seguimiento.prio_high')}</span></td>
                       <td style={{ fontSize:'.7rem', color:'#e5e7eb' }}>Hernandez G.</td>
                     </tr>
-                    {[['#796','Soporte Centro de Datos','NLU','s-waiting','En espera','2026-02-16 14:52','p-alto','Alta','Mancilla M.'],
-                      ['#747','PXM — Screen flickering AM','PXM','s-waiting','En espera','2026-02-16 07:51','p-medio','Media','Esmeralda S.'],
-                      ['#644','NLU-K-5.25-APOC / SOLICITUD','NLU','s-new','Nuevo','2026-02-05 11:42','p-bajo','Baja','Granados L.']
+                    {[['#796',t('mission_sim.seguimiento.r2_title'),'NLU','s-waiting',t('mission_sim.seguimiento.r2_status'),'2026-02-16 14:52','p-alto',t('mission_sim.seguimiento.prio_high'),'Mancilla M.'],
+                      ['#747',t('mission_sim.seguimiento.r3_title'),'PXM','s-waiting',t('mission_sim.seguimiento.r2_status'),'2026-02-16 07:51','p-medio',t('mission_sim.seguimiento.prio_medium'),'Esmeralda S.'],
+                      ['#644',t('mission_sim.seguimiento.r4_title'),'NLU','s-new',t('mission_sim.seguimiento.status_new'),'2026-02-05 11:42','p-bajo',t('mission_sim.seguimiento.prio_low'),'Granados L.']
                     ].map(([id,title,aero,sClass,sLabel,date,pClass,pLabel,sol]) => (
-                      <tr key={id} className="ticket-row" onClick={() => showToast('ℹ️ Haz clic en el ticket amarillo (#823)','info')}>
+                      <tr key={id} className="ticket-row" onClick={() => showToast(t('mission_sim.toast.click_yellow'),'info')}>
                         <td style={{ color:'#60a5fa', fontWeight:600, fontSize:'.7rem' }}>{id}</td>
                         <td><div style={{ fontSize:'.72rem', color:'#e5e7eb' }}>{title}</div></td>
                         <td style={{ fontSize:'.7rem', color:'#9ca3af' }}>{aero}</td>
@@ -930,25 +888,25 @@ export default function MissionPlayer() {
                 <div style={{ padding:'18px 22px', background:'#f9fafb' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
                     <span style={{ width:10, height:10, borderRadius:'50%', background:'#10b981', display:'inline-block' }} />
-                    <span style={{ fontWeight:700, color:'#111827', fontSize:'.9rem' }}>NLU-COUNTER 13,16-CK-REPORTE (823)</span>
+                    <span style={{ fontWeight:700, color:'#111827', fontSize:'.9rem' }}>{t('mission_sim.seguimiento.detail_title')}</span>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
                     <div style={{ background:'white', border:'1px solid #e5e7eb', borderRadius:8, padding:'12px 14px' }}>
-                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginBottom:4 }}>🕐 Creado: hace 1 hora por <strong style={{ color:'#374151' }}>Hernandez Guadalupe</strong></div>
-                      <div style={{ fontSize:'.78rem', color:'#374151', lineHeight:1.5 }}>NLU-COUNTER 13,16-CK-REPORTE / Aerolínea reporta que no imprime impresora ATB. Sistema AMADEUS sin respuesta en todas las instancias del counter.</div>
+                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginBottom:4 }}>{t('mission_sim.seguimiento.created_by')} <strong style={{ color:'#374151' }}>{t('mission_sim.seguimiento.created_name')}</strong></div>
+                      <div style={{ fontSize:'.78rem', color:'#374151', lineHeight:1.5 }}>{t('mission_sim.seguimiento.detail_desc')}</div>
                     </div>
                     <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'12px 14px', alignSelf:'flex-end', maxWidth:'80%' }}>
-                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginBottom:4 }}>🕐 hace 27 min — <strong style={{ color:'#374151' }}>Soporte Técnico</strong></div>
-                      <div style={{ fontSize:'.78rem', color:'#1e40af', lineHeight:1.5 }}>Caso asignado. Técnico en camino al counter. ETA: 15 minutos.</div>
+                      <div style={{ fontSize:'.65rem', color:'#9ca3af', marginBottom:4 }}>{t('mission_sim.seguimiento.support_time')} <strong style={{ color:'#374151' }}>{t('mission_sim.seguimiento.support_name')}</strong></div>
+                      <div style={{ fontSize:'.78rem', color:'#1e40af', lineHeight:1.5 }}>{t('mission_sim.seguimiento.support_msg')}</div>
                     </div>
                   </div>
                   {!validationFeedback && (
                     <div style={{ background:'#fef3c7', border:'1px solid #fcd34d', borderRadius:8, padding:14, marginBottom:12 }}>
-                      <div style={{ fontWeight:600, color:'#92400e', fontSize:'.82rem', marginBottom:8 }}>⚠️ Validación de la Solución</div>
-                      <div style={{ fontSize:'.75rem', color:'#78350f', marginBottom:10 }}>El técnico ha marcado este ticket como Resuelto. ¿El problema fue solucionado completamente?</div>
+                      <div style={{ fontWeight:600, color:'#92400e', fontSize:'.82rem', marginBottom:8 }}>{t('mission_sim.seguimiento.validation_title')}</div>
+                      <div style={{ fontSize:'.75rem', color:'#78350f', marginBottom:10 }}>{t('mission_sim.seguimiento.validation_q')}</div>
                       <div style={{ display:'flex', gap:10 }}>
-                        <button onClick={() => { setValidationFeedback({ type:'fail', msg:'⚠️ Recuerda: Rechazar reabre el ticket y el técnico debe continuar trabajando. Solo rechaza si el problema persiste.' }); showToast('ℹ️ Rechazo registrado — ticket reabierto','info'); addLog('Solución rechazada — ticket reabierto','warn') }} style={{ padding:'7px 18px', background:'white', border:'1px solid #ef4444', borderRadius:5, color:'#ef4444', fontSize:'.78rem', fontWeight:600, cursor:'pointer' }}>✕ Rechazar</button>
-                        <button onClick={() => { setValidationFeedback({ type:'ok', msg:'✅ Correcto. Al aprobar, el ticket se cierra definitivamente. El ciclo de soporte se completa satisfactoriamente.' }); showToast('✅ Solución aprobada — ticket cerrado','ok'); addLog('Ticket validado y cerrado por el usuario','ok') }} style={{ padding:'7px 18px', background:'#10b981', border:'none', borderRadius:5, color:'white', fontSize:'.78rem', fontWeight:600, cursor:'pointer' }}>✓ Aprobar</button>
+                        <button onClick={() => { setValidationFeedback({ type:'fail', msg:t('mission_sim.seguimiento.fb_fail') }); showToast(t('mission_sim.toast.reject_registered'),'info'); addLog(t('mission_sim.log.sol_rejected'),'warn') }} style={{ padding:'7px 18px', background:'white', border:'1px solid #ef4444', borderRadius:5, color:'#ef4444', fontSize:'.78rem', fontWeight:600, cursor:'pointer' }}>{t('mission_sim.seguimiento.reject')}</button>
+                        <button onClick={() => { setValidationFeedback({ type:'ok', msg:t('mission_sim.seguimiento.fb_ok') }); showToast(t('mission_sim.toast.approve_ok'),'ok'); addLog(t('mission_sim.log.ticket_closed'),'ok') }} style={{ padding:'7px 18px', background:'#10b981', border:'none', borderRadius:5, color:'white', fontSize:'.78rem', fontWeight:600, cursor:'pointer' }}>{t('mission_sim.seguimiento.approve')}</button>
                       </div>
                     </div>
                   )}
@@ -958,7 +916,7 @@ export default function MissionPlayer() {
                 </div>
               </div>
             )}
-            {stepDone[4] && <button className="next-btn" onClick={nextStep}>Siguiente →</button>}
+            {stepDone[4] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
           </div>
 
           {/* ══ STEP 5: SLA QUIZ ══ */}
@@ -967,54 +925,54 @@ export default function MissionPlayer() {
               <div className="info-card-hdr">
                 <div className="info-card-icon icon-amber">⏱️</div>
                 <div>
-                  <div className="info-card-title">Acuerdos de Nivel de Servicio — SLA</div>
-                  <div className="info-card-subtitle">MAN-MÉX 023 V1 — Sección 7</div>
+                  <div className="info-card-title">{t('mission_sim.sla.title')}</div>
+                  <div className="info-card-subtitle">{t('mission_sim.sla.sub')}</div>
                 </div>
               </div>
               <table className="sla-table">
-                <thead><tr><th>Impacto</th><th>Tiempo de Respuesta</th><th>Tiempo de Solución</th></tr></thead>
+                <thead><tr><th>{t('mission_sim.sla.th_impact')}</th><th>{t('mission_sim.sla.th_response')}</th><th>{t('mission_sim.sla.th_solution')}</th></tr></thead>
                 <tbody>
-                  <tr><td className="sla-alto">🔴 Alto</td><td><strong>5 minutos</strong></td><td>24 horas</td></tr>
-                  <tr><td className="sla-medio">🟡 Medio</td><td><strong>15 minutos</strong></td><td>24 horas</td></tr>
-                  <tr><td className="sla-bajo">🟢 Bajo</td><td><strong>15 minutos</strong></td><td>24 horas</td></tr>
+                  <tr><td className="sla-alto">{t('mission_sim.sla.high')}</td><td><strong>{t('mission_sim.sla.min5')}</strong></td><td>{t('mission_sim.sla.h24')}</td></tr>
+                  <tr><td className="sla-medio">{t('mission_sim.sla.medium')}</td><td><strong>{t('mission_sim.sla.min15')}</strong></td><td>{t('mission_sim.sla.h24')}</td></tr>
+                  <tr><td className="sla-bajo">{t('mission_sim.sla.low')}</td><td><strong>{t('mission_sim.sla.min15')}</strong></td><td>{t('mission_sim.sla.h24')}</td></tr>
                 </tbody>
               </table>
             </div>
-            {QUIZ_DATA.map((q, qIdx) => (
-              <div key={qIdx} className="quiz-card">
-                <div className="quiz-q">{q.q}</div>
+            {QUIZ_KEYS.map((item, qIdx) => (
+              <div key={item.key} className="quiz-card">
+                <div className="quiz-q">{t(`mission_sim.quiz.${item.key}.q`)}</div>
                 <div className="quiz-options">
-                  {q.opts.map(opt => {
+                  {QUIZ_OPT_IDS.map(optId => {
                     const answered = quizAnswers[qIdx] !== undefined
-                    const isChosen = answered && (opt.correct ? quizAnswers[qIdx] : !quizAnswers[qIdx] && false)
+                    const isCorrect = item.correct === optId
                     let cls = 'quiz-opt'
                     if (answered) {
-                      if (opt.correct) cls += ' opt-correct'
+                      if (isCorrect) cls += ' opt-correct'
                       else cls += ' opt-disabled'
                     }
                     return (
-                      <button key={opt.id} className={cls} onClick={() => answerQuiz(qIdx, opt.id)}>
-                        <span className="opt-letter">{opt.id.toUpperCase()}</span>
-                        {opt.text}
+                      <button key={optId} className={cls} onClick={() => answerQuiz(qIdx, optId)}>
+                        <span className="opt-letter">{optId.toUpperCase()}</span>
+                        {t(`mission_sim.quiz.${item.key}.${optId}`)}
                       </button>
                     )
                   })}
                 </div>
                 {quizAnswers[qIdx] !== undefined && (
                   <div className={`quiz-fb ${quizAnswers[qIdx] ? 'fb-ok' : 'fb-fail'}`}>
-                    {quizAnswers[qIdx] ? q.ok : q.fail}
+                    {quizAnswers[qIdx] ? t(`mission_sim.quiz.${item.key}.ok`) : t(`mission_sim.quiz.${item.key}.fail`)}
                   </div>
                 )}
               </div>
             ))}
-            {stepDone[5] && <button className="next-btn" onClick={nextStep}>🏆 Finalizar Misión →</button>}
+            {stepDone[5] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.sla.finish_btn')}</button>}
           </div>
 
         </main>
 
         {/* ══ LOG ══ */}
         <aside className="log-panel">
-          <div className="log-title">▶ SYSTEM LOG — GLPI SIM</div>
+          <div className="log-title">{t('mission_sim.log.title')}</div>
           {logs.map((l, i) => (
             <div key={i} className={`log-entry ${l.type}`}>
               <div className="log-time">{l.ts}</div>
@@ -1035,14 +993,14 @@ export default function MissionPlayer() {
       {showCompletion && (
         <div className="completion-overlay">
           <div className="completion-icon">🏆</div>
-          <div className="completion-title">¡Misión Completada!</div>
-          <div className="completion-sub">Has completado el módulo de entrenamiento GLPI 11 — Mesa de Ayuda Aeroportuaria</div>
+          <div className="completion-title">{t('mission_sim.completion.title')}</div>
+          <div className="completion-sub">{t('mission_sim.completion.sub')}</div>
           <div className="completion-xp">{xp} / {xpTarget} XP</div>
           <div style={{ fontSize:'.8rem', color:'#5a7f8f' }}>
-            {Object.values(quizAnswers).filter(Boolean).length}/{QUIZ_DATA.length} respuestas correctas · {formatTimer(timerSeconds)}
+            {t('mission_sim.completion.results', { correct: Object.values(quizAnswers).filter(Boolean).length, total: QUIZ_KEYS.length, time: formatTimer(timerSeconds) })}
           </div>
-          <button className="completion-btn" onClick={() => window.location.reload()}>↩ Repetir Simulación</button>
-          <button className="completion-btn-sec" onClick={() => navigate('/admin/missions')}>← Volver a Misiones</button>
+          <button className="completion-btn" onClick={() => window.location.reload()}>{t('mission_sim.completion.repeat')}</button>
+          <button className="completion-btn-sec" onClick={() => navigate('/admin/missions')}>{t('mission_sim.completion.back')}</button>
         </div>
       )}
     </>

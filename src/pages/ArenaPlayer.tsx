@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
@@ -89,14 +90,12 @@ function useSFX() {
   return { play }
 }
 
-const THEME_LABELS: Record<string,string> = {
-  airline:'Aerolínea', bank:'Banco', health:'Salud', corporate:'Corporativo', tech:'Tecnología'
-}
 const OPT_LABELS = ['A','B','C','D']
 
 export default function ArenaPlayer() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t }    = useTranslation()
   const { id }   = useParams<{ id: string }>()
   const { user } = useAuth()
   const { play } = useSFX()
@@ -110,9 +109,9 @@ export default function ArenaPlayer() {
         : '/arena'
 
   const backLabel =
-    backPath === '/world'         ? '← Volver al Mapa'
-    : backPath === '/admin/arena' ? '← Volver al Admin'
-    : '← Volver a Arena'
+    backPath === '/world'         ? t('arena.back_map')
+    : backPath === '/admin/arena' ? t('arena.back_admin')
+    : t('arena.back_arena')
 
   const backNavOpts = backPath === '/world'
     ? { state: { worldId: locationState?.worldId } }
@@ -208,7 +207,7 @@ export default function ArenaPlayer() {
             }, { onConflict: 'user_id,level_id' })
             if (wpError) {
               console.error('world_progress upsert error:', wpError, { worldId: state.worldId, levelId: state.levelId, userId: user.id })
-              showPopup('⚠️', 'No se pudo guardar tu progreso', 'Intenta de nuevo o contacta al administrador.')
+              showPopup('⚠️', t('arena.save_error_title'), t('arena.save_error_text'))
             }
           }
         }
@@ -245,7 +244,7 @@ export default function ArenaPlayer() {
       play('click')
       setPlanePos(q => q+1)
       setCurrentQ(q => q+1)
-      showPopup(quiz.theme_icon, `¡Paso ${currentQ+1} completado!`, 'Siguiente misión desbloqueada.')
+      showPopup(quiz.theme_icon, t('arena.step_complete_title', { n: currentQ+1 }), t('arena.step_complete_text'))
     }
   }, [quiz, currentQ, play, showPopup])
 
@@ -256,7 +255,7 @@ export default function ArenaPlayer() {
     setGroupIndex(g => g + 1)
     setCurrentQ(nextStart)
     setPlanePos(nextStart)
-    showPopup(quiz.theme_icon, `¡Ronda ${groupIndex + 1} completada!`, 'Siguiente ronda desbloqueada.')
+    showPopup(quiz.theme_icon, t('arena.round_complete_title', { n: groupIndex + 1 }), t('arena.round_complete_text'))
   }, [quiz, groupIndex, play, showPopup])
 
   const fmt = (s:number) =>
@@ -265,14 +264,14 @@ export default function ArenaPlayer() {
   /* Loading */
   if (loading) return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'rgb(var(--bg))',color:'rgb(var(--text-muted))',fontFamily:'inherit',fontSize:'.875rem'}}>
-      Cargando quiz…
+      {t('arena.loading')}
     </div>
   )
 
   if (!quiz || quiz.steps.length === 0) return (
     <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,minHeight:'100vh',background:'rgb(var(--bg))',fontFamily:'inherit',color:'rgb(var(--text))'}}>
       <div style={{fontSize:'2.5rem'}}>🏟️</div>
-      <div style={{fontWeight:600,fontSize:'1.1rem'}}>Quiz no disponible</div>
+      <div style={{fontWeight:600,fontSize:'1.1rem'}}>{t('arena.unavailable')}</div>
       <button onClick={() => navigate(backPath, backNavOpts)} style={{background:'none',border:'1px solid rgb(var(--line))',borderRadius:10,padding:'8px 20px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.875rem'}}>{backLabel}</button>
     </div>
   )
@@ -394,7 +393,7 @@ export default function ArenaPlayer() {
         <section className="ap-subhero" style={{padding:'28px 7% 20px'}}>
           <div style={{display:'inline-flex',alignItems:'center',gap:8,background:`${tc}10`,border:`1px solid ${tc}22`,borderRadius:50,padding:'5px 16px',fontSize:'.72rem',fontWeight:500,color:tc,marginBottom:14}}>
             <span className="ap-badge-dot" style={{width:6,height:6,borderRadius:'50%',background:tc,display:'inline-block'}} />
-            Capacitación · {THEME_LABELS[quiz.theme_type] ?? quiz.theme_type}
+            {t('arena.training')} · {t(`themes.${quiz.theme_type}`, quiz.theme_type)}
           </div>
           <h1 className="ap-subhero-title" style={{fontSize:'1.6rem',fontWeight:700,color:'rgb(var(--text))',lineHeight:1.2,margin:'0 0 8px'}}>
             {quiz.title}
@@ -412,7 +411,7 @@ export default function ArenaPlayer() {
             borderRadius:'1rem',padding:'16px 20px',
           }}>
             <div style={{fontSize:'.6rem',color:'rgb(var(--text-muted))',letterSpacing:'.15em',textTransform:'uppercase',marginBottom:16}}>
-              Ruta de capacitación · {quiz.title}
+              {t('arena.route_label', { title: quiz.title })}
             </div>
             <div style={{overflowX:'auto',paddingBottom:4}}>
             <div style={{position:'relative',height:80,minWidth:`${Math.max(quiz.steps.length * 44 + 44, 280)}px`}}>
@@ -459,7 +458,7 @@ export default function ArenaPlayer() {
                 {/* Checkpoint final */}
                 <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
                   <div style={{width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1rem',background:showComplete?tc:'rgb(var(--subtle))',border:`2px solid ${showComplete?tc:'rgb(var(--line))'}`,transition:'all .3s'}}>🏆</div>
-                  <div style={{fontSize:'.55rem',color:'rgb(var(--text-muted))'}}>Meta</div>
+                  <div style={{fontSize:'.55rem',color:'rgb(var(--text-muted))'}}>{t('arena.goal')}</div>
                 </div>
               </div>
             </div>
@@ -517,7 +516,7 @@ export default function ArenaPlayer() {
                   <div className="ap-card-body" style={{padding:'20px 24px'}}>
                     {/* Mission label */}
                     <div style={{display:'flex',alignItems:'center',gap:8,fontSize:'.72rem',fontWeight:600,color:tc,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:14}}>
-                      {isDone?'✓':isActive?'▶':'🔒'} Misión {i+1} · {isLocked?'Bloqueada':isDone?'Completada':'Activa'}
+                      {isDone?'✓':isActive?'▶':'🔒'} {t('arena.mission_label', { n: i+1 })} · {isLocked?t('arena.mission_locked'):isDone?t('arena.mission_completed'):t('arena.mission_active')}
                     </div>
 
                     {/* Context */}
@@ -591,7 +590,7 @@ export default function ArenaPlayer() {
                           onMouseEnter={e => {(e.currentTarget as HTMLElement).style.background=`${tc}28`}}
                           onMouseLeave={e => {(e.currentTarget as HTMLElement).style.background=`${tc}14`}}
                         >
-                          {i >= quiz.steps.length-1 ? '🏆 Ver resultado' : 'Siguiente →'}
+                          {i >= quiz.steps.length-1 ? t('arena.see_result') : t('arena.next')}
                         </button>
                       </div>
                     )}
@@ -620,7 +619,7 @@ export default function ArenaPlayer() {
                 onMouseEnter={e => {(e.currentTarget as HTMLElement).style.opacity='0.85'}}
                 onMouseLeave={e => {(e.currentTarget as HTMLElement).style.opacity='1'}}
               >
-                Siguiente ronda →
+                {t('arena.next_round')}
               </button>
             </div>
           )}
@@ -680,10 +679,10 @@ export default function ArenaPlayer() {
             </div>
             <div>
               <h1 style={{margin:0,fontSize:'1.9rem',fontWeight:800,color:tc,letterSpacing:'-.5px'}}>
-                ¡Capacitación Completada!
+                {t('arena.completed_title')}
               </h1>
               <p style={{margin:'8px 0 0',fontSize:'.9rem',color:'rgb(var(--text-muted))'}}>
-                {quiz.title} · {THEME_LABELS[quiz.theme_type]}
+                {quiz.title} · {t(`themes.${quiz.theme_type}`, quiz.theme_type)}
               </p>
             </div>
             <div style={{
@@ -692,10 +691,10 @@ export default function ArenaPlayer() {
               borderRadius:16,padding:'20px 28px',
             }}>
               {[
-                {val:xp,lbl:'XP ganados',c:tc},
-                {val:`${correctCount}/${quiz.steps.length}`,lbl:'correctas',c:correctCount===quiz.steps.length?tc:'#f97316'},
-                {val:`${scorePct}%`,lbl:'puntuación',c:tc},
-                {val:fmt(timerSecs),lbl:'tiempo',c:'rgb(var(--text-muted))'},
+                {val:xp,lbl:t('arena.stat_xp'),c:tc},
+                {val:`${correctCount}/${quiz.steps.length}`,lbl:t('arena.stat_correct'),c:correctCount===quiz.steps.length?tc:'#f97316'},
+                {val:`${scorePct}%`,lbl:t('arena.stat_score'),c:tc},
+                {val:fmt(timerSecs),lbl:t('arena.stat_time'),c:'rgb(var(--text-muted))'},
               ].map((stat,i) => (
                 <div key={i} style={{textAlign:'center'}}>
                   <div style={{fontSize:'1.6rem',fontWeight:800,color:stat.c}}>{stat.val}</div>
@@ -707,11 +706,11 @@ export default function ArenaPlayer() {
               <button
                 onClick={() => window.location.reload()}
                 style={{padding:'12px 28px',borderRadius:'0.75rem',border:'none',background:tc,color:'#fff',fontSize:'.9rem',fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}
-              >↩ Repetir</button>
+              >{t('arena.repeat')}</button>
               <button
                 onClick={() => navigate(backPath, backNavOpts)}
                 style={{padding:'12px 28px',borderRadius:'0.75rem',background:'transparent',color:'rgb(var(--text-muted))',border:'1px solid rgba(255,255,255,0.12)',fontSize:'.9rem',cursor:'pointer',fontFamily:'inherit'}}
-              >{backPath === '/world' ? '🗺️ Volver al Mapa' : backLabel}</button>
+              >{backPath === '/world' ? t('arena.back_map_btn') : backLabel}</button>
             </div>
           </div>
         )}
@@ -728,10 +727,10 @@ export default function ArenaPlayer() {
             <div style={{fontSize:'4rem',animation:'spinIn .6s ease both'}}>😔</div>
             <div>
               <h1 style={{margin:0,fontSize:'1.9rem',fontWeight:800,color:'#ef4444',letterSpacing:'-.5px'}}>
-                No alcanzaste el mínimo
+                {t('arena.failed_title')}
               </h1>
               <p style={{margin:'8px 0 0',fontSize:'.9rem',color:'rgb(var(--text-muted))'}}>
-                {quiz.title} · {THEME_LABELS[quiz.theme_type]}
+                {quiz.title} · {t(`themes.${quiz.theme_type}`, quiz.theme_type)}
               </p>
             </div>
             <div style={{
@@ -740,9 +739,9 @@ export default function ArenaPlayer() {
               borderRadius:16,padding:'20px 28px',
             }}>
               {[
-                {val:`${scorePct}%`,lbl:'tu puntuación',c:'#ef4444'},
-                {val: (locationState?.minScorePct ?? quiz.min_score_pct) != null ? `${locationState?.minScorePct ?? quiz.min_score_pct}%` : '—', lbl:'mínimo requerido',c:'rgb(var(--text-muted))'},
-                {val:`${correctCount}/${quiz.steps.length}`,lbl:'correctas',c:'rgb(var(--text-muted))'},
+                {val:`${scorePct}%`,lbl:t('arena.stat_your_score'),c:'#ef4444'},
+                {val: (locationState?.minScorePct ?? quiz.min_score_pct) != null ? `${locationState?.minScorePct ?? quiz.min_score_pct}%` : '—', lbl:t('arena.stat_min_required'),c:'rgb(var(--text-muted))'},
+                {val:`${correctCount}/${quiz.steps.length}`,lbl:t('arena.stat_correct'),c:'rgb(var(--text-muted))'},
               ].map((stat,i) => (
                 <div key={i} style={{textAlign:'center'}}>
                   <div style={{fontSize:'1.6rem',fontWeight:800,color:stat.c}}>{stat.val}</div>
@@ -754,11 +753,11 @@ export default function ArenaPlayer() {
               <button
                 onClick={() => window.location.reload()}
                 style={{padding:'12px 28px',borderRadius:'0.75rem',border:'none',background:'#ef4444',color:'#fff',fontSize:'.9rem',fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}
-              >↩ Intentar de nuevo</button>
+              >{t('arena.retry')}</button>
               <button
                 onClick={() => navigate(backPath, backNavOpts)}
                 style={{padding:'12px 28px',borderRadius:'0.75rem',background:'transparent',color:'rgb(var(--text-muted))',border:'1px solid rgba(255,255,255,0.12)',fontSize:'.9rem',cursor:'pointer',fontFamily:'inherit'}}
-              >{backPath === '/world' ? '🗺️ Volver al Mapa' : backLabel}</button>
+              >{backPath === '/world' ? t('arena.back_map_btn') : backLabel}</button>
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
@@ -158,6 +159,7 @@ function playSound(soundTheme: string, type: 'enter' | 'unlock' | 'click') {
 
 /* ── Transition overlay ── */
 function Transition({ type, color }: { type: string; color: string }) {
+  const { t } = useTranslation()
   const content: Record<string, React.ReactNode> = {
     clouds: (
       <>
@@ -191,8 +193,8 @@ function Transition({ type, color }: { type: string; color: string }) {
     terminal: (
       <>
         <style>{`@keyframes mx{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}`}</style>
-        {['> SISTEMA CARGANDO...','> NIVEL DESBLOQUEADO ✓','> ACCESO CONCEDIDO'].map((t,i)=>(
-          <div key={i} style={{color:'#00ff80',fontFamily:'monospace',fontSize:'1.1rem',fontWeight:700,letterSpacing:2,animation:`mx .5s ease ${i*.25}s both`,textShadow:'0 0 10px #00ff80',marginBottom:12}}>{t}</div>
+        {[t('world.term_loading'),t('world.term_unlocked'),t('world.term_granted')].map((line,i)=>(
+          <div key={i} style={{color:'#00ff80',fontFamily:'monospace',fontSize:'1.1rem',fontWeight:700,letterSpacing:2,animation:`mx .5s ease ${i*.25}s both`,textShadow:'0 0 10px #00ff80',marginBottom:12}}>{line}</div>
         ))}
       </>
     ),
@@ -224,7 +226,7 @@ function Transition({ type, color }: { type: string; color: string }) {
   return (
     <div style={{position:'fixed',inset:0,zIndex:9999,background:'rgb(var(--bg) / 0.94)',backdropFilter:'blur(12px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
       {content[type] ?? content.clouds}
-      <div style={{position:'absolute',bottom:'20%',color:'rgb(var(--text-muted))',fontSize:'.8rem',letterSpacing:3,textTransform:'uppercase',fontFamily:'inherit'}}>Cargando nivel…</div>
+      <div style={{position:'absolute',bottom:'20%',color:'rgb(var(--text-muted))',fontSize:'.8rem',letterSpacing:3,textTransform:'uppercase',fontFamily:'inherit'}}>{t('world.loading_level')}</div>
     </div>
   )
 }
@@ -258,6 +260,7 @@ function ConfettiBurst({ color }: { color: string }) {
 export default function WorldMap() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation()
   const { user, profile } = useAuth() as {
     user: { id: string } | null
     profile: { campaign_id?: string | null; role?: string } | null
@@ -411,7 +414,7 @@ export default function WorldMap() {
     <div style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16,fontFamily:'inherit'}}>
       <style>{`@keyframes sp{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
       <div style={{fontSize:'3rem',animation:'sp 1.5s linear infinite'}}>🌍</div>
-      <div style={{color:'rgb(var(--text-muted))',fontSize:'.875rem',letterSpacing:1}}>Cargando tu mundo…</div>
+      <div style={{color:'rgb(var(--text-muted))',fontSize:'.875rem',letterSpacing:1}}>{t('world.loading_world')}</div>
     </div>
   )
 
@@ -419,9 +422,9 @@ export default function WorldMap() {
   if (!isSuperAdmin && !campaignId) return (
     <div style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,fontFamily:'inherit',padding:'0 24px',textAlign:'center'}}>
       <div style={{fontSize:'3.5rem'}}>🗺️</div>
-      <div style={{color:'rgb(var(--text))',fontWeight:800,fontSize:'1.2rem'}}>Aún no tienes una campaña asignada</div>
-      <div style={{color:'rgb(var(--text-muted))',fontSize:'.9rem',maxWidth:320,lineHeight:1.6}}>Contacta a tu administrador para que te asigne una campaña y puedas comenzar tu aventura.</div>
-      <button onClick={() => navigate('/')} style={{marginTop:8,background:'rgb(var(--subtle))',border:'1px solid rgb(var(--line))',borderRadius:12,padding:'10px 24px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.9rem',fontWeight:600}}>← Volver al Dashboard</button>
+      <div style={{color:'rgb(var(--text))',fontWeight:800,fontSize:'1.2rem'}}>{t('world.no_campaign_title')}</div>
+      <div style={{color:'rgb(var(--text-muted))',fontSize:'.9rem',maxWidth:320,lineHeight:1.6}}>{t('world.no_campaign_desc')}</div>
+      <button onClick={() => navigate('/')} style={{marginTop:8,background:'rgb(var(--subtle))',border:'1px solid rgb(var(--line))',borderRadius:12,padding:'10px 24px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.9rem',fontWeight:600}}>{t('world.back_dashboard')}</button>
     </div>
   )
 
@@ -435,21 +438,21 @@ export default function WorldMap() {
         .wc:hover{transform:translateY(-6px) scale(1.03);}
       `}</style>
       <div className="wm-selector-wrap" style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,fontFamily:'inherit'}}>
-        <button onClick={() => navigate(backPath)} style={{position:'fixed',top:20,left:20,background:'none',border:'none',color:'rgb(var(--text-muted))',cursor:'pointer',fontSize:'.875rem',fontFamily:'inherit'}}>← Volver</button>
+        <button onClick={() => navigate(backPath)} style={{position:'fixed',top:20,left:20,background:'none',border:'none',color:'rgb(var(--text-muted))',cursor:'pointer',fontSize:'.875rem',fontFamily:'inherit'}}>{t('world.back')}</button>
         <div style={{fontSize:'3.5rem',marginBottom:20,animation:'bob 3s ease infinite'}}>🌍</div>
-        <h1 style={{color:'rgb(var(--text))',fontSize:'2rem',fontWeight:900,margin:'0 0 10px',textAlign:'center',letterSpacing:'-1px'}}>Elige tu mundo</h1>
-        <p style={{color:'rgb(var(--text-muted))',margin:'0 0 48px',fontSize:'.9rem'}}>Selecciona la campaña que quieres explorar</p>
+        <h1 style={{color:'rgb(var(--text))',fontSize:'2rem',fontWeight:900,margin:'0 0 10px',textAlign:'center',letterSpacing:'-1px'}}>{t('world.choose_world')}</h1>
+        <p style={{color:'rgb(var(--text-muted))',margin:'0 0 48px',fontSize:'.9rem'}}>{t('world.choose_world_sub')}</p>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:24,maxWidth:800,width:'100%'}}>
           {worlds.map((w,i) => {
-            const t = THEMES[w.bg_type] ?? THEMES.corporate
+            const th = THEMES[w.bg_type] ?? THEMES.corporate
             return (
               <div key={w.id} className="wc"
-                style={{background:`radial-gradient(ellipse 130% 80% at 50% 20%, ${t.tint}, transparent 70%), rgb(var(--surface))`,border:`2px solid ${w.color}30`,borderRadius:'1.5rem',padding:'32px 24px',textAlign:'center',boxShadow:`0 12px 40px ${w.color}15`,animation:`fadeUp .4s ease ${i*.08}s both`}}
+                style={{background:`radial-gradient(ellipse 130% 80% at 50% 20%, ${th.tint}, transparent 70%), rgb(var(--surface))`,border:`2px solid ${w.color}30`,borderRadius:'1.5rem',padding:'32px 24px',textAlign:'center',boxShadow:`0 12px 40px ${w.color}15`,animation:`fadeUp .4s ease ${i*.08}s both`}}
                 onClick={() => { playSound(w.sound_theme,'click'); loadWorld(w) }}>
                 <div style={{fontSize:'3.5rem',marginBottom:14,filter:`drop-shadow(0 0 14px ${w.color})`}}>{w.icon}</div>
                 <div style={{fontSize:'1.2rem',fontWeight:800,color:'rgb(var(--text))',marginBottom:8}}>{w.name}</div>
                 {w.description && <div style={{fontSize:'.78rem',color:'rgb(var(--text-muted))',lineHeight:1.6,marginBottom:14}}>{w.description}</div>}
-                <div style={{display:'inline-flex',alignItems:'center',gap:6,background:`${w.color}15`,border:`1px solid ${w.color}30`,borderRadius:20,padding:'5px 14px',fontSize:'.72rem',color:w.color,fontWeight:700}}>{w.icon} {t.label}</div>
+                <div style={{display:'inline-flex',alignItems:'center',gap:6,background:`${w.color}15`,border:`1px solid ${w.color}30`,borderRadius:20,padding:'5px 14px',fontSize:'.72rem',color:w.color,fontWeight:700}}>{w.icon} {t(`themes.${w.bg_type}`, th.label)}</div>
               </div>
             )
           })}
@@ -461,8 +464,8 @@ export default function WorldMap() {
   if (!world) return (
     <div style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,fontFamily:'inherit'}}>
       <div style={{fontSize:'3rem'}}>🌍</div>
-      <div style={{color:'rgb(var(--text))',fontWeight:700,fontSize:'1.1rem'}}>No hay mundo disponible</div>
-      <button onClick={() => navigate(backPath)} style={{background:'none',border:'1px solid rgb(var(--line))',borderRadius:12,padding:'8px 20px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.875rem'}}>← Volver</button>
+      <div style={{color:'rgb(var(--text))',fontWeight:700,fontSize:'1.1rem'}}>{t('world.no_world')}</div>
+      <button onClick={() => navigate(backPath)} style={{background:'none',border:'1px solid rgb(var(--line))',borderRadius:12,padding:'8px 20px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.875rem'}}>{t('world.back')}</button>
     </div>
   )
 
@@ -512,13 +515,13 @@ export default function WorldMap() {
         <header style={{position:'sticky',top:0,zIndex:50,background:'rgb(var(--bg) / 0.85)',backdropFilter:'blur(24px)',borderBottom:`1px solid ${tc}20`,height:60,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px'}}>
           <button onClick={() => { playSound(world.sound_theme,'click'); navigate(backPath) }}
             style={{background:'none',border:'none',color:'rgb(var(--text-muted))',cursor:'pointer',fontSize:'.875rem',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}>
-            ← Volver
+            {t('world.back')}
           </button>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <div style={{fontSize:'1.4rem',lineHeight:1}}>{world.icon}</div>
             <div>
               <div className="wm-hdr-name" style={{color:'rgb(var(--text))',fontWeight:800,fontSize:'.95rem',lineHeight:1}}>{world.name}</div>
-              <div className="wm-hdr-label" style={{color:'rgb(var(--text-subtle))',fontSize:'.6rem',marginTop:1}}>{theme.label}</div>
+              <div className="wm-hdr-label" style={{color:'rgb(var(--text-subtle))',fontSize:'.6rem',marginTop:1}}>{t(`themes.${world.bg_type}`, theme.label)}</div>
             </div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -530,7 +533,7 @@ export default function WorldMap() {
             {isSuperAdmin && worlds.length > 1 && (
               <button className="wm-hdr-cambiar" onClick={() => setShowSelector(true)}
                 style={{background:`${tc}15`,border:`1px solid ${tc}25`,borderRadius:20,padding:'4px 12px',color:tc,fontSize:'.72rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
-                Cambiar
+                {t('world.change')}
               </button>
             )}
           </div>
@@ -549,10 +552,10 @@ export default function WorldMap() {
           {/* Progress pills */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:16,marginTop:20}}>
             <div style={{background:'rgb(var(--subtle))',border:'1px solid rgb(var(--line))',borderRadius:20,padding:'6px 16px',fontSize:'.78rem',color:'rgb(var(--text-muted))'}}>
-              {completedCount}/{totalCount} niveles
+              {t('world.levels_count', { done: completedCount, total: totalCount })}
             </div>
             <div style={{background:`${tc}15`,border:`1px solid ${tc}25`,borderRadius:20,padding:'6px 16px',fontSize:'.78rem',color:tc,fontWeight:700}}>
-              {Math.round(progressPct)}% completado
+              {t('world.pct_complete', { pct: Math.round(progressPct) })}
             </div>
           </div>
         </div>
@@ -736,7 +739,7 @@ export default function WorldMap() {
                       animation:'fadeUp .2s ease both',
                       zIndex:20,
                     }}>
-                      ¡Toca para jugar! {level.quiz_id ? '' : '⚠️ Sin quiz'}
+                      {t('world.play_tooltip')} {level.quiz_id ? '' : t('world.no_quiz')}
                     </div>
                   )}
                   {/* Improve tooltip for completed with < 3 stars */}
@@ -751,7 +754,7 @@ export default function WorldMap() {
                       animation:'fadeUp .2s ease both',
                       zIndex:20,
                     }}>
-                      ⭐ Mejorar puntaje
+                      {t('world.improve_score')}
                     </div>
                   )}
                 </div>
@@ -774,8 +777,8 @@ export default function WorldMap() {
                 width:'max-content',maxWidth: mapW - 16,
               }}>
                 <div style={{fontSize:'2.5rem',marginBottom:8}}>🏆</div>
-                <div style={{color:tc,fontWeight:900,fontSize:'1.1rem',textShadow:`0 0 20px ${tc}`}}>¡Mundo completado!</div>
-                <div style={{color:'rgb(var(--text-muted))',fontSize:'.78rem',marginTop:6}}>Has dominado los {totalCount} niveles · {xpDisplay} XP</div>
+                <div style={{color:tc,fontWeight:900,fontSize:'1.1rem',textShadow:`0 0 20px ${tc}`}}>{t('world.world_complete')}</div>
+                <div style={{color:'rgb(var(--text-muted))',fontSize:'.78rem',marginTop:6}}>{t('world.world_complete_sub', { total: totalCount, xp: xpDisplay })}</div>
               </div>
             )}
 

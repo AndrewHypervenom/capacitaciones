@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ChevronRight, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -16,13 +17,9 @@ interface Quiz {
   steps: unknown[]
 }
 
-const THEME_LABELS: Record<string, string> = {
-  airline: 'Aerolínea', bank: 'Banco', health: 'Salud',
-  corporate: 'Corporativo', tech: 'Tecnología',
-}
-
 export default function ArenaHub() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { campaignId } = useAuth()
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
   const [loading, setLoading] = useState(true)
@@ -63,7 +60,7 @@ export default function ArenaHub() {
             onClick={() => navigate('/dashboard')}
             style={{ background: 'none', border: 'none', color: 'rgb(var(--text-muted))', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, padding: 0, fontFamily: 'inherit' }}
           >
-            ← Volver al dashboard
+            {t('arena.back_dashboard')}
           </button>
         </div>
 
@@ -76,9 +73,9 @@ export default function ArenaHub() {
               border: '1px solid rgb(var(--line))',
             }}>⚔️</div>
             <div>
-              <h1 style={{ margin: 0, fontSize: '1.7rem', fontWeight: 700, color: 'rgb(var(--text))', lineHeight: 1.2 }}>Arena</h1>
+              <h1 style={{ margin: 0, fontSize: '1.7rem', fontWeight: 700, color: 'rgb(var(--text))', lineHeight: 1.2 }}>{t('arena.title')}</h1>
               <p style={{ margin: '4px 0 0', fontSize: '0.83rem', color: 'rgb(var(--text-muted))' }}>
-                Completá quizzes, ganá XP y subí de nivel
+                {t('arena.subtitle')}
               </p>
             </div>
           </div>
@@ -99,10 +96,10 @@ export default function ArenaHub() {
             }}>
               <Trophy size={40} style={{ color: 'rgb(var(--text-subtle))', marginBottom: 16 }} />
               <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: 'rgb(var(--text))' }}>
-                No hay quizzes disponibles
+                {t('arena.empty_title')}
               </h2>
               <p style={{ margin: '8px 0 0', fontSize: '0.83rem', color: 'rgb(var(--text-muted))' }}>
-                Pronto habrá desafíos disponibles para tu campaña
+                {t('arena.empty_sub')}
               </p>
             </div>
           ) : (
@@ -163,13 +160,13 @@ export default function ArenaHub() {
                       fontSize: '0.68rem', padding: '2px 10px', borderRadius: 20,
                       background: `${q.theme_color}14`, color: q.theme_color, fontWeight: 500,
                     }}>
-                      {THEME_LABELS[q.theme_type] ?? q.theme_type}
+                      {t(`themes.${q.theme_type}`, q.theme_type)}
                     </span>
                     <span style={{ fontSize: '0.68rem', color: 'rgb(var(--text-muted))' }}>
-                      {q.steps.length} pregunta{q.steps.length !== 1 ? 's' : ''}
+                      {t('arena.questions', { count: q.steps.length })}
                     </span>
                     <span style={{ fontSize: '0.68rem', color: q.theme_color, fontWeight: 600 }}>
-                      ⚡ {q.steps.length * q.xp_per_question} XP
+                      {t('arena.xp', { xp: q.steps.length * q.xp_per_question })}
                     </span>
                   </div>
 
@@ -189,7 +186,7 @@ export default function ArenaHub() {
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${q.theme_color}28` }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = `${q.theme_color}14` }}
                   >
-                    Iniciar desafío <ChevronRight size={15} />
+                    {t('arena.start_challenge')} <ChevronRight size={15} />
                   </button>
                 </div>
               ))}

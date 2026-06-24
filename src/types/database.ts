@@ -883,6 +883,10 @@ export interface Database {
         Args: Record<string, never>
         Returns: string
       }
+      public_landing_stats: {
+        Args: Record<string, never>
+        Returns: { lessons: number; questions: number; scenarios: number }
+      }
     }
     Enums: Record<string, never>
   }
