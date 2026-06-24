@@ -1,18 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Loader2, UserPlus, Shield, User, RefreshCw, Trash2, Copy, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { createClient } from '@supabase/supabase-js'
 
 function generateTempPassword(): string {
   return Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6).toUpperCase()
 }
-
-// Cliente sin persistencia de sesión para crear usuarios sin afectar la sesión actual
-const supabaseAdmin = createClient(
-  import.meta.env.VITE_SUPABASE_URL as string,
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-  { auth: { persistSession: false, autoRefreshToken: false } },
-)
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -63,22 +55,27 @@ export default function UserList() {
     setInviteError(null)
 
     try {
-      const { data, error } = await supabaseAdmin.auth.signUp({
-        email: inviteEmail.trim(),
-        password: invitePassword.trim(),
-        options: {
-          data: { display_name: inviteEmail.split('@')[0] },
+      // Crear el usuario vía Edge Function con service_role: queda confirmado
+      // y con su perfil (rol/campaña) listo, sin tocar la sesión del superadmin.
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            email: inviteEmail.trim(),
+            password: invitePassword.trim(),
+            role: inviteRole,
+            campaignId: inviteCampaign || null,
+          }),
         },
-      })
-
-      if (error) throw error
-
-      if (data.user?.id) {
-        await supabase
-          .from('profiles')
-          .update({ role: inviteRole, campaign_id: inviteCampaign || null, onboarded: false })
-          .eq('id', data.user.id)
-      }
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al crear usuario')
 
       setCreatedEmail(inviteEmail.trim())
       setCreatedPassword(invitePassword.trim())

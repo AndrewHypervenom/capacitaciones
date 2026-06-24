@@ -20,7 +20,13 @@ export function Onboarding() {
     setError(null)
 
     try {
-      // Primero marcar onboarded en DB para que el re-fetch de onAuthStateChange ya lo vea en true
+      // Cambiar la contraseña PRIMERO. Solo si esto tiene éxito marcamos
+      // onboarded=true y redirigimos. De lo contrario la cuenta se quedaría
+      // con la contraseña temporal pero el usuario creería que ya la cambió,
+      // y al volver a entrar con la "nueva" obtendría un error.
+      const { error: authError } = await supabase.auth.updateUser({ password })
+      if (authError) throw authError
+
       const { error: dbError } = await supabase
         .from('profiles')
         .update({ onboarded: true })
@@ -28,9 +34,6 @@ export function Onboarding() {
       if (dbError) throw dbError
 
       setProfile({ ...profile, onboarded: true })
-
-      const { error: authError } = await supabase.auth.updateUser({ password })
-      if (authError) throw authError
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al actualizar contraseña')
     } finally {

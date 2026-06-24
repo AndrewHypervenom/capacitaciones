@@ -17,3 +17,5 @@ supabase
 .env
 
 /agents
+
+skills-lock.json
