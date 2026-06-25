@@ -7,8 +7,10 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { createModule, upsertSection } from '@/services/modules.service'
+import { createModule, saveGeneratedModule } from '@/services/modules.service'
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
+import { confirmDialog } from '@/components/ui/ConfirmDialog'
+import i18n from '@/i18n'
 import { GenerationProgress, MODULE_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -16,6 +18,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import type { Campaign } from '@/types/database'
 
 // ─── Constants ────────────────────────────────────────────────
@@ -27,7 +30,7 @@ const ICONS = [
   '📚', '📖', '🎯', '💡', '🔧', '📊', '📱', '🤝',
   '💰', '🏆', '⭐', '🎓', '🧠', '🗣️', '📋', '✅',
   '🔑', '💼', '🌐', '🎤', '🚀', '🔍', '📝', '🎨',
-  '⚡', '🛡️', '📡', '🧩', '🗂️', '🎯',
+  '⚡', '🛡️', '📡', '🧩', '🗂️', '🌟',
 ]
 
 const LANG_LABELS: Record<Lang, string> = { es: 'ES', en: 'EN', pt: 'PT' }
@@ -187,7 +190,12 @@ function AIModeForm({
     reader.readAsText(file)
   }
 
-  const clearDocument = () => {
+  const clearDocument = async () => {
+    if (!(await confirmDialog({
+      title: i18n.t('confirm.delete_media_title'),
+      description: i18n.t('confirm.delete_media_desc'),
+      confirmLabel: i18n.t('confirm.remove'),
+    }))) return
     setDocumentText(''); setFileName(''); setDocMode('none')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -213,44 +221,7 @@ function AIModeForm({
     if (!generated || !campaignId) return
     setSaving(true)
     try {
-      const { metadata, sections } = generated
-      const { id: moduleId } = await createModule(campaignId, {
-        slug: metadata.slug || slugify(metadata.title_es),
-        icon: metadata.icon,
-        duration_min: metadata.duration_min,
-        title_es: metadata.title_es,
-        title_en: metadata.title_en,
-        title_pt: metadata.title_pt,
-        subtitle_es: metadata.subtitle_es,
-        subtitle_en: metadata.subtitle_en,
-        subtitle_pt: metadata.subtitle_pt,
-      })
-      await supabase.from('modules').update({
-        objectives_es: metadata.objectives_es,
-        objectives_en: metadata.objectives_en,
-        objectives_pt: metadata.objectives_pt,
-        key_takeaways_es: metadata.key_takeaways_es,
-        key_takeaways_en: metadata.key_takeaways_en,
-        key_takeaways_pt: metadata.key_takeaways_pt,
-      }).eq('id', moduleId)
-      for (let i = 0; i < sections.length; i++) {
-        const s = sections[i]
-        await upsertSection({
-          module_id: moduleId,
-          sort_order: i + 1,
-          heading_es: s.heading_es,
-          heading_en: s.heading_en,
-          heading_pt: s.heading_pt,
-          body_es: s.body_es,
-          body_en: s.body_en,
-          body_pt: s.body_pt,
-          section_style: (s.section_style as 'default') ?? 'default',
-          callout_kind: s.callout_kind as 'tip' | 'important' | 'warning' | 'success' | 'note' | null,
-          callout_es: s.callout_es,
-          callout_en: s.callout_en,
-          callout_pt: s.callout_pt,
-        })
-      }
+      const moduleId = await saveGeneratedModule(campaignId, generated)
       toast.success('Módulo creado. Abriendo editor...')
       onCreated(moduleId)
     } catch (e) {
@@ -259,39 +230,25 @@ function AIModeForm({
     }
   }
 
-  const calloutColor: Record<string, string> = {
-    tip: 'text-brand-cyan bg-brand-cyan/8 border-brand-cyan/20',
-    important: 'text-brand-amber bg-brand-amber/8 border-brand-amber/20',
-    warning: 'text-danger bg-danger/8 border-danger/20',
-    success: 'text-brand-green bg-brand-green/8 border-brand-green/20',
-    note: 'text-text-muted bg-glass/8 border-glass-border/20',
-  }
-
   return (
     <div className="space-y-4">
       {/* Campaign selector */}
       {isAdmin && campaigns.length > 0 && (
-        <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+        <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
           <SectionLabel>Campaña destino</SectionLabel>
-          <select
+          <FilterDropdown
             value={campaignId}
-            onChange={(e) => onSelectCampaign(e.target.value)}
-            className={cn(
-              'w-full rounded-xl px-4 py-3 text-[14px] text-text',
-              'bg-glass/5 border border-glass-border/10',
-              'focus:border-neon-green/30 focus:outline-none transition-colors appearance-none cursor-pointer',
-            )}
-          >
-            <option value="">— Seleccionar campaña —</option>
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id} className="bg-surface text-text">{c.name}</option>
-            ))}
-          </select>
+            onChange={onSelectCampaign}
+            options={[
+              { value: '', label: '— Seleccionar campaña —' },
+              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
         </GlassCard>
       )}
 
       {/* Description input */}
-      <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+      <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
         <div className="flex items-center justify-between mb-3">
           <SectionLabel>¿Qué debe aprender el agente?</SectionLabel>
           {remaining > 0 && (
@@ -333,7 +290,7 @@ function AIModeForm({
             <button
               onClick={() => setDocMode(docMode === 'paste' ? 'none' : 'paste')}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-all',
+                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all',
                 docMode === 'paste'
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
@@ -344,7 +301,7 @@ function AIModeForm({
             <button
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-all',
+                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all',
                 docMode === 'file' && fileName
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
@@ -419,7 +376,7 @@ function AIModeForm({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
           >
-            <GlassCard intensity="subtle" padding="lg" rounded="2xl" className="border border-brand-violet/15">
+            <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8 border border-brand-violet/15">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
@@ -463,14 +420,9 @@ function AIModeForm({
                   <div key={i} className="flex items-center gap-2.5 py-2 px-3 rounded-xl bg-glass/3 border border-glass-border/6">
                     <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">{i + 1}</span>
                     <span className="text-[12px] text-text flex-1 truncate">{s.heading_es}</span>
-                    {s.callout_kind && (
-                      <span className={cn(
-                        'text-[9px] px-1.5 py-0.5 rounded border font-medium shrink-0',
-                        calloutColor[s.callout_kind] ?? calloutColor.note,
-                      )}>
-                        {s.callout_kind}
-                      </span>
-                    )}
+                    <span className="text-[9px] text-text-subtle shrink-0">
+                      {s.blocks?.length ?? 0} bloques
+                    </span>
                   </div>
                 ))}
               </div>
@@ -503,10 +455,10 @@ function AIModeForm({
       {/* Action buttons */}
       <motion.div
         layout
-        className="flex items-center justify-between pt-1"
+        className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1"
       >
         <Link to="/admin/modules">
-          <Button type="button" variant="ghost" size="md">
+          <Button type="button" variant="ghost" size="md" className="w-full sm:w-auto">
             <ArrowLeft className="h-4 w-4 mr-1.5" /> Cancelar
           </Button>
         </Link>
@@ -518,7 +470,7 @@ function AIModeForm({
             size="md"
             disabled={!description.trim() || !campaignId || generating}
             onClick={handleGenerate}
-            className="min-w-[180px] flex items-center justify-center gap-2"
+            className="w-full sm:w-auto sm:min-w-[180px] flex items-center justify-center gap-2"
           >
             {generating ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</>
@@ -533,7 +485,7 @@ function AIModeForm({
             size="md"
             disabled={saving || !campaignId}
             onClick={handleCreate}
-            className="min-w-[200px] flex items-center justify-center gap-2"
+            className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2"
           >
             {saving ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Creando módulo...</>
@@ -605,9 +557,9 @@ export default function NewModulePage() {
   const fadeUp = { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-2xl mx-auto">
       {/* Header */}
-      <motion.div {...fadeUp} transition={{ duration: 0.3 }} className="mb-8">
+      <motion.div {...fadeUp} transition={{ duration: 0.3 }} className="mb-6 sm:mb-8">
         <Link
           to="/admin/modules"
           className="inline-flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors mb-4"
@@ -667,7 +619,7 @@ export default function NewModulePage() {
             className="space-y-5"
           >
             {/* ── Identidad visual ── */}
-            <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+            <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
               <SectionLabel>Identidad visual</SectionLabel>
               <div className="flex flex-col items-center mb-5">
                 <div className={cn(
@@ -676,10 +628,10 @@ export default function NewModulePage() {
                 )}>
                   {icon}
                 </div>
-                <div className="grid grid-cols-10 gap-1.5">
-                  {ICONS.map((emoji) => (
+                <div className="grid grid-cols-6 sm:grid-cols-10 gap-1.5">
+                  {ICONS.map((emoji, i) => (
                     <button
-                      key={emoji}
+                      key={`${i}-${emoji}`}
                       type="button"
                       onClick={() => setIcon(emoji)}
                       className={cn(
@@ -741,7 +693,7 @@ export default function NewModulePage() {
             </GlassCard>
 
             {/* ── Configuración ── */}
-            <GlassCard intensity="subtle" padding="lg" rounded="2xl">
+            <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
               <SectionLabel>Configuración</SectionLabel>
 
               <div className="mb-5">
@@ -791,20 +743,11 @@ export default function NewModulePage() {
               {isAdmin && campaigns.length > 0 && (
                 <div>
                   <label className="text-[12px] font-medium text-text-muted block mb-2">Campaña</label>
-                  <select
+                  <FilterDropdown
                     value={campaignId}
-                    onChange={(e) => setCampaignId(e.target.value)}
-                    required
-                    className={cn(
-                      'w-full rounded-xl px-4 py-3 text-[14px] text-text',
-                      'bg-glass/5 border border-glass-border/10',
-                      'focus:border-neon-green/30 focus:outline-none transition-colors appearance-none cursor-pointer',
-                    )}
-                  >
-                    {campaigns.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-surface text-text">{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={setCampaignId}
+                    options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+                  />
                 </div>
               )}
             </GlassCard>

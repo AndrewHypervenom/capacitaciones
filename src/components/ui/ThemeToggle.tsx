@@ -33,7 +33,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             aria-label={opt.label}
             onClick={() => setTheme(opt.value)}
             className={cn(
-              'h-7 w-7 inline-flex items-center justify-center rounded-full transition-colors',
+              'h-6 w-6 sm:h-7 sm:w-7 inline-flex items-center justify-center rounded-full transition-colors',
               active
                 ? 'bg-text text-bg'
                 : 'text-text-muted hover:text-text',

@@ -4,7 +4,7 @@ import {
   GripVertical, Plus, Trash2, ChevronUp, ChevronDown,
   Type, AlignLeft, List, Image as ImageIcon, Video, Lightbulb,
   HelpCircle, CreditCard, ChevronDown as AccIcon, Layers, Code,
-  Quote, Minus, Columns, Clock, Table,
+  Quote, Minus, Columns, Clock, Table, LayoutGrid, BarChart3, MapPin,
 } from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -19,7 +19,18 @@ import {
 } from '@/types/blocks';
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
+import { FilterDropdown } from './FilterDropdown';
 import { cn } from '@/lib/cn';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
+import i18n from '@/i18n';
+
+// Helper imperativo para confirmar borrados dentro de los sub-editores de bloques.
+const confirmRemove = (titleKey: string, descKey: string) =>
+  confirmDialog({
+    title: i18n.t(titleKey),
+    description: i18n.t(descKey),
+    confirmLabel: i18n.t('confirm.remove'),
+  });
 
 // Context for uploading media from within the block editor
 interface MediaContext {
@@ -82,14 +93,12 @@ function ParagraphEditor({ block, onChange, lang }: { block: ContentBlock & { ty
 function HeadingEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'heading' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   return (
     <div className="flex items-center gap-3">
-      <select
-        value={block.level}
-        onChange={(e) => onChange({ ...block, level: Number(e.target.value) as 2 | 3 })}
-        className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none"
-      >
-        <option value={2}>H2</option>
-        <option value={3}>H3</option>
-      </select>
+      <FilterDropdown
+        value={String(block.level)}
+        onChange={(v) => onChange({ ...block, level: Number(v) as 2 | 3 })}
+        options={[{ value: '2', label: 'H2' }, { value: '3', label: 'H3' }]}
+        compact
+      />
       <MLInput
         value={block.text[lang]}
         onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
@@ -106,14 +115,12 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
     <div className="space-y-2">
       <div className="flex items-center gap-2 mb-2">
         <label className="text-[12px] text-text-muted">Tipo:</label>
-        <select
+        <FilterDropdown
           value={block.ordered ? 'ordered' : 'bullet'}
-          onChange={(e) => onChange({ ...block, ordered: e.target.value === 'ordered' })}
-          className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none"
-        >
-          <option value="bullet">Bullet</option>
-          <option value="ordered">Numerada</option>
-        </select>
+          onChange={(v) => onChange({ ...block, ordered: v === 'ordered' })}
+          options={[{ value: 'bullet', label: 'Bullet' }, { value: 'ordered', label: 'Numerada' }]}
+          compact
+        />
       </div>
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-2">
@@ -129,7 +136,7 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
             className="flex-1 bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none"
           />
           <button
-            onClick={() => onChange({ ...block, items: items.filter((_, j) => j !== i) })}
+            onClick={async () => { if (await confirmRemove('confirm.delete_option_title', 'confirm.delete_option_desc')) onChange({ ...block, items: items.filter((_, j) => j !== i) }) }}
             className="text-text-subtle hover:text-red-400 transition-colors"
           >
             <Trash2 className="h-3 w-3" />
@@ -210,17 +217,21 @@ function ImageEditor({
       <div className="flex gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
           <label className="text-[11px] text-text-muted">Tamaño:</label>
-          <select value={block.size ?? 'full'} onChange={(e) => onChange({ ...block, size: e.target.value as 'sm' | 'md' | 'lg' | 'full' })}
-            className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none">
-            {['sm','md','lg','full'].map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <FilterDropdown
+            value={block.size ?? 'full'}
+            onChange={(v) => onChange({ ...block, size: v as 'sm' | 'md' | 'lg' | 'full' })}
+            options={['sm','md','lg','full'].map(s => ({ value: s, label: s }))}
+            compact
+          />
         </div>
         <div className="flex items-center gap-1.5">
           <label className="text-[11px] text-text-muted">Alinear:</label>
-          <select value={block.align ?? 'center'} onChange={(e) => onChange({ ...block, align: e.target.value as 'left' | 'center' | 'right' })}
-            className="glass rounded-lg px-2 py-1 text-[12px] text-text-muted bg-transparent outline-none">
-            {['left','center','right'].map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
+          <FilterDropdown
+            value={block.align ?? 'center'}
+            onChange={(v) => onChange({ ...block, align: v as 'left' | 'center' | 'right' })}
+            options={['left','center','right'].map(a => ({ value: a, label: a }))}
+            compact
+          />
         </div>
         <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
           <input type="checkbox" checked={block.shadow ?? false} onChange={(e) => onChange({ ...block, shadow: e.target.checked })}
@@ -333,7 +344,7 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-text-subtle font-medium">Tarjeta {i + 1}</span>
-            <button onClick={() => onChange({ ...block, cards: block.cards.filter((_, j) => j !== i) })}
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, cards: block.cards.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors">
               <Trash2 className="h-3 w-3" />
             </button>
@@ -370,7 +381,7 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-text-subtle">Ítem {i + 1}</span>
-            <button onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
           </div>
           <input type="text" value={item.question[lang]}
@@ -407,7 +418,7 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Pestaña {i + 1}</span>
             <button
-              onClick={() => onChange({ ...block, tabs: block.tabs.filter((_, j) => j !== i) })}
+              onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, tabs: block.tabs.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors"
             >
               <Trash2 className="h-3 w-3" />
@@ -470,7 +481,7 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
                 className="w-12 bg-transparent text-[13px] text-center text-text placeholder:text-text-subtle outline-none"
               />
               <button
-                onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+                onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
                 className="text-text-subtle hover:text-red-400 transition-colors"
               >
                 <Trash2 className="h-3 w-3" />
@@ -521,8 +532,9 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
     });
   };
 
-  const removeColumn = (ci: number) => {
+  const removeColumn = async (ci: number) => {
     if (colCount <= 1) return;
+    if (!(await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc'))) return;
     onChange({
       ...block,
       headers: block.headers.filter((_, j) => j !== ci),
@@ -534,7 +546,8 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
     onChange({ ...block, rows: [...block.rows, Array.from({ length: colCount }, emptyML)] });
   };
 
-  const removeRow = (ri: number) => {
+  const removeRow = async (ri: number) => {
+    if (!(await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc'))) return;
     onChange({ ...block, rows: block.rows.filter((_, j) => j !== ri) });
   };
 
@@ -668,7 +681,7 @@ function ColumnsEditor({ block, onChange, lang }: { block: ContentBlock & { type
       </div>
 
       {/* Column text areas */}
-      <div className={cn('grid gap-3', colCount === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+      <div className={cn('grid gap-3 grid-cols-1', colCount === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
         {block.columns.map((col, ci) => (
           <div key={ci} className="space-y-1">
             <p className="text-[10px] uppercase tracking-wide text-text-subtle font-semibold">
@@ -838,13 +851,209 @@ function SortGameEditor({
 }
 // ─── FIN: CÓDIGO AGREGADO POR JEANNY TOLE ──────────────────────
 
+function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'cards' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
+  const emptyML = () => ({ es: '', en: '', pt: '' });
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-text-muted">Columnas:</span>
+        {([2, 3] as const).map((n) => (
+          <button
+            key={n}
+            onClick={() => onChange({ ...block, columns: n })}
+            className={cn(
+              'px-3 py-1 rounded-full text-[11px] font-medium transition-colors',
+              (block.columns ?? 2) === n ? 'bg-neon-green/15 text-neon-green border border-neon-green/20' : 'glass text-text-muted hover:text-text',
+            )}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      {block.items.map((card, i) => (
+        <div key={i} className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={card.icon ?? ''}
+                onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, icon: e.target.value } : c) })}
+                placeholder="emoji"
+                className="w-12 bg-transparent text-[15px] text-center text-text placeholder:text-text-subtle outline-none"
+              />
+              <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Tarjeta {i + 1}</span>
+            </div>
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
+              className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
+          </div>
+          <input
+            type="text"
+            value={card.title[lang]}
+            onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, title: { ...c.title, [lang]: e.target.value } } : c) })}
+            placeholder={`Título (${lang})...`}
+            className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none"
+          />
+          <textarea
+            value={card.text[lang]}
+            onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, text: { ...c.text, [lang]: e.target.value } } : c) })}
+            placeholder={`Texto (${lang})...`}
+            rows={2}
+            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
+          />
+        </div>
+      ))}
+      <button onClick={() => onChange({ ...block, items: [...block.items, { icon: '✨', title: emptyML(), text: emptyML() }] })}
+        className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
+        <Plus className="h-3 w-3" /> Añadir tarjeta
+      </button>
+    </div>
+  );
+}
+
+function StatEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'stat' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
+  const emptyML = () => ({ es: '', en: '', pt: '' });
+  return (
+    <div className="space-y-3">
+      {block.items.map((s, i) => (
+        <div key={i} className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <input
+                type="text"
+                value={s.icon ?? ''}
+                onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, icon: e.target.value } : it) })}
+                placeholder="emoji"
+                className="w-12 bg-transparent text-[15px] text-center text-text placeholder:text-text-subtle outline-none shrink-0"
+              />
+              <input
+                type="text"
+                value={s.value}
+                onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, value: e.target.value } : it) })}
+                placeholder="82%"
+                className="flex-1 bg-transparent text-[15px] font-bold text-text placeholder:text-text-subtle outline-none min-w-0"
+              />
+            </div>
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
+              className="text-text-subtle hover:text-red-400 transition-colors shrink-0"><Trash2 className="h-3 w-3" /></button>
+          </div>
+          <input
+            type="text"
+            value={s.label[lang]}
+            onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, label: { ...it.label, [lang]: e.target.value } } : it) })}
+            placeholder={`Etiqueta (${lang})...`}
+            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none"
+          />
+        </div>
+      ))}
+      <button onClick={() => onChange({ ...block, items: [...block.items, { value: '', label: emptyML() }] })}
+        className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
+        <Plus className="h-3 w-3" /> Añadir dato
+      </button>
+    </div>
+  );
+}
+
+function HotspotEditor({
+  block, onChange, lang, mediaContext,
+}: {
+  block: ContentBlock & { type: 'hotspot' };
+  onChange: (b: ContentBlock) => void;
+  lang: Lang;
+  mediaContext?: MediaContext;
+}) {
+  const emptyML = () => ({ es: '', en: '', pt: '' });
+
+  const addPointAt = (e: React.MouseEvent<HTMLImageElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+    onChange({ ...block, points: [...block.points, { x, y, title: emptyML(), text: emptyML() }] });
+  };
+
+  return (
+    <div className="space-y-3">
+      {mediaContext ? (
+        <MediaUploader
+          moduleId={mediaContext.moduleId}
+          sectionId={mediaContext.sectionId}
+          campaignId={mediaContext.campaignId}
+          currentType={block.url ? 'image' : null}
+          currentUrl={block.url || null}
+          onSaved={(_type, url) => onChange({ ...block, url })}
+          onCleared={() => onChange({ ...block, url: '' })}
+        />
+      ) : (
+        <input
+          type="url"
+          value={block.url}
+          onChange={(e) => onChange({ ...block, url: e.target.value })}
+          placeholder="URL de la imagen..."
+          className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
+        />
+      )}
+
+      {block.url && (
+        <>
+          <div className="relative rounded-xl overflow-hidden border border-line">
+            <img src={block.url} alt="" onClick={addPointAt} className="w-full block cursor-crosshair" />
+            {block.points.map((pt, i) => (
+              <span
+                key={i}
+                style={{ left: `${pt.x}%`, top: `${pt.y}%` }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-neon-green text-black text-[11px] font-bold flex items-center justify-center ring-2 ring-white/70 pointer-events-none"
+              >
+                {i + 1}
+              </span>
+            ))}
+          </div>
+          <p className="text-[11px] text-text-subtle">Haz clic en la imagen para agregar un punto.</p>
+        </>
+      )}
+
+      {block.points.map((pt, i) => (
+        <div key={i} className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Punto {i + 1}</span>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-text-subtle">X</label>
+              <input type="number" min={0} max={100} value={pt.x}
+                onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, x: Number(e.target.value) } : p) })}
+                className="w-12 glass rounded-md px-1.5 py-0.5 text-[12px] text-text outline-none" />
+              <label className="text-[10px] text-text-subtle">Y</label>
+              <input type="number" min={0} max={100} value={pt.y}
+                onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, y: Number(e.target.value) } : p) })}
+                className="w-12 glass rounded-md px-1.5 py-0.5 text-[12px] text-text outline-none" />
+              <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, points: block.points.filter((_, j) => j !== i) }) }}
+                className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
+            </div>
+          </div>
+          <input type="text" value={pt.title[lang]}
+            onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, title: { ...p.title, [lang]: e.target.value } } : p) })}
+            placeholder={`Título del punto (${lang})...`}
+            className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none" />
+          <textarea value={pt.text[lang]}
+            onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, text: { ...p.text, [lang]: e.target.value } } : p) })}
+            placeholder={`Descripción (${lang})...`}
+            rows={2}
+            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none" />
+        </div>
+      ))}
+
+      <input type="text" value={block.caption?.[lang] ?? ''}
+        onChange={(e) => onChange({ ...block, caption: { ...(block.caption ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
+        placeholder={`Pie de imagen (${lang}, opcional)...`}
+        className="w-full bg-transparent text-[12.5px] italic text-text-subtle placeholder:text-text-subtle outline-none" />
+    </div>
+  );
+}
+
 // ─── Block icon + label mapping ────────────────────────────────
 
 const BLOCK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   paragraph: AlignLeft, heading: Type, list: List, image: ImageIcon, video: Video,
   callout: Lightbulb, quiz: HelpCircle, flashcard: CreditCard, accordion: AccIcon,
   tabs: Layers, code: Code, quote: Quote, divider: Minus, columns: Columns,
-  timeline: Clock, comparison: Table,
+  timeline: Clock, comparison: Table, cards: LayoutGrid, stat: BarChart3, hotspot: MapPin,
 };
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -852,6 +1061,7 @@ const BLOCK_LABELS: Record<string, string> = {
   video: 'Video', callout: 'Callout', quiz: 'Quiz', flashcard: 'Flashcard',
   accordion: 'Acordeón', tabs: 'Tabs', timeline: 'Timeline', comparison: 'Comparación',
   code: 'Código', quote: 'Cita', divider: 'Divisor', columns: 'Columnas',
+  cards: 'Tarjetas', stat: 'Datos', hotspot: 'Imagen interactiva',
 };
 
 // ─── Single block row ──────────────────────────────────────────
@@ -903,6 +1113,9 @@ function BlockRow({
       case 'tabs':        return <TabsEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'timeline':    return <TimelineEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'comparison':  return <ComparisonEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'cards':       return <CardsEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'stat':        return <StatEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'hotspot':     return <HotspotEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'columns':     return <ColumnsEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'code':        return <CodeEditorBlock block={b} onChange={onUpdate} />;
       case 'quote':       return <QuoteEditorBlock block={b} onChange={onUpdate} lang={lang} />;
@@ -921,9 +1134,9 @@ function BlockRow({
         <div
           {...attributes}
           {...listeners}
-          className="shrink-0 flex flex-col items-center gap-1 pt-0.5 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+          className="shrink-0 flex flex-col items-center gap-1 pt-0.5 cursor-grab active:cursor-grabbing opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity touch-none p-1.5 md:p-0"
         >
-          <GripVertical className="h-4 w-4 text-text-subtle" />
+          <GripVertical className="h-5 w-5 md:h-4 md:w-4 text-text-subtle" />
         </div>
 
         {/* Block icon + type label */}
@@ -942,26 +1155,26 @@ function BlockRow({
         </div>
 
         {/* Actions */}
-        <div className="shrink-0 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5">
-          <button onClick={onMoveUp} className="h-6 w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
-            <ChevronUp className="h-3 w-3" />
+        <div className="shrink-0 flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity pt-0.5">
+          <button onClick={onMoveUp} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
+            <ChevronUp className="h-4 w-4 md:h-3 md:w-3" />
           </button>
-          <button onClick={onMoveDown} className="h-6 w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
-            <ChevronDown className="h-3 w-3" />
+          <button onClick={onMoveDown} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
+            <ChevronDown className="h-4 w-4 md:h-3 md:w-3" />
           </button>
-          <button onClick={onDelete} className="h-6 w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-red-400 hover:bg-red-400/8 transition-colors">
-            <Trash2 className="h-3 w-3" />
+          <button onClick={onDelete} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-red-400 hover:bg-red-400/8 transition-colors">
+            <Trash2 className="h-4 w-4 md:h-3 md:w-3" />
           </button>
         </div>
       </div>
 
       {/* Add block below trigger */}
-      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex justify-center w-full opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex justify-center w-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         <button
           onClick={onAddAfter}
-          className="h-6 px-3 glass rounded-full text-[11px] text-text-subtle hover:text-neon-green hover:border-neon-green/20 border border-transparent flex items-center gap-1 transition-colors"
+          className="h-11 md:h-6 px-3 glass rounded-full text-[11px] text-text-subtle hover:text-neon-green hover:border-neon-green/20 border border-transparent flex items-center gap-1 transition-colors"
         >
-          <Plus className="h-3 w-3" /> bloque
+          <Plus className="h-3.5 w-3.5 md:h-3 md:w-3" /> bloque
         </button>
       </div>
     </div>
@@ -1005,7 +1218,8 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
     onChange(blocks.map((b) => (b.id === id ? { ...b, data } : b)));
   };
 
-  const deleteBlock = (id: string) => {
+  const deleteBlock = async (id: string) => {
+    if (!(await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc'))) return;
     onChange(blocks.filter((b) => b.id !== id));
   };
 

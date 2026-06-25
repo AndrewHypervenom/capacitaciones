@@ -343,13 +343,110 @@ export default function ChoiceSimulatorRun() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="min-h-screen flex items-center justify-center px-6 py-10"
+            className="min-h-screen flex items-center justify-center px-4 md:px-6 py-6 md:py-10"
           >
-            <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8 w-full max-w-[900px]">
+            <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6 lg:gap-8 w-full max-w-[900px]">
 
-              {/* ── IZQUIERDA: Marco de iPhone ── */}
+              {/* ── Mobile: chat nativo sin frame ── */}
+              <div className="md:hidden w-full flex flex-col rounded-3xl overflow-hidden" style={{ background: '#000' }}>
+                {/* Header compacto */}
+                <div className="flex items-center gap-3 px-4 py-3" style={{ background: 'rgba(8,8,8,0.95)' }}>
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      background: 'rgba(0,113,227,0.2)',
+                      border: '2px solid rgba(0,113,227,0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>
+                      {scenario.clientName[0]}
+                    </span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: 'white', fontWeight: 600, fontSize: 14, margin: 0 }}>
+                      {scenario.clientName}
+                    </p>
+                    <p style={{ color: '#86868b', fontSize: 11, margin: 0 }}>
+                      {scenario.clientCompany[language]}
+                    </p>
+                  </div>
+                  <p style={{ color: '#34c759', fontSize: 13, fontWeight: 600, fontFamily: 'monospace', flexShrink: 0 }}>
+                    {formatTime(callSeconds)}
+                  </p>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleEndCall}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: '50%',
+                      background: '#ff3b30',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PhoneOff size={18} color="white" />
+                  </motion.button>
+                </div>
+
+                {/* Chat area */}
+                <div style={{ height: 340, overflowY: 'auto', padding: '8px 14px' }}>
+                  {messages.map((msg) => (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 16, scale: 0.92 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.4 }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: msg.speaker === 'agent' ? 'flex-end' : 'flex-start',
+                        marginBottom: 12,
+                      }}
+                    >
+                      <span style={{ fontSize: 10, color: '#86868b', marginBottom: 3 }}>
+                        {msg.speaker === 'client' ? scenario.clientName : t('simulator.choice.you')}
+                      </span>
+                      <div
+                        style={{
+                          maxWidth: '85%',
+                          padding: '10px 14px',
+                          borderRadius: msg.speaker === 'client' ? '4px 18px 18px 18px' : '18px 4px 18px 18px',
+                          fontSize: 13,
+                          lineHeight: 1.5,
+                          color: 'white',
+                          background: msg.speaker === 'client' ? 'rgba(255,255,255,0.12)' : '#0071e3',
+                        }}
+                      >
+                        {msg.message}
+                      </div>
+                    </motion.div>
+                  ))}
+                  <AnimatePresence>
+                    {typing && (
+                      <motion.div key="typing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.2 }}>
+                        <span style={{ fontSize: 10, color: '#86868b', paddingLeft: 2, display: 'block', marginBottom: 3 }}>{scenario.clientName}</span>
+                        <TypingIndicator />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
+
+              {/* ── Desktop: Marco de iPhone decorativo ── */}
               <div
-                className="relative shrink-0"
+                className="relative shrink-0 hidden md:block"
                 style={{
                   width: 375,
                   height: 750,
@@ -564,7 +661,7 @@ export default function ChoiceSimulatorRun() {
 
               {/* ── DERECHA: Panel de opciones ── */}
               <div className="flex-1 flex flex-col gap-5 w-full max-w-lg">
-                <div className="bg-surface border border-line rounded-3xl p-6">
+                <div className="bg-surface border border-line rounded-3xl p-5 md:p-6">
                   <p className="text-text font-bold text-lg mb-1">
                     {t('simulator.choice.your_response')}
                   </p>

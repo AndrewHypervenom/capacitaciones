@@ -21,6 +21,9 @@ export type BlockType =
   | 'comparison'
   | 'game-sort'
   | 'game-classify'; // 🌟 Agregado el nuevo tipo de juego
+  | 'cards'
+  | 'stat'
+  | 'hotspot';
 
 // ─── Shared primitives ─────────────────────────────────────────
 
@@ -203,6 +206,43 @@ export interface GameClassifyBlock {
   instructions: ML;
   categories: ClassifyCategory[];
   cases: ClassifyCase[];
+export interface CardItem {
+  icon?: string;
+  title: ML;
+  text: ML;
+}
+
+export interface CardsBlock {
+  type: 'cards';
+  columns?: 2 | 3;
+  items: CardItem[];
+}
+
+export interface StatItem {
+  /** Valor destacado, p. ej. "82%", "3", "+1.2k". El prefijo numérico se anima. */
+  value: string;
+  label: ML;
+  icon?: string;
+}
+
+export interface StatBlock {
+  type: 'stat';
+  items: StatItem[];
+}
+
+export interface HotspotPoint {
+  /** Posición en porcentaje (0–100) sobre la imagen. */
+  x: number;
+  y: number;
+  title: ML;
+  text: ML;
+}
+
+export interface HotspotImageBlock {
+  type: 'hotspot';
+  url: string;
+  caption?: ML;
+  points: HotspotPoint[];
 }
 
 // ─── Union type ─────────────────────────────────────────────────
@@ -226,6 +266,9 @@ export type ContentBlock =
   | ComparisonBlock
   | GameSortBlock
   | GameClassifyBlock; // 🌟 Registrado aquí en la unión
+  | CardsBlock
+  | StatBlock
+  | HotspotImageBlock;
 
 // ─── Block with runtime ID (for editor) ────────────────────────
 
@@ -305,6 +348,12 @@ export function emptyBlock(type: BlockType): ContentBlock {
           { id: 'case-1', text: { es: 'Ejemplo de caso operativo para clasificar', en: '', pt: '' }, correctCategoryId: 'cat-clonacion' }
         ]
       };
+    case 'cards':
+      return { type, columns: 2, items: [{ icon: '✨', title: emptyML(), text: emptyML() }] };
+    case 'stat':
+      return { type, items: [{ value: '', label: emptyML() }] };
+    case 'hotspot':
+      return { type, url: '', points: [] };
   }
 }
 
@@ -339,4 +388,7 @@ export const BLOCK_REGISTRY: BlockMeta[] = [
   
   // 🌟 AGREGADO AL MENÚ VISUAL: Registrado para que el administrador pueda crearlo con un botón
   { type: 'game-classify', label: 'Clasificar Casos', description: 'Juego de arrastrar casos a contenedores', icon: '⊞', group: 'interactive' },
+  { type: 'cards',       label: 'Tarjetas',       description: 'Grid de tarjetas con ícono',       icon: '▦',   group: 'layout' },
+  { type: 'stat',        label: 'Datos',          description: 'Métricas con números destacados',  icon: '📊',  group: 'interactive' },
+  { type: 'hotspot',     label: 'Imagen interactiva', description: 'Imagen con puntos clicables',  icon: '📍',  group: 'media' },
 ];

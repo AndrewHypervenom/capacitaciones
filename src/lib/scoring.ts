@@ -25,6 +25,21 @@ export function scoreRun(state: SimState, scenario: Scenario): Score {
   return { score, durationSec, checklistPct, empathyPct, resolved };
 }
 
+export function getStarsFromScore(scorePct: number, minScorePct?: number | null): number {
+  if (minScorePct == null) {
+    if (scorePct >= 100) return 5
+    return 4
+  }
+  if (scorePct < minScorePct) return 0
+  if (scorePct === minScorePct) return 3
+  if (scorePct < 100) return 4
+  return 5
+}
+
+export function getStarsDisplay(scorePct: number): number {
+  return Math.round((scorePct / 100) * 5 * 10) / 10
+}
+
 export function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;

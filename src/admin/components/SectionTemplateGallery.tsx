@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { X, FileText, Lightbulb, Image, HelpCircle, LayoutTemplate, ZoomIn, Star, Layers, Clapperboard } from 'lucide-react'
-import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { cn } from '@/lib/cn'
@@ -26,10 +25,10 @@ interface TemplateCard {
 function TextOnlyPreview() {
   return (
     <div className="space-y-1.5">
-      <div className="h-2 rounded-full bg-white/20 w-3/4" />
-      <div className="h-1.5 rounded-full bg-white/12 w-full" />
-      <div className="h-1.5 rounded-full bg-white/12 w-5/6" />
-      <div className="h-1.5 rounded-full bg-white/12 w-4/5" />
+      <div className="h-2 rounded-full bg-text/25 w-3/4" />
+      <div className="h-1.5 rounded-full bg-text/15 w-full" />
+      <div className="h-1.5 rounded-full bg-text/15 w-5/6" />
+      <div className="h-1.5 rounded-full bg-text/15 w-4/5" />
     </div>
   )
 }
@@ -37,9 +36,9 @@ function TextOnlyPreview() {
 function TextCalloutPreview() {
   return (
     <div className="space-y-1.5">
-      <div className="h-2 rounded-full bg-white/20 w-3/4" />
-      <div className="h-1.5 rounded-full bg-white/12 w-full" />
-      <div className="h-1.5 rounded-full bg-white/12 w-5/6" />
+      <div className="h-2 rounded-full bg-text/25 w-3/4" />
+      <div className="h-1.5 rounded-full bg-text/15 w-full" />
+      <div className="h-1.5 rounded-full bg-text/15 w-5/6" />
       <div className="h-7 rounded-lg border border-neon-green/30 bg-neon-green/8 flex items-center gap-1.5 px-2 mt-1">
         <div className="h-2 w-2 rounded-full bg-neon-green/60 shrink-0" />
         <div className="h-1.5 rounded-full bg-neon-green/30 w-full" />
@@ -52,12 +51,12 @@ function TextMediaPreview() {
   return (
     <div className="flex gap-2">
       <div className="flex-1 space-y-1.5">
-        <div className="h-2 rounded-full bg-white/20 w-full" />
-        <div className="h-1.5 rounded-full bg-white/12 w-full" />
-        <div className="h-1.5 rounded-full bg-white/12 w-4/5" />
+        <div className="h-2 rounded-full bg-text/25 w-full" />
+        <div className="h-1.5 rounded-full bg-text/15 w-full" />
+        <div className="h-1.5 rounded-full bg-text/15 w-4/5" />
       </div>
-      <div className="w-12 h-12 rounded-lg bg-white/8 border border-white/10 shrink-0 flex items-center justify-center">
-        <Image className="h-3.5 w-3.5 text-white/30" />
+      <div className="w-12 h-12 rounded-lg bg-text/10 border border-text/12 shrink-0 flex items-center justify-center">
+        <Image className="h-3.5 w-3.5 text-text-subtle" />
       </div>
     </div>
   )
@@ -66,15 +65,15 @@ function TextMediaPreview() {
 function TextQuizPreview() {
   return (
     <div className="space-y-1.5">
-      <div className="h-2 rounded-full bg-white/20 w-3/4" />
-      <div className="h-1.5 rounded-full bg-white/12 w-full" />
-      <div className="h-6 rounded-lg border border-white/12 bg-white/6 flex items-center gap-1.5 px-2 mt-1">
-        <div className="h-2 w-2 rounded-full border border-white/30 shrink-0" />
-        <div className="h-1.5 rounded-full bg-white/15 w-2/3" />
+      <div className="h-2 rounded-full bg-text/25 w-3/4" />
+      <div className="h-1.5 rounded-full bg-text/15 w-full" />
+      <div className="h-6 rounded-lg border border-text/15 bg-text/8 flex items-center gap-1.5 px-2 mt-1">
+        <div className="h-2 w-2 rounded-full border border-text/30 shrink-0" />
+        <div className="h-1.5 rounded-full bg-text/18 w-2/3" />
       </div>
-      <div className="h-6 rounded-lg border border-white/8 flex items-center gap-1.5 px-2">
-        <div className="h-2 w-2 rounded-full border border-white/20 shrink-0" />
-        <div className="h-1.5 rounded-full bg-white/12 w-1/2" />
+      <div className="h-6 rounded-lg border border-text/10 flex items-center gap-1.5 px-2">
+        <div className="h-2 w-2 rounded-full border border-text/20 shrink-0" />
+        <div className="h-1.5 rounded-full bg-text/15 w-1/2" />
       </div>
     </div>
   )
@@ -84,21 +83,21 @@ function TextQuizPreview() {
 function FullPreview() {
   return (
     <div className="space-y-1.5">
-      <div className="h-2 rounded-full bg-white/20 w-3/4" />
+      <div className="h-2 rounded-full bg-text/25 w-3/4" />
       <div className="flex gap-2">
         <div className="flex-1 space-y-1">
-          <div className="h-1.5 rounded-full bg-white/12 w-full" />
-          <div className="h-1.5 rounded-full bg-white/12 w-5/6" />
+          <div className="h-1.5 rounded-full bg-text/15 w-full" />
+          <div className="h-1.5 rounded-full bg-text/15 w-5/6" />
         </div>
-        <div className="w-10 h-9 rounded-md bg-white/8 border border-white/10 shrink-0" />
+        <div className="w-10 h-9 rounded-md bg-text/10 border border-text/12 shrink-0" />
       </div>
       <div className="h-6 rounded-lg border border-neon-green/30 bg-neon-green/8 flex items-center gap-1.5 px-2">
         <div className="h-1.5 w-1.5 rounded-full bg-neon-green/60 shrink-0" />
         <div className="h-1.5 rounded-full bg-neon-green/30 w-full" />
       </div>
-      <div className="h-6 rounded-lg border border-white/10 bg-white/4 flex items-center gap-1.5 px-2">
-        <div className="h-2 w-2 rounded-full border border-white/25 shrink-0" />
-        <div className="h-1.5 rounded-full bg-white/15 w-3/5" />
+      <div className="h-6 rounded-lg border border-text/12 bg-text/6 flex items-center gap-1.5 px-2">
+        <div className="h-2 w-2 rounded-full border border-text/25 shrink-0" />
+        <div className="h-1.5 rounded-full bg-text/18 w-3/5" />
       </div>
     </div>
   )
@@ -109,8 +108,8 @@ function HeroPreview() {
     <div className="relative rounded-lg overflow-hidden h-16 w-full">
       <div className="absolute inset-0 bg-gradient-to-br from-neon-green/20 to-transparent" />
       <div className="absolute inset-0 flex flex-col justify-end p-2">
-        <div className="h-2 rounded-full bg-white/70 w-2/3 mb-1" />
-        <div className="h-1.5 rounded-full bg-white/30 w-1/2" />
+        <div className="h-2 rounded-full bg-text/70 w-2/3 mb-1" />
+        <div className="h-1.5 rounded-full bg-text/30 w-1/2" />
       </div>
     </div>
   )
@@ -121,8 +120,8 @@ function SpotlightPreview() {
     <div className="relative rounded-lg overflow-hidden h-16 w-full bg-black/40 border border-white/10">
       <div className="absolute inset-0 bg-gradient-to-br from-white/8 to-transparent" />
       <div className="absolute inset-0 flex flex-col justify-center items-center">
-        <div className="h-2 rounded-full bg-white/80 w-3/5 mb-1.5" />
-        <div className="h-1.5 rounded-full bg-white/30 w-2/5" />
+        <div className="h-2 rounded-full bg-text/70 w-3/5 mb-1.5" />
+        <div className="h-1.5 rounded-full bg-text/30 w-2/5" />
       </div>
     </div>
   )
@@ -150,14 +149,14 @@ function VideoInteractivePreview() {
           </div>
         </div>
         <div className="w-full px-2 pb-1.5">
-          <div className="h-1 rounded-full bg-white/10 relative">
+          <div className="h-1 rounded-full bg-text/12 relative">
             <div className="absolute h-full w-2/5 bg-blue-400/60 rounded-full" />
             <div className="absolute h-2 w-2 rounded-full bg-blue-400 top-1/2 -translate-y-1/2" style={{ left: '40%' }} />
             <div className="absolute h-2 w-2 rounded-full bg-amber-400 top-1/2 -translate-y-1/2 border border-black/20" style={{ left: '65%' }} />
           </div>
         </div>
       </div>
-      <div className="w-12 rounded-lg bg-white/6 border border-white/10 flex flex-col gap-1 p-1.5">
+      <div className="w-12 rounded-lg bg-text/8 border border-text/12 flex flex-col gap-1 p-1.5">
         <div className="h-1.5 rounded-full bg-blue-400/50 w-full" />
         <div className="h-1.5 rounded-full bg-white/15 w-3/4" />
       </div>
@@ -195,6 +194,9 @@ function GameClassifyPreview() {
       </div>
       <div className="h-6 rounded border border-dashed border-orange-400/30 bg-orange-500/5 flex items-center justify-center">
         <div className="h-1 rounded bg-orange-400/30 w-2/3" />
+        <div className="h-1.5 rounded-full bg-text/18 w-3/4" />
+        <div className="h-1.5 rounded-full bg-amber-400/50 w-full" />
+        <div className="h-1.5 rounded-full bg-text/18 w-5/6" />
       </div>
     </div>
   )
@@ -292,17 +294,17 @@ const TEMPLATES: TemplateCard[] = [
 ]
 
 const colorMap: Record<TemplateColor, string> = {
-  green: 'hover:border-neon-green/25 group-hover:text-neon-green',
-  violet: 'hover:border-glass-border/22 group-hover:text-text',
-  cyan: 'hover:border-glass-border/22 group-hover:text-text',
-  amber: 'hover:border-amber-400/25 group-hover:text-amber-400',
-  blue: 'hover:border-blue-400/25 group-hover:text-blue-400',
+  green: 'hover:border-neon-green/40 group-hover:text-neon-green',
+  violet: 'hover:border-text-muted/30 group-hover:text-text',
+  cyan: 'hover:border-text-muted/30 group-hover:text-text',
+  amber: 'hover:border-amber-400/40 group-hover:text-amber-400',
+  blue: 'hover:border-blue-400/40 group-hover:text-blue-400',
 }
 
 const iconBgMap: Record<TemplateColor, string> = {
   green: 'bg-neon-green/10 text-neon-green ring-1 ring-neon-green/15',
-  violet: 'bg-glass/8 text-text-muted ring-1 ring-glass-border/10',
-  cyan: 'bg-glass/8 text-text-muted ring-1 ring-glass-border/10',
+  violet: 'bg-subtle text-text-muted ring-1 ring-line',
+  cyan: 'bg-subtle text-text-muted ring-1 ring-line',
   amber: 'bg-amber-400/10 text-amber-400 ring-1 ring-amber-400/15',
   blue: 'bg-blue-400/10 text-blue-400 ring-1 ring-blue-400/15',
 }
@@ -322,7 +324,7 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          <motion.div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+          <motion.div className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
           <motion.div
             className="relative z-10 w-full max-w-2xl"
@@ -331,7 +333,7 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
-            <GlassCard intensity="strong" rounded="3xl" className="overflow-hidden">
+            <div className="bg-surface border border-line rounded-3xl shadow-xl overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neon-green/40 to-transparent" />
 
               <div className="p-6">
@@ -349,7 +351,7 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
                   </div>
                   <button
                     onClick={onClose}
-                    className="p-2 rounded-xl glass text-text-muted hover:text-text transition-colors shrink-0"
+                    className="p-2 rounded-xl bg-subtle border border-line text-text-muted hover:text-text transition-colors shrink-0"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -382,7 +384,7 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
                   ))}
                 </div>
               </div>
-            </GlassCard>
+            </div>
           </motion.div>
         </motion.div>
       )}

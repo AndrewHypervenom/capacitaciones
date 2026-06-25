@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, Loader2, Plus, Save, Trash2, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, Loader2, Menu, Plus, Save, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import {
   getChoiceScenarioAdmin, createChoiceScenario, updateChoiceScenario, type ChoiceScenarioRow,
@@ -12,8 +12,11 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type Tab = 'meta' | 'nodes'
 
@@ -60,11 +63,12 @@ function rowToState(row: ChoiceScenarioRow): { meta: MetaState; nodes: NodesMap 
 }
 
 const inputClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
-const selectClass = 'glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none'
 
 export default function ChoiceSimEditor() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const { campaignId } = useAuth()
   const isNew = id === 'new' || !id
 
@@ -77,6 +81,7 @@ export default function ChoiceSimEditor() {
   const [rowId, setRowId] = useState<string | null>(isNew ? null : id ?? null)
   const [aiBanner, setAiBanner] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false)
 
   const slugManualRef = useRef(!isNew)
   const nodeIds = Object.keys(nodes)
@@ -159,8 +164,13 @@ export default function ChoiceSimEditor() {
     setSelectedNodeId(nid)
   }
 
-  const removeNode = (nid: string) => {
+  const removeNode = async (nid: string) => {
     if (nodeIds.length <= 1) return toast.error('Debe haber al menos un paso')
+    const ok = await confirm({
+      title: t('confirm.delete_node_title'),
+      description: t('confirm.delete_node_desc'),
+    })
+    if (!ok) return
     setNodes((prev) => { const n = { ...prev }; delete n[nid]; return n })
     setSelectedNodeId(nodeIds.find((n) => n !== nid) ?? '')
   }
@@ -170,28 +180,28 @@ export default function ChoiceSimEditor() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-6xl mx-auto">
       {/* Top bar */}
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => nav('/admin/simulations')} className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text transition-colors">
+      <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-6">
+        <button onClick={() => nav('/admin/simulations')} className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text transition-colors shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <div className="flex-1">
-          <GradientHeading as="h1" className="text-xl">
+        <div className="flex-1 min-w-0">
+          <GradientHeading as="h1" className="text-lg md:text-xl truncate">
             {isNew ? 'Nueva simulación de opciones' : meta.title_es || 'Editor de opción múltiple'}
           </GradientHeading>
         </div>
-        <div className="flex items-center gap-2">
-          <NeonBadge color={meta.is_published ? 'green' : 'neutral'} className="text-[9px]">
+        <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+          <NeonBadge color={meta.is_published ? 'green' : 'neutral'} className="text-[9px] hidden sm:inline-flex">
             {meta.is_published ? 'Publicado' : 'Borrador'}
           </NeonBadge>
           <Button variant="ghost" size="sm" onClick={() => setMeta((m) => ({ ...m, is_published: !m.is_published }))}>
             {meta.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {meta.is_published ? 'Despublicar' : 'Publicar'}
+            <span className="hidden sm:inline">{meta.is_published ? 'Despublicar' : 'Publicar'}</span>
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Guardar
+            <span className="hidden sm:inline">Guardar</span>
           </Button>
         </div>
       </div>
@@ -217,7 +227,7 @@ export default function ChoiceSimEditor() {
       <div className="flex gap-1 mb-6 p-1 rounded-xl glass w-fit border border-glass-border/10">
         {([['meta', 'General'], ['nodes', 'Conversación']] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
-            className={cn('px-4 py-2 rounded-lg text-sm transition-all',
+            className={cn('px-4 py-2.5 md:py-2 rounded-lg text-sm transition-all min-h-[44px] md:min-h-0',
               tab === key ? 'bg-glass-border/10 text-text font-medium' : 'text-text-muted hover:text-text')}>
             {label}
             {key === 'nodes' && <span className="ml-1 text-xs text-text-subtle">{nodeIds.length}</span>}
@@ -227,16 +237,20 @@ export default function ChoiceSimEditor() {
 
       {/* General tab */}
       {tab === 'meta' && (
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <GlassCard className="p-5 space-y-4">
             <h3 className="text-sm font-semibold text-text">Configuración del escenario</h3>
             <div>
               <label className="text-xs text-text-muted mb-1 block">Nivel de dificultad</label>
-              <select value={meta.level} onChange={(e) => setMeta((m) => ({ ...m, level: e.target.value as MetaState['level'] }))} className={cn(selectClass, 'w-full')}>
-                <option value="basico">Básico</option>
-                <option value="medio">Medio</option>
-                <option value="avanzado">Avanzado</option>
-              </select>
+              <FilterDropdown
+                value={meta.level}
+                onChange={(v) => setMeta((m) => ({ ...m, level: v as MetaState['level'] }))}
+                options={[
+                  { value: 'basico', label: 'Básico' },
+                  { value: 'medio', label: 'Medio' },
+                  { value: 'avanzado', label: 'Avanzado' },
+                ]}
+              />
             </div>
 
             <button
@@ -263,9 +277,11 @@ export default function ChoiceSimEditor() {
                 </div>
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">Paso de inicio</label>
-                  <select value={meta.start_node_id} onChange={(e) => setMeta((m) => ({ ...m, start_node_id: e.target.value }))} className={cn(selectClass, 'w-full')}>
-                    {nodeIds.map((nid) => <option key={nid} value={nid}>{nid}</option>)}
-                  </select>
+                  <FilterDropdown
+                    value={meta.start_node_id}
+                    onChange={(v) => setMeta((m) => ({ ...m, start_node_id: v }))}
+                    options={nodeIds.map((nid) => ({ value: nid, label: nid }))}
+                  />
                 </div>
               </div>
             )}
@@ -293,9 +309,9 @@ export default function ChoiceSimEditor() {
             <div><label className="text-xs text-text-muted mb-1 block">Título (Português)</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
           </GlassCard>
 
-          <GlassCard className="p-5 col-span-2 space-y-4">
+          <GlassCard className="p-5 md:col-span-2 space-y-4">
             <h3 className="text-sm font-semibold text-text">Contexto del escenario</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><label className="text-xs text-text-muted mb-1 block">Nombre del cliente</label><input value={meta.client_name} onChange={(e) => setMeta((m) => ({ ...m, client_name: e.target.value }))} placeholder="Juan Pérez" className={inputClass} /></div>
               <div><label className="text-xs text-text-muted mb-1 block">Empresa o tipo de cliente</label><input value={meta.client_company} onChange={(e) => setMeta((m) => ({ ...m, client_company: e.target.value }))} placeholder="Empresa ABC" className={inputClass} /></div>
             </div>
@@ -308,24 +324,36 @@ export default function ChoiceSimEditor() {
       {/* Conversación tab */}
       {tab === 'nodes' && (
         <div className="flex gap-5">
-          {/* Node list */}
-          <div className="w-56 shrink-0">
+          {/* Node list — mobile: drawer */}
+          {nodeDrawerOpen && (
+            <div className="md:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setNodeDrawerOpen(false)} />
+          )}
+          <div className={cn(
+            'fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-bg border-r border-glass-border/8 transition-transform duration-300 ease-in-out p-4',
+            'md:static md:z-auto md:w-56 md:shrink-0 md:translate-x-0 md:border-r-0 md:p-0',
+            nodeDrawerOpen ? 'translate-x-0' : '-translate-x-full',
+          )}>
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="text-xs font-medium text-text">Pasos ({nodeIds.length})</span>
                 <p className="text-[11px] text-text-subtle mt-0.5">Momentos del escenario</p>
               </div>
-              <button onClick={addNode} className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors" title="Agregar paso">
-                <Plus className="h-3.5 w-3.5" /> Agregar
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={addNode} className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors" title="Agregar paso">
+                  <Plus className="h-3.5 w-3.5" /> Agregar
+                </button>
+                <button onClick={() => setNodeDrawerOpen(false)} className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 flex-1 overflow-y-auto">
               {nodeIds.map((nid) => {
                 const node = nodes[nid]
                 const isStart = nid === meta.start_node_id
                 const linePreview = node?.message?.es?.slice(0, 48)
                 return (
-                  <button key={nid} onClick={() => setSelectedNodeId(nid)}
+                  <button key={nid} onClick={() => { setSelectedNodeId(nid); setNodeDrawerOpen(false) }}
                     className={cn('w-full text-left px-3 py-2.5 rounded-xl text-xs transition-all border',
                       selectedNodeId === nid
                         ? 'bg-glass-border/12 border-glass-border/20 text-text'
@@ -348,9 +376,15 @@ export default function ChoiceSimEditor() {
           </div>
 
           {/* Node editor */}
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
+            <button
+              onClick={() => setNodeDrawerOpen(true)}
+              className="md:hidden flex items-center gap-2 mb-3 text-sm text-text-muted hover:text-text transition-colors"
+            >
+              <Menu className="h-4 w-4" /> Pasos ({nodeIds.length})
+            </button>
             {selectedNodeId && nodes[selectedNodeId] ? (
-              <GlassCard className="p-5">
+              <GlassCard className="p-4 md:p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-text-muted">Paso:</span>

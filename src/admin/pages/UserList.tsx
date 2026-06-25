@@ -1,21 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Loader2, UserPlus, Shield, User, RefreshCw, Trash2, Copy, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { createClient } from '@supabase/supabase-js'
 
 function generateTempPassword(): string {
   return Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6).toUpperCase()
 }
 
-// Cliente sin persistencia de sesión para crear usuarios sin afectar la sesión actual
-const supabaseAdmin = createClient(
-  import.meta.env.VITE_SUPABASE_URL as string,
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-  { auth: { persistSession: false, autoRefreshToken: false } },
-)
-
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import type { Profile, Campaign } from '@/types/database'
 
 type ProfileWithEmail = Profile & { email?: string }
@@ -23,6 +16,7 @@ type ProfileWithEmail = Profile & { email?: string }
 export default function UserList() {
   const { isSuperAdmin } = useAuth()
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,7 +31,6 @@ export default function UserList() {
   const [createdEmail, setCreatedEmail] = useState('')
   const [createdPassword, setCreatedPassword] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [copied, setCopied] = useState<'email' | 'pass' | 'url' | null>(null)
 
   const copyToClipboard = (text: string, key: 'email' | 'pass' | 'url') => {
@@ -63,22 +56,27 @@ export default function UserList() {
     setInviteError(null)
 
     try {
-      const { data, error } = await supabaseAdmin.auth.signUp({
-        email: inviteEmail.trim(),
-        password: invitePassword.trim(),
-        options: {
-          data: { display_name: inviteEmail.split('@')[0] },
+      // Crear el usuario vía Edge Function con service_role: queda confirmado
+      // y con su perfil (rol/campaña) listo, sin tocar la sesión del superadmin.
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            email: inviteEmail.trim(),
+            password: invitePassword.trim(),
+            role: inviteRole,
+            campaignId: inviteCampaign || null,
+          }),
         },
-      })
-
-      if (error) throw error
-
-      if (data.user?.id) {
-        await supabase
-          .from('profiles')
-          .update({ role: inviteRole, campaign_id: inviteCampaign || null, onboarded: false })
-          .eq('id', data.user.id)
-      }
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al crear usuario')
 
       setCreatedEmail(inviteEmail.trim())
       setCreatedPassword(invitePassword.trim())
@@ -110,9 +108,14 @@ export default function UserList() {
     )
   }
 
-  const handleDelete = async (userId: string) => {
+  const handleDelete = async (user: ProfileWithEmail) => {
+    const ok = await confirm({
+      title: t('confirm.delete_user_title'),
+      description: t('confirm.delete_user_desc', { name: user.display_name ?? user.email ?? user.id.slice(0, 8) }),
+    })
+    if (!ok) return
+    const userId = user.id
     setDeletingId(userId)
-    setConfirmDeleteId(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
@@ -157,16 +160,16 @@ export default function UserList() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-[22px] font-bold text-text">{t('admin.users.title')}</h1>
+          <h1 className="text-[18px] sm:text-[22px] font-bold text-text">{t('admin.users.title')}</h1>
           <p className="text-text-muted text-[13px] mt-1">{t('admin.users.subtitle')}</p>
         </div>
         {isSuperAdmin && (
           <button
             onClick={() => setInviting(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black"
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]"
             style={{ background: '#00C228' }}
           >
             <UserPlus className="h-4 w-4" />
@@ -176,7 +179,7 @@ export default function UserList() {
       </div>
 
       {inviting && (
-        <div className="rounded-2xl p-5 mb-6 bg-surface border border-line">
+        <div className="rounded-2xl p-4 sm:p-5 mb-6 bg-surface border border-line">
           <div className="text-[14px] font-medium text-text mb-4">Crear nuevo usuario</div>
 
           {inviteSuccess ? (
@@ -195,17 +198,17 @@ export default function UserList() {
                     </div>
                     <button
                       onClick={() => copyToClipboard(value, key)}
-                      className="shrink-0 text-text-subtle hover:text-text transition-colors"
+                      className="shrink-0 h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors"
                       title="Copiar"
                     >
-                      {copied === key ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied === key ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                     </button>
                   </div>
                 ))}
               </div>
               <button
                 onClick={() => { setInviting(false); setInviteSuccess(false) }}
-                className="mt-4 text-[12px] text-text-subtle hover:text-text transition-colors"
+                className="mt-4 flex items-center min-h-[44px] text-[12px] text-text-subtle hover:text-text transition-colors"
               >
                 Cerrar
               </button>
@@ -217,7 +220,7 @@ export default function UserList() {
                 placeholder="Email del usuario"
                 value={inviteEmail}
                 onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null) }}
-                className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none"
+                className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none min-h-[44px]"
               />
               <div className="relative">
                 <input
@@ -225,15 +228,15 @@ export default function UserList() {
                   placeholder="Contraseña temporal"
                   value={invitePassword}
                   onChange={(e) => setInvitePassword(e.target.value)}
-                  className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none pr-10 font-mono"
+                  className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none pr-10 font-mono min-h-[44px]"
                 />
                 <button
                   type="button"
                   onClick={() => setInvitePassword(generateTempPassword())}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-subtle hover:text-text-muted transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-text-subtle hover:text-text-muted transition-colors"
                   title="Regenerar"
                 >
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <RefreshCw className="h-4 w-4" />
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -242,7 +245,7 @@ export default function UserList() {
                   <select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value as 'learner' | 'admin')}
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none"
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
                   >
                     <option value="learner">{roleLabel.learner}</option>
                     <option value="capacitador">{roleLabel.capacitador}</option>
@@ -255,7 +258,7 @@ export default function UserList() {
                   <select
                     value={inviteCampaign}
                     onChange={(e) => setInviteCampaign(e.target.value)}
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none"
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
                   >
                     <option value="">Sin campaña</option>
                     {campaigns.map((c) => (
@@ -269,7 +272,7 @@ export default function UserList() {
                 <button
                   onClick={handleInvite}
                   disabled={inviteLoading || !inviteEmail || !invitePassword}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
                   style={{ background: '#00C228' }}
                 >
                   {inviteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -277,7 +280,7 @@ export default function UserList() {
                 </button>
                 <button
                   onClick={() => setInviting(false)}
-                  className="px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle transition-colors"
+                  className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle transition-colors"
                 >
                   Cancelar
                 </button>
@@ -292,7 +295,8 @@ export default function UserList() {
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
       ) : (
-        <div className="rounded-2xl overflow-hidden border border-line">
+        <div className="rounded-2xl border border-line overflow-x-auto">
+          <div className="min-w-[640px]">
           <div className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
             style={{ gridTemplateColumns: isSuperAdmin ? '1fr auto auto auto' : '1fr auto auto' }}
           >
@@ -322,7 +326,7 @@ export default function UserList() {
                 <select
                   value={user.role}
                   onChange={(e) => handleRoleChange(user.id, e.target.value as Profile['role'])}
-                  className="rounded-lg px-2 py-1 text-[11px] font-medium border-0 outline-none"
+                  className="rounded-lg px-2 py-1 text-[11px] font-medium border-0 outline-none min-h-[44px]"
                   style={{
                     background: roleColors[user.role],
                     color: roleText[user.role],
@@ -336,7 +340,7 @@ export default function UserList() {
                 <select
                   value={user.campaign_id ?? ''}
                   onChange={(e) => handleCampaignChange(user.id, e.target.value)}
-                  className="rounded-lg px-2 py-1 text-[11px] text-text-muted bg-subtle border-0 outline-none"
+                  className="rounded-lg px-2 py-1 text-[11px] text-text-muted bg-subtle border-0 outline-none min-h-[44px]"
                 >
                   <option value="">Sin campaña</option>
                   {campaigns.map((c) => (
@@ -344,31 +348,14 @@ export default function UserList() {
                   ))}
                 </select>
                 {isSuperAdmin && (
-                  confirmDeleteId === user.id ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        disabled={deletingId === user.id}
-                        className="px-2 py-1 rounded-lg text-[11px] font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors"
-                      >
-                        {deletingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirmar'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="px-2 py-1 rounded-lg text-[11px] text-text-muted hover:text-text bg-subtle transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDeleteId(user.id)}
-                      className="p-1.5 rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                      title="Eliminar usuario"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )
+                  <button
+                    onClick={() => handleDelete(user)}
+                    disabled={deletingId === user.id}
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+                    title="Eliminar usuario"
+                  >
+                    {deletingId === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </button>
                 )}
               </div>
             ))}
@@ -377,6 +364,7 @@ export default function UserList() {
                 No hay usuarios aún.
               </div>
             )}
+          </div>
           </div>
         </div>
       )}

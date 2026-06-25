@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/cn'
 
 type Lang = 'es' | 'en' | 'pt'
@@ -48,9 +51,15 @@ function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => v
 
 const textareaClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2.5 text-sm text-text bg-transparent resize-none focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
 const inputClass = 'glass border border-glass-border/20 rounded-lg px-2.5 py-1.5 text-sm text-text bg-transparent focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
-const selectClass = 'glass border border-glass-border/20 rounded-lg px-2.5 py-1.5 text-sm text-text bg-transparent focus:outline-none'
+const END_TYPE_ACTIVE_CLASSES: Record<string, string> = {
+  'brand-green': 'border-brand-green/40 bg-brand-green/8 text-brand-green',
+  'neon-cyan': 'border-neon-cyan/40 bg-neon-cyan/8 text-neon-cyan',
+  'brand-magenta': 'border-brand-magenta/40 bg-brand-magenta/8 text-brand-magenta',
+}
 
 export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
+  const { t } = useTranslation()
+  const confirm = useConfirm()
   const [lang, setLang] = useState<Lang>('es')
 
   const update = (patch: Partial<ChoiceNodeData>) => onChange(nodeId, { ...data, ...patch })
@@ -80,8 +89,15 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
     ],
   })
 
-  const removeOption = (idx: number) =>
+  const removeOption = async (idx: number) => {
+    const ok = await confirm({
+      title: t('confirm.delete_option_title'),
+      description: t('confirm.delete_option_desc'),
+      confirmLabel: t('confirm.remove'),
+    })
+    if (!ok) return
     update({ options: (data.options ?? []).filter((_, i) => i !== idx) })
+  }
 
   return (
     <div className="space-y-5">
@@ -143,7 +159,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
             <div className="flex gap-2">
               {([
                 ['excellent', '⭐ Excelente', 'brand-green'],
-                ['good', '👍 Bueno', 'brand-cyan'],
+                ['good', '👍 Bueno', 'neon-cyan'],
                 ['poor', '👎 Malo', 'brand-magenta'],
               ] as const).map(([val, label, color]) => (
                 <button
@@ -152,7 +168,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
                   className={cn(
                     'px-3 py-1.5 rounded-lg text-xs border transition-all',
                     data.endType === val
-                      ? `border-${color}/40 bg-${color}/8 text-${color}`
+                      ? END_TYPE_ACTIVE_CLASSES[color]
                       : 'border-glass-border/15 text-text-muted hover:text-text',
                   )}
                 >
@@ -215,16 +231,15 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-[10px] text-text-subtle mb-1">Siguiente nodo</div>
-                    <select
+                    <FilterDropdown
                       value={opt.nextId}
-                      onChange={(e) => updateOption(idx, { nextId: e.target.value })}
-                      className={cn(selectClass, 'w-full')}
-                    >
-                      <option value="">— Seleccionar —</option>
-                      {allNodeIds.map((nid) => (
-                        <option key={nid} value={nid}>{nid}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => updateOption(idx, { nextId: v })}
+                      options={[
+                        { value: '', label: '— Seleccionar —' },
+                        ...allNodeIds.map((nid) => ({ value: nid, label: nid })),
+                      ]}
+                      compact
+                    />
                   </div>
                   <div>
                     <div className="text-[10px] text-text-subtle mb-1">Puntos (0-10)</div>

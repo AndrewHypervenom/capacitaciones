@@ -15,3 +15,7 @@ supabase
 *.doc
 
 .env
+
+/agents
+
+skills-lock.json

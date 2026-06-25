@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { LearningModule, ModuleSection, SectionQuiz, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { ContentBlock } from '@/types/blocks'
+import type { GeneratedModule } from '@/services/ai.service'
 
 // ─── Raw DB types for video markers ──────────────────────────
 
@@ -704,4 +705,157 @@ export async function deleteSectionMedia(publicUrl: string): Promise<void> {
   const path = decodeURIComponent(publicUrl.slice(idx + prefix.length))
   const { error } = await supabase.storage.from('module-media').remove([path])
   if (error) throw error
+}
+
+// ─── Guardado de módulos generados por IA (con bloques dinámicos) ─
+
+export interface GenSourceImage {
+  mediaType: string
+  dataBase64: string
+}
+
+const VALID_BLOCK_TYPES = new Set<string>([
+  'paragraph', 'heading', 'list', 'image', 'video', 'callout', 'quiz',
+  'flashcard', 'accordion', 'tabs', 'code', 'quote', 'divider', 'columns', 'timeline', 'comparison',
+  'cards', 'stat', 'hotspot',
+])
+
+const VALID_SECTION_STYLES = new Set<string>(['default', 'immersive', 'spotlight', 'feature'])
+
+function aiSlugify(s: string): string {
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim().replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 60)
+}
+
+function base64ToFile(base64: string, mediaType: string, baseName: string): File {
+  const ext = (mediaType.split('/')[1] ?? 'jpg').replace('jpeg', 'jpg')
+  const bin = atob(base64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new File([bytes], `${baseName}.${ext}`, { type: mediaType })
+}
+
+/**
+ * Convierte los bloques que emite la IA en `ContentBlock[]` reales: valida el tipo y
+ * resuelve los bloques de imagen subiendo la figura referenciada (image_index) a storage.
+ */
+async function buildSectionBlocks(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  aiBlocks: any[],
+  images: GenSourceImage[],
+  campaignId: string,
+  moduleId: string,
+  sectionId: string,
+): Promise<ContentBlock[]> {
+  const out: ContentBlock[] = []
+  const uploaded = new Map<number, string>()
+
+  for (const block of aiBlocks) {
+    if (!block || typeof block !== 'object' || !VALID_BLOCK_TYPES.has(block.type)) continue
+
+    if (block.type === 'image' || block.type === 'hotspot') {
+      const idx = block.image_index
+      if (typeof idx !== 'number' || idx < 0 || idx >= images.length) continue
+      try {
+        let url = uploaded.get(idx)
+        if (!url) {
+          const img = images[idx]
+          const file = base64ToFile(img.dataBase64, img.mediaType, `bloque-${idx}`)
+          url = await uploadSectionMedia(file, campaignId, moduleId, sectionId)
+          uploaded.set(idx, url)
+        }
+        if (block.type === 'hotspot') {
+          out.push({
+            type: 'hotspot',
+            url,
+            caption: block.caption,
+            points: Array.isArray(block.points) ? block.points : [],
+          } as ContentBlock)
+        } else {
+          out.push({
+            type: 'image',
+            url,
+            caption: block.caption,
+            size: 'lg',
+            align: 'center',
+            shadow: true,
+          } as ContentBlock)
+        }
+      } catch {
+        // Si la subida falla, se omite solo ese bloque.
+      }
+    } else {
+      out.push(block as ContentBlock)
+    }
+  }
+
+  return out
+}
+
+/**
+ * Crea un módulo (como borrador) a partir de un `GeneratedModule` de la IA, con sus
+ * secciones de bloques dinámicos. `images` son las figuras del documento que los
+ * bloques de imagen pueden referenciar por índice (vacío cuando no hay documento).
+ */
+export async function saveGeneratedModule(
+  campaignId: string,
+  generated: GeneratedModule,
+  images: GenSourceImage[] = [],
+): Promise<string> {
+  const { metadata, sections } = generated
+  const { id: moduleId } = await createModule(campaignId, {
+    slug: metadata.slug || aiSlugify(metadata.title_es),
+    icon: metadata.icon,
+    duration_min: metadata.duration_min,
+    title_es: metadata.title_es,
+    title_en: metadata.title_en,
+    title_pt: metadata.title_pt,
+    subtitle_es: metadata.subtitle_es,
+    subtitle_en: metadata.subtitle_en,
+    subtitle_pt: metadata.subtitle_pt,
+  })
+
+  await supabase.from('modules').update({
+    objectives_es: metadata.objectives_es,
+    objectives_en: metadata.objectives_en,
+    objectives_pt: metadata.objectives_pt,
+    key_takeaways_es: metadata.key_takeaways_es,
+    key_takeaways_en: metadata.key_takeaways_en,
+    key_takeaways_pt: metadata.key_takeaways_pt,
+  }).eq('id', moduleId)
+
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i]
+    const sectionStyle = (VALID_SECTION_STYLES.has(s.section_style ?? '')
+      ? s.section_style
+      : 'default') as DbSectionRow['section_style']
+    const { id: sectionId } = await upsertSection({
+      module_id: moduleId,
+      sort_order: i + 1,
+      heading_es: s.heading_es,
+      heading_en: s.heading_en,
+      heading_pt: s.heading_pt,
+      body_es: [],
+      section_style: sectionStyle,
+    })
+
+    const blocks = await buildSectionBlocks(s.blocks ?? [], images, campaignId, moduleId, sectionId)
+    if (blocks.length) {
+      await upsertSection({
+        id: sectionId,
+        module_id: moduleId,
+        sort_order: i + 1,
+        heading_es: s.heading_es,
+        heading_en: s.heading_en,
+        heading_pt: s.heading_pt,
+        body_es: [],
+        section_style: sectionStyle,
+        blocks_data: blocks,
+      })
+    }
+  }
+
+  return moduleId
 }

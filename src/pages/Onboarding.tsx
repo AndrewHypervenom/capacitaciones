@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Loader2, Eye, EyeOff, KeyRound } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/authStore'
 
 export function Onboarding() {
+  const { t } = useTranslation()
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -20,7 +22,13 @@ export function Onboarding() {
     setError(null)
 
     try {
-      // Primero marcar onboarded en DB para que el re-fetch de onAuthStateChange ya lo vea en true
+      // Cambiar la contraseña PRIMERO. Solo si esto tiene éxito marcamos
+      // onboarded=true y redirigimos. De lo contrario la cuenta se quedaría
+      // con la contraseña temporal pero el usuario creería que ya la cambió,
+      // y al volver a entrar con la "nueva" obtendría un error.
+      const { error: authError } = await supabase.auth.updateUser({ password })
+      if (authError) throw authError
+
       const { error: dbError } = await supabase
         .from('profiles')
         .update({ onboarded: true })
@@ -28,11 +36,8 @@ export function Onboarding() {
       if (dbError) throw dbError
 
       setProfile({ ...profile, onboarded: true })
-
-      const { error: authError } = await supabase.auth.updateUser({ password })
-      if (authError) throw authError
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al actualizar contraseña')
+      setError(err instanceof Error ? err.message : t('onboarding.error_generic'))
     } finally {
       setLoading(false)
     }
@@ -47,16 +52,16 @@ export function Onboarding() {
           <KeyRound className="h-5 w-5 text-green-500" />
         </div>
 
-        <h1 className="text-[20px] font-bold text-text text-center mb-1">Bienvenido</h1>
+        <h1 className="text-[20px] font-bold text-text text-center mb-1">{t('onboarding.title')}</h1>
         <p className="text-[13px] text-text-muted text-center mb-8">
-          Crea tu contraseña personal para continuar
+          {t('onboarding.subtitle')}
         </p>
 
         <div className="space-y-3">
           <div className="relative">
             <input
               type={showPass ? 'text' : 'password'}
-              placeholder="Nueva contraseña"
+              placeholder={t('onboarding.new_password')}
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(null) }}
               className="w-full rounded-xl px-4 py-3 text-[14px] text-text bg-subtle border border-line outline-none pr-10"
@@ -72,17 +77,17 @@ export function Onboarding() {
 
           <input
             type={showPass ? 'text' : 'password'}
-            placeholder="Confirmar contraseña"
+            placeholder={t('onboarding.confirm_password')}
             value={confirm}
             onChange={(e) => { setConfirm(e.target.value); setError(null) }}
             className="w-full rounded-xl px-4 py-3 text-[14px] text-text bg-subtle border border-line outline-none"
           />
 
           {password.length > 0 && password.length < 8 && (
-            <p className="text-[12px] text-amber-500">Mínimo 8 caracteres</p>
+            <p className="text-[12px] text-amber-500">{t('onboarding.min_chars')}</p>
           )}
           {confirm.length > 0 && password !== confirm && (
-            <p className="text-[12px] text-red-500">Las contraseñas no coinciden</p>
+            <p className="text-[12px] text-red-500">{t('onboarding.mismatch')}</p>
           )}
           {error && <p className="text-[12px] text-red-500">{error}</p>}
 
@@ -93,7 +98,7 @@ export function Onboarding() {
             style={{ background: '#00C228' }}
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            Establecer contraseña
+            {t('onboarding.submit')}
           </button>
         </div>
       </div>

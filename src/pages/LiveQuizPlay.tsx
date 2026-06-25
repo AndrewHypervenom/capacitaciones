@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft, Check, X, Triangle, Circle, Square,
   Diamond, Volume2, VolumeX, Loader2, Star,
@@ -97,6 +98,7 @@ type Phase = 'join' | 'lobby' | 'question' | 'answered' | 'leaderboard' | 'ended
 // ─── Componente ────────────────────────────────────────────────────────────────
 export default function LiveQuizPlay() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { profile } = useAuth()
 
   // Unirse
@@ -207,7 +209,7 @@ export default function LiveQuizPlay() {
   // ── Unirse ──────────────────────────────────────────────────────────────────
   const handleJoin = async () => {
     const code = pin.trim().toUpperCase()
-    if (code.length !== 6) { setJoinError('El PIN debe tener 6 caracteres'); return }
+    if (code.length !== 6) { setJoinError(t('livequiz.pin_length')); return }
     setJoining(true); setJoinError(null)
 
     const { data, error } = await supabase
@@ -215,7 +217,7 @@ export default function LiveQuizPlay() {
       .eq('pin', code).neq('status', 'ended').single()
 
     if (error || !data) {
-      setJoinError('PIN incorrecto o sesión no disponible')
+      setJoinError(t('livequiz.pin_invalid'))
       setJoining(false); return
     }
 
@@ -320,7 +322,7 @@ export default function LiveQuizPlay() {
 
       <button onClick={() => navigate('/dashboard')}
         className="absolute top-5 left-5 flex items-center gap-1.5 text-[13px] text-text-subtle hover:text-text transition-colors">
-        <ArrowLeft className="h-4 w-4" /> Dashboard
+        <ArrowLeft className="h-4 w-4" /> {t('livequiz.dashboard')}
       </button>
 
       <motion.div
@@ -329,8 +331,8 @@ export default function LiveQuizPlay() {
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         className="w-full max-w-xs px-4 text-center"
       >
-        <div className="text-[11px] uppercase tracking-[0.2em] text-text-subtle mb-2">Quiz en Vivo</div>
-        <h1 className="text-[30px] font-black text-text mb-8 tracking-tight">Ingresa el PIN</h1>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-text-subtle mb-2">{t('livequiz.tag')}</div>
+        <h1 className="text-[30px] font-black text-text mb-8 tracking-tight">{t('livequiz.enter_pin')}</h1>
 
         {/* Entrada de PIN */}
         <div className="relative mb-3">
@@ -376,7 +378,7 @@ export default function LiveQuizPlay() {
           className="w-full py-4 rounded-2xl text-[15px] font-black text-black disabled:opacity-40 flex items-center justify-center gap-2 transition-opacity shadow-lg"
           style={{ background: 'linear-gradient(135deg, #00C228 0%, #00a821 100%)' }}
         >
-          {joining ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Unirse'}
+          {joining ? <Loader2 className="h-5 w-5 animate-spin" /> : t('livequiz.join')}
         </motion.button>
       </motion.div>
     </div>
@@ -405,7 +407,7 @@ export default function LiveQuizPlay() {
         <h2 className="text-[24px] font-black text-text mb-1 tracking-tight">{quiz?.title}</h2>
         <div className="flex items-center justify-center gap-2 mb-8">
           <span className="h-1.5 w-1.5 rounded-full bg-[#00C228] animate-pulse" />
-          <span className="text-[13px] font-semibold" style={{ color: '#00C228' }}>¡Estas dentro!</span>
+          <span className="text-[13px] font-semibold" style={{ color: '#00C228' }}>{t('livequiz.you_are_in')}</span>
         </div>
 
         {/* Anillo pulsante de participantes */}
@@ -424,7 +426,7 @@ export default function LiveQuizPlay() {
               <>
                 <span className="text-[26px] font-black" style={{ color: '#00C228' }}>{participantCount}</span>
                 <span className="text-[9px] text-text-subtle uppercase tracking-wide">
-                  {participantCount === 1 ? 'jugador' : 'jugadores'}
+                  {t('livequiz.player', { count: participantCount })}
                 </span>
               </>
             ) : (
@@ -433,7 +435,7 @@ export default function LiveQuizPlay() {
           </div>
         </div>
 
-        <p className="text-text-muted text-[14px] mb-1">Esperando que el anfitrion inicie</p>
+        <p className="text-text-muted text-[14px] mb-1">{t('livequiz.waiting_host')}</p>
         <div className="flex items-center justify-center gap-1 mt-1">
           {[0, 1, 2].map((i) => (
             <motion.div key={i} className="h-1.5 w-1.5 rounded-full bg-text-subtle"
@@ -460,8 +462,8 @@ export default function LiveQuizPlay() {
           style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 80%, rgba(0,194,40,0.05) 0%, transparent 70%)' }} />
 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-sm text-center">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-text-subtle mb-1">Clasificacion</div>
-          <h2 className="text-[22px] font-black text-text mb-8 tracking-tight">Top jugadores</h2>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-text-subtle mb-1">{t('livequiz.ranking')}</div>
+          <h2 className="text-[22px] font-black text-text mb-8 tracking-tight">{t('livequiz.top_players')}</h2>
 
           {top3.length > 0 ? (
             <div className="flex items-end justify-center gap-3 mb-8">
@@ -503,7 +505,7 @@ export default function LiveQuizPlay() {
               })}
             </div>
           ) : (
-            <div className="mb-8 text-text-subtle text-[14px]">Sin respuestas aun</div>
+            <div className="mb-8 text-text-subtle text-[14px]">{t('livequiz.no_answers_yet')}</div>
           )}
 
           <div className="flex items-center justify-center gap-1.5">
@@ -514,7 +516,7 @@ export default function LiveQuizPlay() {
               />
             ))}
           </div>
-          <p className="text-text-subtle text-[12px] mt-2">Siguiente pregunta en un momento</p>
+          <p className="text-text-subtle text-[12px] mt-2">{t('livequiz.next_question_soon')}</p>
         </motion.div>
       </div>
     )
@@ -626,7 +628,7 @@ export default function LiveQuizPlay() {
                     }
                   </motion.div>
                   <span className="text-[17px] font-black" style={{ color: isCorrect ? '#00C228' : '#ef4444' }}>
-                    {isCorrect ? '¡Correcto!' : 'Incorrecto'}
+                    {isCorrect ? t('livequiz.correct') : t('livequiz.incorrect')}
                   </span>
                   {questionScore != null && questionScore > 0 && (
                     <motion.span
@@ -635,19 +637,19 @@ export default function LiveQuizPlay() {
                       transition={{ delay: 0.2 }}
                       className="text-[14px] font-bold text-text-muted"
                     >
-                      +{questionScore.toLocaleString()} pts
+                      {t('livequiz.points', { points: questionScore.toLocaleString() })}
                     </motion.span>
                   )}
                 </div>
                 {!isCorrect && (
                   <p className="text-[12px] text-text-subtle">
-                    Correcta:{' '}
+                    {t('livequiz.correct_label')}{' '}
                     <strong style={{ color: OPTS[currentQ.correctIndex].color }}>
                       {OPTS[currentQ.correctIndex].label}
                     </strong>
                   </p>
                 )}
-                <p className="text-[11px] text-text-subtle">Esperando al anfitrion...</p>
+                <p className="text-[11px] text-text-subtle">{t('livequiz.waiting_host_short')}</p>
               </motion.div>
             ) : (
               <motion.div
@@ -776,13 +778,13 @@ export default function LiveQuizPlay() {
             {campaign?.name && (
               <div className="text-[11px] uppercase tracking-widest text-text-subtle mb-1">{campaign.name}</div>
             )}
-            <h1 className="text-[26px] font-black text-text tracking-tight">Resultados finales</h1>
+            <h1 className="text-[26px] font-black text-text tracking-tight">{t('livequiz.final_results')}</h1>
             {myPos >= 0 && (
               <p className="text-[13px] text-text-muted mt-1.5">
-                Tu posicion{' '}
+                {t('livequiz.your_position')}{' '}
                 <span className="font-black text-text">#{myPos + 1}</span>
                 {'  ·  '}
-                <span className="font-bold" style={{ color: '#00C228' }}>{myScore.toLocaleString()} pts</span>
+                <span className="font-bold" style={{ color: '#00C228' }}>{t('livequiz.points_suffix', { points: myScore.toLocaleString() })}</span>
               </p>
             )}
           </div>
@@ -810,7 +812,7 @@ export default function LiveQuizPlay() {
                   </span>
                   <span className={`flex-1 text-[13px] truncate ${isMe ? 'font-bold text-text' : 'text-text'}`}>
                     {entry.display_name}
-                    {isMe && <span className="text-[11px] text-text-subtle ml-1">(tu)</span>}
+                    {isMe && <span className="text-[11px] text-text-subtle ml-1">{t('livequiz.you')}</span>}
                   </span>
                   <span className="text-[13px] font-bold tabular-nums" style={{ color: '#00C228' }}>
                     {entry.score.toLocaleString()}
@@ -822,7 +824,7 @@ export default function LiveQuizPlay() {
               )
             })}
             {leaderboard.length === 0 && (
-              <div className="py-8 text-center text-text-subtle text-[13px]">Sin respuestas registradas</div>
+              <div className="py-8 text-center text-text-subtle text-[13px]">{t('livequiz.no_answers_recorded')}</div>
             )}
           </div>
 
@@ -831,7 +833,7 @@ export default function LiveQuizPlay() {
             whileTap={{ scale: 0.97 }}
             className="mt-5 w-full py-3 rounded-xl text-[13px] font-semibold text-text-muted hover:text-text bg-subtle hover:bg-line/50 transition-colors border border-line"
           >
-            Volver al dashboard
+            {t('livequiz.back_dashboard')}
           </motion.button>
         </motion.div>
       </div>

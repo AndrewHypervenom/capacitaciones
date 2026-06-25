@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Award, Check, Lock, PhoneCall, Zap } from 'lucide-react';
+import { Award, Check, Globe, Lock, PhoneCall, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUserStore } from '@/stores/userStore';
 import {
@@ -29,6 +31,7 @@ export default function Dashboard() {
     window.scrollTo(0, 0);
   }, []);
 
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { name, language } = useUserStore();
   const { modules, loading: modulesLoading } = useModules();
@@ -77,7 +80,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-5 pt-12 pb-24 dark-mesh-bg min-h-screen">
+    <div className="mx-auto max-w-5xl px-3 sm:px-5 pt-8 sm:pt-12 pb-24 dark-mesh-bg min-h-screen overflow-x-hidden">
       {/* Hero section */}
       <Reveal as="section" className="mb-16 md:mb-20 relative">
         {/* Glow decorativo */}
@@ -95,7 +98,7 @@ export default function Dashboard() {
             <GradientHeading as="h1" variant="white" size="display-lg" className="mb-4 text-balance">
               {t('dashboard.headline')}
             </GradientHeading>
-            <p className="text-text-muted text-[18px] max-w-xl leading-relaxed">
+            <p className="text-text-muted text-[15px] sm:text-[18px] max-w-xl leading-relaxed">
               {t('dashboard.subheadline', { done, total })}
             </p>
           </div>
@@ -373,7 +376,7 @@ export default function Dashboard() {
         {simulatorUnlocked ? (
           <Link to="/simulator">
             <GlassCard intensity="strong" interactive className="overflow-hidden">
-              <div className="relative p-8 md:p-10 grid md:grid-cols-[1fr_auto] gap-6 items-center">
+              <div className="relative p-5 sm:p-8 md:p-10 grid md:grid-cols-[1fr_auto] gap-5 md:gap-6 items-center">
                 <div>
                   <p className="text-[11px] uppercase tracking-wider text-text-subtle mb-3 font-semibold">
                     {t('dashboard.status_available')}
@@ -451,6 +454,37 @@ export default function Dashboard() {
             </div>
           </GlassCard>
         </Link>
+      </Reveal>
+
+      {/* Mi Mundo */}
+      <Reveal as="section" className="mb-12">
+        <button
+          type="button"
+          className="w-full text-left"
+          onClick={() => navigate('/world')}
+        >
+          <GlassCard intensity="subtle" interactive className="border-cyan-500/10 hover:border-cyan-500/20">
+            <div className="p-6 md:p-7 flex items-center gap-5">
+              <div className="shrink-0 inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-cyan-500/10 text-cyan-400 ring-1 ring-cyan-500/15">
+                <Globe className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <div className="text-[11px] uppercase tracking-wider text-cyan-400 mb-1 font-semibold">
+                  Mapa
+                </div>
+                <div className="text-title font-semibold tracking-tight text-text">
+                  Mi Mundo
+                </div>
+                <div className="text-text-muted text-[14px] mt-0.5">
+                  Explora tu mapa de capacitación y completa niveles
+                </div>
+              </div>
+              <span className="text-[13px] font-medium text-text-muted shrink-0">
+                Explorar →
+              </span>
+            </div>
+          </GlassCard>
+        </button>
       </Reveal>
 
       {/* Footer stats */}

@@ -4,6 +4,7 @@ import { AdminNav } from './components/AdminNav'
 import AdminDashboard from './pages/AdminDashboard'
 import CampaignList from './pages/CampaignList'
 import NewModulePage from './pages/NewModulePage'
+import ImportContent from './pages/ImportContent'
 import UserList from './pages/UserList'
 import LiveQuizAdmin from './pages/LiveQuizAdmin'
 import ModuleList from './pages/ModuleList'
@@ -13,9 +14,14 @@ import SimulationList from './pages/SimulationList'
 import SimulationEditor from './pages/SimulationEditor'
 import ChoiceSimEditor from './pages/ChoiceSimEditor'
 import { TrainerFeedbackPanel } from '@/admin/pages/TrainerFeedbackPanel';
+import LearningMissions from './pages/LearningMissions'
+import Arena from './pages/Arena'
+import Worlds from './pages/Worlds'
+import WorldDetail from './pages/WorldDetail'
+import FeedbackPanel from './pages/FeedbackPanel'
 
 export default function AdminRouter() {
-  const { loading, isAuthenticated, isAdmin, isCapacitador } = useAuth()
+  const { loading, isAuthenticated, isAdmin, isCapacitador, isSuperAdmin } = useAuth()
   const location = useLocation()
 
   if (loading) return null
@@ -29,15 +35,16 @@ export default function AdminRouter() {
   return (
     <div className="flex min-h-screen bg-bg">
       <AdminNav />
-      <div className="flex-1 ml-56 overflow-auto">
+      <div className="flex-1 md:ml-56 overflow-auto pt-14 md:pt-0">
         <Routes>
           <Route index element={restricted ?? <AdminDashboard />} />
           <Route path="campaigns" element={restricted ?? <CampaignList />} />
+          <Route path="import" element={restricted ?? <ImportContent />} />
           <Route path="modules" element={restricted ?? <ModuleList />} />
           <Route path="modules/new" element={restricted ?? <NewModulePage />} />
           <Route path="modules/:moduleId" element={restricted ?? <ModuleEditor />} />
           <Route path="modules/:moduleId/preview" element={restricted ?? <ModulePreview />} />
-          <Route path="users" element={restricted ?? <UserList />} />
+          <Route path="users" element={isSuperAdmin ? <UserList /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
           <Route path="feedback" element={<TrainerFeedbackPanel />} />
           <Route path="simulations" element={restricted ?? <SimulationList />} />
@@ -45,6 +52,11 @@ export default function AdminRouter() {
           <Route path="simulations/:id" element={restricted ?? <SimulationEditor />} />
           <Route path="simulations/choice/new" element={restricted ?? <ChoiceSimEditor />} />
           <Route path="simulations/choice/:id" element={restricted ?? <ChoiceSimEditor />} />
+          <Route path="missions" element={restricted ?? <LearningMissions />} />
+          <Route path="arena" element={restricted ?? <Arena />} />
+          <Route path="worlds" element={restricted ?? <Worlds />} />
+          <Route path="worlds/:id" element={restricted ?? <WorldDetail />} />
+          <Route path="feedback" element={restricted ?? <FeedbackPanel />} />
         </Routes>
       </div>
     </div>
