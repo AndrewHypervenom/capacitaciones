@@ -731,7 +731,10 @@ export interface GenSourceImage {
 const VALID_BLOCK_TYPES = new Set<string>([
   'paragraph', 'heading', 'list', 'image', 'video', 'callout', 'quiz',
   'flashcard', 'accordion', 'tabs', 'code', 'quote', 'divider', 'columns', 'timeline', 'comparison',
+  'cards', 'stat', 'hotspot',
 ])
+
+const VALID_SECTION_STYLES = new Set<string>(['default', 'immersive', 'spotlight', 'feature'])
 
 function aiSlugify(s: string): string {
   return s.toLowerCase()
@@ -766,7 +769,7 @@ async function buildSectionBlocks(
   for (const block of aiBlocks) {
     if (!block || typeof block !== 'object' || !VALID_BLOCK_TYPES.has(block.type)) continue
 
-    if (block.type === 'image') {
+    if (block.type === 'image' || block.type === 'hotspot') {
       const idx = block.image_index
       if (typeof idx !== 'number' || idx < 0 || idx >= images.length) continue
       try {
@@ -777,16 +780,25 @@ async function buildSectionBlocks(
           url = await uploadSectionMedia(file, campaignId, moduleId, sectionId)
           uploaded.set(idx, url)
         }
-        out.push({
-          type: 'image',
-          url,
-          caption: block.caption,
-          size: 'lg',
-          align: 'center',
-          shadow: true,
-        } as ContentBlock)
+        if (block.type === 'hotspot') {
+          out.push({
+            type: 'hotspot',
+            url,
+            caption: block.caption,
+            points: Array.isArray(block.points) ? block.points : [],
+          } as ContentBlock)
+        } else {
+          out.push({
+            type: 'image',
+            url,
+            caption: block.caption,
+            size: 'lg',
+            align: 'center',
+            shadow: true,
+          } as ContentBlock)
+        }
       } catch {
-        // Si la subida falla, se omite solo ese bloque de imagen.
+        // Si la subida falla, se omite solo ese bloque.
       }
     } else {
       out.push(block as ContentBlock)
@@ -830,6 +842,9 @@ export async function saveGeneratedModule(
 
   for (let i = 0; i < sections.length; i++) {
     const s = sections[i]
+    const sectionStyle = (VALID_SECTION_STYLES.has(s.section_style ?? '')
+      ? s.section_style
+      : 'default') as DbSectionRow['section_style']
     const { id: sectionId } = await upsertSection({
       module_id: moduleId,
       sort_order: i + 1,
@@ -837,7 +852,7 @@ export async function saveGeneratedModule(
       heading_en: s.heading_en,
       heading_pt: s.heading_pt,
       body_es: [],
-      section_style: 'default',
+      section_style: sectionStyle,
     })
 
     const blocks = await buildSectionBlocks(s.blocks ?? [], images, campaignId, moduleId, sectionId)
@@ -850,7 +865,7 @@ export async function saveGeneratedModule(
         heading_en: s.heading_en,
         heading_pt: s.heading_pt,
         body_es: [],
-        section_style: 'default',
+        section_style: sectionStyle,
         blocks_data: blocks,
       })
     }

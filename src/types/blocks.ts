@@ -18,7 +18,10 @@ export type BlockType =
   | 'divider'
   | 'columns'
   | 'timeline'
-  | 'comparison';
+  | 'comparison'
+  | 'cards'
+  | 'stat'
+  | 'hotspot';
 
 // ─── Shared primitives ─────────────────────────────────────────
 
@@ -157,6 +160,45 @@ export interface ComparisonBlock {
   rows: ML[][];
 }
 
+export interface CardItem {
+  icon?: string;
+  title: ML;
+  text: ML;
+}
+
+export interface CardsBlock {
+  type: 'cards';
+  columns?: 2 | 3;
+  items: CardItem[];
+}
+
+export interface StatItem {
+  /** Valor destacado, p. ej. "82%", "3", "+1.2k". El prefijo numérico se anima. */
+  value: string;
+  label: ML;
+  icon?: string;
+}
+
+export interface StatBlock {
+  type: 'stat';
+  items: StatItem[];
+}
+
+export interface HotspotPoint {
+  /** Posición en porcentaje (0–100) sobre la imagen. */
+  x: number;
+  y: number;
+  title: ML;
+  text: ML;
+}
+
+export interface HotspotImageBlock {
+  type: 'hotspot';
+  url: string;
+  caption?: ML;
+  points: HotspotPoint[];
+}
+
 // ─── Union type ─────────────────────────────────────────────────
 
 export type ContentBlock =
@@ -175,7 +217,10 @@ export type ContentBlock =
   | DividerBlock
   | ColumnsBlock
   | TimelineBlock
-  | ComparisonBlock;
+  | ComparisonBlock
+  | CardsBlock
+  | StatBlock
+  | HotspotImageBlock;
 
 // ─── Block with runtime ID (for editor) ────────────────────────
 
@@ -229,6 +274,12 @@ export function emptyBlock(type: BlockType): ContentBlock {
       return { type, items: [{ label: emptyML(), description: emptyML() }] };
     case 'comparison':
       return { type, headers: [emptyML(), emptyML()], rows: [[emptyML(), emptyML()]] };
+    case 'cards':
+      return { type, columns: 2, items: [{ icon: '✨', title: emptyML(), text: emptyML() }] };
+    case 'stat':
+      return { type, items: [{ value: '', label: emptyML() }] };
+    case 'hotspot':
+      return { type, url: '', points: [] };
   }
 }
 
@@ -259,4 +310,7 @@ export const BLOCK_REGISTRY: BlockMeta[] = [
   { type: 'tabs',        label: 'Tabs',           description: 'Contenido en pestañas',            icon: '⊟',   group: 'interactive' },
   { type: 'timeline',    label: 'Timeline',       description: 'Lista de eventos en el tiempo',    icon: '⊙',   group: 'interactive' },
   { type: 'comparison',  label: 'Comparación',    description: 'Tabla comparativa',                icon: '⊘',   group: 'interactive' },
+  { type: 'cards',       label: 'Tarjetas',       description: 'Grid de tarjetas con ícono',       icon: '▦',   group: 'layout' },
+  { type: 'stat',        label: 'Datos',          description: 'Métricas con números destacados',  icon: '📊',  group: 'interactive' },
+  { type: 'hotspot',     label: 'Imagen interactiva', description: 'Imagen con puntos clicables',  icon: '📍',  group: 'media' },
 ];

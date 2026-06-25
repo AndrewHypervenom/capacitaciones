@@ -4,7 +4,7 @@ import {
   GripVertical, Plus, Trash2, ChevronUp, ChevronDown,
   Type, AlignLeft, List, Image as ImageIcon, Video, Lightbulb,
   HelpCircle, CreditCard, ChevronDown as AccIcon, Layers, Code,
-  Quote, Minus, Columns, Clock, Table,
+  Quote, Minus, Columns, Clock, Table, LayoutGrid, BarChart3, MapPin,
 } from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -730,13 +730,209 @@ function QuoteEditorBlock({ block, onChange, lang }: { block: ContentBlock & { t
   );
 }
 
+function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'cards' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
+  const emptyML = () => ({ es: '', en: '', pt: '' });
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-text-muted">Columnas:</span>
+        {([2, 3] as const).map((n) => (
+          <button
+            key={n}
+            onClick={() => onChange({ ...block, columns: n })}
+            className={cn(
+              'px-3 py-1 rounded-full text-[11px] font-medium transition-colors',
+              (block.columns ?? 2) === n ? 'bg-neon-green/15 text-neon-green border border-neon-green/20' : 'glass text-text-muted hover:text-text',
+            )}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      {block.items.map((card, i) => (
+        <div key={i} className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={card.icon ?? ''}
+                onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, icon: e.target.value } : c) })}
+                placeholder="emoji"
+                className="w-12 bg-transparent text-[15px] text-center text-text placeholder:text-text-subtle outline-none"
+              />
+              <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Tarjeta {i + 1}</span>
+            </div>
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
+              className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
+          </div>
+          <input
+            type="text"
+            value={card.title[lang]}
+            onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, title: { ...c.title, [lang]: e.target.value } } : c) })}
+            placeholder={`Título (${lang})...`}
+            className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none"
+          />
+          <textarea
+            value={card.text[lang]}
+            onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, text: { ...c.text, [lang]: e.target.value } } : c) })}
+            placeholder={`Texto (${lang})...`}
+            rows={2}
+            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
+          />
+        </div>
+      ))}
+      <button onClick={() => onChange({ ...block, items: [...block.items, { icon: '✨', title: emptyML(), text: emptyML() }] })}
+        className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
+        <Plus className="h-3 w-3" /> Añadir tarjeta
+      </button>
+    </div>
+  );
+}
+
+function StatEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'stat' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
+  const emptyML = () => ({ es: '', en: '', pt: '' });
+  return (
+    <div className="space-y-3">
+      {block.items.map((s, i) => (
+        <div key={i} className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <input
+                type="text"
+                value={s.icon ?? ''}
+                onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, icon: e.target.value } : it) })}
+                placeholder="emoji"
+                className="w-12 bg-transparent text-[15px] text-center text-text placeholder:text-text-subtle outline-none shrink-0"
+              />
+              <input
+                type="text"
+                value={s.value}
+                onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, value: e.target.value } : it) })}
+                placeholder="82%"
+                className="flex-1 bg-transparent text-[15px] font-bold text-text placeholder:text-text-subtle outline-none min-w-0"
+              />
+            </div>
+            <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
+              className="text-text-subtle hover:text-red-400 transition-colors shrink-0"><Trash2 className="h-3 w-3" /></button>
+          </div>
+          <input
+            type="text"
+            value={s.label[lang]}
+            onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, label: { ...it.label, [lang]: e.target.value } } : it) })}
+            placeholder={`Etiqueta (${lang})...`}
+            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none"
+          />
+        </div>
+      ))}
+      <button onClick={() => onChange({ ...block, items: [...block.items, { value: '', label: emptyML() }] })}
+        className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
+        <Plus className="h-3 w-3" /> Añadir dato
+      </button>
+    </div>
+  );
+}
+
+function HotspotEditor({
+  block, onChange, lang, mediaContext,
+}: {
+  block: ContentBlock & { type: 'hotspot' };
+  onChange: (b: ContentBlock) => void;
+  lang: Lang;
+  mediaContext?: MediaContext;
+}) {
+  const emptyML = () => ({ es: '', en: '', pt: '' });
+
+  const addPointAt = (e: React.MouseEvent<HTMLImageElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+    onChange({ ...block, points: [...block.points, { x, y, title: emptyML(), text: emptyML() }] });
+  };
+
+  return (
+    <div className="space-y-3">
+      {mediaContext ? (
+        <MediaUploader
+          moduleId={mediaContext.moduleId}
+          sectionId={mediaContext.sectionId}
+          campaignId={mediaContext.campaignId}
+          currentType={block.url ? 'image' : null}
+          currentUrl={block.url || null}
+          onSaved={(_type, url) => onChange({ ...block, url })}
+          onCleared={() => onChange({ ...block, url: '' })}
+        />
+      ) : (
+        <input
+          type="url"
+          value={block.url}
+          onChange={(e) => onChange({ ...block, url: e.target.value })}
+          placeholder="URL de la imagen..."
+          className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
+        />
+      )}
+
+      {block.url && (
+        <>
+          <div className="relative rounded-xl overflow-hidden border border-line">
+            <img src={block.url} alt="" onClick={addPointAt} className="w-full block cursor-crosshair" />
+            {block.points.map((pt, i) => (
+              <span
+                key={i}
+                style={{ left: `${pt.x}%`, top: `${pt.y}%` }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-neon-green text-black text-[11px] font-bold flex items-center justify-center ring-2 ring-white/70 pointer-events-none"
+              >
+                {i + 1}
+              </span>
+            ))}
+          </div>
+          <p className="text-[11px] text-text-subtle">Haz clic en la imagen para agregar un punto.</p>
+        </>
+      )}
+
+      {block.points.map((pt, i) => (
+        <div key={i} className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Punto {i + 1}</span>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-text-subtle">X</label>
+              <input type="number" min={0} max={100} value={pt.x}
+                onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, x: Number(e.target.value) } : p) })}
+                className="w-12 glass rounded-md px-1.5 py-0.5 text-[12px] text-text outline-none" />
+              <label className="text-[10px] text-text-subtle">Y</label>
+              <input type="number" min={0} max={100} value={pt.y}
+                onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, y: Number(e.target.value) } : p) })}
+                className="w-12 glass rounded-md px-1.5 py-0.5 text-[12px] text-text outline-none" />
+              <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, points: block.points.filter((_, j) => j !== i) }) }}
+                className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
+            </div>
+          </div>
+          <input type="text" value={pt.title[lang]}
+            onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, title: { ...p.title, [lang]: e.target.value } } : p) })}
+            placeholder={`Título del punto (${lang})...`}
+            className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none" />
+          <textarea value={pt.text[lang]}
+            onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, text: { ...p.text, [lang]: e.target.value } } : p) })}
+            placeholder={`Descripción (${lang})...`}
+            rows={2}
+            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none" />
+        </div>
+      ))}
+
+      <input type="text" value={block.caption?.[lang] ?? ''}
+        onChange={(e) => onChange({ ...block, caption: { ...(block.caption ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
+        placeholder={`Pie de imagen (${lang}, opcional)...`}
+        className="w-full bg-transparent text-[12.5px] italic text-text-subtle placeholder:text-text-subtle outline-none" />
+    </div>
+  );
+}
+
 // ─── Block icon + label mapping ────────────────────────────────
 
 const BLOCK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   paragraph: AlignLeft, heading: Type, list: List, image: ImageIcon, video: Video,
   callout: Lightbulb, quiz: HelpCircle, flashcard: CreditCard, accordion: AccIcon,
   tabs: Layers, code: Code, quote: Quote, divider: Minus, columns: Columns,
-  timeline: Clock, comparison: Table,
+  timeline: Clock, comparison: Table, cards: LayoutGrid, stat: BarChart3, hotspot: MapPin,
 };
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -744,6 +940,7 @@ const BLOCK_LABELS: Record<string, string> = {
   video: 'Video', callout: 'Callout', quiz: 'Quiz', flashcard: 'Flashcard',
   accordion: 'Acordeón', tabs: 'Tabs', timeline: 'Timeline', comparison: 'Comparación',
   code: 'Código', quote: 'Cita', divider: 'Divisor', columns: 'Columnas',
+  cards: 'Tarjetas', stat: 'Datos', hotspot: 'Imagen interactiva',
 };
 
 // ─── Single block row ──────────────────────────────────────────
@@ -795,6 +992,9 @@ function BlockRow({
       case 'tabs':        return <TabsEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'timeline':    return <TimelineEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'comparison':  return <ComparisonEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'cards':       return <CardsEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'stat':        return <StatEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'hotspot':     return <HotspotEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'columns':     return <ColumnsEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'code':        return <CodeEditorBlock block={b} onChange={onUpdate} />;
       case 'quote':       return <QuoteEditorBlock block={b} onChange={onUpdate} lang={lang} />;

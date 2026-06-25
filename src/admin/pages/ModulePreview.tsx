@@ -10,8 +10,10 @@ import { Callout } from '@/components/modules/Callout'
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck'
 import { SectionLayout } from '@/components/modules/SectionLayout'
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule'
+import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer'
 import { cn } from '@/lib/cn'
 import type { CalloutKind, ModuleSection, SectionStyle } from '@/data/modules'
+import type { ContentBlock } from '@/types/blocks'
 
 type Lang = 'es' | 'en' | 'pt'
 
@@ -276,6 +278,10 @@ export default function ModulePreview() {
                       />
                     ) : null
 
+                    const sectionBlocks = (Array.isArray(s.blocks_data) && s.blocks_data.length > 0)
+                      ? (s.blocks_data as ContentBlock[])
+                      : null
+
                     const textContent = (
                       <>
                         <h2 className={cn(
@@ -284,9 +290,17 @@ export default function ModulePreview() {
                         )}>
                           {heading}
                         </h2>
-                        <div className="space-y-5 text-[16px] text-text/90 leading-relaxed max-w-[72ch]">
-                          {bodyArr.map((p, j) => <p key={j}>{p}</p>)}
-                        </div>
+                        {sectionBlocks ? (
+                          <div>
+                            {sectionBlocks.map((b, j) => (
+                              <BlockRenderer key={j} block={b} language={lang} moduleId={mod.id} blockIndex={j} />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="space-y-5 text-[16px] text-text/90 leading-relaxed max-w-[72ch]">
+                            {bodyArr.map((p, j) => <p key={j}>{p}</p>)}
+                          </div>
+                        )}
                       </>
                     )
 

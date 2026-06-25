@@ -9,6 +9,9 @@ import { TabsBlockRenderer } from './TabsBlock';
 import { TimelineBlockRenderer } from './TimelineBlock';
 import { CodeBlockRenderer } from './CodeBlock';
 import { ComparisonBlockRenderer } from './ComparisonBlock';
+import { CardsBlockRenderer } from './CardsBlock';
+import { StatBlockRenderer } from './StatBlock';
+import { HotspotImageBlockRenderer } from './HotspotImageBlock';
 import { cn } from '@/lib/cn';
 
 interface Props {
@@ -49,9 +52,9 @@ function BlockContent({ block, language, moduleId, blockIndex }: Omit<Props, 'no
           block.ordered ? 'list-decimal list-inside' : 'list-none',
         )}>
           {items.map((item, i) => (
-            <li key={i} className="flex items-start gap-2.5">
+            <li key={i} className="group/li flex items-start gap-2.5 transition-transform duration-200 hover:translate-x-0.5">
               {!block.ordered && (
-                <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-neon-green shrink-0" />
+                <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-neon-green shrink-0 transition-transform duration-200 group-hover/li:scale-150" />
               )}
               <span>{item}</span>
             </li>
@@ -189,6 +192,15 @@ function BlockContent({ block, language, moduleId, blockIndex }: Omit<Props, 'no
     case 'comparison':
       return <ComparisonBlockRenderer block={block} language={language} />;
 
+    case 'cards':
+      return <CardsBlockRenderer block={block} language={language} />;
+
+    case 'stat':
+      return <StatBlockRenderer block={block} language={language} />;
+
+    case 'hotspot':
+      return <HotspotImageBlockRenderer block={block} language={language} />;
+
     default:
       return null;
   }
@@ -204,6 +216,9 @@ function blockSpacing(type: ContentBlock['type']): string {
     case 'tabs':
     case 'timeline':
     case 'comparison':
+    case 'cards':
+    case 'stat':
+    case 'hotspot':
     case 'columns':      return 'mt-8';
     case 'divider':      return 'my-6';
     case 'code':         return 'mt-6';

@@ -60,6 +60,8 @@ export type GeneratedBlock =
 
 export interface GeneratedModuleSection {
   heading_es: string; heading_en: string; heading_pt: string
+  /** Estilo visual de la sección (default/immersive/spotlight/feature). */
+  section_style?: GeneratedSectionStyle
   /** Contenido dinámico de la sección (párrafos, listas, quiz, flashcards, etc.). */
   blocks: GeneratedBlock[]
 }
@@ -110,10 +112,15 @@ export interface DocContext {
   contextImages?: DocImage[]
 }
 
+export type GeneratedSectionStyle = 'default' | 'immersive' | 'spotlight' | 'feature'
+
 /** Esquema de un módulo: metadata + títulos de sección, sin el contenido de los bloques. */
 export interface ModuleOutline {
   metadata: GeneratedModuleMeta
-  sections: { heading_es: string; heading_en: string; heading_pt: string }[]
+  sections: {
+    heading_es: string; heading_en: string; heading_pt: string
+    section_style?: GeneratedSectionStyle
+  }[]
 }
 
 async function postGenerateModule(
