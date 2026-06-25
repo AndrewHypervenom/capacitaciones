@@ -369,7 +369,20 @@
       "template_spotlight": "Destaque",
       "template_feature": "Funcionalidade",
       "template_video_interactive": "Vídeo Interativo",
-      "style_video_interactive": "Vídeo Interativo"
+      "style_video_interactive": "Vídeo Interativo",
+      "style_game_sort": "Ordenar Processos",
+      "style_game_classify": "Classificar Casos"
     }
+  }
+  ,
+  "feedback": {
+    "title": "Retroalimentação",
+    "saved": "Retroalimentação salva",
+    "save_error": "Erro ao salvar a retroalimentação",
+    "placeholder": "Escreva aqui sua retroalimentação sobre o desempenho nesta seção...",
+    "save": "Salvar feedback",
+    "saving": "Salvando...",
+    "cancel": "Cancelar",
+    "edit": "Editar comentário"
   }
 }

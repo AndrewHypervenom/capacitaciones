@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import type { ContentBlock } from '@/types/blocks';
+import type { ContentBlock, GameClassifyBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { Callout } from '@/components/modules/Callout';
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck';
@@ -9,18 +9,27 @@ import { TabsBlockRenderer } from './TabsBlock';
 import { TimelineBlockRenderer } from './TimelineBlock';
 import { CodeBlockRenderer } from './CodeBlock';
 import { ComparisonBlockRenderer } from './ComparisonBlock';
+import SortGameBlock from './SortGameBlock';
+import { ClassifyGameBlockRenderer } from './ClassifyGameBlock';
 import { cn } from '@/lib/cn';
 
+
+interface CustomBaseBlock {
+  type: string;
+  [key: string]: unknown;
+}
 interface Props {
   block: ContentBlock;
   language: Language;
   moduleId?: string;
+  sectionId?: string;
   blockIndex?: number;
-  /** Skip the reveal animation (e.g. for nested blocks inside columns) */
   noAnimate?: boolean;
+  userId?: string;
+  campaignId?: string;
+  onGameScore?: (score: number, total: number) => void;
 }
-
-function BlockContent({ block, language, moduleId, blockIndex }: Omit<Props, 'noAnimate'>) {
+function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex, campaignId, onGameScore }: Omit<Props, 'noAnimate'>) {
   switch (block.type) {
     case 'paragraph':
       return (
@@ -113,12 +122,15 @@ function BlockContent({ block, language, moduleId, blockIndex }: Omit<Props, 'no
     case 'callout':
       return <Callout kind={block.kind} text={block.text[language] || block.text.es} />;
 
-    case 'quiz':
+   case 'quiz':
       if (!moduleId) return null;
       return (
         <KnowledgeCheck
           moduleId={moduleId}
           sectionIdx={blockIndex ?? 0}
+          sectionId={sectionId}
+          userId={userId}
+          campaignId={campaignId}
           quiz={{
             question: block.question,
             options: {
@@ -169,14 +181,9 @@ function BlockContent({ block, language, moduleId, blockIndex }: Omit<Props, 'no
           block.columns.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2',
         )}>
           {block.columns.map((col, i) => (
-            <div
-              key={i}
-              className={cn(
-                'space-y-5 min-w-0 px-5 py-4 rounded-xl bg-glass/10 border border-glass-border/8',
-              )}
-            >
+            <div key={i} className="space-y-5 min-w-0 px-5 py-4 rounded-xl bg-glass/10 border border-glass-border/8">
               {col.blocks.map((b, j) => (
-                <BlockRenderer key={j} block={b} language={language} moduleId={moduleId} blockIndex={j} noAnimate />
+                <BlockRenderer key={j} block={b} language={language} moduleId={moduleId} blockIndex={j} noAnimate userId={userId} campaignId={campaignId} onGameScore={onGameScore} sectionId={sectionId}/>
               ))}
             </div>
           ))}
@@ -189,6 +196,31 @@ function BlockContent({ block, language, moduleId, blockIndex }: Omit<Props, 'no
     case 'comparison':
       return <ComparisonBlockRenderer block={block} language={language} />;
 
+    case 'game-sort':
+      return (
+        <SortGameBlock
+          block={block}
+          language={language}
+          userId={userId}
+          campaignId={campaignId}
+          moduleId={moduleId}
+          sectionId={sectionId}
+          onScoreChange={onGameScore}
+        />
+      );
+
+    case 'game-classify':
+      return (
+        <ClassifyGameBlockRenderer
+          block={block as GameClassifyBlock}
+          language={language}
+          userId={userId}
+          campaignId={campaignId}
+          moduleId={moduleId}
+          sectionId={sectionId}
+          onScoreChange={onGameScore}
+        />
+      );
     default:
       return null;
   }
@@ -213,13 +245,32 @@ function blockSpacing(type: ContentBlock['type']): string {
   }
 }
 
-export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate }: Props) {
-  const content = <BlockContent block={block} language={language} moduleId={moduleId} blockIndex={blockIndex} />;
-  if (!content) return null;
+export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate, userId, campaignId, onGameScore, sectionId }: Props) {
 
-  if (noAnimate) {
-    return content;
+  // campaignId ya llega resuelto desde ModulePage → module.campaign_id.
+  // No usamos fallback de UUID de ceros: si falta, avisamos y dejamos
+  // que el juego no intente guardar nada (mejor que guardar basura).
+  const idSeguro = campaignId;
+
+  if (!idSeguro && process.env.NODE_ENV !== 'production') {
+    console.warn('[BlockRenderer] campaignId vacío — el progreso del juego no se va a guardar en Supabase.');
   }
+
+  const content = (
+    <BlockContent
+      block={block}
+      language={language}
+      moduleId={moduleId}
+      blockIndex={blockIndex}
+      userId={userId}
+      campaignId={idSeguro}
+      sectionId={sectionId}
+      onGameScore={onGameScore}
+    />
+  );
+
+  if (!content) return null;
+  if (noAnimate) {return content;}
 
   const spacing = blockIndex === 0 ? '' : blockSpacing(block.type);
 

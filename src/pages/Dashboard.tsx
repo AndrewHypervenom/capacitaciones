@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Award, Check, Lock, PhoneCall, Zap } from 'lucide-react';
@@ -23,18 +23,10 @@ import { GradientHeading } from '@/components/ui/GradientHeading';
 import { NeonBadge } from '@/components/ui/NeonBadge';
 import { cn } from '@/lib/cn';
 
-// Tracks whether Dashboard has already mounted since the last full page load.
-// On first mount (fresh load): false → render normally.
-// On subsequent mounts (React Router navigation): true → force a full reload.
-let _hasRenderedOnce = false;
-
 export default function Dashboard() {
-  const [needsReload] = useState(() => _hasRenderedOnce);
-
-  useLayoutEffect(() => {
-    _hasRenderedOnce = true;
-    if (needsReload) { window.location.reload(); return; }
-    window.scrollTo({ top: 0, behavior: 'instant' });
+  // Asegurar que la página comience desde arriba al montar el componente
+  useEffect(() => {
+    window.scrollTo(0, 0);
   }, []);
 
   const { t } = useTranslation();
@@ -71,8 +63,6 @@ export default function Dashboard() {
     .filter((m) => !completedModules.includes(m.id))
     .reduce((acc, m) => acc + m.duration, 0);
   const nextModule = modules.find((m) => !completedModules.includes(m.id));
-
-  if (needsReload) return null;
 
   if (modulesLoading) {
     return (

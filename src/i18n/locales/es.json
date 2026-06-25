@@ -369,7 +369,20 @@
       "template_spotlight": "Destacado",
       "template_feature": "Funcionalidad",
       "template_video_interactive": "Video Interactivo",
-      "style_video_interactive": "Video Interactivo"
+      "style_video_interactive": "Video Interactivo",
+      "style_game_sort": "Ordenar Procesos",
+      "style_game_classify": "Clasificar Casos" 
     }
+  }
+  ,
+  "feedback": {
+    "title": "Retroalimentación",
+    "saved": "Retroalimentación guardada",
+    "save_error": "Error guardando retroalimentación",
+    "placeholder": "Escribe aquí tu retroalimentación sobre el desempeño en esta sección...",
+    "save": "Guardar feedback",
+    "saving": "Guardando...",
+    "cancel": "Cancelar",
+    "edit": "Editar comentario"
   }
 }

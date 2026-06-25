@@ -7,10 +7,14 @@ import type { Language } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/cn';
+import { saveActivityAttempt } from '@/services/activity.service';
 
 interface Props {
   moduleId: string;
   sectionIdx: number;
+  sectionId?: string;
+  userId?: string;
+  campaignId?: string;
   quiz: SectionQuiz;
   language: Language;
   quizIndex?: number;
@@ -30,7 +34,17 @@ const CONFETTI_COLORS = [
   'bg-neon-magenta',
 ];
 
-function ConfettiPiece({ color, angle, delay, isBar }: { color: string; angle: number; delay: number; isBar?: boolean }) {
+function ConfettiPiece({
+  color,
+  angle,
+  delay,
+  isBar,
+}: {
+  color: string;
+  angle: number;
+  delay: number;
+  isBar?: boolean;
+}) {
   const rad = (angle * Math.PI) / 180;
   const dist = 56 + Math.random() * 24;
   const x = Math.cos(rad) * dist;
@@ -53,6 +67,9 @@ function ConfettiPiece({ color, angle, delay, isBar }: { color: string; angle: n
 export function KnowledgeCheck({
   moduleId,
   sectionIdx,
+  sectionId,
+  userId,
+  campaignId,
   quiz,
   language,
   quizIndex,
@@ -60,19 +77,60 @@ export function KnowledgeCheck({
 }: Props) {
   const { t } = useTranslation();
   const recordCheck = useProgressStore((s) => s.recordCheck);
+
+  // stored: respuesta persistida en el store (null si nunca respondió)
   const stored = useProgressStore((s) => s.checkAnswers[moduleId]?.[sectionIdx]);
-  const [selected, setSelected] = useState<number | null>(stored ?? null);
+
+  // Inicializar con la respuesta guardada; undefined → null para que el tipo sea consistente
+  const [selected, setSelected] = useState<number | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const reducedMotion = useReducedMotion();
 
+  // ─── ELEGIR OPCIÓN ────────────────────────────────────────────────────────
   const choose = (i: number) => {
     if (selected !== null) return;
+
+    // 1. Actualizar estado local y store
     setSelected(i);
     recordCheck(moduleId, sectionIdx, i);
+
+    // 2. Guardar intento en backend (solo si tenemos los ids necesarios)
+    if (userId && campaignId) {
+      const isCorrect = i === quiz.correct;
+      void saveActivityAttempt({
+        user_id: userId,
+        campaign_id: campaignId,
+        module_id: moduleId,
+        section_id: sectionId || '',
+        game_type: 'KNOWLEDGE_CHECK',
+        score: isCorrect ? 100 : 0,
+        status: isCorrect ? 'completed' : 'failed',
+        time_spent_seconds: 0,
+        submitted_answers: {
+          aciertos: isCorrect ? 1 : 0,
+          total: 1,
+          errores: isCorrect ? 0 : 1,
+          opcion_elegida: quiz.options[language][i],
+          opcion_correcta: quiz.options[language][quiz.correct],
+          mensaje_detalle: isCorrect
+            ? null
+            : `Respondió "${quiz.options[language][i]}" — correcto era "${quiz.options[language][quiz.correct]}"`,
+        },
+      });
+    }
+
+    // 3. Confetti si acertó
     if (i === quiz.correct && !reducedMotion) {
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 800);
     }
+  };
+
+  // ─── REINTENTAR (solo cuando falló) ──────────────────────────────────────
+  const retry = () => {
+    setSelected(null);
+    // Limpiamos también el store para que al volver a la página no quede bloqueado
+    recordCheck(moduleId, sectionIdx, -1); // -1 = sin respuesta
   };
 
   const answered = selected !== null;
@@ -96,6 +154,8 @@ export function KnowledgeCheck({
             {t('module.knowledge_check')}
           </span>
         </div>
+
+        {/* Indicadores de progreso (multi-quiz) */}
         {totalQuizzes !== undefined && totalQuizzes > 1 && quizIndex !== undefined && (
           <div className="flex items-center gap-1.5">
             {Array.from({ length: totalQuizzes }).map((_, i) => (
@@ -107,7 +167,9 @@ export function KnowledgeCheck({
                     ? 'h-2 w-2 bg-neon-green'
                     : i === quizIndex
                       ? answered
-                        ? correct ? 'h-2 w-2 bg-neon-green' : 'h-2 w-2 bg-neon-magenta'
+                        ? correct
+                          ? 'h-2 w-2 bg-neon-green'
+                          : 'h-2 w-2 bg-neon-magenta'
                         : 'h-2.5 w-2.5 bg-text-muted'
                       : 'h-1.5 w-1.5 bg-glass-border/20',
                 )}
@@ -118,12 +180,12 @@ export function KnowledgeCheck({
       </div>
 
       <div className="px-6 py-6">
-        {/* Question */}
+        {/* Pregunta */}
         <p className="text-[16.5px] font-semibold leading-snug mb-6 tracking-tight">
           {quiz.question[language]}
         </p>
 
-        {/* Options */}
+        {/* Opciones */}
         <div className="space-y-2.5 mb-2">
           {quiz.options[language].map((opt, i) => {
             const isSelected = selected === i;
@@ -137,12 +199,17 @@ export function KnowledgeCheck({
                 disabled={answered}
                 initial={reducedMotion ? false : { opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: reducedMotion ? 0 : i * 0.07, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                transition={{
+                  delay: reducedMotion ? 0 : i * 0.07,
+                  duration: 0.3,
+                  ease: [0.16, 1, 0.3, 1],
+                }}
                 whileHover={!answered && !reducedMotion ? { scale: 1.006, y: -1 } : undefined}
                 whileTap={!answered && !reducedMotion ? { scale: 0.98 } : undefined}
                 className={cn(
                   'w-full text-left flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border transition-all duration-200 group',
-                  !showState && 'glass border-glass-border/10 hover:border-neon-green/25 hover:bg-glass/6 cursor-pointer',
+                  !showState &&
+                    'glass border-glass-border/10 hover:border-neon-green/25 hover:bg-glass/6 cursor-pointer',
                   showState && isSelected && isCorrect && 'glass border-neon-green/25 bg-neon-green/6',
                   showState && isSelected && !isCorrect && 'glass border-neon-magenta/25 bg-neon-magenta/6',
                   showState && !isSelected && isCorrect && 'glass border-neon-green/20 opacity-70',
@@ -150,15 +217,18 @@ export function KnowledgeCheck({
                   answered && 'cursor-default',
                 )}
               >
-                {/* Letter badge — becomes check/X after answer */}
-                <span className={cn(
-                  'shrink-0 relative inline-flex items-center justify-center h-8 w-8 rounded-xl text-[12px] font-bold transition-all',
-                  !showState && 'bg-glass/8 text-text-muted group-hover:bg-neon-green/10 group-hover:text-neon-green border border-glass-border/10',
-                  showState && isSelected && isCorrect && 'bg-neon-green/80 text-black',
-                  showState && isSelected && !isCorrect && 'bg-neon-magenta/80 text-white',
-                  showState && !isSelected && isCorrect && 'bg-neon-green/10 text-neon-green',
-                  showState && !isSelected && !isCorrect && 'bg-glass/8 text-text-subtle',
-                )}>
+                {/* Badge de letra / check / X */}
+                <span
+                  className={cn(
+                    'shrink-0 relative inline-flex items-center justify-center h-8 w-8 rounded-xl text-[12px] font-bold transition-all',
+                    !showState &&
+                      'bg-glass/8 text-text-muted group-hover:bg-neon-green/10 group-hover:text-neon-green border border-glass-border/10',
+                    showState && isSelected && isCorrect && 'bg-neon-green/80 text-black',
+                    showState && isSelected && !isCorrect && 'bg-neon-magenta/80 text-white',
+                    showState && !isSelected && isCorrect && 'bg-neon-green/10 text-neon-green',
+                    showState && !isSelected && !isCorrect && 'bg-glass/8 text-text-subtle',
+                  )}
+                >
                   {showState && isSelected ? (
                     <>
                       {isCorrect ? (
@@ -166,8 +236,10 @@ export function KnowledgeCheck({
                       ) : (
                         <X className="h-4 w-4" strokeWidth={3} />
                       )}
-                      {/* Confetti burst */}
-                      {isCorrect && showConfetti && !reducedMotion &&
+                      {/* Confetti */}
+                      {isCorrect &&
+                        showConfetti &&
+                        !reducedMotion &&
                         CONFETTI_COLORS.map((color, ci) => (
                           <ConfettiPiece
                             key={ci}
@@ -176,20 +248,20 @@ export function KnowledgeCheck({
                             delay={ci * 0.05}
                             isBar={ci % 2 === 0}
                           />
-                        ))
-                      }
+                        ))}
                     </>
                   ) : (
                     OPTION_LABELS[i] ?? String(i + 1)
                   )}
                 </span>
+
                 <span className="text-[14.5px] leading-snug flex-1">{opt}</span>
               </motion.button>
             );
           })}
         </div>
 
-        {/* Explanation */}
+        {/* Explicación */}
         <AnimatePresence>
           {answered && (
             <motion.div
@@ -200,34 +272,46 @@ export function KnowledgeCheck({
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="overflow-hidden"
             >
-              <div className={cn(
-                'mt-5 rounded-2xl px-5 py-4 glass',
-                correct ? 'border-neon-green/20' : 'border-neon-magenta/20',
-              )}>
+              <div
+                className={cn(
+                  'mt-5 rounded-2xl px-5 py-4 glass',
+                  correct ? 'border-neon-green/20' : 'border-neon-magenta/20',
+                )}
+              >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className={cn(
-                    'h-1.5 w-1.5 rounded-full animate-glow-pulse',
-                    correct ? 'bg-neon-green' : 'bg-neon-magenta',
-                  )} />
-                  <span className={cn(
-                    'text-[11px] uppercase tracking-wider font-semibold',
-                    correct ? 'text-neon-green' : 'text-neon-magenta',
-                  )}>
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 rounded-full animate-glow-pulse',
+                      correct ? 'bg-neon-green' : 'bg-neon-magenta',
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      'text-[11px] uppercase tracking-wider font-semibold',
+                      correct ? 'text-neon-green' : 'text-neon-magenta',
+                    )}
+                  >
                     {correct ? t('module.check_correct') : t('module.check_incorrect')}
                   </span>
                 </div>
                 <p className="text-[14px] leading-relaxed text-text/90">
                   {quiz.explanation[language]}
                 </p>
+
+                {/* Solo mostrar "Intentar de nuevo" si falló */}
                 {!correct && (
-                  <button
-                    onClick={() => setSelected(null)}
-                    className="mt-4 flex items-center gap-1.5 text-[12.5px] font-medium text-neon-magenta/70 hover:text-neon-magenta transition-colors"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    Intentar de nuevo
-                  </button>
-                )}
+                <button
+                  onClick={retry}
+                  className={cn(
+                    "mt-4 flex items-center gap-1.5 text-[12.5px] font-medium transition-colors cursor-pointer",
+                    "text-neon-magenta/70 hover:text-neon-magenta"
+                  )}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Intentar de nuevo
+                </button>
+              )}
+                
               </div>
             </motion.div>
           )}

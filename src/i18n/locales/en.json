@@ -369,7 +369,20 @@
       "template_spotlight": "Spotlight",
       "template_feature": "Feature",
       "template_video_interactive": "Interactive Video",
-      "style_video_interactive": "Interactive Video"
+      "style_video_interactive": "Interactive Video",
+      "style_game_sort": "Sort Processes",
+      "style_game_classify": "Classify Cases"
     }
+  }
+  ,
+  "feedback": {
+    "title": "Feedback",
+    "saved": "Feedback saved",
+    "save_error": "Error saving feedback",
+    "placeholder": "Write feedback about the student's performance here...",
+    "save": "Save feedback",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "edit": "Edit comment"
   }
 }

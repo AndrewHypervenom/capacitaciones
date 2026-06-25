@@ -18,7 +18,7 @@ export interface SectionMedia {
 }
 
 export type CalloutKind = 'tip' | 'important' | 'warning' | 'success' | 'quote' | 'note';
-export type SectionStyle = 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive';
+export type SectionStyle = 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify';
 export type MediaSize = 'sm' | 'md' | 'lg' | 'full' | 'bleed';
 export type MediaAlign = 'left' | 'center' | 'right';
 
@@ -52,6 +52,7 @@ export type VideoMarker = VideoChapterMarker | VideoQuizMarker;
 // ──────────────────────────────────────────────────────────────
 
 export interface ModuleSection {
+  id: string;
   heading: Record<Language, string>;
   body: Record<Language, string[]>;
   media?: SectionMedia;
@@ -73,7 +74,9 @@ export interface SectionMediaMeta {
 }
 
 export interface LearningModule {
-  id: string;
+  id: string;        
+  dbId: string;
+  campaign_id?: string;      
   title: Record<Language, string>;
   subtitle: Record<Language, string>;
   icon: string;
@@ -89,6 +92,7 @@ const TL = (es: string[], en: string[], pt: string[]) => ({ es, en, pt });
 export const MODULES: LearningModule[] = [
   {
     id: 'bienvenida',
+    dbId: 'tu-uuid-aqui',
     icon: 'Sparkles',
     duration: 8,
     title: T('Bienvenida a la operación', 'Operation onboarding', 'Bem-vindo à operação'),

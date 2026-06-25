@@ -78,7 +78,6 @@ export interface DbModuleRow {
   is_published: boolean
   created_at: string
   updated_at: string
-  // Present when selected with module_sections(id)
   module_sections?: Array<{ id: string; sort_order?: number }>
 }
 
@@ -108,7 +107,8 @@ export interface DbSectionRow {
   media_size: 'sm' | 'md' | 'lg' | 'full' | 'bleed' | null
   media_align: 'left' | 'center' | 'right' | null
   media_shadow: boolean
-  section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | null
+  // ✅ FIX: se agregó 'game-classify' al union type
+  section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
   video_markers: VideoMarkerRaw[] | null
   blocks_data: ContentBlock[] | null
   section_quizzes: DbQuizRow[]
@@ -129,7 +129,6 @@ export interface DbQuizRow {
   explanation_pt: string | null
 }
 
-// Transforma una fila de DB al shape LearningModule que usan los componentes existentes
 function dbRowToLearningModule(
   row: {
     id: string
@@ -170,7 +169,7 @@ function dbRowToLearningModule(
       media_size: 'sm' | 'md' | 'lg' | 'full' | 'bleed' | null
       media_align: 'left' | 'center' | 'right' | null
       media_shadow: boolean
-      section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | null
+      section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
       video_markers: unknown
       blocks_data: unknown
       section_quizzes: Array<{
@@ -220,6 +219,7 @@ function dbRowToLearningModule(
       if (s.section_style && s.section_style !== 'default') {
         section.style = s.section_style as import('@/data/modules').SectionStyle
       }
+      section.id = s.id
       if (s.section_style === 'video-interactive' && s.video_markers) {
         section.videoMarkers = mapVideoMarkersFromDb(s.video_markers)
       }
@@ -268,6 +268,8 @@ function dbRowToLearningModule(
 
   return {
     id: row.slug,
+    dbId: row.id,
+    campaign_id: row.campaign_id,
     icon: row.icon,
     duration: row.duration_min,
     title: {
@@ -415,7 +417,6 @@ export async function createModule(
 
   let { data: row, error } = await tryInsert(baseSlug)
 
-  // Si el slug ya existe, reintenta con sufijo único
   if (error?.code === '23505') {
     const fallbackSlug = `${baseSlug}-${Date.now().toString(36)}`
     ;({ data: row, error } = await tryInsert(fallbackSlug))
@@ -424,8 +425,6 @@ export async function createModule(
   if (error) throw error
   return row as { id: string }
 }
-
-// ─── Admin: raw module listing ────────────────────────────────
 
 export async function getModulesRaw(campaignId: string): Promise<DbModuleRow[]> {
   const { data, error } = await supabase
@@ -436,8 +435,6 @@ export async function getModulesRaw(campaignId: string): Promise<DbModuleRow[]> 
   if (error) throw error
   return (data ?? []) as unknown as DbModuleRow[]
 }
-
-// ─── Admin: single module with sections ──────────────────────
 
 export async function getModuleWithSectionsRaw(moduleId: string): Promise<DbModuleWithSections> {
   const { data, error } = await supabase
@@ -457,8 +454,6 @@ export async function getModuleWithSectionsRaw(moduleId: string): Promise<DbModu
   return row
 }
 
-// ─── Admin: update module metadata ───────────────────────────
-
 export async function updateModuleMetadata(
   moduleId: string,
   updates: Partial<Omit<DbModuleRow, 'id' | 'campaign_id' | 'created_at' | 'updated_at' | 'module_sections'>>,
@@ -466,8 +461,6 @@ export async function updateModuleMetadata(
   const { error } = await supabase.from('modules').update(updates).eq('id', moduleId)
   if (error) throw error
 }
-
-// ─── Admin: section CRUD ──────────────────────────────────────
 
 export async function upsertSection(section: {
   id?: string
@@ -491,7 +484,8 @@ export async function upsertSection(section: {
   media_size?: 'sm' | 'md' | 'lg' | 'full' | 'bleed' | null
   media_align?: 'left' | 'center' | 'right' | null
   media_shadow?: boolean | null
-  section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | null
+  // ✅ ya tenía 'game-classify', sin cambios
+  section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
   video_markers?: VideoMarkerRaw[] | null
   blocks_data?: ContentBlock[] | null
 }): Promise<{ id: string }> {
@@ -515,8 +509,6 @@ export async function deleteSection(sectionId: string) {
   const { error } = await supabase.from('module_sections').delete().eq('id', sectionId)
   if (error) throw error
 }
-
-// ─── Admin: quiz CRUD ─────────────────────────────────────────
 
 export async function upsertSectionQuiz(quiz: {
   id?: string
@@ -543,7 +535,6 @@ export async function upsertSectionQuiz(quiz: {
     if (error) throw error
     return data as { id: string }
   }
-  // Delete any existing quiz for this section to avoid duplicates
   await supabase.from('section_quizzes').delete().eq('section_id', quiz.section_id)
   const { data, error } = await supabase
     .from('section_quizzes')
@@ -558,8 +549,6 @@ export async function deleteSectionQuiz(sectionId: string) {
   const { error } = await supabase.from('section_quizzes').delete().eq('section_id', sectionId)
   if (error) throw error
 }
-
-// ─── Admin: seed desde datos estáticos ───────────────────────
 
 export async function seedCampaignContent(campaignId: string): Promise<{ modules: number; sections: number }> {
   const { MODULES } = await import('@/data/modules')
@@ -598,7 +587,6 @@ export async function seedCampaignContent(campaignId: string): Promise<{ modules
 
     if (moduleError || !moduleRow) continue
 
-    // Limpia secciones existentes para re-insertar limpias
     await supabase.from('module_sections').delete().eq('module_id', moduleRow.id)
 
     for (let j = 0; j < m.sections.length; j++) {
@@ -687,8 +675,6 @@ export async function seedCampaignContent(campaignId: string): Promise<{ modules
 
   return { modules: MODULES.length, sections: totalSections }
 }
-
-// ─── Storage: media de secciones ──────────────────────────────
 
 export async function uploadSectionMedia(
   file: File,

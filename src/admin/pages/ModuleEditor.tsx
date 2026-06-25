@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlignCenter,
@@ -21,6 +21,7 @@ import {
   Star,
   Trash2,
   ZoomIn,
+  ArrowDownUp,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -63,19 +64,21 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { BlockEditor } from '@/admin/components/BlockEditor'
+import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
-import type { BlockWithId } from '@/types/blocks'
+import { ClassifyGameEditor } from '@/components/modules/blocks/ClassifyGameEditor'
+import type { GameClassifyBlock } from '@/types/blocks' // Importamos el tipo del bloque nuevo
+import type { BlockWithId, ContentBlock, GameSortBlock } from '@/types/blocks'
 import { toast } from '@/stores/toastStore'
 
 // ─── Tipos ────────────────────────────────────────────────────
 
 type Lang = 'es' | 'en' | 'pt'
-type SectionStyleOption = 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive'
+type SectionStyleOption = 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify'
 type MediaType = 'image' | 'youtube' | 'video'
 type MediaSize = 'sm' | 'md' | 'lg' | 'full' | 'bleed'
 type MediaAlign = 'left' | 'center' | 'right'
 type CalloutKind = 'tip' | 'important' | 'warning' | 'success' | 'quote' | 'note'
-
 
 const MEDIA_SIZES: { value: MediaSize; label: string }[] = [
   { value: 'sm', label: 'SM' },
@@ -154,7 +157,7 @@ function GroupDivider({
   )
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children }: { children: ReactNode }) {
   return (
     <label className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
       {children}
@@ -262,6 +265,55 @@ interface SectionEditorPanelProps {
   onRegisterSave: (fn: (() => void) | null) => void
 }
 
+function GameSortEditorWrapper({
+  section,
+  heading,
+  language, // 🌟 Sincronizado con el estándar del ingeniero
+  onBlockChange,
+}: {
+  section: DbSectionRow
+  heading: Record<string, string>
+  language: string
+  onBlockChange: (updated: GameSortBlock) => void
+}) {
+  const getInitialBlock = (): GameSortBlock => {
+    if (section.blocks_data && Array.isArray(section.blocks_data)) {
+      const first = section.blocks_data[0] as any
+      if (first?.type === 'game-sort') return first
+    }
+      return {
+      type: 'game-sort' as const,
+      title: { es: heading.es, en: heading.en, pt: heading.pt },
+      instructions: { es: '', en: '', pt: '' },
+      processes: [{
+        id: 'process-1',
+        title: { es: heading.es, en: heading.en, pt: heading.pt },
+        steps: [],
+        feedback_correct: { es: '', en: '', pt: '' },
+        feedback_wrong: { es: '', en: '', pt: '' },
+      }],
+    }
+  }
+
+  const [localBlock, setLocalBlock] = useState<GameSortBlock>(getInitialBlock)
+
+  const handleChange = (updated: GameSortBlock) => {
+    setLocalBlock(updated)
+    onBlockChange(updated)
+  }
+
+  return (
+    <div className="space-y-4">
+      <GroupDivider label="Juego de Ordenar Procesos" />
+      <SortGameEditor
+        block={localBlock}
+        lang={language as any} // Pasa el parámetro de idioma correcto
+        onChange={handleChange}
+      />
+    </div>
+  )
+}
+
 function SectionEditorPanel({
   section,
   campaignId,
@@ -275,19 +327,23 @@ function SectionEditorPanel({
     { value: 'default' as SectionStyleOption,      label: t('admin.modules.style_default'),      Icon: Square },
     { value: 'immersive' as SectionStyleOption,    label: t('admin.modules.style_immersive'),    Icon: Sparkle },
     { value: 'side-by-side' as SectionStyleOption, label: t('admin.modules.style_side_by_side'), Icon: Columns2 },
-    { value: 'hero' as SectionStyleOption,         label: t('admin.modules.style_hero'),         Icon: ZoomIn },
+    { value: 'hero' as SectionStyleOption,          label: t('admin.modules.style_hero'),         Icon: ZoomIn },
     { value: 'spotlight' as SectionStyleOption,    label: t('admin.modules.style_spotlight'),    Icon: Star },
     { value: 'feature' as SectionStyleOption,      label: t('admin.modules.style_feature'),      Icon: Layers },
+    { value: 'game-sort' as SectionStyleOption,    label: t('admin.modules.style_game_sort'),    Icon: ArrowDownUp }, 
+    { value: 'game-classify' as SectionStyleOption, label: 'Clasificar Casos', Icon: Layers },  
   ], [t])
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'ok'>('idle')
   const [error, setError] = useState<string | null>(null)
+  
   const [blocks, setBlocks] = useState<BlockWithId[]>(() => {
     if (!section.blocks_data || !Array.isArray(section.blocks_data)) return []
-    return section.blocks_data.map((data, i) => ({ id: `loaded-${i}-${Date.now()}`, data }))
+    return section.blocks_data.map((data, i) => ({ id: (data as any).id || `loaded-${i}-${Date.now()}`, data: data as ContentBlock }))
   })
+  
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleSaveRef2 = useRef<(() => Promise<void>) | null>(null)
 
@@ -328,7 +384,7 @@ function SectionEditorPanel({
   const [mediaAlign, setMediaAlign] = useState<MediaAlign>(section.media_align ?? 'center')
   const [mediaShadow, setMediaShadow] = useState(section.media_shadow ?? false)
 
-  // Marcadores de video (para secciones de video interactivo)
+  // Marcadores de video
   const [videoMarkers, setVideoMarkers] = useState<VideoMarkerRaw[]>(
     () => Array.isArray(section.video_markers) ? (section.video_markers as VideoMarkerRaw[]) : [],
   )
@@ -360,7 +416,6 @@ function SectionEditorPanel({
   useEffect(() => {
     if (!isFirstRender.current) {
       onDirty(true)
-      // Debounce de autoguardado
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
       setAutoSaveStatus('idle')
       autoSaveTimerRef.current = setTimeout(() => {
@@ -374,8 +429,7 @@ function SectionEditorPanel({
       }, 1500)
     }
     isFirstRender.current = false
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heading, body, sectionStyle, hasCallout, calloutKind, callout, hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow])
+  }, [heading, body, sectionStyle, hasCallout, calloutKind, callout, hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks])
 
   const handleSave = async () => {
     setSaving(true)
@@ -486,14 +540,12 @@ function SectionEditorPanel({
     }
   }
 
-  // Registrar función de guardado en la barra de herramientas del padre
   const handleSaveRef = useRef(handleSave)
   handleSaveRef.current = handleSave
   handleSaveRef2.current = handleSave
   useEffect(() => {
     onRegisterSave(() => handleSaveRef.current())
     return () => onRegisterSave(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -513,11 +565,9 @@ function SectionEditorPanel({
     pt: !!(heading.pt || body.pt),
   }
 
-  // ── Modo video interactivo: mostrar editor especial ──────────────
   if (sectionStyle === 'video-interactive') {
     return (
       <div className="p-6 space-y-5">
-        {/* Encabezado de sección */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <NeonBadge color="cyan">Video Interactivo</NeonBadge>
@@ -545,7 +595,6 @@ function SectionEditorPanel({
           }}
         />
 
-        {/* Título (etiqueta mostrada sobre el video) */}
         <div>
           <FieldLabel>Título de la sección ({lang.toUpperCase()})</FieldLabel>
           <GlassInput
@@ -555,7 +604,6 @@ function SectionEditorPanel({
           />
         </div>
 
-        {/* Editor de marcadores de video */}
         {section.id ? (
           <VideoMarkerEditor
             sectionId={section.id}
@@ -581,7 +629,6 @@ function SectionEditorPanel({
           </div>
         )}
 
-        {/* Botón guardar */}
         <div className="flex items-center gap-3 pt-2">
           {error && <p className="text-danger text-[12px] flex-1">{error}</p>}
           <button
@@ -748,7 +795,7 @@ function SectionEditorPanel({
                           'p-2.5 rounded-lg border transition-all duration-200',
                           mediaAlign === value
                             ? 'bg-neon-green/10 border-neon-green/25 text-neon-green'
-                            : 'glass border-glass-border/8 text-text-muted hover:text-text',
+                            : 'glass border-glass-border/8 text-text-muted hover:border-glass-border/20 hover:text-text',
                         )}
                       >
                         <Icon className="h-4 w-4" />
@@ -858,16 +905,56 @@ function SectionEditorPanel({
         )}
       </div>
 
-      {/* ── BLOQUES ── */}
-      <div className="space-y-4">
-        <GroupDivider label="Bloques" />
-        <BlockEditor
-          blocks={blocks}
-          onChange={(next) => { setBlocks(next); onDirty(true) }}
-          activeLang={lang}
-          mediaContext={section.id ? { moduleId: section.module_id, sectionId: section.id, campaignId } : undefined}
+      {/* ── BLOQUES (Renders normales) ── */}
+      {sectionStyle !== 'game-sort' && sectionStyle !== 'game-classify' && (
+        <div className="space-y-4">
+          <GroupDivider label="Bloques" />
+          <BlockEditor
+            blocks={blocks}
+            onChange={(next) => { setBlocks(next); onDirty(true) }}
+            activeLang={lang}
+            mediaContext={section.id ? { moduleId: section.module_id, sectionId: section.id, campaignId } : undefined}
+          />
+        </div>
+      )}
+      {/* ── ORDENAR ── */}
+      {sectionStyle === 'game-sort' && (
+        <GameSortEditorWrapper
+          section={section}
+          heading={heading}
+          language={lang}
+          onBlockChange={(updated: GameSortBlock) => {
+            setHeading({
+              es: updated.title?.es || heading.es,
+              en: updated.title?.en || heading.en,
+              pt: updated.title?.pt || heading.pt,
+            })
+            setBlocks([{ id: 'game-sort-block', data: updated }])
+            onDirty(true)
+          }}
         />
-      </div>
+      )}
+
+      {/* ── CLASIFICAR (Zona de configuración para el juego nuevo de Casos) ── */}
+      {sectionStyle === 'game-classify' && (
+        <div className="space-y-4">
+          <ClassifyGameEditor
+            section={section}
+            language={lang}
+            onBlockChange={(updated: GameClassifyBlock) => {
+              // Sincronizamos el encabezado multilenguaje de la sección de forma segura con el título del juego
+              setHeading({
+                es: updated.title?.es || heading.es,
+                en: updated.title?.en || heading.en,
+                pt: updated.title?.pt || heading.pt
+              })
+              // Almacenamos el bloque del juego dentro del arreglo de bloques locales de la sección
+              setBlocks([{ id: `game-classify-${Date.now()}`, data: updated }])
+              onDirty(true)
+            }}
+          />
+        </div>
+      )}
 
       {/* ── Pie de guardado ── */}
       <div className="pt-5 border-t border-glass-border/8 flex items-center gap-3">
@@ -933,7 +1020,6 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
   useEffect(() => {
     if (!isFirstRender.current) onDirty(true)
     isFirstRender.current = false
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, subtitle, icon, duration])
 
   const handleSave = async () => {
@@ -976,7 +1062,6 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
   useEffect(() => {
     onRegisterSave(() => handleSaveRef.current())
     return () => onRegisterSave(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -1127,7 +1212,6 @@ export default function ModuleEditor() {
         toast.error(t('admin.modules.error_load'))
       })
       .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId])
 
   const handleMetaSaved = useCallback((updates: Partial<DbModuleWithSections>) => {
@@ -1155,7 +1239,6 @@ export default function ModuleEditor() {
   const handleReorder = useCallback(async (reordered: DbSectionRow[]) => {
     setSections(reordered)
     for (const s of reordered) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { section_quizzes: _q, ...rest } = s
       await upsertSection(rest)
     }
@@ -1178,6 +1261,8 @@ export default function ModuleEditor() {
         spotlight: 'spotlight',
         feature: 'feature',
         'video-interactive': 'video-interactive',
+        'game-sort': 'game-sort',
+        'game-classify': 'game-classify',
       }
       const sectionStyle = styleMap[template] ?? 'default'
 
@@ -1257,7 +1342,6 @@ export default function ModuleEditor() {
     }
   }
 
-  // Arrastrar y soltar para el panel izquierdo
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -1302,7 +1386,6 @@ export default function ModuleEditor() {
 
       {/* ── PANEL IZQUIERDO ── */}
       <div className="w-60 flex flex-col glass-strong border-r border-glass-border/8 shrink-0 overflow-hidden">
-        {/* Atrás + info del módulo */}
         <div className="px-4 pt-4 pb-3 border-b border-glass-border/8">
           <button
             onClick={() => navigate('/admin/modules')}
@@ -1320,7 +1403,6 @@ export default function ModuleEditor() {
           </p>
         </div>
 
-        {/* Encabezado de lista de secciones */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-glass-border/8">
           <span className="text-[10px] uppercase tracking-wider text-text-subtle font-semibold">
             Secciones
@@ -1335,7 +1417,6 @@ export default function ModuleEditor() {
           </button>
         </div>
 
-        {/* Ítem de metadatos del módulo */}
         <button
           onClick={() => handleSelectSection(null)}
           className={cn(
@@ -1354,11 +1435,10 @@ export default function ModuleEditor() {
           <span className="text-[12px] font-medium">Metadatos del módulo</span>
         </button>
 
-        {/* Lista de secciones con arrastrar y soltar */}
         <div className="flex-1 overflow-y-auto">
           {sections.length === 0 ? (
             <div className="px-4 py-6 text-center text-[11px] text-text-subtle">
-              Sin secciones.<br />Usa <Plus className="h-3 w-3 inline" /> para agregar.
+              Sin secciones.<br />Usa <Plus className="h-3 w-3 inline" /> para crear una.
             </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1410,7 +1490,6 @@ export default function ModuleEditor() {
           )}
         </div>
 
-        {/* Nueva sección CTA */}
         <div className="p-3 border-t border-glass-border/8 shrink-0">
           <button
             onClick={() => setGalleryOpen(true)}
@@ -1432,7 +1511,6 @@ export default function ModuleEditor() {
 
       {/* ── PANEL CENTRAL ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Barra de herramientas del editor */}
         <div className="flex items-center gap-3 px-5 h-14 glass-md border-b border-glass-border/8 shrink-0">
           <div className="flex-1 min-w-0 flex items-center gap-2">
             <span className="text-[14px] font-medium text-text truncate">{mod.title_es}</span>
@@ -1479,14 +1557,12 @@ export default function ModuleEditor() {
           </div>
         </div>
 
-        {/* Aviso de error */}
         {error && (
           <div className="mx-5 mt-4 px-4 py-2.5 rounded-xl glass border border-danger/20 text-danger text-[13px] shrink-0">
             {error}
           </div>
         )}
 
-        {/* Contenido del editor */}
         <div className="flex-1 overflow-y-auto">
           {selectedSectionId === null ? (
             <MetaEditorPanel
@@ -1581,7 +1657,6 @@ export default function ModuleEditor() {
         </div>
       )}
 
-      {/* Galería de plantillas */}
       <SectionTemplateGallery
         open={galleryOpen}
         onClose={() => setGalleryOpen(false)}
