@@ -52,7 +52,7 @@ export type VideoMarker = VideoChapterMarker | VideoQuizMarker;
 // ──────────────────────────────────────────────────────────────
 
 export interface ModuleSection {
-  id: string;
+  id?: string;
   heading: Record<Language, string>;
   body: Record<Language, string[]>;
   media?: SectionMedia;
@@ -74,9 +74,9 @@ export interface SectionMediaMeta {
 }
 
 export interface LearningModule {
-  id: string;        
-  dbId: string;
-  campaign_id?: string;      
+  id: string;
+  dbId?: string;
+  campaign_id?: string;
   title: Record<Language, string>;
   subtitle: Record<Language, string>;
   icon: string;

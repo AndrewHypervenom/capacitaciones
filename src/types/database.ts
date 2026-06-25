@@ -436,7 +436,7 @@ export interface Database {
           display_name: string | null
           country: string | null
           language: string | null
-          role: 'superadmin' | 'admin' | 'capacitador' | 'learner'
+          role: 'superadmin' | 'capacitador' | 'learner'
           campaign_id: string | null
           onboarded: boolean
           created_at: string
@@ -447,7 +447,7 @@ export interface Database {
           display_name?: string | null
           country?: string | null
           language?: string | null
-          role?: 'superadmin' | 'admin' | 'capacitador' | 'learner'
+          role?: 'superadmin' | 'capacitador' | 'learner'
           campaign_id?: string | null
           onboarded?: boolean
           created_at?: string
@@ -457,7 +457,7 @@ export interface Database {
           display_name?: string | null
           country?: string | null
           language?: string | null
-          role?: 'superadmin' | 'admin' | 'capacitador' | 'learner'
+          role?: 'superadmin' | 'capacitador' | 'learner'
           campaign_id?: string | null
           onboarded?: boolean
           updated_at?: string

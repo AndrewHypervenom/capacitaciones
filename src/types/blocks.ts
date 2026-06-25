@@ -20,7 +20,7 @@ export type BlockType =
   | 'timeline'
   | 'comparison'
   | 'game-sort'
-  | 'game-classify'; // 🌟 Agregado el nuevo tipo de juego
+  | 'game-classify' // 🌟 Agregado el nuevo tipo de juego
   | 'cards'
   | 'stat'
   | 'hotspot';
@@ -206,6 +206,8 @@ export interface GameClassifyBlock {
   instructions: ML;
   categories: ClassifyCategory[];
   cases: ClassifyCase[];
+}
+
 export interface CardItem {
   icon?: string;
   title: ML;
@@ -265,7 +267,7 @@ export type ContentBlock =
   | TimelineBlock
   | ComparisonBlock
   | GameSortBlock
-  | GameClassifyBlock; // 🌟 Registrado aquí en la unión
+  | GameClassifyBlock // 🌟 Registrado aquí en la unión
   | CardsBlock
   | StatBlock
   | HotspotImageBlock;

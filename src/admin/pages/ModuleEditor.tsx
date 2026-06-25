@@ -1392,20 +1392,98 @@ export default function ModuleEditor() {
     )
   }
 
+  const previewContent = (
+    <>
+      {selectedSectionId ? (
+        (() => {
+          const s = sections.find((sec) => sec.id === selectedSectionId)
+          if (!s) return <p className="text-[12px] text-text-subtle text-center pt-10">Selecciona una sección</p>
+          return (
+            <div className="space-y-4">
+              <p className="text-[10px] text-text-subtle uppercase tracking-widest font-medium">
+                {s.heading_es || 'Sin título'}
+              </p>
+              {s.body_es?.map((p: string, i: number) => (
+                <p key={i} className="text-[14px] leading-relaxed text-text-muted">{p}</p>
+              ))}
+              {s.callout_kind && s.callout_es && (
+                <div className="glass rounded-2xl px-4 py-3 border-l-2 border-neon-green/40">
+                  <p className="text-[12px] text-text-muted">{s.callout_es}</p>
+                </div>
+              )}
+              {s.media_url && s.media_type === 'image' && (
+                <img src={s.media_url} alt="" className="w-full rounded-2xl border border-line" />
+              )}
+              {s.media_url && s.media_type === 'youtube' && (
+                <div className="relative rounded-2xl overflow-hidden" style={{ paddingTop: '56.25%' }}>
+                  <iframe
+                    src={`https://www.youtube.com/embed/${s.media_url}?rel=0`}
+                    className="absolute inset-0 w-full h-full border-0"
+                    allowFullScreen
+                  />
+                </div>
+              )}
+              {(s.section_quizzes?.length ?? 0) > 0 && (
+                <div className="glass rounded-2xl px-4 py-3">
+                  <p className="text-[11px] text-text-subtle mb-2">Quiz ✓</p>
+                  <p className="text-[13px] font-medium text-text">{s.section_quizzes![0].question_es}</p>
+                  <div className="space-y-1.5 mt-3">
+                    {s.section_quizzes![0].options_es?.map((o: string, i: number) => (
+                      <div key={i} className={cn(
+                        'px-3 py-2 rounded-xl text-[12px] border',
+                        i === s.section_quizzes![0].correct_index
+                          ? 'border-neon-green/30 text-neon-green bg-neon-green/5'
+                          : 'border-glass-border/10 text-text-muted',
+                      )}>
+                        {o}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()
+      ) : (
+        <p className="text-[12px] text-text-subtle text-center pt-10">
+          Selecciona una sección para ver preview
+        </p>
+      )}
+    </>
+  )
+
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
 
       {/* ── PANEL IZQUIERDO ── */}
       <div className="w-60 flex flex-col glass-strong border-r border-glass-border/8 shrink-0 overflow-hidden">
-        <div className="px-4 pt-4 pb-3 border-b border-glass-border/8">
+        <div className="px-4 pt-4 pb-3 border-b border-glass-border/8 md:hidden">
           <button
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors shrink-0"
+            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-      </div>
+
+        {/* Ítem de metadatos del módulo */}
+        <button
+          onClick={() => handleSelectSection(null)}
+          className={cn(
+            'w-full flex items-center gap-2.5 px-4 py-3 text-left transition-all border-b border-glass-border/8',
+            selectedSectionId === null
+              ? 'bg-glass-border/8 text-text'
+              : 'text-text-muted hover:text-text hover:bg-glass/4',
+          )}
+        >
+          <div className={cn(
+            'h-5 w-5 rounded-md flex items-center justify-center shrink-0 transition-colors',
+            selectedSectionId === null ? 'bg-glass-border/10' : 'bg-glass/8',
+          )}>
+            <BookOpen className="h-3 w-3 text-text-subtle" />
+          </div>
+          <span className="text-[12px] font-medium">Metadatos del módulo</span>
+        </button>
 
         <div className="flex items-center justify-between px-4 py-2 border-b border-glass-border/8">
           <span className="text-[10px] uppercase tracking-wider text-text-subtle font-semibold">
@@ -1420,10 +1498,8 @@ export default function ModuleEditor() {
             {addingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           </button>
         </div>
-        <span className="text-[12px] font-medium">Metadatos del módulo</span>
-      </button>
 
-      {/* Lista de secciones con arrastrar y soltar */}
+        {/* Lista de secciones con arrastrar y soltar */}
       <div className="flex-1 overflow-y-auto">
         {sections.length === 0 ? (
           <div className="px-4 py-6 text-center text-[11px] text-text-subtle">
@@ -1478,87 +1554,6 @@ export default function ModuleEditor() {
           </DndContext>
         )}
       </div>
-
-        <button
-          onClick={() => setGalleryOpen(true)}
-          disabled={addingSection}
-          className={cn(
-            'w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
-            'border border-dashed border-glass-border/15 text-text-subtle hover:text-text hover:border-glass-border/30 hover:bg-glass/4',
-            'disabled:opacity-40 disabled:cursor-not-allowed',
-          )}
-        >
-          {addingSection
-            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            : <Plus className="h-3.5 w-3.5" />
-          }
-          Nueva sección
-        </button>
-      </div>
-    </>
-  )
-
-        <div className="flex-1 overflow-y-auto">
-          {sections.length === 0 ? (
-            <div className="px-4 py-6 text-center text-[11px] text-text-subtle">
-              Sin secciones.<br />Usa <Plus className="h-3 w-3 inline" /> para crear una.
-            </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                {sections.map((section, idx) => (
-                  <SortableItem key={section.id} id={section.id}>
-                    {(dragHandle) => (
-                      <div
-                        onClick={() => handleSelectSection(section.id)}
-                        className={cn(
-                          'group flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-all border-b border-glass-border/6',
-                          selectedSectionId === section.id
-                            ? 'bg-glass-border/8 text-text'
-                            : 'text-text-muted hover:text-text hover:bg-glass/4',
-                        )}
-                      >
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          {dragHandle}
-                        </div>
-                        <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">
-                          {idx + 1}
-                        </span>
-                        <span className={cn(
-                          'flex-1 text-[12px] font-medium truncate',
-                          selectedSectionId === section.id ? 'text-text' : '',
-                        )}>
-                          {section.heading_es || 'Sin título'}
-                        </span>
-                        <div className="flex items-center gap-1 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
-                          {section.media_type && <Image className="h-2.5 w-2.5 text-text-subtle" />}
-                          {section.callout_kind && <Lightbulb className="h-2.5 w-2.5 text-text-subtle" />}
-                          {(section.section_quizzes?.length ?? 0) > 0 && <HelpCircle className="h-2.5 w-2.5 text-text-subtle" />}
-                          {Array.isArray(section.blocks_data) && section.blocks_data.length > 0 && (
-                            <Layers className="h-2.5 w-2.5 text-text-subtle" />
-                          )}
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id) }}
-                          className="p-1 rounded-md opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:text-danger hover:bg-danger/8 transition-all shrink-0"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })()
-      ) : (
-        <p className="text-[12px] text-text-subtle text-center pt-10">
-          Selecciona una sección para ver preview
-        </p>
-      )}
-    </>
-  )
 
         <div className="p-3 border-t border-glass-border/8 shrink-0">
           <button

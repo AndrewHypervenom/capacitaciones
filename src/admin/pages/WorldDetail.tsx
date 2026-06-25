@@ -26,7 +26,8 @@ export default function WorldDetail() {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const { user, isSuperAdmin, campaignId, loading: authLoading, profile } = useAuth()
-  const isAdminOnly = !isSuperAdmin && profile?.role === 'admin'
+  // 'admin' ya no existe como rol; solo el superadmin llega aquí, así que nunca hay scoping por campaña
+  const isAdminOnly = false
 
   const [world, setWorld]     = useState<World | null>(null)
   const [regions, setRegions] = useState<Region[]>([])

@@ -21,15 +21,15 @@ import WorldDetail from './pages/WorldDetail'
 import FeedbackPanel from './pages/FeedbackPanel'
 
 export default function AdminRouter() {
-  const { loading, isAuthenticated, isAdmin, isCapacitador, isSuperAdmin } = useAuth()
+  const { loading, isAuthenticated, isCapacitador, isSuperAdmin } = useAuth()
   const location = useLocation()
 
   if (loading) return null
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
-  if (!isAdmin && !isCapacitador) return <Navigate to="/dashboard" replace />
+  if (!isSuperAdmin && !isCapacitador) return <Navigate to="/dashboard" replace />
 
   // Capacitador: solo accede al módulo de quiz
-  const onlyQuiz = isCapacitador && !isAdmin
+  const onlyQuiz = isCapacitador && !isSuperAdmin
   const restricted = onlyQuiz ? <Navigate to="/admin/quiz" replace /> : null
 
   return (
@@ -46,7 +46,7 @@ export default function AdminRouter() {
           <Route path="modules/:moduleId/preview" element={restricted ?? <ModulePreview />} />
           <Route path="users" element={isSuperAdmin ? <UserList /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
-          <Route path="feedback" element={<TrainerFeedbackPanel />} />
+          <Route path="evaluaciones" element={<TrainerFeedbackPanel />} />
           <Route path="simulations" element={restricted ?? <SimulationList />} />
           <Route path="simulations/new" element={restricted ?? <SimulationEditor />} />
           <Route path="simulations/:id" element={restricted ?? <SimulationEditor />} />

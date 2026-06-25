@@ -28,8 +28,9 @@ interface LearnerRow {
 
 
 export default function FeedbackPanel() {
-  const { isSuperAdmin, isAdmin, isCapacitador, campaignId, loading: authLoading } = useAuth()
-  const isAdminOnly = isAdmin && !isSuperAdmin
+  const { isSuperAdmin, isCapacitador, campaignId, loading: authLoading } = useAuth()
+  // 'admin' ya no existe como rol; solo superadmin llega aquí
+  const isAdminOnly = false
 
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<LearnerRow[]>([])
@@ -144,7 +145,7 @@ export default function FeedbackPanel() {
     return true
   })
 
-  const canExport = !isSuperAdmin && (isAdmin || isCapacitador)
+  const canExport = !isSuperAdmin && isCapacitador
 
   const handleExport = useCallback(async () => {
     if (exporting) return

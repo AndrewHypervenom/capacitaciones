@@ -77,6 +77,7 @@ interface Props {
   campaignId?: string;
   moduleId?: string;
   sectionId?: string;
+  onScoreChange?: (score: number, total: number) => void;
 }
 
 const fadeSlide = {

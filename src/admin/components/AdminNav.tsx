@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-// Cambia la línea de importación actual por esta:
-import { LayoutDashboard, FolderOpen, Users, LogOut, ArrowLeft, Zap, BookOpen, PhoneCall, MessageSquare } from 'lucide-react'
-import { LayoutDashboard, FolderOpen, Users, LogOut, ArrowLeft, Zap, BookOpen, PhoneCall, Target, Trophy, Globe, BarChart3, Menu, X } from 'lucide-react'
+import { LayoutDashboard, FolderOpen, Users, LogOut, ArrowLeft, Zap, BookOpen, PhoneCall, MessageSquare, Target, Trophy, Globe, BarChart3, Menu, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
@@ -15,7 +13,7 @@ type NeonColor = 'green' | 'violet' | 'cyan' | 'magenta' | 'amber' | 'neutral'
 
 export function AdminNav() {
   const { t } = useTranslation()
-  const { displayName, isSuperAdmin, isCapacitador, isAdmin } = useAuth()
+  const { displayName, isSuperAdmin, isCapacitador } = useAuth()
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
 
@@ -24,7 +22,7 @@ export function AdminNav() {
     { to: '/admin/campaigns', label: t('admin.nav.campaigns'), icon: FolderOpen, end: false },
     { to: '/admin/modules', label: t('admin.nav.modules'), icon: BookOpen, end: false },
     { to: '/admin/users', label: t('admin.nav.users'), icon: Users, end: false },
-    { to: '/admin/feedback', label: 'Retroalimentación', icon: MessageSquare, end: false },
+    { to: '/admin/evaluaciones', label: 'Evaluaciones', icon: MessageSquare, end: false },
     { to: '/admin/quiz', label: t('admin.nav.quiz_live'), icon: Zap, end: false },
     { to: '/admin/simulations', label: t('admin.nav.simulations'), icon: PhoneCall, end: false },
     { to: '/admin/missions', label: t('admin.nav.missions'), icon: Target, end: false },
@@ -35,18 +33,17 @@ export function AdminNav() {
 
   const capacitadorLinks = [
     { to: '/admin/quiz', label: t('admin.nav.quiz_live'), icon: Zap, end: false },
+    { to: '/admin/evaluaciones', label: 'Evaluaciones', icon: MessageSquare, end: false },
   ]
 
-  const links = isAdmin ? adminLinks : capacitadorLinks
+  const links = isSuperAdmin ? adminLinks : capacitadorLinks
 
-  const roleColor: NeonColor = isSuperAdmin ? 'amber' : isAdmin ? 'green' : isCapacitador ? 'violet' : 'neutral'
+  const roleColor: NeonColor = isSuperAdmin ? 'amber' : isCapacitador ? 'violet' : 'neutral'
   const roleLabel = isSuperAdmin
     ? t('roles.superadmin')
-    : isAdmin
-      ? t('roles.admin')
-      : isCapacitador
-        ? t('roles.capacitador')
-        : t('roles.learner')
+    : isCapacitador
+      ? t('roles.capacitador')
+      : t('roles.learner')
 
   const handleLogout = async () => {
     try { await signOut() } catch { /* ignore */ }
@@ -156,7 +153,6 @@ export function AdminNav() {
           </button>
         </div>
       </div>
-    </div>
-    
+    </>
   )
 }

@@ -23,7 +23,7 @@ export default function UserList() {
   const [inviting, setInviting] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [invitePassword, setInvitePassword] = useState(() => generateTempPassword())
-  const [inviteRole, setInviteRole] = useState<'learner' | 'capacitador' | 'admin' | 'superadmin'>('learner')
+  const [inviteRole, setInviteRole] = useState<'learner' | 'capacitador' | 'superadmin'>('learner')
   const [inviteCampaign, setInviteCampaign] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
@@ -142,19 +142,16 @@ export default function UserList() {
   // Colores del badge de rol — tonos medios que funcionan en temas claro y oscuro
   const roleColors: Record<Profile['role'], string> = {
     superadmin: 'rgba(245,158,11,0.15)',
-    admin: 'rgba(99,102,241,0.15)',
     capacitador: 'rgba(34,197,94,0.15)',
     learner: 'rgba(100,116,139,0.12)',
   }
   const roleText: Record<Profile['role'], string> = {
     superadmin: '#d97706',
-    admin: '#4f46e5',
     capacitador: '#16a34a',
     learner: '#64748b',
   }
   const roleLabel: Record<Profile['role'], string> = {
     superadmin: t('roles.superadmin'),
-    admin: t('roles.admin'),
     capacitador: t('roles.capacitador'),
     learner: t('roles.learner'),
   }
@@ -244,12 +241,11 @@ export default function UserList() {
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
                   <select
                     value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as 'learner' | 'admin')}
+                    onChange={(e) => setInviteRole(e.target.value as Profile['role'])}
                     className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
                   >
                     <option value="learner">{roleLabel.learner}</option>
                     <option value="capacitador">{roleLabel.capacitador}</option>
-                    <option value="admin">{roleLabel.admin}</option>
                     {isSuperAdmin && <option value="superadmin">{roleLabel.superadmin}</option>}
                   </select>
                 </div>
@@ -334,7 +330,6 @@ export default function UserList() {
                 >
                   <option value="learner">{roleLabel.learner}</option>
                   <option value="capacitador">{roleLabel.capacitador}</option>
-                  <option value="admin">{roleLabel.admin}</option>
                   {isSuperAdmin && <option value="superadmin">{roleLabel.superadmin}</option>}
                 </select>
                 <select

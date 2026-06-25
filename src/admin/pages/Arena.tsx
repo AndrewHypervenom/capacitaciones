@@ -129,8 +129,9 @@ export default function Arena() {
   const [filterCampaign, setFilterCampaign] = useState<string>('all')
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const { isSuperAdmin, isAdmin, campaignId, loading: authLoading } = useAuth()
-  const isAdminOnly = isAdmin && !isSuperAdmin
+  const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
+  // 'admin' ya no existe como rol; solo superadmin llega aquí
+  const isAdminOnly = false
 
   useEffect(() => {
     if (authLoading) return

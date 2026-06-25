@@ -14,6 +14,7 @@ interface Props {
   campaignId?: string;
   moduleId?: string;
   sectionId?: string;
+  onScoreChange?: (score: number, total: number) => void;
 }
 
 const CATEGORY_STYLES: Record<string, { border: string; bg: string; text: string; badge: string }> = {

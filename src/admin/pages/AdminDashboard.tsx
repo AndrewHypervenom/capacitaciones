@@ -13,7 +13,7 @@ interface Stats {
 }
 
 export default function AdminDashboard() {
-  const { isAdmin, campaignId } = useAuth()
+  const { isSuperAdmin, campaignId } = useAuth()
   const { t } = useTranslation()
   const [stats, setStats] = useState<Stats>({ campaigns: 0, modules: 0, scenarios: 0, users: 0 })
   const [loading, setLoading] = useState(true)
@@ -22,10 +22,10 @@ export default function AdminDashboard() {
     async function load() {
       const [camps, mods, scens, users] = await Promise.all([
         supabase.from('campaigns').select('id', { count: 'exact', head: true }),
-        isAdmin
+        isSuperAdmin
           ? supabase.from('modules').select('id', { count: 'exact', head: true })
           : supabase.from('modules').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? ''),
-        isAdmin
+        isSuperAdmin
           ? supabase.from('scenarios').select('id', { count: 'exact', head: true })
           : supabase.from('scenarios').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? ''),
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
@@ -39,7 +39,7 @@ export default function AdminDashboard() {
       setLoading(false)
     }
     load()
-  }, [isAdmin, campaignId])
+  }, [isSuperAdmin, campaignId])
 
   const statCards = [
     { label: t('admin.dashboard.stat_campaigns'), value: stats.campaigns, icon: FolderOpen, to: '/admin/campaigns', color: '#00C228' },

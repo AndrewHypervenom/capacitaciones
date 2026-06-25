@@ -158,13 +158,13 @@ function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => v
 function AIModeForm({
   campaignId,
   campaigns,
-  isAdmin,
+  isSuperAdmin,
   onSelectCampaign,
   onCreated,
 }: {
   campaignId: string
   campaigns: Campaign[]
-  isAdmin: boolean
+  isSuperAdmin: boolean
   onSelectCampaign: (id: string) => void
   onCreated: (moduleId: string) => void
 }) {
@@ -233,7 +233,7 @@ function AIModeForm({
   return (
     <div className="space-y-4">
       {/* Campaign selector */}
-      {isAdmin && campaigns.length > 0 && (
+      {isSuperAdmin && campaigns.length > 0 && (
         <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
           <SectionLabel>Campaña destino</SectionLabel>
           <FilterDropdown
@@ -503,7 +503,7 @@ function AIModeForm({
 
 export default function NewModulePage() {
   const navigate = useNavigate()
-  const { campaignId: authCampaignId, isAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
 
   const [mode, setMode] = useState<Mode>('manual')
   const [icon, setIcon] = useState('📚')
@@ -518,12 +518,12 @@ export default function NewModulePage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isSuperAdmin) return
     supabase.from('campaigns').select('*').order('name').then(({ data }) => {
       setCampaigns(data ?? [])
       if (!campaignId && data?.[0]) setCampaignId(data[0].id)
     })
-  }, [isAdmin, campaignId])
+  }, [isSuperAdmin, campaignId])
 
   const canCreate = title.es.trim().length > 0 && campaignId
   const adjustDuration = (delta: number) =>
@@ -740,7 +740,7 @@ export default function NewModulePage() {
                 </div>
               </div>
 
-              {isAdmin && campaigns.length > 0 && (
+              {isSuperAdmin && campaigns.length > 0 && (
                 <div>
                   <label className="text-[12px] font-medium text-text-muted block mb-2">Campaña</label>
                   <FilterDropdown
@@ -793,7 +793,7 @@ export default function NewModulePage() {
             <AIModeForm
               campaignId={campaignId}
               campaigns={campaigns}
-              isAdmin={isAdmin}
+              isSuperAdmin={isSuperAdmin}
               onSelectCampaign={setCampaignId}
               onCreated={(id) => navigate(`/admin/modules/${id}`)}
             />

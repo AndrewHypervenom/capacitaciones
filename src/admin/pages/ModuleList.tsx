@@ -22,7 +22,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 export default function ModuleList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId: authCampaignId, isAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
@@ -32,7 +32,7 @@ export default function ModuleList() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isSuperAdmin) return
     supabase
       .from('campaigns')
       .select('*')
@@ -44,10 +44,10 @@ export default function ModuleList() {
           setSelectedCampaignName(data[0].name)
         }
       })
-  }, [isAdmin, selectedCampaignId])
+  }, [isSuperAdmin, selectedCampaignId])
 
   useEffect(() => {
-    if (isAdmin || !authCampaignId) return
+    if (isSuperAdmin || !authCampaignId) return
     supabase
       .from('campaigns')
       .select('name')
@@ -56,7 +56,7 @@ export default function ModuleList() {
       .then(({ data }) => {
         if (data) setSelectedCampaignName(data.name)
       })
-  }, [isAdmin, authCampaignId])
+  }, [isSuperAdmin, authCampaignId])
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -128,7 +128,7 @@ export default function ModuleList() {
       </div>
 
       {/* Campaign selector (superadmin) */}
-      {isAdmin && campaigns.length > 1 && (
+      {isSuperAdmin && campaigns.length > 1 && (
         <div className="mb-6">
           <FilterDropdown
             value={selectedCampaignId}

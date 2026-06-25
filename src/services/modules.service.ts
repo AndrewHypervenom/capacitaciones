@@ -133,6 +133,7 @@ export interface DbQuizRow {
 function dbRowToLearningModule(
   row: {
     id: string
+    campaign_id: string
     slug: string
     icon: string
     duration_min: number

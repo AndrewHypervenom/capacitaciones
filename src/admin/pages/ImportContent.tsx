@@ -44,7 +44,7 @@ function buildDescription(p: ProposedModule): string {
 export default function ImportContent() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { campaignId: authCampaignId, isAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -65,13 +65,13 @@ export default function ImportContent() {
   const [savedIds, setSavedIds] = useState<string[]>([])
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isSuperAdmin) return
     supabase.from('campaigns').select('*').order('name').then(({ data }) => {
       setCampaigns(data ?? [])
       if (!campaignId && data?.[0]) setCampaignId(data[0].id)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin])
+  }, [isSuperAdmin])
 
   const campaignName = useMemo(
     () => campaigns.find((c) => c.id === campaignId)?.name,
@@ -237,7 +237,7 @@ export default function ImportContent() {
       {/* ── Configuración (campaña + archivo + instrucciones) ── */}
       <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 mb-4">
         {/* Campaña destino */}
-        {isAdmin && campaigns.length > 0 && (
+        {isSuperAdmin && campaigns.length > 0 && (
           <div className="mb-5">
             <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
               Campaña destino

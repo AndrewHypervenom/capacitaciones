@@ -65,7 +65,7 @@ export default function ModulePage() {
   const userRole = profile?.role ?? null;
   const userId = profile?.id;
   
-  const isTrainer = userRole === 'capacitador' || userRole === 'superadmin' || userRole === 'admin';
+  const isTrainer = userRole === 'capacitador' || userRole === 'superadmin';
   const targetUserId = userId; 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [gameScores, setGameScores] = useState<Record<string, { aciertos: number; total: number }>>({});

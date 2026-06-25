@@ -34,7 +34,7 @@ export default function SimulationList() {
   const nav = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId: authCampaignId, isAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState(authCampaignId ?? '')
@@ -46,12 +46,12 @@ export default function SimulationList() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isSuperAdmin) return
     supabase.from('campaigns').select('*').order('name').then(({ data }) => {
       setCampaigns(data ?? [])
       if (!selectedCampaignId && data?.[0]) setSelectedCampaignId(data[0].id)
     })
-  }, [isAdmin, selectedCampaignId])
+  }, [isSuperAdmin, selectedCampaignId])
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -158,7 +158,7 @@ export default function SimulationList() {
         </div>
       </div>
 
-      {isAdmin && campaigns.length > 0 && (
+      {isSuperAdmin && campaigns.length > 0 && (
         <div className="mb-6">
           <label className="text-xs text-text-muted mb-1 block">Campaña</label>
           <FilterDropdown
