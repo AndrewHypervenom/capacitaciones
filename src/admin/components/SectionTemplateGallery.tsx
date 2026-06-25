@@ -79,6 +79,7 @@ function TextQuizPreview() {
   )
 }
 
+// ... (se mantienen tus previews existentes sin cambios)
 function FullPreview() {
   return (
     <div className="space-y-1.5">
@@ -104,7 +105,7 @@ function FullPreview() {
 
 function HeroPreview() {
   return (
-    <div className="relative rounded-lg overflow-hidden h-16">
+    <div className="relative rounded-lg overflow-hidden h-16 w-full">
       <div className="absolute inset-0 bg-gradient-to-br from-neon-green/20 to-transparent" />
       <div className="absolute inset-0 flex flex-col justify-end p-2">
         <div className="h-2 rounded-full bg-text/70 w-2/3 mb-1" />
@@ -116,8 +117,8 @@ function HeroPreview() {
 
 function SpotlightPreview() {
   return (
-    <div className="relative rounded-lg overflow-hidden h-16 bg-black/40 border border-text/10">
-      <div className="absolute inset-0 bg-gradient-to-br from-text/8 to-transparent" />
+    <div className="relative rounded-lg overflow-hidden h-16 w-full bg-black/40 border border-white/10">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/8 to-transparent" />
       <div className="absolute inset-0 flex flex-col justify-center items-center">
         <div className="h-2 rounded-full bg-text/70 w-3/5 mb-1.5" />
         <div className="h-1.5 rounded-full bg-text/30 w-2/5" />
@@ -128,20 +129,19 @@ function SpotlightPreview() {
 
 function FeaturePreview() {
   return (
-    <div className="flex flex-col items-center space-y-1.5">
+    <div className="flex flex-col items-center space-y-1.5 w-full">
       <div className="h-7 w-7 rounded-xl bg-neon-green/15 border border-neon-green/25 flex items-center justify-center">
         <div className="h-3 w-3 rounded-sm bg-neon-green/50" />
       </div>
-      <div className="h-2 rounded-full bg-text/25 w-2/3" />
-      <div className="h-1.5 rounded-full bg-text/15 w-4/5" />
-      <div className="h-1.5 rounded-full bg-text/15 w-3/5" />
+      <div className="h-2 rounded-full bg-white/20 w-2/3" />
+      <div className="h-1.5 rounded-full bg-white/12 w-4/5" />
     </div>
   )
 }
 
 function VideoInteractivePreview() {
   return (
-    <div className="flex gap-2 h-16">
+    <div className="flex gap-2 h-16 w-full">
       <div className="flex-1 rounded-lg bg-black/40 border border-blue-400/20 relative overflow-hidden flex items-end">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="h-6 w-6 rounded-full border-2 border-blue-400/50 flex items-center justify-center">
@@ -158,6 +158,42 @@ function VideoInteractivePreview() {
       </div>
       <div className="w-12 rounded-lg bg-text/8 border border-text/12 flex flex-col gap-1 p-1.5">
         <div className="h-1.5 rounded-full bg-blue-400/50 w-full" />
+        <div className="h-1.5 rounded-full bg-white/15 w-3/4" />
+      </div>
+    </div>
+  )
+}
+
+function GameSortPreview() {
+  return (
+    <div className="w-full space-y-1.5 flex flex-col justify-center">
+      <div className="h-4 rounded-md border border-white/10 bg-white/8 flex items-center gap-2 px-2">
+        <div className="h-1.5 w-3 rounded bg-white/40 shrink-0" />
+        <div className="h-1 rounded-full bg-white/20 w-3/4" />
+      </div>
+      <div className="h-4 rounded-md border border-white/10 bg-white/4 flex items-center gap-2 px-2">
+        <div className="h-1.5 w-3 rounded bg-white/20 shrink-0" />
+        <div className="h-1 rounded-full bg-white/12 w-1/2" />
+      </div>
+    </div>
+  )
+}
+
+// ─── 🌟 NUEVA MINIATURA ADICIONADA: Simula las 4 cajas punteadas de categorías de tu mockup ───
+function GameClassifyPreview() {
+  return (
+    <div className="w-full grid grid-cols-2 gap-1.5 p-0.5">
+      <div className="h-6 rounded border border-dashed border-purple-400/30 bg-purple-500/5 flex items-center justify-center">
+        <div className="h-1 rounded bg-purple-400/30 w-2/3" />
+      </div>
+      <div className="h-6 rounded border border-dashed border-pink-400/30 bg-pink-500/5 flex items-center justify-center">
+        <div className="h-1 rounded bg-pink-400/30 w-2/3" />
+      </div>
+      <div className="h-6 rounded border border-dashed border-red-400/30 bg-red-500/5 flex items-center justify-center">
+        <div className="h-1 rounded bg-red-400/30 w-2/3" />
+      </div>
+      <div className="h-6 rounded border border-dashed border-orange-400/30 bg-orange-500/5 flex items-center justify-center">
+        <div className="h-1 rounded bg-orange-400/30 w-2/3" />
         <div className="h-1.5 rounded-full bg-text/18 w-3/4" />
         <div className="h-1.5 rounded-full bg-amber-400/50 w-full" />
         <div className="h-1.5 rounded-full bg-text/18 w-5/6" />
@@ -239,6 +275,22 @@ const TEMPLATES: TemplateCard[] = [
     color: 'blue',
     preview: <VideoInteractivePreview />,
   },
+  {
+    key: 'game-sort',
+    label: 'Juego: Ordenar Procesos',
+    description: 'Actividad interactiva de arrastrar y ordenar pasos',
+    icon: FileText,
+    color: 'blue',
+    preview: <GameSortPreview />,
+  },
+  {
+    key: 'game-classify', 
+    label: 'Juego: Clasificar Casos',
+    description: 'Arrastrar casos operativos a categorías de fraude',
+    icon: Layers,   
+    color: 'blue', 
+    preview: <GameClassifyPreview /> 
+  },
 ]
 
 const colorMap: Record<TemplateColor, string> = {
@@ -307,28 +359,28 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
 
                 <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
                   {TEMPLATES.map(({ key, label, description, icon: Icon, color, preview }) => (
-                      <button
-                        key={key}
-                        onClick={() => handleSelect(key)}
-                        className={cn(
-                          'group flex flex-col gap-3 p-4 rounded-2xl text-left transition-all duration-200',
-                          'bg-surface border border-line hover:bg-subtle',
-                          colorMap[color],
-                        )}
-                      >
-                        <div className="w-full rounded-xl bg-subtle border border-line p-3 min-h-[80px] flex items-center">
-                          {preview}
+                    <button
+                      key={key}
+                      onClick={() => handleSelect(key)}
+                      className={cn(
+                        'group flex flex-col gap-3 p-4 rounded-2xl text-left transition-all duration-200',
+                        'glass border border-glass-border/8',
+                        colorMap[color],
+                      )}
+                    >
+                      <div className="w-full rounded-xl bg-black/20 border border-glass-border/8 p-3 min-h-[80px] flex items-center">
+                        {preview}
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className={cn('h-7 w-7 rounded-lg flex items-center justify-center shrink-0', iconBgMap[color])}>
+                          <Icon className="h-3.5 w-3.5" />
                         </div>
-                        <div className="flex items-start gap-3">
-                          <div className={cn('h-7 w-7 rounded-lg flex items-center justify-center shrink-0', iconBgMap[color])}>
-                            <Icon className="h-3.5 w-3.5" />
-                          </div>
-                          <div>
-                            <div className="text-[13px] font-semibold text-text leading-tight">{label}</div>
-                            <div className="text-[11px] text-text-muted leading-snug mt-0.5">{description}</div>
-                          </div>
+                        <div>
+                          <div className="text-[13px] font-semibold text-text leading-tight">{label}</div>
+                          <div className="text-[11px] text-text-muted leading-snug mt-0.5">{description}</div>
                         </div>
-                      </button>
+                      </div>
+                    </button>
                   ))}
                 </div>
               </div>

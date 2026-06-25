@@ -137,7 +137,7 @@ export interface Database {
           media_size: 'sm' | 'md' | 'lg' | 'full' | 'bleed' | null
           media_align: 'left' | 'center' | 'right' | null
           media_shadow: boolean
-          section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | null
+          section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
           video_markers: Json | null
           blocks_data: Json | null
         }
@@ -163,7 +163,7 @@ export interface Database {
           media_size?: 'sm' | 'md' | 'lg' | 'full' | 'bleed' | null
           media_align?: 'left' | 'center' | 'right' | null
           media_shadow?: boolean
-          section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | null
+          section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
           video_markers?: Json | null
           blocks_data?: Json | null
         }
@@ -189,7 +189,7 @@ export interface Database {
           media_size?: 'sm' | 'md' | 'lg' | 'full' | 'bleed' | null
           media_align?: 'left' | 'center' | 'right' | null
           media_shadow?: boolean
-          section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | null
+          section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
           video_markers?: Json | null
           blocks_data?: Json | null
         }
@@ -237,6 +237,63 @@ export interface Database {
           explanation_es?: string | null
           explanation_en?: string | null
           explanation_pt?: string | null
+        }
+        Relationships: []
+      }
+      activity_attempts: {
+        Row: {
+          id: string
+          user_id: string
+          campaign_id: string
+          module_id: string
+          section_id: string
+          game_type: string
+          score: number
+          attempt_number: number
+          status: 'in_progress' | 'completed'
+          started_at: string
+          completed_at: string | null
+          time_spent_seconds: number | null
+          submitted_answers: Json
+          trainer_id: string | null
+          trainer_comment: string | null
+          feedback_date: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          campaign_id: string
+          module_id: string
+          section_id: string
+          game_type: string
+          score: number
+          attempt_number: number
+          status: 'in_progress' | 'completed'
+          time_spent_seconds?: number | null
+          submitted_answers: Json
+          trainer_id?: string | null
+          trainer_comment?: string | null
+          feedback_date?: string | null
+          started_at?: string
+          completed_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          campaign_id?: string
+          module_id?: string
+          section_id?: string
+          game_type?: string
+          score?: number
+          attempt_number?: number
+          status?: 'in_progress' | 'completed'
+          time_spent_seconds?: number | null
+          submitted_answers?: Json
+          trainer_id?: string | null
+          trainer_comment?: string | null
+          feedback_date?: string | null
+          started_at?: string
+          completed_at?: string | null
         }
         Relationships: []
       }

@@ -13,6 +13,7 @@ import ModulePreview from './pages/ModulePreview'
 import SimulationList from './pages/SimulationList'
 import SimulationEditor from './pages/SimulationEditor'
 import ChoiceSimEditor from './pages/ChoiceSimEditor'
+import { TrainerFeedbackPanel } from '@/admin/pages/TrainerFeedbackPanel';
 import LearningMissions from './pages/LearningMissions'
 import Arena from './pages/Arena'
 import Worlds from './pages/Worlds'
@@ -45,6 +46,7 @@ export default function AdminRouter() {
           <Route path="modules/:moduleId/preview" element={restricted ?? <ModulePreview />} />
           <Route path="users" element={isSuperAdmin ? <UserList /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
+          <Route path="feedback" element={<TrainerFeedbackPanel />} />
           <Route path="simulations" element={restricted ?? <SimulationList />} />
           <Route path="simulations/new" element={restricted ?? <SimulationEditor />} />
           <Route path="simulations/:id" element={restricted ?? <SimulationEditor />} />

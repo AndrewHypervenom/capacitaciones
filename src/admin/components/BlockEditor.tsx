@@ -729,6 +729,127 @@ function QuoteEditorBlock({ block, onChange, lang }: { block: ContentBlock & { t
     </div>
   );
 }
+// ─── INICIO: CÓDIGO AGREGADO POR JEANNY TOLE ───────────────────
+// Formulario de configuración exclusivo para el juego de ordenar procesos
+function SortGameEditor({ 
+  block, 
+  onChange, 
+  lang 
+}: { 
+  block: any; 
+  onChange: (b: any) => void; 
+  lang: 'es' | 'en' | 'pt'; 
+}) {
+  const title = block.title?.[lang] ?? '';
+  const instructions = block.instructions?.[lang] ?? '';
+  const steps = block.steps ?? [];
+
+  // 1. Función para añadir un paso nuevo vacío a la lista
+  const handleAddStep = () => {
+    const newStep = {
+      id: crypto.randomUUID(), // Le da un código único al paso
+      text: { es: '', en: '', pt: '' } // Espacio libre para los idiomas
+    };
+    onChange({ ...block, steps: [...steps, newStep] });
+  };
+
+  // 2. Función para editar el texto de un paso en tiempo real
+  const handleEditStep = (id: string, value: string) => {
+    const updatedSteps = steps.map((step: any) => {
+      if (step.id === id) {
+        return { ...step, text: { ...step.text, [lang]: value } };
+      }
+      return step;
+    });
+    onChange({ ...block, steps: updatedSteps });
+  };
+
+  // 3. Función para eliminar un paso de la lista cuando presionas la ✕
+  const handleDeleteStep = (id: string) => {
+    const updatedSteps = steps.filter((step: any) => step.id !== id);
+    onChange({ ...block, steps: updatedSteps });
+  };
+
+  return (
+    <div className="space-y-4 border-l-2 border-blue-500/30 pl-3 pt-2">
+      {/* Título del Juego */}
+      <div className="space-y-1">
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Título del Juego:</label>
+        <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => onChange({ ...block, title: { ...block.title, [lang]: e.target.value } })}
+            placeholder="Ej: Ordena el protocolo operativo..."
+            className="w-full bg-transparent text-[14px] text-text outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Instrucciones del Juego */}
+      <div className="space-y-1">
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Instrucciones:</label>
+        <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
+          <input
+            type="text"
+            value={instructions}
+            onChange={(e) => onChange({ ...block, instructions: { ...block.instructions, [lang]: e.target.value } })}
+            placeholder="Ej: Arrastra los pasos al orden correcto..."
+            className="w-full bg-transparent text-[14px] text-text outline-none"
+          />
+        </div>
+      </div>
+
+      {/* ─── SECCIÓN DE LOS PASOS DINÁMICOS ─── */}
+      <div className="space-y-2 pt-2">
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold block mb-1">
+          Pasos del Proceso (Escríbelos en el orden correcto):
+        </label>
+        
+        {/* Recorremos la lista de pasos que tiene el capacitador */}
+        {steps.map((step: any, index: number) => (
+          <div key={step.id} className="flex items-center gap-2">
+            {/* Número automático según su posición (1, 2, 3...) */}
+            <span className="text-[12px] font-bold text-blue-400 w-5 text-center">
+              {index + 1}.
+            </span>
+            
+            {/* Input para escribir el paso individual */}
+            <div className="flex-1 glass rounded-xl px-3 py-1.5 border border-glass-border/10">
+              <input
+                type="text"
+                value={step.text?.[lang] ?? ''}
+                onChange={(e) => handleEditStep(step.id, e.target.value)}
+                placeholder={`Paso ${index + 1}...`}
+                className="w-full bg-transparent text-[14px] text-text outline-none"
+              />
+            </div>
+
+            {/* Botón X para borrar el paso si el capacitador se equivoca */}
+            <button
+              type="button"
+              onClick={() => handleDeleteStep(step.id)}
+              className="text-text-subtle hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-[14px]"
+              title="Eliminar paso"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+
+        {/* Botón Dinámico para Añadir Nuevo Paso */}
+        <button
+          type="button"
+          onClick={handleAddStep}
+          className="w-full mt-2 flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-dashed border-blue-500/30 hover:border-blue-500 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 text-[13px] font-medium transition-all"
+        >
+          + Añadir Paso al Proceso
+        </button>
+      </div>
+    </div>
+  );
+}
+// ─── FIN: CÓDIGO AGREGADO POR JEANNY TOLE ──────────────────────
 
 function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'cards' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   const emptyML = () => ({ es: '', en: '', pt: '' });
@@ -999,6 +1120,7 @@ function BlockRow({
       case 'code':        return <CodeEditorBlock block={b} onChange={onUpdate} />;
       case 'quote':       return <QuoteEditorBlock block={b} onChange={onUpdate} lang={lang} />;
       case 'divider':     return <div className="h-px w-full bg-glass-border/20 my-1" />;
+      case 'game-sort':   return <SortGameEditor block={b} onChange={onUpdate} lang={lang} />;
     }
   };
 

@@ -19,6 +19,8 @@ export type BlockType =
   | 'columns'
   | 'timeline'
   | 'comparison'
+  | 'game-sort'
+  | 'game-classify'; // 🌟 Agregado el nuevo tipo de juego
   | 'cards'
   | 'stat'
   | 'hotspot';
@@ -160,6 +162,50 @@ export interface ComparisonBlock {
   rows: ML[][];
 }
 
+export interface GameSortStep {
+  id: string;
+  text: ML;
+}
+
+export interface GameSortProcess {
+  id: string;
+  title?: ML;
+  steps: GameSortStep[];
+  feedback_correct?: ML;
+  feedback_wrong?: ML;
+}
+
+// ✨ LIMPIEZA: Interfaz de ordenar pasos restaurada a su estado óptimo y sin código muerto
+export interface GameSortBlock {
+  id?: string;
+  type: 'game-sort';
+  title: ML;
+  instructions: ML;
+  processes: GameSortProcess[];
+  steps?: GameSortStep[];
+}
+
+// ─── Estructuras internas del Juego de Clasificación ──────────────────
+
+export interface ClassifyCategory {
+  id: string;
+  name: ML;           // Ej: Clonación, Phishing, Fraude Interno
+  color?: string;     // Para los bordes personalizados punteados de tus tarjetas
+}
+
+export interface ClassifyCase {
+  id: string;
+  text: ML;               // El enunciado o situación del cliente
+  correctCategoryId: string; // El id de la categoría correspondiente
+}
+
+export interface GameClassifyBlock {
+  id?: string;
+  type: 'game-classify';
+  title: ML;
+  instructions: ML;
+  categories: ClassifyCategory[];
+  cases: ClassifyCase[];
 export interface CardItem {
   icon?: string;
   title: ML;
@@ -218,6 +264,8 @@ export type ContentBlock =
   | ColumnsBlock
   | TimelineBlock
   | ComparisonBlock
+  | GameSortBlock
+  | GameClassifyBlock; // 🌟 Registrado aquí en la unión
   | CardsBlock
   | StatBlock
   | HotspotImageBlock;
@@ -274,6 +322,32 @@ export function emptyBlock(type: BlockType): ContentBlock {
       return { type, items: [{ label: emptyML(), description: emptyML() }] };
     case 'comparison':
       return { type, headers: [emptyML(), emptyML()], rows: [[emptyML(), emptyML()]] };
+    
+    // ✨ LIMPIEZA: Fábrica restaurada y limpia sin métricas obsoletas
+    case 'game-sort':
+      return {
+        type,
+        title: emptyML(),
+        instructions: emptyML(),
+        processes: [{ id: 'process-1', steps: [] }]
+      };
+
+    // 🌟 NUEVA FÁBRICA: Inicializa el juego con las 4 categorías clave de tu mockup de fraudes
+    case 'game-classify':
+      return {
+        type,
+        title: emptyML(),
+        instructions: emptyML(),
+        categories: [
+          { id: 'cat-clonacion', name: { es: 'CLONACIÓN', en: 'CLONING', pt: '' }, color: 'purple' },
+          { id: 'cat-phishing',  name: { es: 'PHISHING', en: 'PHISHING', pt: '' }, color: 'pink' },
+          { id: 'cat-interno',   name: { es: 'FRAUDE INTERNO', en: 'INTERNAL FRAUD', pt: '' }, color: 'red' },
+          { id: 'cat-identidad', name: { es: 'USURPACIÓN DE IDENTIDAD', en: 'IDENTITY THEFT', pt: '' }, color: 'orange' }
+        ],
+        cases: [
+          { id: 'case-1', text: { es: 'Ejemplo de caso operativo para clasificar', en: '', pt: '' }, correctCategoryId: 'cat-clonacion' }
+        ]
+      };
     case 'cards':
       return { type, columns: 2, items: [{ icon: '✨', title: emptyML(), text: emptyML() }] };
     case 'stat':
@@ -303,13 +377,17 @@ export const BLOCK_REGISTRY: BlockMeta[] = [
   { type: 'columns',     label: 'Columnas',       description: 'Layout de 2 o 3 columnas',         icon: '⊞',   group: 'layout' },
   { type: 'image',       label: 'Imagen',         description: 'Imagen con caption y alineación',  icon: '🖼',   group: 'media' },
   { type: 'video',       label: 'Video',          description: 'YouTube, upload o interactivo',    icon: '▶',   group: 'media' },
-  { type: 'callout',     label: 'Callout',        description: 'Caja de tip, advertencia, etc.',   icon: '💡',  group: 'interactive' },
+  { type: 'callout',     label: 'Callout',        description: 'Caja de tip, advertencia, etc.',   icon: '💡',   group: 'interactive' },
   { type: 'quiz',        label: 'Quiz',           description: 'Pregunta de opción múltiple',      icon: '✓',   group: 'interactive' },
-  { type: 'flashcard',   label: 'Flashcards',     description: 'Tarjetas con flip 3D',             icon: '🃏',  group: 'interactive' },
+  { type: 'flashcard',   label: 'Flashcards',     description: 'Tarjetas con flip 3D',             icon: '🃏',   group: 'interactive' },
   { type: 'accordion',   label: 'Acordeón',       description: 'Secciones colapsables',            icon: '▾',   group: 'interactive' },
   { type: 'tabs',        label: 'Tabs',           description: 'Contenido en pestañas',            icon: '⊟',   group: 'interactive' },
   { type: 'timeline',    label: 'Timeline',       description: 'Lista de eventos en el tiempo',    icon: '⊙',   group: 'interactive' },
   { type: 'comparison',  label: 'Comparación',    description: 'Tabla comparativa',                icon: '⊘',   group: 'interactive' },
+  { type: 'game-sort',   label: 'Ordenar Pasos',  description: 'Juego de arrastrar en orden',      icon: '↕',   group: 'interactive' },
+  
+  // 🌟 AGREGADO AL MENÚ VISUAL: Registrado para que el administrador pueda crearlo con un botón
+  { type: 'game-classify', label: 'Clasificar Casos', description: 'Juego de arrastrar casos a contenedores', icon: '⊞', group: 'interactive' },
   { type: 'cards',       label: 'Tarjetas',       description: 'Grid de tarjetas con ícono',       icon: '▦',   group: 'layout' },
   { type: 'stat',        label: 'Datos',          description: 'Métricas con números destacados',  icon: '📊',  group: 'interactive' },
   { type: 'hotspot',     label: 'Imagen interactiva', description: 'Imagen con puntos clicables',  icon: '📍',  group: 'media' },

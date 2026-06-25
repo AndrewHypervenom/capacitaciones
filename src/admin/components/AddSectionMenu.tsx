@@ -15,7 +15,7 @@ import {
   Clapperboard,
 } from 'lucide-react';
 
-export type SectionTemplate = 'text' | 'text-callout' | 'text-media' | 'text-quiz' | 'full' | 'hero' | 'spotlight' | 'feature' | 'video-interactive';
+export type SectionTemplate = 'text' | 'text-callout' | 'text-media' | 'text-quiz' | 'full' | 'hero' | 'spotlight' | 'feature' | 'video-interactive'| 'game-sort'| 'game-classify';
 
 interface Props {
   disabled?: boolean;
@@ -42,6 +42,8 @@ export function AddSectionMenu({ disabled, onSelect }: Props) {
     { key: 'spotlight',         icon: Star,          label: t('admin.modules.template_spotlight'),         description: 'Sección oscura premium' },
     { key: 'feature',           icon: Layers,        label: t('admin.modules.template_feature'),           description: 'Centrado, estilo Apple' },
     { key: 'video-interactive', icon: Clapperboard,  label: t('admin.modules.template_video_interactive'), description: 'Video + capítulos + quizzes' },
+    { key: 'game-sort',         icon: Layers,        label: 'Juego: Ordenar Procesos',                    description: 'Arrastrar pasos en orden' }, // <-- Se creo el primer juego 
+    { key: 'game-classify',     icon: Layers,        label: 'Juego: Clasificar',                          description: 'Asignar elementos a categorías' }, // <-- Se creo el segundo juego 
   ], [t]);
   const ref = useRef<HTMLDivElement>(null);
 
