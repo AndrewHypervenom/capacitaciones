@@ -851,6 +851,177 @@ function SortGameEditor({
 }
 // ─── FIN: CÓDIGO AGREGADO POR JEANNY TOLE ──────────────────────
 
+// ─── Editor inline del juego "Clasificar Casos" ────────────────
+// Permite editar un bloque game-classify dentro de la lista de bloques (mismo patrón
+// que el editor inline de Ordenar). Opera directo sobre block.categories y block.cases.
+const CLASSIFY_COLOR_OPTIONS = ['purple', 'pink', 'red', 'orange', 'blue', 'green'] as const;
+const CLASSIFY_DOT_CLASS: Record<string, string> = {
+  purple: 'bg-purple-500', pink: 'bg-pink-500', red: 'bg-red-500',
+  orange: 'bg-orange-500', blue: 'bg-blue-500', green: 'bg-neon-green',
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange: (b: any) => void; lang: 'es' | 'en' | 'pt' }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const categories: any[] = block.categories ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cases: any[] = block.cases ?? [];
+
+  const addCategory = () => {
+    const id = `cat-${crypto.randomUUID().slice(0, 8)}`;
+    const color = CLASSIFY_COLOR_OPTIONS[categories.length % CLASSIFY_COLOR_OPTIONS.length];
+    onChange({ ...block, categories: [...categories, { id, name: { es: '', en: '', pt: '' }, color }] });
+  };
+  const editCategoryName = (id: string, value: string) =>
+    onChange({ ...block, categories: categories.map((c) => (c.id === id ? { ...c, name: { ...c.name, [lang]: value } } : c)) });
+  const editCategoryColor = (id: string, color: string) =>
+    onChange({ ...block, categories: categories.map((c) => (c.id === id ? { ...c, color } : c)) });
+  const deleteCategory = (id: string) =>
+    onChange({
+      ...block,
+      categories: categories.filter((c) => c.id !== id),
+      // Limpia los casos que apuntaban a la categoría eliminada.
+      cases: cases.map((c) => (c.correctCategoryId === id ? { ...c, correctCategoryId: '' } : c)),
+    });
+
+  const addCase = () => {
+    const id = `case-${crypto.randomUUID().slice(0, 8)}`;
+    onChange({ ...block, cases: [...cases, { id, text: { es: '', en: '', pt: '' }, correctCategoryId: categories[0]?.id ?? '' }] });
+  };
+  const editCaseText = (id: string, value: string) =>
+    onChange({ ...block, cases: cases.map((c) => (c.id === id ? { ...c, text: { ...c.text, [lang]: value } } : c)) });
+  const editCaseCategory = (id: string, categoryId: string) =>
+    onChange({ ...block, cases: cases.map((c) => (c.id === id ? { ...c, correctCategoryId: categoryId } : c)) });
+  const deleteCase = (id: string) => onChange({ ...block, cases: cases.filter((c) => c.id !== id) });
+
+  return (
+    <div className="space-y-4 border-l-2 border-purple-500/30 pl-3 pt-2">
+      {/* Título */}
+      <div className="space-y-1">
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Título del Juego:</label>
+        <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
+          <input
+            type="text"
+            value={block.title?.[lang] ?? ''}
+            onChange={(e) => onChange({ ...block, title: { ...block.title, [lang]: e.target.value } })}
+            placeholder="Ej: Clasifica los casos de fraude..."
+            className="w-full bg-transparent text-[14px] text-text outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Instrucciones */}
+      <div className="space-y-1">
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Instrucciones:</label>
+        <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
+          <input
+            type="text"
+            value={block.instructions?.[lang] ?? ''}
+            onChange={(e) => onChange({ ...block, instructions: { ...block.instructions, [lang]: e.target.value } })}
+            placeholder="Ej: Arrastra cada caso a su categoría..."
+            className="w-full bg-transparent text-[14px] text-text outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Categorías */}
+      <div className="space-y-2 pt-2">
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold block mb-1">Categorías:</label>
+        {categories.map((cat) => (
+          <div key={cat.id} className="flex items-center gap-2">
+            <div className="flex gap-1 shrink-0">
+              {CLASSIFY_COLOR_OPTIONS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => editCategoryColor(cat.id, color)}
+                  title={color}
+                  className={cn(
+                    'h-4 w-4 rounded-full transition-transform',
+                    CLASSIFY_DOT_CLASS[color],
+                    cat.color === color ? 'ring-2 ring-offset-1 ring-offset-bg ring-text/50 scale-110' : 'opacity-50 hover:opacity-100',
+                  )}
+                />
+              ))}
+            </div>
+            <div className="flex-1 glass rounded-xl px-3 py-1.5 border border-glass-border/10">
+              <input
+                type="text"
+                value={cat.name?.[lang] ?? ''}
+                onChange={(e) => editCategoryName(cat.id, e.target.value)}
+                placeholder="Nombre de la categoría..."
+                className="w-full bg-transparent text-[14px] text-text outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => deleteCategory(cat.id)}
+              className="text-text-subtle hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-[14px]"
+              title="Eliminar categoría"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addCategory}
+          className="w-full mt-1 flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-dashed border-purple-500/30 hover:border-purple-500 bg-purple-500/5 hover:bg-purple-500/10 text-purple-400 hover:text-purple-300 text-[13px] font-medium transition-all"
+        >
+          + Añadir Categoría
+        </button>
+      </div>
+
+      {/* Casos */}
+      <div className="space-y-2 pt-2">
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold block mb-1">
+          Casos (texto y su categoría correcta):
+        </label>
+        {cases.map((c) => (
+          <div key={c.id} className="flex items-center gap-2">
+            <div className="flex-1 glass rounded-xl px-3 py-1.5 border border-glass-border/10">
+              <input
+                type="text"
+                value={c.text?.[lang] ?? ''}
+                onChange={(e) => editCaseText(c.id, e.target.value)}
+                placeholder="Situación o caso operativo..."
+                className="w-full bg-transparent text-[14px] text-text outline-none"
+              />
+            </div>
+            <select
+              value={c.correctCategoryId ?? ''}
+              onChange={(e) => editCaseCategory(c.id, e.target.value)}
+              className="shrink-0 glass rounded-xl px-2 py-1.5 border border-glass-border/10 text-[13px] text-text bg-transparent outline-none max-w-[40%]"
+            >
+              <option value="">— categoría —</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name?.[lang] || cat.name?.es || 'Sin nombre'}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => deleteCase(c.id)}
+              className="text-text-subtle hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-[14px]"
+              title="Eliminar caso"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addCase}
+          className="w-full mt-1 flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-dashed border-purple-500/30 hover:border-purple-500 bg-purple-500/5 hover:bg-purple-500/10 text-purple-400 hover:text-purple-300 text-[13px] font-medium transition-all"
+        >
+          + Añadir Caso
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'cards' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   const emptyML = () => ({ es: '', en: '', pt: '' });
   return (
@@ -1054,6 +1225,7 @@ const BLOCK_ICONS: Record<string, React.ComponentType<{ className?: string }>> =
   callout: Lightbulb, quiz: HelpCircle, flashcard: CreditCard, accordion: AccIcon,
   tabs: Layers, code: Code, quote: Quote, divider: Minus, columns: Columns,
   timeline: Clock, comparison: Table, cards: LayoutGrid, stat: BarChart3, hotspot: MapPin,
+  'game-sort': List, 'game-classify': LayoutGrid,
 };
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -1062,6 +1234,7 @@ const BLOCK_LABELS: Record<string, string> = {
   accordion: 'Acordeón', tabs: 'Tabs', timeline: 'Timeline', comparison: 'Comparación',
   code: 'Código', quote: 'Cita', divider: 'Divisor', columns: 'Columnas',
   cards: 'Tarjetas', stat: 'Datos', hotspot: 'Imagen interactiva',
+  'game-sort': 'Ordenar Procesos', 'game-classify': 'Clasificar Casos',
 };
 
 // ─── Single block row ──────────────────────────────────────────
@@ -1121,6 +1294,7 @@ function BlockRow({
       case 'quote':       return <QuoteEditorBlock block={b} onChange={onUpdate} lang={lang} />;
       case 'divider':     return <div className="h-px w-full bg-glass-border/20 my-1" />;
       case 'game-sort':   return <SortGameEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'game-classify': return <ClassifyInlineEditor block={b} onChange={onUpdate} lang={lang} />;
     }
   };
 

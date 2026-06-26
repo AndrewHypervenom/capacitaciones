@@ -719,7 +719,62 @@ const VALID_BLOCK_TYPES = new Set<string>([
   'paragraph', 'heading', 'list', 'image', 'video', 'callout', 'quiz',
   'flashcard', 'accordion', 'tabs', 'code', 'quote', 'divider', 'columns', 'timeline', 'comparison',
   'cards', 'stat', 'hotspot',
+  'game-sort', 'game-classify',
 ])
+
+const CLASSIFY_COLORS = ['purple', 'pink', 'red', 'orange', 'blue', 'green']
+
+/**
+ * Sanea un bloque de juego que emite la IA: rellena ids faltantes de forma determinista
+ * y descarta el bloque si no tiene la estructura mínima para funcionar (devuelve null).
+ * Así un juego mal formado nunca se guarda roto en el módulo.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeGameBlock(block: any): ContentBlock | null {
+  if (block.type === 'game-sort') {
+    // Estandarizamos en el formato plano `steps` (una sola lista ordenada), que es el que
+    // entiende tanto el renderer (vía fallback legado) como el editor inline del admin.
+    // Si la IA emitiera `processes`, tomamos los pasos del primer proceso.
+    const rawSteps = Array.isArray(block.steps) && block.steps.length
+      ? block.steps
+      : (Array.isArray(block.processes) && block.processes[0]?.steps) || []
+
+    const steps = rawSteps
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((s: any) => s && typeof s === 'object' && s.text)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((s: any, si: number) => ({ id: String(s.id ?? `s${si + 1}`), text: s.text }))
+
+    // Solo aporta como juego si hay al menos 2 pasos que ordenar.
+    if (steps.length < 2) return null
+    return { type: 'game-sort', title: block.title, instructions: block.instructions, steps } as unknown as ContentBlock
+  }
+
+  if (block.type === 'game-classify') {
+    const categories = (Array.isArray(block.categories) ? block.categories : [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((c: any) => c && typeof c === 'object' && c.name)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any, ci: number) => ({
+        ...c,
+        id: String(c.id ?? `cat-${ci + 1}`),
+        color: CLASSIFY_COLORS.includes(c.color) ? c.color : CLASSIFY_COLORS[ci % CLASSIFY_COLORS.length],
+      }))
+    const validIds = new Set(categories.map((c: { id: string }) => c.id))
+
+    const cases = (Array.isArray(block.cases) ? block.cases : [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((c: any) => c && typeof c === 'object' && c.text && validIds.has(String(c.correctCategoryId)))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any, ci: number) => ({ ...c, id: String(c.id ?? `case-${ci + 1}`), correctCategoryId: String(c.correctCategoryId) }))
+
+    // Necesita al menos 2 categorías y casos válidos que apunten a categorías existentes.
+    if (categories.length < 2 || cases.length < 2) return null
+    return { ...block, categories, cases } as ContentBlock
+  }
+
+  return block as ContentBlock
+}
 
 const VALID_SECTION_STYLES = new Set<string>(['default', 'immersive', 'spotlight', 'feature'])
 
@@ -787,6 +842,9 @@ async function buildSectionBlocks(
       } catch {
         // Si la subida falla, se omite solo ese bloque.
       }
+    } else if (block.type === 'game-sort' || block.type === 'game-classify') {
+      const normalized = normalizeGameBlock(block)
+      if (normalized) out.push(normalized)
     } else {
       out.push(block as ContentBlock)
     }
