@@ -15,7 +15,7 @@ export function Navbar() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const { name, reset } = useUserStore();
-  const { isSuperAdmin } = useAuth();
+  const { isAdminOrCapacitador } = useAuth();
   const completedModules = useProgressStore((s) => s.completedModules);
   const { modules } = useModules();
   const progress = modules.length > 0 ? completedModules.length / modules.length : 0;
@@ -53,7 +53,7 @@ export function Navbar() {
           <NavLink to="/simulator" className={linkClass}>
             {t('nav.simulator')}
           </NavLink>
-          {isSuperAdmin && (
+          {isAdminOrCapacitador && (
             <NavLink to="/admin" className={linkClass}>
               Admin
             </NavLink>
@@ -67,7 +67,7 @@ export function Navbar() {
           </div>
           <LanguageSwitcher />
           <ThemeToggle />
-          {isSuperAdmin && (
+          {isAdminOrCapacitador && (
             <Link
               to="/admin"
               aria-label="Admin"
