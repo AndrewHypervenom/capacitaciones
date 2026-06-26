@@ -20,7 +20,7 @@ void i18n
     detection: {
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
-      lookupLocalStorage: 'concepto.lang',
+      lookupLocalStorage: 'learningai.lang',
     },
   });
 

@@ -209,7 +209,7 @@ export default function Welcome() {
       >
         <div className="flex items-center gap-2.5">
           <img src="/logo.jpg" alt="Positivo S+" className="h-7 w-7 rounded-lg" />
-          <span className="font-bold text-[15px] tracking-tight text-text">Concepto</span>
+          <span className="font-bold text-[15px] tracking-tight text-text">LearningAI</span>
         </div>
         <div className="flex items-center gap-2">
           <div
@@ -420,7 +420,7 @@ export default function Welcome() {
                           {t('welcome.login_title')}
                         </h2>
                         <p className="text-[11px] tracking-wide mt-0.5" style={{ color: 'rgb(var(--text-subtle))' }}>
-                          Concepto · Positivo S+
+                          LearningAI · Positivo S+
                         </p>
                       </div>
                     </motion.div>

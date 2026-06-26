@@ -975,17 +975,17 @@ export const MODULES: LearningModule[] = [
           es: [
             'Resume la solución aplicada en una frase.',
             'Pregunta: "¿hay algo más en lo que pueda ayudarte hoy?" antes de despedir.',
-            'Despide con marca y nombre: "soy {{agente}} de Concepto, que tengas un excelente día".',
+            'Despide con marca y nombre: "soy {{agente}} de LearningAI, que tengas un excelente día".',
           ],
           en: [
             'Summarize the applied solution in one sentence.',
             'Ask: "is there anything else I can help you with today?" before closing.',
-            'Sign off with brand and name: "I\'m {{agent}} from Concepto, have a great day".',
+            'Sign off with brand and name: "I\'m {{agent}} from LearningAI, have a great day".',
           ],
           pt: [
             'Resuma a solução aplicada em uma frase.',
             'Pergunte: "há algo mais em que eu possa ajudar hoje?" antes de encerrar.',
-            'Despeça-se com marca e nome: "sou {{agente}} da Concepto, tenha um ótimo dia".',
+            'Despeça-se com marca e nome: "sou {{agente}} da LearningAI, tenha um ótimo dia".',
           ],
         },
         quiz: {

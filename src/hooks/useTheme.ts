@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 export type Theme = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 
-const STORAGE_KEY = 'concepto.theme';
+const STORAGE_KEY = 'learningai.theme';
 
 function readStoredTheme(): Theme {
   if (typeof window === 'undefined') return 'system';

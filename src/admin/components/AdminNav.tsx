@@ -69,7 +69,7 @@ export function AdminNav() {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <img src="/logo.jpg" alt="Concepto" className="h-7 w-7 rounded-md ring-1 ring-glass-border/10" />
+        <img src="/logo.jpg" alt="LearningAI" className="h-7 w-7 rounded-md ring-1 ring-glass-border/10" />
         <div className="text-[13px] font-semibold text-text">Admin</div>
       </div>
 
@@ -96,10 +96,10 @@ export function AdminNav() {
         <div className="px-4 py-4 border-b border-glass-border/8">
           <div className="flex items-center justify-between gap-2.5 mb-3">
             <div className="flex items-center gap-2.5">
-              <img src="/logo.jpg" alt="Concepto" className="h-7 w-7 rounded-md ring-1 ring-glass-border/10" />
+              <img src="/logo.jpg" alt="LearningAI" className="h-7 w-7 rounded-md ring-1 ring-glass-border/10" />
               <div>
                 <div className="text-[13px] font-semibold text-text">Admin</div>
-                <div className="text-[10px] text-text-subtle">Concepto CMS</div>
+                <div className="text-[10px] text-text-subtle">LearningAI CMS</div>
               </div>
             </div>
             <button

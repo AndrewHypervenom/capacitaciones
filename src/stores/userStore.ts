@@ -45,7 +45,7 @@ export const useUserStore = create<UserState>()(
         set((state) => ({ name: '', country: 'CO', language: state.language, languageChosen: false })),
     }),
     {
-      name: 'concepto.user',
+      name: 'learningai.user',
       // Persist only the data fields; languageChosen is session state so a new
       // device/login correctly re-seeds the language from the profile.
       partialize: (state) => ({

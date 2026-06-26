@@ -205,7 +205,7 @@ export const useProgressStore = create<ProgressState>()(
         }),
     }),
     {
-      name: 'concepto.progress',
+      name: 'learningai.progress',
       version: 3,
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState as Partial<ProgressState>) ?? {};

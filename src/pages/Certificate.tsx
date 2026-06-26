@@ -129,7 +129,7 @@ function LockedPreview() {
             }}>
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
                 <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>
-                  Concepto PositivoS+
+                  LearningAI PositivoS+
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0' }}>
                   <div style={{ flex: 1, height: 1, background: `linear-gradient(to right, transparent, ${GOLD})` }} />
@@ -306,7 +306,7 @@ export default function Certificate() {
               letterSpacing: -8, userSelect: 'none', whiteSpace: 'nowrap',
               fontFamily: 'Georgia, serif',
             }}>
-              CONCEPTO
+              LEARNINGAI
             </div>
           </div>
 
@@ -332,7 +332,7 @@ export default function Certificate() {
                     fontSize: 24, fontWeight: 700, letterSpacing: 2.5,
                     color: NAVY, textTransform: 'uppercase', lineHeight: 1.1,
                   }}>
-                  Concepto PositivoS+
+                  LearningAI PositivoS+
                   </div>
                   <div style={{
                     fontSize: 9.5, letterSpacing: 2.5, color: MUTED,
@@ -460,7 +460,7 @@ export default function Certificate() {
                 <div style={{ fontSize: 9, letterSpacing: 2.5, color: MUTED, textTransform: 'uppercase' }}>
                   {t('certificate.sig_director')}
                 </div>
-                <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}>Concepto PositivoS+</div>
+                <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}>LearningAI PositivoS+</div>
               </div>
 
               {/* Seal */}

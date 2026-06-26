@@ -7,7 +7,7 @@ import App from './App';
 
 (function applyInitialTheme() {
   try {
-    const stored = localStorage.getItem('concepto.theme');
+    const stored = localStorage.getItem('learningai.theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const isDark = stored === 'dark' || ((stored === null || stored === 'system') && prefersDark);
     document.documentElement.classList.toggle('dark', isDark);

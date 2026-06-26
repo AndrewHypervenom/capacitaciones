@@ -1,5 +1,5 @@
 {
-  "brand": "Concepto",
+  "brand": "LearningAI",
   "brand.tagline": "Academia de excelência operacional",
   "welcome": {
     "kicker": "Treinamento Five9 · Positivo S+",
@@ -178,7 +178,7 @@
     "title": "Certificado de Excelência Profissional",
     "subtitle": "Programa de Capacitação em Contact Center · Five9 Operations",
     "presented_to": "é conferido a",
-    "completion_text": "Por ter concluído com distinção o Programa de Capacitação Five9 Contact Center Operations, demonstrando domínio dos fundamentos, protocolos de atendimento ao cliente e habilidades avançadas de comunicação, referendado por Positivo S+ e Concepto Academy.",
+    "completion_text": "Por ter concluído com distinção o Programa de Capacitação Five9 Contact Center Operations, demonstrando domínio dos fundamentos, protocolos de atendimento ao cliente e habilidades avançadas de comunicação, referendado por Positivo S+ e LearningAI Academy.",
     "issued_on": "Emitido em {{date}}",
     "modules_completed": "Módulos Concluídos",
     "best_score": "Melhor Pontuação",
@@ -189,14 +189,14 @@
     "sig_training": "Diretora de Treinamento",
     "verified": "Certificado verificado",
     "cert_id_label": "Certificado N.°",
-    "verify_text": "concepto.positivos.com.br",
+    "verify_text": "learningai.positivos.com.br",
     "print": "Imprimir",
     "download": "Baixar PDF",
     "downloading": "Gerando PDF…",
     "back": "Voltar ao painel",
     "locked_title": "Certificado em andamento",
     "locked_hint": "Conclua todos os módulos e atinja ao menos {{score}} pontos no simulador para desbloquear seu certificado.",
-    "signature": "Concepto · Five9 Training"
+    "signature": "LearningAI · Five9 Training"
   },
   "theme": {
     "light": "Claro",

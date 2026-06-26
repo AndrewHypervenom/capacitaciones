@@ -48,7 +48,7 @@ export interface Scenario {
 const GREETING = {
   id: 'greeting',
   label: { es: 'Saludo con marca', en: 'Branded greeting', pt: 'Saudação com marca' },
-  keywords: ['concepto', 'buenos dias', 'buenas tardes', 'buenas noches', 'hola', 'good morning', 'good afternoon', 'ola', 'bom dia', 'boa tarde'],
+  keywords: ['learningai', 'buenos dias', 'buenas tardes', 'buenas noches', 'hola', 'good morning', 'good afternoon', 'ola', 'bom dia', 'boa tarde'],
 };
 const IDENTITY = {
   id: 'identity',
@@ -134,7 +134,7 @@ export const SCENARIOS: Scenario[] = [
           pt: 'Bom dia… estou revisando a fatura do mês e há uma cobrança de trinta e oito mil pesos que não reconheço. Preciso que me expliquem o que é isso, por favor.',
         },
         branches: [
-          { keywords: ['concepto', 'buenos dias', 'buenas tardes', 'hola', 'mi nombre', 'good morning', 'my name', 'bom dia', 'ola'], next: 'askIdentity' },
+          { keywords: ['learningai', 'buenos dias', 'buenas tardes', 'hola', 'mi nombre', 'good morning', 'my name', 'bom dia', 'ola'], next: 'askIdentity' },
         ],
         fallback: 'nudgeGreeting',
       },
@@ -146,7 +146,7 @@ export const SCENARIOS: Scenario[] = [
           pt: 'Alô? Com quem estou falando? Preciso saber seu nome, por favor.',
         },
         branches: [
-          { keywords: ['concepto', 'soy', 'mi nombre', 'le habla', 'my name', 'this is', 'meu nome', 'aqui e'], next: 'askIdentity' },
+          { keywords: ['learningai', 'soy', 'mi nombre', 'le habla', 'my name', 'this is', 'meu nome', 'aqui e'], next: 'askIdentity' },
         ],
         fallback: 'askIdentity',
       },
@@ -312,7 +312,7 @@ export const SCENARIOS: Scenario[] = [
           pt: 'Boa tarde… desde ontem tentando entrar na minha conta e não deixa. Já tentei três vezes e nada. Podem me ajudar?',
         },
         branches: [
-          { keywords: ['concepto', 'buenas tardes', 'buenos dias', 'hola', 'mi nombre', 'soy', 'good afternoon', 'boa tarde', 'ola'], next: 'askIdentity' },
+          { keywords: ['learningai', 'buenas tardes', 'buenos dias', 'hola', 'mi nombre', 'soy', 'good afternoon', 'boa tarde', 'ola'], next: 'askIdentity' },
         ],
         fallback: 'nudgeGreeting',
       },
@@ -468,7 +468,7 @@ export const SCENARIOS: Scenario[] = [
         },
         branches: [
           { keywords: ['entiendo', 'comprendo', 'lamento', 'siento', 'understand', 'apologize', 'sorry', 'entendo', 'sinto muito'], next: 'deescalate' },
-          { keywords: ['concepto', 'mi nombre', 'soy', 'buenas', 'my name', 'this is', 'meu nome'], next: 'hostile' },
+          { keywords: ['learningai', 'mi nombre', 'soy', 'buenas', 'my name', 'this is', 'meu nome'], next: 'hostile' },
         ],
         fallback: 'hostile',
       },
@@ -622,7 +622,7 @@ export const SCENARIOS: Scenario[] = [
           pt: 'Oi, boa tarde. Uma dúvida: viajo para a Colômbia semana que vem e quero saber se posso usar o celular lá com meu plano sem ser cobrado absurdos.',
         },
         branches: [
-          { keywords: ['concepto', 'buenas tardes', 'buenos dias', 'hola', 'mi nombre', 'good afternoon', 'my name', 'bom dia', 'boa tarde'], next: 'askIdentity' },
+          { keywords: ['learningai', 'buenas tardes', 'buenos dias', 'hola', 'mi nombre', 'good afternoon', 'my name', 'bom dia', 'boa tarde'], next: 'askIdentity' },
         ],
         fallback: 'nudgeGreeting',
       },
