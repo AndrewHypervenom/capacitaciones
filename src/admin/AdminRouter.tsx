@@ -28,35 +28,32 @@ export default function AdminRouter() {
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
   if (!isSuperAdmin && !isCapacitador) return <Navigate to="/dashboard" replace />
 
-  // Capacitador: solo accede al módulo de quiz
-  const onlyQuiz = isCapacitador && !isSuperAdmin
-  const restricted = onlyQuiz ? <Navigate to="/admin/quiz" replace /> : null
-
   return (
     <div className="flex min-h-screen bg-bg">
       <AdminNav />
       <div className="flex-1 md:ml-56 overflow-auto pt-14 md:pt-0">
         <Routes>
-          <Route index element={restricted ?? <AdminDashboard />} />
-          <Route path="campaigns" element={restricted ?? <CampaignList />} />
-          <Route path="import" element={restricted ?? <ImportContent />} />
-          <Route path="modules" element={restricted ?? <ModuleList />} />
-          <Route path="modules/new" element={restricted ?? <NewModulePage />} />
-          <Route path="modules/:moduleId" element={restricted ?? <ModuleEditor />} />
-          <Route path="modules/:moduleId/preview" element={restricted ?? <ModulePreview />} />
+          <Route index element={<AdminDashboard />} />
+          <Route path="campaigns" element={<CampaignList />} />
+          <Route path="import" element={<ImportContent />} />
+          <Route path="modules" element={<ModuleList />} />
+          <Route path="modules/new" element={<NewModulePage />} />
+          <Route path="modules/:moduleId" element={<ModuleEditor />} />
+          <Route path="modules/:moduleId/preview" element={<ModulePreview />} />
+          {/* Usuarios: solo superadmin */}
           <Route path="users" element={isSuperAdmin ? <UserList /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
           <Route path="evaluaciones" element={<TrainerFeedbackPanel />} />
-          <Route path="simulations" element={restricted ?? <SimulationList />} />
-          <Route path="simulations/new" element={restricted ?? <SimulationEditor />} />
-          <Route path="simulations/:id" element={restricted ?? <SimulationEditor />} />
-          <Route path="simulations/choice/new" element={restricted ?? <ChoiceSimEditor />} />
-          <Route path="simulations/choice/:id" element={restricted ?? <ChoiceSimEditor />} />
-          <Route path="missions" element={restricted ?? <LearningMissions />} />
-          <Route path="arena" element={restricted ?? <Arena />} />
-          <Route path="worlds" element={restricted ?? <Worlds />} />
-          <Route path="worlds/:id" element={restricted ?? <WorldDetail />} />
-          <Route path="feedback" element={restricted ?? <FeedbackPanel />} />
+          <Route path="simulations" element={<SimulationList />} />
+          <Route path="simulations/new" element={<SimulationEditor />} />
+          <Route path="simulations/:id" element={<SimulationEditor />} />
+          <Route path="simulations/choice/new" element={<ChoiceSimEditor />} />
+          <Route path="simulations/choice/:id" element={<ChoiceSimEditor />} />
+          <Route path="missions" element={<LearningMissions />} />
+          <Route path="arena" element={<Arena />} />
+          <Route path="worlds" element={<Worlds />} />
+          <Route path="worlds/:id" element={<WorldDetail />} />
+          <Route path="feedback" element={<FeedbackPanel />} />
         </Routes>
       </div>
     </div>

@@ -31,10 +31,8 @@ export function AdminNav() {
     { to: '/admin/feedback', label: t('admin.nav.feedback'), icon: BarChart3, end: false },
   ]
 
-  const capacitadorLinks = [
-    { to: '/admin/quiz', label: t('admin.nav.quiz_live'), icon: Zap, end: false },
-    { to: '/admin/evaluaciones', label: 'Evaluaciones', icon: MessageSquare, end: false },
-  ]
+  // El capacitador ve todo el menú excepto "Usuarios" (solo superadmin)
+  const capacitadorLinks = adminLinks.filter((l) => l.to !== '/admin/users')
 
   const links = isSuperAdmin ? adminLinks : capacitadorLinks
 
