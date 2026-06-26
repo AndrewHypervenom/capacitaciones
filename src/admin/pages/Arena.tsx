@@ -130,13 +130,13 @@ export default function Arena() {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
-  // 'admin' ya no existe como rol; solo superadmin llega aquí
-  const isAdminOnly = false
+  // El capacitador solo ve/gestiona su propia campaña; el superadmin ve todas.
+  const scopedToCampaign = !isSuperAdmin
 
   useEffect(() => {
     if (authLoading) return
     async function load() {
-      if (isAdminOnly && !campaignId) {
+      if (scopedToCampaign && !campaignId) {
         setLoading(false)
         return
       }
@@ -151,7 +151,7 @@ export default function Arena() {
         .from('arena_quizzes')
         .select('*')
         .order('created_at', { ascending: false })
-      if (isAdminOnly && campaignId) quizQuery = quizQuery.eq('campaign_id', campaignId)
+      if (scopedToCampaign && campaignId) quizQuery = quizQuery.eq('campaign_id', campaignId)
 
       const { data, error } = await quizQuery
 
@@ -162,10 +162,10 @@ export default function Arena() {
       setLoading(false)
     }
     load()
-  }, [authLoading, isAdminOnly, campaignId])
+  }, [authLoading, scopedToCampaign, campaignId])
 
   const openModal = () => {
-    setForm({ ...emptyForm(), campaign_id: isAdminOnly ? (campaignId ?? '') : '' })
+    setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
     setEditingId(null)
     setIsModalOpen(true)
   }
@@ -321,7 +321,7 @@ export default function Arena() {
     q => filterCampaign === 'all' || q.campaign_id === filterCampaign,
   )
 
-  if (!authLoading && isAdminOnly && !campaignId) {
+  if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
         <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Arena</h1>
@@ -366,7 +366,7 @@ export default function Arena() {
         </p>
 
         {/* Campaign filter — solo para superadmin */}
-        {!loading && campaigns.length > 0 && !isAdminOnly && (
+        {!loading && campaigns.length > 0 && !scopedToCampaign && (
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
@@ -563,8 +563,8 @@ export default function Arena() {
                 </div>
 
                 {/* Campaña + Theme type */}
-                <div className={isAdminOnly ? '' : 'grid grid-cols-2 gap-3'}>
-                  {!isAdminOnly && (
+                <div className={scopedToCampaign ? '' : 'grid grid-cols-2 gap-3'}>
+                  {!scopedToCampaign && (
                   <div>
                     <label className="block text-[12px] font-medium text-text-muted mb-1.5">Campaña</label>
                     <div className="relative">

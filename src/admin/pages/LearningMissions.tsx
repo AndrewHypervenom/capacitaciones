@@ -105,13 +105,13 @@ export default function LearningMissions() {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
-  // 'admin' ya no existe como rol; solo superadmin llega aquí
-  const isAdminOnly = false
+  // El capacitador solo ve/gestiona su propia campaña; el superadmin ve todas.
+  const scopedToCampaign = !isSuperAdmin
 
   useEffect(() => {
     if (authLoading) return
     async function load() {
-      if (isAdminOnly && !campaignId) {
+      if (scopedToCampaign && !campaignId) {
         setLoading(false)
         return
       }
@@ -126,7 +126,7 @@ export default function LearningMissions() {
         .from('guided_missions')
         .select('*')
         .order('created_at', { ascending: false })
-      if (isAdminOnly && campaignId) missionQuery = missionQuery.eq('campaign_id', campaignId)
+      if (scopedToCampaign && campaignId) missionQuery = missionQuery.eq('campaign_id', campaignId)
 
       const { data, error } = await missionQuery
 
@@ -137,10 +137,10 @@ export default function LearningMissions() {
       setLoading(false)
     }
     load()
-  }, [authLoading, isAdminOnly, campaignId])
+  }, [authLoading, scopedToCampaign, campaignId])
 
   const openModal = () => {
-    setForm({ ...emptyForm(), campaign_id: isAdminOnly ? (campaignId ?? '') : '' })
+    setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
     setIsModalOpen(true)
   }
 
@@ -239,7 +239,7 @@ export default function LearningMissions() {
     setSaving(false)
   }
 
-  if (!authLoading && isAdminOnly && !campaignId) {
+  if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
         <h1 className="text-[24px] font-bold text-text mb-1">Learning Missions</h1>
@@ -284,7 +284,7 @@ export default function LearningMissions() {
         </p>
 
         {/* Campaign filter — solo para superadmin */}
-        {!loading && campaigns.length > 0 && !isAdminOnly && (
+        {!loading && campaigns.length > 0 && !scopedToCampaign && (
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
@@ -467,7 +467,7 @@ export default function LearningMissions() {
                 </div>
 
                 {/* Campaña — solo para superadmin */}
-                {campaigns.length > 0 && !isAdminOnly && (
+                {campaigns.length > 0 && !scopedToCampaign && (
                   <div>
                     <label className="block text-[12px] font-medium text-text-muted mb-1.5">Campaña</label>
                     <div className="relative">

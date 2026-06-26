@@ -34,8 +34,13 @@ export function initAuth() {
     }
   })
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     useAuthStore.getState().setSession(session)
+    // USER_UPDATED se dispara al cambiar la contraseña (onboarding). Re-leer el
+    // perfil aquí provoca una carrera que pisa el onboarded=true recién marcado,
+    // haciendo que la pantalla de "Crea tu contraseña" reaparezca un instante.
+    // El cambio de contraseña no altera el perfil, así que no hace falta releerlo.
+    if (event === 'USER_UPDATED') return
     if (session) {
       fetchProfile(session.user.id)
     } else {
