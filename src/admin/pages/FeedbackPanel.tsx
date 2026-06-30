@@ -29,8 +29,8 @@ interface LearnerRow {
 
 export default function FeedbackPanel() {
   const { isSuperAdmin, isCapacitador, campaignId, loading: authLoading } = useAuth()
-  // 'admin' ya no existe como rol; solo superadmin llega aquí
-  const isAdminOnly = false
+  // El capacitador solo ve el progreso de su propia campaña; el superadmin ve todas.
+  const scopedToCampaign = !isSuperAdmin
 
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<LearnerRow[]>([])
@@ -46,25 +46,25 @@ export default function FeedbackPanel() {
 
   useEffect(() => {
     if (authLoading) return
-    if (isAdminOnly && !campaignId) { setLoading(false); return }
+    if (scopedToCampaign && !campaignId) { setLoading(false); return }
 
     async function load() {
       const [campRes, worldRes, levelRes, profileRes, progressRes] = await Promise.all([
         supabase.from('campaigns').select('id,name').order('name'),
         (() => {
           let q = supabase.from('worlds').select('id,name,icon,campaign_id')
-          if (isAdminOnly && campaignId) q = q.eq('campaign_id', campaignId)
+          if (scopedToCampaign && campaignId) q = q.eq('campaign_id', campaignId)
           return q
         })(),
         supabase.from('world_levels').select('id,name,world_id,order_index,min_score_pct').order('order_index'),
         (() => {
           let q = supabase.from('profiles').select('id,display_name,campaign_id').eq('role', 'learner')
-          if (isAdminOnly && campaignId) q = q.eq('campaign_id', campaignId)
+          if (scopedToCampaign && campaignId) q = q.eq('campaign_id', campaignId)
           return q
         })(),
         (() => {
           let q = supabase.from('world_progress').select('user_id,level_id,world_id,score').eq('completed', true)
-          if (isAdminOnly && campaignId) q = q.eq('campaign_id', campaignId)
+          if (scopedToCampaign && campaignId) q = q.eq('campaign_id', campaignId)
           return q
         })(),
       ])
@@ -137,7 +137,7 @@ export default function FeedbackPanel() {
       setLoading(false)
     }
     load()
-  }, [authLoading, isAdminOnly, campaignId])
+  }, [authLoading, scopedToCampaign, campaignId])
 
   const filtered = rows.filter(r => {
     if (filterCampaign !== 'all' && r.campaignId !== filterCampaign) return false
@@ -247,7 +247,7 @@ export default function FeedbackPanel() {
     setAttemptsLoading(false)
   }
 
-  if (!authLoading && isAdminOnly && !campaignId) {
+  if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
         <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Progreso de Aprendices</h1>

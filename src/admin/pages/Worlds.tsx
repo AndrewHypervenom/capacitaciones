@@ -80,13 +80,13 @@ export default function Worlds() {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
-  // 'admin' ya no existe como rol; solo superadmin llega aquí
-  const isAdminOnly = false
+  // El capacitador solo ve/gestiona los mundos de su propia campaña; el superadmin ve todos.
+  const scopedToCampaign = !isSuperAdmin
 
   useEffect(() => {
     if (authLoading) return
     async function load() {
-      if (isAdminOnly && !campaignId) {
+      if (scopedToCampaign && !campaignId) {
         setLoading(false)
         return
       }
@@ -101,7 +101,7 @@ export default function Worlds() {
         .from('worlds')
         .select('*')
         .order('created_at', { ascending: false })
-      if (isAdminOnly && campaignId) worldQuery = worldQuery.eq('campaign_id', campaignId)
+      if (scopedToCampaign && campaignId) worldQuery = worldQuery.eq('campaign_id', campaignId)
 
       const { data, error } = await worldQuery
 
@@ -112,10 +112,10 @@ export default function Worlds() {
       setLoading(false)
     }
     load()
-  }, [authLoading, isAdminOnly, campaignId])
+  }, [authLoading, scopedToCampaign, campaignId])
 
   const openModal = () => {
-    setForm({ ...emptyForm(), campaign_id: isAdminOnly ? (campaignId ?? '') : '' })
+    setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
     setEditingId(null)
     setIsModalOpen(true)
   }
@@ -211,7 +211,7 @@ export default function Worlds() {
     w => filterCampaign === 'all' || w.campaign_id === filterCampaign,
   )
 
-  if (!authLoading && isAdminOnly && !campaignId) {
+  if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
         <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Mundos</h1>
@@ -256,7 +256,7 @@ export default function Worlds() {
         </p>
 
         {/* Campaign filter — solo para superadmin */}
-        {!loading && campaigns.length > 0 && !isAdminOnly && (
+        {!loading && campaigns.length > 0 && !scopedToCampaign && (
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
@@ -445,7 +445,7 @@ export default function Worlds() {
                 </div>
 
                 {/* Campaña — solo para superadmin */}
-                {!isAdminOnly && (
+                {!scopedToCampaign && (
                   <div>
                     <label className="block text-[12px] font-medium text-text-muted mb-1.5">Campaña</label>
                     <div className="relative">

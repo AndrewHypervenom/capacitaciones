@@ -26,8 +26,8 @@ export default function WorldDetail() {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const { user, isSuperAdmin, campaignId, loading: authLoading, profile } = useAuth()
-  // 'admin' ya no existe como rol; solo el superadmin llega aquí, así que nunca hay scoping por campaña
-  const isAdminOnly = false
+  // El capacitador solo puede ver/editar los mundos de su propia campaña; el superadmin todos.
+  const scopedToCampaign = !isSuperAdmin
 
   const [world, setWorld]     = useState<World | null>(null)
   const [regions, setRegions] = useState<Region[]>([])
@@ -198,10 +198,10 @@ export default function WorldDetail() {
 
   if (loading || authLoading) return <div className="p-8 text-text-muted">Cargando…</div>
   if (!world) return <div className="p-8 text-text-muted">Mundo no encontrado.</div>
-  if (isAdminOnly && !campaignId) {
+  if (scopedToCampaign && !campaignId) {
     return <div className="p-8 text-text-muted">No tienes una campaña asignada. Contacta al superadmin.</div>
   }
-  if (isAdminOnly && world.campaign_id !== campaignId) {
+  if (scopedToCampaign && world.campaign_id !== campaignId) {
     return (
       <div className="p-4 sm:p-8">
         <button onClick={() => navigate('/admin/worlds')}
