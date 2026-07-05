@@ -80,8 +80,18 @@ export default function ModulePage() {
   const { completedModules, markModule, earnXP, updateStreak } = useProgressStore();
   const { modules, loading } = useModules();
   const module = useMemo(() => modules.find((m) => m.id === id), [id, modules]);
-  const moduleIndex = useMemo(() => modules.findIndex((m) => m.id === id), [id, modules]);
-  const nextModule = moduleIndex >= 0 ? modules[moduleIndex + 1] : undefined;
+  // Los hermanos de navegación son los módulos del mismo curso (ordenados por
+  // su posición en el curso) o, si no pertenece a un curso, los del plan general.
+  const siblings = useMemo(() => {
+    if (!module) return modules;
+    return module.courseId
+      ? modules
+          .filter((m) => m.courseId === module.courseId)
+          .sort((a, b) => (a.courseSortOrder ?? 0) - (b.courseSortOrder ?? 0))
+      : modules.filter((m) => !m.courseId);
+  }, [modules, module]);
+  const moduleIndex = useMemo(() => siblings.findIndex((m) => m.id === id), [id, siblings]);
+  const nextModule = moduleIndex >= 0 ? siblings[moduleIndex + 1] : undefined;
   const completed = module ? completedModules.includes(module.id) : false;
   
   const [attemptsFeedback, setAttemptsFeedback] = useState<any[]>([]);
@@ -221,7 +231,7 @@ export default function ModulePage() {
   const handleComplete = () => {
     earnXP(100);
     updateStreak();
-    markModule(module.id, modules.length);
+    markModule(module.id, siblings.length);
     toast.success(`¡${module.title[language]} completado!`);
     if (nextModule) setTimeout(() => nav(`/modules/${nextModule.id}`), 600);
   };

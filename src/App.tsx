@@ -5,6 +5,8 @@ import { AppShell } from '@/components/layout/AppShell';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
+import Courses from '@/pages/Courses';
+import CoursePage from '@/pages/CoursePage';
 import ModulePage from '@/pages/ModulePage';
 import SimulatorSetup from '@/pages/SimulatorSetup';
 import SimulatorRun from '@/pages/SimulatorRun';
@@ -60,6 +62,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route element={<AppShell requireAuth />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/courses" element={<Courses />} />
+          <Route path="/courses/:slug" element={<CoursePage />} />
           <Route path="/modules/:id" element={<ModulePage />} />
           <Route path="/simulator" element={<SimulatorSetup />} />
           <Route path="/simulator/run/:id" element={<SimulatorRun />} />

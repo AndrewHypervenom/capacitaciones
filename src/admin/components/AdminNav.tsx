@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, FolderOpen, Users, LogOut, ArrowLeft, BookOpen, BarChart3, Menu, X, ChevronDown, Trophy } from 'lucide-react'
-import { useTranslation } from 'react-i18next' 
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
@@ -63,8 +63,9 @@ export function AdminNav() {
     },
     {
       title: "Contenido Teórico",
-      icon: BookOpen, 
+      icon: BookOpen,
       items: [
+        { to: '/admin/courses', label: t('admin.nav.courses', 'Cursos'), end: false },
         { to: '/admin/modules', label: t('admin.nav.modules', 'Módulos'), end: false }
       ]
     },

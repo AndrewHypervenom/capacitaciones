@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { LearningModule } from '@/data/modules'
-import { getModulesForCampaign } from '@/services/modules.service'
+import { getVisibleModules } from '@/services/modules.service'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 
@@ -53,7 +53,7 @@ export function useModules() {
     }
 
     setLoading(true)
-    getModulesForCampaign(resolvedCampaignId)
+    getVisibleModules(resolvedCampaignId)
       .then((data) => {
         cache.set(resolvedCampaignId, data)
         setModules(data)
@@ -66,7 +66,11 @@ export function useModules() {
       .finally(() => setLoading(false))
   }, [resolvedCampaignId])
 
-  return { modules, loading, error }
+  // Módulos del Plan de Formación general (sin curso). Los módulos que
+  // pertenecen a un curso se muestran/cuentan dentro de su curso.
+  const planModules = useMemo(() => modules.filter((m) => !m.courseId), [modules])
+
+  return { modules, planModules, loading, error }
 }
 
 export function invalidateModulesCache(campaignId?: string) {

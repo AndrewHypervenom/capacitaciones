@@ -17,7 +17,7 @@ export function Navbar() {
   const { name, reset } = useUserStore();
   const { isAdminOrCapacitador } = useAuth();
   const completedModules = useProgressStore((s) => s.completedModules);
-  const { modules } = useModules();
+  const { planModules: modules } = useModules();
   const progress = modules.length > 0 ? completedModules.length / modules.length : 0;
 
   const handleLogout = async () => {
@@ -46,19 +46,20 @@ export function Navbar() {
           <span className="hidden min-[480px]:inline font-semibold tracking-tight text-[14px]">{t('brand')}</span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-1">
-          <NavLink to="/dashboard" className={linkClass} end>
-            {t('nav.dashboard')}
-          </NavLink>
-          <NavLink to="/simulator" className={linkClass}>
-            {t('nav.simulator')}
-          </NavLink>
-          {isAdminOrCapacitador && (
+        {/* Los aprendices navegan desde su panel; los enlaces centrales son solo para staff */}
+        {isAdminOrCapacitador && (
+          <nav className="hidden md:flex items-center gap-1">
+            <NavLink to="/dashboard" className={linkClass} end>
+              {t('nav.dashboard')}
+            </NavLink>
+            <NavLink to="/simulator" className={linkClass}>
+              {t('nav.simulator')}
+            </NavLink>
             <NavLink to="/admin" className={linkClass}>
               Admin
             </NavLink>
-          )}
-        </nav>
+          </nav>
+        )}
 
         <div className="flex items-center gap-1 sm:gap-2">
           <div className="hidden sm:flex items-center gap-2 h-8 pr-1">

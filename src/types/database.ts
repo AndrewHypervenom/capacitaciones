@@ -43,10 +43,118 @@ export interface Database {
         }
         Relationships: []
       }
+      courses: {
+        Row: {
+          id: string
+          campaign_id: string
+          slug: string
+          title_es: string
+          title_en: string | null
+          title_pt: string | null
+          description_es: string | null
+          description_en: string | null
+          description_pt: string | null
+          cover_url: string | null
+          icon: string
+          color: string
+          category: string | null
+          level: 'basico' | 'medio' | 'avanzado'
+          visibility: 'assigned' | 'catalog'
+          is_published: boolean
+          sort_order: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          slug: string
+          title_es: string
+          title_en?: string | null
+          title_pt?: string | null
+          description_es?: string | null
+          description_en?: string | null
+          description_pt?: string | null
+          cover_url?: string | null
+          icon?: string
+          color?: string
+          category?: string | null
+          level?: 'basico' | 'medio' | 'avanzado'
+          visibility?: 'assigned' | 'catalog'
+          is_published?: boolean
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          slug?: string
+          title_es?: string
+          title_en?: string | null
+          title_pt?: string | null
+          description_es?: string | null
+          description_en?: string | null
+          description_pt?: string | null
+          cover_url?: string | null
+          icon?: string
+          color?: string
+          category?: string | null
+          level?: 'basico' | 'medio' | 'avanzado'
+          visibility?: 'assigned' | 'catalog'
+          is_published?: boolean
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      course_campaigns: {
+        Row: {
+          course_id: string
+          campaign_id: string
+          is_mandatory: boolean
+          assigned_by: string | null
+          assigned_at: string
+        }
+        Insert: {
+          course_id: string
+          campaign_id: string
+          is_mandatory?: boolean
+          assigned_by?: string | null
+          assigned_at?: string
+        }
+        Update: {
+          is_mandatory?: boolean
+        }
+        Relationships: []
+      }
+      course_assignments: {
+        Row: {
+          course_id: string
+          user_id: string
+          is_mandatory: boolean
+          assigned_by: string | null
+          assigned_at: string
+        }
+        Insert: {
+          course_id: string
+          user_id: string
+          is_mandatory?: boolean
+          assigned_by?: string | null
+          assigned_at?: string
+        }
+        Update: {
+          is_mandatory?: boolean
+        }
+        Relationships: []
+      }
       modules: {
         Row: {
           id: string
           campaign_id: string
+          course_id: string | null
+          course_sort_order: number
           slug: string
           icon: string
           duration_min: number
@@ -70,6 +178,8 @@ export interface Database {
         Insert: {
           id?: string
           campaign_id: string
+          course_id?: string | null
+          course_sort_order?: number
           slug: string
           icon?: string
           duration_min?: number
@@ -93,6 +203,8 @@ export interface Database {
         Update: {
           id?: string
           campaign_id?: string
+          course_id?: string | null
+          course_sort_order?: number
           slug?: string
           icon?: string
           duration_min?: number
@@ -951,6 +1063,9 @@ export interface Database {
 
 // Tipos de conveniencia
 export type Campaign = Database['public']['Tables']['campaigns']['Row']
+export type Course = Database['public']['Tables']['courses']['Row']
+export type CourseCampaign = Database['public']['Tables']['course_campaigns']['Row']
+export type CourseAssignment = Database['public']['Tables']['course_assignments']['Row']
 export type Module = Database['public']['Tables']['modules']['Row']
 export type ModuleSection = Database['public']['Tables']['module_sections']['Row']
 export type SectionQuiz = Database['public']['Tables']['section_quizzes']['Row']

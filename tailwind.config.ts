@@ -33,6 +33,8 @@ export default {
         },
         success: 'rgb(var(--success) / <alpha-value>)',
         danger: 'rgb(var(--danger) / <alpha-value>)',
+        primary: 'rgb(var(--primary) / <alpha-value>)',
+        'on-primary': 'rgb(var(--on-primary) / <alpha-value>)',
         // Tokens de glassmorphism
         glass: 'rgb(var(--glass-bg) / <alpha-value>)',
         'glass-border': 'rgb(var(--glass-border) / <alpha-value>)',

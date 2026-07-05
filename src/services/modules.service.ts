@@ -60,6 +60,8 @@ export function mapVideoMarkersFromDb(raw: unknown): VideoMarker[] {
 export interface DbModuleRow {
   id: string
   campaign_id: string
+  course_id?: string | null
+  course_sort_order?: number
   slug: string
   icon: string
   duration_min: number
@@ -134,6 +136,8 @@ function dbRowToLearningModule(
   row: {
     id: string
     campaign_id: string
+    course_id?: string | null
+    course_sort_order?: number
     slug: string
     icon: string
     duration_min: number
@@ -272,6 +276,8 @@ function dbRowToLearningModule(
     id: row.slug,
     dbId: row.id,
     campaign_id: row.campaign_id,
+    courseId: row.course_id ?? null,
+    courseSortOrder: row.course_sort_order ?? 0,
     icon: row.icon,
     duration: row.duration_min,
     title: {
@@ -309,6 +315,30 @@ export async function getModulesForCampaign(campaignId: string): Promise<Learnin
       )
     `)
     .eq('campaign_id', campaignId)
+    .eq('is_published', true)
+    .order('sort_order')
+
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => dbRowToLearningModule(row))
+}
+
+/**
+ * Módulos visibles para el usuario: los de su campaña + los de cursos
+ * visibles (asignados o de catálogo, incluso de otras campañas).
+ * RLS se encarga de filtrar los cursos a los que no tiene acceso.
+ */
+export async function getVisibleModules(campaignId: string): Promise<LearningModule[]> {
+  const { data, error } = await supabase
+    .from('modules')
+    .select(`
+      *,
+      module_sections (
+        *,
+        section_quizzes (*)
+      )
+    `)
+    .or(`campaign_id.eq.${campaignId},course_id.not.is.null`)
     .eq('is_published', true)
     .order('sort_order')
 

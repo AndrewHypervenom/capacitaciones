@@ -77,6 +77,9 @@ export interface LearningModule {
   id: string;
   dbId?: string;
   campaign_id?: string;
+  /** Curso al que pertenece; null/undefined = Plan de Formación general */
+  courseId?: string | null;
+  courseSortOrder?: number;
   title: Record<Language, string>;
   subtitle: Record<Language, string>;
   icon: string;

@@ -9,6 +9,8 @@ import UserList from './pages/UserList'
 import LiveQuizAdmin from './pages/LiveQuizAdmin'
 import ModuleList from './pages/ModuleList'
 import ModuleEditor from './pages/ModuleEditor'
+import CourseList from './pages/CourseList'
+import CourseEditor from './pages/CourseEditor'
 import ModulePreview from './pages/ModulePreview'
 import SimulationList from './pages/SimulationList'
 import SimulationEditor from './pages/SimulationEditor'
@@ -36,6 +38,8 @@ export default function AdminRouter() {
           <Route index element={<AdminDashboard />} />
           <Route path="campaigns" element={<CampaignList />} />
           <Route path="import" element={<ImportContent />} />
+          <Route path="courses" element={<CourseList />} />
+          <Route path="courses/:courseId" element={<CourseEditor />} />
           <Route path="modules" element={<ModuleList />} />
           <Route path="modules/new" element={<NewModulePage />} />
           <Route path="modules/:moduleId" element={<ModuleEditor />} />

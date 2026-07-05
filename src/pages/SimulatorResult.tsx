@@ -24,7 +24,7 @@ export default function SimulatorResult() {
   const lastResult = useSimStore((s) => s.lastResult);
   const addAttempt = useProgressStore((s) => s.addAttempt);
   const progressState = useProgressStore();
-  const { modules } = useModules();
+  const { planModules: modules } = useModules();
   const certificationEarned = selectCertificationEarned(progressState, modules);
   const recordedRef = useRef(false);
 

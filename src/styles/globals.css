@@ -66,6 +66,9 @@
     --brand-magenta: 194 24 91;
     --success: 0 184 85;
     --danger: 215 0 21;
+    /* Verde primario del panel del aprendiz (diseño "panel/") */
+    --primary: 0 110 47;
+    --on-primary: 255 255 255;
     /* Tokens de glassmorphism — modo claro */
     --glass-bg: 0 0 0;
     --glass-border: 0 0 0;
@@ -90,6 +93,9 @@
     --brand-magenta: 225 29 116;
     --success: 0 194 40;
     --danger: 255 69 58;
+    /* Verde primario del panel del aprendiz — más brillante en oscuro */
+    --primary: 0 194 40;
+    --on-primary: 0 0 0;
     /* Tokens de glassmorphism — modo oscuro (marca Positivo S+: verde + magenta) */
     --glass-bg: 255 255 255;
     --glass-border: 255 255 255;

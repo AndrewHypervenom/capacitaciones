@@ -5,6 +5,7 @@ type Tag = 'div' | 'section' | 'header' | 'article' | 'aside' | 'li' | 'ol' | 'u
 
 export interface RevealProps {
   as?: Tag;
+  id?: string;
   delay?: number;
   threshold?: number;
   rootMargin?: string;
@@ -16,6 +17,7 @@ export interface RevealProps {
 
 export function Reveal({
   as = 'div',
+  id,
   delay = 0,
   threshold = 0.15,
   rootMargin = '0px 0px -10% 0px',
@@ -84,49 +86,49 @@ export function Reveal({
   switch (as) {
     case 'section':
       return (
-        <section ref={setRef} className={sharedClass} style={sharedStyle}>
+        <section ref={setRef} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </section>
       );
     case 'header':
       return (
-        <header ref={setRef} className={sharedClass} style={sharedStyle}>
+        <header ref={setRef} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </header>
       );
     case 'article':
       return (
-        <article ref={setRef} className={sharedClass} style={sharedStyle}>
+        <article ref={setRef} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </article>
       );
     case 'aside':
       return (
-        <aside ref={setRef} className={sharedClass} style={sharedStyle}>
+        <aside ref={setRef} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </aside>
       );
     case 'li':
       return (
-        <li ref={setRef as (el: HTMLLIElement | null) => void} className={sharedClass} style={sharedStyle}>
+        <li ref={setRef as (el: HTMLLIElement | null) => void} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </li>
       );
     case 'ol':
       return (
-        <ol ref={setRef as (el: HTMLOListElement | null) => void} className={sharedClass} style={sharedStyle}>
+        <ol ref={setRef as (el: HTMLOListElement | null) => void} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </ol>
       );
     case 'ul':
       return (
-        <ul ref={setRef as (el: HTMLUListElement | null) => void} className={sharedClass} style={sharedStyle}>
+        <ul ref={setRef as (el: HTMLUListElement | null) => void} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </ul>
       );
     default:
       return (
-        <div ref={setRef as (el: HTMLDivElement | null) => void} className={sharedClass} style={sharedStyle}>
+        <div ref={setRef as (el: HTMLDivElement | null) => void} id={id} className={sharedClass} style={sharedStyle}>
           {children}
         </div>
       );

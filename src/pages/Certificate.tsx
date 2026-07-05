@@ -189,7 +189,7 @@ function LockedPreview() {
 export default function Certificate() {
   const { t, i18n } = useTranslation();
   const { name, language } = useUserStore();
-  const { modules, loading: modulesLoading } = useModules();
+  const { planModules: modules, loading: modulesLoading } = useModules();
   const progressState = useProgressStore();
   const earned = selectCertificationEarned(progressState, modules);
   const bestAttempt = selectBestAttempt(progressState);

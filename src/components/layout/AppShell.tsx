@@ -7,8 +7,12 @@ import { Onboarding } from '@/pages/Onboarding';
 
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
-  const { isAuthenticated, loading, profile } = useAuth();
+  const { isAuthenticated, loading, profile, isAdminOrCapacitador } = useAuth();
   const reducedMotion = useReducedMotion();
+
+  // El panel del aprendiz trae su propio shell (sidebar con idioma, tema y
+  // cierre de sesión), así que ahí el Navbar global sobra.
+  const learnerPanel = requireAuth && !isAdminOrCapacitador && location.pathname === '/dashboard';
 
   const blank = <div className="min-h-screen bg-bg" />;
 
@@ -26,7 +30,7 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
 
   return (
     <div className="min-h-full bg-bg">
-      {requireAuth && <Navbar />}
+      {requireAuth && !learnerPanel && <Navbar />}
       <AnimatePresence mode="wait" onExitComplete={() => window.scrollTo({ top: 0, behavior: 'instant' })}>
         <motion.main
           key={location.pathname}
