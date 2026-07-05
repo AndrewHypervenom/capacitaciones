@@ -135,15 +135,15 @@ export default function SimulationList() {
     <div className="p-4 sm:p-8 max-w-5xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <GradientHeading as="h1" className="text-2xl mb-1">Simulaciones</GradientHeading>
-          <p className="text-sm text-text-muted">Escenarios de llamada para agentes</p>
+          <GradientHeading as="h1" className="text-2xl mb-1">{t('admin.simulations.list.title')}</GradientHeading>
+          <p className="text-sm text-text-muted">{t('admin.simulations.list.subtitle')}</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant="ghost"
             onClick={handleSeed}
             disabled={!selectedCampaignId || seeding}
-            title="Importar simulaciones de muestra al DB"
+            title={t('admin.simulations.list.import_title')}
             className="w-full sm:w-auto"
           >
             {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -160,7 +160,7 @@ export default function SimulationList() {
 
       {isSuperAdmin && campaigns.length > 0 && (
         <div className="mb-6">
-          <label className="text-xs text-text-muted mb-1 block">Campaña</label>
+          <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
           <FilterDropdown
             value={selectedCampaignId}
             onChange={setSelectedCampaignId}
@@ -306,12 +306,13 @@ export default function SimulationList() {
 }
 
 function EmptyState({ onNew, onSeed }: { onNew: () => void; onSeed: () => void }) {
+  const { t } = useTranslation()
   return (
     <div className="text-center py-16">
-      <p className="text-text-muted text-sm mb-4">No hay simulaciones en esta campaña</p>
+      <p className="text-text-muted text-sm mb-4">{t('admin.simulations.list.no_sims')}</p>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Button onClick={onNew}><Plus className="h-4 w-4" /> Crear nueva</Button>
-        <Button variant="ghost" onClick={onSeed}><Download className="h-4 w-4" /> Importar muestra</Button>
+        <Button onClick={onNew}><Plus className="h-4 w-4" /> {t('admin.simulations.list.create_new')}</Button>
+        <Button variant="ghost" onClick={onSeed}><Download className="h-4 w-4" /> {t('admin.simulations.list.import_sample')}</Button>
       </div>
     </div>
   )

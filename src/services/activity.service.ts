@@ -132,7 +132,7 @@ export const getModuleFeedbackForUser = async (moduleId: string, userId: string)
 // ==========================================
 // 3. FUNCIONES DEL FORMADOR (ADMIN/CAPACITADOR)
 // ==========================================
-export const getPendingAttempts = async () => {
+export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }) => {
   try {
     console.log("DEBUG: Iniciando descarga desde user_progress...");
     const { data: progressRows, error: progressError } = await supabase
@@ -162,8 +162,11 @@ export const getPendingAttempts = async () => {
 
     progressRows.forEach(row => {
       const studentProfile = profiles?.find(p => p.id === row.user_id) || null;
-      
-      const rawAttempts = Array.isArray(row.attempts) 
+
+      // El panel del capacitador nunca debe mostrar resultados de un superadmin.
+      if (opts?.excludeSuperadmins && studentProfile?.role === 'superadmin') return;
+
+      const rawAttempts = Array.isArray(row.attempts)
         ? row.attempts 
         : typeof row.attempts === 'string' 
           ? JSON.parse(row.attempts) 

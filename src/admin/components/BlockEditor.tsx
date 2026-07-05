@@ -60,7 +60,7 @@ function MLInput({
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder ?? `Texto (${lang})...`}
+        placeholder={placeholder ?? i18n.t('admin.modules.be.ph_text_lang', { lang })}
         rows={3}
         className="w-full bg-transparent text-[14px] text-text placeholder:text-text-subtle outline-none resize-none leading-relaxed"
       />
@@ -71,7 +71,7 @@ function MLInput({
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder ?? `Texto (${lang})...`}
+      placeholder={placeholder ?? i18n.t('admin.modules.be.ph_text_lang', { lang })}
       className="w-full bg-transparent text-[14px] text-text placeholder:text-text-subtle outline-none"
     />
   );
@@ -103,7 +103,7 @@ function HeadingEditor({ block, onChange, lang }: { block: ContentBlock & { type
         value={block.text[lang]}
         onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
         lang={lang}
-        placeholder={`Título (${lang})...`}
+        placeholder={i18n.t('admin.modules.be.ph_title_lang', { lang })}
       />
     </div>
   );
@@ -114,11 +114,11 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 mb-2">
-        <label className="text-[12px] text-text-muted">Tipo:</label>
+        <label className="text-[12px] text-text-muted">{i18n.t('admin.modules.be.type')}</label>
         <FilterDropdown
           value={block.ordered ? 'ordered' : 'bullet'}
           onChange={(v) => onChange({ ...block, ordered: v === 'ordered' })}
-          options={[{ value: 'bullet', label: 'Bullet' }, { value: 'ordered', label: 'Numerada' }]}
+          options={[{ value: 'bullet', label: 'Bullet' }, { value: 'ordered', label: i18n.t('admin.modules.be.list_numbered') }]}
           compact
         />
       </div>
@@ -132,7 +132,7 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
               const next = items.map((it, j) => j === i ? { ...it, [lang]: e.target.value } : it);
               onChange({ ...block, items: next });
             }}
-            placeholder={`Ítem ${i + 1} (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_item_lang', { n: i + 1, lang })}
             className="flex-1 bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none"
           />
           <button
@@ -147,7 +147,7 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
         onClick={() => onChange({ ...block, items: [...items, { es: '', en: '', pt: '' }] })}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1 mt-1"
       >
-        <Plus className="h-3 w-3" /> Añadir ítem
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_item')}
       </button>
     </div>
   );
@@ -175,7 +175,7 @@ function CalloutEditor({ block, onChange, lang }: { block: ContentBlock & { type
         value={block.text[lang]}
         onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
         multiline lang={lang}
-        placeholder="Texto del callout..."
+        placeholder={i18n.t('admin.modules.be.ph_callout')}
       />
     </div>
   );
@@ -206,7 +206,7 @@ function ImageEditor({
             type="url"
             value={block.url}
             onChange={(e) => onChange({ ...block, url: e.target.value })}
-            placeholder="URL de la imagen..."
+            placeholder={i18n.t('admin.modules.be.ph_image_url')}
             className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
           />
           {block.url && (
@@ -216,7 +216,7 @@ function ImageEditor({
       )}
       <div className="flex gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <label className="text-[11px] text-text-muted">Tamaño:</label>
+          <label className="text-[11px] text-text-muted">{i18n.t('admin.modules.be.size')}</label>
           <FilterDropdown
             value={block.size ?? 'full'}
             onChange={(v) => onChange({ ...block, size: v as 'sm' | 'md' | 'lg' | 'full' })}
@@ -225,7 +225,7 @@ function ImageEditor({
           />
         </div>
         <div className="flex items-center gap-1.5">
-          <label className="text-[11px] text-text-muted">Alinear:</label>
+          <label className="text-[11px] text-text-muted">{i18n.t('admin.modules.be.align')}</label>
           <FilterDropdown
             value={block.align ?? 'center'}
             onChange={(v) => onChange({ ...block, align: v as 'left' | 'center' | 'right' })}
@@ -236,7 +236,7 @@ function ImageEditor({
         <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
           <input type="checkbox" checked={block.shadow ?? false} onChange={(e) => onChange({ ...block, shadow: e.target.checked })}
             className="accent-neon-green" />
-          Sombra
+          {i18n.t('admin.modules.be.shadow')}
         </label>
       </div>
     </div>
@@ -259,7 +259,7 @@ function VideoEditor({
             YouTube
           </button>
           <span className="px-3 py-1 rounded-full text-[11px] font-medium bg-neon-green/15 text-neon-green border border-neon-green/20">
-            Archivo
+            {i18n.t('admin.modules.be.file')}
           </span>
         </div>
         <MediaUploader
@@ -281,7 +281,7 @@ function VideoEditor({
           <button key={k} onClick={() => onChange({ ...block, kind: k })}
             className={cn('px-3 py-1 rounded-full text-[11px] font-medium transition-colors',
               block.kind === k ? 'bg-neon-green/15 text-neon-green border border-neon-green/20' : 'glass text-text-muted hover:text-text')}>
-            {k === 'youtube' ? 'YouTube' : 'Archivo'}
+            {k === 'youtube' ? 'YouTube' : i18n.t('admin.modules.be.file')}
           </button>
         ))}
       </div>
@@ -289,7 +289,7 @@ function VideoEditor({
         type="url"
         value={block.url}
         onChange={(e) => onChange({ ...block, url: e.target.value })}
-        placeholder="ID o URL de YouTube..."
+        placeholder={i18n.t('admin.modules.be.ph_youtube')}
         className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
       />
     </div>
@@ -368,7 +368,7 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
       ))}
       <button onClick={() => onChange({ ...block, cards: [...block.cards, { front: { es: '', en: '', pt: '' }, back: { es: '', en: '', pt: '' } }] })}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
-        <Plus className="h-3 w-3" /> Añadir tarjeta
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_card')}
       </button>
     </div>
   );
@@ -403,7 +403,7 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
       ))}
       <button onClick={() => onChange({ ...block, items: [...block.items, { question: { es: '', en: '', pt: '' }, answer: { es: '', en: '', pt: '' } }] })}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
-        <Plus className="h-3 w-3" /> Añadir ítem
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_item')}
       </button>
     </div>
   );
@@ -450,7 +450,7 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
         onClick={() => onChange({ ...block, tabs: [...block.tabs, { label: emptyML(), content: emptyML() }] })}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1"
       >
-        <Plus className="h-3 w-3" /> Añadir pestaña
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_tab')}
       </button>
     </div>
   );
@@ -477,7 +477,7 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
                   const next = block.items.map((it, j) => j === i ? { ...it, icon: e.target.value } : it);
                   onChange({ ...block, items: next });
                 }}
-                placeholder="emoji"
+                placeholder={i18n.t('admin.modules.be.ph_emoji')}
                 className="w-12 bg-transparent text-[13px] text-center text-text placeholder:text-text-subtle outline-none"
               />
               <button
@@ -495,7 +495,7 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
               const next = block.items.map((it, j) => j === i ? { ...it, label: { ...it.label, [lang]: e.target.value } } : it);
               onChange({ ...block, items: next });
             }}
-            placeholder={`Título del evento (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_event_title_lang', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none"
           />
           <textarea
@@ -514,7 +514,7 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
         onClick={() => onChange({ ...block, items: [...block.items, { label: emptyML(), description: emptyML() }] })}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1"
       >
-        <Plus className="h-3 w-3" /> Añadir evento
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_event')}
       </button>
     </div>
   );
@@ -580,7 +580,7 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
             <button
               onClick={() => removeColumn(ci)}
               className="shrink-0 text-text-subtle hover:text-red-400 transition-colors"
-              title="Eliminar columna"
+              title={i18n.t('admin.modules.be.del_column')}
             >
               <Trash2 className="h-3 w-3" />
             </button>
@@ -589,7 +589,7 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
         <button
           onClick={addColumn}
           className="shrink-0 text-[11px] text-text-subtle hover:text-neon-green transition-colors"
-          title="Agregar columna"
+          title={i18n.t('admin.modules.be.add_column')}
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -624,7 +624,7 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
         onClick={addRow}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1"
       >
-        <Plus className="h-3 w-3" /> Añadir fila
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_row')}
       </button>
     </div>
   );
@@ -663,7 +663,7 @@ function ColumnsEditor({ block, onChange, lang }: { block: ContentBlock & { type
     <div className="space-y-3">
       {/* Column count toggle */}
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-text-muted">Columnas:</span>
+        <span className="text-[11px] text-text-muted">{i18n.t('admin.modules.be.columns')}</span>
         {([2, 3] as const).map((n) => (
           <button
             key={n}
@@ -690,14 +690,14 @@ function ColumnsEditor({ block, onChange, lang }: { block: ContentBlock & { type
             <textarea
               value={getColText(ci)}
               onChange={(e) => setColText(ci, e.target.value)}
-              placeholder={`Texto columna ${ci + 1} (${lang})...\n\nSepara párrafos con línea en blanco`}
+              placeholder={i18n.t('admin.modules.be.ph_column_text_lang', { n: ci + 1, lang })}
               rows={5}
               className="w-full glass rounded-xl px-3 py-2 text-[12.5px] text-text placeholder:text-text-subtle outline-none resize-none leading-relaxed"
             />
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-text-subtle italic">Separa párrafos con una línea en blanco. Para contenido complejo usa bloques individuales.</p>
+      <p className="text-[10px] text-text-subtle italic">{i18n.t('admin.modules.be.body_tip')}</p>
     </div>
   );
 }
@@ -707,11 +707,11 @@ function CodeEditorBlock({ block, onChange }: { block: ContentBlock & { type: 'c
     <div className="space-y-2">
       <input type="text" value={block.language}
         onChange={(e) => onChange({ ...block, language: e.target.value })}
-        placeholder="Lenguaje / tipo (javascript, python, sql, bash...)"
+        placeholder={i18n.t('admin.modules.be.ph_code_lang')}
         className="w-full glass rounded-lg px-3 py-1.5 text-[12px] text-text-muted placeholder:text-text-subtle outline-none" />
       <textarea value={block.code}
         onChange={(e) => onChange({ ...block, code: e.target.value })}
-        placeholder="Contenido del fragmento..."
+        placeholder={i18n.t('admin.modules.be.ph_code_content')}
         rows={6}
         className="w-full glass rounded-xl p-3 text-[12.5px] font-mono text-text placeholder:text-text-subtle outline-none resize-y" />
     </div>
@@ -721,7 +721,7 @@ function CodeEditorBlock({ block, onChange }: { block: ContentBlock & { type: 'c
 function QuoteEditorBlock({ block, onChange, lang }: { block: ContentBlock & { type: 'quote' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   return (
     <div className="space-y-2">
-      <MLInput value={block.text[lang]} onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })} multiline lang={lang} placeholder="Cita..." />
+      <MLInput value={block.text[lang]} onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })} multiline lang={lang} placeholder={i18n.t('admin.modules.be.ph_quote')} />
       <input type="text" value={block.author?.[lang] ?? ''}
         onChange={(e) => onChange({ ...block, author: { ...(block.author ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
         placeholder={`Autor (${lang}, opcional)...`}
@@ -774,13 +774,13 @@ function SortGameEditor({
     <div className="space-y-4 border-l-2 border-blue-500/30 pl-3 pt-2">
       {/* Título del Juego */}
       <div className="space-y-1">
-        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Título del Juego:</label>
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">{i18n.t('admin.modules.be.game_title')}</label>
         <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
           <input
             type="text"
             value={title}
             onChange={(e) => onChange({ ...block, title: { ...block.title, [lang]: e.target.value } })}
-            placeholder="Ej: Ordena el protocolo operativo..."
+            placeholder={i18n.t('admin.modules.be.ph_sort_title')}
             className="w-full bg-transparent text-[14px] text-text outline-none"
           />
         </div>
@@ -788,13 +788,13 @@ function SortGameEditor({
 
       {/* Instrucciones del Juego */}
       <div className="space-y-1">
-        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Instrucciones:</label>
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">{i18n.t('admin.modules.be.instructions')}</label>
         <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
           <input
             type="text"
             value={instructions}
             onChange={(e) => onChange({ ...block, instructions: { ...block.instructions, [lang]: e.target.value } })}
-            placeholder="Ej: Arrastra los pasos al orden correcto..."
+            placeholder={i18n.t('admin.modules.be.ph_sort_instructions')}
             className="w-full bg-transparent text-[14px] text-text outline-none"
           />
         </div>
@@ -830,7 +830,7 @@ function SortGameEditor({
               type="button"
               onClick={() => handleDeleteStep(step.id)}
               className="text-text-subtle hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-[14px]"
-              title="Eliminar paso"
+              title={i18n.t('admin.modules.be.del_step')}
             >
               ✕
             </button>
@@ -843,7 +843,7 @@ function SortGameEditor({
           onClick={handleAddStep}
           className="w-full mt-2 flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-dashed border-blue-500/30 hover:border-blue-500 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 text-[13px] font-medium transition-all"
         >
-          + Añadir Paso al Proceso
+          + {i18n.t('admin.modules.be.add_step')}
         </button>
       </div>
     </div>
@@ -898,13 +898,13 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
     <div className="space-y-4 border-l-2 border-purple-500/30 pl-3 pt-2">
       {/* Título */}
       <div className="space-y-1">
-        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Título del Juego:</label>
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">{i18n.t('admin.modules.be.game_title')}</label>
         <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
           <input
             type="text"
             value={block.title?.[lang] ?? ''}
             onChange={(e) => onChange({ ...block, title: { ...block.title, [lang]: e.target.value } })}
-            placeholder="Ej: Clasifica los casos de fraude..."
+            placeholder={i18n.t('admin.modules.be.ph_classify_title')}
             className="w-full bg-transparent text-[14px] text-text outline-none"
           />
         </div>
@@ -912,13 +912,13 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
 
       {/* Instrucciones */}
       <div className="space-y-1">
-        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">Instrucciones:</label>
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold">{i18n.t('admin.modules.be.instructions')}</label>
         <div className="glass rounded-xl px-3 py-1.5 border border-glass-border/10">
           <input
             type="text"
             value={block.instructions?.[lang] ?? ''}
             onChange={(e) => onChange({ ...block, instructions: { ...block.instructions, [lang]: e.target.value } })}
-            placeholder="Ej: Arrastra cada caso a su categoría..."
+            placeholder={i18n.t('admin.modules.be.ph_classify_instructions')}
             className="w-full bg-transparent text-[14px] text-text outline-none"
           />
         </div>
@@ -926,7 +926,7 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
 
       {/* Categorías */}
       <div className="space-y-2 pt-2">
-        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold block mb-1">Categorías:</label>
+        <label className="text-[11px] uppercase tracking-wider text-text-subtle font-bold block mb-1">{i18n.t('admin.modules.be.categories')}</label>
         {categories.map((cat) => (
           <div key={cat.id} className="flex items-center gap-2">
             <div className="flex gap-1 shrink-0">
@@ -949,7 +949,7 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
                 type="text"
                 value={cat.name?.[lang] ?? ''}
                 onChange={(e) => editCategoryName(cat.id, e.target.value)}
-                placeholder="Nombre de la categoría..."
+                placeholder={i18n.t('admin.modules.be.ph_category_name')}
                 className="w-full bg-transparent text-[14px] text-text outline-none"
               />
             </div>
@@ -957,7 +957,7 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
               type="button"
               onClick={() => deleteCategory(cat.id)}
               className="text-text-subtle hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-[14px]"
-              title="Eliminar categoría"
+              title={i18n.t('admin.modules.be.del_category')}
             >
               ✕
             </button>
@@ -968,7 +968,7 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
           onClick={addCategory}
           className="w-full mt-1 flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-dashed border-purple-500/30 hover:border-purple-500 bg-purple-500/5 hover:bg-purple-500/10 text-purple-400 hover:text-purple-300 text-[13px] font-medium transition-all"
         >
-          + Añadir Categoría
+          + {i18n.t('admin.modules.be.add_category')}
         </button>
       </div>
 
@@ -984,7 +984,7 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
                 type="text"
                 value={c.text?.[lang] ?? ''}
                 onChange={(e) => editCaseText(c.id, e.target.value)}
-                placeholder="Situación o caso operativo..."
+                placeholder={i18n.t('admin.modules.be.ph_case')}
                 className="w-full bg-transparent text-[14px] text-text outline-none"
               />
             </div>
@@ -993,10 +993,10 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
               onChange={(e) => editCaseCategory(c.id, e.target.value)}
               className="shrink-0 glass rounded-xl px-2 py-1.5 border border-glass-border/10 text-[13px] text-text bg-transparent outline-none max-w-[40%]"
             >
-              <option value="">— categoría —</option>
+              <option value="">{i18n.t('admin.modules.be.category_dash')}</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
-                  {cat.name?.[lang] || cat.name?.es || 'Sin nombre'}
+                  {cat.name?.[lang] || cat.name?.es || i18n.t('admin.modules.be.no_name')}
                 </option>
               ))}
             </select>
@@ -1004,7 +1004,7 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
               type="button"
               onClick={() => deleteCase(c.id)}
               className="text-text-subtle hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-[14px]"
-              title="Eliminar caso"
+              title={i18n.t('admin.modules.be.del_case')}
             >
               ✕
             </button>
@@ -1015,7 +1015,7 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
           onClick={addCase}
           className="w-full mt-1 flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-dashed border-purple-500/30 hover:border-purple-500 bg-purple-500/5 hover:bg-purple-500/10 text-purple-400 hover:text-purple-300 text-[13px] font-medium transition-all"
         >
-          + Añadir Caso
+          + {i18n.t('admin.modules.be.add_case')}
         </button>
       </div>
     </div>
@@ -1027,7 +1027,7 @@ function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-text-muted">Columnas:</span>
+        <span className="text-[11px] text-text-muted">{i18n.t('admin.modules.be.columns')}</span>
         {([2, 3] as const).map((n) => (
           <button
             key={n}
@@ -1049,7 +1049,7 @@ function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 
                 type="text"
                 value={card.icon ?? ''}
                 onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, icon: e.target.value } : c) })}
-                placeholder="emoji"
+                placeholder={i18n.t('admin.modules.be.ph_emoji')}
                 className="w-12 bg-transparent text-[15px] text-center text-text placeholder:text-text-subtle outline-none"
               />
               <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Tarjeta {i + 1}</span>
@@ -1061,13 +1061,13 @@ function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 
             type="text"
             value={card.title[lang]}
             onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, title: { ...c.title, [lang]: e.target.value } } : c) })}
-            placeholder={`Título (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_title_lang', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none"
           />
           <textarea
             value={card.text[lang]}
             onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, text: { ...c.text, [lang]: e.target.value } } : c) })}
-            placeholder={`Texto (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_text_lang', { lang })}
             rows={2}
             className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
           />
@@ -1075,7 +1075,7 @@ function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 
       ))}
       <button onClick={() => onChange({ ...block, items: [...block.items, { icon: '✨', title: emptyML(), text: emptyML() }] })}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
-        <Plus className="h-3 w-3" /> Añadir tarjeta
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_card')}
       </button>
     </div>
   );
@@ -1093,7 +1093,7 @@ function StatEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
                 type="text"
                 value={s.icon ?? ''}
                 onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, icon: e.target.value } : it) })}
-                placeholder="emoji"
+                placeholder={i18n.t('admin.modules.be.ph_emoji')}
                 className="w-12 bg-transparent text-[15px] text-center text-text placeholder:text-text-subtle outline-none shrink-0"
               />
               <input
@@ -1118,7 +1118,7 @@ function StatEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
       ))}
       <button onClick={() => onChange({ ...block, items: [...block.items, { value: '', label: emptyML() }] })}
         className="text-[12px] text-text-subtle hover:text-neon-green transition-colors flex items-center gap-1">
-        <Plus className="h-3 w-3" /> Añadir dato
+        <Plus className="h-3 w-3" /> {i18n.t('admin.modules.be.add_stat')}
       </button>
     </div>
   );
@@ -1158,7 +1158,7 @@ function HotspotEditor({
           type="url"
           value={block.url}
           onChange={(e) => onChange({ ...block, url: e.target.value })}
-          placeholder="URL de la imagen..."
+          placeholder={i18n.t('admin.modules.be.ph_image_url')}
           className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
         />
       )}
@@ -1177,7 +1177,7 @@ function HotspotEditor({
               </span>
             ))}
           </div>
-          <p className="text-[11px] text-text-subtle">Haz clic en la imagen para agregar un punto.</p>
+          <p className="text-[11px] text-text-subtle">{i18n.t('admin.modules.be.hotspot_add_hint')}</p>
         </>
       )}
 
@@ -1200,7 +1200,7 @@ function HotspotEditor({
           </div>
           <input type="text" value={pt.title[lang]}
             onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, title: { ...p.title, [lang]: e.target.value } } : p) })}
-            placeholder={`Título del punto (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_point_title_lang', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none" />
           <textarea value={pt.text[lang]}
             onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, text: { ...p.text, [lang]: e.target.value } } : p) })}
@@ -1319,7 +1319,7 @@ function BlockRow({
             <Icon className="h-3.5 w-3.5 text-text-muted" />
           </div>
           <span className="text-[9px] uppercase tracking-wide text-text-subtle whitespace-nowrap">
-            {BLOCK_LABELS[item.data.type] ?? item.data.type}
+            {i18n.t(`admin.modules.be.block_labels.${item.data.type}`, BLOCK_LABELS[item.data.type] ?? item.data.type)}
           </span>
         </div>
 
@@ -1429,12 +1429,12 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
         <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
           {blocks.length === 0 && (
             <div className="text-center py-12 text-text-subtle text-[13px]">
-              <p>Sin bloques aún.</p>
+              <p>{i18n.t('admin.modules.be.no_blocks')}</p>
               <button
                 onClick={() => setMenuAfterIndex(-1)}
                 className="mt-3 inline-flex items-center gap-1.5 text-neon-green hover:brightness-110 transition-all text-[13px]"
               >
-                <Plus className="h-4 w-4" /> Añadir primer bloque
+                <Plus className="h-4 w-4" /> {i18n.t('admin.modules.be.add_first_block')}
               </button>
             </div>
           )}
@@ -1494,7 +1494,7 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
             onClick={() => setMenuAfterIndex(blocks.length - 1)}
             className="h-9 px-5 glass rounded-full text-[12px] text-text-subtle hover:text-neon-green border border-transparent hover:border-neon-green/20 flex items-center gap-2 transition-all duration-200"
           >
-            <Plus className="h-3.5 w-3.5" /> Añadir bloque
+            <Plus className="h-3.5 w-3.5" /> {i18n.t('admin.modules.be.add_block')}
           </button>
         </div>
       )}

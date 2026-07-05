@@ -315,7 +315,7 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
   if (!videoUrl) {
     return (
       <div className="flex items-center justify-center h-64 rounded-3xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-        <p className="text-zinc-500 dark:text-zinc-400 text-[14px]">Video no disponible</p>
+        <p className="text-zinc-500 dark:text-zinc-400 text-[14px]">{t('module.blocks.video_unavailable')}</p>
       </div>
     )
   }

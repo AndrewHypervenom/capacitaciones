@@ -15,6 +15,7 @@ import { moduleAiAssist, type CacheUsage } from '@/services/ai.service'
 import type { VideoMarkerRaw } from '@/services/modules.service'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import i18n from '@/i18n'
 
 type Lang = 'es' | 'en' | 'pt'
 
@@ -83,15 +84,15 @@ function TranslationCard({
         <span className="text-xs font-semibold text-text">{LANG_NAMES[lang]}</span>
         {applied ? (
           <span className="flex items-center gap-1 text-[10px] text-brand-green font-medium">
-            <CheckCircle2 className="h-3 w-3" /> Aplicado
+            <CheckCircle2 className="h-3 w-3" /> {i18n.t('admin.modules.ai_panel.applied')}
           </span>
         ) : (
-          <Button size="sm" onClick={onApply}>Aplicar</Button>
+          <Button size="sm" onClick={onApply}>{i18n.t('admin.modules.ai_panel.apply')}</Button>
         )}
       </div>
       {entries.slice(0, 2).map(([k, v]) => (
         <div key={k}>
-          <div className="text-[10px] text-text-subtle mb-0.5">{FIELD_LABELS[k] ?? k}</div>
+          <div className="text-[10px] text-text-subtle mb-0.5">{i18n.t(`admin.modules.ai_panel.field.${k}`, FIELD_LABELS[k] ?? k)}</div>
           <p className="text-[11px] text-text-muted leading-snug line-clamp-2">
             {v.slice(0, 150)}{v.length > 150 ? '…' : ''}
           </p>
@@ -122,7 +123,7 @@ function ImprovementCard({
         <div className="flex items-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 text-brand-green" />
           <span className="text-xs font-medium text-text">
-            Contenido mejorado · {LANG_NAMES[sourceLang]}
+            {i18n.t('admin.modules.ai_panel.improved_content')} · {LANG_NAMES[sourceLang]}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -130,7 +131,7 @@ function ImprovementCard({
             onClick={onRegenerate}
             className="flex items-center gap-1 text-[10px] text-text-muted hover:text-text transition-colors"
           >
-            <RotateCcw className="h-3 w-3" /> Regenerar
+            <RotateCcw className="h-3 w-3" /> {i18n.t('admin.modules.ai_panel.regenerate')}
           </button>
           <button
             onClick={onDiscard}
@@ -144,7 +145,7 @@ function ImprovementCard({
       {changes.length > 0 && (
         <div>
           <div className="text-[10px] font-semibold text-text-subtle uppercase tracking-wide mb-1.5">
-            Cambios realizados
+            {i18n.t('admin.modules.ai_panel.changes_made')}
           </div>
           <ul className="space-y-1">
             {changes.map((c, i) => (
@@ -159,7 +160,7 @@ function ImprovementCard({
 
       {firstEntry && (
         <div>
-          <div className="text-[10px] text-text-subtle mb-0.5">{FIELD_LABELS[firstEntry[0]] ?? firstEntry[0]}</div>
+          <div className="text-[10px] text-text-subtle mb-0.5">{i18n.t(`admin.modules.ai_panel.field.${firstEntry[0]}`, FIELD_LABELS[firstEntry[0]] ?? firstEntry[0])}</div>
           <p className="text-[11px] text-text-muted leading-snug line-clamp-3">
             {firstEntry[1].slice(0, 180)}{firstEntry[1].length > 180 ? '…' : ''}
           </p>
@@ -167,7 +168,7 @@ function ImprovementCard({
       )}
 
       <Button size="sm" onClick={onApply} className="w-full justify-center">
-        Aplicar mejoras
+        {i18n.t('admin.modules.ai_panel.apply_improvements')}
       </Button>
     </div>
   )
@@ -302,7 +303,7 @@ export function ModuleAIPanel({
     setCurrentAction(null)
   }
 
-  const translateLabel = `Traducir a ${targetLangs.map(l => LANG_LABELS[l]).join(' + ')}`
+  const translateLabel = i18n.t('admin.modules.ai_panel.translate_to', { langs: targetLangs.map(l => LANG_LABELS[l]).join(' + ') })
 
   return (
     <div className={cn(
@@ -316,7 +317,7 @@ export function ModuleAIPanel({
         className="w-full flex items-center gap-2.5 px-4 py-3 text-left"
       >
         <Sparkles className="h-3.5 w-3.5 text-brand-violet shrink-0" />
-        <span className="text-xs font-medium text-text flex-1">Asistente IA</span>
+        <span className="text-xs font-medium text-text flex-1">{i18n.t('admin.modules.ai_panel.assistant')}</span>
         <span className="text-[10px] text-text-subtle px-1.5 py-0.5 rounded bg-glass/8 border border-glass-border/10">
           {LANG_NAMES[sourceLang]}
         </span>
@@ -338,7 +339,7 @@ export function ModuleAIPanel({
           <GenerationProgress
             steps={ASSIST_STEPS}
             active={loading}
-            title={currentAction === 'translate' ? 'Traduciendo con Claude...' : 'Mejorando con Claude...'}
+            title={currentAction === 'translate' ? i18n.t('admin.modules.ai_panel.translating') : i18n.t('admin.modules.ai_panel.improving')}
           />
 
           {!loading && !translationResult && !improvementResult && (
@@ -356,7 +357,7 @@ export function ModuleAIPanel({
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-glass-border/20 glass hover:border-brand-violet/30 hover:bg-brand-violet/5 text-text-muted hover:text-text transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Wand2 className="h-3.5 w-3.5" />
-                Mejorar en {LANG_NAMES[improveLang]}
+                {i18n.t('admin.modules.ai_panel.improve_in', { lang: LANG_NAMES[improveLang] })}
               </button>
             </div>
           )}
@@ -376,7 +377,7 @@ export function ModuleAIPanel({
                 onClick={() => runAction('translate')}
                 className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text transition-colors pt-1"
               >
-                <RotateCcw className="h-3 w-3" /> Regenerar traducción
+                <RotateCcw className="h-3 w-3" /> {i18n.t('admin.modules.ai_panel.regenerate_translation')}
               </button>
             </div>
           )}

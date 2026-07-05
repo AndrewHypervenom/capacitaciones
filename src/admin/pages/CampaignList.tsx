@@ -15,6 +15,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import type { Campaign } from '@/types/database'
@@ -32,7 +33,7 @@ interface CampaignWithModules extends Campaign {
 }
 
 export default function CampaignList() {
-  const { isAdminOrCapacitador, isSuperAdmin } = useAuth()
+  const { isAdminOrCapacitador, isSuperAdmin, campaignId } = useAuth()
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [campaigns, setCampaigns] = useState<CampaignWithModules[]>([])
@@ -45,10 +46,10 @@ export default function CampaignList() {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase
-        .from('campaigns')
-        .select('*')
-        .order('created_at')
+      // El capacitador solo ve su propia campaña; el superadmin, todas.
+      let query = supabase.from('campaigns').select('*').order('created_at')
+      if (!isSuperAdmin) query = query.eq('id', campaignId ?? '')
+      const { data } = await query
       if (!data) { setLoading(false); return }
 
       const withCounts = await Promise.all(
@@ -65,7 +66,7 @@ export default function CampaignList() {
       if (withCounts.length === 1) setExpanded(withCounts[0].id)
     }
     load()
-  }, [])
+  }, [isSuperAdmin, campaignId])
 
   const handleToggleActive = async (c: CampaignWithModules) => {
     await supabase.from('campaigns').update({ is_active: !c.is_active }).eq('id', c.id)
@@ -235,7 +236,7 @@ export default function CampaignList() {
                       <>
                         <button
                           onClick={() => { setEditingId(c.id); setEditName(c.name) }}
-                          title="Editar nombre"
+                          title={i18n.t('admin.campaigns.edit_name')}
                           className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
                         >
                           <Pencil className="h-4 w-4" />
@@ -257,7 +258,7 @@ export default function CampaignList() {
                       <button
                         onClick={() => handleDelete(c)}
                         disabled={deletingId === c.id}
-                        title="Eliminar campaña"
+                        title={i18n.t('admin.campaigns.delete_campaign')}
                         className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
                       >
                         {deletingId === c.id ? (
@@ -324,7 +325,7 @@ export default function CampaignList() {
                               <Plus className="h-4 w-4 text-neon-green" />
                             </div>
                             <div>
-                              <div className="text-[14px] font-medium text-text">Importar contenido</div>
+                              <div className="text-[14px] font-medium text-text">{i18n.t('admin.campaigns.import_content')}</div>
                               <div className="text-[12px] text-text-muted">
                                 Subir un archivo Word, Excel o PDF
                               </div>

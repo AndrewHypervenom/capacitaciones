@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 
 interface World {
   id: string; name: string; description: string | null
@@ -196,10 +197,10 @@ export default function WorldDetail() {
     }
   }
 
-  if (loading || authLoading) return <div className="p-8 text-text-muted">Cargando…</div>
-  if (!world) return <div className="p-8 text-text-muted">Mundo no encontrado.</div>
+  if (loading || authLoading) return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.loading')}</div>
+  if (!world) return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.world_not_found')}</div>
   if (scopedToCampaign && !campaignId) {
-    return <div className="p-8 text-text-muted">No tienes una campaña asignada. Contacta al superadmin.</div>
+    return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
   }
   if (scopedToCampaign && world.campaign_id !== campaignId) {
     return (
@@ -212,8 +213,8 @@ export default function WorldDetail() {
           className="rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
           style={{ background: 'rgba(239,68,68,0.04)', border: '1px dashed rgba(239,68,68,0.20)' }}
         >
-          <div className="text-[15px] font-medium mb-2" style={{ color: '#ef4444' }}>Acceso denegado</div>
-          <div className="text-[13px] text-text-muted">Este mundo no pertenece a tu campaña.</div>
+          <div className="text-[15px] font-medium mb-2" style={{ color: '#ef4444' }}>{i18n.t('admin.worlds.access_denied')}</div>
+          <div className="text-[13px] text-text-muted">{i18n.t('admin.worlds.access_denied_desc')}</div>
         </div>
       </div>
     )
@@ -273,10 +274,10 @@ export default function WorldDetail() {
 
         {/* ── Theme config ── */}
         <div className="rounded-2xl bg-surface border border-line p-4 sm:p-5 mb-6">
-          <h2 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider mb-4">Configuración visual</h2>
+          <h2 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider mb-4">{i18n.t('admin.worlds.visual_config')}</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-[12px] font-medium text-text-muted mb-1.5">🔊 Sonido</label>
+              <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.sound')}</label>
               <div className="relative">
                 <select value={world.sound_theme||'neutral'} onChange={e => handleTheme('sound_theme',e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer">
@@ -286,7 +287,7 @@ export default function WorldDetail() {
               </div>
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-text-muted mb-1.5">✨ Transición</label>
+              <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.transition')}</label>
               <div className="relative">
                 <select value={world.transition_type||'clouds'} onChange={e => handleTheme('transition_type',e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer">
@@ -296,40 +297,40 @@ export default function WorldDetail() {
               </div>
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-text-muted mb-1.5">🧑 Personaje</label>
+              <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.character')}</label>
               <input value={world.character_emoji||'🧑'} onChange={e => handleTheme('character_emoji',e.target.value)}
                 className="w-full px-3 py-2 rounded-xl text-[20px] bg-bg border border-line text-text focus:outline-none text-center"
                 placeholder="🧑" maxLength={2}/>
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-text-muted mb-1.5">🎨 Color</label>
+              <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.color_emoji')}</label>
               <input type="color" value={world.color} onChange={e => handleTheme('color',e.target.value)}
                 className="h-[42px] w-full rounded-xl border border-line bg-bg cursor-pointer p-1"/>
             </div>
           </div>
-          <p className="text-[11px] text-text-muted mt-3 opacity-60">Los cambios se guardan automáticamente y se reflejan en el mapa del aprendiz.</p>
+          <p className="text-[11px] text-text-muted mt-3 opacity-60">{i18n.t('admin.worlds.auto_save_hint')}</p>
         </div>
 
         {/* ── Regions ── */}
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
-            <h2 className="text-[15px] sm:text-[16px] font-bold text-text">Regiones y Niveles</h2>
-            <p className="text-[12px] text-text-muted mt-0.5 hidden sm:block">Las regiones agrupan niveles. El aprendiz los completa en orden.</p>
+            <h2 className="text-[15px] sm:text-[16px] font-bold text-text">{i18n.t('admin.worlds.regions_levels')}</h2>
+            <p className="text-[12px] text-text-muted mt-0.5 hidden sm:block">{i18n.t('admin.worlds.regions_hint')}</p>
           </div>
           <button onClick={openNewRegion}
             className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors shrink-0 min-h-[44px]"
             style={{ background:'rgba(0,194,40,0.12)', color:'#00C228', border:'1px solid rgba(0,194,40,0.25)' }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.20)'}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.12)'}>
-            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4"/> <span className="hidden xs:inline">Nueva</span> región
+            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4"/> <span className="hidden xs:inline">{i18n.t('admin.worlds.new_f')}</span> región
           </button>
         </div>
 
         {regions.length === 0 ? (
           <div className="rounded-2xl p-6 sm:p-10 text-center border border-dashed border-line">
             <div className="text-3xl mb-3">🗺️</div>
-            <div className="text-[14px] font-medium text-text mb-1">Sin regiones</div>
-            <div className="text-[12px] text-text-muted mb-4">Crea una región para empezar a agregar niveles</div>
+            <div className="text-[14px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_regions')}</div>
+            <div className="text-[12px] text-text-muted mb-4">{i18n.t('admin.worlds.no_regions_hint')}</div>
             <button onClick={openNewRegion} className="flex items-center justify-center min-h-[44px] text-[13px] font-medium px-4 py-2 rounded-xl" style={{ background:'rgba(0,194,40,0.12)', color:'#00C228', border:'1px solid rgba(0,194,40,0.25)' }}>
               + Nueva región
             </button>
@@ -373,7 +374,7 @@ export default function WorldDetail() {
                     <div className="region-body border-t border-line">
                       {regionLevels.length === 0 ? (
                         <div className="px-5 py-6 text-center">
-                          <div className="text-[12px] text-text-muted mb-3">Esta región no tiene niveles. Agrega el primer nivel.</div>
+                          <div className="text-[12px] text-text-muted mb-3">{i18n.t('admin.worlds.no_levels_hint')}</div>
                           <button onClick={() => openNewLevel(region.id)}
                             className="flex items-center justify-center min-h-[44px] text-[12px] font-medium px-3 py-1.5 rounded-lg"
                             style={{ background:`${tc}12`, color:tc, border:`1px solid ${tc}25` }}>
@@ -464,32 +465,32 @@ export default function WorldDetail() {
             </div>
             <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
               <div>
-                <label className="block text-[12px] font-medium text-text-muted mb-1.5">Nombre *</label>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.name_required')}</label>
                 <input required value={regionForm.name} onChange={e => setRegionForm(f => ({...f,name:e.target.value}))}
-                  placeholder="Ej: Zona de Check-in"
+                  placeholder={i18n.t('admin.worlds.ph_region_name')}
                   className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-text-muted mb-1.5">Descripción</label>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')}</label>
                 <input value={regionForm.description} onChange={e => setRegionForm(f => ({...f,description:e.target.value}))}
-                  placeholder="Descripción opcional"
+                  placeholder={i18n.t('admin.worlds.desc_optional')}
                   className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Icono</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.icon')}</label>
                   <input value={regionForm.icon} onChange={e => setRegionForm(f => ({...f,icon:e.target.value}))}
                     className="w-full px-3 py-2.5 rounded-xl text-[20px] bg-bg border border-line text-text focus:outline-none text-center min-h-[44px]" maxLength={2}/>
                 </div>
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Orden</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.order')}</label>
                   <input type="number" value={regionForm.order_index} onChange={e => setRegionForm(f => ({...f,order_index:parseInt(e.target.value)||0}))}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
                 </div>
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
-              <button onClick={() => setRegionModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">Cancelar</button>
+              <button onClick={() => setRegionModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
               <button onClick={saveRegion} disabled={savingRegion} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
                 style={{ background:'rgba(0,194,40,0.14)', color:'#00C228', border:'1px solid rgba(0,194,40,0.28)' }}>
                 {savingRegion ? 'Guardando…' : editingRegion ? 'Guardar' : 'Crear región'}
@@ -512,38 +513,38 @@ export default function WorldDetail() {
             </div>
             <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
               <div>
-                <label className="block text-[12px] font-medium text-text-muted mb-1.5">Nombre *</label>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.name_required')}</label>
                 <input required value={levelForm.name} onChange={e => setLevelForm(f => ({...f,name:e.target.value}))}
-                  placeholder="Ej: Nivel 1 — Introducción"
+                  placeholder={i18n.t('admin.worlds.ph_level_name')}
                   className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-text-muted mb-1.5">Quiz de Arena</label>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.arena_quiz')}</label>
                 <div className="relative">
                   <select value={levelForm.quiz_id} onChange={e => setLevelForm(f => ({...f,quiz_id:e.target.value}))}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer min-h-[44px]">
-                    <option value="">Sin quiz asignado</option>
+                    <option value="">{i18n.t('admin.worlds.no_quiz_assigned')}</option>
                     {quizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none"/>
                 </div>
-                <p className="text-[11px] text-text-muted mt-1">El quiz debe crearse primero en el módulo Arena.</p>
+                <p className="text-[11px] text-text-muted mt-1">{i18n.t('admin.worlds.quiz_create_first')}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Icono</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.icon')}</label>
                   <input value={levelForm.icon} onChange={e => setLevelForm(f => ({...f,icon:e.target.value}))}
                     className="w-full px-3 py-2.5 rounded-xl text-[20px] bg-bg border border-line text-text focus:outline-none text-center min-h-[44px]" maxLength={2}/>
                 </div>
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Descripción</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')}</label>
                   <input value={levelForm.description} onChange={e => setLevelForm(f => ({...f,description:e.target.value}))}
-                    placeholder="Opcional"
+                    placeholder={i18n.t('admin.worlds.optional')}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
                 </div>
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-text-muted mb-1.5">Puntuación mínima para pasar (%)</label>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.min_score')}</label>
                 <input
                   type="number"
                   min={0}
@@ -556,7 +557,7 @@ export default function WorldDetail() {
                       min_score_pct: e.target.value === '' ? null : Number(e.target.value),
                     }))
                   }}
-                  placeholder="0-100, vacío para sin requisito"
+                  placeholder={i18n.t('admin.worlds.ph_min_score')}
                   className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border text-text placeholder-text-subtle focus:outline-none transition-colors min-h-[44px]"
                   style={{ borderColor: levelScoreError ? '#ef4444' : undefined }}/>
                 {levelScoreError && (
@@ -565,7 +566,7 @@ export default function WorldDetail() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
-              <button onClick={() => setLevelModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">Cancelar</button>
+              <button onClick={() => setLevelModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
               <button onClick={saveLevel} disabled={savingLevel} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
                 style={{ background:'rgba(0,194,40,0.14)', color:'#00C228', border:'1px solid rgba(0,194,40,0.28)' }}>
                 {savingLevel ? 'Guardando…' : editingLevel ? 'Guardar' : 'Crear nivel'}
@@ -583,7 +584,7 @@ export default function WorldDetail() {
           <div className="wd-modal w-full max-w-sm rounded-2xl bg-surface border border-line overflow-hidden">
             <div className="px-4 sm:px-6 pt-6 pb-4 text-center">
               <div className="text-[2rem] mb-3">⚠️</div>
-              <h3 className="text-[16px] font-semibold text-text mb-2">¿Estás seguro?</h3>
+              <h3 className="text-[16px] font-semibold text-text mb-2">{i18n.t('admin.worlds.sure')}</h3>
               <p className="text-[13px] text-text-muted leading-relaxed">
                 Esto borrará todo tu progreso en este mundo.
               </p>

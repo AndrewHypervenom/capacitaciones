@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BLOCK_REGISTRY, type BlockType, type BlockMeta } from '@/types/blocks';
 import { cn } from '@/lib/cn';
+import i18n from '@/i18n';
 
 interface Props {
   onSelect: (type: BlockType) => void;
@@ -61,7 +62,7 @@ export function BlockInsertMenu({ onSelect, onClose }: Props) {
             <input
               ref={inputRef}
               type="text"
-              placeholder="Buscar bloque..."
+              placeholder={i18n.t('admin.modules.be.search_block')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="flex-1 bg-transparent text-[13px] text-text placeholder:text-text-subtle outline-none"
@@ -72,7 +73,7 @@ export function BlockInsertMenu({ onSelect, onClose }: Props) {
         {/* Block list */}
         <div className="max-h-80 overflow-y-auto py-2">
           {grouped.length === 0 && (
-            <p className="text-[12px] text-text-subtle text-center py-6">Sin resultados</p>
+            <p className="text-[12px] text-text-subtle text-center py-6">{i18n.t('admin.modules.be.no_results')}</p>
           )}
           {grouped.map((group) => (
             <div key={group.key}>

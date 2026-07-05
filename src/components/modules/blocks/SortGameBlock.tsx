@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle2, RefreshCcw, Trophy, Timer, AlertCircle } from 'lucide-react';
 import { saveActivityAttempt } from '@/services/activity.service';
 import type { GameSortBlock, GameSortProcess } from '@/types/blocks';
@@ -88,6 +89,7 @@ const fadeSlide = {
 };
 
 export default function SortGameBlock({ block, language, userId, campaignId, moduleId, sectionId }: Props) {
+  const { t } = useTranslation();
   const processes = normalizeProcesses(block);
 
   // ESTADOS INTERNOS
@@ -187,8 +189,8 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   const multiProcess   = processes.length > 1;
   const isLastProcess  = processIdx === processes.length - 1;
 
-  const feedbackCorrect = currentProcess.feedback_correct?.[language] || currentProcess.feedback_correct?.es || '¡Correcto! Ese es el orden exacto.';
-  const feedbackWrong = currentProcess.feedback_wrong?.[language] || currentProcess.feedback_wrong?.es || 'El orden no es correcto. Revisa los pasos e inténtalo de nuevo.';
+  const feedbackCorrect = currentProcess.feedback_correct?.[language] || currentProcess.feedback_correct?.es || t('module.blocks.sort.default_correct');
+  const feedbackWrong = currentProcess.feedback_wrong?.[language] || currentProcess.feedback_wrong?.es || t('module.blocks.sort.default_wrong');
 
   // MANEJADORES DE ACCIONES
   const handleDragStart = (id: string) => setDragId(id);
@@ -342,7 +344,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     onClick={handleVerify}
                     className="w-full mt-1 py-2.5 rounded-xl bg-neon-green/10 border border-neon-green/20 text-neon-green text-[13.5px] font-semibold hover:bg-neon-green/20 transition-colors"
                   >
-                    Verificar orden
+                    {t('module.blocks.sort.verify')}
                   </button>
                 </motion.div>
               )}
@@ -386,7 +388,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     <div className="flex justify-end">
                       <span className="text-[11px] text-text-subtle/50 flex items-center gap-1">
                         <Timer className="h-3 w-3" />
-                        {formatTime(savedTime)} seg
+                        {formatTime(savedTime)} {t('module.blocks.seconds_suffix')}
                       </span>
                     </div>
                   </div>
@@ -395,7 +397,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     className="flex items-center gap-2 px-4 py-2 rounded-xl glass border border-glass-border/15 text-text-subtle text-[13px] hover:text-text transition-colors"
                   >
                     <RefreshCcw className="h-3.5 w-3.5" />
-                    Volver a intentar
+                    {t('module.blocks.retry')}
                   </button>
                 </motion.div>
               )}
@@ -425,7 +427,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     <div className="flex justify-end">
                       <span className="text-[11px] px-2 py-0.5 rounded-md bg-white/5 dark:bg-black/20 border border-line/40 text-text-muted flex items-center gap-1">
                         <Timer className="h-3 w-3 text-text-muted" />
-                        {formatTime(savedTime)} seg
+                        {formatTime(savedTime)} {t('module.blocks.seconds_suffix')}
                       </span>
                     </div>
                   </div>
@@ -434,7 +436,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     className="flex items-center gap-2 px-4 py-2 rounded-xl glass border border-glass-border/15 text-text-subtle text-[13px] hover:text-text transition-colors"
                   >
                     <RefreshCcw className="h-3.5 w-3.5" />
-                    Volver a intentar
+                    {t('module.blocks.retry')}
                   </button>
                 </motion.div>
               )}
@@ -466,7 +468,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     className="absolute right-12 top-1/2 -translate-y-1/2 z-20 w-48 px-3 py-2.5 rounded-xl glass border border-red-500/20 bg-red-500/10 shadow-lg"
                   >
                     <p className="text-[12px] text-red-400 leading-snug font-medium">
-                      Completa este proceso para continuar
+                      {t('module.blocks.sort.complete_to_continue')}
                     </p>
                   </motion.div>
                 )}
@@ -488,14 +490,14 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
           <div className="glass rounded-2xl p-6 space-y-5 border border-glass-border/10">
             <div className="flex items-center gap-3">
               <Trophy className="h-5 w-5 text-neon-green shrink-0" />
-              <span className="text-[15px] font-semibold text-text">Resultado final</span>
+              <span className="text-[15px] font-semibold text-text">{t('module.blocks.result_final')}</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl border border-glass-border/20 bg-white dark:bg-white/5 backdrop-blur-sm flex flex-col justify-between space-y-2 shadow-sm transition-colors">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold text-text-subtle dark:text-text-muted uppercase tracking-wider">
-                    Eficacia del Protocolo
+                    {t('module.blocks.sort.efficiency')}
                   </span>
                   <span className="text-emerald-500 text-xs">🎯</span>
                 </div>
@@ -503,7 +505,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                   {processes.length > 0 ? Math.round((scoreFirstTry / processes.length) * 100) : 100}%
                 </p>
                 <p className="text-[10px] text-text-subtle/80 dark:text-text-subtle">
-                  De los {processes.length} procesos evaluados, completaste {scoreFirstTry} sin desvíos.
+                  {t('module.blocks.sort.efficiency_detail', { total: processes.length, done: scoreFirstTry })}
                 </p>
               </div>
 
@@ -518,7 +520,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     "text-[11px] font-semibold uppercase tracking-wider",
                     scoreWithHelp > 0 ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-400"
                   )}>
-                    Flujos por Corregir
+                    {t('module.blocks.sort.flows_to_fix')}
                   </span>
                   <span className="text-xs">{scoreWithHelp > 0 ? '⚠️' : '✅'}</span>
                 </div>
@@ -526,12 +528,12 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                   "text-2xl font-bold",
                   scoreWithHelp > 0 ? "text-amber-800 dark:text-amber-300" : "text-green-800 dark:text-green-300"
                 )}>
-                  {scoreWithHelp} {scoreWithHelp === 1 ? 'Sección' : 'Secciones'}
+                  {scoreWithHelp} {scoreWithHelp === 1 ? t('module.blocks.sort.section_one') : t('module.blocks.sort.section_other')}
                 </p>
                 <p className="text-[10px] text-text-subtle/80 dark:text-text-subtle">
-                  {scoreWithHelp > 0 
-                    ? "Revisa los pasos marcados en gris para asegurar el estándar de seguridad." 
-                    : "¡Excelente! No se registraron alertas críticas en la sesión."}
+                  {scoreWithHelp > 0
+                    ? t('module.blocks.sort.fix_hint')
+                    : t('module.blocks.sort.no_alerts')}
                 </p>
               </div>
             </div>
@@ -550,7 +552,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                     'text-[11px] px-2.5 py-0.5 rounded-full font-medium',
                     !usedHelp[i] ? 'bg-neon-green/10 text-neon-green' : 'bg-glass-border/10 text-text-subtle',
                   )}>
-                    {!usedHelp[i] ? 'A la primera' : 'Repasar Protocolo'}
+                    {!usedHelp[i] ? t('module.blocks.sort.first_try') : t('module.blocks.sort.needs_review')}
                   </span>
                 </div>
               ))}
@@ -562,7 +564,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                 transition={{ delay: 0.2 }}
                 className="text-[13px] text-neon-green text-center"
               >
-                ¡Perfecto! Completaste todos los procesos al primer intento.
+                {t('module.blocks.sort.all_first_try')}
               </motion.p>
             )}
           </div>
@@ -571,7 +573,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl glass border border-glass-border/15 text-text-subtle text-[13px] hover:text-text transition-colors"
           >
             <RefreshCcw className="h-3.5 w-3.5" />
-            Volver a intentar
+            {t('module.blocks.retry')}
           </button>
         </motion.div>
       )}

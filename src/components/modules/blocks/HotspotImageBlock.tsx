@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import type { HotspotImageBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function HotspotImageBlockRenderer({ block, language }: Props) {
+  const { t } = useTranslation();
   const [active, setActive] = useState<number | null>(null);
   if (!block.url) return null;
 
@@ -70,7 +72,7 @@ export function HotspotImageBlockRenderer({ block, language }: Props) {
         </figcaption>
       )}
       {block.points.length > 0 && (
-        <p className="text-[11px] text-text-subtle text-center">Toca los puntos para ver más</p>
+        <p className="text-[11px] text-text-subtle text-center">{t('module.blocks.hotspot_hint')}</p>
       )}
     </figure>
   );

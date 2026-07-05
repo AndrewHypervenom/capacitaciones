@@ -17,6 +17,7 @@ import {
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
 import { confirmDialog } from '@/components/ui/ConfirmDialog'
 import i18n from '@/i18n'
+import { useTranslation } from 'react-i18next'
 import { GenerationProgress, MODULE_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -180,6 +181,7 @@ function AIModeForm({
   onSelectCourse: (id: string) => void
   onCreated: (moduleId: string) => void | Promise<void>
 }) {
+  const { t } = useTranslation()
   const { remaining, notifyCache } = useCacheTimer()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -248,7 +250,7 @@ function AIModeForm({
       <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8 space-y-5">
         {isSuperAdmin && campaigns.length > 0 && (
           <div>
-            <SectionLabel>Campaña destino</SectionLabel>
+            <SectionLabel>{t('admin.modules.new.campaign_target')}</SectionLabel>
             <FilterDropdown
               value={campaignId}
               onChange={onSelectCampaign}
@@ -260,7 +262,7 @@ function AIModeForm({
           </div>
         )}
         <div>
-          <SectionLabel>Curso destino</SectionLabel>
+          <SectionLabel>{t('admin.modules.new.course_target')}</SectionLabel>
           <FilterDropdown
             value={courseId}
             onChange={onSelectCourse}
@@ -275,7 +277,7 @@ function AIModeForm({
       {/* Description input */}
       <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
         <div className="flex items-center justify-between mb-3">
-          <SectionLabel>¿Qué debe aprender el agente?</SectionLabel>
+          <SectionLabel>{t('admin.modules.new.what_learn')}</SectionLabel>
           {remaining > 0 && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-green/8 border border-brand-green/20 text-brand-green text-[10px] font-medium">
               <Clock className="h-3 w-3" />
@@ -286,7 +288,7 @@ function AIModeForm({
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Ej: Módulo sobre manejo de objeciones en ventas telefónicas. Cubre técnicas de escucha activa, cómo rebatir objeciones de precio y tiempo, y cómo cerrar la llamada de forma positiva aunque no haya venta..."
+          placeholder={t('admin.modules.new.ph_prompt')}
           rows={5}
           className={cn(
             'w-full rounded-xl px-4 py-3 text-[14px] text-text resize-none',
@@ -300,7 +302,7 @@ function AIModeForm({
         <div className="mt-4 pt-4 border-t border-glass-border/8">
           <div className="flex items-center justify-between mb-2.5">
             <span className="text-[11px] text-text-muted font-medium">
-              Documento fuente <span className="text-text-subtle font-normal">(opcional — .txt o .md)</span>
+              {t('admin.modules.new.source_document')} <span className="text-text-subtle font-normal">{t('admin.modules.new.optional_file')}</span>
             </span>
             {(documentText || fileName) && (
               <button
@@ -347,7 +349,7 @@ function AIModeForm({
                 <textarea
                   value={documentText}
                   onChange={(e) => setDocumentText(e.target.value)}
-                  placeholder="Pega aquí el contenido del documento. Para PDFs, copia el texto desde el visor."
+                  placeholder={t('admin.modules.new.ph_paste_doc')}
                   rows={5}
                   className={cn(
                     'w-full mt-2.5 rounded-xl px-4 py-3 text-[13px] text-text resize-none',
@@ -390,7 +392,7 @@ function AIModeForm({
       <GenerationProgress
         steps={MODULE_GENERATION_STEPS}
         active={generating}
-        title="Generando módulo con Claude..."
+        title={t('admin.modules.new.title_generating')}
       />
 
       {/* Preview */}
@@ -405,7 +407,7 @@ function AIModeForm({
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
-                  <span className="text-[12px] font-semibold text-text">Módulo listo para crear</span>
+                  <span className="text-[12px] font-semibold text-text">{t('admin.modules.new.ready_to_create')}</span>
                 </div>
                 <button
                   onClick={handleGenerate}
@@ -498,9 +500,9 @@ function AIModeForm({
             className="w-full sm:w-auto sm:min-w-[180px] flex items-center justify-center gap-2"
           >
             {generating ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</>
+              <><Loader2 className="h-4 w-4 animate-spin" /> {t('admin.modules.new.generating')}</>
             ) : (
-              <><Sparkles className="h-4 w-4" /> Generar módulo</>
+              <><Sparkles className="h-4 w-4" /> {t('admin.modules.new.generate_module')}</>
             )}
           </Button>
         ) : (
@@ -513,9 +515,9 @@ function AIModeForm({
             className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2"
           >
             {saving ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Creando módulo...</>
+              <><Loader2 className="h-4 w-4 animate-spin" /> {t('admin.modules.new.creating_module')}</>
             ) : (
-              <>Crear y abrir en editor <ChevronRight className="h-4 w-4" /></>
+              <>{t('admin.modules.new.create_open_editor')} <ChevronRight className="h-4 w-4" /></>
             )}
           </Button>
         )}
@@ -527,6 +529,7 @@ function AIModeForm({
 // ─── Main page ────────────────────────────────────────────────
 
 export default function NewModulePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
@@ -693,7 +696,7 @@ export default function NewModulePage() {
           >
             {/* ── Identidad visual ── */}
             <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
-              <SectionLabel>Identidad visual</SectionLabel>
+              <SectionLabel>{t('admin.modules.new.visual_identity')}</SectionLabel>
               <div className="flex flex-col items-center mb-5">
                 <div className={cn(
                   'w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-4',
@@ -747,7 +750,7 @@ export default function NewModulePage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[12px] font-medium text-text-muted">
-                    Subtítulo <span className="text-text-subtle text-[11px]">(opcional)</span>
+                    {t('admin.modules.new.subtitle')} <span className="text-text-subtle text-[11px]">{t('admin.modules.new.optional')}</span>
                   </label>
                   <LangTabs active={subtitleLang} onChange={setSubtitleLang} />
                 </div>
@@ -767,7 +770,7 @@ export default function NewModulePage() {
 
             {/* ── Configuración ── */}
             <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
-              <SectionLabel>Configuración</SectionLabel>
+              <SectionLabel>{t('admin.modules.new.config')}</SectionLabel>
 
               <div className="mb-5">
                 <label className="text-[12px] font-medium text-text-muted block mb-3">
@@ -788,7 +791,7 @@ export default function NewModulePage() {
                   </button>
                   <div className="flex-1 text-center">
                     <span className="text-[32px] font-bold text-text tabular-nums">{duration}</span>
-                    <span className="text-[13px] text-text-muted ml-2">min</span>
+                    <span className="text-[13px] text-text-muted ml-2">{t('admin.modules.new.min')}</span>
                   </div>
                   <button
                     type="button"
@@ -809,13 +812,13 @@ export default function NewModulePage() {
                   className="w-full mt-3 accent-neon-green h-1 rounded-full cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-text-subtle mt-1">
-                  <span>5 min</span><span>4 h</span>
+                  <span>{t('admin.modules.new.five_min')}</span><span>{t('admin.modules.new.four_h')}</span>
                 </div>
               </div>
 
               {isSuperAdmin && campaigns.length > 0 && (
                 <div>
-                  <label className="text-[12px] font-medium text-text-muted block mb-2">Campaña</label>
+                  <label className="text-[12px] font-medium text-text-muted block mb-2">{t('admin.modules.new.campaign')}</label>
                   <FilterDropdown
                     value={campaignId}
                     onChange={setCampaignId}
@@ -866,8 +869,8 @@ export default function NewModulePage() {
                 className="min-w-[160px] flex items-center justify-center gap-2"
               >
                 {saving
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando…</>
-                  : <>Crear módulo <ChevronRight className="h-4 w-4" /></>
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> {t('admin.modules.new.creating')}</>
+                  : <>{t('admin.modules.new.create_module')} <ChevronRight className="h-4 w-4" /></>
                 }
               </Button>
             </div>

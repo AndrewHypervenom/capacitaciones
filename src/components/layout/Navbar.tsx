@@ -15,7 +15,9 @@ export function Navbar() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const { name, reset } = useUserStore();
-  const { isAdminOrCapacitador } = useAuth();
+  const { isAdminOrCapacitador, isSuperAdmin } = useAuth();
+  // El capacitador no debe ver la palabra "Admin"; para él es su panel de gestión.
+  const adminLabel = isSuperAdmin ? t('nav.admin', 'Admin') : t('nav.manage', 'Gestión');
   const completedModules = useProgressStore((s) => s.completedModules);
   const { planModules: modules } = useModules();
   const progress = modules.length > 0 ? completedModules.length / modules.length : 0;
@@ -56,7 +58,7 @@ export function Navbar() {
               {t('nav.simulator')}
             </NavLink>
             <NavLink to="/admin" className={linkClass}>
-              Admin
+              {adminLabel}
             </NavLink>
           </nav>
         )}
@@ -71,7 +73,7 @@ export function Navbar() {
           {isAdminOrCapacitador && (
             <Link
               to="/admin"
-              aria-label="Admin"
+              aria-label={adminLabel}
               className="h-8 w-8 inline-flex items-center justify-center rounded-full text-text-muted hover:text-text hover:bg-subtle transition-colors md:hidden"
             >
               <Settings className="h-3.5 w-3.5" />

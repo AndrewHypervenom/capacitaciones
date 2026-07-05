@@ -323,7 +323,7 @@ export default function StaffDashboard() {
                 {streak}
               </div>
               <div className="text-[11px] text-text-subtle mt-0.5">
-                {streak === 1 ? 'día de racha' : streak > 1 ? 'días de racha' : 'Empieza hoy'}
+                {streak === 1 ? t('dashboard.streak_one') : streak > 1 ? t('dashboard.streak_other') : t('dashboard.streak_start')}
               </div>
             </div>
           </GlassCard>

@@ -7,6 +7,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 
 type QuizStatus = 'draft' | 'published'
 type ThemeType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -329,8 +330,8 @@ export default function Arena() {
           className="mt-8 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
           style={{ background: 'rgba(239,68,68,0.04)', border: '1px dashed rgba(239,68,68,0.20)' }}
         >
-          <div className="text-[15px] font-medium text-text mb-2">Sin campaña asignada</div>
-          <div className="text-[13px] text-text-muted">No tienes una campaña asignada. Contacta al superadmin.</div>
+          <div className="text-[15px] font-medium text-text mb-2">{i18n.t('admin.worlds.no_campaign_title')}</div>
+          <div className="text-[13px] text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
         </div>
       </div>
     )
@@ -388,7 +389,7 @@ export default function Arena() {
             style={{ background: 'rgba(0,194,40,0.04)', border: '1px dashed rgba(0,194,40,0.20)' }}
           >
             <Trophy className="h-10 w-10 mb-4" style={{ color: '#00C228', opacity: 0.5 }} />
-            <div className="text-[15px] font-medium text-text mb-1">Todavía no hay quizzes</div>
+            <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.arena.no_quizzes')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
               Creá tu primer quiz para poner a prueba el conocimiento de los participantes
             </div>
@@ -540,23 +541,23 @@ export default function Arena() {
 
                 {/* Título */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Título *</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.title_required')}</label>
                   <input
                     required
                     value={form.title}
                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="Ej: Quiz de incorporación"
+                    placeholder={i18n.t('admin.arena.ph_quiz_title')}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors min-h-[44px]"
                   />
                 </div>
 
                 {/* Descripción */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Descripción</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')}</label>
                   <textarea
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Describí el objetivo de este quiz..."
+                    placeholder={i18n.t('admin.arena.ph_quiz_desc')}
                     rows={2}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors resize-none"
                   />
@@ -566,14 +567,14 @@ export default function Arena() {
                 <div className={scopedToCampaign ? '' : 'grid grid-cols-2 gap-3'}>
                   {!scopedToCampaign && (
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Campaña</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
                     <div className="relative">
                       <select
                         value={form.campaign_id}
                         onChange={e => setForm(f => ({ ...f, campaign_id: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none min-h-[44px]"
                       >
-                        <option value="">Sin campaña</option>
+                        <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
                         {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
@@ -581,7 +582,7 @@ export default function Arena() {
                   </div>
                   )}
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Tipo de tema</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.arena.theme_type')}</label>
                     <div className="relative">
                       <select
                         value={form.theme_type}
@@ -600,7 +601,7 @@ export default function Arena() {
                 {/* Icono + Color + XP */}
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Icono (emoji)</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.icon_emoji')}</label>
                     <input
                       value={form.theme_icon}
                       onChange={e => setForm(f => ({ ...f, theme_icon: e.target.value }))}
@@ -609,7 +610,7 @@ export default function Arena() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Color del tema</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.arena.theme_color')}</label>
                     <input
                       type="color"
                       value={form.theme_color}
@@ -618,7 +619,7 @@ export default function Arena() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">XP por pregunta</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.arena.xp_per_question')}</label>
                     <input
                       type="number"
                       min={1}
@@ -672,7 +673,7 @@ export default function Arena() {
                         <textarea
                           value={step.question}
                           onChange={e => updateStep(step.id, { question: e.target.value })}
-                          placeholder="Escribí la pregunta..."
+                          placeholder={i18n.t('admin.arena.ph_question')}
                           rows={2}
                           className="w-full px-3 py-2 rounded-lg text-[13px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/40 transition-colors resize-none"
                         />
@@ -681,7 +682,7 @@ export default function Arena() {
                         <input
                           value={step.context}
                           onChange={e => updateStep(step.id, { context: e.target.value })}
-                          placeholder="Contexto o pista (opcional)..."
+                          placeholder={i18n.t('admin.arena.ph_hint')}
                           className="w-full px-3 py-2 rounded-lg text-[12px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/40 transition-colors"
                         />
 
@@ -690,7 +691,7 @@ export default function Arena() {
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="text-[11px] text-text-subtle">
                               Opciones{' '}
-                              <span className="opacity-60">(circulá la correcta)</span>
+                              <span className="opacity-60">{i18n.t('admin.arena.circle_correct')}</span>
                             </span>
                             {step.options.length < 4 && (
                               <button
@@ -711,7 +712,7 @@ export default function Arena() {
                                   <button
                                     type="button"
                                     onClick={() => setCorrect(step.id, opt.id)}
-                                    title="Marcar como correcta"
+                                    title={i18n.t('admin.arena.mark_correct')}
                                     className="h-4 w-4 rounded-full border-2 shrink-0 transition-all"
                                     style={
                                       opt.correct
@@ -743,7 +744,7 @@ export default function Arena() {
                                 <input
                                   value={opt.explanation}
                                   onChange={e => updateOption(step.id, opt.id, { explanation: e.target.value })}
-                                  placeholder="Explicación al seleccionar esta opción (opcional)..."
+                                  placeholder={i18n.t('admin.arena.ph_explanation')}
                                   className="w-full pl-6 pr-2.5 py-1 rounded-lg text-[11px] bg-surface border border-line text-text-muted placeholder-text-subtle focus:outline-none focus:border-[#00C228]/30 transition-colors"
                                 />
                               </div>

@@ -89,6 +89,7 @@ function QuestionEditor({
   onChange: (q: VideoQuestionRaw) => void
   onDelete: () => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(index === 0)
   const qField = `question_${lang}` as keyof VideoQuestionRaw
   const optsField = `options_${lang}` as keyof VideoQuestionRaw
@@ -134,7 +135,7 @@ function QuestionEditor({
               onChange={(e) => onChange({ ...q, [qField]: e.target.value })}
               rows={2}
               className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none resize-none placeholder:text-text-subtle"
-              placeholder="¿Cuál es la respuesta correcta?"
+              placeholder={t('admin.modules.vme.ph_correct_answer')}
             />
           </div>
 
@@ -183,7 +184,7 @@ function QuestionEditor({
               onChange={(e) => onChange({ ...q, [expField]: e.target.value })}
               rows={2}
               className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none resize-none placeholder:text-text-subtle"
-              placeholder="Por qué esta respuesta es correcta..."
+              placeholder={t('admin.modules.vme.ph_why_correct')}
             />
           </div>
         </div>
@@ -285,7 +286,7 @@ function MarkerEditForm({
     <div className="mt-2 p-4 rounded-2xl border border-blue-400/20 bg-blue-400/4 space-y-4">
       <div className="flex items-center gap-3">
         <div>
-          <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">Tiempo</label>
+          <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('admin.modules.vme.time')}</label>
           <input
             value={timeInput}
             onChange={(e) => setTimeInput(e.target.value)}
@@ -302,7 +303,7 @@ function MarkerEditForm({
             value={draft[titleField]}
             onChange={(e) => setDraft((p) => ({ ...p, [titleField]: e.target.value }))}
             className="w-full rounded-lg px-2.5 py-1.5 text-[13px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none placeholder:text-text-subtle"
-            placeholder={draft.type === 'chapter' ? 'Nombre del capítulo' : 'Nombre del quiz'}
+            placeholder={draft.type === 'chapter' ? t('admin.modules.vme.ph_chapter_name') : t('admin.modules.vme.ph_quiz_name')}
           />
         </div>
       </div>
@@ -310,7 +311,7 @@ function MarkerEditForm({
       {/* Títulos en los otros dos idiomas */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">Otros idiomas</span>
+          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">{t('admin.modules.vme.other_langs')}</span>
           <button
             type="button"
             onClick={handleAutoTranslate}
@@ -318,8 +319,8 @@ function MarkerEditForm({
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-400/8 border border-blue-400/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {translating
-              ? <><Loader2 className="h-3 w-3 animate-spin" /> Traduciendo…</>
-              : <><Languages className="h-3 w-3" /> Traducir con IA</>}
+              ? <><Loader2 className="h-3 w-3 animate-spin" /> {t('admin.modules.vme.translating')}</>
+              : <><Languages className="h-3 w-3" /> {t('admin.modules.vme.translate_ai')}</>}
           </button>
         </div>
         {translateError && (
@@ -477,7 +478,7 @@ export function VideoMarkerEditor({
 
   const handleFileSelect = async (file: File) => {
     if (!sectionId) {
-      setUploadError('Guarda la sección primero para poder subir archivos')
+      setUploadError(t('admin.modules.media_save_section_first'))
       return
     }
     if (!['video/mp4', 'video/webm', 'video/ogg'].includes(file.type)) {
@@ -580,9 +581,9 @@ export function VideoMarkerEditor({
                 <Video className="h-8 w-8 text-text-subtle" />
                 <p className="text-[13px] text-text-muted text-center">
                   Arrastra un video MP4/WebM aquí o{' '}
-                  <span className="text-blue-400 font-medium">selecciona archivo</span>
+                  <span className="text-blue-400 font-medium">{t('admin.modules.media_browse')}</span>
                 </p>
-                <p className="text-[11px] text-text-subtle">MP4, WebM, OGG · Máx 500 MB</p>
+                <p className="text-[11px] text-text-subtle">{t('admin.modules.vme.video_specs')}</p>
               </>
             )}
           </div>
@@ -718,8 +719,8 @@ export function VideoMarkerEditor({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-400/8 border border-blue-400/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {translatingAll
-                ? <><Loader2 className="h-3 w-3 animate-spin" /> Traduciendo…</>
-                : <><Languages className="h-3 w-3" /> Traducir todos con IA</>}
+                ? <><Loader2 className="h-3 w-3 animate-spin" /> {t('admin.modules.vme.translating')}</>
+                : <><Languages className="h-3 w-3" /> {t('admin.modules.vme.translate_all_ai')}</>}
             </button>
           </div>
           {translateAllError && (

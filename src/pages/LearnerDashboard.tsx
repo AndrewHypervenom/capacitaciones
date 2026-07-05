@@ -595,7 +595,7 @@ export default function LearnerDashboard() {
                     {streak}
                   </div>
                   <div className="mt-0.5 text-[11px] text-text-subtle">
-                    {streak === 1 ? 'día de racha' : streak > 1 ? 'días de racha' : 'Empieza hoy'}
+                    {streak === 1 ? t('dashboard.streak_one') : streak > 1 ? t('dashboard.streak_other') : t('dashboard.streak_start')}
                   </div>
                 </div>
               </div>

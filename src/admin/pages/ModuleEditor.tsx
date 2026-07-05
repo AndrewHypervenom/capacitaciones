@@ -574,7 +574,7 @@ function SectionEditorPanel({
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <NeonBadge color="cyan">Video Interactivo</NeonBadge>
+            <NeonBadge color="cyan">{t('admin.modules.template_video_interactive')}</NeonBadge>
           </div>
           <LangTabs active={lang} onChange={setLang} />
         </div>
@@ -604,7 +604,7 @@ function SectionEditorPanel({
           <GlassInput
             value={heading[lang]}
             onChange={(v) => setHeading((prev) => ({ ...prev, [lang]: v }))}
-            placeholder="Título del módulo de video"
+            placeholder={t('admin.modules.ed_ph_video_title')}
           />
         </div>
 
@@ -641,9 +641,9 @@ function SectionEditorPanel({
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-black bg-neon-green hover:bg-neon-green/90 disabled:opacity-50 transition-colors ml-auto"
           >
             {saving
-              ? <><span className="h-3.5 w-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />Guardando…</>
+              ? <><span className="h-3.5 w-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />{t('admin.modules.ed_saving')}</>
               : saveOk
-                ? <><span className="text-[13px]">✓</span> Guardado</>
+                ? <><span className="text-[13px]">✓</span> {t('admin.modules.saved_ok')}</>
                 : <>{t('admin.modules.save_section')}</>
             }
           </button>
@@ -658,7 +658,7 @@ function SectionEditorPanel({
       {/* ── Encabezado ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <NeonBadge color="cyan">Sección</NeonBadge>
+          <NeonBadge color="cyan">{t('admin.modules.ed_section_badge')}</NeonBadge>
           <span className="text-[15px] font-semibold text-text truncate max-w-[200px]">
             {heading.es || t('admin.modules.section_untitled')}
           </span>
@@ -668,7 +668,7 @@ function SectionEditorPanel({
             </span>
           )}
           {(autoSaveStatus === 'ok' || saveOk) && autoSaveStatus !== 'saving' && (
-            <span className="text-[11px] text-neon-green">Guardado</span>
+            <span className="text-[11px] text-neon-green">{t('admin.modules.saved_ok')}</span>
           )}
         </div>
         <LangTabs active={lang} onChange={setLang} hasContent={langHasContent} />
@@ -763,7 +763,7 @@ function SectionEditorPanel({
                 Visualización
               </p>
               <div>
-                <FieldLabel>Tamaño</FieldLabel>
+                <FieldLabel>{t('admin.modules.ed_size')}</FieldLabel>
                 <div className="flex gap-1.5 flex-wrap">
                   {MEDIA_SIZES.map(({ value, label }) => (
                     <button
@@ -784,7 +784,7 @@ function SectionEditorPanel({
               </div>
               {mediaSize !== 'full' && mediaSize !== 'bleed' && (
                 <div>
-                  <FieldLabel>Alineación</FieldLabel>
+                  <FieldLabel>{t('admin.modules.ed_alignment')}</FieldLabel>
                   <div className="flex gap-1.5">
                     {([
                       { value: 'left' as MediaAlign, Icon: AlignLeft },
@@ -828,7 +828,7 @@ function SectionEditorPanel({
         {hasCallout && (
           <>
             <div>
-              <FieldLabel>Tipo de callout</FieldLabel>
+              <FieldLabel>{t('admin.modules.ed_callout_type')}</FieldLabel>
               <FilterDropdown
                 value={calloutKind}
                 onChange={(v) => setCalloutKind(v as CalloutKind)}
@@ -1083,7 +1083,7 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
     <div className="p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <NeonBadge color="violet" className="mb-1">Módulo</NeonBadge>
+          <NeonBadge color="violet" className="mb-1">{t('admin.modules.ed_module_badge')}</NeonBadge>
           <p className="text-[13px] text-text-muted mt-1">{t('admin.modules.meta_subtitle')}</p>
         </div>
         <LangTabs active={lang} onChange={setLang} />
@@ -1397,7 +1397,7 @@ export default function ModuleEditor() {
       {selectedSectionId ? (
         (() => {
           const s = sections.find((sec) => sec.id === selectedSectionId)
-          if (!s) return <p className="text-[12px] text-text-subtle text-center pt-10">Selecciona una sección</p>
+          if (!s) return <p className="text-[12px] text-text-subtle text-center pt-10">{t('admin.modules.ed_select_section')}</p>
           return (
             <div className="space-y-4">
               <p className="text-[10px] text-text-subtle uppercase tracking-widest font-medium">
@@ -1425,7 +1425,7 @@ export default function ModuleEditor() {
               )}
               {(s.section_quizzes?.length ?? 0) > 0 && (
                 <div className="glass rounded-2xl px-4 py-3">
-                  <p className="text-[11px] text-text-subtle mb-2">Quiz ✓</p>
+                  <p className="text-[11px] text-text-subtle mb-2">{t('admin.modules.ed_quiz_badge')}</p>
                   <p className="text-[13px] font-medium text-text">{s.section_quizzes![0].question_es}</p>
                   <div className="space-y-1.5 mt-3">
                     {s.section_quizzes![0].options_es?.map((o: string, i: number) => (
@@ -1482,7 +1482,7 @@ export default function ModuleEditor() {
           )}>
             <BookOpen className="h-3 w-3 text-text-subtle" />
           </div>
-          <span className="text-[12px] font-medium">Metadatos del módulo</span>
+          <span className="text-[12px] font-medium">{t('admin.modules.editor_meta_label')}</span>
         </button>
 
         <div className="flex items-center justify-between px-4 py-2 border-b border-glass-border/8">
@@ -1492,7 +1492,7 @@ export default function ModuleEditor() {
           <button
             onClick={() => setGalleryOpen(true)}
             disabled={addingSection}
-            title="Agregar sección"
+            title={t('admin.modules.add_section')}
             className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-40 transition-colors"
           >
             {addingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
@@ -1503,7 +1503,7 @@ export default function ModuleEditor() {
       <div className="flex-1 overflow-y-auto">
         {sections.length === 0 ? (
           <div className="px-4 py-6 text-center text-[11px] text-text-subtle">
-            Sin secciones.<br />Usa <Plus className="h-3 w-3 inline" /> para agregar.
+            {t('admin.modules.ed_no_sections_a')}<br />{t('admin.modules.ed_no_sections_b')} <Plus className="h-3 w-3 inline" /> {t('admin.modules.ed_no_sections_c')}
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1582,7 +1582,7 @@ export default function ModuleEditor() {
             {isDirty && (
               <span
                 className="h-2 w-2 rounded-full bg-amber-400 shrink-0 animate-glow-pulse"
-                title="Cambios sin guardar"
+                title={t('admin.modules.editor_unsaved_indicator')}
               />
             )}
           </div>
@@ -1606,9 +1606,9 @@ export default function ModuleEditor() {
               {publishingMod ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : mod.is_published ? (
-                <><EyeOff className="h-3.5 w-3.5" /><span className="hidden sm:inline">Despublicar</span></>
+                <><EyeOff className="h-3.5 w-3.5" /><span className="hidden sm:inline">{t('admin.modules.unpublish')}</span></>
               ) : (
-                <><Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">Publicar</span></>
+                <><Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">{t('admin.modules.publish')}</span></>
               )}
             </Button>
             <Button
@@ -1617,7 +1617,7 @@ export default function ModuleEditor() {
               onClick={() => saveFnRef.current?.()}
             >
               <Save className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Guardar</span>
+              <span className="hidden sm:inline">{t('admin.modules.ed_save')}</span>
             </Button>
           </div>
         </div>
@@ -1662,7 +1662,7 @@ export default function ModuleEditor() {
               <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
                 Preview en vivo
               </span>
-              <span className="ml-auto text-[10px] text-text-subtle">Como lo ven los aprendices</span>
+              <span className="ml-auto text-[10px] text-text-subtle">{t('admin.modules.ed_learner_preview')}</span>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-6">
               {previewContent}

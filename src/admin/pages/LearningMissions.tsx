@@ -7,6 +7,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 
 type StepType = 'intro' | 'video' | 'pdf' | 'quiz'
 type MissionStatus = 'draft' | 'active'
@@ -242,13 +243,13 @@ export default function LearningMissions() {
   if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
-        <h1 className="text-[24px] font-bold text-text mb-1">Learning Missions</h1>
+        <h1 className="text-[24px] font-bold text-text mb-1">{i18n.t('admin.worlds.lm_title')}</h1>
         <div
           className="mt-8 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
           style={{ background: 'rgba(239,68,68,0.04)', border: '1px dashed rgba(239,68,68,0.20)' }}
         >
-          <div className="text-[15px] font-medium text-text mb-2">Sin campaña asignada</div>
-          <div className="text-[13px] text-text-muted">No tienes una campaña asignada. Contacta al superadmin.</div>
+          <div className="text-[15px] font-medium text-text mb-2">{i18n.t('admin.worlds.no_campaign_title')}</div>
+          <div className="text-[13px] text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
         </div>
       </div>
     )
@@ -267,7 +268,7 @@ export default function LearningMissions() {
       <div className="p-4 sm:p-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
-          <h1 className="text-[24px] font-bold text-text">Learning Missions</h1>
+          <h1 className="text-[24px] font-bold text-text">{i18n.t('admin.worlds.lm_title')}</h1>
           <button
             onClick={openModal}
             className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-medium transition-colors"
@@ -307,7 +308,7 @@ export default function LearningMissions() {
             style={{ background: 'rgba(0,194,40,0.04)', border: '1px dashed rgba(0,194,40,0.20)' }}
           >
             <Target className="h-10 w-10 mb-4" style={{ color: '#00C228', opacity: 0.5 }} />
-            <div className="text-[15px] font-medium text-text mb-1">Todavía no hay misiones</div>
+            <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_missions')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
               Creá tu primera misión para organizar el aprendizaje en pasos claros y medibles
             </div>
@@ -444,23 +445,23 @@ export default function LearningMissions() {
 
                 {/* Título */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Título *</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.title_required')}</label>
                   <input
                     required
                     value={form.title}
                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="Ej: Bienvenida al equipo"
+                    placeholder={i18n.t('admin.worlds.ph_mission_title')}
                     className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors"
                   />
                 </div>
 
                 {/* Descripción */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Descripción</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')}</label>
                   <textarea
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Describí el objetivo de esta misión..."
+                    placeholder={i18n.t('admin.worlds.ph_mission_desc')}
                     rows={2}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors resize-none"
                   />
@@ -469,14 +470,14 @@ export default function LearningMissions() {
                 {/* Campaña — solo para superadmin */}
                 {campaigns.length > 0 && !scopedToCampaign && (
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Campaña</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
                     <div className="relative">
                       <select
                         value={form.campaign_id}
                         onChange={e => setForm(f => ({ ...f, campaign_id: e.target.value }))}
                         className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none"
                       >
-                        <option value="">Sin campaña</option>
+                        <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
                         {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
@@ -486,14 +487,14 @@ export default function LearningMissions() {
 
                 {/* Categoría */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Categoría</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.category')}</label>
                   <div className="relative">
                     <select
                       value={form.category}
                       onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none"
                     >
-                      <option value="">Sin categoría</option>
+                      <option value="">{i18n.t('admin.worlds.no_category')}</option>
                       {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />

@@ -137,6 +137,7 @@ function ChoiceScenariosSection({
   nav: ReturnType<typeof useNavigate>
   choiceScenarios: ChoiceScenario[]
 }) {
+  const { t } = useTranslation();
   const language = useUserStore((s) => s.language);
   const levels = (['basico', 'medio', 'avanzado'] as const).filter((lvl) =>
     choiceScenarios.some((s) => s.level === lvl),
@@ -149,7 +150,7 @@ function ChoiceScenariosSection({
         <div className="flex items-center gap-2 shrink-0">
           <MessageSquare className="h-4 w-4 text-text-muted" />
           <span className="text-[13px] font-medium text-text-muted uppercase tracking-widest">
-            Simulaciones de opción múltiple
+            {t('simulator.choice_section_title')}
           </span>
         </div>
         <div className="h-px flex-1 bg-line" />
@@ -167,7 +168,7 @@ function ChoiceScenariosSection({
                   style={{ background: meta.color }}
                 />
                 <span className="text-[15px] font-semibold text-text tracking-tight">
-                  {meta.label}
+                  {t(`simulator.level_${level}`)}
                 </span>
                 <span className="text-[12px] text-text-subtle border border-line rounded-full px-2 py-0.5">
                   {scenarios.length}

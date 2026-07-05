@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import i18n from '@/i18n'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Upload, FileText, FileSpreadsheet, Sparkles, Loader2, X,
@@ -275,7 +276,7 @@ export default function ImportContent() {
                 <button
                   onClick={() => { setDoc(null); resetToSetup() }}
                   className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
-                  title="Quitar archivo"
+                  title={i18n.t('admin.import.remove_file')}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -315,12 +316,12 @@ export default function ImportContent() {
           >
             {extracting ? (
               <><Loader2 className="h-6 w-6 animate-spin text-brand-violet" />
-                <span className="text-[13px] text-text-muted">Leyendo archivo…</span></>
+                <span className="text-[13px] text-text-muted">{i18n.t('admin.import.reading')}</span></>
             ) : (
               <>
                 <Upload className="h-6 w-6 text-text-muted" />
-                <span className="text-[13px] text-text font-medium">Subir archivo</span>
-                <span className="text-[11px] text-text-subtle">Word (.docx), Excel (.xlsx), PDF (.pdf) o texto (.txt, .md)</span>
+                <span className="text-[13px] text-text font-medium">{i18n.t('admin.import.upload')}</span>
+                <span className="text-[11px] text-text-subtle">{i18n.t('admin.import.formats')}</span>
               </>
             )}
           </button>
@@ -337,12 +338,12 @@ export default function ImportContent() {
         {phase === 'setup' && (
           <div className="mt-5">
             <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
-              Instrucciones para la IA <span className="text-text-subtle normal-case font-normal">(opcional)</span>
+              Instrucciones para la IA <span className="text-text-subtle normal-case font-normal">{i18n.t('admin.import.optional')}</span>
             </label>
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Ej: Crea un módulo por cada producto del catálogo. Enfócate en objeciones y cierre."
+              placeholder={i18n.t('admin.import.ph_prompt')}
               rows={2}
               className={cn(
                 'w-full rounded-xl px-4 py-3 text-[13px] text-text resize-none',
@@ -380,8 +381,8 @@ export default function ImportContent() {
             className="min-w-[200px] flex items-center justify-center gap-2"
           >
             {phase === 'analyzing'
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Analizando documento…</>
-              : <><Wand2 className="h-4 w-4" /> Analizar documento</>}
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> {i18n.t('admin.import.analyzing')}</>
+              : <><Wand2 className="h-4 w-4" /> {i18n.t('admin.import.analyze')}</>}
           </Button>
         </div>
       )}

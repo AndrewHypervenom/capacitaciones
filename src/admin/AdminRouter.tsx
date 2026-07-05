@@ -44,8 +44,8 @@ export default function AdminRouter() {
           <Route path="modules/new" element={<NewModulePage />} />
           <Route path="modules/:moduleId" element={<ModuleEditor />} />
           <Route path="modules/:moduleId/preview" element={<ModulePreview />} />
-          {/* Usuarios: solo superadmin */}
-          <Route path="users" element={isSuperAdmin ? <UserList /> : <Navigate to="/admin" replace />} />
+          {/* Usuarios: superadmin (todo) y capacitador (solo su campaña, lectura + asignar cursos) */}
+          <Route path="users" element={isSuperAdmin || isCapacitador ? <UserList /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
           <Route path="evaluaciones" element={<TrainerFeedbackPanel />} />
           <Route path="simulations" element={<SimulationList />} />

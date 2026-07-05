@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import i18n from '@/i18n';
 import { Plus, Trash2, GripVertical, PlusCircle } from 'lucide-react';
 import type { GameSortBlock, GameSortProcess, GameSortStep } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
@@ -93,27 +94,27 @@ export function SortGameEditor({ block, onChange, lang }: Props) {
       <div className="space-y-3">
         <div>
           <label className="text-[11px] uppercase tracking-widest text-text-subtle mb-1 block">
-            Título del juego
+            {i18n.t('admin.modules.be.ge_game_title')}
           </label>
           <input
             value={block.title?.[lang] ?? ''}
             onChange={(e) =>
               onChange({ ...block, title: { ...block.title, [lang]: e.target.value } })
             }
-            placeholder="Ej: Ordena los pasos del proceso"
+            placeholder={i18n.t('admin.modules.be.ge_ph_title_sort')}
             className="w-full px-3 py-2 rounded-lg glass border border-glass-border/20 text-[13.5px] text-text bg-transparent focus:outline-none focus:border-neon-green/40"
           />
         </div>
         <div>
           <label className="text-[11px] uppercase tracking-widest text-text-subtle mb-1 block">
-            Instrucciones
+            {i18n.t('admin.modules.be.ge_instructions')}
           </label>
           <input
             value={block.instructions?.[lang] ?? ''}
             onChange={(e) =>
               onChange({ ...block, instructions: { ...block.instructions, [lang]: e.target.value } })
             }
-            placeholder="Ej: Arrastra los pasos en el orden correcto"
+            placeholder={i18n.t('admin.modules.be.ge_ph_instructions_sort')}
             className="w-full px-3 py-2 rounded-lg glass border border-glass-border/20 text-[13.5px] text-text bg-transparent focus:outline-none focus:border-neon-green/40"
           />
         </div>
@@ -155,12 +156,12 @@ export function SortGameEditor({ block, onChange, lang }: Props) {
           {/* Pasos del proceso */}
           <div className="p-4 space-y-2">
             <p className="text-[11px] uppercase tracking-widest text-text-subtle mb-3">
-              Pasos — arrastra para definir el orden correcto
+              {i18n.t('admin.modules.be.ge_steps_hint')}
             </p>
 
             {proc.steps.length === 0 && (
               <p className="text-[12px] text-text-subtle/50 text-center py-3">
-                Sin pasos aún. Agrega el primero abajo.
+                {i18n.t('admin.modules.be.ge_no_steps')}
               </p>
             )}
 
@@ -197,14 +198,14 @@ export function SortGameEditor({ block, onChange, lang }: Props) {
               className="flex items-center gap-2 text-[12px] text-text-subtle hover:text-neon-green transition-colors mt-1"
             >
               <Plus className="h-3.5 w-3.5" />
-              Agregar paso
+              {i18n.t('admin.modules.be.ge_add_step')}
             </button>
           </div>
 
           {/* Feedback del proceso */}
           <div className="px-4 pb-4 space-y-2 border-t border-glass-border/10 pt-3">
             <p className="text-[11px] uppercase tracking-widest text-text-subtle">
-              Mensajes de retroalimentación
+              {i18n.t('admin.modules.be.ge_feedback_msgs')}
             </p>
             <input
               value={proc.feedback_correct?.[lang] ?? ''}
@@ -213,7 +214,7 @@ export function SortGameEditor({ block, onChange, lang }: Props) {
                  feedback_correct: { es: '', en: '', pt: '', ...proc.feedback_correct, [lang]: e.target.value },
                 })
               }
-              placeholder="Mensaje al acertar (ej: ¡Excelente! Ese es el orden correcto.)"
+              placeholder={i18n.t('admin.modules.be.ge_ph_msg_correct')}
               className="w-full px-3 py-2 rounded-lg border border-neon-green/15 bg-neon-green/5 text-[12.5px] text-text focus:outline-none focus:border-neon-green/40 placeholder:text-text-subtle/40"
             />
             <input
@@ -223,7 +224,7 @@ export function SortGameEditor({ block, onChange, lang }: Props) {
                  feedback_wrong: { es: '', en: '', pt: '', ...proc.feedback_wrong, [lang]: e.target.value },
                 })
               }
-              placeholder="Mensaje al fallar (ej: Revisa el orden e inténtalo de nuevo.)"
+              placeholder={i18n.t('admin.modules.be.ge_ph_msg_wrong')}
               className="w-full px-3 py-2 rounded-lg border border-red-500/15 bg-red-500/5 text-[12.5px] text-text focus:outline-none focus:border-red-500/30 placeholder:text-text-subtle/40"
             />
           </div>
@@ -236,7 +237,7 @@ export function SortGameEditor({ block, onChange, lang }: Props) {
         className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-dashed border-glass-border/30 text-text-subtle text-[13px] hover:border-neon-green/30 hover:text-neon-green transition-colors"
       >
         <PlusCircle className="h-4 w-4" />
-        Agregar proceso
+        {i18n.t('admin.modules.be.ge_add_process')}
       </button>
 
     </div>

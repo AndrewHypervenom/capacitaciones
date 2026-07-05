@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import type { FlashcardBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function FlashcardBlockRenderer({ block, language }: Props) {
+  const { t } = useTranslation();
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [seen, setSeen] = useState<Set<number>>(new Set());
@@ -43,7 +45,7 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
     >
       {/* Progress */}
       <div className="flex items-center justify-between text-[11px] text-text-subtle">
-        <span>{seen.size}/{total} revisadas</span>
+        <span>{t('module.blocks.flashcard_reviewed', { seen: seen.size, total })}</span>
         <span className="tabular-nums">{index + 1} / {total}</span>
       </div>
       <div className="flex gap-1 mb-1">
@@ -87,13 +89,13 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
                 className="absolute inset-0 glass-md rounded-3xl p-7 flex flex-col items-center justify-center text-center border border-glass-border/10"
                 style={{ backfaceVisibility: 'hidden' }}
               >
-                <p className="text-[10px] uppercase tracking-widest text-text-subtle mb-3 font-medium">Pregunta</p>
+                <p className="text-[10px] uppercase tracking-widest text-text-subtle mb-3 font-medium">{t('module.blocks.flashcard_question')}</p>
                 <div className="overflow-y-auto max-h-[130px] w-full flex items-center justify-center">
                   <p className="text-[17px] font-semibold text-text leading-snug">
                     {card.front[language] || card.front.es}
                   </p>
                 </div>
-                <p className="text-[11px] text-text-subtle mt-4 shrink-0">Clic o Espacio para revelar →</p>
+                <p className="text-[11px] text-text-subtle mt-4 shrink-0">{t('module.blocks.flashcard_reveal')}</p>
               </div>
 
               {/* Back */}
@@ -101,7 +103,7 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
                 className="absolute inset-0 glass-md rounded-3xl p-7 flex flex-col items-center justify-center text-center border border-neon-green/12 bg-neon-green/3"
                 style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
               >
-                <p className="text-[10px] uppercase tracking-widest text-neon-green mb-3 font-medium">Respuesta</p>
+                <p className="text-[10px] uppercase tracking-widest text-neon-green mb-3 font-medium">{t('module.blocks.flashcard_answer')}</p>
                 <div className="overflow-y-auto max-h-[150px] w-full flex items-center justify-center">
                   <p className="text-[17px] font-semibold text-text leading-snug">
                     {card.back[language] || card.back.es}
@@ -115,7 +117,7 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
 
       {/* Hint */}
       <p className="text-center text-[11px] text-text-subtle">
-        ← → para navegar · Espacio para voltear
+        {t('module.blocks.flashcard_nav_hint')}
       </p>
 
       {/* Navigation */}
@@ -124,7 +126,7 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
           disabled={index === 0}
           onClick={() => goTo(index - 1)}
           className="h-9 w-9 rounded-full glass flex items-center justify-center text-text-muted hover:text-text disabled:opacity-30 transition-colors"
-          aria-label="Anterior"
+          aria-label={t('common.previous')}
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -134,14 +136,14 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
           className="flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors"
         >
           <RotateCcw className="h-3 w-3" />
-          {flipped ? 'Ver pregunta' : 'Ver respuesta'}
+          {flipped ? t('module.blocks.flashcard_see_question') : t('module.blocks.flashcard_see_answer')}
         </button>
 
         <button
           disabled={index === total - 1}
           onClick={() => goTo(index + 1)}
           className="h-9 w-9 rounded-full glass flex items-center justify-center text-text-muted hover:text-text disabled:opacity-30 transition-colors"
-          aria-label="Siguiente"
+          aria-label={t('common.next')}
         >
           <ChevronRight className="h-4 w-4" />
         </button>

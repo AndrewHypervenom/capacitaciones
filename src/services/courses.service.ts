@@ -259,6 +259,16 @@ export async function getCourseAssignments(courseId: string): Promise<CourseAssi
   return (data ?? []) as CourseAssignmentRow[]
 }
 
+/** Asignaciones de cursos de una persona (para asignar cursos desde su ficha). */
+export async function getUserCourseAssignments(userId: string): Promise<CourseAssignmentRow[]> {
+  const { data, error } = await supabase
+    .from('course_assignments')
+    .select('course_id, user_id, is_mandatory')
+    .eq('user_id', userId)
+  if (error) throw error
+  return (data ?? []) as CourseAssignmentRow[]
+}
+
 export async function setCourseAssignment(
   courseId: string,
   userId: string,

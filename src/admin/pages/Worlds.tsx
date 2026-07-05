@@ -6,6 +6,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 
 type WorldStatus = 'draft' | 'published'
 type BgType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -214,13 +215,13 @@ export default function Worlds() {
   if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
-        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Mundos</h1>
+        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{i18n.t('admin.worlds.title')}</h1>
         <div
           className="mt-8 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
           style={{ background: 'rgba(239,68,68,0.04)', border: '1px dashed rgba(239,68,68,0.20)' }}
         >
-          <div className="text-[15px] font-medium text-text mb-2">Sin campaña asignada</div>
-          <div className="text-[13px] text-text-muted">No tienes una campaña asignada. Contacta al superadmin.</div>
+          <div className="text-[15px] font-medium text-text mb-2">{i18n.t('admin.worlds.no_campaign_title')}</div>
+          <div className="text-[13px] text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
         </div>
       </div>
     )
@@ -239,7 +240,7 @@ export default function Worlds() {
       <div className="p-4 sm:p-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-[20px] sm:text-[24px] font-bold text-text">Mundos</h1>
+          <h1 className="text-[20px] sm:text-[24px] font-bold text-text">{i18n.t('admin.worlds.title')}</h1>
           <button
             onClick={openModal}
             className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
@@ -278,7 +279,7 @@ export default function Worlds() {
             style={{ background: 'rgba(0,194,40,0.04)', border: '1px dashed rgba(0,194,40,0.20)' }}
           >
             <Globe className="h-10 w-10 mb-4" style={{ color: '#00C228', opacity: 0.5 }} />
-            <div className="text-[15px] font-medium text-text mb-1">Todavía no hay mundos</div>
+            <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_worlds')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
               Creá tu primer mundo para organizar el contenido por contexto temático
             </div>
@@ -422,23 +423,23 @@ export default function Worlds() {
 
                 {/* Nombre */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Nombre *</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.name_required')}</label>
                   <input
                     required
                     value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="Ej: Mundo Bancario"
+                    placeholder={i18n.t('admin.worlds.ph_world_name')}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors min-h-[44px]"
                   />
                 </div>
 
                 {/* Descripción */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Descripción</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')}</label>
                   <textarea
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Describí el contexto o propósito de este mundo..."
+                    placeholder={i18n.t('admin.worlds.ph_world_desc')}
                     rows={2}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors resize-none"
                   />
@@ -447,14 +448,14 @@ export default function Worlds() {
                 {/* Campaña — solo para superadmin */}
                 {!scopedToCampaign && (
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Campaña</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
                     <div className="relative">
                       <select
                         value={form.campaign_id}
                         onChange={e => setForm(f => ({ ...f, campaign_id: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none min-h-[44px]"
                       >
-                        <option value="">Sin campaña</option>
+                        <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
                         {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
@@ -464,7 +465,7 @@ export default function Worlds() {
 
                 {/* Tipo de fondo */}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">Tipo de fondo</label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.bg_type')}</label>
                   <div className="relative">
                     <select
                       value={form.bg_type}
@@ -482,7 +483,7 @@ export default function Worlds() {
                 {/* Icono + Color */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Icono (emoji)</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.icon_emoji')}</label>
                     <input
                       value={form.icon}
                       onChange={e => setForm(f => ({ ...f, icon: e.target.value }))}
@@ -491,7 +492,7 @@ export default function Worlds() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">Color</label>
+                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.color')}</label>
                     <input
                       type="color"
                       value={form.color}

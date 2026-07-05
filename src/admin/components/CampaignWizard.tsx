@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import i18n from '@/i18n'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -152,8 +153,8 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     if (err) {
       const isSlugDup = err.code === '23505' || err.message?.toLowerCase().includes('slug') || err.message?.toLowerCase().includes('unique')
       setError(isSlugDup
-        ? 'El slug ya está en uso. Cambia el nombre o edita el slug manualmente.'
-        : `Error al crear la campaña: ${err.message}`)
+        ? i18n.t('admin.campaigns.wizard.err_slug')
+        : i18n.t('admin.campaigns.wizard.err_create', { msg: err.message }))
       return
     }
 
@@ -167,7 +168,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
         .eq('slug', slug.trim())
         .single()
       if (fetchErr || !fetched) {
-        setError('Error inesperado al obtener la campaña recién creada.')
+        setError(i18n.t('admin.campaigns.wizard.err_unexpected'))
         return
       }
       onCreated({ ...fetched, moduleCount: 0 })
@@ -227,7 +228,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                       Paso {step} de 3
                     </NeonBadge>
                     <GradientHeading as="h2" variant="white" size="headline">
-                      Crear campaña
+                      {i18n.t('admin.campaigns.wizard_title')}
                     </GradientHeading>
                   </div>
                   <button
@@ -253,32 +254,32 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                     >
                       <div>
                         <label className="text-[12px] font-medium text-text-muted uppercase tracking-wider mb-2 block">
-                          Nombre de la campaña
+                          {i18n.t('admin.campaigns.wizard.name_label')}
                         </label>
                         <GlassInput
-                          placeholder="Ej: Abbott Diagnostics"
+                          placeholder={i18n.t('admin.campaigns.wizard.ph_name')}
                           value={name}
                           onChange={handleNameChange}
                         />
                       </div>
                       <div>
                         <label className="text-[12px] font-medium text-text-muted uppercase tracking-wider mb-2 block">
-                          Slug (URL amigable)
+                          {i18n.t('admin.campaigns.wizard.slug_label')}
                         </label>
                         <GlassInput
                           placeholder="abbott-diagnostics"
                           value={slug}
                           onChange={(v) => setSlug(v.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                           className="font-mono"
-                          hint="Solo letras minúsculas, números y guiones. Debe ser único."
+                          hint={i18n.t('admin.campaigns.wizard.slug_hint')}
                         />
                       </div>
                       <div>
                         <label className="text-[12px] font-medium text-text-muted uppercase tracking-wider mb-2 block">
-                          Descripción (opcional)
+                          {i18n.t('admin.campaigns.wizard.desc_label')}
                         </label>
                         <GlassTextarea
-                          placeholder="Breve descripción de la campaña..."
+                          placeholder={i18n.t('admin.campaigns.wizard.ph_desc')}
                           value={description}
                           onChange={setDescription}
                         />
@@ -297,7 +298,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                     >
                       <div>
                         <label className="text-[12px] font-medium text-text-muted uppercase tracking-wider mb-2 block">
-                          URL del logo (opcional)
+                          {i18n.t('admin.campaigns.wizard.logo_label')}
                         </label>
                         <GlassInput
                           placeholder="https://empresa.com/logo.png"
@@ -323,10 +324,10 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           </div>
                           <div>
                             <div className="text-[14px] font-medium text-text">
-                              Activar campaña inmediatamente
+                              {i18n.t('admin.campaigns.wizard.activate_now')}
                             </div>
                             <div className="text-[12px] text-text-subtle">
-                              Los aprendices solo acceden a campañas activas
+                              {i18n.t('admin.campaigns.wizard.activate_hint')}
                             </div>
                           </div>
                         </label>
@@ -344,15 +345,15 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                       className="space-y-3"
                     >
                       <p className="text-[14px] text-text-muted mb-4">
-                        Revisa los datos antes de crear la campaña.
+                        {i18n.t('admin.campaigns.wizard.review_hint')}
                       </p>
                       <div className="bg-subtle/60 border border-line rounded-2xl divide-y divide-line/50">
                         {[
-                          { label: 'Nombre', value: name },
+                          { label: i18n.t('admin.campaigns.wizard.review_name'), value: name },
                           { label: 'Slug', value: slug, mono: true },
-                          description && { label: 'Descripción', value: description },
-                          logoUrl && { label: 'Logo URL', value: logoUrl },
-                          { label: 'Estado', value: isActive ? 'Activa' : 'Inactiva', colored: true },
+                          description && { label: i18n.t('admin.campaigns.wizard.review_description'), value: description },
+                          logoUrl && { label: i18n.t('admin.campaigns.wizard.review_logo'), value: logoUrl },
+                          { label: i18n.t('admin.campaigns.wizard.review_status'), value: isActive ? i18n.t('admin.campaigns.wizard.status_active') : i18n.t('admin.campaigns.wizard.status_inactive'), colored: true },
                         ].filter(Boolean).map((row: any) => (
                           <div key={row.label} className="flex items-start gap-4 px-4 py-3">
                             <span className="text-[11px] uppercase tracking-wider text-text-subtle w-24 shrink-0 pt-0.5">
@@ -411,7 +412,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                       ) : (
                         <>
                           <Check className="h-4 w-4" />
-                          Crear campaña
+                          {i18n.t('admin.campaigns.wizard_title')}
                         </>
                       )}
                     </Button>

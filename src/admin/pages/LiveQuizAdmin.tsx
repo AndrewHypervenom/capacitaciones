@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import type { LiveQuiz, QuizQuestion, Campaign, QuizLeaderboardEntry, LiveQuizAnswer } from '@/types/database'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -305,8 +306,8 @@ export default function LiveQuizAdmin() {
     <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-[22px] font-bold text-text">Quiz en Vivo</h1>
-          <p className="text-text-muted text-[13px] mt-1">Sesiones interactivas tipo Kahoot para tus participantes.</p>
+          <h1 className="text-[22px] font-bold text-text">{i18n.t('livequiz.tag')}</h1>
+          <p className="text-text-muted text-[13px] mt-1">{i18n.t('admin.livequiz.subtitle')}</p>
         </div>
         <button
           onClick={() => { setFormTitle(''); setFormCampaign(campaignId ?? ''); setFormQuestions([emptyQuestion()]); setView('create') }}
@@ -351,10 +352,10 @@ export default function LiveQuizAdmin() {
         <div className="rounded-2xl border border-line overflow-x-auto">
         <div className="min-w-[720px]">
           <div className={`grid ${isSuperAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
-            <span>Titulo</span>
-            {isSuperAdmin && <span>Campaña</span>}
+            <span>{i18n.t('admin.livequiz.col_title')}</span>
+            {isSuperAdmin && <span>{i18n.t('admin.worlds.campaign')}</span>}
             <span>PIN</span>
-            <span>Estado</span>
+            <span>{i18n.t('admin.livequiz.col_status')}</span>
             <span />
           </div>
           {filteredQuizzes.map((q) => {
@@ -388,7 +389,7 @@ export default function LiveQuizAdmin() {
                   </button>
                   <button
                     onClick={() => handleDuplicate(q)}
-                    title="Duplicar"
+                    title={i18n.t('admin.livequiz.duplicate')}
                     className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
                   >
                     <Copy className="h-4 w-4" />
@@ -396,7 +397,7 @@ export default function LiveQuizAdmin() {
                   <button
                     onClick={() => handleDelete(q.id)}
                     className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                    title="Eliminar"
+                    title={i18n.t('confirm.delete')}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -416,12 +417,12 @@ export default function LiveQuizAdmin() {
       <button onClick={() => setView('list')} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
         <ChevronLeft className="h-4 w-4" /> Volver
       </button>
-      <h1 className="text-[22px] font-bold text-text mb-6">Crear quiz</h1>
+      <h1 className="text-[22px] font-bold text-text mb-6">{i18n.t('admin.livequiz.create_quiz')}</h1>
 
       <div className="space-y-4 mb-6">
         <input
           type="text"
-          placeholder="Titulo del quiz"
+          placeholder={i18n.t('admin.livequiz.ph_quiz_title')}
           value={formTitle}
           onChange={(e) => setFormTitle(e.target.value)}
           className="w-full rounded-xl px-4 py-2.5 min-h-[44px] text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#00C228] transition-colors"
@@ -455,7 +456,7 @@ export default function LiveQuizAdmin() {
             </div>
             <input
               type="text"
-              placeholder="Texto de la pregunta"
+              placeholder={i18n.t('admin.livequiz.ph_question')}
               value={q.text}
               onChange={(e) => updateQuestion(qi, { text: e.target.value })}
               className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-surface border border-line outline-none focus:border-[#00C228] transition-colors mb-3"
@@ -489,7 +490,7 @@ export default function LiveQuizAdmin() {
               ))}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-text-subtle">Tiempo:</span>
+              <span className="text-[11px] text-text-subtle">{i18n.t('admin.livequiz.time_label')}</span>
               {[10, 15, 20, 30, 45].map((t) => (
                 <button
                   key={t}
@@ -555,7 +556,7 @@ export default function LiveQuizAdmin() {
           )}
         </div>
         <div className="sm:text-right">
-          <div className="text-[11px] text-text-subtle uppercase tracking-wider mb-1">PIN de acceso</div>
+          <div className="text-[11px] text-text-subtle uppercase tracking-wider mb-1">{i18n.t('admin.livequiz.access_pin')}</div>
           <div className="flex items-center gap-2 sm:justify-end">
             <span className="font-mono text-[28px] font-bold text-text tracking-widest">{activeQuiz.pin}</span>
             <button onClick={copyPin} className="h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors">
@@ -571,7 +572,7 @@ export default function LiveQuizAdmin() {
       {/* Estado de lobby */}
       {activeQuiz.status === 'lobby' && (
         <div className="rounded-2xl p-4 sm:p-8 text-center mb-6 bg-subtle border border-line">
-          <div className="text-text-muted text-[14px] mb-4">Comparte el PIN con los participantes y luego inicia.</div>
+          <div className="text-text-muted text-[14px] mb-4">{i18n.t('admin.livequiz.share_pin')}</div>
           <button
             onClick={startQuiz}
             disabled={advancing}
@@ -606,7 +607,7 @@ export default function LiveQuizAdmin() {
                   <div className="flex items-center gap-3 mb-0.5">
                     <span className="text-[11px] font-bold w-5 shrink-0" style={{ color: OPTION_COLORS[oi] }}>{OPTION_LABELS[oi]}</span>
                     <span className="text-[12px] text-text-muted flex-1 min-w-0">{opt}</span>
-                    {isCorrect && <span className="text-[11px] text-green-400">✓ Correcta</span>}
+                    {isCorrect && <span className="text-[11px] text-green-400">{i18n.t('admin.livequiz.correct_mark')}</span>}
                     <span className="text-[12px] text-text-muted tabular-nums">{count}</span>
                   </div>
                   <div className="relative h-2 rounded-full bg-line overflow-hidden ml-8">
@@ -658,8 +659,8 @@ export default function LiveQuizAdmin() {
       {/* Estado terminado */}
       {activeQuiz.status === 'ended' && (
         <div className="rounded-2xl p-4 sm:p-6 bg-subtle border border-line">
-          <div className="text-[16px] font-semibold text-text mb-1">Quiz terminado</div>
-          <div className="text-[13px] text-text-muted mb-5">Los participantes pueden ver su puntaje final.</div>
+          <div className="text-[16px] font-semibold text-text mb-1">{i18n.t('admin.livequiz.quiz_finished')}</div>
+          <div className="text-[13px] text-text-muted mb-5">{i18n.t('admin.livequiz.finished_sub')}</div>
           <div className="flex gap-3 flex-wrap">
             <button
               onClick={() => { void loadLeaderboard(activeQuiz.id); setShowLeaderboard(true) }}
@@ -700,7 +701,7 @@ export default function LiveQuizAdmin() {
               className="fixed right-0 top-0 h-full w-80 bg-bg border-l border-line z-30 flex flex-col"
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0">
-                <span className="text-[14px] font-semibold text-text">Clasificacion</span>
+                <span className="text-[14px] font-semibold text-text">{i18n.t('livequiz.ranking')}</span>
                 <button onClick={() => setShowLeaderboard(false)} className="h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors">
                   <X className="h-4 w-4" />
                 </button>

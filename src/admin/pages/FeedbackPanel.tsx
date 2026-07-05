@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import i18n from '@/i18n'
 import { ChevronDown, ChevronRight, Download, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -250,13 +251,13 @@ export default function FeedbackPanel() {
   if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
-        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Progreso de Aprendices</h1>
+        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{i18n.t('admin.feedback_panel.title')}</h1>
         <div
           className="mt-8 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
           style={{ background: 'rgba(239,68,68,0.04)', border: '1px dashed rgba(239,68,68,0.20)' }}
         >
-          <div className="text-[15px] font-medium text-text mb-2">Sin campaña asignada</div>
-          <div className="text-[13px] text-text-muted">No tienes una campaña asignada. Contacta al superadmin.</div>
+          <div className="text-[15px] font-medium text-text mb-2">{i18n.t('admin.worlds.no_campaign_title')}</div>
+          <div className="text-[13px] text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
         </div>
       </div>
     )
@@ -269,8 +270,8 @@ export default function FeedbackPanel() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Progreso de Aprendices</h1>
-          <p className="text-[13px] text-text-muted">Seguimiento del avance en Mundos y niveles completados.</p>
+          <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{i18n.t('admin.feedback_panel.title')}</h1>
+          <p className="text-[13px] text-text-muted">{i18n.t('admin.feedback_panel.subtitle')}</p>
         </div>
         {canExport && !loading && filtered.length > 0 && (
           <button
@@ -311,8 +312,8 @@ export default function FeedbackPanel() {
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line p-6 sm:p-12 text-center">
           <div className="text-[2rem] mb-3">📊</div>
-          <div className="text-[15px] font-medium text-text mb-2">Sin datos de progreso</div>
-          <div className="text-[13px] text-text-muted">Aún no hay aprendices con progreso en Mundos.</div>
+          <div className="text-[15px] font-medium text-text mb-2">{i18n.t('admin.feedback_panel.no_data')}</div>
+          <div className="text-[13px] text-text-muted">{i18n.t('admin.feedback_panel.no_data_desc')}</div>
         </div>
       ) : (
         <>
@@ -325,11 +326,11 @@ export default function FeedbackPanel() {
                   className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
                   style={{ gridTemplateColumns: isSuperAdmin ? '1fr 1fr 1fr auto auto auto' : '1fr 1fr auto auto auto' }}
                 >
-                  <span>Aprendiz</span>
-                  {isSuperAdmin && <span>Campaña</span>}
-                  <span>Mundo</span>
-                  <span>Niveles</span>
-                  <span>Prom. ⭐</span>
+                  <span>{i18n.t('admin.feedback_panel.col_learner')}</span>
+                  {isSuperAdmin && <span>{i18n.t('admin.worlds.campaign')}</span>}
+                  <span>{i18n.t('admin.feedback_panel.col_world')}</span>
+                  <span>{i18n.t('admin.feedback_panel.col_levels')}</span>
+                  <span>{i18n.t('admin.feedback_panel.col_avg')}</span>
                   <span />
                 </div>
                 {/* Rows */}
@@ -465,20 +466,20 @@ function AttemptsList({ loading, attempts, levelMap }: {
     )
   }
   if (attempts.length === 0) {
-    return <div className="py-4 text-[13px] text-text-muted">Sin intentos registrados.</div>
+    return <div className="py-4 text-[13px] text-text-muted">{i18n.t('admin.feedback_panel.no_attempts')}</div>
   }
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wider text-text-muted mb-3">Historial de intentos</div>
+      <div className="text-[11px] uppercase tracking-wider text-text-muted mb-3">{i18n.t('admin.feedback_panel.attempts_history')}</div>
       <div className="rounded-xl border border-line overflow-hidden">
         <div
           className="grid gap-4 px-4 py-2.5 text-[10px] uppercase tracking-wider text-text-muted bg-subtle"
           style={{ gridTemplateColumns: '1fr auto auto auto' }}
         >
-          <span>Nivel</span>
-          <span>Score</span>
-          <span>Estrellas</span>
-          <span>Fecha</span>
+          <span>{i18n.t('admin.feedback_panel.col_level')}</span>
+          <span>{i18n.t('admin.feedback_panel.col_score')}</span>
+          <span>{i18n.t('admin.feedback_panel.col_stars')}</span>
+          <span>{i18n.t('admin.feedback_panel.col_date')}</span>
         </div>
         <div className="divide-y divide-line">
           {attempts.map(a => {
@@ -517,11 +518,11 @@ function AttemptsCards({ loading, attempts, levelMap }: {
     )
   }
   if (attempts.length === 0) {
-    return <div className="py-3 text-[13px] text-text-muted">Sin intentos registrados.</div>
+    return <div className="py-3 text-[13px] text-text-muted">{i18n.t('admin.feedback_panel.no_attempts')}</div>
   }
   return (
     <div className="space-y-2">
-      <div className="text-[11px] uppercase tracking-wider text-text-muted">Historial de intentos</div>
+      <div className="text-[11px] uppercase tracking-wider text-text-muted">{i18n.t('admin.feedback_panel.attempts_history')}</div>
       {attempts.map(a => {
         const lvl = levelMap.get(a.level_id)
         return (

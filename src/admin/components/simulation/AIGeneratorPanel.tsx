@@ -7,6 +7,7 @@ import { generateSimulation, getModuleContextText, type CacheUsage, type Generat
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
+import i18n from '@/i18n'
 
 const SIM_CACHE_KEY = 'ai_sim_cache_expires'
 const CACHE_DURATION_MS = 5 * 60 * 1000
@@ -111,8 +112,8 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left">
         <div className="flex items-center gap-2 flex-1">
           <Sparkles className="h-4 w-4 text-brand-violet shrink-0" />
-          <span className="text-sm font-medium text-text">Generar con IA</span>
-          <span className="text-xs text-text-subtle">— Claude crea el escenario completo a partir de tu descripción</span>
+          <span className="text-sm font-medium text-text">i18n.t('admin.simulations.ai_gen.generate_ai')</span>
+          <span className="text-xs text-text-subtle">i18n.t('admin.simulations.ai_gen.generate_ai_sub')</span>
         </div>
         {remaining > 0 && (
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-green/8 border border-brand-green/20 text-brand-green text-[10px] font-medium">
@@ -127,29 +128,29 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
         <div className="px-5 pb-5 space-y-4 border-t border-glass-border/10">
           <div className="pt-4">
             <label className="text-xs font-medium text-text-muted mb-1.5 block">
-              ¿De qué trata el escenario?
+              {i18n.t('admin.simulations.ai_gen.what_scenario_about')}
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ej: Cliente molesto porque su factura tiene un cargo extra que no reconoce. El agente debe mostrar empatía, identificar el problema y ofrecer una solución o aclaración..."
+              placeholder={i18n.t('admin.simulations.ai_gen.ph_prompt')}
               rows={3}
               className="w-full glass border border-glass-border/20 rounded-xl px-3 py-2.5 text-sm text-text bg-transparent resize-none focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle"
             />
-            <p className="text-[11px] text-text-subtle mt-1">Mientras más detallada la descripción, mejor el resultado.</p>
+            <p className="text-[11px] text-text-subtle mt-1">i18n.t('admin.simulations.ai_gen.prompt_hint')</p>
           </div>
 
           {modules.length > 0 && (
             <div>
               <label className="text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
                 <BookOpen className="h-3.5 w-3.5" />
-                Basar en módulo de capacitación <span className="text-text-subtle font-normal">(opcional)</span>
+                {i18n.t('admin.simulations.ai_gen.base_on_module')} <span className="text-text-subtle font-normal">i18n.t('admin.simulations.ai_gen.optional')</span>
               </label>
               <FilterDropdown
                 value={selectedModuleId}
                 onChange={setSelectedModuleId}
                 options={[
-                  { value: '', label: 'Sin módulo — usar solo la descripción' },
+                  { value: '', label: i18n.t('admin.simulations.ai_gen.no_module_option') },
                   ...modules.map((m) => ({ value: m.id, label: m.title_es })),
                 ]}
               />
@@ -166,7 +167,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
           <GenerationProgress
             steps={SIMULATION_GENERATION_STEPS}
             active={loading}
-            title="Generando escenario con Claude..."
+            title={i18n.t('admin.simulations.ai_gen.title_generating')}
           />
 
           {preview && !loading && (
@@ -203,7 +204,7 @@ function PreviewBox({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 text-brand-green" />
-          <span className="text-sm font-medium text-text">Escenario generado</span>
+          <span className="text-sm font-medium text-text">i18n.t('admin.simulations.ai_gen.scenario_generated')</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -212,45 +213,45 @@ function PreviewBox({
           >
             <RotateCcw className="h-3 w-3" /> Regenerar
           </button>
-          <Button size="sm" onClick={onApply}>Cargar en editor →</Button>
+          <Button size="sm" onClick={onApply}>i18n.t('admin.simulations.ai_gen.load_in_editor')</Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
         <div>
-          <div className="text-text-subtle mb-0.5">Título</div>
+          <div className="text-text-subtle mb-0.5">i18n.t('admin.simulations.ai_gen.field_title')</div>
           <div className="text-text font-medium">{String(meta.title_es ?? '')}</div>
         </div>
         {type === 'dialogue' && (
           <>
             <div>
-              <div className="text-text-subtle mb-0.5">Cliente · País</div>
+              <div className="text-text-subtle mb-0.5">i18n.t('admin.simulations.ai_gen.client_country')</div>
               <div className="text-text">{String(meta.customer_name ?? '')} · {String(meta.country ?? '')}</div>
             </div>
             <div>
-              <div className="text-text-subtle mb-0.5">Dificultad</div>
+              <div className="text-text-subtle mb-0.5">i18n.t('admin.simulations.ai_gen.difficulty')</div>
               <div className="text-text">{String(meta.difficulty ?? '')}/3</div>
             </div>
             <div>
-              <div className="text-text-subtle mb-0.5">Motivo de llamada</div>
+              <div className="text-text-subtle mb-0.5">i18n.t('admin.simulations.ai_gen.call_reason')</div>
               <div className="text-text truncate">{String(meta.customer_reason_es ?? '')}</div>
             </div>
           </>
         )}
         {type === 'choice' && (
           <div>
-            <div className="text-text-subtle mb-0.5">Nivel</div>
+            <div className="text-text-subtle mb-0.5">i18n.t('admin.simulations.ai_gen.level')</div>
             <div className="text-text">{String(meta.level ?? '')}</div>
           </div>
         )}
         <div>
-          <div className="text-text-subtle mb-0.5">Pasos</div>
+          <div className="text-text-subtle mb-0.5">i18n.t('admin.simulations.ai_gen.steps')</div>
           <div className="text-text">{nodeEntries.length} momentos de conversación</div>
         </div>
       </div>
 
       <div>
-        <div className="text-[11px] font-medium text-text-subtle uppercase tracking-wide mb-2">Flujo de conversación</div>
+        <div className="text-[11px] font-medium text-text-subtle uppercase tracking-wide mb-2">i18n.t('admin.simulations.ai_gen.conversation_flow')</div>
         <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
           {nodeEntries.map(([nid, node]) => {
             const line = type === 'dialogue'

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, FolderOpen, Users, LogOut, ArrowLeft, BookOpen, BarChart3, Menu, X, ChevronDown, Trophy } from 'lucide-react'
+import { LayoutDashboard, Users, LogOut, ArrowLeft, BookOpen, Menu, X, ChevronDown, Trophy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
@@ -40,24 +40,28 @@ export function AdminNav() {
     );
   }
 
-  // Links para administradores
+  // Menú del panel, agrupado por "Personas" y "Contenido" para lectura rápida.
+  // Es el mismo para superadmin y capacitador; lo que cambia es lo que cada rol
+  // puede hacer dentro de cada vista (el capacitador queda acotado a su campaña).
   const adminLinks: MenuCategory[] = [
     {
-      title: "", 
+      title: "",
       items: [
         { to: '/admin', label: t('admin.nav.panel', 'Panel'), end: true }
       ]
     },
     {
-      title: "Gestión",
-      icon: FolderOpen, 
+      title: t('admin.nav.group_people', 'Personas'),
+      icon: Users,
       items: [
         { to: '/admin/campaigns', label: t('admin.nav.campaigns', 'Campañas'), end: false },
-        { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false }
+        { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false },
+        { to: '/admin/feedback', label: t('admin.nav.feedback', 'Progreso unificado'), end: false },
+        { to: '/admin/evaluaciones', label: t('admin.nav.evaluaciones', 'Evaluaciones'), end: false }
       ]
     },
     {
-      title: "Contenido Teórico",
+      title: t('admin.nav.group_content', 'Contenido'),
       icon: BookOpen,
       items: [
         { to: '/admin/courses', label: t('admin.nav.courses', 'Cursos'), end: false },
@@ -65,8 +69,8 @@ export function AdminNav() {
       ]
     },
     {
-      title: "Retos y Simulaciones", 
-      icon: Trophy, 
+      title: t('admin.nav.group_challenges', 'Retos y Simulaciones'),
+      icon: Trophy,
       items: [
         { to: '/admin/worlds', label: t('admin.nav.worlds', 'Mundos'), end: false },
         { to: '/admin/missions', label: t('admin.nav.missions', 'Misiones'), end: false },
@@ -74,22 +78,13 @@ export function AdminNav() {
         { to: '/admin/quiz', label: t('admin.nav.quiz_live', 'Quizzes'), end: false },
         { to: '/admin/simulations', label: t('admin.nav.simulations', 'Simulaciones'), end: false }
       ]
-    },
-    {
-      title: "Seguimiento", 
-      icon: BarChart3, 
-      items: [
-        { to: '/admin/feedback', label: t('admin.nav.feedback', 'Progreso unificado'), end: false },
-        { to: '/admin/evaluaciones', label: t('admin.nav.evaluaciones', 'Evaluaciones'), end: false }
-      ]
     }
   ];
 
-  const capacitadorLinks = adminLinks.map(category => ({
-    ...category,
-    items: category.items.filter((item) => item.to !== '/admin/users')
-  }))
-  const links = isSuperAdmin ? adminLinks : capacitadorLinks
+  const links = adminLinks
+
+  // El capacitador no debe ver la palabra "Admin" como título del panel.
+  const panelTitle = isSuperAdmin ? t('nav.admin', 'Admin') : t('nav.manage', 'Gestión')
 
   const roleColor: NeonColor = isSuperAdmin ? 'amber' : isCapacitador ? 'violet' : 'neutral'
   const roleLabel = isSuperAdmin
@@ -115,7 +110,7 @@ export function AdminNav() {
           <Menu className="h-5 w-5" />
         </button>
         <img src="/logo.jpg" alt="LearningAI" className="h-7 w-7 rounded-md ring-1 ring-glass-border/10" />
-        <div className="text-[13px] font-semibold text-text">Admin</div>
+        <div className="text-[13px] font-semibold text-text">{panelTitle}</div>
       </div>
 
       {/* Overlay (mobile drawer) */}
@@ -142,7 +137,7 @@ export function AdminNav() {
             <div className="flex items-center gap-2.5">
               <img src="/logo.jpg" alt="LearningAI" className="h-7 w-7 rounded-md ring-1 ring-glass-border/10" />
               <div>
-                <div className="text-[13px] font-semibold text-text">Admin</div>
+                <div className="text-[13px] font-semibold text-text">{panelTitle}</div>
                 <div className="text-[10px] text-text-subtle">LearningAI CMS</div>
               </div>
             </div>

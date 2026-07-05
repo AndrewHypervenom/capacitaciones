@@ -295,7 +295,7 @@ export default function SimulationEditor() {
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            <span className="hidden sm:inline">Guardar</span>
+            <span className="hidden sm:inline">{t('admin.simulations.save')}</span>
           </Button>
         </div>
       </div>
@@ -308,8 +308,8 @@ export default function SimulationEditor() {
         <div className="flex items-start gap-3 mb-5 p-3.5 rounded-xl bg-brand-green/6 border border-brand-green/20">
           <CheckCircle2 className="h-4 w-4 text-brand-green shrink-0 mt-0.5" />
           <div className="flex-1 text-sm">
-            <span className="text-text font-medium">Escenario cargado. </span>
-            <span className="text-text-muted">Revisa los datos en "General", ajusta lo que necesites y luego guarda.</span>
+            <span className="text-text font-medium">{t('admin.simulations.loaded_notice')} </span>
+            <span className="text-text-muted">{t('admin.simulations.loaded_hint')}</span>
           </div>
           <button onClick={() => setAiBanner(false)} className="text-text-subtle hover:text-text transition-colors shrink-0">
             <X className="h-4 w-4" />
@@ -337,10 +337,10 @@ export default function SimulationEditor() {
       {tab === 'meta' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <GlassCard className="p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-text mb-3">Configuración del escenario</h3>
+            <h3 className="text-sm font-semibold text-text mb-3">{t('admin.simulations.config_title')}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-text-muted mb-1 block">País</label>
+                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.country')}</label>
                 <FilterDropdown
                   value={meta.country}
                   onChange={(v) => setMeta((m) => ({ ...m, country: v as 'CO' | 'MX' | 'AR' }))}
@@ -352,7 +352,7 @@ export default function SimulationEditor() {
                 />
               </div>
               <div>
-                <label className="text-xs text-text-muted mb-1 block">Dificultad</label>
+                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.difficulty')}</label>
                 <FilterDropdown
                   value={String(meta.difficulty)}
                   onChange={(v) => setMeta((m) => ({ ...m, difficulty: Number(v) as 1 | 2 | 3 }))}
@@ -365,9 +365,9 @@ export default function SimulationEditor() {
               </div>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">Máximo de turnos</label>
+              <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.max_turns')}</label>
               <input type="number" min={3} max={30} value={meta.max_turns} onChange={(e) => setMeta((m) => ({ ...m, max_turns: Number(e.target.value) }))} className={inputClass} />
-              <p className="text-[11px] text-text-subtle mt-1">Número máximo de intercambios entre agente y cliente.</p>
+              <p className="text-[11px] text-text-subtle mt-1">{t('admin.simulations.max_turns_hint')}</p>
             </div>
 
             <button
@@ -380,20 +380,20 @@ export default function SimulationEditor() {
             {showAdvanced && (
               <div className="space-y-3 pt-1 border-t border-glass-border/10">
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Identificador URL</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.url_id')}</label>
                   <input
                     value={meta.slug}
                     onChange={(e) => {
                       slugManualRef.current = true
                       setMeta((m) => ({ ...m, slug: e.target.value }))
                     }}
-                    placeholder="cobro-inesperado-co"
+                    placeholder={t('admin.simulations.ph_url_sim')}
                     className={inputClass}
                   />
-                  <p className="text-[11px] text-text-subtle mt-1">Se genera automáticamente desde el título. Edita solo si necesitas personalizarlo.</p>
+                  <p className="text-[11px] text-text-subtle mt-1">{t('admin.simulations.url_auto_long')}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Paso de inicio</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.start_step')}</label>
                   <FilterDropdown
                     value={meta.start_node_id}
                     onChange={(v) => setMeta((m) => ({ ...m, start_node_id: v }))}
@@ -405,12 +405,12 @@ export default function SimulationEditor() {
           </GlassCard>
 
           <GlassCard className="p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-text mb-1">Título y resumen</h3>
+            <h3 className="text-sm font-semibold text-text mb-1">{t('admin.simulations.title_summary')}</h3>
             <LangTabs active={metaLang} onChange={setMetaLang} />
             {metaLang === 'es' && (
               <>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Título</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title')}</label>
                   <input
                     value={meta.title_es}
                     onChange={(e) => {
@@ -421,62 +421,62 @@ export default function SimulationEditor() {
                         slug: slugManualRef.current ? m.slug : slugify(val),
                       }))
                     }}
-                    placeholder="Ej: Cobro no reconocido en factura"
+                    placeholder={t('admin.simulations.ph_title_sim')}
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Resumen del escenario</label>
-                  <textarea rows={2} value={meta.summary_es} onChange={(e) => setMeta((m) => ({ ...m, summary_es: e.target.value }))} className={cn(inputClass, 'resize-none')} placeholder="Breve descripción de qué ocurre en este escenario..." />
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary')}</label>
+                  <textarea rows={2} value={meta.summary_es} onChange={(e) => setMeta((m) => ({ ...m, summary_es: e.target.value }))} className={cn(inputClass, 'resize-none')} placeholder={t('admin.simulations.ph_summary')} />
                 </div>
               </>
             )}
             {metaLang === 'en' && (
               <>
-                <div><label className="text-xs text-text-muted mb-1 block">Title (English)</label><input value={meta.title_en} onChange={(e) => setMeta((m) => ({ ...m, title_en: e.target.value }))} className={inputClass} /></div>
-                <div><label className="text-xs text-text-muted mb-1 block">Summary (English)</label><textarea rows={2} value={meta.summary_en} onChange={(e) => setMeta((m) => ({ ...m, summary_en: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_en')}</label><input value={meta.title_en} onChange={(e) => setMeta((m) => ({ ...m, title_en: e.target.value }))} className={inputClass} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_en')}</label><textarea rows={2} value={meta.summary_en} onChange={(e) => setMeta((m) => ({ ...m, summary_en: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
               </>
             )}
             {metaLang === 'pt' && (
               <>
-                <div><label className="text-xs text-text-muted mb-1 block">Título (Português)</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
-                <div><label className="text-xs text-text-muted mb-1 block">Resumo (Português)</label><textarea rows={2} value={meta.summary_pt} onChange={(e) => setMeta((m) => ({ ...m, summary_pt: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_pt')}</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_pt')}</label><textarea rows={2} value={meta.summary_pt} onChange={(e) => setMeta((m) => ({ ...m, summary_pt: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
               </>
             )}
           </GlassCard>
 
           <GlassCard className="p-5 md:col-span-2 space-y-4">
-            <h3 className="text-sm font-semibold text-text mb-0">Datos del cliente ficticio</h3>
-            <p className="text-xs text-text-muted">Esta información aparece en la pantalla del agente durante la simulación.</p>
+            <h3 className="text-sm font-semibold text-text mb-0">{t('admin.simulations.fake_client_data')}</h3>
+            <p className="text-xs text-text-muted">{t('admin.simulations.fake_client_hint')}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="text-xs text-text-muted mb-1 block">Nombre</label>
-                <input value={meta.customer_name} onChange={(e) => setMeta((m) => ({ ...m, customer_name: e.target.value }))} placeholder="María García" className={inputClass} />
+                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.name')}</label>
+                <input value={meta.customer_name} onChange={(e) => setMeta((m) => ({ ...m, customer_name: e.target.value }))} placeholder={t('admin.simulations.ph_name_sim')} className={inputClass} />
               </div>
               <div>
-                <label className="text-xs text-text-muted mb-1 block">Teléfono</label>
+                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.phone')}</label>
                 <input value={meta.customer_phone} onChange={(e) => setMeta((m) => ({ ...m, customer_phone: e.target.value }))} placeholder="+57 300 •••• 1234" className={inputClass} />
               </div>
               <div>
-                <label className="text-xs text-text-muted mb-1 block">Avatar (número del 1 al 99)</label>
+                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.avatar')}</label>
                 <input type="number" min={1} max={99} value={meta.avatar_seed} onChange={(e) => setMeta((m) => ({ ...m, avatar_seed: Number(e.target.value) }))} className={inputClass} />
               </div>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">Motivo de la llamada (español)</label>
-              <input value={meta.customer_reason_es} onChange={(e) => setMeta((m) => ({ ...m, customer_reason_es: e.target.value }))} placeholder="Ej: Reclama un cobro extra en su factura de internet" className={inputClass} />
+              <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.call_reason')}</label>
+              <input value={meta.customer_reason_es} onChange={(e) => setMeta((m) => ({ ...m, customer_reason_es: e.target.value }))} placeholder={t('admin.simulations.ph_call_reason')} className={inputClass} />
             </div>
           </GlassCard>
 
           <GlassCard className="p-5 md:col-span-2">
-            <h3 className="text-sm font-semibold text-text mb-1">Palabras de empatía</h3>
-            <p className="text-xs text-text-muted mb-3">El sistema cuenta cuántas veces el agente usa estas palabras. Escríbelas separadas por coma, en minúsculas y sin tildes.</p>
+            <h3 className="text-sm font-semibold text-text mb-1">{t('admin.simulations.empathy_words')}</h3>
+            <p className="text-xs text-text-muted mb-3">{t('admin.simulations.empathy_hint')}</p>
             <input
               value={meta.empathy_keywords.join(', ')}
               onChange={(e) => setMeta((m) => ({
                 ...m, empathy_keywords: e.target.value.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean),
               }))}
-              placeholder="entiendo, comprendo, lamento, disculpa, sorry"
+              placeholder={t('admin.simulations.ph_empathy')}
               className={inputClass}
             />
           </GlassCard>
@@ -498,13 +498,13 @@ export default function SimulationEditor() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="text-xs font-medium text-text">Pasos ({nodeIds.length})</span>
-                <p className="text-[11px] text-text-subtle mt-0.5">Momentos de la llamada</p>
+                <p className="text-[11px] text-text-subtle mt-0.5">{t('admin.simulations.call_moments')}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={addNode}
                   className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors"
-                  title="Agregar paso"
+                  title={t('admin.simulations.add_step')}
                 >
                   <Plus className="h-3.5 w-3.5" /> Agregar
                 </button>
@@ -534,7 +534,7 @@ export default function SimulationEditor() {
                       <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
                         isStart ? 'bg-brand-green' : isTerminal ? 'bg-brand-magenta' : 'bg-glass-border/40')} />
                       <span className="font-mono font-medium truncate">{nid}</span>
-                      {isStart && <span className="text-[9px] text-brand-green shrink-0">INICIO</span>}
+                      {isStart && <span className="text-[9px] text-brand-green shrink-0">{t('admin.simulations.start')}</span>}
                       {isTerminal && <span className="text-[9px] text-brand-magenta shrink-0">{node.terminal === 'resolved' ? 'FIN ✓' : 'FIN ✗'}</span>}
                     </div>
                     {linePreview
@@ -559,16 +559,16 @@ export default function SimulationEditor() {
               <GlassCard className="p-4 md:p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-muted">Paso:</span>
+                    <span className="text-xs font-medium text-text-muted">{t('admin.simulations.step_label')}</span>
                     <span className="font-mono text-sm text-text">{selectedNodeId}</span>
                     {selectedNodeId === meta.start_node_id && (
-                      <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">INICIO</span>
+                      <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">{t('admin.simulations.start')}</span>
                     )}
                   </div>
                   <button
                     onClick={() => removeNode(selectedNodeId)}
                     className="p-1.5 hover:text-danger text-text-subtle transition-colors"
-                    title="Eliminar paso"
+                    title={t('admin.simulations.del_step')}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -594,7 +594,7 @@ export default function SimulationEditor() {
         <div className="space-y-3">
           <div className="mb-2 p-3.5 rounded-xl bg-glass/6 border border-glass-border/10">
             <p className="text-xs text-text-muted">
-              <span className="font-medium text-text">¿Qué es la evaluación?</span>{' '}
+              <span className="font-medium text-text">{t('admin.simulations.eval_what')}</span>{' '}
               Al terminar la simulación, el sistema verifica si el agente usó las palabras clave de cada ítem. Edita los ítems o agrega nuevos según el protocolo de tu empresa.
             </p>
           </div>
@@ -602,25 +602,25 @@ export default function SimulationEditor() {
             <GlassCard key={item.id} className="p-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Nombre del ítem</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.item_name')}</label>
                   <input
                     value={item.label.es}
                     onChange={(e) => setChecklist((prev) => prev.map((it, i) => i === idx ? { ...it, label: { ...it.label, es: e.target.value } } : it))}
-                    placeholder="Ej: Saludo con marca"
+                    placeholder={t('admin.simulations.ph_item_name')}
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Palabras clave que lo activan</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.keywords_trigger')}</label>
                   <input
                     value={item.keywords.join(', ')}
                     onChange={(e) => setChecklist((prev) => prev.map((it, i) => i === idx ? { ...it, keywords: e.target.value.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean) } : it))}
-                    placeholder="hola, buenos dias, buen dia"
+                    placeholder={t('admin.simulations.ph_keywords')}
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">ID interno</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.internal_id')}</label>
                   <input
                     value={item.id}
                     onChange={(e) => setChecklist((prev) => prev.map((it, i) => i === idx ? { ...it, id: e.target.value } : it))}

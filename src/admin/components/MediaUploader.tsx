@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { CheckCircle2, Image, Loader2, Trash2, Upload, Video, Youtube } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 
@@ -109,7 +110,7 @@ function DropZone({
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-green" />
-              <span className="text-[12px] text-text-muted">Subiendo…</span>
+              <span className="text-[12px] text-text-muted">{i18n.t('common.uploading')}</span>
             </div>
             <span className="text-[12px] font-mono text-text-muted">{progress}%</span>
           </div>

@@ -1,5 +1,6 @@
 // src/components/modules/blocks/ClassifyGameBlock.tsx
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { saveActivityAttempt } from '@/services/activity.service';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, Trophy, RefreshCcw } from 'lucide-react';
@@ -61,6 +62,7 @@ function playSound(type: 'success' | 'error' | 'final') {
 }
 
 export function ClassifyGameBlockRenderer({ block, language, userId, campaignId, moduleId, sectionId }: Props) {
+  const { t } = useTranslation();
   const [assigned, setAssigned] = useState<Record<string, ClassifyCase[]>>(() =>
     Object.fromEntries(block.categories.map((c) => [c.id, []]))
   );
@@ -233,7 +235,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
         >
           {unassigned.length === 0 ? (
             <p className="text-[12px] text-neon-green/50 w-full text-center py-2">
-              Todos los casos han sido asignados
+              {t('module.blocks.classify.all_assigned')}
             </p>
           ) : (
             unassigned.map((c) => (
@@ -271,7 +273,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
               <div className="flex flex-wrap gap-2">
                 {casesInCat.length === 0 && !submitted && (
                   <p className="text-[11px] text-text-subtle/40 w-full text-center py-2">
-                    Arrastra casos aquí
+                    {t('module.blocks.classify.drop_here')}
                   </p>
                 )}
                 {casesInCat.map((c) => {
@@ -312,7 +314,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
               : 'bg-glass-border/5 border-glass-border/10 text-text-subtle/40 cursor-not-allowed',
           )}
         >
-          {allAssigned ? 'Evaluar respuestas' : `Asigna todos los casos para continuar (${unassigned.length} restantes)`}
+          {allAssigned ? t('module.blocks.classify.evaluate') : t('module.blocks.classify.assign_all', { count: unassigned.length })}
         </button>
       )}
 
@@ -326,37 +328,37 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
           >
             <div className="flex items-center gap-3">
               <Trophy className="h-5 w-5 text-neon-green shrink-0" />
-              <span className="text-[15px] font-semibold text-text">Resultado final</span>
+              <span className="text-[15px] font-semibold text-text">{t('module.blocks.result_final')}</span>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl p-4 bg-neon-green/8 border border-neon-green/15 text-center">
                 <p className="text-[32px] font-bold text-neon-green leading-none">{correctCount}</p>
                 <p className="text-[11px] text-text-subtle mt-2 leading-tight">
-                  {correctCount === 1 ? 'caso' : 'casos'}<br />correctos
+                  {correctCount === 1 ? t('module.blocks.classify.cases_one') : t('module.blocks.classify.cases_other')}<br />{t('module.blocks.classify.correct_label')}
                 </p>
               </div>
               <div className="rounded-xl p-4 glass border border-glass-border/10 text-center">
                 <p className="text-[32px] font-bold text-text leading-none">{pct}%</p>
                 <p className="text-[11px] text-text-subtle mt-2 leading-tight">
-                  eficacia<br />de clasificación
+                  {t('module.blocks.classify.efficiency')}<br />{t('module.blocks.classify.of_classification')}
                 </p>
               </div>
             </div>
 
             {pct === 100 && (
               <p className="text-[13px] text-neon-green text-center">
-                ¡Perfecto! Clasificaste todos los casos correctamente.
+                {t('module.blocks.classify.perfect')}
               </p>
             )}
             {pct < 100 && pct >= 50 && (
               <p className="text-[13px] text-text-subtle text-center">
-                Buen intento. Revisa los casos marcados en rojo e inténtalo de nuevo.
+                {t('module.blocks.classify.good_try')}
               </p>
             )}
             {pct < 50 && (
               <p className="text-[13px] text-red-400 text-center">
-                Repasa el material e inténtalo de nuevo.
+                {t('module.blocks.classify.review_material')}
               </p>
             )}
 
@@ -365,7 +367,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
               className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl glass border border-glass-border/15 text-text-subtle text-[13px] hover:text-text transition-colors"
             >
               <RefreshCcw className="h-3.5 w-3.5" />
-              Volver a intentar
+              {t('module.blocks.retry')}
             </button>
           </motion.div>
         )}

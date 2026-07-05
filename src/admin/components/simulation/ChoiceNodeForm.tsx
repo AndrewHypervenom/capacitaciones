@@ -103,7 +103,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
     <div className="space-y-5">
       {/* Speaker */}
       <div>
-        <label className="text-xs text-text-muted mb-1.5 block font-medium">Speaker</label>
+        <label className="text-xs text-text-muted mb-1.5 block font-medium">{t('admin.simulations.choice.speaker')}</label>
         <div className="flex gap-2">
           {(['client', 'agent'] as const).map((s) => (
             <button
@@ -124,20 +124,20 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
 
       {/* Message */}
       <div>
-        <label className="text-xs text-text-muted mb-2 block font-medium">Mensaje</label>
+        <label className="text-xs text-text-muted mb-2 block font-medium">{t('admin.simulations.choice.message')}</label>
         <LangTabs active={lang} onChange={setLang} />
         <textarea
           rows={3}
           value={data.message[lang] ?? ''}
           onChange={(e) => updateMessage(e.target.value)}
-          placeholder="Mensaje que aparece en la simulación..."
+          placeholder={t('admin.simulations.choice.ph_message')}
           className={textareaClass}
         />
       </div>
 
       {/* Is End */}
       <div className="flex items-center gap-3">
-        <label className="text-xs text-text-muted font-medium">¿Nodo final?</label>
+        <label className="text-xs text-text-muted font-medium">{t('admin.simulations.choice.is_final')}</label>
         <button
           onClick={() => update({ isEnd: !data.isEnd, options: data.isEnd ? data.options : [] })}
           className={cn(
@@ -155,7 +155,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
       {data.isEnd && (
         <div className="space-y-3 p-4 rounded-xl bg-glass/4 border border-glass-border/8">
           <div>
-            <label className="text-xs text-text-muted mb-1.5 block font-medium">Tipo de cierre</label>
+            <label className="text-xs text-text-muted mb-1.5 block font-medium">{t('admin.simulations.choice.close_type')}</label>
             <div className="flex gap-2">
               {([
                 ['excellent', '⭐ Excelente', 'brand-green'],
@@ -178,13 +178,13 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
             </div>
           </div>
           <div>
-            <label className="text-xs text-text-muted mb-2 block">Mensaje de cierre</label>
+            <label className="text-xs text-text-muted mb-2 block">{t('admin.simulations.choice.close_message')}</label>
             <LangTabs active={lang} onChange={setLang} />
             <textarea
               rows={2}
               value={data.endMessage?.[lang] ?? ''}
               onChange={(e) => updateEndMessage(e.target.value)}
-              placeholder="Feedback al agente al finalizar..."
+              placeholder={t('admin.simulations.choice.ph_close_message')}
               className={textareaClass}
             />
           </div>
@@ -217,20 +217,20 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
                 </div>
 
                 <div>
-                  <div className="text-[10px] text-text-subtle mb-1">Texto de la opción</div>
+                  <div className="text-[10px] text-text-subtle mb-1">{t('admin.simulations.choice.option_text')}</div>
                   <LangTabs active={lang} onChange={setLang} />
                   <input
                     type="text"
                     value={opt.text[lang] ?? ''}
                     onChange={(e) => updateOptionText(idx, e.target.value)}
-                    placeholder="Respuesta del agente..."
+                    placeholder={t('admin.simulations.choice.ph_option')}
                     className={cn(inputClass, 'w-full')}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-[10px] text-text-subtle mb-1">Siguiente nodo</div>
+                    <div className="text-[10px] text-text-subtle mb-1">{t('admin.simulations.choice.next_node')}</div>
                     <FilterDropdown
                       value={opt.nextId}
                       onChange={(v) => updateOption(idx, { nextId: v })}
@@ -242,7 +242,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
                     />
                   </div>
                   <div>
-                    <div className="text-[10px] text-text-subtle mb-1">Puntos (0-10)</div>
+                    <div className="text-[10px] text-text-subtle mb-1">{t('admin.simulations.choice.points')}</div>
                     <input
                       type="number"
                       min={0}
@@ -255,12 +255,12 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
                 </div>
 
                 <div>
-                  <div className="text-[10px] text-text-subtle mb-1">Feedback (español)</div>
+                  <div className="text-[10px] text-text-subtle mb-1">{t('admin.simulations.choice.feedback_es')}</div>
                   <input
                     type="text"
                     value={opt.feedback ?? ''}
                     onChange={(e) => updateOption(idx, { feedback: e.target.value })}
-                    placeholder="Ej: Excelente uso de empatía..."
+                    placeholder={t('admin.simulations.choice.ph_feedback')}
                     className={cn(inputClass, 'w-full')}
                   />
                 </div>

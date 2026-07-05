@@ -21,14 +21,19 @@ export default function AdminDashboard() {
   useEffect(() => {
     async function load() {
       const [camps, mods, scens, users] = await Promise.all([
-        supabase.from('campaigns').select('id', { count: 'exact', head: true }),
+        isSuperAdmin
+          ? supabase.from('campaigns').select('id', { count: 'exact', head: true })
+          : supabase.from('campaigns').select('id', { count: 'exact', head: true }).eq('id', campaignId ?? ''),
         isSuperAdmin
           ? supabase.from('modules').select('id', { count: 'exact', head: true })
           : supabase.from('modules').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? ''),
         isSuperAdmin
           ? supabase.from('scenarios').select('id', { count: 'exact', head: true })
           : supabase.from('scenarios').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? ''),
-        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+        // El capacitador solo cuenta las personas de su campaña y nunca a superadmins.
+        isSuperAdmin
+          ? supabase.from('profiles').select('id', { count: 'exact', head: true })
+          : supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? '').neq('role', 'superadmin'),
       ])
       setStats({
         campaigns: camps.count ?? 0,
@@ -106,8 +111,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{t('admin.dashboard.title')}</h1>
-      <p className="text-text-muted text-[13px] mb-6 sm:mb-8">{t('admin.dashboard.subtitle')}</p>
+      <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">
+        {isSuperAdmin ? t('admin.dashboard.title') : t('admin.dashboard.title_capacitador')}
+      </h1>
+      <p className="text-text-muted text-[13px] mb-6 sm:mb-8">
+        {isSuperAdmin ? t('admin.dashboard.subtitle') : t('admin.dashboard.subtitle_capacitador')}
+      </p>
 
       {/* Stats */}
       {loading ? (

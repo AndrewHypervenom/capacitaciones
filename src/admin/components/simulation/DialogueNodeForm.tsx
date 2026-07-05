@@ -93,14 +93,14 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
     <div className="space-y-5">
       {/* Customer line */}
       <div>
-        <label className="text-xs text-text-muted mb-0.5 block font-medium">¿Qué dice el cliente aquí?</label>
-        <p className="text-[11px] text-text-subtle mb-2">Escribe lo que el cliente dice en este momento de la llamada.</p>
+        <label className="text-xs text-text-muted mb-0.5 block font-medium">{t('admin.simulations.dialogue.what_client_says')}</label>
+        <p className="text-[11px] text-text-subtle mb-2">{t('admin.simulations.dialogue.what_client_says_hint')}</p>
         <LangTabs active={lang} onChange={setLang} />
         <textarea
           rows={3}
           value={data.customerLine[lang] ?? ''}
           onChange={(e) => updateLine('customerLine', e.target.value)}
-          placeholder="Lo que dice el cliente en este momento..."
+          placeholder={t('admin.simulations.dialogue.ph_client_line')}
           className={textareaClass()}
         />
       </div>
@@ -116,13 +116,13 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
         </button>
         {showNudge && (
           <>
-            <p className="text-[11px] text-text-subtle mb-2">Lo que el cliente dice si el agente no da una respuesta correcta.</p>
+            <p className="text-[11px] text-text-subtle mb-2">{t('admin.simulations.dialogue.no_answer_hint')}</p>
             <LangTabs active={lang} onChange={setLang} />
             <textarea
               rows={2}
               value={data.nudge?.[lang] ?? ''}
               onChange={(e) => updateLine('nudge', e.target.value)}
-              placeholder="Ej: ¿Hola? ¿Hay alguien ahí? ¿Me puede ayudar?"
+              placeholder={t('admin.simulations.dialogue.ph_client_retry')}
               className={textareaClass()}
             />
           </>
@@ -157,19 +157,19 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
             <div key={idx} className="flex items-start gap-2 p-3 rounded-xl bg-glass/4 border border-glass-border/8">
               <div className="flex-1 space-y-2">
                 <div>
-                  <div className="text-[10px] text-text-subtle mb-1">Palabras clave en la respuesta del agente (minúsculas, sin tildes)</div>
+                  <div className="text-[10px] text-text-subtle mb-1">{t('admin.simulations.dialogue.agent_keywords')}</div>
                   <input
                     type="text"
                     value={branch.keywords.join(', ')}
                     onChange={(e) => updateBranch(idx, {
                       keywords: e.target.value.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean),
                     })}
-                    placeholder="hola, buenos dias, mi nombre"
+                    placeholder={t('admin.simulations.dialogue.ph_keywords')}
                     className={cn(inputClass(), 'w-full')}
                   />
                 </div>
                 <div>
-                  <div className="text-[10px] text-text-subtle mb-1">Llevar al paso:</div>
+                  <div className="text-[10px] text-text-subtle mb-1">{t('admin.simulations.dialogue.go_to_step')}</div>
                   <FilterDropdown
                     value={branch.next}
                     onChange={(v) => updateBranch(idx, { next: v })}
@@ -195,7 +195,7 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
       {/* Fallback + Terminal */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-xs text-text-muted mb-1.5 block font-medium">Si ninguna ruta coincide, ir a:</label>
+          <label className="text-xs text-text-muted mb-1.5 block font-medium">{t('admin.simulations.dialogue.no_match_go_to')}</label>
           <FilterDropdown
             value={data.fallback ?? ''}
             onChange={(v) => update({ fallback: v || undefined })}
@@ -206,7 +206,7 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
           />
         </div>
         <div>
-          <label className="text-xs text-text-muted mb-1.5 block font-medium">¿La llamada termina aquí?</label>
+          <label className="text-xs text-text-muted mb-1.5 block font-medium">{t('admin.simulations.dialogue.call_ends_here')}</label>
           <FilterDropdown
             value={data.terminal ?? ''}
             onChange={(v) => update({ terminal: (v || undefined) as DialogueNodeData['terminal'] })}

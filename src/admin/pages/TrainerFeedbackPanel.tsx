@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import i18n from '@/i18n';
 import { getPendingAttempts, saveTrainerFeedback, FeedbackPayload } from '@/services/activity.service';
 import { useAuth } from '@/hooks/useAuth';
 import { Code, LayoutTemplate, CheckCircle2, XCircle, Info, MessageSquare, Search, SlidersHorizontal, ChevronDown } from 'lucide-react';
@@ -29,7 +30,7 @@ interface PendingAttempt {
 }
 
 export const TrainerFeedbackPanel: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   
   const [attempts, setAttempts] = useState<PendingAttempt[]>([]);
   const [selectedAttempt, setSelectedAttempt] = useState<PendingAttempt | null>(null);
@@ -53,13 +54,13 @@ export const TrainerFeedbackPanel: React.FC = () => {
   useEffect(() => {
     const loadAttempts = async () => {
       setLoading(true);
-      const { data, error: fetchError } = await getPendingAttempts();
+      const { data, error: fetchError } = await getPendingAttempts({ excludeSuperadmins: !isSuperAdmin });
       if (fetchError) setError('No se pudieron cargar los intentos.');
       else if (data) setAttempts(data as PendingAttempt[]);
       setLoading(false);
     };
     loadAttempts();
-  }, []);
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     setComment('');
@@ -145,7 +146,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Panel de Gráfico de Anillo / Progreso */}
         <div className="bg-zinc-50/50 dark:bg-zinc-950/40 border border-line rounded-xl p-5 flex flex-col items-center justify-center text-center">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-4">Relación de Respuestas</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-4">{i18n.t('admin.trainer_panel.answer_ratio')}</span>
           
           <div 
             className="relative w-28 h-28 rounded-full flex items-center justify-center border border-line shadow-inner"
@@ -155,7 +156,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
           >
             <div className="absolute w-24 h-24 bg-white dark:bg-[#0d0e12] rounded-full flex flex-col items-center justify-center shadow-md">
               <span className="text-xl font-mono font-bold text-text">{porcentajeAciertos}%</span>
-              <span className="text-[9px] text-text-muted uppercase font-semibold">Efectividad</span>
+              <span className="text-[9px] text-text-muted uppercase font-semibold">{i18n.t('admin.trainer_panel.effectiveness')}</span>
             </div>
           </div>
 
@@ -181,10 +182,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
         {/* Contenedor de Tarjetas Detalladas de Respuesta */}
         <div className="md:col-span-2 space-y-3 flex flex-col justify-center">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Detalles del Envío</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">{i18n.t('admin.trainer_panel.submission_details')}</span>
           
           {infoKeys.length === 0 ? (
-            <p className="text-xs text-text-muted italic">No hay variables de texto adicionales disponibles.</p>
+            <p className="text-xs text-text-muted italic">{i18n.t('admin.trainer_panel.no_extra_vars')}</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {infoKeys.map(([key, value]) => {
@@ -237,7 +238,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
     );
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-bg text-text font-medium text-sm">Cargando entregas...</div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-bg text-text font-medium text-sm">{i18n.t('admin.trainer_panel.loading')}</div>;
   if (error) return <div className="flex h-screen items-center justify-center bg-bg text-red-500 font-medium text-sm">{error}</div>;
 
   return (
@@ -247,8 +248,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
       <div className="w-1/3 border-r border-line flex flex-col h-full bg-bg">
         <div className="p-6 border-b border-line shrink-0 space-y-4">
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Evaluaciones Pendientes</h2>
-            <p className="text-xs text-text-muted mt-1">Selecciona una entrega del panel para auditar</p>
+            <h2 className="text-xl font-bold tracking-tight">{i18n.t('admin.trainer_panel.pending_evals')}</h2>
+            <p className="text-xs text-text-muted mt-1">{i18n.t('admin.trainer_panel.select_prompt')}</p>
           </div>
 
           {/* Contenedor de Filtros Integrados */}
@@ -258,7 +259,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted/60" />
               <input
                 type="text"
-                placeholder="Buscar alumno o juego..."
+                placeholder={i18n.t('admin.trainer_panel.ph_search')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-line rounded-xl pl-9 pr-4 py-2 text-xs text-text placeholder:text-text-muted/50 outline-none focus:border-green-500/40 transition-colors"
@@ -313,8 +314,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
           {filteredAttempts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-text-muted space-y-2">
-              <p className="text-sm text-center">No se encontraron entregas.</p>
-              <p className="text-xs text-text-muted/60">Prueba cambiando los términos de búsqueda.</p>
+              <p className="text-sm text-center">{i18n.t('admin.trainer_panel.no_submissions')}</p>
+              <p className="text-xs text-text-muted/60">{i18n.t('admin.trainer_panel.try_other_search')}</p>
             </div>
           ) : (
             filteredAttempts.map((attempt) => (
@@ -348,14 +349,14 @@ export const TrainerFeedbackPanel: React.FC = () => {
             
             {/* Cabecera del Resumen */}
             <div className="bg-white dark:bg-zinc-900/50 p-6 rounded-2xl border border-line shadow-sm">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-text-muted mb-4">Resumen de Desempeño</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-text-muted mb-4">{i18n.t('admin.trainer_panel.performance_summary')}</h3>
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-zinc-50 dark:bg-[#0d0e12] p-4 rounded-xl border border-line">
-                  <p className="text-[10px] text-text-muted uppercase font-semibold">Puntaje Final</p>
+                  <p className="text-[10px] text-text-muted uppercase font-semibold">{i18n.t('admin.trainer_panel.final_score')}</p>
                   <p className="text-3xl font-mono font-bold text-green-600 dark:text-green-400 mt-1">{selectedAttempt.score}%</p>
                 </div>
                 <div className="bg-zinc-50 dark:bg-[#0d0e12] p-4 rounded-xl border border-line col-span-2">
-                  <p className="text-[10px] text-text-muted uppercase font-semibold">Ubicación del Desafío</p>
+                  <p className="text-[10px] text-text-muted uppercase font-semibold">{i18n.t('admin.trainer_panel.challenge_location')}</p>
                   <p className="text-sm font-semibold text-text mt-1 truncate" title={selectedAttempt.module?.title_es}>
                     {selectedAttempt.module?.title_es || 'Módulo'}
                   </p>
@@ -433,7 +434,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 <textarea 
                   value={comment} 
                   onChange={(e) => setComment(e.target.value)} 
-                  placeholder="Escribe tus observaciones aquí para guiar al estudiante sobre sus aciertos o desvíos operativos..." 
+                  placeholder={i18n.t('admin.trainer_panel.ph_observations')} 
                   rows={4} 
                   className="w-full bg-white dark:bg-[#0d0e12] border border-line rounded-xl p-4 text-sm text-text placeholder:text-zinc-400 dark:placeholder:text-zinc-600 outline-none focus:border-green-500/40 transition-colors resize-none custom-scrollbar shadow-inner" 
                   />
@@ -452,8 +453,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-text-muted space-y-2 select-none">
-            <p className="text-sm">Selecciona una entrega del panel lateral.</p>
-            <p className="text-xs text-text-muted/60">Revisa las respuestas detalladas del alumno antes de comentar.</p>
+            <p className="text-sm">{i18n.t('admin.trainer_panel.select_side')}</p>
+            <p className="text-xs text-text-muted/60">{i18n.t('admin.trainer_panel.review_before')}</p>
           </div>
         )}
       </div>

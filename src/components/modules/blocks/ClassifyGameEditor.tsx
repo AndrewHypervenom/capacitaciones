@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import i18n from '@/i18n'
 import { Plus, Trash2, Layers, FileText } from 'lucide-react'
 import type { DbSectionRow } from '@/services/modules.service'
 import type { GameClassifyBlock, ClassifyCategory, ClassifyCase } from '@/types/blocks'
@@ -80,7 +81,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
       <div className="space-y-3 rounded-xl border border-glass-border/8 bg-white/5 p-3">
         <div className="space-y-1.5">
           <label className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
-            Título del modulo
+            {i18n.t('admin.modules.be.ge_module_title')}
           </label>
           <input
             type="text"
@@ -91,14 +92,14 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                 title: { ...block.title, [language]: e.target.value }
               })
             }
-            placeholder="Ej: Casos  a clasificar"
+            placeholder={i18n.t('admin.modules.be.ge_ph_title_classify')}
             className="w-full bg-transparent px-3 py-2 border border-glass-border/10 rounded-lg text-[13px] text-text focus:border-neon-green/30 outline-none"
           />
         </div>
 
         <div className="space-y-1.5">
           <label className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
-            Instrucciones
+            {i18n.t('admin.modules.be.ge_instructions')}
           </label>
           <textarea
             value={block.instructions?.[language] || ''}
@@ -109,7 +110,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                 instructions: { ...block.instructions, [language]: e.target.value }
               })
             }
-            placeholder="Ej: Arrastra cada caso a su categoría correspondiente."
+            placeholder={i18n.t('admin.modules.be.ge_ph_instructions_classify')}
             className="w-full bg-transparent px-3 py-2 border border-glass-border/10 rounded-lg text-[13px] text-text focus:border-neon-green/30 outline-none resize-none"
           />
         </div>
@@ -127,7 +128,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
           )}
         >
           <Layers className="h-3.5 w-3.5" />
-          1. Categorías ({block.categories.length}/6)
+          {i18n.t('admin.modules.be.ge_tab_categories', { n: block.categories.length })}
         </button>
         <button
           type="button"
@@ -140,7 +141,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
           )}
         >
           <FileText className="h-3.5 w-3.5" />
-          2. Casos Operativos ({block.cases.length}/10)
+          {i18n.t('admin.modules.be.ge_tab_cases', { n: block.cases.length })}
         </button>
       </div>
 
@@ -159,7 +160,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                   nextCats[idx].name[language] = e.target.value
                   updateBlock({ ...block, categories: nextCats })
                 }}
-                placeholder="Nombre de la categoría (ej: PHISHING)"
+                placeholder={i18n.t('admin.modules.be.ge_ph_category')}
                 className="flex-1 bg-transparent px-3 py-1.5 border border-glass-border/10 rounded-lg text-[13px] text-text focus:border-neon-green/30 outline-none"
               />
 
@@ -228,7 +229,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                   nextCases[idx].text[language] = e.target.value
                   updateBlock({ ...block, cases: nextCases })
                 }}
-                placeholder="Describe la situación o comportamiento operativo del cliente..."
+                placeholder={i18n.t('admin.modules.be.ge_ph_case')}
                 className="w-full bg-transparent px-3 py-2 border border-glass-border/10 rounded-lg text-[13px] text-text focus:border-neon-green/30 outline-none resize-none"
               />
 
@@ -245,7 +246,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                   }}
                   className={cn(SELECT_CLASS, 'flex-1 py-1')}
                 >
-                  <option value="">-- Selecciona una categoría --</option>
+                  <option value="">{i18n.t('admin.modules.be.ge_select_category')}</option>
                   {block.categories.map(cat => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name[language] || cat.name['es'] || 'Sin nombre'}

@@ -144,12 +144,18 @@ export default function CourseEditor() {
       .select('*')
       .order('name')
       .then(({ data }) => setCampaigns(data ?? []))
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'learner')
-      .order('display_name')
-      .then(({ data }) => setProfiles((data ?? []) as Profile[]))
+    // El capacitador solo asigna a personas de su propia campaña; el superadmin, a todas.
+    {
+      let profilesQuery = supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'learner')
+        .order('display_name')
+      if (!isSuperAdmin && authCampaignId) {
+        profilesQuery = profilesQuery.eq('campaign_id', authCampaignId)
+      }
+      profilesQuery.then(({ data }) => setProfiles((data ?? []) as Profile[]))
+    }
   }, [courseId, course?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const availableModules = useMemo(

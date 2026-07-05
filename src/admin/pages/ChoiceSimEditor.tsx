@@ -201,7 +201,7 @@ export default function ChoiceSimEditor() {
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            <span className="hidden sm:inline">Guardar</span>
+            <span className="hidden sm:inline">{t('admin.simulations.save')}</span>
           </Button>
         </div>
       </div>
@@ -214,8 +214,8 @@ export default function ChoiceSimEditor() {
         <div className="flex items-start gap-3 mb-5 p-3.5 rounded-xl bg-brand-green/6 border border-brand-green/20">
           <CheckCircle2 className="h-4 w-4 text-brand-green shrink-0 mt-0.5" />
           <div className="flex-1 text-sm">
-            <span className="text-text font-medium">Escenario cargado. </span>
-            <span className="text-text-muted">Revisa los datos en "General", ajusta lo que necesites y luego guarda.</span>
+            <span className="text-text font-medium">{t('admin.simulations.loaded_notice')} </span>
+            <span className="text-text-muted">{t('admin.simulations.loaded_hint')}</span>
           </div>
           <button onClick={() => setAiBanner(false)} className="text-text-subtle hover:text-text transition-colors shrink-0">
             <X className="h-4 w-4" />
@@ -239,9 +239,9 @@ export default function ChoiceSimEditor() {
       {tab === 'meta' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <GlassCard className="p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-text">Configuración del escenario</h3>
+            <h3 className="text-sm font-semibold text-text">{t('admin.simulations.config_title')}</h3>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">Nivel de dificultad</label>
+              <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.difficulty_level')}</label>
               <FilterDropdown
                 value={meta.level}
                 onChange={(v) => setMeta((m) => ({ ...m, level: v as MetaState['level'] }))}
@@ -263,20 +263,20 @@ export default function ChoiceSimEditor() {
             {showAdvanced && (
               <div className="space-y-3 pt-1 border-t border-glass-border/10">
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Identificador URL</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.url_id')}</label>
                   <input
                     value={meta.slug}
                     onChange={(e) => {
                       slugManualRef.current = true
                       setMeta((m) => ({ ...m, slug: e.target.value }))
                     }}
-                    placeholder="cobro-incorrecto-basico"
+                    placeholder={t('admin.simulations.ph_url_choice')}
                     className={inputClass}
                   />
-                  <p className="text-[11px] text-text-subtle mt-1">Se genera automáticamente desde el título.</p>
+                  <p className="text-[11px] text-text-subtle mt-1">{t('admin.simulations.url_auto')}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Paso de inicio</label>
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.start_step')}</label>
                   <FilterDropdown
                     value={meta.start_node_id}
                     onChange={(v) => setMeta((m) => ({ ...m, start_node_id: v }))}
@@ -288,9 +288,9 @@ export default function ChoiceSimEditor() {
           </GlassCard>
 
           <GlassCard className="p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-text">Título</h3>
+            <h3 className="text-sm font-semibold text-text">{t('admin.simulations.title')}</h3>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">Título (español)</label>
+              <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_es')}</label>
               <input
                 value={meta.title_es}
                 onChange={(e) => {
@@ -301,22 +301,22 @@ export default function ChoiceSimEditor() {
                     slug: slugManualRef.current ? m.slug : slugify(val),
                   }))
                 }}
-                placeholder="Ej: Manejo de cliente difícil"
+                placeholder={t('admin.simulations.ph_title_choice')}
                 className={inputClass}
               />
             </div>
-            <div><label className="text-xs text-text-muted mb-1 block">Title (English)</label><input value={meta.title_en} onChange={(e) => setMeta((m) => ({ ...m, title_en: e.target.value }))} className={inputClass} /></div>
-            <div><label className="text-xs text-text-muted mb-1 block">Título (Português)</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
+            <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_en')}</label><input value={meta.title_en} onChange={(e) => setMeta((m) => ({ ...m, title_en: e.target.value }))} className={inputClass} /></div>
+            <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_pt')}</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
           </GlassCard>
 
           <GlassCard className="p-5 md:col-span-2 space-y-4">
-            <h3 className="text-sm font-semibold text-text">Contexto del escenario</h3>
+            <h3 className="text-sm font-semibold text-text">{t('admin.simulations.scenario_context')}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><label className="text-xs text-text-muted mb-1 block">Nombre del cliente</label><input value={meta.client_name} onChange={(e) => setMeta((m) => ({ ...m, client_name: e.target.value }))} placeholder="Juan Pérez" className={inputClass} /></div>
-              <div><label className="text-xs text-text-muted mb-1 block">Empresa o tipo de cliente</label><input value={meta.client_company} onChange={(e) => setMeta((m) => ({ ...m, client_company: e.target.value }))} placeholder="Empresa ABC" className={inputClass} /></div>
+              <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.client_name')}</label><input value={meta.client_name} onChange={(e) => setMeta((m) => ({ ...m, client_name: e.target.value }))} placeholder={t('admin.simulations.ph_client_name')} className={inputClass} /></div>
+              <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.client_company')}</label><input value={meta.client_company} onChange={(e) => setMeta((m) => ({ ...m, client_company: e.target.value }))} placeholder={t('admin.simulations.ph_company')} className={inputClass} /></div>
             </div>
-            <div><label className="text-xs text-text-muted mb-1 block">Objetivo del agente</label><input value={meta.objective} onChange={(e) => setMeta((m) => ({ ...m, objective: e.target.value }))} placeholder="Resolver el problema y mantener la satisfacción del cliente" className={inputClass} /></div>
-            <div><label className="text-xs text-text-muted mb-1 block">Descripción del escenario</label><textarea rows={2} value={meta.description} onChange={(e) => setMeta((m) => ({ ...m, description: e.target.value }))} placeholder="Breve contexto de la situación..." className={cn(inputClass, 'resize-none')} /></div>
+            <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.agent_goal')}</label><input value={meta.objective} onChange={(e) => setMeta((m) => ({ ...m, objective: e.target.value }))} placeholder={t('admin.simulations.ph_agent_goal')} className={inputClass} /></div>
+            <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.scenario_desc')}</label><textarea rows={2} value={meta.description} onChange={(e) => setMeta((m) => ({ ...m, description: e.target.value }))} placeholder={t('admin.simulations.ph_scenario_desc')} className={cn(inputClass, 'resize-none')} /></div>
           </GlassCard>
         </div>
       )}
@@ -336,10 +336,10 @@ export default function ChoiceSimEditor() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="text-xs font-medium text-text">Pasos ({nodeIds.length})</span>
-                <p className="text-[11px] text-text-subtle mt-0.5">Momentos del escenario</p>
+                <p className="text-[11px] text-text-subtle mt-0.5">{t('admin.simulations.scenario_moments')}</p>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={addNode} className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors" title="Agregar paso">
+                <button onClick={addNode} className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors" title={t('admin.simulations.add_step')}>
                   <Plus className="h-3.5 w-3.5" /> Agregar
                 </button>
                 <button onClick={() => setNodeDrawerOpen(false)} className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
@@ -362,7 +362,7 @@ export default function ChoiceSimEditor() {
                       <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
                         isStart ? 'bg-brand-green' : node?.isEnd ? 'bg-brand-magenta' : 'bg-glass-border/40')} />
                       <span className="font-mono font-medium truncate">{nid}</span>
-                      {isStart && <span className="text-[9px] text-brand-green shrink-0">INICIO</span>}
+                      {isStart && <span className="text-[9px] text-brand-green shrink-0">{t('admin.simulations.start')}</span>}
                       {node?.isEnd && <span className="text-[9px] text-brand-magenta shrink-0">FIN</span>}
                     </div>
                     {linePreview
@@ -387,10 +387,10 @@ export default function ChoiceSimEditor() {
               <GlassCard className="p-4 md:p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-muted">Paso:</span>
+                    <span className="text-xs font-medium text-text-muted">{t('admin.simulations.step_label')}</span>
                     <span className="font-mono text-sm text-text">{selectedNodeId}</span>
                     {selectedNodeId === meta.start_node_id && (
-                      <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">INICIO</span>
+                      <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">{t('admin.simulations.start')}</span>
                     )}
                   </div>
                   <button onClick={() => removeNode(selectedNodeId)} className="p-1.5 hover:text-danger text-text-subtle transition-colors">
@@ -405,7 +405,7 @@ export default function ChoiceSimEditor() {
                 />
               </GlassCard>
             ) : (
-              <div className="text-center py-16 text-text-muted text-sm">Selecciona un paso para editarlo</div>
+              <div className="text-center py-16 text-text-muted text-sm">{t('admin.simulations.select_step')}</div>
             )}
           </div>
         </div>

@@ -153,7 +153,7 @@ export default function ModulePage() {
       const ownerModule = modules.find((m) => m.dbId === attempt.module_id);
       return {
         ...attempt,
-        module_title: ownerModule ? ownerModule.title[language] : 'Plantilla sin módulo asociado',
+        module_title: ownerModule ? ownerModule.title[language] : t('module.no_module_template'),
       };
     });
   }, [attemptsFeedback, modules, language]);
@@ -164,9 +164,9 @@ export default function ModulePage() {
     
     if (!latestAttemptsPerSection || latestAttemptsPerSection.length === 0) {
       return {
-        timeSpent: 'Pendiente', efficiency: 0, pendingSectionsCount: sectionsCount,
-        goodAt: 'Comprensión inicial en curso.', badAt: 'Ninguna alerta registrada.',
-        reinforce: 'Completa los desafíos prácticos obligatorios.', trainerNotes: null
+        timeSpent: t('module.metric_pending'), efficiency: 0, pendingSectionsCount: sectionsCount,
+        goodAt: t('module.metric_good_default'), badAt: t('module.metric_no_alerts'),
+        reinforce: t('module.metric_reinforce_default'), trainerNotes: null
       };
     }
 
@@ -178,7 +178,7 @@ export default function ModulePage() {
 
     currentAttempts.forEach((attempt: any) => {
       const targetSection = module && module.sections ? module.sections.find((s) => s.id === attempt.section_id) : null;
-      const sectionTitle = (targetSection as any)?.heading?.[language] || attempt.module_title || `Desafío Práctico`;
+      const sectionTitle = (targetSection as any)?.heading?.[language] || attempt.module_title || t('module.challenge_practical');
       
       if (attempt.score >= 70) {
         approvedCount++;
@@ -197,9 +197,9 @@ export default function ModulePage() {
       timeSpent: '12 min 45 s',
       efficiency: averageEfficiency, 
       pendingSectionsCount: sectionsToCorrect,
-      goodAt: approvedNames.length > 0 ? `Sólido dominio en: ${approvedNames.slice(0, 2).join(', ')}.` : 'Identificación de patrones de suplantación y flujos críticos.',
-      badAt: failedNames.length > 0 ? `Anomalías en: ${failedNames.join(', ')}.` : 'Falsos positivos en alertas de riesgo operativo temprano.',
-      reinforce: failedNames.length > 0 ? `Revisar y repetir flujos de: ${failedNames.slice(0, 2).join(', ')}.` : 'Revisar la sección de tipologías avanzadas de fraude.',
+      goodAt: approvedNames.length > 0 ? t('module.metric_good_strong', { names: approvedNames.slice(0, 2).join(', ') }) : t('module.metric_good_patterns'),
+      badAt: failedNames.length > 0 ? t('module.metric_bad_anomalies', { names: failedNames.join(', ') }) : t('module.metric_bad_false_pos'),
+      reinforce: failedNames.length > 0 ? t('module.metric_reinforce_repeat', { names: failedNames.slice(0, 2).join(', ') }) : t('module.metric_reinforce_typologies'),
       trainerNotes: latestTrainerComment
     };
   }, [latestAttemptsPerSection, module, language]);
@@ -216,23 +216,23 @@ export default function ModulePage() {
     setIsSendingFeedback(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 800)); 
-      toast.success('¡Gracias! Tu opinión nos ayuda a mejorar el contenido del módulo.');
+      toast.success(t('module.feedback_thanks'));
       setApprenticeComment('');
     } catch {
-      toast.error('No se pudo enviar.');
+      toast.error(t('module.send_error'));
     } finally {
       setIsSendingFeedback(false);
     }
   };
 
   if (loading) return <ModulePageSkeleton />;
-  if (!module) return <div className="text-center pt-20 text-text-muted">Módulo no encontrado.</div>;
+  if (!module) return <div className="text-center pt-20 text-text-muted">{t('module.not_found')}</div>;
 
   const handleComplete = () => {
     earnXP(100);
     updateStreak();
     markModule(module.id, siblings.length);
-    toast.success(`¡${module.title[language]} completado!`);
+    toast.success(t('module.completed_toast', { title: module.title[language] }));
     if (nextModule) setTimeout(() => nav(`/modules/${nextModule.id}`), 600);
   };
 
@@ -295,8 +295,8 @@ export default function ModulePage() {
           <div className="flex items-center gap-4 mt-12">
             <div className="h-px flex-1 bg-gradient-to-r from-transparent to-glass-border/15" />
             <span className="text-[11px] text-text-subtle uppercase tracking-wider font-medium">
-              {module.sections.length} {module.sections.length === 1 ? 'sección' : 'secciones'}
-              {totalQuizzes > 0 && ` · ${totalQuizzes} verificación${totalQuizzes > 1 ? 'es' : ''}`}
+              {module.sections.length} {module.sections.length === 1 ? t('module.section_one') : t('module.section_other')}
+              {totalQuizzes > 0 && ` · ${totalQuizzes} ${totalQuizzes === 1 ? t('module.check_one') : t('module.check_other')}`}
             </span>
             <div className="h-px flex-1 bg-gradient-to-l from-transparent to-glass-border/15" />
           </div>
