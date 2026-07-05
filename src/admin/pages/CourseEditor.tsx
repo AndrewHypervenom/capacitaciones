@@ -168,6 +168,26 @@ export default function CourseEditor() {
     return profiles.filter((p) => (p.display_name ?? '').toLowerCase().includes(q))
   }, [profiles, userSearch])
 
+  // ¿Hay cambios pendientes respecto a lo guardado en BD?
+  const assignDirty = useMemo(() => {
+    const sameMap = (
+      base: Array<{ id: string; is_mandatory: boolean }>,
+      draft: Record<string, boolean>,
+    ) => {
+      if (base.length !== Object.keys(draft).length) return false
+      return base.every((b) => b.id in draft && draft[b.id] === b.is_mandatory)
+    }
+    const campSame = sameMap(
+      courseCampaigns.map((c) => ({ id: c.campaign_id, is_mandatory: c.is_mandatory })),
+      draftCampaigns,
+    )
+    const userSame = sameMap(
+      assignments.map((a) => ({ id: a.user_id, is_mandatory: a.is_mandatory })),
+      draftUsers,
+    )
+    return !campSame || !userSame
+  }, [courseCampaigns, assignments, draftCampaigns, draftUsers])
+
   if (loading || !course) {
     return (
       <div className="p-4 sm:p-8 space-y-3">
@@ -291,27 +311,6 @@ export default function CourseEditor() {
   const handleUserMandatory = (userId: string, isMandatory: boolean) => {
     setDraftUsers((prev) => ({ ...prev, [userId]: isMandatory }))
   }
-
-  // ¿Hay cambios pendientes respecto a lo guardado en BD?
-  const assignDirty = useMemo(() => {
-    const sameMap = (
-      base: Array<{ id: string; is_mandatory: boolean }>,
-      draft: Record<string, boolean>,
-    ) => {
-      const baseIds = base.map((b) => b.id)
-      if (baseIds.length !== Object.keys(draft).length) return false
-      return base.every((b) => b.id in draft && draft[b.id] === b.is_mandatory)
-    }
-    const campSame = sameMap(
-      courseCampaigns.map((c) => ({ id: c.campaign_id, is_mandatory: c.is_mandatory })),
-      draftCampaigns,
-    )
-    const userSame = sameMap(
-      assignments.map((a) => ({ id: a.user_id, is_mandatory: a.is_mandatory })),
-      draftUsers,
-    )
-    return !campSame || !userSame
-  }, [courseCampaigns, assignments, draftCampaigns, draftUsers])
 
   const saveAssignments = async () => {
     setSavingAssign(true)
