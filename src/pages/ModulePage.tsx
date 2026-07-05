@@ -239,6 +239,69 @@ export default function ModulePage() {
   return (
     <>
       <div className={cn('mx-auto px-5 pt-12 pb-28 transition-all duration-500', readingMode ? 'max-w-2xl' : 'max-w-6xl')}>
+        {/* ── Portada del módulo: meta + título + subtítulo + objetivos ── */}
+        <header className="mb-12">
+          <Reveal>
+            <div className="flex flex-wrap items-center gap-3 mb-5">
+              <NeonBadge color="neutral">
+                {t('module.of_modules', { idx: moduleIndex + 1, total: modules.length })}
+              </NeonBadge>
+              <span className="inline-flex items-center gap-1.5 text-[12px] text-text-muted">
+                <Clock className="h-3.5 w-3.5" />
+                {t('module.duration', { min: module.duration })}
+              </span>
+              {completed && (
+                <NeonBadge color="green">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                  {t('module.marked_complete')}
+                </NeonBadge>
+              )}
+            </div>
+
+            <GradientHeading as="h1" variant="white" size="display-lg" className="mb-5 text-balance">
+              {module.title[language]}
+            </GradientHeading>
+
+            {module.subtitle?.[language] && (
+              <p className="text-[17px] text-text-muted leading-relaxed max-w-2xl mb-10">
+                {module.subtitle[language]}
+              </p>
+            )}
+          </Reveal>
+
+          {module.objectives?.[language]?.length > 0 && (
+            <Reveal delay={80}>
+              <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                {module.objectives[language].map((o, i) => (
+                  <GlassCard
+                    key={i}
+                    intensity="subtle"
+                    interactive
+                    padding="sm"
+                    rounded="2xl"
+                    className="flex items-start gap-3"
+                  >
+                    <span className="mt-0.5 h-5 w-5 rounded-full bg-glass-border/10 text-text-muted flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ring-glass-border/8">
+                      {i + 1}
+                    </span>
+                    <span className="text-[13px] text-text leading-snug">{o}</span>
+                  </GlassCard>
+                ))}
+              </div>
+            </Reveal>
+          )}
+
+          {/* Separador con conteo de secciones */}
+          <div className="flex items-center gap-4 mt-12">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-glass-border/15" />
+            <span className="text-[11px] text-text-subtle uppercase tracking-wider font-medium">
+              {module.sections.length} {module.sections.length === 1 ? 'sección' : 'secciones'}
+              {totalQuizzes > 0 && ` · ${totalQuizzes} verificación${totalQuizzes > 1 ? 'es' : ''}`}
+            </span>
+            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-glass-border/15" />
+          </div>
+        </header>
+
         <div className={cn(readingMode ? 'block' : 'grid md:grid-cols-[280px_1fr] gap-12')}>
             
           {!readingMode && (
