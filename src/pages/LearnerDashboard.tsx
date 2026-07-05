@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -6,20 +6,14 @@ import {
   BookOpen,
   Check,
   Compass,
-  FileCheck,
   FlaskConical,
   Globe,
   GraduationCap,
-  HeartHandshake,
-  Headphones,
   Home,
-  ListChecks,
   Lock,
   LogOut,
   Medal,
   PhoneCall,
-  Shield,
-  Sparkles,
   Zap,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -42,18 +36,7 @@ import { ProgressRing } from '@/components/ui/ProgressRing';
 import { Reveal } from '@/components/ui/Reveal';
 import { cn } from '@/lib/cn';
 
-const moduleIconMap: Record<string, typeof Sparkles> = {
-  Sparkles,
-  Headphones,
-  HeartHandshake,
-  Globe,
-  Shield,
-  FileCheck,
-};
-
-type ModuleStatus = 'completed' | 'available' | 'locked';
-
-const SECTION_IDS = ['inicio', 'plan', 'cursos', 'recursos', 'certificacion', 'logros', 'simulador'];
+const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'certificacion', 'logros', 'simulador'];
 
 export default function LearnerDashboard() {
   // Asegurar que la página comience desde arriba al montar el componente
@@ -64,8 +47,20 @@ export default function LearnerDashboard() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { name, language, reset } = useUserStore();
-  const { planModules: modules, loading: modulesLoading } = useModules();
+  const { modules: allModules, loading: modulesLoading } = useModules();
   const { courses } = useLearnerCourses();
+
+  // Universo de módulos que cuenta para certificación, simulador e insignias:
+  // los módulos de los cursos asignados (a la persona o a su campaña), no los
+  // del catálogo abierto. Todo módulo vive dentro de un curso tras la migración.
+  const assignedCourseIds = useMemo(
+    () => new Set(courses.filter((c) => c.isAssigned).map((c) => c.id)),
+    [courses],
+  );
+  const modules = useMemo(
+    () => allModules.filter((m) => m.courseId && assignedCourseIds.has(m.courseId)),
+    [allModules, assignedCourseIds],
+  );
   const progressState = useProgressStore();
   const { xp, streak, badges, attempts } = progressState;
   const recheckBadges = useProgressStore((s) => s.recheckBadges);
@@ -98,20 +93,9 @@ export default function LearnerDashboard() {
     .reduce((acc, m) => acc + m.duration, 0);
   const nextModule = modules.find((m) => !completedModules.includes(m.id));
 
-  const moduleItems = modules.map((m, idx) => {
-    let status: ModuleStatus;
-    if (completedModules.includes(m.id)) status = 'completed';
-    else if (idx === 0 || completedModules.includes(modules[idx - 1].id)) status = 'available';
-    else status = 'locked';
-    return { module: m, status };
-  });
-
   const sidebarItems = [
     { icon: Home, label: t('dashboard.sidebar_home'), id: 'inicio' },
-    { icon: ListChecks, label: t('dashboard.sidebar_plan'), id: 'plan' },
-    ...(courses.length > 0
-      ? [{ icon: BookOpen, label: t('dashboard.sidebar_courses'), id: 'cursos' }]
-      : []),
+    { icon: BookOpen, label: t('dashboard.sidebar_courses'), id: 'cursos' },
     { icon: Compass, label: t('dashboard.sidebar_resources'), id: 'recursos' },
     { icon: GraduationCap, label: t('dashboard.sidebar_cert'), id: 'certificacion' },
     { icon: Medal, label: t('dashboard.sidebar_achievements'), id: 'logros' },
@@ -282,106 +266,22 @@ export default function LearnerDashboard() {
             </div>
           </Reveal>
 
-          {/* Plan de Formación */}
-          <section id="plan" className="mb-16 md:mb-20 scroll-mt-16">
+          {/* Cursos — navegación principal: Campaña → Curso → Módulo */}
+          <section id="cursos" className="mb-16 md:mb-20 scroll-mt-16">
             <Reveal className="mb-8">
               <h2 className="text-2xl font-semibold tracking-tight text-text mb-1">
-                {t('dashboard.panel_plan_title')}
+                {t('dashboard.courses_title')}
               </h2>
               <p className="text-[15px] text-text-muted">
-                {t('dashboard.panel_plan_subtitle')}
+                {t('dashboard.courses_subtitle')}
               </p>
             </Reveal>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {moduleItems.map(({ module, status }, idx) => {
-                const Icon = moduleIconMap[module.icon] ?? Sparkles;
-                const interactive = status !== 'locked';
-                const Wrapper: React.ElementType = interactive ? Link : 'div';
-                const wrapperProps = interactive ? { to: `/modules/${module.id}` } : {};
-
-                return (
-                  <Reveal key={module.id} delay={idx * 60}>
-                    <Wrapper
-                      {...wrapperProps}
-                      className={cn(
-                        'flex h-full flex-col justify-between rounded-3xl border bg-surface p-6 transition-all duration-300',
-                        status === 'available' && 'border-line hover:border-primary hover:shadow-card-hover cursor-pointer',
-                        status === 'completed' && 'border-primary/25 hover:border-primary hover:shadow-card-hover cursor-pointer',
-                        status === 'locked' && 'border-line opacity-60',
-                      )}
-                    >
-                      <div className="mb-6">
-                        <div className="mb-4 flex items-center justify-between">
-                          <span
-                            className={cn(
-                              'rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                              status === 'locked'
-                                ? 'bg-subtle text-text-muted'
-                                : 'bg-primary/10 text-primary',
-                            )}
-                          >
-                            {status === 'completed' && t('dashboard.status_completed')}
-                            {status === 'available' && t('dashboard.status_available')}
-                            {status === 'locked' && t('dashboard.status_locked')}
-                          </span>
-                          {status === 'locked'
-                            ? <Lock className="h-5 w-5 text-text-subtle" />
-                            : status === 'completed'
-                              ? <Check className="h-5 w-5 text-primary" strokeWidth={3} />
-                              : <Icon className="h-5 w-5 text-primary" />
-                          }
-                        </div>
-                        <h3 className="text-[19px] font-semibold tracking-tight text-text mb-1.5">
-                          {module.title[language]}
-                        </h3>
-                        <p className="text-[14px] text-text-muted leading-relaxed line-clamp-2">
-                          {status === 'locked'
-                            ? t('dashboard.module_locked_hint')
-                            : module.subtitle[language]}
-                        </p>
-                      </div>
-
-                      {status === 'locked' ? (
-                        <span className="w-full rounded-lg bg-subtle px-4 py-2 text-center text-[13px] font-semibold text-text-subtle cursor-not-allowed">
-                          {t('dashboard.status_locked')}
-                        </span>
-                      ) : status === 'completed' ? (
-                        <span className="w-full rounded-lg border border-primary/30 px-4 py-2 text-center text-[13px] font-semibold text-primary transition-colors hover:bg-primary/10">
-                          {t('dashboard.module_review')}
-                        </span>
-                      ) : (
-                        <span className="w-full rounded-lg bg-primary px-4 py-2 text-center text-[13px] font-semibold text-on-primary transition-opacity hover:opacity-90">
-                          {t('dashboard.module_continue')}
-                        </span>
-                      )}
-                    </Wrapper>
-                  </Reveal>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Mis Cursos */}
-          {courses.length > 0 && (
-            <section id="cursos" className="mb-16 md:mb-20 scroll-mt-16">
-              <Reveal className="mb-8 flex items-end justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text mb-1">
-                    {t('dashboard.courses_title')}
-                  </h2>
-                  <p className="text-[15px] text-text-muted">
-                    {t('dashboard.courses_subtitle')}
-                  </p>
-                </div>
-                <Link
-                  to="/courses"
-                  className="shrink-0 text-[13px] font-semibold text-primary hover:opacity-80 transition-opacity"
-                >
-                  {t('dashboard.courses_view_all')} →
-                </Link>
-              </Reveal>
-
+            {courses.length === 0 ? (
+              <div className="rounded-3xl border border-line bg-surface p-8 text-center text-[14px] text-text-muted">
+                {t('dashboard.courses_empty')}
+              </div>
+            ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {[...courses]
                   .sort((a, b) => {
@@ -389,7 +289,6 @@ export default function LearnerDashboard() {
                     if (a.isMandatory !== b.isMandatory) return a.isMandatory ? -1 : 1;
                     return 0;
                   })
-                  .slice(0, 3)
                   .map((course, idx) => {
                     const courseTotal = course.modules.length;
                     const courseDone = course.modules.filter((m) =>
@@ -445,8 +344,8 @@ export default function LearnerDashboard() {
                     );
                   })}
               </div>
-            </section>
-          )}
+            )}
+          </section>
 
           {/* Recursos Complementarios */}
           <section id="recursos" className="mb-16 md:mb-20 scroll-mt-16">

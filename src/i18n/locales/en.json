@@ -92,10 +92,11 @@
     "quiz_title": "Did your trainer start a quiz?",
     "quiz_subtitle": "Enter the PIN to join the session in real time.",
     "quiz_join": "Join",
-    "sidebar_courses": "My Courses",
-    "courses_title": "My Courses",
-    "courses_subtitle": "Courses assigned to you and your campaign.",
-    "courses_view_all": "View all"
+    "sidebar_courses": "Courses",
+    "courses_title": "Courses",
+    "courses_subtitle": "Explore your assigned courses and the available catalog.",
+    "courses_view_all": "View all",
+    "courses_empty": "You don't have any courses available yet."
   },
   "courses": {
     "title": "Courses",
@@ -458,6 +459,7 @@
       "published": "published",
       "draft": "draft",
       "sections_count": "{{n}} sections",
+      "no_course_group": "No course",
       "empty_title": "No modules loaded",
       "empty_hint": "Use the 'Upload content' button to load the manual content.",
       "preview": "Preview",

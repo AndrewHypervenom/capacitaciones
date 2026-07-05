@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -10,6 +10,7 @@ import {
   deleteModule,
   type DbModuleRow,
 } from '@/services/modules.service'
+import { getCoursesForCampaign, type CourseWithModules } from '@/services/courses.service'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -28,6 +29,7 @@ export default function ModuleList() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
   const [selectedCampaignName, setSelectedCampaignName] = useState<string>('')
   const [modules, setModules] = useState<DbModuleRow[]>([])
+  const [courses, setCourses] = useState<CourseWithModules[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,8 +64,14 @@ export default function ModuleList() {
     if (!selectedCampaignId) return
     setLoading(true)
     setError(null)
-    getModulesRaw(selectedCampaignId)
-      .then(setModules)
+    Promise.all([
+      getModulesRaw(selectedCampaignId),
+      getCoursesForCampaign(selectedCampaignId).catch(() => [] as CourseWithModules[]),
+    ])
+      .then(([mods, crs]) => {
+        setModules(mods)
+        setCourses(crs)
+      })
       .catch(() => setError(t('admin.modules.error_load')))
       .finally(() => setLoading(false))
   }, [selectedCampaignId, t])
@@ -92,6 +100,106 @@ export default function ModuleList() {
       setError(t('admin.modules.error_delete'))
     }
   }
+
+  // Agrupar módulos por curso para reflejar la jerarquía Campaña → Curso → Módulo.
+  const { courseGroups, orphans } = useMemo(() => {
+    const byCourse = new Map<string, DbModuleRow[]>()
+    const orphanList: DbModuleRow[] = []
+    for (const m of modules) {
+      if (m.course_id) {
+        const arr = byCourse.get(m.course_id) ?? []
+        arr.push(m)
+        byCourse.set(m.course_id, arr)
+      } else {
+        orphanList.push(m)
+      }
+    }
+    const groups = [...courses]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((c) => ({
+        id: c.id,
+        title: c.title_es,
+        color: c.color,
+        modules: (byCourse.get(c.id) ?? []).sort(
+          (a, b) => (a.course_sort_order ?? 0) - (b.course_sort_order ?? 0),
+        ),
+      }))
+      .filter((g) => g.modules.length > 0)
+    return { courseGroups: groups, orphans: orphanList }
+  }, [modules, courses])
+
+  const renderModule = (mod: DbModuleRow, idx: number) => (
+    <GlassCard
+      key={mod.id}
+      intensity="subtle"
+      rounded="2xl"
+      className={cn(
+        'group hover:border-glass-border/15 transition-all duration-200',
+        mod.is_published && 'hover:border-glass-border/15',
+      )}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4">
+        <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+          {/* Número */}
+          <span className="text-[11px] font-mono text-text-subtle w-5 shrink-0 text-right">
+            {idx + 1}
+          </span>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[15px] font-semibold text-text truncate">
+                {mod.title_es}
+              </span>
+              <NeonBadge color={mod.is_published ? 'green' : 'neutral'} dot={mod.is_published}>
+                {mod.is_published ? t('admin.modules.published') : t('admin.modules.draft')}
+              </NeonBadge>
+            </div>
+            <div className="text-[12px] text-text-subtle mt-0.5">
+              {mod.duration_min} min ·{' '}
+              {t('admin.modules.sections_count', { n: mod.module_sections?.length ?? 0 })}
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 sm:shrink-0 flex-wrap opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
+          <Link
+            to={`/admin/modules/${mod.id}/preview`}
+            title={t('admin.modules.preview')}
+            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Link>
+
+          <button
+            onClick={() => handleTogglePublished(mod)}
+            title={mod.is_published ? t('admin.modules.unpublish') : t('admin.modules.publish')}
+            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+          >
+            {mod.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </button>
+
+          <button
+            onClick={() => handleDelete(mod)}
+            title={t('admin.modules.delete')}
+            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+
+          <Link
+            to={`/admin/modules/${mod.id}`}
+            className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-[13px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors min-h-[44px]"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {t('admin.modules.edit')}
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+    </GlassCard>
+  )
 
   return (
     <div className="p-4 sm:p-8">
@@ -172,94 +280,41 @@ export default function ModuleList() {
             </Link>
           </GlassCard>
         ) : (
-          <div className="space-y-3">
-            {modules.map((mod, idx) => (
-              <GlassCard
-                key={mod.id}
-                intensity="subtle"
-                rounded="2xl"
-                className={cn(
-                  'group hover:border-glass-border/15 transition-all duration-200',
-                  mod.is_published && 'hover:border-glass-border/15',
-                )}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4">
-                  <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-                    {/* Número */}
-                    <span className="text-[11px] font-mono text-text-subtle w-5 shrink-0 text-right">
-                      {idx + 1}
-                    </span>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[15px] font-semibold text-text truncate">
-                          {mod.title_es}
-                        </span>
-                        <NeonBadge
-                          color={mod.is_published ? 'green' : 'neutral'}
-                          dot={mod.is_published}
-                        >
-                          {mod.is_published
-                            ? t('admin.modules.published')
-                            : t('admin.modules.draft')}
-                        </NeonBadge>
-                      </div>
-                      <div className="text-[12px] text-text-subtle mt-0.5">
-                        {mod.duration_min} min ·{' '}
-                        {t('admin.modules.sections_count', {
-                          n: mod.module_sections?.length ?? 0,
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 sm:shrink-0 flex-wrap opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
-                    <Link
-                      to={`/admin/modules/${mod.id}/preview`}
-                      title={t('admin.modules.preview')}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Link>
-
-                    <button
-                      onClick={() => handleTogglePublished(mod)}
-                      title={
-                        mod.is_published
-                          ? t('admin.modules.unpublish')
-                          : t('admin.modules.publish')
-                      }
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-                    >
-                      {mod.is_published ? (
-                        <Eye className="h-4 w-4" />
-                      ) : (
-                        <EyeOff className="h-4 w-4" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(mod)}
-                      title={t('admin.modules.delete')}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-
-                    <Link
-                      to={`/admin/modules/${mod.id}`}
-                      className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-[13px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors min-h-[44px]"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      {t('admin.modules.edit')}
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
-                  </div>
+          <div className="space-y-8">
+            {courseGroups.map((group) => (
+              <div key={group.id}>
+                <div className="flex items-center gap-2.5 mb-3 px-1">
+                  <span
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-white shrink-0"
+                    style={{ background: group.color }}
+                  >
+                    <GraduationCap className="h-3.5 w-3.5" />
+                  </span>
+                  <h3 className="text-[13px] font-semibold text-text truncate">{group.title}</h3>
+                  <span className="text-[11px] text-text-subtle shrink-0">{group.modules.length}</span>
                 </div>
-              </GlassCard>
+                <div className="space-y-3">
+                  {group.modules.map((mod, idx) => renderModule(mod, idx))}
+                </div>
+              </div>
             ))}
+
+            {orphans.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2.5 mb-3 px-1">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-subtle text-text-muted shrink-0">
+                    <BookOpen className="h-3.5 w-3.5" />
+                  </span>
+                  <h3 className="text-[13px] font-semibold text-text">
+                    {t('admin.modules.no_course_group')}
+                  </h3>
+                  <span className="text-[11px] text-text-subtle shrink-0">{orphans.length}</span>
+                </div>
+                <div className="space-y-3">
+                  {orphans.map((mod, idx) => renderModule(mod, idx))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

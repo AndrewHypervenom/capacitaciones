@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, ChevronRight, Clock, FileText, Loader2, Minus,
   Plus, RotateCcw, Sparkles, Upload, X,
@@ -8,6 +8,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { createModule, saveGeneratedModule } from '@/services/modules.service'
+import {
+  addModuleToCourse,
+  getCoursesForCampaign,
+  getCourseById,
+  type CourseWithModules,
+} from '@/services/courses.service'
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
 import { confirmDialog } from '@/components/ui/ConfirmDialog'
 import i18n from '@/i18n'
@@ -159,14 +165,20 @@ function AIModeForm({
   campaignId,
   campaigns,
   isSuperAdmin,
+  courses,
+  courseId,
   onSelectCampaign,
+  onSelectCourse,
   onCreated,
 }: {
   campaignId: string
   campaigns: Campaign[]
   isSuperAdmin: boolean
+  courses: CourseWithModules[]
+  courseId: string
   onSelectCampaign: (id: string) => void
-  onCreated: (moduleId: string) => void
+  onSelectCourse: (id: string) => void
+  onCreated: (moduleId: string) => void | Promise<void>
 }) {
   const { remaining, notifyCache } = useCacheTimer()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -223,7 +235,7 @@ function AIModeForm({
     try {
       const moduleId = await saveGeneratedModule(campaignId, generated)
       toast.success('Módulo creado. Abriendo editor...')
-      onCreated(moduleId)
+      await onCreated(moduleId)
     } catch (e) {
       toast.error(`Error: ${(e as Error).message}`)
       setSaving(false)
@@ -232,20 +244,33 @@ function AIModeForm({
 
   return (
     <div className="space-y-4">
-      {/* Campaign selector */}
-      {isSuperAdmin && campaigns.length > 0 && (
-        <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
-          <SectionLabel>Campaña destino</SectionLabel>
+      {/* Campaña + curso destino */}
+      <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8 space-y-5">
+        {isSuperAdmin && campaigns.length > 0 && (
+          <div>
+            <SectionLabel>Campaña destino</SectionLabel>
+            <FilterDropdown
+              value={campaignId}
+              onChange={onSelectCampaign}
+              options={[
+                { value: '', label: '— Seleccionar campaña —' },
+                ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            />
+          </div>
+        )}
+        <div>
+          <SectionLabel>Curso destino</SectionLabel>
           <FilterDropdown
-            value={campaignId}
-            onChange={onSelectCampaign}
+            value={courseId}
+            onChange={onSelectCourse}
             options={[
-              { value: '', label: '— Seleccionar campaña —' },
-              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+              { value: '', label: '— Sin curso (Plan general) —' },
+              ...courses.map((c) => ({ value: c.id, label: c.title_es })),
             ]}
           />
-        </GlassCard>
-      )}
+        </div>
+      </GlassCard>
 
       {/* Description input */}
       <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
@@ -503,6 +528,7 @@ function AIModeForm({
 
 export default function NewModulePage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
 
   const [mode, setMode] = useState<Mode>('manual')
@@ -514,6 +540,8 @@ export default function NewModulePage() {
   const [duration, setDuration] = useState(30)
   const [campaignId, setCampaignId] = useState(authCampaignId ?? '')
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [courseId, setCourseId] = useState('')
+  const [courses, setCourses] = useState<CourseWithModules[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -524,6 +552,51 @@ export default function NewModulePage() {
       if (!campaignId && data?.[0]) setCampaignId(data[0].id)
     })
   }, [isSuperAdmin, campaignId])
+
+  // Si llegamos desde el editor de un curso (?courseId=), fijar ese curso y su campaña.
+  useEffect(() => {
+    const qsCourse = searchParams.get('courseId')
+    if (!qsCourse) return
+    getCourseById(qsCourse)
+      .then((c) => {
+        if (c) {
+          setCampaignId(c.campaign_id)
+          setCourseId(c.id)
+        }
+      })
+      .catch(() => {})
+  }, [searchParams])
+
+  // Cursos de la campaña seleccionada (para elegir el curso destino del módulo).
+  useEffect(() => {
+    if (!campaignId) {
+      setCourses([])
+      return
+    }
+    getCoursesForCampaign(campaignId)
+      .then((cs) => {
+        setCourses(cs)
+        setCourseId((prev) => (prev && cs.some((c) => c.id === prev) ? prev : ''))
+      })
+      .catch(() => setCourses([]))
+  }, [campaignId])
+
+  const attachToCourse = async (moduleId: string) => {
+    if (!courseId) return
+    try {
+      const target = courses.find((c) => c.id === courseId)
+      const maxOrder = target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0
+      await addModuleToCourse(courseId, moduleId, maxOrder + 1)
+    } catch {
+      /* si falla el adjuntar, el módulo igual queda creado (suelto) */
+    }
+  }
+
+  // Crea/adjunta y abre el editor. Compartido por modo manual e IA.
+  const handleCreated = async (moduleId: string) => {
+    await attachToCourse(moduleId)
+    navigate(`/admin/modules/${moduleId}`)
+  }
 
   const canCreate = title.es.trim().length > 0 && campaignId
   const adjustDuration = (delta: number) =>
@@ -547,7 +620,7 @@ export default function NewModulePage() {
         subtitle_en: subtitle.en.trim() || null,
         subtitle_pt: subtitle.pt.trim() || null,
       })
-      navigate(`/admin/modules/${id}`)
+      await handleCreated(id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear el módulo')
       setSaving(false)
@@ -750,6 +823,23 @@ export default function NewModulePage() {
                   />
                 </div>
               )}
+
+              <div className={cn(isSuperAdmin && campaigns.length > 0 && 'mt-5')}>
+                <label className="text-[12px] font-medium text-text-muted block mb-2">
+                  Curso destino
+                </label>
+                <FilterDropdown
+                  value={courseId}
+                  onChange={setCourseId}
+                  options={[
+                    { value: '', label: '— Sin curso (Plan general) —' },
+                    ...courses.map((c) => ({ value: c.id, label: c.title_es })),
+                  ]}
+                />
+                <p className="text-[11px] text-text-subtle mt-1.5">
+                  El módulo se agregará a este curso. Puedes cambiarlo luego desde el curso.
+                </p>
+              </div>
             </GlassCard>
 
             {error && (
@@ -794,8 +884,11 @@ export default function NewModulePage() {
               campaignId={campaignId}
               campaigns={campaigns}
               isSuperAdmin={isSuperAdmin}
+              courses={courses}
+              courseId={courseId}
               onSelectCampaign={setCampaignId}
-              onCreated={(id) => navigate(`/admin/modules/${id}`)}
+              onSelectCourse={setCourseId}
+              onCreated={handleCreated}
             />
           </motion.div>
         )}

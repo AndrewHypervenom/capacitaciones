@@ -92,10 +92,11 @@
     "quiz_title": "Seu capacitador iniciou um quiz?",
     "quiz_subtitle": "Insira o PIN para entrar na sessão em tempo real.",
     "quiz_join": "Entrar",
-    "sidebar_courses": "Meus Cursos",
-    "courses_title": "Meus Cursos",
-    "courses_subtitle": "Cursos atribuídos a você e à sua campanha.",
-    "courses_view_all": "Ver todos"
+    "sidebar_courses": "Cursos",
+    "courses_title": "Cursos",
+    "courses_subtitle": "Explore seus cursos atribuídos e o catálogo disponível.",
+    "courses_view_all": "Ver todos",
+    "courses_empty": "Você ainda não tem cursos disponíveis."
   },
   "courses": {
     "title": "Cursos",
@@ -458,6 +459,7 @@
       "published": "publicado",
       "draft": "rascunho",
       "sections_count": "{{n}} seções",
+      "no_course_group": "Sem curso",
       "empty_title": "Nenhum módulo carregado",
       "empty_hint": "Use o botão 'Enviar conteúdo' para carregar o material dos manuais.",
       "preview": "Pré-visualização",
