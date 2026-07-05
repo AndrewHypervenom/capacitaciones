@@ -13,6 +13,7 @@ import {
   ImagePlus,
   Info,
   Plus,
+  Save,
   Search,
   Users,
   X,
@@ -79,12 +80,16 @@ export default function CourseEditor() {
   // Módulos
   const [campaignModules, setCampaignModules] = useState<DbModuleRow[]>([])
 
-  // Asignaciones
+  // Asignaciones — `*Base` = lo que hay en BD; `draft*` = edición local pendiente de guardar
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [courseCampaigns, setCourseCampaigns] = useState<CourseCampaignRow[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
   const [userSearch, setUserSearch] = useState('')
+  // Borradores: id → obligatorio (solo entradas asignadas). Ausente = no asignado.
+  const [draftCampaigns, setDraftCampaigns] = useState<Record<string, boolean>>({})
+  const [draftUsers, setDraftUsers] = useState<Record<string, boolean>>({})
+  const [savingAssign, setSavingAssign] = useState(false)
 
   const reload = useCallback(async () => {
     if (!courseId) return
@@ -122,8 +127,18 @@ export default function CourseEditor() {
   // Datos de asignación
   useEffect(() => {
     if (!courseId || !course) return
-    getCourseCampaigns(courseId).then(setCourseCampaigns).catch(() => {})
-    getCourseAssignments(courseId).then(setAssignments).catch(() => {})
+    getCourseCampaigns(courseId)
+      .then((rows) => {
+        setCourseCampaigns(rows)
+        setDraftCampaigns(Object.fromEntries(rows.map((r) => [r.campaign_id, r.is_mandatory])))
+      })
+      .catch(() => {})
+    getCourseAssignments(courseId)
+      .then((rows) => {
+        setAssignments(rows)
+        setDraftUsers(Object.fromEntries(rows.map((r) => [r.user_id, r.is_mandatory])))
+      })
+      .catch(() => {})
     supabase
       .from('campaigns')
       .select('*')
@@ -249,68 +264,95 @@ export default function CourseEditor() {
     }
   }
 
-  const campaignAssignment = (campaignId: string) =>
-    courseCampaigns.find((cc) => cc.campaign_id === campaignId)
+  // ── Asignación: edición local (los cambios se persisten con "Guardar asignaciones") ──
 
-  const handleToggleCampaign = async (campaignId: string) => {
-    const current = campaignAssignment(campaignId)
+  const handleToggleCampaign = (campaignId: string) => {
+    setDraftCampaigns((prev) => {
+      const next = { ...prev }
+      if (campaignId in next) delete next[campaignId]
+      else next[campaignId] = false
+      return next
+    })
+  }
+
+  const handleCampaignMandatory = (campaignId: string, isMandatory: boolean) => {
+    setDraftCampaigns((prev) => ({ ...prev, [campaignId]: isMandatory }))
+  }
+
+  const handleToggleUser = (userId: string) => {
+    setDraftUsers((prev) => {
+      const next = { ...prev }
+      if (userId in next) delete next[userId]
+      else next[userId] = false
+      return next
+    })
+  }
+
+  const handleUserMandatory = (userId: string, isMandatory: boolean) => {
+    setDraftUsers((prev) => ({ ...prev, [userId]: isMandatory }))
+  }
+
+  // ¿Hay cambios pendientes respecto a lo guardado en BD?
+  const assignDirty = useMemo(() => {
+    const sameMap = (
+      base: Array<{ id: string; is_mandatory: boolean }>,
+      draft: Record<string, boolean>,
+    ) => {
+      const baseIds = base.map((b) => b.id)
+      if (baseIds.length !== Object.keys(draft).length) return false
+      return base.every((b) => b.id in draft && draft[b.id] === b.is_mandatory)
+    }
+    const campSame = sameMap(
+      courseCampaigns.map((c) => ({ id: c.campaign_id, is_mandatory: c.is_mandatory })),
+      draftCampaigns,
+    )
+    const userSame = sameMap(
+      assignments.map((a) => ({ id: a.user_id, is_mandatory: a.is_mandatory })),
+      draftUsers,
+    )
+    return !campSame || !userSame
+  }, [courseCampaigns, assignments, draftCampaigns, draftUsers])
+
+  const saveAssignments = async () => {
+    setSavingAssign(true)
     try {
-      if (current) {
-        await removeCourseCampaign(course.id, campaignId)
-        setCourseCampaigns((prev) => prev.filter((cc) => cc.campaign_id !== campaignId))
-      } else {
-        await setCourseCampaign(course.id, campaignId, false)
-        setCourseCampaigns((prev) => [
-          ...prev,
-          { course_id: course.id, campaign_id: campaignId, is_mandatory: false },
-        ])
+      // Campañas: diff borrador vs. BD
+      const baseCamp = new Map(courseCampaigns.map((c) => [c.campaign_id, c.is_mandatory]))
+      const campIds = new Set([...baseCamp.keys(), ...Object.keys(draftCampaigns)])
+      for (const id of campIds) {
+        const inDraft = id in draftCampaigns
+        if (!inDraft && baseCamp.has(id)) {
+          await removeCourseCampaign(course.id, id)
+        } else if (inDraft && (!baseCamp.has(id) || baseCamp.get(id) !== draftCampaigns[id])) {
+          await setCourseCampaign(course.id, id, draftCampaigns[id])
+        }
       }
-      invalidateModulesCache()
-    } catch {
-      toast.error(t('admin.courses.error_save'))
-    }
-  }
-
-  const handleCampaignMandatory = async (campaignId: string, isMandatory: boolean) => {
-    try {
-      await setCourseCampaign(course.id, campaignId, isMandatory)
-      setCourseCampaigns((prev) =>
-        prev.map((cc) => (cc.campaign_id === campaignId ? { ...cc, is_mandatory: isMandatory } : cc)),
-      )
-    } catch {
-      toast.error(t('admin.courses.error_save'))
-    }
-  }
-
-  const userAssignment = (userId: string) => assignments.find((a) => a.user_id === userId)
-
-  const handleToggleUser = async (userId: string) => {
-    const current = userAssignment(userId)
-    try {
-      if (current) {
-        await removeCourseAssignment(course.id, userId)
-        setAssignments((prev) => prev.filter((a) => a.user_id !== userId))
-      } else {
-        await setCourseAssignment(course.id, userId, false)
-        setAssignments((prev) => [
-          ...prev,
-          { course_id: course.id, user_id: userId, is_mandatory: false },
-        ])
+      // Personas: diff borrador vs. BD
+      const baseUser = new Map(assignments.map((a) => [a.user_id, a.is_mandatory]))
+      const userIds = new Set([...baseUser.keys(), ...Object.keys(draftUsers)])
+      for (const id of userIds) {
+        const inDraft = id in draftUsers
+        if (!inDraft && baseUser.has(id)) {
+          await removeCourseAssignment(course.id, id)
+        } else if (inDraft && (!baseUser.has(id) || baseUser.get(id) !== draftUsers[id])) {
+          await setCourseAssignment(course.id, id, draftUsers[id])
+        }
       }
+      // Recargar la línea base desde BD (confirma que quedó persistido y que "lee bien")
+      const [cc, aa] = await Promise.all([
+        getCourseCampaigns(course.id),
+        getCourseAssignments(course.id),
+      ])
+      setCourseCampaigns(cc)
+      setDraftCampaigns(Object.fromEntries(cc.map((r) => [r.campaign_id, r.is_mandatory])))
+      setAssignments(aa)
+      setDraftUsers(Object.fromEntries(aa.map((r) => [r.user_id, r.is_mandatory])))
       invalidateModulesCache()
+      toast.success(t('admin.courses.assign_saved_ok'))
     } catch {
       toast.error(t('admin.courses.error_save'))
-    }
-  }
-
-  const handleUserMandatory = async (userId: string, isMandatory: boolean) => {
-    try {
-      await setCourseAssignment(course.id, userId, isMandatory)
-      setAssignments((prev) =>
-        prev.map((a) => (a.user_id === userId ? { ...a, is_mandatory: isMandatory } : a)),
-      )
-    } catch {
-      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setSavingAssign(false)
     }
   }
 
@@ -690,30 +732,31 @@ export default function CourseEditor() {
             </p>
             <div className="space-y-2">
               {visibleCampaigns.map((c) => {
-                const assigned = campaignAssignment(c.id)
+                const isAssigned = c.id in draftCampaigns
+                const isMandatory = draftCampaigns[c.id]
                 return (
                   <GlassCard key={c.id} intensity="subtle" rounded="2xl" padding="none">
                     <div className="flex items-center gap-3 px-4 py-3">
                       <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={!!assigned}
+                          checked={isAssigned}
                           onChange={() => handleToggleCampaign(c.id)}
                           className="h-4 w-4 accent-[rgb(var(--primary))]"
                         />
                         <span className="text-[14px] text-text truncate">{c.name}</span>
                       </label>
-                      {assigned && (
+                      {isAssigned && (
                         <button
-                          onClick={() => handleCampaignMandatory(c.id, !assigned.is_mandatory)}
+                          onClick={() => handleCampaignMandatory(c.id, !isMandatory)}
                           className={cn(
                             'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors border',
-                            assigned.is_mandatory
+                            isMandatory
                               ? 'bg-danger/10 border-danger/30 text-danger'
                               : 'border-line text-text-muted hover:text-text',
                           )}
                         >
-                          {assigned.is_mandatory
+                          {isMandatory
                             ? t('admin.courses.mandatory')
                             : t('admin.courses.optional')}
                         </button>
@@ -750,7 +793,8 @@ export default function CourseEditor() {
                 </p>
               ) : (
                 filteredProfiles.map((p) => {
-                  const assigned = userAssignment(p.id)
+                  const isAssigned = p.id in draftUsers
+                  const isMandatory = draftUsers[p.id]
                   const campaignName = campaigns.find((c) => c.id === p.campaign_id)?.name
                   return (
                     <GlassCard key={p.id} intensity="subtle" rounded="2xl" padding="none">
@@ -758,7 +802,7 @@ export default function CourseEditor() {
                         <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={!!assigned}
+                            checked={isAssigned}
                             onChange={() => handleToggleUser(p.id)}
                             className="h-4 w-4 accent-[rgb(var(--primary))]"
                           />
@@ -776,17 +820,17 @@ export default function CourseEditor() {
                             )}
                           </span>
                         </label>
-                        {assigned && (
+                        {isAssigned && (
                           <button
-                            onClick={() => handleUserMandatory(p.id, !assigned.is_mandatory)}
+                            onClick={() => handleUserMandatory(p.id, !isMandatory)}
                             className={cn(
                               'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors border',
-                              assigned.is_mandatory
+                              isMandatory
                                 ? 'bg-danger/10 border-danger/30 text-danger'
                                 : 'border-line text-text-muted hover:text-text',
                             )}
                           >
-                            {assigned.is_mandatory
+                            {isMandatory
                               ? t('admin.courses.mandatory')
                               : t('admin.courses.optional')}
                           </button>
@@ -797,11 +841,28 @@ export default function CourseEditor() {
                 })
               )}
             </div>
-            {assignments.length > 0 && (
+            {Object.keys(draftUsers).length > 0 && (
               <p className="text-[12px] text-text-subtle mt-3">
-                {t('admin.courses.assigned_users_count', { n: assignments.length })}
+                {t('admin.courses.assigned_users_count', { n: Object.keys(draftUsers).length })}
               </p>
             )}
+          </div>
+
+          {/* Barra de guardado */}
+          <div className="sticky bottom-0 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 border-t border-line bg-bg/80 backdrop-blur flex items-center justify-between gap-3">
+            <span className="text-[12px] text-text-muted">
+              {assignDirty ? t('admin.courses.unsaved_changes') : ' '}
+            </span>
+            <Button
+              variant="neon"
+              size="sm"
+              onClick={saveAssignments}
+              disabled={savingAssign || !assignDirty}
+              className="flex items-center gap-1.5 shrink-0"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {savingAssign ? t('admin.courses.saving') : t('admin.courses.save_assignments')}
+            </Button>
           </div>
         </div>
       )}

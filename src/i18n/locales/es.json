@@ -449,7 +449,10 @@
       "no_users": "No se encontraron personas.",
       "mandatory": "Obligatorio",
       "optional": "Opcional",
-      "assigned_users_count": "{{n}} persona(s) con este curso asignado"
+      "assigned_users_count": "{{n}} persona(s) con este curso asignado",
+      "save_assignments": "Guardar asignaciones",
+      "unsaved_changes": "Tienes cambios sin guardar",
+      "assign_saved_ok": "Asignaciones guardadas"
     },
     "modules": {
       "title": "Módulos",

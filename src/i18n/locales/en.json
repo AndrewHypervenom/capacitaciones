@@ -449,7 +449,10 @@
       "no_users": "No people found.",
       "mandatory": "Mandatory",
       "optional": "Optional",
-      "assigned_users_count": "{{n}} person(s) with this course assigned"
+      "assigned_users_count": "{{n}} person(s) with this course assigned",
+      "save_assignments": "Save assignments",
+      "unsaved_changes": "You have unsaved changes",
+      "assign_saved_ok": "Assignments saved"
     },
     "modules": {
       "title": "Modules",
