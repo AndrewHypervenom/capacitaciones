@@ -30,12 +30,7 @@ export function AdminNav() {
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
 
-  const [openCategories, setOpenCategories] = useState<string[]>([
-    "Contenido Teórico",
-    "Retos y Simulaciones",
-    "Gestión",
-    "Seguimiento"
-  ])
+  const [openCategories, setOpenCategories] = useState<string[]>([])
 
   const toggleCategory = (title: string) => {
     setOpenCategories(prev =>
