@@ -1,6 +1,7 @@
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Navbar } from './Navbar';
+import { HelpWidget } from '@/components/help/HelpWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Onboarding } from '@/pages/Onboarding';
@@ -43,6 +44,7 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
           <Outlet />
         </motion.main>
       </AnimatePresence>
+      <HelpWidget />
     </div>
   );
 }

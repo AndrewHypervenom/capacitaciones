@@ -21,6 +21,7 @@ import Arena from './pages/Arena'
 import Worlds from './pages/Worlds'
 import WorldDetail from './pages/WorldDetail'
 import FeedbackPanel from './pages/FeedbackPanel'
+import { HelpWidget } from '@/components/help/HelpWidget'
 
 export default function AdminRouter() {
   const { loading, isAuthenticated, isCapacitador, isSuperAdmin } = useAuth()
@@ -60,6 +61,7 @@ export default function AdminRouter() {
           <Route path="feedback" element={<FeedbackPanel />} />
         </Routes>
       </div>
+      <HelpWidget />
     </div>
   )
 }
