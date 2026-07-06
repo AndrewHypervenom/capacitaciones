@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { toast } from '@/stores/toastStore'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -140,14 +141,45 @@ export default function Worlds() {
   }
 
   const handleDelete = async (w: World) => {
+    // Contamos el contenido y la telemetría asociada para avisar al superadmin
+    // exactamente qué se va a borrar en cascada junto con el mundo.
+    const [regions, levels, progress] = await Promise.all([
+      supabase.from('world_regions').select('id', { count: 'exact', head: true }).eq('world_id', w.id),
+      supabase.from('world_levels').select('id', { count: 'exact', head: true }).eq('world_id', w.id),
+      supabase.from('world_progress').select('id', { count: 'exact', head: true }).eq('world_id', w.id),
+    ])
+    const regionCount = regions.count ?? 0
+    const levelCount = levels.count ?? 0
+    const progressCount = progress.count ?? 0
+    const hasContent = regionCount + levelCount + progressCount > 0
+
     const ok = await confirm({
       title: t('confirm.delete_world_title'),
-      description: t('confirm.delete_world_desc', { name: w.name }),
+      description: (
+        <div>
+          <div>{t('confirm.delete_world_desc', { name: w.name })}</div>
+          {hasContent && (
+            <ul className="mt-2 space-y-0.5 text-text-muted">
+              {regionCount > 0 && <li>• {t('confirm.delete_world_regions', { count: regionCount })}</li>}
+              {levelCount > 0 && <li>• {t('confirm.delete_world_levels', { count: levelCount })}</li>}
+              {progressCount > 0 && (
+                <li className="text-red-400">• {t('confirm.delete_world_progress', { count: progressCount })}</li>
+              )}
+            </ul>
+          )}
+        </div>
+      ),
     })
     if (!ok) return
+
     const { error } = await supabase.from('worlds').delete().eq('id', w.id)
-    if (!error) setWorlds(prev => prev.filter(x => x.id !== w.id))
-    else console.error('Error deleting world:', error)
+    if (!error) {
+      setWorlds(prev => prev.filter(x => x.id !== w.id))
+      toast.success(t('confirm.delete_world_ok', { name: w.name }))
+    } else {
+      console.error('Error deleting world:', error)
+      toast.error(t('confirm.delete_world_error'), error.message)
+    }
   }
 
   const handlePublish = async (w: World) => {
