@@ -110,6 +110,7 @@ export function KnowledgeCheck({
           aciertos: isCorrect ? 1 : 0,
           total: 1,
           errores: isCorrect ? 0 : 1,
+          pregunta: quiz.question[language],
           opcion_elegida: quiz.options[language][i],
           opcion_correcta: quiz.options[language][quiz.correct],
           mensaje_detalle: isCorrect

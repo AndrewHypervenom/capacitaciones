@@ -153,10 +153,15 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
       .select('id, display_name, role')
       .in('id', userIds);
 
-    // Traemos las secciones de juego configuradas
+    // Traemos las secciones (para nombre real + estilo del desafío)
     const { data: sections } = await supabase
       .from('module_sections')
-      .select('id, heading_es, section_style');
+      .select('id, module_id, heading_es, section_style');
+
+    // Traemos los módulos reales para no hardcodear el nombre del módulo/curso
+    const { data: modules } = await supabase
+      .from('modules')
+      .select('id, title_es');
 
     const allFormattedAttempts: any[] = [];
 
@@ -167,36 +172,40 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
       if (opts?.excludeSuperadmins && studentProfile?.role === 'superadmin') return;
 
       const rawAttempts = Array.isArray(row.attempts)
-        ? row.attempts 
-        : typeof row.attempts === 'string' 
-          ? JSON.parse(row.attempts) 
+        ? row.attempts
+        : typeof row.attempts === 'string'
+          ? JSON.parse(row.attempts)
           : [];
 
       console.log(`DEBUG: Usuario ${row.user_id} tiene ${rawAttempts.length} intentos en su JSON.`);
 
       rawAttempts.forEach((attempt: any) => {
         const sectionData = sections?.find(s => s.id === attempt.section_id) || null;
+        // El módulo real: primero por el module_id del intento, si no por el de la sección
+        const moduleId = attempt.module_id || sectionData?.module_id || null;
+        const moduleData = moduleId ? modules?.find(m => m.id === moduleId) || null : null;
         const isPending = !attempt.trainer_comment || attempt.status !== 'evaluated';
 
         if (isPending) {
           allFormattedAttempts.push({
-            id: attempt.id || crypto.randomUUID(), 
+            id: attempt.id || crypto.randomUUID(),
             user_id: row.user_id,
             game_type: attempt.game_type || (sectionData?.section_style === 'game-classify' ? 'CLASSIFY_CASES' : 'SORT_PROCESS'),
-            score: attempt.score ?? 100, 
+            score: attempt.score ?? 100,
             started_at: attempt.started_at || row.updated_at || new Date().toISOString(),
             submitted_answers: attempt.submitted_answers || {},
             trainer_comment: attempt.trainer_comment || null,
-            
+
             student: {
               id: row.user_id,
               name: studentProfile?.display_name || 'Aprendiz en Evaluación',
-              email: 'sena@corporativo.com'
+              // El email no vive en profiles (está en auth.users), no lo fabricamos.
+              email: null,
             },
             section: {
               heading_es: sectionData?.heading_es || (sectionData?.section_style === 'game-classify' ? 'Clasificación de Casos' : 'Secuenciación de Pasos')
             },
-            module: { title_es: "Simulador de Operaciones" }
+            module: { title_es: moduleData?.title_es || 'Módulo' }
           });
         }
       });

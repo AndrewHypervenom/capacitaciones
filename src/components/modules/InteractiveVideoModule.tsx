@@ -18,12 +18,17 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { VideoQuizOverlay } from './VideoQuizOverlay'
+import { saveActivityAttempt } from '@/services/activity.service'
 import type { ModuleSection, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
 interface InteractiveVideoModuleProps {
   section: ModuleSection
   language: Language
+  /** IDs necesarios para registrar el intento del quiz de video en user_progress. */
+  userId?: string
+  campaignId?: string
+  moduleId?: string
 }
 
 function formatTime(s: number): string {
@@ -46,7 +51,7 @@ interface QuizResult {
   total: number
 }
 
-export function InteractiveVideoModule({ section, language }: InteractiveVideoModuleProps) {
+export function InteractiveVideoModule({ section, language, userId, campaignId, moduleId }: InteractiveVideoModuleProps) {
   const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -271,6 +276,28 @@ export function InteractiveVideoModule({ section, language }: InteractiveVideoMo
   const handleOverlayComplete = (score: number, total: number) => {
     if (activeMarker) {
       setCompletedQuizzes((prev) => ({ ...prev, [activeMarker.id]: { score, total } }))
+
+      // Registrar el intento para que aparezca en el panel de evaluaciones.
+      // Solo si tenemos los ids reales (el preview de admin no los pasa → no ensucia datos).
+      if (userId && campaignId) {
+        const pct = total > 0 ? Math.round((score / total) * 100) : 0
+        void saveActivityAttempt({
+          user_id: userId,
+          campaign_id: campaignId,
+          module_id: moduleId || '',
+          section_id: section.id || '',
+          game_type: 'VIDEO_QUIZ',
+          score: pct,
+          status: pct >= 75 ? 'completed' : 'failed',
+          time_spent_seconds: 0,
+          submitted_answers: {
+            aciertos: score,
+            total,
+            errores: total - score,
+            tema: activeMarker.title[lang],
+          },
+        })
+      }
     }
     setShowOverlay(false)
     setActiveMarker(null)
