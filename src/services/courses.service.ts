@@ -253,7 +253,10 @@ export type ShareableCourse = CourseWithModules & { campaign_name: string | null
 export async function getShareableCourses(ownCampaignId: string): Promise<ShareableCourse[]> {
   const { data, error } = await supabase
     .from('courses')
-    .select(`*, ${COURSE_MODULES_SELECT}, campaigns(name)`)
+    // Desambiguamos el embed: entre courses y campaigns hay dos relaciones
+    // (la FK directa courses.campaign_id y la puente course_campaigns). Nombramos
+    // la FK directa para que PostgREST no falle con "more than one relationship".
+    .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
     .eq('is_shareable', true)
     .eq('is_published', true)
     .neq('campaign_id', ownCampaignId)
