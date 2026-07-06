@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Copy, Eye, EyeOff, GraduationCap, Loader2, Pencil, Plus, Share2, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -9,7 +9,10 @@ import {
   createCourse,
   updateCourse,
   deleteCourse,
+  getShareableCourses,
+  cloneCourse,
   type CourseWithModules,
+  type ShareableCourse,
 } from '@/services/courses.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign } from '@/types/database'
@@ -32,6 +35,12 @@ export default function CourseList() {
   const [courses, setCourses] = useState<CourseWithModules[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Cursos compartidos por otros capacitadores (catálogo para copiar)
+  const [view, setView] = useState<'mine' | 'shared'>('mine')
+  const [sharedCourses, setSharedCourses] = useState<ShareableCourse[]>([])
+  const [sharedLoading, setSharedLoading] = useState(false)
+  const [copyingId, setCopyingId] = useState<string | null>(null)
 
   // Modal de creación
   const [showCreate, setShowCreate] = useState(false)
@@ -60,6 +69,37 @@ export default function CourseList() {
       .catch(() => setError(t('admin.courses.error_load')))
       .finally(() => setLoading(false))
   }, [selectedCampaignId, t])
+
+  useEffect(() => {
+    if (view !== 'shared' || !selectedCampaignId) return
+    setSharedLoading(true)
+    getShareableCourses(selectedCampaignId)
+      .then(setSharedCourses)
+      .catch(() => setError(t('admin.courses.error_load')))
+      .finally(() => setSharedLoading(false))
+  }, [view, selectedCampaignId, t])
+
+  const handleCopyShared = async (course: ShareableCourse) => {
+    const ok = await confirm({
+      title: t('admin.courses.confirm_copy_title'),
+      description: t('admin.courses.confirm_copy_desc', { title: course.title_es }),
+    })
+    if (!ok) return
+    setCopyingId(course.id)
+    try {
+      await cloneCourse(course.id)
+      toast.success(t('admin.courses.copied_ok'))
+      invalidateModulesCache()
+      // Refrescar "Mis cursos" para que aparezca la copia
+      const fresh = await getCoursesForCampaign(selectedCampaignId)
+      setCourses(fresh)
+      setView('mine')
+    } catch {
+      toast.error(t('admin.courses.copy_error'))
+    } finally {
+      setCopyingId(null)
+    }
+  }
 
   const handleCreate = async () => {
     if (!newTitle.trim() || !selectedCampaignId) return
@@ -151,14 +191,92 @@ export default function CourseList() {
         </div>
       )}
 
+      {/* Tabs: Mis cursos / Cursos compartidos */}
+      <div className="mb-5 flex items-center gap-1 rounded-xl bg-subtle p-1 w-fit">
+        <button
+          onClick={() => setView('mine')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] ${view === 'mine' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
+        >
+          <GraduationCap className="h-4 w-4" />
+          {t('admin.courses.title')}
+        </button>
+        <button
+          onClick={() => setView('shared')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] ${view === 'shared' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
+        >
+          <Share2 className="h-4 w-4" />
+          {t('admin.courses.tab_shared')}
+        </button>
+      </div>
+
       {error && (
         <div className="mb-4 rounded-xl px-4 py-3 text-[13px] text-danger glass border-danger/20">
           {error}
         </div>
       )}
 
+      {/* Catálogo de cursos compartidos */}
+      {view === 'shared' && (
+        <div>
+          <p className="text-text-muted text-[13px] mb-4">{t('admin.courses.shared_hint')}</p>
+          {sharedLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-44 rounded-2xl animate-pulse glass" />
+              ))}
+            </div>
+          ) : sharedCourses.length === 0 ? (
+            <GlassCard intensity="subtle" padding="none" rounded="3xl" className="text-center p-6 sm:p-10 md:p-12">
+              <Share2 className="h-10 w-10 text-text-muted mx-auto mb-3" />
+              <p className="text-text-muted text-[14px]">{t('admin.courses.shared_empty')}</p>
+            </GlassCard>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {sharedCourses.map((course) => (
+                <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden">
+                  <div
+                    className="h-20 w-full relative"
+                    style={{ background: course.cover_url ? undefined : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
+                  >
+                    {course.cover_url && <img src={course.cover_url} alt="" className="h-full w-full object-cover" />}
+                    <div className="absolute -bottom-5 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md" style={{ background: course.color }}>
+                      <GraduationCap className="h-5 w-5" />
+                    </div>
+                  </div>
+                  <div className="flex-1 px-4 pt-7 pb-3">
+                    <div className="text-[15px] font-semibold text-text truncate mb-1">{course.title_es}</div>
+                    {course.description_es && (
+                      <p className="text-[12px] text-text-muted line-clamp-2 mb-2">{course.description_es}</p>
+                    )}
+                    <div className="flex items-center gap-1.5 text-[12px] text-text-subtle">
+                      <BookOpen className="h-3.5 w-3.5" />
+                      {t('admin.courses.modules_count', { n: course.modules.length })}
+                    </div>
+                    <p className="text-[11px] text-text-subtle mt-1">
+                      {t('admin.courses.shared_from', { name: course.campaign_name ?? '—' })}
+                    </p>
+                  </div>
+                  <div className="px-3 pb-3 flex justify-end">
+                    <Button
+                      variant="neon"
+                      size="sm"
+                      className="flex items-center gap-1.5"
+                      onClick={() => handleCopyShared(course)}
+                      disabled={copyingId === course.id}
+                    >
+                      {copyingId === course.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copyingId === course.id ? t('admin.courses.copying') : t('admin.courses.copy_to_campaign')}
+                    </Button>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Lista */}
-      {loading ? (
+      {view === 'mine' && (loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-44 rounded-2xl animate-pulse glass" />
@@ -253,7 +371,7 @@ export default function CourseList() {
             </GlassCard>
           ))}
         </div>
-      )}
+      ))}
 
       {/* Modal de creación */}
       {showCreate && (

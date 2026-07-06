@@ -62,6 +62,8 @@ export interface Database {
           visibility: 'assigned' | 'catalog'
           is_published: boolean
           sort_order: number
+          is_shareable: boolean
+          copied_from: string | null
           created_by: string | null
           created_at: string
           updated_at: string
@@ -84,6 +86,8 @@ export interface Database {
           visibility?: 'assigned' | 'catalog'
           is_published?: boolean
           sort_order?: number
+          is_shareable?: boolean
+          copied_from?: string | null
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -105,6 +109,7 @@ export interface Database {
           visibility?: 'assigned' | 'catalog'
           is_published?: boolean
           sort_order?: number
+          is_shareable?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -1055,6 +1060,10 @@ export interface Database {
       public_landing_stats: {
         Args: Record<string, never>
         Returns: { lessons: number; questions: number; scenarios: number }
+      }
+      clone_course: {
+        Args: { source_course_id: string }
+        Returns: string
       }
     }
     Enums: Record<string, never>

@@ -73,6 +73,7 @@ export default function CourseEditor() {
     level: 'basico' as 'basico' | 'medio' | 'avanzado',
     category: '',
     visibility: 'assigned' as 'assigned' | 'catalog',
+    is_shareable: false,
   })
   const coverInputRef = useRef<HTMLInputElement>(null)
   const [uploadingCover, setUploadingCover] = useState(false)
@@ -110,6 +111,7 @@ export default function CourseEditor() {
       level: c.level,
       category: c.category ?? '',
       visibility: c.visibility,
+      is_shareable: c.is_shareable ?? false,
     })
   }, [courseId, navigate])
 
@@ -220,6 +222,7 @@ export default function CourseEditor() {
         level: form.level,
         category: form.category.trim() || null,
         visibility: form.visibility,
+        is_shareable: form.is_shareable,
       })
       toast.success(t('admin.courses.saved_ok'))
       invalidateModulesCache()
@@ -589,6 +592,24 @@ export default function CourseEditor() {
                 </span>
                 <span className="block text-[12px] text-text-muted mt-0.5">
                   {t('admin.courses.field_catalog_hint')}
+                </span>
+              </span>
+            </label>
+
+            {/* Compartir con otros capacitadores (copia) */}
+            <label className="flex items-start gap-3 rounded-xl border border-line p-3.5 cursor-pointer hover:border-primary/40 transition-colors">
+              <input
+                type="checkbox"
+                checked={form.is_shareable}
+                onChange={(e) => setForm({ ...form, is_shareable: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-[rgb(var(--primary))]"
+              />
+              <span>
+                <span className="block text-[13px] font-medium text-text">
+                  {t('admin.courses.field_shareable')}
+                </span>
+                <span className="block text-[12px] text-text-muted mt-0.5">
+                  {t('admin.courses.field_shareable_hint')}
                 </span>
               </span>
             </label>

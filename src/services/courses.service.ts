@@ -171,9 +171,48 @@ export async function createCourse(
   return row as Course
 }
 
+/** Curso compartido por otro capacitador, con el nombre de su campaña de origen. */
+export type ShareableCourse = CourseWithModules & { campaign_name: string | null }
+
+/**
+ * Cursos marcados como compartibles por OTRAS campañas (para el catálogo de
+ * "Cursos compartidos"). La RLS de `courses` permite ver los `is_shareable`.
+ */
+export async function getShareableCourses(ownCampaignId: string): Promise<ShareableCourse[]> {
+  const { data, error } = await supabase
+    .from('courses')
+    .select(`*, ${COURSE_MODULES_SELECT}, campaigns(name)`)
+    .eq('is_shareable', true)
+    .neq('campaign_id', ownCampaignId)
+    .order('updated_at', { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as unknown as (CourseWithModules & { campaigns: { name: string } | null })[])
+    .map((c) => ({
+      ...sortCourseModules(c),
+      campaign_name: c.campaigns?.name ?? null,
+    }))
+}
+
+/** Marca/desmarca un curso como compartible con otros capacitadores. */
+export async function setCourseShareable(courseId: string, value: boolean): Promise<void> {
+  const { error } = await supabase.from('courses').update({ is_shareable: value }).eq('id', courseId)
+  if (error) throw error
+}
+
+/**
+ * Clona un curso compartido a la campaña del capacitador actual (deep-copy del
+ * curso + sus módulos + secciones + quizzes). El RPC `clone_course` corre con
+ * SECURITY DEFINER y valida la autorización server-side. Devuelve el id del clon.
+ */
+export async function cloneCourse(sourceCourseId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('clone_course', { source_course_id: sourceCourseId })
+  if (error) throw error
+  return data as string
+}
+
 export async function updateCourse(
   courseId: string,
-  updates: Partial<Omit<Course, 'id' | 'campaign_id' | 'created_at' | 'updated_at' | 'created_by'>>,
+  updates: Partial<Omit<Course, 'id' | 'campaign_id' | 'created_at' | 'updated_at' | 'created_by' | 'copied_from'>>,
 ): Promise<void> {
   const { error } = await supabase.from('courses').update(updates).eq('id', courseId)
   if (error) throw error

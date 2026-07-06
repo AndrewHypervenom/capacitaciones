@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, User, RefreshCw, Trash2, Copy, Check, BookOpen, BarChart3, Search } from 'lucide-react'
+import { Loader2, UserPlus, Shield, User, RefreshCw, Trash2, Copy, Check, BookOpen, BarChart3, Search, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
+import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
 import type { Profile, Campaign } from '@/types/database'
 
 type ProfileWithEmail = Profile & { email?: string }
@@ -22,6 +23,7 @@ export default function UserList() {
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [assignUser, setAssignUser] = useState<ProfileWithEmail | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [campaignFilter, setCampaignFilter] = useState('')
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
@@ -194,14 +196,23 @@ export default function UserList() {
           </p>
         </div>
         {isSuperAdmin && (
-          <button
-            onClick={() => setInviting(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]"
-            style={{ background: '#00C228' }}
-          >
-            <UserPlus className="h-4 w-4" />
-            Crear usuario
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setBulkOpen(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
+            >
+              <Upload className="h-4 w-4" />
+              {t('admin.users.bulk_import')}
+            </button>
+            <button
+              onClick={() => setInviting(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]"
+              style={{ background: '#00C228' }}
+            >
+              <UserPlus className="h-4 w-4" />
+              {t('admin.users.create_user')}
+            </button>
+          </div>
         )}
       </div>
 
@@ -266,33 +277,35 @@ export default function UserList() {
                   <RefreshCw className="h-4 w-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as Profile['role'])}
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
-                  >
-                    <option value="learner">{roleLabel.learner}</option>
-                    <option value="capacitador">{roleLabel.capacitador}</option>
-                    {isSuperAdmin && <option value="superadmin">{roleLabel.superadmin}</option>}
-                  </select>
+              {isSuperAdmin && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as Profile['role'])}
+                      className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
+                    >
+                      <option value="learner">{roleLabel.learner}</option>
+                      <option value="capacitador">{roleLabel.capacitador}</option>
+                      <option value="superadmin">{roleLabel.superadmin}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">{i18n.t('admin.users.col_campaign')}</label>
+                    <select
+                      value={inviteCampaign}
+                      onChange={(e) => setInviteCampaign(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
+                    >
+                      <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">{i18n.t('admin.users.col_campaign')}</label>
-                  <select
-                    value={inviteCampaign}
-                    onChange={(e) => setInviteCampaign(e.target.value)}
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
-                  >
-                    <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
-                    {campaigns.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              )}
               {inviteError && <p className="text-red-500 text-[12px]">{inviteError}</p>}
               <div className="flex gap-2 pt-1">
                 <button
@@ -451,6 +464,18 @@ export default function UserList() {
 
       {assignUser && (
         <UserCoursesModal user={assignUser} onClose={() => setAssignUser(null)} />
+      )}
+
+      {bulkOpen && (
+        <BulkImportUsers
+          isSuperAdmin={isSuperAdmin}
+          campaigns={campaigns}
+          onClose={() => setBulkOpen(false)}
+          onImported={async () => {
+            const { data: updated } = await supabase.from('profiles').select('*').order('created_at')
+            setUsers(updated ?? [])
+          }}
+        />
       )}
     </div>
   )
