@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, BookOpen, Check, Clock, GraduationCap, Lock, Play } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -20,7 +20,13 @@ function pickText(es: string | null, en: string | null, pt: string | null, lang:
 
 export default function CoursePage() {
   const { slug } = useParams<{ slug: string }>();
+  const location = useLocation();
   const { t } = useTranslation();
+
+  // Si llegaste desde la vista de cursos, volver ahí; si no, a la página principal.
+  const fromCourses = (location.state as { from?: string } | null)?.from === 'courses';
+  const backTo = fromCourses ? '/courses' : '/dashboard';
+  const backLabel = fromCourses ? t('courses.back_to_courses') : t('courses.back_to_home');
   const language = useUserStore((s) => s.language);
   const completedSlugs = useProgressStore((s) => s.completedModules);
   const { courses, loading } = useLearnerCourses();
@@ -79,11 +85,11 @@ export default function CoursePage() {
     <div className="mx-auto max-w-4xl px-4 sm:px-8 pt-8 sm:pt-12 pb-24">
       <Reveal>
         <Link
-          to="/courses"
+          to={backTo}
           className="inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text transition-colors mb-5"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          {t('courses.back_to_courses')}
+          {backLabel}
         </Link>
       </Reveal>
 

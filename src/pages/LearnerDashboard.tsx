@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  ArrowRight,
   Award,
   BookOpen,
   Check,
@@ -270,7 +271,13 @@ export default function LearnerDashboard() {
           <section id="cursos" className="mb-16 md:mb-20 scroll-mt-16">
             <Reveal className="mb-8">
               <h2 className="text-2xl font-semibold tracking-tight text-text mb-1">
-                {t('dashboard.courses_title')}
+                <Link
+                  to="/courses"
+                  className="inline-flex items-center gap-1.5 hover:text-primary transition-colors"
+                >
+                  {t('dashboard.courses_title')}
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
               </h2>
               <p className="text-[15px] text-text-muted">
                 {t('dashboard.courses_subtitle')}

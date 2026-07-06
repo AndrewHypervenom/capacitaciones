@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, User, RefreshCw, Trash2, Copy, Check, BookOpen, BarChart3, Search, Upload } from 'lucide-react'
+import { Loader2, UserPlus, Shield, User, Trash2, Mail, BookOpen, BarChart3, Search, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-
-function generateTempPassword(): string {
-  return Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6).toUpperCase()
-}
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -31,16 +27,13 @@ export default function UserList() {
   const [loading, setLoading] = useState(true)
   const [inviting, setInviting] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [invitePassword, setInvitePassword] = useState(() => generateTempPassword())
   const [inviteRole, setInviteRole] = useState<'learner' | 'capacitador' | 'superadmin'>('learner')
   const [inviteCampaign, setInviteCampaign] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [createdEmail, setCreatedEmail] = useState('')
-  const [createdPassword, setCreatedPassword] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [copied, setCopied] = useState<'email' | 'pass' | 'url' | null>(null)
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -54,12 +47,6 @@ export default function UserList() {
       return matchesQuery && matchesCampaign
     })
   }, [users, search, campaignFilter])
-
-  const copyToClipboard = (text: string, key: 'email' | 'pass' | 'url') => {
-    navigator.clipboard.writeText(text)
-    setCopied(key)
-    setTimeout(() => setCopied(null), 2000)
-  }
 
   useEffect(() => {
     // El capacitador solo ve las personas de su propia campaña y NUNCA a los
@@ -81,13 +68,14 @@ export default function UserList() {
   }, [isSuperAdmin, campaignId])
 
   const handleInvite = async () => {
-    if (!inviteEmail.trim() || !invitePassword.trim()) return
+    if (!inviteEmail.trim()) return
     setInviteLoading(true)
     setInviteError(null)
 
     try {
-      // Crear el usuario vía Edge Function con service_role: queda confirmado
-      // y con su perfil (rol/campaña) listo, sin tocar la sesión del superadmin.
+      // Enviar invitación vía Edge Function con service_role: Supabase manda un
+      // magic link por correo y deja el perfil (rol/campaña) listo, sin tocar la
+      // sesión del superadmin. El usuario define su contraseña al aceptar.
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
@@ -99,25 +87,23 @@ export default function UserList() {
           },
           body: JSON.stringify({
             email: inviteEmail.trim(),
-            password: invitePassword.trim(),
             role: inviteRole,
             campaignId: inviteCampaign || null,
+            redirectTo: window.location.origin,
           }),
         },
       )
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error al crear usuario')
+      if (!res.ok) throw new Error(json.error ?? 'Error al enviar invitación')
 
       setCreatedEmail(inviteEmail.trim())
-      setCreatedPassword(invitePassword.trim())
       setInviteSuccess(true)
       setInviteEmail('')
-      setInvitePassword(generateTempPassword())
 
       const { data: updated } = await supabase.from('profiles').select('*').order('created_at')
       setUsers(updated ?? [])
     } catch (err: unknown) {
-      setInviteError(err instanceof Error ? err.message : 'Error al crear usuario')
+      setInviteError(err instanceof Error ? err.message : 'Error al enviar invitación')
     } finally {
       setInviteLoading(false)
     }
@@ -222,33 +208,20 @@ export default function UserList() {
 
           {inviteSuccess ? (
             <div className="rounded-xl p-4" style={{ background: 'rgba(0,194,40,0.08)', border: '1px solid rgba(0,194,40,0.2)' }}>
-              <div className="text-green-500 text-[13px] font-medium mb-3">{i18n.t('admin.users.created_share')}</div>
-              <div className="space-y-2">
-                {[
-                  { label: 'Sitio', value: 'https://capacitaciones-chi.vercel.app/', key: 'url' as const },
-                  { label: 'Email', value: createdEmail, key: 'email' as const },
-                  { label: 'Contraseña', value: createdPassword, key: 'pass' as const },
-                ].map(({ label, value, key }) => (
-                  <div key={key} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 bg-subtle">
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase tracking-wider text-text-muted mr-2">{label}</span>
-                      <span className="font-mono text-[12px] text-text">{value}</span>
-                    </div>
-                    <button
-                      onClick={() => copyToClipboard(value, key)}
-                      className="shrink-0 h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors"
-                      title={i18n.t('admin.users.copy')}
-                    >
-                      {copied === key ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                    </button>
+              <div className="flex items-start gap-2.5">
+                <Mail className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <div className="text-green-500 text-[13px] font-medium">
+                    {i18n.t('admin.users.invite_sent', { email: createdEmail })}
                   </div>
-                ))}
+                  <p className="text-[12px] text-text-muted mt-1">{i18n.t('admin.users.invite_sent_hint')}</p>
+                </div>
               </div>
               <button
                 onClick={() => { setInviting(false); setInviteSuccess(false) }}
                 className="mt-4 flex items-center min-h-[44px] text-[12px] text-text-subtle hover:text-text transition-colors"
               >
-                Cerrar
+                {i18n.t('common.close', 'Cerrar')}
               </button>
             </div>
           ) : (
@@ -260,23 +233,6 @@ export default function UserList() {
                 onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null) }}
                 className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none min-h-[44px]"
               />
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder={i18n.t('admin.users.ph_temp_pass')}
-                  value={invitePassword}
-                  onChange={(e) => setInvitePassword(e.target.value)}
-                  className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none pr-10 font-mono min-h-[44px]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setInvitePassword(generateTempPassword())}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-text-subtle hover:text-text-muted transition-colors"
-                  title={i18n.t('admin.users.regenerate')}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </button>
-              </div>
               {isSuperAdmin && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -310,18 +266,18 @@ export default function UserList() {
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleInvite}
-                  disabled={inviteLoading || !inviteEmail || !invitePassword}
+                  disabled={inviteLoading || !inviteEmail}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
                   style={{ background: '#00C228' }}
                 >
                   {inviteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Crear
+                  {i18n.t('admin.users.invite_send')}
                 </button>
                 <button
                   onClick={() => setInviting(false)}
                   className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text bg-subtle transition-colors"
                 >
-                  Cancelar
+                  {i18n.t('admin.courses.cancel')}
                 </button>
               </div>
             </div>

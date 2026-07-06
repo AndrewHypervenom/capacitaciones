@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Clock, Compass, GraduationCap, Search, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Search, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
@@ -36,6 +36,7 @@ function CourseCard({ course, index }: { course: LearnerCourse; index: number })
     <Reveal delay={Math.min(index * 60, 240)}>
       <Link
         to={`/courses/${course.slug}`}
+        state={{ from: 'courses' }}
         className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface transition-all duration-300 hover:border-primary hover:shadow-card-hover"
       >
         {/* Portada */}
@@ -202,6 +203,13 @@ export default function Courses() {
     <div className="mx-auto max-w-6xl px-4 sm:px-8 pt-10 sm:pt-14 pb-24">
       {/* Encabezado */}
       <Reveal className="mb-8">
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text transition-colors mb-5"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {t('courses.back_to_home')}
+        </Link>
         <h1 className="text-[30px] sm:text-4xl font-extrabold tracking-tight text-text mb-2">
           {t('courses.title')}
         </h1>
