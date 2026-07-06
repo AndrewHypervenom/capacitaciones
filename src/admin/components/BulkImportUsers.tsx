@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Upload, FileSpreadsheet, Download, Loader2, Check, AlertCircle, Mail } from 'lucide-react'
+import { X, Upload, FileSpreadsheet, Download, Loader2, Check, AlertCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -20,7 +20,8 @@ interface ParsedRow {
 
 interface RowResult {
   email: string
-  status: 'invited' | 'error'
+  status: 'created' | 'error'
+  password?: string
   reason?: string
 }
 
@@ -33,9 +34,10 @@ interface BulkImportUsersProps {
 
 /**
  * Carga masiva de aprendices desde Excel/CSV. Parsea el archivo en el cliente,
- * valida (email/duplicados/tope de filas) y delega el envío de invitaciones a la
- * Edge Function `create-users-bulk`, que impone la autorización (solo superadmin)
- * y manda un magic link por correo a cada usuario para que fije su contraseña.
+ * valida (email/duplicados/tope de filas) y delega la creación a la Edge Function
+ * `create-users-bulk`, que impone la autorización (solo superadmin) y crea cada
+ * usuario con una contraseña temporal. Devuelve credenciales descargables (.xlsx)
+ * para entregarlas; también quedan disponibles luego en la lista de usuarios.
  */
 export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }: BulkImportUsersProps) {
   const { t } = useTranslation()
@@ -125,13 +127,13 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
             'Content-Type': 'application/json',
             Authorization: `Bearer ${session?.access_token}`,
           },
-          body: JSON.stringify({ rows, redirectTo: window.location.origin }),
+          body: JSON.stringify({ rows }),
         },
       )
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error')
       setResults(json.results as RowResult[])
-      toast.success(t('admin.users.bulk_done', { invited: json.invited, total: json.total }))
+      toast.success(t('admin.users.bulk_done', { created: json.created, total: json.total }))
       await onImported()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('admin.courses.error_save'))
@@ -140,7 +142,20 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
     }
   }
 
-  const invitedCount = results?.filter((r) => r.status === 'invited').length ?? 0
+  const downloadCredentials = () => {
+    if (!results) return
+    const created = results.filter((r) => r.status === 'created')
+    const rowsCsv = [
+      ['site', 'email', 'password'],
+      ...created.map((r) => ['https://capacitaciones-chi.vercel.app/', r.email, r.password ?? '']),
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(rowsCsv)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'credenciales')
+    XLSX.writeFile(wb, 'credenciales-usuarios.xlsx')
+  }
+
+  const createdCount = results?.filter((r) => r.status === 'created').length ?? 0
 
   return createPortal(
     <AnimatePresence>
@@ -182,14 +197,23 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
             <div className="flex-1 overflow-y-auto px-5 py-4">
               {results ? (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-green-500 shrink-0" />
+                  <div className="flex items-center justify-between gap-3">
                     <p className="text-[13px] text-text">
-                      {t('admin.users.bulk_done', { invited: invitedCount, total: results.length })}
+                      {t('admin.users.bulk_done', { created: createdCount, total: results.length })}
                     </p>
+                    {createdCount > 0 && (
+                      <button
+                        onClick={downloadCredentials}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-medium text-black min-h-[40px]"
+                        style={{ background: '#00C228' }}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        {t('admin.users.bulk_download_creds')}
+                      </button>
+                    )}
                   </div>
-                  {invitedCount > 0 && (
-                    <p className="text-[12px] text-text-muted">{t('admin.users.bulk_invite_hint')}</p>
+                  {createdCount > 0 && (
+                    <p className="text-[12px] text-text-muted">{t('admin.users.bulk_creds_hint')}</p>
                   )}
                   <div className="rounded-xl border border-line overflow-hidden">
                     <div className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-[11px] uppercase tracking-wider text-text-muted bg-subtle">
@@ -200,9 +224,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
                       {results.map((r, i) => (
                         <div key={i} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 items-center text-[12px]">
                           <span className="truncate text-text">{r.email}</span>
-                          {r.status === 'invited' ? (
+                          {r.status === 'created' ? (
                             <span className="flex items-center gap-1 text-green-500">
-                              <Check className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_invited')}
+                              <Check className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_created')}
                             </span>
                           ) : (
                             <span className="flex items-center gap-1 text-red-500" title={r.reason}>

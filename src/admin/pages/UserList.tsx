@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, User, Trash2, Mail, BookOpen, BarChart3, Search, Upload } from 'lucide-react'
+import { Loader2, UserPlus, Shield, User, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -11,7 +11,26 @@ import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
 import type { Profile, Campaign } from '@/types/database'
 
+// URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
+const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
+
 type ProfileWithEmail = Profile & { email?: string }
+
+interface TempCred {
+  email: string
+  temp_password: string
+}
+
+// Bloque de texto listo para pegar en un correo/mensaje al usuario.
+function buildCredsText(email: string, password: string): string {
+  return `${i18n.t('admin.users.creds_site')}: ${SITE_URL}\n${i18n.t('admin.users.creds_email')}: ${email}\n${i18n.t('admin.users.creds_password')}: ${password}`
+}
+
+function mapCreds(rows: { user_id: string; email: string; temp_password: string }[] | null): Record<string, TempCred> {
+  const m: Record<string, TempCred> = {}
+  for (const r of rows ?? []) m[r.user_id] = { email: r.email, temp_password: r.temp_password }
+  return m
+}
 
 export default function UserList() {
   const { isSuperAdmin, campaignId } = useAuth()
@@ -33,7 +52,12 @@ export default function UserList() {
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [createdEmail, setCreatedEmail] = useState('')
+  const [createdPassword, setCreatedPassword] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Credenciales temporales pendientes por usuario (solo el superadmin las recibe
+  // vía RLS). Permite copiar el bloque de credenciales de cualquier pendiente.
+  const [tempCreds, setTempCreds] = useState<Record<string, TempCred>>({})
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -60,12 +84,30 @@ export default function UserList() {
     Promise.all([
       profilesQuery,
       supabase.from('campaigns').select('*').order('name'),
-    ]).then(([profiles, camps]) => {
+      // Solo el superadmin recibe filas (RLS); para el resto vuelve vacío.
+      supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
+    ]).then(([profiles, camps, creds]) => {
       setUsers(profiles.data ?? [])
       setCampaigns(camps.data ?? [])
+      setTempCreds(mapCreds(creds.data))
       setLoading(false)
     })
   }, [isSuperAdmin, campaignId])
+
+  const refreshData = async () => {
+    const [{ data: updated }, { data: creds }] = await Promise.all([
+      supabase.from('profiles').select('*').order('created_at'),
+      supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
+    ])
+    setUsers(updated ?? [])
+    setTempCreds(mapCreds(creds))
+  }
+
+  const copyCreds = (userId: string, email: string, password: string) => {
+    navigator.clipboard.writeText(buildCredsText(email, password))
+    setCopiedId(userId)
+    setTimeout(() => setCopiedId((k) => (k === userId ? null : k)), 2000)
+  }
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return
@@ -73,9 +115,9 @@ export default function UserList() {
     setInviteError(null)
 
     try {
-      // Enviar invitación vía Edge Function con service_role: Supabase manda un
-      // magic link por correo y deja el perfil (rol/campaña) listo, sin tocar la
-      // sesión del superadmin. El usuario define su contraseña al aceptar.
+      // Crear el usuario vía Edge Function con service_role: queda confirmado con
+      // una contraseña temporal (generada en el servidor) y su perfil listo, sin
+      // tocar la sesión del superadmin. El usuario la cambia en el onboarding.
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
@@ -89,21 +131,20 @@ export default function UserList() {
             email: inviteEmail.trim(),
             role: inviteRole,
             campaignId: inviteCampaign || null,
-            redirectTo: window.location.origin,
           }),
         },
       )
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error al enviar invitación')
+      if (!res.ok) throw new Error(json.error ?? 'Error al crear usuario')
 
-      setCreatedEmail(inviteEmail.trim())
+      setCreatedEmail(json.email ?? inviteEmail.trim())
+      setCreatedPassword(json.password ?? '')
       setInviteSuccess(true)
       setInviteEmail('')
 
-      const { data: updated } = await supabase.from('profiles').select('*').order('created_at')
-      setUsers(updated ?? [])
+      await refreshData()
     } catch (err: unknown) {
-      setInviteError(err instanceof Error ? err.message : 'Error al enviar invitación')
+      setInviteError(err instanceof Error ? err.message : 'Error al crear usuario')
     } finally {
       setInviteLoading(false)
     }
@@ -208,21 +249,37 @@ export default function UserList() {
 
           {inviteSuccess ? (
             <div className="rounded-xl p-4" style={{ background: 'rgba(0,194,40,0.08)', border: '1px solid rgba(0,194,40,0.2)' }}>
-              <div className="flex items-start gap-2.5">
-                <Mail className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <div className="text-green-500 text-[13px] font-medium">
-                    {i18n.t('admin.users.invite_sent', { email: createdEmail })}
+              <div className="text-green-500 text-[13px] font-medium mb-3">{i18n.t('admin.users.created_share')}</div>
+              <div className="space-y-2">
+                {[
+                  { label: i18n.t('admin.users.creds_site'), value: SITE_URL },
+                  { label: i18n.t('admin.users.creds_email'), value: createdEmail },
+                  { label: i18n.t('admin.users.creds_password'), value: createdPassword },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 bg-subtle">
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase tracking-wider text-text-muted mr-2">{label}</span>
+                      <span className="font-mono text-[12px] text-text break-all">{value}</span>
+                    </div>
                   </div>
-                  <p className="text-[12px] text-text-muted mt-1">{i18n.t('admin.users.invite_sent_hint')}</p>
-                </div>
+                ))}
               </div>
-              <button
-                onClick={() => { setInviting(false); setInviteSuccess(false) }}
-                className="mt-4 flex items-center min-h-[44px] text-[12px] text-text-subtle hover:text-text transition-colors"
-              >
-                {i18n.t('common.close', 'Cerrar')}
-              </button>
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  onClick={() => copyCreds('__new__', createdEmail, createdPassword)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-medium text-black min-h-[40px]"
+                  style={{ background: '#00C228' }}
+                >
+                  {copiedId === '__new__' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {i18n.t('admin.users.copy_creds')}
+                </button>
+                <button
+                  onClick={() => { setInviting(false); setInviteSuccess(false) }}
+                  className="flex items-center min-h-[40px] px-3 text-[12px] text-text-subtle hover:text-text transition-colors"
+                >
+                  {i18n.t('common.close', 'Cerrar')}
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -271,7 +328,7 @@ export default function UserList() {
                   style={{ background: '#00C228' }}
                 >
                   {inviteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {i18n.t('admin.users.invite_send')}
+                  {i18n.t('admin.users.create_submit')}
                 </button>
                 <button
                   onClick={() => setInviting(false)}
@@ -341,8 +398,22 @@ export default function UserList() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[13px] text-text truncate">{user.display_name ?? 'Sin nombre'}</div>
-                    <div className="text-[11px] text-text-subtle truncate">{user.id.slice(0, 8)}…</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[13px] text-text truncate">{user.display_name ?? 'Sin nombre'}</span>
+                      {!user.onboarded && (
+                        <span
+                          className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                          style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}
+                          title={t('admin.users.pending_hint')}
+                        >
+                          <Clock className="h-3 w-3" />
+                          {t('admin.users.pending')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-text-subtle truncate">
+                      {tempCreds[user.id]?.email ?? `${user.id.slice(0, 8)}…`}
+                    </div>
                   </div>
                 </div>
                 {isSuperAdmin ? (
@@ -380,6 +451,17 @@ export default function UserList() {
                   </select>
                 )}
                 <div className="flex items-center gap-1">
+                  {isSuperAdmin && tempCreds[user.id] && (
+                    <button
+                      onClick={() => copyCreds(user.id, tempCreds[user.id].email, tempCreds[user.id].temp_password)}
+                      className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors"
+                      style={{ color: copiedId === user.id ? '#16a34a' : '#d97706' }}
+                      title={t('admin.users.copy_creds')}
+                    >
+                      {copiedId === user.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      <span className="hidden sm:inline">{t('admin.users.copy_creds')}</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setAssignUser(user)}
                     className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
@@ -427,10 +509,7 @@ export default function UserList() {
           isSuperAdmin={isSuperAdmin}
           campaigns={campaigns}
           onClose={() => setBulkOpen(false)}
-          onImported={async () => {
-            const { data: updated } = await supabase.from('profiles').select('*').order('created_at')
-            setUsers(updated ?? [])
-          }}
+          onImported={refreshData}
         />
       )}
     </div>

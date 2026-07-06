@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronRight, Copy, Eye, EyeOff, GraduationCap, Loader2, Pencil, Plus, Share2, Trash2, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Pencil, Plus, Search, Share2, Trash2, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -10,7 +10,6 @@ import {
   updateCourse,
   deleteCourse,
   getShareableCourses,
-  cloneCourse,
   type CourseWithModules,
   type ShareableCourse,
 } from '@/services/courses.service'
@@ -21,6 +20,7 @@ import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 
@@ -36,11 +36,13 @@ export default function CourseList() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Cursos compartidos por otros capacitadores (catálogo para copiar)
+  // Catálogo compartido por otras campañas (matrícula viva)
   const [view, setView] = useState<'mine' | 'shared'>('mine')
   const [sharedCourses, setSharedCourses] = useState<ShareableCourse[]>([])
   const [sharedLoading, setSharedLoading] = useState(false)
-  const [copyingId, setCopyingId] = useState<string | null>(null)
+  const [sharedSearch, setSharedSearch] = useState('')
+  const [sharedCampaignFilter, setSharedCampaignFilter] = useState<string>('')
+  const [enrollCourse, setEnrollCourse] = useState<ShareableCourse | null>(null)
 
   // Modal de creación
   const [showCreate, setShowCreate] = useState(false)
@@ -79,27 +81,24 @@ export default function CourseList() {
       .finally(() => setSharedLoading(false))
   }, [view, selectedCampaignId, t])
 
-  const handleCopyShared = async (course: ShareableCourse) => {
-    const ok = await confirm({
-      title: t('admin.courses.confirm_copy_title'),
-      description: t('admin.courses.confirm_copy_desc', { title: course.title_es }),
-    })
-    if (!ok) return
-    setCopyingId(course.id)
-    try {
-      await cloneCourse(course.id)
-      toast.success(t('admin.courses.copied_ok'))
-      invalidateModulesCache()
-      // Refrescar "Mis cursos" para que aparezca la copia
-      const fresh = await getCoursesForCampaign(selectedCampaignId)
-      setCourses(fresh)
-      setView('mine')
-    } catch {
-      toast.error(t('admin.courses.copy_error'))
-    } finally {
-      setCopyingId(null)
+  // Campañas dueñas presentes en el catálogo compartido (para el filtro)
+  const sharedCampaignOptions = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const c of sharedCourses) {
+      if (c.campaign_name) names.set(c.campaign_name, c.campaign_name)
     }
-  }
+    return [{ value: '', label: t('admin.courses.filter_all_campaigns') },
+      ...[...names.keys()].sort().map((n) => ({ value: n, label: n }))]
+  }, [sharedCourses, t])
+
+  const filteredShared = useMemo(() => {
+    const q = sharedSearch.trim().toLowerCase()
+    return sharedCourses.filter((c) => {
+      if (sharedCampaignFilter && c.campaign_name !== sharedCampaignFilter) return false
+      if (!q) return true
+      return `${c.title_es} ${c.description_es ?? ''} ${c.category ?? ''}`.toLowerCase().includes(q)
+    })
+  }, [sharedCourses, sharedSearch, sharedCampaignFilter])
 
   const handleCreate = async () => {
     if (!newTitle.trim() || !selectedCampaignId) return
@@ -215,24 +214,46 @@ export default function CourseList() {
         </div>
       )}
 
-      {/* Catálogo de cursos compartidos */}
+      {/* Catálogo compartido: inscribir a mis aprendices en cursos de otras campañas */}
       {view === 'shared' && (
         <div>
           <p className="text-text-muted text-[13px] mb-4">{t('admin.courses.shared_hint')}</p>
+
+          {/* Buscador + filtro por campaña dueña */}
+          <div className="mb-4 flex flex-col sm:flex-row gap-2 sm:items-center">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />
+              <input
+                value={sharedSearch}
+                onChange={(e) => setSharedSearch(e.target.value)}
+                placeholder={t('admin.courses.search_shared_ph')}
+                className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2.5 text-[14px] text-text outline-none focus:border-primary"
+              />
+            </div>
+            {sharedCampaignOptions.length > 1 && (
+              <FilterDropdown
+                value={sharedCampaignFilter}
+                onChange={setSharedCampaignFilter}
+                options={sharedCampaignOptions}
+                className="max-w-xs"
+              />
+            )}
+          </div>
+
           {sharedLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="h-44 rounded-2xl animate-pulse glass" />
               ))}
             </div>
-          ) : sharedCourses.length === 0 ? (
+          ) : filteredShared.length === 0 ? (
             <GlassCard intensity="subtle" padding="none" rounded="3xl" className="text-center p-6 sm:p-10 md:p-12">
               <Share2 className="h-10 w-10 text-text-muted mx-auto mb-3" />
               <p className="text-text-muted text-[14px]">{t('admin.courses.shared_empty')}</p>
             </GlassCard>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {sharedCourses.map((course) => (
+              {filteredShared.map((course) => (
                 <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden">
                   <div
                     className="h-20 w-full relative"
@@ -261,11 +282,11 @@ export default function CourseList() {
                       variant="neon"
                       size="sm"
                       className="flex items-center gap-1.5"
-                      onClick={() => handleCopyShared(course)}
-                      disabled={copyingId === course.id}
+                      onClick={() => setEnrollCourse(course)}
+                      disabled={!selectedCampaignId}
                     >
-                      {copyingId === course.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
-                      {copyingId === course.id ? t('admin.courses.copying') : t('admin.courses.copy_to_campaign')}
+                      <UserPlus className="h-3.5 w-3.5" />
+                      {t('admin.courses.enroll_learners')}
                     </Button>
                   </div>
                 </GlassCard>
@@ -273,6 +294,18 @@ export default function CourseList() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Modal de inscripción de aprendices en un curso compartido */}
+      {enrollCourse && selectedCampaignId && (
+        <EnrollLearnersModal
+          course={{ id: enrollCourse.id, title_es: enrollCourse.title_es }}
+          campaignId={selectedCampaignId}
+          onClose={() => setEnrollCourse(null)}
+          onSaved={() => {
+            invalidateModulesCache()
+          }}
+        />
       )}
 
       {/* Lista */}

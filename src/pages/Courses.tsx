@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Search, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Loader2, Plus, Search, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
-import { useLearnerCourses } from '@/hooks/useLearnerCourses';
-import type { LearnerCourse } from '@/services/courses.service';
+import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
+import { selfEnroll, type LearnerCourse } from '@/services/courses.service';
+import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { cn } from '@/lib/cn';
 
@@ -24,13 +25,38 @@ export function courseProgress(course: LearnerCourse, completedSlugs: string[]) 
   return { total, done, pct: total > 0 ? done / total : 0 };
 }
 
-function CourseCard({ course, index }: { course: LearnerCourse; index: number }) {
+function CourseCard({
+  course,
+  index,
+  onEnrolled,
+}: {
+  course: LearnerCourse;
+  index: number;
+  onEnrolled?: () => void;
+}) {
   const { t } = useTranslation();
   const language = useUserStore((s) => s.language);
   const completedSlugs = useProgressStore((s) => s.completedModules);
   const { total, done, pct } = courseProgress(course, completedSlugs);
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
   const completed = total > 0 && done === total;
+  const [enrolling, setEnrolling] = useState(false);
+
+  const handleEnroll = async (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEnrolling(true);
+    try {
+      await selfEnroll(course.id);
+      invalidateLearnerCoursesCache();
+      toast.success(t('courses.enrolled_ok'));
+      onEnrolled?.();
+    } catch {
+      toast.error(t('courses.enroll_error'));
+    } finally {
+      setEnrolling(false);
+    }
+  };
 
   return (
     <Reveal delay={Math.min(index * 60, 240)}>
@@ -107,18 +133,29 @@ function CourseCard({ course, index }: { course: LearnerCourse; index: number })
                 transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
               />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] tabular-nums text-text-subtle">
                 {t('courses.progress', { done, total })}
               </span>
-              <span className={cn('text-[13px] font-semibold', completed ? 'text-primary' : 'text-text')}>
-                {completed
-                  ? t('courses.cta_review')
-                  : done > 0
-                    ? t('courses.cta_continue')
-                    : t('courses.cta_start')}{' '}
-                →
-              </span>
+              {course.isAssigned ? (
+                <span className={cn('text-[13px] font-semibold', completed ? 'text-primary' : 'text-text')}>
+                  {completed
+                    ? t('courses.cta_review')
+                    : done > 0
+                      ? t('courses.cta_continue')
+                      : t('courses.cta_start')}{' '}
+                  →
+                </span>
+              ) : (
+                <button
+                  onClick={handleEnroll}
+                  disabled={enrolling}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-[12px] font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-60"
+                >
+                  {enrolling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  {t('courses.enroll')}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -131,7 +168,7 @@ export default function Courses() {
   const { t } = useTranslation();
   const language = useUserStore((s) => s.language);
   const completedSlugs = useProgressStore((s) => s.completedModules);
-  const { courses, loading } = useLearnerCourses();
+  const { courses, loading, reload } = useLearnerCourses();
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -292,7 +329,7 @@ export default function Courses() {
               </Reveal>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {exploreCourses.map((c, i) => (
-                  <CourseCard key={c.id} course={c} index={i} />
+                  <CourseCard key={c.id} course={c} index={i} onEnrolled={reload} />
                 ))}
               </div>
             </section>

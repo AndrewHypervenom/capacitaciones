@@ -43,6 +43,27 @@ export interface Database {
         }
         Relationships: []
       }
+      user_temp_credentials: {
+        Row: {
+          user_id: string
+          email: string
+          temp_password: string
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          email: string
+          temp_password: string
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          email?: string
+          temp_password?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       courses: {
         Row: {
           id: string
@@ -1064,6 +1085,26 @@ export interface Database {
       clone_course: {
         Args: { source_course_id: string }
         Returns: string
+      }
+      self_enroll_course: {
+        Args: { p_course_id: string }
+        Returns: undefined
+      }
+      unenroll_self: {
+        Args: { p_course_id: string }
+        Returns: undefined
+      }
+      get_course_stats: {
+        Args: { p_course_id: string }
+        Returns: {
+          enrolled: number
+          completed: number
+          total_modules: number
+          completion_pct: number
+          avg_progress_pct: number
+          is_owner: boolean
+          global_enrolled: number
+        }
       }
     }
     Enums: Record<string, never>

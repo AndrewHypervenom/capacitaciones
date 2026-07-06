@@ -31,6 +31,7 @@ export interface CourseAssignmentRow {
   course_id: string
   user_id: string
   is_mandatory: boolean
+  assigned_by?: string | null
 }
 
 /** Curso enriquecido para el aprendiz. */
@@ -38,6 +39,8 @@ export interface LearnerCourse extends CourseWithModules {
   /** Asignado a su campaña o a él directamente (vs. solo catálogo) */
   isAssigned: boolean
   isMandatory: boolean
+  /** Se auto-inscribió él mismo (puede salir del curso). */
+  selfEnrolled: boolean
 }
 
 const COURSE_MODULES_SELECT =
@@ -75,7 +78,7 @@ export async function getLearnerCourses(
       : Promise.resolve({ data: [], error: null }),
     supabase
       .from('course_assignments')
-      .select('course_id, user_id, is_mandatory')
+      .select('course_id, user_id, is_mandatory, assigned_by')
       .eq('user_id', userId),
   ])
 
@@ -97,8 +100,76 @@ export async function getLearnerCourses(
         modules: c.modules.filter((m) => m.is_published),
         isAssigned: !!cc || !!ca,
         isMandatory: (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false),
+        // Auto-inscrito: existe asignación directa creada por él mismo.
+        selfEnrolled: !!ca && ca.assigned_by === userId,
       }
     })
+}
+
+// ─── Catálogo compartido + matrícula viva ────────────────────────
+
+/**
+ * Inscribe (matrícula viva) a varios aprendices de la campaña del capacitador
+ * en un curso — típicamente un curso compartido por otra campaña. Escribe
+ * `course_assignments`; la RLS valida que los usuarios sean de su campaña y
+ * que el curso sea propio o esté publicado al catálogo compartido.
+ */
+export async function enrollUsers(
+  courseId: string,
+  userIds: string[],
+  isMandatory = false,
+): Promise<void> {
+  if (userIds.length === 0) return
+  const { error } = await supabase.from('course_assignments').upsert(
+    userIds.map((user_id) => ({ course_id: courseId, user_id, is_mandatory: isMandatory })),
+  )
+  if (error) throw error
+}
+
+/** Aprendices de una campaña (para el selector de inscripción). */
+export async function getCampaignLearners(
+  campaignId: string,
+): Promise<Array<{ id: string; display_name: string | null; campaign_id: string | null }>> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, display_name, campaign_id')
+    .eq('role', 'learner')
+    .eq('campaign_id', campaignId)
+    .order('display_name')
+  if (error) throw error
+  return data ?? []
+}
+
+/** Auto-inscripción del aprendiz en un curso abierto (catálogo/compartido). */
+export async function selfEnroll(courseId: string): Promise<void> {
+  const { error } = await supabase.rpc('self_enroll_course', { p_course_id: courseId })
+  if (error) throw error
+}
+
+/** Salir de un curso en el que el aprendiz se auto-inscribió. */
+export async function unenrollSelf(courseId: string): Promise<void> {
+  const { error } = await supabase.rpc('unenroll_self', { p_course_id: courseId })
+  if (error) throw error
+}
+
+export interface CourseStats {
+  /** Aprendices de la campaña del que consulta (superadmin: todas). */
+  enrolled: number
+  completed: number
+  total_modules: number
+  completion_pct: number
+  avg_progress_pct: number
+  /** El que consulta es el dueño del curso. */
+  is_owner: boolean
+  /** Alcance total en todas las campañas (solo para dueño/superadmin). */
+  global_enrolled: number
+}
+
+/** Métricas agregadas de un curso (solo dueño/superadmin). */
+export async function getCourseStats(courseId: string): Promise<CourseStats> {
+  const { data, error } = await supabase.rpc('get_course_stats', { p_course_id: courseId })
+  if (error) throw error
+  return data as unknown as CourseStats
 }
 
 /** Un curso por slug con sus módulos publicados (para la página de detalle). */
@@ -175,14 +246,16 @@ export async function createCourse(
 export type ShareableCourse = CourseWithModules & { campaign_name: string | null }
 
 /**
- * Cursos marcados como compartibles por OTRAS campañas (para el catálogo de
- * "Cursos compartidos"). La RLS de `courses` permite ver los `is_shareable`.
+ * Cursos publicados al catálogo compartido por OTRAS campañas. Son cursos
+ * canónicos vivos: el capacitador inscribe a sus aprendices en ellos (no copia).
+ * La RLS `courses_select_shared_catalog` permite verlos cross-campaña.
  */
 export async function getShareableCourses(ownCampaignId: string): Promise<ShareableCourse[]> {
   const { data, error } = await supabase
     .from('courses')
     .select(`*, ${COURSE_MODULES_SELECT}, campaigns(name)`)
     .eq('is_shareable', true)
+    .eq('is_published', true)
     .neq('campaign_id', ownCampaignId)
     .order('updated_at', { ascending: false })
   if (error) throw error

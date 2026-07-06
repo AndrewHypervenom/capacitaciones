@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, Check, Clock, GraduationCap, Lock, Play } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, Clock, GraduationCap, Loader2, Lock, LogOut, Play, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
-import { useLearnerCourses } from '@/hooks/useLearnerCourses';
+import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
+import { selfEnroll, unenrollSelf } from '@/services/courses.service';
+import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { cn } from '@/lib/cn';
@@ -29,9 +31,40 @@ export default function CoursePage() {
   const backLabel = fromCourses ? t('courses.back_to_courses') : t('courses.back_to_home');
   const language = useUserStore((s) => s.language);
   const completedSlugs = useProgressStore((s) => s.completedModules);
-  const { courses, loading } = useLearnerCourses();
+  const { courses, loading, reload } = useLearnerCourses();
+  const [enrollBusy, setEnrollBusy] = useState(false);
 
   const course = useMemo(() => courses.find((c) => c.slug === slug), [courses, slug]);
+
+  const handleEnroll = async () => {
+    if (!course) return;
+    setEnrollBusy(true);
+    try {
+      await selfEnroll(course.id);
+      invalidateLearnerCoursesCache();
+      toast.success(t('courses.enrolled_ok'));
+      reload();
+    } catch {
+      toast.error(t('courses.enroll_error'));
+    } finally {
+      setEnrollBusy(false);
+    }
+  };
+
+  const handleLeave = async () => {
+    if (!course) return;
+    setEnrollBusy(true);
+    try {
+      await unenrollSelf(course.id);
+      invalidateLearnerCoursesCache();
+      toast.success(t('courses.left_ok'));
+      reload();
+    } catch {
+      toast.error(t('courses.enroll_error'));
+    } finally {
+      setEnrollBusy(false);
+    }
+  };
 
   const items = useMemo(() => {
     if (!course) return [];
@@ -174,6 +207,30 @@ export default function CoursePage() {
                     {t('courses.completed_banner')}
                   </div>
                 )}
+
+                {/* Auto-inscripción en cursos del catálogo */}
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  {!course.isAssigned && (
+                    <button
+                      onClick={handleEnroll}
+                      disabled={enrollBusy}
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md disabled:opacity-60"
+                    >
+                      {enrollBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      {t('courses.enroll')}
+                    </button>
+                  )}
+                  {course.selfEnrolled && (
+                    <button
+                      onClick={handleLeave}
+                      disabled={enrollBusy}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-60"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      {t('courses.leave')}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-line bg-bg p-5">

@@ -34,9 +34,11 @@ import {
   setCourseAssignment,
   removeCourseAssignment,
   uploadCourseCover,
+  getCourseStats,
   type CourseWithModules,
   type CourseCampaignRow,
   type CourseAssignmentRow,
+  type CourseStats,
 } from '@/services/courses.service'
 import { getModulesRaw, type DbModuleRow } from '@/services/modules.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
@@ -77,6 +79,9 @@ export default function CourseEditor() {
   })
   const coverInputRef = useRef<HTMLInputElement>(null)
   const [uploadingCover, setUploadingCover] = useState(false)
+
+  // Métricas agregadas (matriculados / avance) — solo dueño/superadmin
+  const [stats, setStats] = useState<CourseStats | null>(null)
 
   // Módulos
   const [campaignModules, setCampaignModules] = useState<DbModuleRow[]>([])
@@ -125,6 +130,13 @@ export default function CourseEditor() {
     if (!course?.campaign_id) return
     getModulesRaw(course.campaign_id).then(setCampaignModules).catch(() => {})
   }, [course?.campaign_id, course?.modules.length])
+
+  // Métricas agregadas del curso (el RPC autoriza solo al dueño/superadmin;
+  // si no está autorizado o falla, simplemente no se muestra el panel).
+  useEffect(() => {
+    if (!courseId) return
+    getCourseStats(courseId).then(setStats).catch(() => setStats(null))
+  }, [courseId])
 
   // Datos de asignación
   useEffect(() => {
@@ -416,6 +428,32 @@ export default function CourseEditor() {
           {course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}
         </Button>
       </div>
+
+      {/* Métricas de matrícula (acotadas a la campaña del que consulta) */}
+      {stats && stats.enrolled > 0 && (
+        <div className="mb-6">
+          <div className="flex items-baseline justify-between mb-2">
+            <h3 className="text-[13px] font-semibold text-text">{t('admin.courses.stats_your_learners')}</h3>
+            {stats.is_owner && stats.global_enrolled > stats.enrolled && (
+              <span className="text-[11px] text-text-subtle">
+                {t('admin.courses.stats_global_reach', { n: stats.global_enrolled })}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: t('admin.courses.stats_enrolled'), value: stats.enrolled },
+              { label: t('admin.courses.stats_completed'), value: `${stats.completion_pct}%` },
+              { label: t('admin.courses.stats_avg_progress'), value: `${stats.avg_progress_pct}%` },
+            ].map((s) => (
+              <GlassCard key={s.label} intensity="subtle" rounded="2xl" className="px-4 py-3">
+                <div className="text-[22px] font-bold tabular-nums text-text leading-none">{s.value}</div>
+                <div className="text-[11px] text-text-muted mt-1.5">{s.label}</div>
+              </GlassCard>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-line">
