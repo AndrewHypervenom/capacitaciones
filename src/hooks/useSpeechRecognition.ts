@@ -107,11 +107,14 @@ export function useSpeechRecognition({
 
     rec.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.warn('[SpeechRecognition] error:', event.error);
-      setMicError(event.error);
-      if (['not-allowed', 'no-speech', 'aborted'].includes(event.error)) {
-        setIsRecording(false);
-        setInterimTranscript('');
+      // 'no-speech'/'aborted' are transient (auto-stop with no speech): clear silently.
+      // Any other error (network, audio-capture, service-not-allowed, not-allowed…)
+      // must stop recording AND surface, otherwise the mic stays "on" but never transcribes.
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        setMicError(event.error);
       }
+      setIsRecording(false);
+      setInterimTranscript('');
     };
 
     rec.onend = () => {
@@ -137,6 +140,13 @@ export function useSpeechRecognition({
 
   const startRecording = useCallback(() => {
     if (!API) return;
+    // SpeechRecognition only works in a secure context (HTTPS or localhost). Over plain
+    // HTTP on a LAN IP the mic silently fails, so surface a clear error up front.
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      setMicError('insecure-context');
+      setIsRecording(false);
+      return;
+    }
     // Recreate instance so it's always in a clean state (needed after continuous:false auto-stop)
     if (recognitionRef.current) {
       try { recognitionRef.current.abort(); } catch { /* ignore */ }

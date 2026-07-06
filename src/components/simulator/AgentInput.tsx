@@ -91,10 +91,16 @@ export function AgentInput({ disabled, onSend }: AgentInputProps) {
             )}
           </button>
           {micError && !isRecording && (
-            <p className="text-[10px] text-danger text-center w-14 leading-tight">
-              {micError === 'not-allowed'
+            <p className="text-[10px] text-danger text-center w-16 leading-tight">
+              {micError === 'not-allowed' || micError === 'service-not-allowed'
                 ? t('simulator.mic_permission_denied')
-                : t('simulator.mic_error')}
+                : micError === 'insecure-context'
+                  ? t('simulator.mic_insecure')
+                  : micError === 'network'
+                    ? t('simulator.mic_network')
+                    : micError === 'audio-capture'
+                      ? t('simulator.mic_no_device')
+                      : t('simulator.mic_error')}
             </p>
           )}
         </div>
