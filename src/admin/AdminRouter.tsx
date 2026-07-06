@@ -21,6 +21,7 @@ import Arena from './pages/Arena'
 import Worlds from './pages/Worlds'
 import WorldDetail from './pages/WorldDetail'
 import FeedbackPanel from './pages/FeedbackPanel'
+import ChatLogs from './pages/ChatLogs'
 import { HelpWidget } from '@/components/help/HelpWidget'
 
 export default function AdminRouter() {
@@ -48,6 +49,8 @@ export default function AdminRouter() {
           {/* Usuarios: superadmin (todo) y capacitador (solo su campaña, lectura + asignar cursos) */}
           <Route path="users" element={isSuperAdmin || isCapacitador ? <UserList /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
+          {/* Historial del chat de ayuda: solo superadmin */}
+          <Route path="chat" element={isSuperAdmin ? <ChatLogs /> : <Navigate to="/admin" replace />} />
           <Route path="evaluaciones" element={<TrainerFeedbackPanel />} />
           <Route path="simulations" element={<SimulationList />} />
           <Route path="simulations/new" element={<SimulationEditor />} />

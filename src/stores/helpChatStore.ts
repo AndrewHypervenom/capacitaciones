@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { AI_DAILY_LIMIT, todayKey } from '@/components/help/config'
+import { todayKey } from '@/components/help/config'
 
 export interface HelpMessage {
   id: string
@@ -78,7 +78,8 @@ export const useHelpChatStore = create<HelpChatState>()(
           const base = s.aiUsage.day === day ? s.aiUsage.count : 0
           return { aiUsage: { day, count: base + 1 } }
         }),
-      markAiExhausted: () => set({ aiUsage: { day: todayKey(), count: AI_DAILY_LIMIT } }),
+      // Fuerza la cuota agotada (al recibir 429). 9999 supera cualquier tope.
+      markAiExhausted: () => set({ aiUsage: { day: todayKey(), count: 9999 } }),
     }),
     {
       name: 'learningai.help',

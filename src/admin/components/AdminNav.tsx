@@ -47,7 +47,9 @@ export function AdminNav() {
     {
       title: "",
       items: [
-        { to: '/admin', label: t('admin.nav.panel', 'Panel'), end: true }
+        { to: '/admin', label: t('admin.nav.panel', 'Panel'), end: true },
+        // Historial del chat de ayuda: solo superadmin.
+        ...(isSuperAdmin ? [{ to: '/admin/chat', label: t('admin.nav.chat', 'Chat de ayuda'), end: false }] : []),
       ]
     },
     {

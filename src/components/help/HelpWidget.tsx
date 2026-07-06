@@ -7,15 +7,16 @@ import { MessageCircle, X, Send, Sparkles, Trash2, RefreshCw, Zap, Bot } from 'l
 import { useAuth } from '@/hooks/useAuth'
 import { useHelpChatStore } from '@/stores/helpChatStore'
 import { sendHelpMessage } from '@/services/help.service'
+import { logHelpInteraction } from '@/services/helpLog.service'
 import { getSuggestionKeys } from './suggestions'
 import { matchFaq } from './faq'
-import { AI_DAILY_LIMIT, AI_UNLOCK_AFTER, todayKey } from './config'
+import { aiDailyLimit, aiUnlockAfter, todayKey } from './config'
 import { ChatMarkdown } from './ChatMarkdown'
 import { cn } from '@/lib/cn'
 
 export function HelpWidget() {
   const { t, i18n } = useTranslation()
-  const { isAuthenticated, isAdminOrCapacitador, displayName } = useAuth()
+  const { isAuthenticated, isAdminOrCapacitador, displayName, role, campaignId } = useAuth()
   const location = useLocation()
   const {
     isOpen, messages, loading, aiUsage,
@@ -51,12 +52,14 @@ export function HelpWidget() {
 
   const suggestionKeys = getSuggestionKeys({ isStaff: isAdminOrCapacitador, pathname: location.pathname })
 
-  // ── Control de costo ────────────────────────────────────────
+  // ── Control de costo (diferenciado por rol) ─────────────────
+  const dailyLimit = aiDailyLimit(isAdminOrCapacitador)
   const usedToday = aiUsage.day === todayKey() ? aiUsage.count : 0
-  const quotaLeft = Math.max(0, AI_DAILY_LIMIT - usedToday)
-  // La opción de IA se "gana": solo tras varias preguntas del usuario.
+  const quotaLeft = Math.max(0, dailyLimit - usedToday)
+  // La opción de IA se "gana": para el aprendiz, solo tras varias preguntas;
+  // para el staff, está disponible de inmediato (unlockAfter = 0).
   const userQuestions = messages.filter((m) => m.role === 'user').length
-  const aiUnlocked = userQuestions >= AI_UNLOCK_AFTER
+  const aiUnlocked = userQuestions >= aiUnlockAfter(isAdminOrCapacitador)
 
   /** Nunca llama a la IA: solo base local. Si no hay match, sugiere reformular. */
   function submit(text: string) {
@@ -67,17 +70,15 @@ export function HelpWidget() {
     addMessage({ id: nextId(), role: 'user', content: trimmed })
 
     const match = matchFaq(trimmed, { isStaff: isAdminOrCapacitador })
+    const logBase = { role, campaignId, lang, page: location.pathname }
     if (match) {
-      addMessage({ id: nextId(), role: 'assistant', content: match.entry.answer[lang], faq: true, question: trimmed })
+      const answer = match.entry.answer[lang]
+      addMessage({ id: nextId(), role: 'assistant', content: answer, faq: true, question: trimmed })
+      void logHelpInteraction({ ...logBase, source: 'faq', faqId: match.entry.id, question: trimmed, answer })
     } else {
-      addMessage({
-        id: nextId(),
-        role: 'assistant',
-        content: t('help.no_match', 'No encontré una respuesta exacta a eso. Prueba a reformular tu pregunta o revisa los temas sugeridos abajo.'),
-        faq: true,
-        noMatch: true,
-        question: trimmed,
-      })
+      const answer = t('help.no_match', 'No encontré una respuesta exacta a eso. Prueba a reformular tu pregunta o revisa los temas sugeridos abajo.')
+      addMessage({ id: nextId(), role: 'assistant', content: answer, faq: true, noMatch: true, question: trimmed })
+      void logHelpInteraction({ ...logBase, source: 'no_match', question: trimmed, answer })
     }
   }
 
@@ -85,7 +86,7 @@ export function HelpWidget() {
    *  y respeta el tope diario (validado también en el servidor). */
   async function askAI() {
     if (loading) return
-    if (aiUsedToday() >= AI_DAILY_LIMIT) {
+    if (aiUsedToday() >= dailyLimit) {
       addMessage({ id: nextId(), role: 'assistant', content: t('help.ai_limit_reached', 'Alcanzaste tu límite de consultas al asistente por hoy. Vuelve mañana o pídele ayuda a tu capacitador.'), notice: true })
       return
     }
@@ -108,6 +109,8 @@ export function HelpWidget() {
       })
       recordAiUse()
       updateMessage(assistantId, { content: reply, pending: false })
+      const q = [...useHelpChatStore.getState().messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+      void logHelpInteraction({ role, campaignId, lang, page: location.pathname, source: 'ai', question: q, answer: reply })
     } catch (e) {
       if ((e as Error).message === 'AI_DAILY_LIMIT') {
         markAiExhausted()
@@ -255,7 +258,7 @@ export function HelpWidget() {
                                 >
                                   <Bot className="h-3 w-3" />
                                   {t('help.faq_escalate_btn', 'Preguntar al asistente IA')}
-                                  <span className="text-text-subtle">· {quotaLeft}/{AI_DAILY_LIMIT}</span>
+                                  <span className="text-text-subtle">· {quotaLeft}/{dailyLimit}</span>
                                 </button>
                               </>
                             ) : (
