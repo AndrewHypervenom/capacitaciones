@@ -18,7 +18,7 @@ import {
 } from '@/services/courses.service'
 import {
   syncCourseWorldById,
-  generateModuleRegionLevels,
+  generatePendingRegionLevels,
 } from '@/services/worlds.service'
 import { generateModuleOutline, generateModuleSection, type GeneratedModule } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
@@ -152,16 +152,13 @@ export default function CourseList() {
       const moduleId = await saveGeneratedModule(selectedCampaignId, generated, aiDoc.images)
       await addModuleToCourse(course.id, moduleId, 1)
 
-      // 4) Opcional: generar el mundo gamificado (región + 3-5 niveles con quizzes).
-      //    Solo si el usuario lo pidió, para no gastar IA de más.
+      // 4) Opcional: generar el mundo gamificado (región + 2-3 niveles con quiz corto).
+      //    Solo si el usuario lo pidió, para no gastar IA de más. El progreso
+      //    y el resultado se ven también en el indicador global de procesos.
       if (aiWithWorld) {
         setAiStepMsg(t('admin.courses.ai_step_world'))
         const { world, pendingRegions } = await syncCourseWorldById(course.id, { createIfMissing: true })
-        if (world) {
-          for (const r of pendingRegions) {
-            try { await generateModuleRegionLevels(world, r.regionId, r.moduleId) } catch { /* la región queda sin niveles */ }
-          }
-        }
+        if (world) await generatePendingRegionLevels(world, pendingRegions)
       }
 
       invalidateModulesCache()
