@@ -286,6 +286,16 @@ export async function syncCourseWorldById(
       .filter((r) => r.module_id).map((r) => [r.module_id as string, r]),
   )
 
+  // Regiones que ya tienen al menos un nivel. Las regiones vacías (creadas por
+  // un sync que no llegó a generar niveles) se tratan como pendientes.
+  const { data: levelsData } = await supabase
+    .from('world_levels')
+    .select('region_id')
+    .eq('world_id', world.id)
+  const regionsWithLevels = new Set(
+    ((levelsData ?? []) as Array<{ region_id: string | null }>).map((l) => l.region_id).filter(Boolean),
+  )
+
   const currentModuleIds = new Set(modules.map((m) => m.id))
   const pendingRegions: PendingRegion[] = []
 
@@ -301,7 +311,11 @@ export async function syncCourseWorldById(
           .update({ order_index: orderIndex, name: m.title_es })
           .eq('id', region.id)
       }
-      // Región existente → conserva sus niveles; no se regenera.
+      // Región existente con niveles → se conserva tal cual; no se regenera.
+      // Si quedó vacía (un sync anterior no generó sus niveles), va a pendientes.
+      if (!regionsWithLevels.has(region.id)) {
+        pendingRegions.push({ regionId: region.id, moduleId: m.id, moduleTitle: m.title_es })
+      }
     } else {
       const { data: newRegion, error } = await supabase
         .from('world_regions')

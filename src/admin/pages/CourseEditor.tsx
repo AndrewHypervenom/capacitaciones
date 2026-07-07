@@ -15,6 +15,7 @@ import {
   Info,
   Lock,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Share2,
@@ -106,6 +107,7 @@ export default function CourseEditor() {
   const [openingWorld, setOpeningWorld] = useState(false)
   // Estado de publicación del mundo espejo del curso (independiente del curso).
   const [worldPublished, setWorldPublished] = useState<boolean | null>(null)
+  const [syncingWorld, setSyncingWorld] = useState(false)
 
   // Información editable
   const [form, setForm] = useState({
@@ -437,6 +439,29 @@ export default function CourseEditor() {
     })()
   }
 
+  // Botón "Sincronizar" del panel de publicación: reconcilia regiones con los
+  // módulos del curso y genera con IA los niveles de las regiones nuevas o vacías.
+  const handleSyncWorld = async () => {
+    setSyncingWorld(true)
+    try {
+      const result = await syncCourseWorldById(course.id, { createIfMissing: false })
+      if (!result.world) {
+        toast.info(t('admin.courses.world_sync_none'))
+        return
+      }
+      if (result.pendingRegions.length === 0) {
+        toast.success(t('admin.courses.world_sync_ok'))
+        return
+      }
+      generatePendingRegions(result)
+    } catch (e) {
+      console.error('No se pudo sincronizar el mundo del curso:', e)
+      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setSyncingWorld(false)
+    }
+  }
+
   const syncWorld = async () => {
     try {
       // createIfMissing:false → si el curso optó por no tener mundo, agregar/quitar
@@ -717,6 +742,14 @@ export default function CourseEditor() {
               <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
                 <Globe className="h-4 w-4 text-text-muted shrink-0" />
                 <span className="flex-1 text-[13px] font-medium text-text">{t('admin.courses.publish_world')}</span>
+                <button
+                  onClick={handleSyncWorld}
+                  disabled={syncingWorld}
+                  className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium border border-line text-text-muted hover:text-text transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', syncingWorld && 'animate-spin')} />
+                  {t('admin.courses.world_sync')}
+                </button>
                 <span className={cn('text-[11px] font-semibold', worldPublished ? 'text-primary' : 'text-text-muted')}>
                   {worldPublished ? t('admin.courses.published') : t('admin.courses.draft')}
                 </span>
