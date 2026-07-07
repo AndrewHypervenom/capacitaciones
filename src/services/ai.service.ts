@@ -123,6 +123,42 @@ export interface ModuleOutline {
   }[]
 }
 
+/**
+ * Rellena inglés/portugués a partir del español, de forma recursiva y en JS puro.
+ * Red de seguridad: garantiza que ningún campo quede vacío aunque la traducción con
+ * IA falle o se saltee algo. En el peor caso muestra el español (mejor que un hueco).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function deepFillTranslations(value: any): any {
+  if (Array.isArray(value)) return value.map(deepFillTranslations)
+  if (value && typeof value === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const o: any = {}
+    for (const k of Object.keys(value)) o[k] = deepFillTranslations(value[k])
+    // Objetos de texto { es, en, pt }
+    if (typeof o.es === 'string') {
+      if (!o.en) o.en = o.es
+      if (!o.pt) o.pt = o.es
+    }
+    // Tríos *_es / *_en / *_pt (strings o arrays)
+    for (const k of Object.keys(o)) {
+      if (!k.endsWith('_es')) continue
+      const base = k.slice(0, -3)
+      const empty = (v: unknown) => v == null || v === '' || (Array.isArray(v) && v.length === 0)
+      if (empty(o[`${base}_en`])) o[`${base}_en`] = o[k]
+      if (empty(o[`${base}_pt`])) o[`${base}_pt`] = o[k]
+    }
+    return o
+  }
+  return value
+}
+
+/** Traduce (en/pt) un JSON generado en español, con Haiku. Devuelve el mismo objeto relleno. */
+async function translateGenerated<T>(payload: T): Promise<T> {
+  const { data } = await postGenerateModule({ mode: 'translate', payload, description: '' })
+  return data as T
+}
+
 async function postGenerateModule(
   body: Record<string, unknown>,
 ): Promise<{ data: unknown; usage: CacheUsage }> {
@@ -152,19 +188,49 @@ async function postGenerateModule(
 export async function generateModule(opts: {
   description: string
 } & DocContext): Promise<{ data: GeneratedModule; usage: CacheUsage }> {
-  const { data, usage } = await postGenerateModule({ ...opts })
-  return { data: data as GeneratedModule, usage }
+  // Ahorro: Sonnet escribe el español; en/pt se traducen con Haiku, por piezas
+  // (metadata + cada sección aparte) para acotar cada llamada y no saturar tokens.
+  const { data, usage } = await postGenerateModule({ esOnly: true, ...opts })
+  let mod = data as GeneratedModule
+
+  try {
+    const meta = await translateGenerated<{ metadata: GeneratedModuleMeta }>({ metadata: mod.metadata })
+    if (meta?.metadata) mod = { ...mod, metadata: meta.metadata }
+  } catch { /* red de seguridad más abajo */ }
+
+  const sections: GeneratedModuleSection[] = []
+  for (const s of mod.sections ?? []) {
+    let sec = s
+    try {
+      sec = await translateGenerated<GeneratedModuleSection>(s)
+    } catch { /* red de seguridad más abajo */ }
+    sections.push(sec)
+  }
+  mod = { ...mod, sections }
+
+  return { data: deepFillTranslations(mod) as GeneratedModule, usage }
 }
 
-/** Paso 1 (a prueba de límites): genera solo el esquema del módulo. */
+/**
+ * Paso 1 (a prueba de límites): genera solo el esquema del módulo.
+ * Ahorro: Sonnet escribe el español; en/pt se traducen con Haiku (mucho más barato).
+ * Transparente para el llamador: siempre devuelve los 3 idiomas.
+ */
 export async function generateModuleOutline(opts: {
   description: string
 } & DocContext): Promise<{ data: ModuleOutline; usage: CacheUsage }> {
-  const { data, usage } = await postGenerateModule({ mode: 'outline', ...opts })
-  return { data: data as ModuleOutline, usage }
+  const { data, usage } = await postGenerateModule({ mode: 'outline', esOnly: true, ...opts })
+  let outline = data as ModuleOutline
+  try {
+    outline = await translateGenerated(outline)
+  } catch { /* si falla la traducción, la red de seguridad copia el español */ }
+  return { data: deepFillTranslations(outline) as ModuleOutline, usage }
 }
 
-/** Paso 2 (a prueba de límites): genera los bloques de UNA sección. */
+/**
+ * Paso 2 (a prueba de límites): genera los bloques de UNA sección (español con Sonnet)
+ * y traduce en/pt con Haiku. Transparente para el llamador.
+ */
 export async function generateModuleSection(opts: {
   description: string
   moduleTitle: string
@@ -175,9 +241,13 @@ export async function generateModuleSection(opts: {
   totalSections: number
   allHeadings: string[]
 } & DocContext): Promise<{ data: { blocks: GeneratedBlock[] }; usage: CacheUsage }> {
-  const { data, usage } = await postGenerateModule({ mode: 'section', ...opts })
-  const blocks = (data as { blocks?: GeneratedBlock[] })?.blocks ?? []
-  return { data: { blocks }, usage }
+  const { data, usage } = await postGenerateModule({ mode: 'section', esOnly: true, ...opts })
+  let blocks = (data as { blocks?: GeneratedBlock[] })?.blocks ?? []
+  try {
+    const translated = await translateGenerated<{ blocks: GeneratedBlock[] }>({ blocks })
+    if (translated?.blocks?.length) blocks = translated.blocks
+  } catch { /* si falla la traducción, la red de seguridad copia el español */ }
+  return { data: { blocks: deepFillTranslations(blocks) as GeneratedBlock[] }, usage }
 }
 
 export interface ProposedModule {
