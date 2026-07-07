@@ -1,32 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowLeft, ChevronRight, Clock, FileText, Loader2, Minus,
-  Plus, RotateCcw, Sparkles, Upload, X,
+  ArrowLeft, ChevronRight, Loader2, Minus, Plus, Sparkles,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { createModule, saveGeneratedModule } from '@/services/modules.service'
+import { createModule } from '@/services/modules.service'
+import ImportContent from '@/admin/pages/ImportContent'
 import {
   addModuleToCourse,
   getCoursesForCampaign,
   getCourseById,
   type CourseWithModules,
 } from '@/services/courses.service'
-import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
 import { syncCourseWorldAndGenerate } from '@/services/worlds.service'
-import {
-  extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
-  type ExtractStage, type ExtractedImage,
-} from '@/lib/documentExtract'
-import { confirmDialog } from '@/components/ui/ConfirmDialog'
-import i18n from '@/i18n'
 import { useTranslation } from 'react-i18next'
-import { GenerationProgress, MODULE_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
-import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
@@ -48,9 +39,6 @@ const ICONS = [
 const LANG_LABELS: Record<Lang, string> = { es: 'ES', en: 'EN', pt: 'PT' }
 const LANG_NAMES: Record<Lang, string> = { es: 'Español', en: 'English', pt: 'Português' }
 
-const CACHE_KEY = 'ai_module_cache_expires'
-const CACHE_DURATION_MS = 5 * 60 * 1000
-
 function slugify(text: string) {
   return text
     .toLowerCase()
@@ -59,44 +47,6 @@ function slugify(text: string) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
-}
-
-function formatMs(ms: number) {
-  const s = Math.ceil(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
-
-// ─── Cache timer hook ─────────────────────────────────────────
-
-function useCacheTimer() {
-  const [remaining, setRemaining] = useState(0)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const notifyCache = useCallback((usage: CacheUsage) => {
-    if (usage.cache_creation_input_tokens > 0) {
-      localStorage.setItem(CACHE_KEY, String(Date.now() + CACHE_DURATION_MS))
-    }
-  }, [])
-
-  useEffect(() => {
-    const tick = () => {
-      const stored = localStorage.getItem(CACHE_KEY)
-      if (!stored) { setRemaining(0); return }
-      const rem = Number(stored) - Date.now()
-      if (rem <= 0) {
-        setRemaining(0)
-        localStorage.removeItem(CACHE_KEY)
-        if (intervalRef.current) clearInterval(intervalRef.current)
-      } else {
-        setRemaining(rem)
-      }
-    }
-    tick()
-    intervalRef.current = setInterval(tick, 1000)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [])
-
-  return { remaining, notifyCache }
 }
 
 // ─── Sub-components ───────────────────────────────────────────
@@ -161,429 +111,6 @@ function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => v
           {LANG_LABELS[lang]}
         </button>
       ))}
-    </div>
-  )
-}
-
-// ─── AI Mode ─────────────────────────────────────────────────
-
-function AIModeForm({
-  campaignId,
-  campaigns,
-  isSuperAdmin,
-  courses,
-  courseId,
-  onSelectCampaign,
-  onSelectCourse,
-  onCreated,
-}: {
-  campaignId: string
-  campaigns: Campaign[]
-  isSuperAdmin: boolean
-  courses: CourseWithModules[]
-  courseId: string
-  onSelectCampaign: (id: string) => void
-  onSelectCourse: (id: string) => void
-  onCreated: (moduleId: string) => void | Promise<void>
-}) {
-  const { t } = useTranslation()
-  const { remaining, notifyCache } = useCacheTimer()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const [description, setDescription] = useState('')
-  const [documentText, setDocumentText] = useState('')
-  const [docMode, setDocMode] = useState<'none' | 'paste' | 'file'>('none')
-  const [fileName, setFileName] = useState('')
-  const [docImages, setDocImages] = useState<ExtractedImage[]>([])
-  const [docContextImages, setDocContextImages] = useState<ExtractedImage[]>([])
-  const [extracting, setExtracting] = useState(false)
-  const [progress, setProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
-  const [generating, setGenerating] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [generated, setGenerated] = useState<GeneratedModule | null>(null)
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setError(null)
-    setFileName(file.name)
-    setDocMode('file')
-    setDocImages([]); setDocContextImages([])
-    setProgress({ stage: 'reading', ratio: 0 })
-    setExtracting(true)
-    try {
-      const extracted = await extractDocumentText(file, (p) => setProgress(p))
-      setDocumentText(extracted.text)
-      setDocImages(extracted.images)
-      setDocContextImages(extracted.contextImages)
-    } catch (err) {
-      setDocumentText(''); setFileName(''); setDocMode('none')
-      setError(err instanceof Error ? err.message : 'No se pudo leer el archivo')
-    } finally {
-      setExtracting(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
-
-  const clearDocument = async () => {
-    if (!(await confirmDialog({
-      title: i18n.t('confirm.delete_media_title'),
-      description: i18n.t('confirm.delete_media_desc'),
-      confirmLabel: i18n.t('confirm.remove'),
-    }))) return
-    setDocumentText(''); setFileName(''); setDocMode('none')
-    setDocImages([]); setDocContextImages([])
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  const handleGenerate = async () => {
-    if (!description.trim()) return
-    setGenerating(true); setError(null); setGenerated(null)
-    try {
-      const result = await generateModule({
-        description,
-        documentText: documentText.trim() || undefined,
-        images: docImages.length ? docImages : undefined,
-        contextImages: docContextImages.length ? docContextImages : undefined,
-      })
-      setGenerated(result.data)
-      notifyCache(result.usage)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const handleCreate = async () => {
-    if (!generated || !campaignId) return
-    setSaving(true)
-    try {
-      const moduleId = await saveGeneratedModule(campaignId, generated)
-      toast.success('Módulo creado. Abriendo editor...')
-      await onCreated(moduleId)
-    } catch (e) {
-      toast.error(`Error: ${(e as Error).message}`)
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Campaña + curso destino */}
-      <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8 space-y-5">
-        {isSuperAdmin && campaigns.length > 0 && (
-          <div>
-            <SectionLabel>{t('admin.modules.new.campaign_target')}</SectionLabel>
-            <FilterDropdown
-              value={campaignId}
-              onChange={onSelectCampaign}
-              options={[
-                { value: '', label: '— Seleccionar campaña —' },
-                ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-          </div>
-        )}
-        <div>
-          <SectionLabel>{t('admin.modules.new.course_target')}</SectionLabel>
-          <FilterDropdown
-            value={courseId}
-            onChange={onSelectCourse}
-            options={[
-              { value: '', label: '— Sin curso (Plan general) —' },
-              ...courses.map((c) => ({ value: c.id, label: c.title_es })),
-            ]}
-          />
-        </div>
-      </GlassCard>
-
-      {/* Description input */}
-      <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8">
-        <div className="flex items-center justify-between mb-3">
-          <SectionLabel>{t('admin.modules.new.what_learn')}</SectionLabel>
-          {remaining > 0 && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-green/8 border border-brand-green/20 text-brand-green text-[10px] font-medium">
-              <Clock className="h-3 w-3" />
-              Caché · {formatMs(remaining)}
-            </div>
-          )}
-        </div>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder={t('admin.modules.new.ph_prompt')}
-          rows={5}
-          className={cn(
-            'w-full rounded-xl px-4 py-3 text-[14px] text-text resize-none',
-            'bg-glass/5 border border-glass-border/10',
-            'focus:border-brand-violet/30 focus:bg-glass/8 focus:outline-none',
-            'placeholder:text-text-subtle transition-colors leading-relaxed',
-          )}
-        />
-
-        {/* Document attachment */}
-        <div className="mt-4 pt-4 border-t border-glass-border/8">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[11px] text-text-muted font-medium">
-              {t('admin.modules.new.source_document')} <span className="text-text-subtle font-normal">{t('admin.modules.new.optional_file')}</span>
-            </span>
-            {(documentText || fileName) && (
-              <button
-                onClick={clearDocument}
-                className="flex items-center gap-1 text-[11px] text-text-muted hover:text-danger transition-colors"
-              >
-                <X className="h-3 w-3" /> Quitar
-              </button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setDocMode(docMode === 'paste' ? 'none' : 'paste')}
-              disabled={extracting}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all disabled:opacity-50',
-                docMode === 'paste'
-                  ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
-                  : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
-              )}
-            >
-              <FileText className="h-3.5 w-3.5" /> Pegar texto
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={extracting}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all disabled:opacity-50',
-                docMode === 'file' && fileName
-                  ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
-                  : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
-              )}
-            >
-              <Upload className="h-3.5 w-3.5" /> Subir archivo
-            </button>
-            <input ref={fileInputRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleFileUpload} />
-          </div>
-          <AnimatePresence>
-            {extracting && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="mt-2.5 rounded-xl bg-brand-violet/6 border border-brand-violet/15 px-3 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="relative h-8 w-8 shrink-0 flex items-center justify-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-brand-violet/70" />
-                      <FileText className="absolute h-3.5 w-3.5 text-brand-violet" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[12px] text-text font-medium truncate">{fileName}</div>
-                      <div className="text-[11px] text-text-muted">{t(`admin.import.stage_${progress.stage}`)}</div>
-                    </div>
-                    <span className="text-[12px] font-semibold text-brand-violet tabular-nums shrink-0">
-                      {Math.round(progress.ratio * 100)}%
-                    </span>
-                  </div>
-                  <div className="mt-2.5 h-1.5 w-full rounded-full bg-glass/10 overflow-hidden">
-                    <motion.div
-                      className="h-full rounded-full bg-brand-violet"
-                      initial={false}
-                      animate={{ width: `${Math.max(4, progress.ratio * 100)}%` }}
-                      transition={{ ease: 'easeOut', duration: 0.3 }}
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            )}
-            {docMode === 'paste' && !extracting && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <textarea
-                  value={documentText}
-                  onChange={(e) => setDocumentText(e.target.value)}
-                  placeholder={t('admin.modules.new.ph_paste_doc')}
-                  rows={5}
-                  className={cn(
-                    'w-full mt-2.5 rounded-xl px-4 py-3 text-[13px] text-text resize-none',
-                    'bg-glass/5 border border-glass-border/10',
-                    'focus:border-brand-violet/30 focus:outline-none',
-                    'placeholder:text-text-subtle transition-colors',
-                  )}
-                />
-              </motion.div>
-            )}
-            {docMode === 'file' && fileName && !extracting && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-2.5 flex items-center gap-2 text-[12px] text-brand-violet px-3 py-2 rounded-xl bg-brand-violet/6 border border-brand-violet/15"
-              >
-                <FileText className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">
-                  {fileName} — {(documentText.length / 1000).toFixed(1)}k caracteres
-                  {docImages.length > 0 && ` · ${docImages.length} figura(s)`}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </GlassCard>
-
-      {/* Error */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            className="rounded-xl px-4 py-3 text-[13px] text-danger bg-danger/8 border border-danger/20"
-          >
-            {error}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Generation progress */}
-      <GenerationProgress
-        steps={MODULE_GENERATION_STEPS}
-        active={generating}
-        title={t('admin.modules.new.title_generating')}
-      />
-
-      {/* Preview */}
-      <AnimatePresence>
-        {generated && !generating && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-          >
-            <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-8 border border-brand-violet/15">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
-                  <span className="text-[12px] font-semibold text-text">{t('admin.modules.new.ready_to_create')}</span>
-                </div>
-                <button
-                  onClick={handleGenerate}
-                  className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text transition-colors px-2 py-1 rounded-lg hover:bg-glass/8"
-                >
-                  <RotateCcw className="h-3 w-3" /> Regenerar
-                </button>
-              </div>
-
-              {/* Module header */}
-              <div className="flex items-start gap-3 mb-4 p-3 rounded-xl bg-glass/4 border border-glass-border/8">
-                <span className="text-3xl leading-none">{generated.metadata.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-semibold text-text leading-snug">
-                    {generated.metadata.title_es}
-                  </p>
-                  <p className="text-[12px] text-text-muted mt-0.5 leading-snug">
-                    {generated.metadata.subtitle_es}
-                  </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <NeonBadge color="cyan" className="text-[9px]">
-                      {generated.metadata.duration_min} min
-                    </NeonBadge>
-                    <span className="text-[10px] font-mono text-text-subtle">
-                      {generated.metadata.slug}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sections list */}
-              <div className="space-y-1.5 mb-4">
-                <p className="text-[10px] uppercase tracking-widest text-text-subtle font-semibold mb-2">
-                  {generated.sections.length} secciones generadas
-                </p>
-                {generated.sections.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2.5 py-2 px-3 rounded-xl bg-glass/3 border border-glass-border/6">
-                    <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">{i + 1}</span>
-                    <span className="text-[12px] text-text flex-1 truncate">{s.heading_es}</span>
-                    <span className="text-[9px] text-text-subtle shrink-0">
-                      {s.blocks?.length ?? 0} bloques
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Objectives preview */}
-              {generated.metadata.objectives_es?.length > 0 && (
-                <div className="mb-5">
-                  <p className="text-[10px] uppercase tracking-widest text-text-subtle font-semibold mb-2">
-                    Objetivos
-                  </p>
-                  <ul className="space-y-1">
-                    {generated.metadata.objectives_es.slice(0, 3).map((obj, i) => (
-                      <li key={i} className="flex items-start gap-1.5 text-[11px] text-text-muted">
-                        <span className="text-brand-green shrink-0">✓</span> {obj}
-                      </li>
-                    ))}
-                    {generated.metadata.objectives_es.length > 3 && (
-                      <li className="text-[10px] text-text-subtle ml-4">
-                        +{generated.metadata.objectives_es.length - 3} más...
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              )}
-            </GlassCard>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Action buttons */}
-      <motion.div
-        layout
-        className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1"
-      >
-        <Link to="/admin/modules">
-          <Button type="button" variant="ghost" size="md" className="w-full sm:w-auto">
-            <ArrowLeft className="h-4 w-4 mr-1.5" /> Cancelar
-          </Button>
-        </Link>
-
-        {!generated ? (
-          <Button
-            type="button"
-            variant="neon"
-            size="md"
-            disabled={!description.trim() || !campaignId || generating}
-            onClick={handleGenerate}
-            className="w-full sm:w-auto sm:min-w-[180px] flex items-center justify-center gap-2"
-          >
-            {generating ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> {t('admin.modules.new.generating')}</>
-            ) : (
-              <><Sparkles className="h-4 w-4" /> {t('admin.modules.new.generate_module')}</>
-            )}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="neon"
-            size="md"
-            disabled={saving || !campaignId}
-            onClick={handleCreate}
-            className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> {t('admin.modules.new.creating_module')}</>
-            ) : (
-              <>{t('admin.modules.new.create_open_editor')} <ChevronRight className="h-4 w-4" /></>
-            )}
-          </Button>
-        )}
-      </motion.div>
     </div>
   )
 }
@@ -951,16 +478,10 @@ export default function NewModulePage() {
             exit={{ opacity: 0, x: 12 }}
             transition={{ duration: 0.2 }}
           >
-            <AIModeForm
-              campaignId={campaignId}
-              campaigns={campaigns}
-              isSuperAdmin={isSuperAdmin}
-              courses={courses}
-              courseId={courseId}
-              onSelectCampaign={setCampaignId}
-              onSelectCourse={setCourseId}
-              onCreated={handleCreated}
-            />
+            {/* Flujo completo de "Generar contenido" (subir documento → esquema →
+                secciones → guardar), integrado aquí como pestaña. Lee el ?courseId=
+                de la URL para adjuntar el módulo al mismo curso. */}
+            <ImportContent embedded />
           </motion.div>
         )}
       </AnimatePresence>

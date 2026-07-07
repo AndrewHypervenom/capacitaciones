@@ -1121,7 +1121,7 @@ export default function CourseEditor() {
                   {t('admin.courses.available_modules_hint')}
                 </p>
               </div>
-              <Link to={`/admin/import?campaign=${course.campaign_id}&courseId=${course.id}`}>
+              <Link to={`/admin/modules/new?courseId=${course.id}`}>
                 <Button variant="glass" size="sm" className="flex items-center gap-1.5 shrink-0">
                   <Plus className="h-3.5 w-3.5" />
                   {t('admin.courses.new_module')}

@@ -33,7 +33,10 @@ import type { Campaign } from '@/types/database'
 // El documento completo se convierte en UN solo módulo (no se divide en varios).
 type Phase = 'setup' | 'generating' | 'preview' | 'done'
 
-export default function ImportContent() {
+// `embedded`: cuando se renderiza dentro de otra pantalla (p. ej. la pestaña
+// "Generar con IA" de NewModulePage) se oculta la cabecera y el contenedor
+// propio para que se integre sin duplicar títulos ni márgenes.
+export default function ImportContent({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
@@ -212,25 +215,27 @@ export default function ImportContent() {
   }, [generated, doc])
 
   return (
-    <div className="p-4 sm:p-8 max-w-3xl mx-auto">
-      {/* Encabezado */}
-      <div className="mb-6 sm:mb-8">
-        <Link
-          to={course ? `/admin/courses/${courseId}` : '/admin/campaigns'}
-          className="inline-flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors mb-4"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> {course ? 'Volver al curso' : 'Volver a campañas'}
-        </Link>
-        <p className="text-[11px] text-text-subtle uppercase tracking-wider mb-2">
-          {course ? `Admin / Cursos / ${course.title_es}` : 'Admin / Campañas'} / Generar contenido
-        </p>
-        <GradientHeading as="h1" variant="white" size="headline">
-          Generar contenido
-        </GradientHeading>
-        <p className="text-text-muted text-[13px] mt-1">
-          Sube un archivo Word, Excel o PDF. La IA lo analiza y crea un módulo en 3 idiomas.
-        </p>
-      </div>
+    <div className={embedded ? '' : 'p-4 sm:p-8 max-w-3xl mx-auto'}>
+      {/* Encabezado (se omite cuando va embebido en otra pantalla) */}
+      {!embedded && (
+        <div className="mb-6 sm:mb-8">
+          <Link
+            to={course ? `/admin/courses/${courseId}` : '/admin/campaigns'}
+            className="inline-flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors mb-4"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> {course ? 'Volver al curso' : 'Volver a campañas'}
+          </Link>
+          <p className="text-[11px] text-text-subtle uppercase tracking-wider mb-2">
+            {course ? `Admin / Cursos / ${course.title_es}` : 'Admin / Campañas'} / Generar contenido
+          </p>
+          <GradientHeading as="h1" variant="white" size="headline">
+            Generar contenido
+          </GradientHeading>
+          <p className="text-text-muted text-[13px] mt-1">
+            Sube un archivo Word, Excel o PDF. La IA lo analiza y crea un módulo en 3 idiomas.
+          </p>
+        </div>
+      )}
 
       {/* ── Configuración (campaña + archivo + instrucciones) ── */}
       <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 mb-4">
