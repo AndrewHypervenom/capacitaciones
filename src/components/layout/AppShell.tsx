@@ -1,10 +1,20 @@
+import { useLayoutEffect } from 'react';
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Navbar } from './Navbar';
 import { HelpWidget } from '@/components/help/HelpWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Onboarding } from '@/pages/Onboarding';
+
+// Al cambiar de ruta, volver arriba antes del primer pintado de la vista nueva.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  }, [pathname]);
+  return null;
+}
 
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
@@ -32,18 +42,19 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   return (
     <div className="min-h-full bg-bg">
       {requireAuth && !learnerPanel && <Navbar />}
-      <AnimatePresence mode="wait" onExitComplete={() => window.scrollTo({ top: 0, behavior: 'instant' })}>
-        <motion.main
-          key={location.pathname}
-          initial={false}
-          animate={{ opacity: 1, y: 0 }}
-          exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          className="relative"
-        >
-          <Outlet />
-        </motion.main>
-      </AnimatePresence>
+      {/* Sin AnimatePresence mode="wait": si la animación de salida se
+          interrumpe (navegación rápida, botón atrás), la vista nueva nunca
+          se montaba y la página quedaba vacía. La vista nueva monta ya. */}
+      <ScrollToTop />
+      <motion.main
+        key={location.pathname}
+        initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        className="relative"
+      >
+        <Outlet />
+      </motion.main>
       <HelpWidget />
     </div>
   );
