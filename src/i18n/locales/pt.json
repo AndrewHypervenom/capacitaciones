@@ -459,6 +459,7 @@
   "admin": {
     "nav": {
       "panel": "Painel",
+      "ai_usage": "Uso de IA",
       "campaigns": "Campanhas",
       "courses": "Cursos",
       "modules": "Módulos",

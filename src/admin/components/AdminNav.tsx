@@ -50,6 +50,8 @@ export function AdminNav() {
         { to: '/admin', label: t('admin.nav.panel', 'Panel'), end: true },
         // Historial del chat de ayuda: solo superadmin.
         ...(isSuperAdmin ? [{ to: '/admin/chat', label: t('admin.nav.chat', 'Chat de ayuda'), end: false }] : []),
+        // Panel de uso de IA y costos: solo superadmin.
+        ...(isSuperAdmin ? [{ to: '/admin/ai-usage', label: t('admin.nav.ai_usage', 'Uso de IA'), end: false }] : []),
       ]
     },
     {

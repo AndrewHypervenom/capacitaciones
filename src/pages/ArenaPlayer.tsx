@@ -417,51 +417,54 @@ export default function ArenaPlayer() {
               {t('arena.route_label', { title: quiz.title })}
             </div>
             <div style={{overflowX:'auto',paddingBottom:4}}>
-            <div style={{position:'relative',height:80,minWidth:`${Math.max(quiz.steps.length * 44 + 44, 280)}px`}}>
-              {/* Línea de ruta */}
-              <div style={{position:'absolute',top:'50%',left:0,right:0,height:3,background:'rgb(var(--subtle))',borderRadius:2,transform:'translateY(-50%)'}}>
+            <div style={{position:'relative',height:52,minWidth:`${Math.max(quiz.steps.length * 44 + 44, 280)}px`}}>
+              {/* Línea de ruta — alineada al centro de los círculos (16px = radio) */}
+              <div style={{position:'absolute',top:16,left:0,right:0,height:3,background:'rgb(var(--subtle))',borderRadius:2,transform:'translateY(-50%)',zIndex:0}}>
                 <div style={{position:'absolute',top:0,left:0,height:'100%',width:`${planePct}%`,background:`linear-gradient(90deg,${tc},${tc}88)`,borderRadius:2,transition:'width .8s cubic-bezier(.4,0,.2,1)'}} />
               </div>
               {/* Ícono animado */}
               <div className="ap-plane ap-plane-icon" style={{
-                position:'absolute',top:'50%',left:`${planePct}%`,
+                position:'absolute',top:16,left:`${planePct}%`,
                 transform:'translate(-50%,-50%)',
-                fontSize:'1.6rem',zIndex:2,
+                fontSize:'1.6rem',zIndex:3,
                 filter:`drop-shadow(0 0 8px ${tc}80)`,
                 transition:'left .8s cubic-bezier(.4,0,.2,1)',
               }}>
                 {quiz.theme_icon}
               </div>
-              {/* Checkpoints */}
-              <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              {/* Checkpoints — la etiqueta va absoluta debajo para no descentrar el círculo */}
+              <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
                 {quiz.steps.map((_,i) => {
                   const done   = selected[i] !== undefined
                   const active = i === currentQ
                   const locked = !done && i > currentQ
                   return (
-                    <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                    <div key={i} style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
                       <div className={`ap-checkpoint${active ? ' ap-cp-active' : ''}`} style={{
                         width:32,height:32,borderRadius:'50%',
                         display:'flex',alignItems:'center',justifyContent:'center',
                         fontSize:done?'.85rem':'.72rem',fontWeight:700,
-                        background:done?tc:active?`${tc}18`:'rgb(var(--subtle))',
+                        // Fondo siempre OPACO (tinte sobre superficie en el activo) para
+                        // que la línea de ruta quede oculta detrás del círculo, no cruzándolo.
+                        background:done?tc:active?`linear-gradient(${tc}18,${tc}18), rgb(var(--surface))`:'rgb(var(--subtle))',
                         border:`2px solid ${done?tc:active?tc:'rgb(var(--line))'}`,
                         color:done?'#fff':active?tc:'rgb(var(--text-muted))',
                         opacity:locked?.4:1,
                         transition:'all .3s',
+                        position:'relative',zIndex:1,
                       }}>
                         {done?'✓':i+1}
                       </div>
-                      <div style={{fontSize:'.55rem',color:active?tc:done?tc:'rgb(var(--text-muted))',fontWeight:active||done?600:400,opacity:locked?.4:1}}>
+                      <div style={{position:'absolute',top:'100%',marginTop:6,fontSize:'.55rem',color:active?tc:done?tc:'rgb(var(--text-muted))',fontWeight:active||done?600:400,opacity:locked?.4:1,whiteSpace:'nowrap'}}>
                         P{i+1}
                       </div>
                     </div>
                   )
                 })}
                 {/* Checkpoint final */}
-                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-                  <div style={{width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1rem',background:showComplete?tc:'rgb(var(--subtle))',border:`2px solid ${showComplete?tc:'rgb(var(--line))'}`,transition:'all .3s'}}>🏆</div>
-                  <div style={{fontSize:'.55rem',color:'rgb(var(--text-muted))'}}>{t('arena.goal')}</div>
+                <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1rem',background:showComplete?tc:'rgb(var(--subtle))',border:`2px solid ${showComplete?tc:'rgb(var(--line))'}`,transition:'all .3s',position:'relative',zIndex:1}}>🏆</div>
+                  <div style={{position:'absolute',top:'100%',marginTop:6,fontSize:'.55rem',color:'rgb(var(--text-muted))',whiteSpace:'nowrap'}}>{t('arena.goal')}</div>
                 </div>
               </div>
             </div>

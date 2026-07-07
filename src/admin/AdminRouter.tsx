@@ -21,6 +21,7 @@ import Worlds from './pages/Worlds'
 import WorldDetail from './pages/WorldDetail'
 import FeedbackPanel from './pages/FeedbackPanel'
 import ChatLogs from './pages/ChatLogs'
+import AiUsage from './pages/AiUsage'
 import { HelpWidget } from '@/components/help/HelpWidget'
 
 export default function AdminRouter() {
@@ -50,6 +51,8 @@ export default function AdminRouter() {
           <Route path="quiz" element={<LiveQuizAdmin />} />
           {/* Historial del chat de ayuda: solo superadmin */}
           <Route path="chat" element={isSuperAdmin ? <ChatLogs /> : <Navigate to="/admin" replace />} />
+          {/* Panel de uso de IA y costos: solo superadmin */}
+          <Route path="ai-usage" element={isSuperAdmin ? <AiUsage /> : <Navigate to="/admin" replace />} />
           <Route path="evaluaciones" element={<TrainerFeedbackPanel />} />
           <Route path="simulations" element={<SimulationList />} />
           <Route path="simulations/new" element={<SimulationEditor />} />

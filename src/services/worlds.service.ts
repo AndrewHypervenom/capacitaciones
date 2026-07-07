@@ -143,6 +143,19 @@ export async function generateRegionLevels(
     levelCount: source.levelCount,
   })) as GeneratedRegionLevels
 
+  // El `order_index` de los niveles debe ser GLOBAL al mundo (no local a la
+  // región), si no la lista ordenada por order_index intercala niveles de
+  // distintas regiones y el mapa muestra la región 2 en el nivel 2, etc.
+  // Base = order_index de la región × 100 (cada región tiene pocos niveles),
+  // así los niveles quedan agrupados y ordenados por región. Determinista y
+  // sin carreras cuando varias regiones se generan en paralelo.
+  const { data: regionRow } = await supabase
+    .from('world_regions')
+    .select('order_index')
+    .eq('id', regionId)
+    .single()
+  const base = ((regionRow as { order_index?: number } | null)?.order_index ?? 0) * 100
+
   const levels = gen.levels ?? []
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i]
@@ -157,7 +170,7 @@ export async function generateRegionLevels(
       name: lv.name || `${source.title} · ${i + 1}`,
       description: lv.description ?? null,
       icon: (lv.icon && lv.icon.length <= 2) ? lv.icon : '⭐',
-      order_index: i,
+      order_index: base + i,
       quiz_id: quizId,
     })
   }

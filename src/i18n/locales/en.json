@@ -459,6 +459,7 @@
   "admin": {
     "nav": {
       "panel": "Dashboard",
+      "ai_usage": "AI usage",
       "campaigns": "Campaigns",
       "courses": "Courses",
       "modules": "Modules",
