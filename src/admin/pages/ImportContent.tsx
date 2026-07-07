@@ -27,7 +27,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
-import { toast } from '@/stores/toastStore'
+import { toast, useToastStore } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 
 // El documento completo se convierte en UN solo módulo (no se divide en varios).
@@ -180,13 +180,31 @@ export default function ImportContent() {
           await addModuleToCourse(courseId, id, maxOrder + 1)
           // Refleja el módulo como región del mundo del curso (si tiene mundo) y
           // genera sus niveles/quiz con IA en 2º plano, sin bloquear el guardado.
-          void syncCourseWorldAndGenerate(courseId)
+          // Un toast persistente indica el progreso hasta que termine.
+          let genToastId: string | null = null
+          const dismissGenToast = () => {
+            if (genToastId) useToastStore.getState().dismiss(genToastId)
+          }
+          void syncCourseWorldAndGenerate(courseId, {
+            onStart: () => {
+              genToastId = useToastStore.getState().push({
+                kind: 'info',
+                title: 'Creando la región en el mundo del curso…',
+                description: 'Generando niveles y quiz con IA. Puede tardar un minuto; te avisamos al terminar.',
+                duration: 180000,
+              })
+            },
+          })
             .then(({ world, generated, failed }) => {
+              dismissGenToast()
               if (!world) return
               if (generated > 0) toast.success('Región del mundo creada con sus niveles')
               if (failed > 0) toast.error('La región del mundo quedó sin niveles; sincronizá el mundo desde el curso')
             })
-            .catch(() => toast.error('No se pudo actualizar el mundo del curso'))
+            .catch(() => {
+              dismissGenToast()
+              toast.error('No se pudo actualizar el mundo del curso')
+            })
         } catch { /* módulo queda creado aunque no se adjunte */ }
       }
       setSavedId(id)

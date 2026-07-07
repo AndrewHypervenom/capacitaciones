@@ -343,9 +343,14 @@ export async function syncCourseWorldById(
  */
 export async function syncCourseWorldAndGenerate(
   courseId: string,
+  opts: {
+    /** Se invoca cuando hay regiones nuevas por poblar (antes de llamar a la IA). */
+    onStart?: (count: number) => void
+  } = {},
 ): Promise<{ world: WorldRow | null; generated: number; failed: number }> {
   const { world, pendingRegions } = await syncCourseWorldById(courseId, { createIfMissing: false })
   if (!world || pendingRegions.length === 0) return { world, generated: 0, failed: 0 }
+  opts.onStart?.(pendingRegions.length)
   let generated = 0
   let failed = 0
   for (const r of pendingRegions) {
