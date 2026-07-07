@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Pencil, Plus, Search, Share2, Trash2, UserPlus, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -10,9 +10,21 @@ import {
   updateCourse,
   deleteCourse,
   getShareableCourses,
+  addModuleToCourse,
   type CourseWithModules,
   type ShareableCourse,
 } from '@/services/courses.service'
+import {
+  ensureCourseWorld,
+  syncCourseWorldById,
+  generateAndAttachModuleQuiz,
+} from '@/services/worlds.service'
+import { generateModuleOutline, generateModuleSection, type GeneratedModule } from '@/services/ai.service'
+import { saveGeneratedModule } from '@/services/modules.service'
+import {
+  extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
+  type ExtractedDocument, type ExtractStage,
+} from '@/lib/documentExtract'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -49,6 +61,107 @@ export default function CourseList() {
   const [newTitle, setNewTitle] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [creating, setCreating] = useState(false)
+
+  // Asistente "Crear curso con IA" (documento → 1 módulo → mundo, todo en borrador)
+  const aiFileRef = useRef<HTMLInputElement>(null)
+  const [showAi, setShowAi] = useState(false)
+  const [aiTitle, setAiTitle] = useState('')
+  const [aiDoc, setAiDoc] = useState<ExtractedDocument | null>(null)
+  const [aiReadingName, setAiReadingName] = useState('')
+  const [aiExtracting, setAiExtracting] = useState(false)
+  const [aiProgress, setAiProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiStepMsg, setAiStepMsg] = useState<string | null>(null)
+
+  const openAi = () => {
+    setAiTitle(''); setAiDoc(null); setAiReadingName(''); setAiStepMsg(null)
+    setAiProgress({ stage: 'reading', ratio: 0 })
+    setShowAi(true)
+  }
+
+  const handleAiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAiReadingName(file.name)
+    setAiProgress({ stage: 'reading', ratio: 0 })
+    setAiExtracting(true)
+    try {
+      const extracted = await extractDocumentText(file, (p) => setAiProgress(p))
+      setAiDoc(extracted)
+      if (!aiTitle.trim()) setAiTitle(extracted.fileName.replace(/\.[^.]+$/, ''))
+    } catch (err) {
+      setAiDoc(null)
+      toast.error(err instanceof Error ? err.message : t('admin.courses.ai_read_error'))
+    } finally {
+      setAiExtracting(false)
+      if (aiFileRef.current) aiFileRef.current.value = ''
+    }
+  }
+
+  const handleAiCreate = async () => {
+    if (!aiTitle.trim() || !aiDoc || !selectedCampaignId || aiBusy) return
+    setAiBusy(true)
+    try {
+      const description = aiTitle.trim()
+      const docContext = {
+        documentText: aiDoc.text || undefined,
+        images: aiDoc.images.length ? aiDoc.images : undefined,
+        contextImages: aiDoc.contextImages.length ? aiDoc.contextImages : undefined,
+      }
+
+      // 1) Esquema del módulo (llamada chica). Antes de crear el curso, así un
+      //    fallo temprano no deja un curso vacío.
+      setAiStepMsg(t('admin.courses.ai_step_outline'))
+      const { data: outline } = await generateModuleOutline({ description, ...docContext })
+      const headings = outline.sections.map((h) => h.heading_es)
+
+      // 2) Cada sección por separado (a prueba de límites de tokens) con progreso.
+      const sections: GeneratedModule['sections'] = []
+      for (let s = 0; s < outline.sections.length; s++) {
+        setAiStepMsg(t('admin.courses.ai_step_section', { n: s + 1, total: outline.sections.length }))
+        const h = outline.sections[s]
+        try {
+          const { data } = await generateModuleSection({
+            description,
+            moduleTitle: outline.metadata.title_es,
+            moduleSubtitle: outline.metadata.subtitle_es,
+            objectives: outline.metadata.objectives_es,
+            sectionHeading: h.heading_es,
+            sectionIndex: s,
+            totalSections: outline.sections.length,
+            allHeadings: headings,
+            ...docContext,
+          })
+          sections.push({ ...h, blocks: data.blocks })
+        } catch { /* si una sección falla, se omite y seguimos */ }
+      }
+      if (!sections.length) throw new Error(t('admin.courses.ai_no_sections'))
+      const generated: GeneratedModule = { metadata: outline.metadata, sections }
+
+      // 3) Crear el curso (borrador) y engancharle el módulo (borrador).
+      setAiStepMsg(t('admin.courses.ai_step_course'))
+      const course = await createCourse(selectedCampaignId, { title_es: description, description_es: null })
+      const moduleId = await saveGeneratedModule(selectedCampaignId, generated, aiDoc.images)
+      await addModuleToCourse(course.id, moduleId, 1)
+
+      // 4) Sincronizar el mundo y generar el quiz de arena del módulo.
+      setAiStepMsg(t('admin.courses.ai_step_world'))
+      const { world, pending } = await syncCourseWorldById(course.id)
+      for (const p of pending) {
+        try { await generateAndAttachModuleQuiz(world, p.moduleId, p.levelId) } catch { /* el nivel queda sin quiz */ }
+      }
+
+      invalidateModulesCache()
+      toast.success(t('admin.courses.ai_created_ok'))
+      setShowAi(false)
+      navigate(`/admin/courses/${course.id}`)
+    } catch (e) {
+      toast.error(t('admin.courses.ai_created_error'), (e as Error).message)
+    } finally {
+      setAiBusy(false)
+      setAiStepMsg(null)
+    }
+  }
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -108,6 +221,14 @@ export default function CourseList() {
         title_es: newTitle.trim(),
         description_es: newDescription.trim() || null,
       })
+      // Crea el mundo espejo del curso (regiones se sincronizan al agregar módulos).
+      await ensureCourseWorld({
+        id: course.id,
+        campaign_id: course.campaign_id,
+        title_es: course.title_es,
+        description_es: course.description_es,
+        color: course.color,
+      }).catch((e) => console.error('No se pudo crear el mundo del curso:', e))
       toast.success(t('admin.courses.created_ok'))
       navigate(`/admin/courses/${course.id}`)
     } catch {
@@ -118,10 +239,11 @@ export default function CourseList() {
   }
 
   const handleTogglePublished = async (course: CourseWithModules) => {
+    const next = !course.is_published
     try {
-      await updateCourse(course.id, { is_published: !course.is_published })
+      await updateCourse(course.id, { is_published: next })
       setCourses((prev) =>
-        prev.map((c) => (c.id === course.id ? { ...c, is_published: !course.is_published } : c)),
+        prev.map((c) => (c.id === course.id ? { ...c, is_published: next } : c)),
       )
       invalidateModulesCache()
     } catch {
@@ -167,14 +289,24 @@ export default function CourseList() {
             </GradientHeading>
             <p className="text-text-muted text-[13px] mt-1">{t('admin.courses.subtitle')}</p>
           </div>
-          <Button
-            variant="neon"
-            className="shrink-0 flex items-center gap-1.5 w-full sm:w-auto"
-            onClick={() => setShowCreate(true)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('admin.courses.new_course')}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+            <Button
+              variant="glass"
+              className="flex items-center gap-1.5 w-full sm:w-auto"
+              onClick={openAi}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {t('admin.courses.ai_create')}
+            </Button>
+            <Button
+              variant="neon"
+              className="flex items-center gap-1.5 w-full sm:w-auto"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('admin.courses.new_course')}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -458,6 +590,119 @@ export default function CourseList() {
                 disabled={creating || !newTitle.trim()}
               >
                 {creating ? t('admin.courses.creating') : t('admin.courses.create_and_edit')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Asistente: Crear curso con IA desde un documento */}
+      {showAi && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => !aiBusy && !aiExtracting && setShowAi(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-bg border border-line p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-[17px] font-semibold text-text flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-brand-violet" />
+                {t('admin.courses.ai_create')}
+              </h2>
+              <button
+                onClick={() => !aiBusy && setShowAi(false)}
+                className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
+                aria-label={t('admin.nav.close_menu')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.ai_create_hint')}</p>
+
+            {/* Título */}
+            <label className="block text-[12px] font-medium text-text-muted mb-1.5">
+              {t('admin.courses.field_title')}
+            </label>
+            <input
+              value={aiTitle}
+              onChange={(e) => setAiTitle(e.target.value)}
+              placeholder={t('admin.courses.field_title_ph')}
+              disabled={aiBusy}
+              className="w-full mb-4 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none focus:border-primary disabled:opacity-60"
+            />
+
+            {/* Documento */}
+            <label className="block text-[12px] font-medium text-text-muted mb-1.5">
+              {t('admin.courses.ai_document')}
+            </label>
+            {aiExtracting ? (
+              <div className="rounded-xl bg-brand-violet/6 border border-brand-violet/15 px-3.5 py-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative h-8 w-8 shrink-0 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-brand-violet/70" />
+                    <FileText className="absolute h-3.5 w-3.5 text-brand-violet" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] text-text font-medium truncate">{aiReadingName}</div>
+                    <div className="text-[11px] text-text-muted">{t(`admin.import.stage_${aiProgress.stage}`)}</div>
+                  </div>
+                  <span className="text-[12px] font-semibold text-brand-violet tabular-nums shrink-0">
+                    {Math.round(aiProgress.ratio * 100)}%
+                  </span>
+                </div>
+                <div className="mt-2.5 h-1.5 w-full rounded-full bg-glass/10 overflow-hidden">
+                  <div className="h-full rounded-full bg-brand-violet transition-all" style={{ width: `${Math.max(4, aiProgress.ratio * 100)}%` }} />
+                </div>
+              </div>
+            ) : aiDoc ? (
+              <div className="flex items-center gap-2 mb-4 text-[12px] text-brand-violet px-3.5 py-2.5 rounded-xl bg-brand-violet/6 border border-brand-violet/15">
+                <FileText className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate flex-1">
+                  {aiDoc.fileName} — {(aiDoc.text.length / 1000).toFixed(1)}k {t('admin.courses.ai_chars')}
+                  {aiDoc.images.length > 0 && ` · ${aiDoc.images.length} ${t('admin.courses.ai_figures')}`}
+                </span>
+                {!aiBusy && (
+                  <button onClick={() => setAiDoc(null)} className="text-text-muted hover:text-danger shrink-0">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => aiFileRef.current?.click()}
+                className="w-full flex flex-col items-center justify-center gap-2 px-4 py-6 mb-4 rounded-xl border border-dashed border-glass-border/25 hover:border-brand-violet/40 hover:bg-glass/4 transition-all"
+              >
+                <Upload className="h-5 w-5 text-text-muted" />
+                <span className="text-[12px] text-text font-medium">{t('admin.import.upload')}</span>
+                <span className="text-[11px] text-text-subtle">{t('admin.import.formats')}</span>
+              </button>
+            )}
+            <input ref={aiFileRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleAiFile} />
+
+            {/* Estado de generación */}
+            {aiBusy && aiStepMsg && (
+              <div className="flex items-center gap-2 mb-4 rounded-xl bg-brand-violet/6 border border-brand-violet/15 px-3.5 py-2.5 text-[12px] text-text">
+                <Loader2 className="h-4 w-4 animate-spin text-brand-violet shrink-0" />
+                <span className="truncate">{aiStepMsg}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowAi(false)} disabled={aiBusy}>
+                {t('admin.courses.cancel')}
+              </Button>
+              <Button
+                variant="neon"
+                size="sm"
+                onClick={handleAiCreate}
+                disabled={aiBusy || aiExtracting || !aiTitle.trim() || !aiDoc}
+                className="flex items-center gap-1.5"
+              >
+                {aiBusy
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('admin.courses.ai_generating')}</>
+                  : <><Sparkles className="h-3.5 w-3.5" /> {t('admin.courses.ai_generate')}</>}
               </Button>
             </div>
           </div>

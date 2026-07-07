@@ -1,10 +1,10 @@
-import { useAuth } from '@/hooks/useAuth';
 import LearnerDashboard from './LearnerDashboard';
-import StaffDashboard from './StaffDashboard';
+import { useAuth } from '@/hooks/useAuth';
 
-// El panel del aprendiz usa el diseño "panel/"; superadmin y capacitador
-// conservan la vista original.
+// Todos (aprendiz, capacitador, superadmin) usan el mismo diseño de panel.
+// El aprendiz trae el menú lateral de secciones; superadmin y capacitador lo
+// omiten porque navegan desde su Navbar superior de staff.
 export default function Dashboard() {
   const { isAdminOrCapacitador } = useAuth();
-  return isAdminOrCapacitador ? <StaffDashboard /> : <LearnerDashboard />;
+  return <LearnerDashboard hideSidebar={isAdminOrCapacitador} />;
 }

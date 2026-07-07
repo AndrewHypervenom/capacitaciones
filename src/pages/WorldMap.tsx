@@ -304,7 +304,10 @@ export default function WorldMap() {
 
       const { data: wData } = await supabase.from('worlds').select('*').eq('status','published')
       const all = (wData ?? []) as World[]
-      setWorlds(all)
+      // El aprendiz elige entre los mundos de su campaña; el superadmin, entre todos.
+      // (Los deep-links por worldId desde el curso usan `all`, así funcionan igual.)
+      const visible = isSuperAdmin ? all : all.filter(x => x.campaign_id === campaignId)
+      setWorlds(visible)
 
       // Force reload after progress reset — clear in-memory state first
       if (locState?.forceReload && locState?.worldId) {
@@ -321,8 +324,9 @@ export default function WorldMap() {
         if (w) { await loadWorld(w); setLoading(false); return }
       }
 
-      if (isSuperAdmin && all.length > 1) { setShowSelector(true); setLoading(false); return }
-      const w = isSuperAdmin ? all[0] : (all.find(x => x.campaign_id === campaignId) ?? null)
+      // Con varios mundos, mostramos el selector (antes solo para superadmin).
+      if (visible.length > 1) { setShowSelector(true); setLoading(false); return }
+      const w = visible[0] ?? (isSuperAdmin ? all[0] : null)
       if (w) await loadWorld(w)
       setLoading(false)
     }
@@ -530,7 +534,7 @@ export default function WorldMap() {
               <span style={{fontSize:'.7rem'}}>⭐</span>
               <span style={{color:tc,fontWeight:800,fontSize:'.82rem'}}>{xpDisplay} XP</span>
             </div>
-            {isSuperAdmin && worlds.length > 1 && (
+            {worlds.length > 1 && (
               <button className="wm-hdr-cambiar" onClick={() => setShowSelector(true)}
                 style={{background:`${tc}15`,border:`1px solid ${tc}25`,borderRadius:20,padding:'4px 12px',color:tc,fontSize:'.72rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
                 {t('world.change')}

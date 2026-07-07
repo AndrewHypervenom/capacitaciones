@@ -15,6 +15,11 @@ import {
   type CourseWithModules,
 } from '@/services/courses.service'
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
+import { syncCourseWorldById } from '@/services/worlds.service'
+import {
+  extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
+  type ExtractStage, type ExtractedImage,
+} from '@/lib/documentExtract'
 import { confirmDialog } from '@/components/ui/ConfirmDialog'
 import i18n from '@/i18n'
 import { useTranslation } from 'react-i18next'
@@ -189,19 +194,36 @@ function AIModeForm({
   const [documentText, setDocumentText] = useState('')
   const [docMode, setDocMode] = useState<'none' | 'paste' | 'file'>('none')
   const [fileName, setFileName] = useState('')
+  const [docImages, setDocImages] = useState<ExtractedImage[]>([])
+  const [docContextImages, setDocContextImages] = useState<ExtractedImage[]>([])
+  const [extracting, setExtracting] = useState(false)
+  const [progress, setProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generated, setGenerated] = useState<GeneratedModule | null>(null)
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setError(null)
     setFileName(file.name)
     setDocMode('file')
-    const reader = new FileReader()
-    reader.onload = (ev) => setDocumentText(String(ev.target?.result ?? ''))
-    reader.readAsText(file)
+    setDocImages([]); setDocContextImages([])
+    setProgress({ stage: 'reading', ratio: 0 })
+    setExtracting(true)
+    try {
+      const extracted = await extractDocumentText(file, (p) => setProgress(p))
+      setDocumentText(extracted.text)
+      setDocImages(extracted.images)
+      setDocContextImages(extracted.contextImages)
+    } catch (err) {
+      setDocumentText(''); setFileName(''); setDocMode('none')
+      setError(err instanceof Error ? err.message : 'No se pudo leer el archivo')
+    } finally {
+      setExtracting(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const clearDocument = async () => {
@@ -211,6 +233,7 @@ function AIModeForm({
       confirmLabel: i18n.t('confirm.remove'),
     }))) return
     setDocumentText(''); setFileName(''); setDocMode('none')
+    setDocImages([]); setDocContextImages([])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -221,6 +244,8 @@ function AIModeForm({
       const result = await generateModule({
         description,
         documentText: documentText.trim() || undefined,
+        images: docImages.length ? docImages : undefined,
+        contextImages: docContextImages.length ? docContextImages : undefined,
       })
       setGenerated(result.data)
       notifyCache(result.usage)
@@ -316,8 +341,9 @@ function AIModeForm({
           <div className="flex gap-2">
             <button
               onClick={() => setDocMode(docMode === 'paste' ? 'none' : 'paste')}
+              disabled={extracting}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all',
+                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all disabled:opacity-50',
                 docMode === 'paste'
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
@@ -327,8 +353,9 @@ function AIModeForm({
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
+              disabled={extracting}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all',
+                'flex items-center gap-1.5 px-3 py-2 min-h-[36px] rounded-xl text-[12px] border transition-all disabled:opacity-50',
                 docMode === 'file' && fileName
                   ? 'border-brand-violet/30 bg-brand-violet/8 text-brand-violet'
                   : 'border-glass-border/10 text-text-muted hover:text-text hover:border-glass-border/25',
@@ -336,10 +363,42 @@ function AIModeForm({
             >
               <Upload className="h-3.5 w-3.5" /> Subir archivo
             </button>
-            <input ref={fileInputRef} type="file" accept=".txt,.md" className="hidden" onChange={handleFileUpload} />
+            <input ref={fileInputRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleFileUpload} />
           </div>
           <AnimatePresence>
-            {docMode === 'paste' && (
+            {extracting && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-2.5 rounded-xl bg-brand-violet/6 border border-brand-violet/15 px-3 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative h-8 w-8 shrink-0 flex items-center justify-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-brand-violet/70" />
+                      <FileText className="absolute h-3.5 w-3.5 text-brand-violet" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12px] text-text font-medium truncate">{fileName}</div>
+                      <div className="text-[11px] text-text-muted">{t(`admin.import.stage_${progress.stage}`)}</div>
+                    </div>
+                    <span className="text-[12px] font-semibold text-brand-violet tabular-nums shrink-0">
+                      {Math.round(progress.ratio * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-2.5 h-1.5 w-full rounded-full bg-glass/10 overflow-hidden">
+                    <motion.div
+                      className="h-full rounded-full bg-brand-violet"
+                      initial={false}
+                      animate={{ width: `${Math.max(4, progress.ratio * 100)}%` }}
+                      transition={{ ease: 'easeOut', duration: 0.3 }}
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            {docMode === 'paste' && !extracting && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -360,14 +419,17 @@ function AIModeForm({
                 />
               </motion.div>
             )}
-            {docMode === 'file' && fileName && (
+            {docMode === 'file' && fileName && !extracting && (
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="mt-2.5 flex items-center gap-2 text-[12px] text-brand-violet px-3 py-2 rounded-xl bg-brand-violet/6 border border-brand-violet/15"
               >
                 <FileText className="h-3.5 w-3.5 shrink-0" />
-                {fileName} — {(documentText.length / 1000).toFixed(1)}k caracteres
+                <span className="truncate">
+                  {fileName} — {(documentText.length / 1000).toFixed(1)}k caracteres
+                  {docImages.length > 0 && ` · ${docImages.length} figura(s)`}
+                </span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -590,6 +652,9 @@ export default function NewModulePage() {
       const target = courses.find((c) => c.id === courseId)
       const maxOrder = target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0
       await addModuleToCourse(courseId, moduleId, maxOrder + 1)
+      // Sincroniza la estructura del mundo (región+nivel del módulo). El quiz de
+      // arena se generará luego desde el editor del curso, cuando haya contenido.
+      await syncCourseWorldById(courseId).catch(() => {})
     } catch {
       /* si falla el adjuntar, el módulo igual queda creado (suelto) */
     }

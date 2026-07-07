@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
   extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
-  type ExtractedDocument,
+  type ExtractedDocument, type ExtractStage,
 } from '@/lib/documentExtract'
 import {
   analyzeDocument, generateModuleOutline, generateModuleSection,
@@ -53,6 +53,8 @@ export default function ImportContent() {
 
   const [doc, setDoc] = useState<ExtractedDocument | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [readingName, setReadingName] = useState('')
+  const [progress, setProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
   const [instructions, setInstructions] = useState('')
 
   const [phase, setPhase] = useState<Phase>('setup')
@@ -83,9 +85,11 @@ export default function ImportContent() {
     const file = e.target.files?.[0]
     if (!file) return
     setError(null)
+    setReadingName(file.name)
+    setProgress({ stage: 'reading', ratio: 0 })
     setExtracting(true)
     try {
-      const extracted = await extractDocumentText(file)
+      const extracted = await extractDocumentText(file, (p) => setProgress(p))
       setDoc(extracted)
     } catch (err) {
       setDoc(null)
@@ -304,26 +308,44 @@ export default function ImportContent() {
               </div>
             )}
           </div>
+        ) : extracting ? (
+          <div className="rounded-xl bg-brand-violet/6 border border-brand-violet/15 px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div className="relative h-9 w-9 shrink-0 flex items-center justify-center">
+                <Loader2 className="h-9 w-9 animate-spin text-brand-violet/70" />
+                <FileText className="absolute h-4 w-4 text-brand-violet" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] text-text font-medium truncate">{readingName || i18n.t('admin.import.reading')}</div>
+                <div className="text-[11px] text-text-muted">
+                  {i18n.t(`admin.import.stage_${progress.stage}`)}
+                </div>
+              </div>
+              <span className="text-[12px] font-semibold text-brand-violet tabular-nums shrink-0">
+                {Math.round(progress.ratio * 100)}%
+              </span>
+            </div>
+            {/* Barra de progreso */}
+            <div className="mt-3 h-1.5 w-full rounded-full bg-glass/10 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-brand-violet"
+                initial={false}
+                animate={{ width: `${Math.max(4, progress.ratio * 100)}%` }}
+                transition={{ ease: 'easeOut', duration: 0.3 }}
+              />
+            </div>
+          </div>
         ) : (
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={extracting}
             className={cn(
               'w-full flex flex-col items-center justify-center gap-2 px-4 py-8 rounded-xl border border-dashed transition-all',
               'border-glass-border/25 hover:border-brand-violet/40 hover:bg-glass/4',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
             )}
           >
-            {extracting ? (
-              <><Loader2 className="h-6 w-6 animate-spin text-brand-violet" />
-                <span className="text-[13px] text-text-muted">{i18n.t('admin.import.reading')}</span></>
-            ) : (
-              <>
-                <Upload className="h-6 w-6 text-text-muted" />
-                <span className="text-[13px] text-text font-medium">{i18n.t('admin.import.upload')}</span>
-                <span className="text-[11px] text-text-subtle">{i18n.t('admin.import.formats')}</span>
-              </>
-            )}
+            <Upload className="h-6 w-6 text-text-muted" />
+            <span className="text-[13px] text-text font-medium">{i18n.t('admin.import.upload')}</span>
+            <span className="text-[11px] text-text-subtle">{i18n.t('admin.import.formats')}</span>
           </button>
         )}
         <input

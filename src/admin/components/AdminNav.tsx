@@ -74,9 +74,10 @@ export function AdminNav() {
       title: t('admin.nav.group_challenges', 'Retos y Simulaciones'),
       icon: Trophy,
       items: [
+        // Mundos ahora contiene también las arenas de competencia (antes sección aparte).
         { to: '/admin/worlds', label: t('admin.nav.worlds', 'Mundos'), end: false },
-        { to: '/admin/missions', label: t('admin.nav.missions', 'Misiones'), end: false },
-        { to: '/admin/arena', label: t('admin.nav.arena', 'Arenas de competencia'), end: false },
+        // Misiones: solo superadmin.
+        ...(isSuperAdmin ? [{ to: '/admin/missions', label: t('admin.nav.missions', 'Misiones'), end: false }] : []),
         { to: '/admin/quiz', label: t('admin.nav.quiz_live', 'Quizzes'), end: false },
         { to: '/admin/simulations', label: t('admin.nav.simulations', 'Simulaciones'), end: false }
       ]

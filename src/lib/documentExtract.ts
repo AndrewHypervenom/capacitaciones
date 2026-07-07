@@ -17,6 +17,15 @@ export interface ExtractedDocument {
   contextImages: ExtractedImage[]
 }
 
+/** Etapa del progreso de lectura, para pintar un estado de carga descriptivo. */
+export type ExtractStage = 'reading' | 'extracting' | 'images' | 'done'
+export interface ExtractProgress {
+  stage: ExtractStage
+  /** Avance 0..1 (aproximado para archivos sin paginación). */
+  ratio: number
+}
+export type ExtractProgressFn = (p: ExtractProgress) => void
+
 const WORD_EXT = ['.docx']
 const EXCEL_EXT = ['.xlsx', '.xls', '.csv']
 const PDF_EXT = ['.pdf']
@@ -41,6 +50,51 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 function extOf(name: string): string {
   const i = name.lastIndexOf('.')
   return i === -1 ? '' : name.slice(i).toLowerCase()
+}
+
+/**
+ * Aplica `fn` a cada elemento con un máximo de `limit` tareas en vuelo.
+ * Mantiene el orden del resultado. Sirve para pipelinear las llamadas al worker
+ * de pdf.js (por página) sin esperar una por una ni saturar memoria/CPU.
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let cursor = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const i = cursor++
+      if (i >= items.length) return
+      results[i] = await fn(items[i], i)
+    }
+  })
+  await Promise.all(runners)
+  return results
+}
+
+// Concurrencia para el trabajo por página. El texto se resuelve en el worker de
+// pdf.js (round-trips), así que tolera más paralelismo; las figuras hacen encode
+// en canvas en el hilo principal (CPU/memoria), así que van con menos.
+const TEXT_CONCURRENCY = Math.min(8, Math.max(2, (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4))
+const FIGURE_CONCURRENCY = 3
+
+// Redes de seguridad: pdf.js a veces deja una imagen/página sin resolver (el
+// callback de `objs.get` nunca dispara), lo que colgaría toda la extracción.
+// Con estos límites, una tarea trabada se descarta y el proceso siempre termina.
+const PAGE_TIMEOUT_MS = 12000
+const IMAGE_OBJ_TIMEOUT_MS = 4000
+
+/** Resuelve `fallback` si `p` no se resuelve/rechaza antes de `ms`. Nunca cuelga. */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false
+    const done = (v: T) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v) } }
+    const timer = setTimeout(() => done(fallback), ms)
+    p.then(done, () => done(fallback))
+  })
 }
 
 function readAsArrayBuffer(file: File): Promise<ArrayBuffer> {
@@ -154,12 +208,17 @@ function pdfImageToBase64(obj: PdfImageObject): string | null {
 async function extractPdfFigures(
   pdf: import('pdfjs-dist').PDFDocumentProxy,
   pdfjs: typeof import('pdfjs-dist'),
+  onPageDone?: () => void,
 ): Promise<ExtractedImage[]> {
-  const figures: ExtractedImage[] = []
-  const seen = new Set<string>()
   const maxPages = Math.min(pdf.numPages, 30)
+  const pageNums = Array.from({ length: maxPages }, (_, i) => i + 1)
 
-  for (let p = 1; p <= maxPages && figures.length < MAX_IMAGES; p++) {
+  // Contador compartido para cortar apenas juntamos suficientes figuras, sin
+  // seguir decodificando imágenes de las páginas restantes.
+  let collected = 0
+
+  const figuresForPage = async (p: number): Promise<string[]> => {
+    if (collected >= MAX_IMAGES) return []
     const page = await pdf.getPage(p)
     const ops = await page.getOperatorList()
 
@@ -171,22 +230,47 @@ async function extractPdfFigures(
       }
     }
 
+    const out: string[] = []
     for (const name of names) {
-      if (figures.length >= MAX_IMAGES) break
+      if (collected >= MAX_IMAGES) break
       try {
-        const obj = await new Promise<PdfImageObject>((res) => page.objs.get(name, res as () => void))
+        // `objs.get` a veces nunca llama de vuelta: lo acotamos para no colgar.
+        const obj = await withTimeout(
+          new Promise<PdfImageObject | null>((res) => page.objs.get(name, res as () => void)),
+          IMAGE_OBJ_TIMEOUT_MS,
+          null,
+        )
+        if (!obj) continue
         const base64 = pdfImageToBase64(obj)
         if (!base64) continue
-        const sig = `${base64.length}:${base64.slice(0, 48)}`
-        if (seen.has(sig)) continue // misma figura repetida en varias páginas
-        seen.add(sig)
-        figures.push({ mediaType: 'image/jpeg', dataBase64: base64 })
+        out.push(base64)
+        collected++
       } catch {
         // imagen no decodificable: se omite
       }
     }
+    return out
   }
 
+  const perPage = await mapWithConcurrency(pageNums, FIGURE_CONCURRENCY, async (p) => {
+    // Toda la página está acotada: si algo se traba, se descarta y seguimos.
+    const res = await withTimeout(figuresForPage(p), PAGE_TIMEOUT_MS, [] as string[])
+    onPageDone?.()
+    return res
+  })
+
+  // Dedup global (una misma figura puede repetirse en varias páginas) y tope final.
+  const figures: ExtractedImage[] = []
+  const seen = new Set<string>()
+  for (const list of perPage) {
+    for (const base64 of list) {
+      if (figures.length >= MAX_IMAGES) break
+      const sig = `${base64.length}:${base64.slice(0, 48)}`
+      if (seen.has(sig)) continue
+      seen.add(sig)
+      figures.push({ mediaType: 'image/jpeg', dataBase64: base64 })
+    }
+  }
   return figures
 }
 
@@ -215,7 +299,7 @@ async function renderPdfPage(page: import('pdfjs-dist').PDFPageProxy): Promise<s
  * Procesa un PDF: extrae el texto, las figuras embebidas (insertables) y, solo si el PDF
  * no tiene texto (escaneado), renderiza las páginas como imágenes de contexto para la visión.
  */
-async function parsePdf(buffer: ArrayBuffer): Promise<{
+async function parsePdf(buffer: ArrayBuffer, onProgress?: ExtractProgressFn): Promise<{
   text: string
   figures: ExtractedImage[]
   pageImages: ExtractedImage[]
@@ -227,27 +311,52 @@ async function parsePdf(buffer: ArrayBuffer): Promise<{
 
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise
 
-  const pagesText: string[] = []
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i)
-    const content = await page.getTextContent()
-    const pageText = content.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join(' ')
-      .trim()
-    if (pageText) pagesText.push(pageText)
+  // Progreso: total = páginas de texto + páginas escaneadas por figuras. La barra
+  // va de 0.08 a 0.98 a medida que cada página termina (texto o figuras).
+  const figurePages = Math.min(pdf.numPages, 30)
+  const totalUnits = pdf.numPages + figurePages
+  let doneUnits = 0
+  onProgress?.({ stage: 'extracting', ratio: 0.08 })
+  const tick = () => {
+    doneUnits++
+    onProgress?.({ stage: 'extracting', ratio: 0.08 + 0.9 * (doneUnits / totalUnits) })
   }
-  const text = pagesText.join('\n\n')
 
-  const figures = await extractPdfFigures(pdf, pdfjs)
+  // Texto (por página, en paralelo) y figuras embebidas se resuelven a la vez:
+  // el texto vive en el worker de pdf.js y las figuras encodean en canvas, así
+  // que solapar ambos aprovecha worker y hilo principal en simultáneo.
+  const pageNums = Array.from({ length: pdf.numPages }, (_, i) => i + 1)
+  const [pagesText, figures] = await Promise.all([
+    mapWithConcurrency(pageNums, TEXT_CONCURRENCY, async (n) => {
+      const t = await withTimeout(
+        (async () => {
+          const page = await pdf.getPage(n)
+          const content = await page.getTextContent()
+          return content.items
+            .map((item) => ('str' in item ? item.str : ''))
+            .join(' ')
+            .trim()
+        })(),
+        PAGE_TIMEOUT_MS,
+        '',
+      )
+      tick()
+      return t
+    }),
+    extractPdfFigures(pdf, pdfjs, tick).catch(() => [] as ExtractedImage[]),
+  ])
+  const text = pagesText.filter(Boolean).join('\n\n')
 
   // Solo para PDFs escaneados (sin texto): renderizamos páginas para que la IA pueda leerlas.
   const pageImages: ExtractedImage[] = []
   if (!text) {
     const maxPages = Math.min(pdf.numPages, MAX_IMAGES)
-    for (let i = 1; i <= maxPages; i++) {
-      const page = await pdf.getPage(i)
-      const base64 = await renderPdfPage(page)
+    const nums = Array.from({ length: maxPages }, (_, i) => i + 1)
+    const rendered = await mapWithConcurrency(nums, FIGURE_CONCURRENCY, async (n) => {
+      const page = await pdf.getPage(n)
+      return renderPdfPage(page)
+    })
+    for (const base64 of rendered) {
       if (base64) pageImages.push({ mediaType: 'image/jpeg', dataBase64: base64 })
     }
   }
@@ -288,8 +397,12 @@ async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]>
  * las imágenes que solo sirven para que la IA lea el documento. Lanza un error
  * legible si el formato no está soportado o no hay contenido aprovechable.
  */
-export async function extractDocumentText(file: File): Promise<ExtractedDocument> {
+export async function extractDocumentText(
+  file: File,
+  onProgress?: ExtractProgressFn,
+): Promise<ExtractedDocument> {
   const ext = extOf(file.name)
+  onProgress?.({ stage: 'reading', ratio: 0.04 })
 
   let text = ''
   let images: ExtractedImage[] = []
@@ -300,7 +413,9 @@ export async function extractDocumentText(file: File): Promise<ExtractedDocument
     kind = 'word'
     const buffer = await readAsArrayBuffer(file)
     const mammoth = await import('mammoth')
+    onProgress?.({ stage: 'extracting', ratio: 0.3 })
     text = (await mammoth.default.extractRawText({ arrayBuffer: buffer })).value
+    onProgress?.({ stage: 'images', ratio: 0.6 })
     images = await extractDocxImages(buffer)
   } else if (ext === '.csv') {
     kind = 'excel'
@@ -308,11 +423,12 @@ export async function extractDocumentText(file: File): Promise<ExtractedDocument
   } else if (EXCEL_EXT.includes(ext)) {
     kind = 'excel'
     const buffer = await readAsArrayBuffer(file)
+    onProgress?.({ stage: 'extracting', ratio: 0.4 })
     text = await excelToText(buffer)
   } else if (PDF_EXT.includes(ext)) {
     kind = 'pdf'
     const buffer = await readAsArrayBuffer(file)
-    const parsed = await parsePdf(buffer)
+    const parsed = await parsePdf(buffer, onProgress)
     text = parsed.text
     images = parsed.figures
     contextImages = parsed.pageImages
@@ -330,5 +446,6 @@ export async function extractDocumentText(file: File): Promise<ExtractedDocument
     throw new Error('El archivo no contiene contenido aprovechable (ni texto ni imágenes legibles).')
   }
 
+  onProgress?.({ stage: 'done', ratio: 1 })
   return { text, fileName: file.name, kind, images, contextImages }
 }

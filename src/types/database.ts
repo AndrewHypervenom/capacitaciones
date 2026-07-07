@@ -720,6 +720,7 @@ export interface Database {
           sound_theme: string
           transition_type: string
           character_emoji: string
+          course_id: string | null
         }
         Insert: {
           id?: string
@@ -736,6 +737,7 @@ export interface Database {
           sound_theme?: string
           transition_type?: string
           character_emoji?: string
+          course_id?: string | null
         }
         Update: {
           id?: string
@@ -752,6 +754,7 @@ export interface Database {
           sound_theme?: string
           transition_type?: string
           character_emoji?: string
+          course_id?: string | null
         }
         Relationships: []
       }
@@ -764,6 +767,7 @@ export interface Database {
           icon: string
           order_index: number
           created_at: string
+          module_id: string | null
         }
         Insert: {
           id?: string
@@ -773,6 +777,7 @@ export interface Database {
           icon?: string
           order_index?: number
           created_at?: string
+          module_id?: string | null
         }
         Update: {
           id?: string
@@ -782,6 +787,7 @@ export interface Database {
           icon?: string
           order_index?: number
           created_at?: string
+          module_id?: string | null
         }
         Relationships: []
       }
@@ -799,6 +805,7 @@ export interface Database {
           position_y: number
           created_at: string
           min_score_pct: number | null
+          module_id: string | null
         }
         Insert: {
           id?: string
@@ -813,6 +820,7 @@ export interface Database {
           position_y?: number
           created_at?: string
           min_score_pct?: number | null
+          module_id?: string | null
         }
         Update: {
           id?: string
@@ -827,6 +835,7 @@ export interface Database {
           position_y?: number
           created_at?: string
           min_score_pct?: number | null
+          module_id?: string | null
         }
         Relationships: []
       }
@@ -873,6 +882,7 @@ export interface Database {
         Row: {
           id: string
           campaign_id: string | null
+          world_id: string | null
           title: string
           description: string | null
           status: string
@@ -889,6 +899,7 @@ export interface Database {
         Insert: {
           id?: string
           campaign_id?: string | null
+          world_id?: string | null
           title: string
           description?: string | null
           status?: string
@@ -905,6 +916,7 @@ export interface Database {
         Update: {
           id?: string
           campaign_id?: string | null
+          world_id?: string | null
           title?: string
           description?: string | null
           status?: string

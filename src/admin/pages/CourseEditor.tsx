@@ -1,20 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   BookOpen,
   Check,
   Eye,
-  EyeOff,
   FolderOpen,
+  Globe,
   GraduationCap,
   ImagePlus,
   Info,
+  Lock,
   Plus,
   Save,
   Search,
+  Share2,
   Users,
   X,
 } from 'lucide-react'
@@ -40,7 +43,14 @@ import {
   type CourseAssignmentRow,
   type CourseStats,
 } from '@/services/courses.service'
-import { getModulesRaw, type DbModuleRow } from '@/services/modules.service'
+import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import {
+  ensureCourseWorld,
+  syncCourseWorldById,
+  generateAndAttachModuleQuiz,
+  setCourseWorldPublished,
+  type SyncResult,
+} from '@/services/worlds.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign, Profile } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -55,6 +65,30 @@ type Lang = 'es' | 'en' | 'pt'
 
 const COLOR_PRESETS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#14B8A6']
 
+/** Interruptor on/off accesible y consistente (track + perilla). */
+function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40',
+        on ? 'bg-primary border-primary' : 'bg-subtle border-line',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform duration-200',
+          on ? 'translate-x-[22px]' : 'translate-x-[2px]',
+        )}
+      />
+    </button>
+  )
+}
+
 export default function CourseEditor() {
   const { courseId } = useParams<{ courseId: string }>()
   const { t } = useTranslation()
@@ -66,6 +100,9 @@ export default function CourseEditor() {
   const [tab, setTab] = useState<Tab>('info')
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
+  const [openingWorld, setOpeningWorld] = useState(false)
+  // Estado de publicación del mundo espejo del curso (independiente del curso).
+  const [worldPublished, setWorldPublished] = useState<boolean | null>(null)
 
   // Información editable
   const [form, setForm] = useState({
@@ -136,6 +173,19 @@ export default function CourseEditor() {
   useEffect(() => {
     if (!courseId) return
     getCourseStats(courseId).then(setStats).catch(() => setStats(null))
+  }, [courseId])
+
+  // Estado de publicación del mundo del curso (para el panel de Publicación).
+  useEffect(() => {
+    if (!courseId) return
+    let active = true
+    supabase
+      .from('worlds')
+      .select('status')
+      .eq('course_id', courseId)
+      .maybeSingle()
+      .then(({ data }) => { if (active) setWorldPublished(data ? data.status === 'published' : false) })
+    return () => { active = false }
   }, [courseId])
 
   // Datos de asignación
@@ -246,12 +296,104 @@ export default function CourseEditor() {
     }
   }
 
+  const courseWorldLike = () => ({
+    id: course.id,
+    campaign_id: course.campaign_id,
+    title_es: course.title_es,
+    description_es: course.description_es,
+    color: course.color,
+  })
+
   const handleTogglePublished = async () => {
+    const next = !course.is_published
     try {
-      await updateCourse(course.id, { is_published: !course.is_published })
-      setCourse({ ...course, is_published: !course.is_published })
+      await updateCourse(course.id, { is_published: next })
+      setCourse({ ...course, is_published: next })
       invalidateModulesCache()
+      toast.success(next ? t('admin.courses.course_published') : t('admin.courses.course_unpublished'))
     } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  const handleToggleWorldPublished = async () => {
+    const next = !worldPublished
+    try {
+      if (next) await ensureCourseWorld(courseWorldLike())
+      await setCourseWorldPublished(course.id, next)
+      setWorldPublished(next)
+      toast.success(next ? t('admin.courses.world_published') : t('admin.courses.world_unpublished'))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  const handlePublishAllModules = async () => {
+    try {
+      for (const m of course.modules.filter((m) => !m.is_published)) {
+        await toggleModulePublished(m.id, true)
+      }
+      invalidateModulesCache()
+      await reload()
+      toast.success(t('admin.courses.modules_all_published'))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  // Publica todo de un tiro: curso + módulos + mundo.
+  const handlePublishAll = async () => {
+    try {
+      if (!course.is_published) {
+        await updateCourse(course.id, { is_published: true })
+        setCourse({ ...course, is_published: true })
+      }
+      for (const m of course.modules.filter((m) => !m.is_published)) {
+        await toggleModulePublished(m.id, true)
+      }
+      await ensureCourseWorld(courseWorldLike())
+      await setCourseWorldPublished(course.id, true)
+      setWorldPublished(true)
+      invalidateModulesCache()
+      await reload()
+      toast.success(t('admin.courses.published_all_ok'))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  // Abre el mundo espejo del curso. Si aún no existe (cursos previos a la
+  // integración), lo crea al vuelo y luego navega.
+  const handleViewWorld = async () => {
+    setOpeningWorld(true)
+    try {
+      const world = await ensureCourseWorld({
+        id: course.id,
+        campaign_id: course.campaign_id,
+        title_es: course.title_es,
+        description_es: course.description_es,
+        color: course.color,
+      })
+      navigate(`/admin/worlds/${world.id}`)
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+      setOpeningWorld(false)
+    }
+  }
+
+  // Alcance del curso (público/catálogo vs. solo asignados). Se guarda al
+  // instante, como el estado de publicado; el resto de la asignación usa borradores.
+  const handleSetVisibility = async (v: 'assigned' | 'catalog') => {
+    if (form.visibility === v) return
+    const prev = form.visibility
+    setForm((f) => ({ ...f, visibility: v }))
+    try {
+      await updateCourse(course.id, { visibility: v })
+      setCourse({ ...course, visibility: v })
+      invalidateModulesCache()
+      toast.success(t('admin.courses.visibility_saved'))
+    } catch {
+      setForm((f) => ({ ...f, visibility: prev }))
       toast.error(t('admin.courses.error_save'))
     }
   }
@@ -270,12 +412,45 @@ export default function CourseEditor() {
     }
   }
 
+  /**
+   * Mantiene el mundo espejo del curso al día y dispara la generación de los
+   * quizzes de arena faltantes en 2º plano (no bloquea la edición del curso).
+   */
+  const syncWorld = async () => {
+    let result: SyncResult
+    try {
+      result = await syncCourseWorldById(course.id)
+    } catch (e) {
+      console.error('No se pudo sincronizar el mundo del curso:', e)
+      return
+    }
+    const { world, pending } = result
+    if (pending.length === 0) return
+
+    // Generación de quizzes con IA en segundo plano, secuencial para no saturar.
+    toast.success(t('admin.courses.world_quiz_generating', { count: pending.length }))
+    ;(async () => {
+      let ok = 0
+      for (const p of pending) {
+        try {
+          await generateAndAttachModuleQuiz(world, p.moduleId, p.levelId)
+          ok++
+        } catch (e) {
+          console.error('Fallo generando quiz del módulo', p.moduleId, e)
+        }
+      }
+      if (ok > 0) toast.success(t('admin.courses.world_quiz_ready', { count: ok }))
+      else toast.error(t('admin.courses.world_quiz_error'))
+    })()
+  }
+
   const handleAddModule = async (mod: DbModuleRow) => {
     try {
       const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
       await addModuleToCourse(course.id, mod.id, maxOrder + 1)
       invalidateModulesCache()
       await reload()
+      void syncWorld()
     } catch {
       toast.error(t('admin.courses.error_save'))
     }
@@ -286,6 +461,7 @@ export default function CourseEditor() {
       await removeModuleFromCourse(moduleId)
       invalidateModulesCache()
       await reload()
+      void syncWorld()
     } catch {
       toast.error(t('admin.courses.error_save'))
     }
@@ -298,6 +474,19 @@ export default function CourseEditor() {
     ;[mods[idx], mods[target]] = [mods[target], mods[idx]]
     try {
       await reorderCourseModules(mods.map((m, i) => ({ id: m.id, course_sort_order: i + 1 })))
+      invalidateModulesCache()
+      await reload()
+      void syncWorld()
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  // Publicar/despublicar un módulo desde el curso: un módulo en borrador no lo
+  // ve el aprendiz aunque el curso esté publicado.
+  const handleToggleModulePublished = async (moduleId: string, isPublished: boolean) => {
+    try {
+      await toggleModulePublished(moduleId, isPublished)
       invalidateModulesCache()
       await reload()
     } catch {
@@ -418,16 +607,97 @@ export default function CourseEditor() {
             </div>
           </div>
         </div>
-        <Button
-          variant={course.is_published ? 'glass' : 'neon'}
-          size="sm"
-          onClick={handleTogglePublished}
-          className="shrink-0 flex items-center gap-1.5"
-        >
-          {course.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          {course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="glass"
+            size="sm"
+            onClick={handleViewWorld}
+            disabled={openingWorld}
+            className="flex items-center gap-1.5"
+          >
+            <Globe className="h-3.5 w-3.5" />
+            {openingWorld ? t('admin.courses.opening_world') : t('admin.courses.view_world')}
+          </Button>
+        </div>
       </div>
+
+      {/* Panel de Publicación: curso, módulos y mundo, cada uno independiente */}
+      {(() => {
+        const total = course.modules.length
+        const pubModules = course.modules.filter((m) => m.is_published).length
+        const modulesAllPublished = total === 0 || pubModules === total
+        const everythingPublished = course.is_published && worldPublished === true && modulesAllPublished
+        return (
+          <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 mb-6">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="min-w-0">
+                <h3 className="text-[14px] font-semibold text-text">{t('admin.courses.publish_panel_title')}</h3>
+                <p className="text-[12px] text-text-muted">{t('admin.courses.publish_panel_hint')}</p>
+              </div>
+              {!everythingPublished && (
+                <Button variant="neon" size="sm" onClick={handlePublishAll} className="flex items-center gap-1.5 shrink-0">
+                  <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all')}
+                </Button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {/* Curso */}
+              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                <GraduationCap className="h-4 w-4 text-text-muted shrink-0" />
+                <span className="flex-1 text-[13px] font-medium text-text">{t('admin.courses.publish_course')}</span>
+                <span className={cn('text-[11px] font-semibold', course.is_published ? 'text-primary' : 'text-text-muted')}>
+                  {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
+                </span>
+                <Toggle on={course.is_published} onClick={handleTogglePublished} label={t('admin.courses.publish_course')} />
+              </div>
+              {/* Módulos */}
+              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                <BookOpen className="h-4 w-4 text-text-muted shrink-0" />
+                <span className="flex-1 text-[13px] font-medium text-text">
+                  {t('admin.courses.publish_modules')}
+                  <span className="ml-2 text-[11px] font-normal text-text-muted">
+                    {t('admin.courses.modules_published_count', { n: pubModules, total })}
+                  </span>
+                </span>
+                {total > 0 && !modulesAllPublished ? (
+                  <button
+                    onClick={handlePublishAllModules}
+                    className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-colors"
+                    style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                  >
+                    <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all_modules')}
+                  </button>
+                ) : (
+                  <span className={cn('text-[11px] font-semibold', modulesAllPublished && total > 0 ? 'text-primary' : 'text-text-muted')}>
+                    {total === 0 ? t('admin.courses.no_modules_short') : t('admin.courses.all_published')}
+                  </span>
+                )}
+              </div>
+              {/* Mundo */}
+              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                <Globe className="h-4 w-4 text-text-muted shrink-0" />
+                <span className="flex-1 text-[13px] font-medium text-text">{t('admin.courses.publish_world')}</span>
+                <span className={cn('text-[11px] font-semibold', worldPublished ? 'text-primary' : 'text-text-muted')}>
+                  {worldPublished ? t('admin.courses.published') : t('admin.courses.draft')}
+                </span>
+                <Toggle on={!!worldPublished} onClick={handleToggleWorldPublished} label={t('admin.courses.publish_world')} />
+              </div>
+            </div>
+
+            {/* Aviso: el curso está publicado pero falta el mundo o algún módulo */}
+            {course.is_published && (worldPublished === false || !modulesAllPublished) && (
+              <div className="flex items-start gap-2 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-2.5">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-px" />
+                <p className="text-[12px] text-text-muted">
+                  {worldPublished === false
+                    ? t('admin.courses.missing_world')
+                    : t('admin.courses.missing_modules')}
+                </p>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Métricas de matrícula (acotadas a la campaña del que consulta) */}
       {stats && stats.enrolled > 0 && (
@@ -614,43 +884,67 @@ export default function CourseEditor() {
               </div>
             </div>
 
-            {/* Visibilidad en catálogo */}
-            <label className="flex items-start gap-3 rounded-xl border border-line p-3.5 cursor-pointer hover:border-primary/40 transition-colors">
-              <input
-                type="checkbox"
-                checked={form.visibility === 'catalog'}
-                onChange={(e) =>
-                  setForm({ ...form, visibility: e.target.checked ? 'catalog' : 'assigned' })
-                }
-                className="mt-0.5 h-4 w-4 accent-[rgb(var(--primary))]"
-              />
-              <span>
-                <span className="block text-[13px] font-medium text-text">
-                  {t('admin.courses.field_catalog')}
-                </span>
-                <span className="block text-[12px] text-text-muted mt-0.5">
-                  {t('admin.courses.field_catalog_hint')}
-                </span>
-              </span>
-            </label>
+            {/* El alcance (público vs. asignados) se gestiona en la pestaña
+                "Asignación" con la sección "¿Quién puede ver este curso?". */}
 
-            {/* Compartir con otros capacitadores (copia) */}
-            <label className="flex items-start gap-3 rounded-xl border border-line p-3.5 cursor-pointer hover:border-primary/40 transition-colors">
-              <input
-                type="checkbox"
-                checked={form.is_shareable}
-                onChange={(e) => setForm({ ...form, is_shareable: e.target.checked })}
-                className="mt-0.5 h-4 w-4 accent-[rgb(var(--primary))]"
-              />
-              <span>
-                <span className="block text-[13px] font-medium text-text">
-                  {t('admin.courses.field_shareable')}
+            {/* Publicar al catálogo compartido (otros capacitadores inscriben a sus aprendices) */}
+            <div
+              className={cn(
+                'rounded-2xl border p-4 transition-colors',
+                form.is_shareable ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/20' : 'border-line',
+              )}
+            >
+              <label className="flex items-start gap-3 cursor-pointer">
+                <span
+                  className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                    form.is_shareable ? 'bg-primary/15 text-primary' : 'bg-glass/10 text-text-muted',
+                  )}
+                >
+                  <Share2 className="h-4 w-4" />
                 </span>
-                <span className="block text-[12px] text-text-muted mt-0.5">
-                  {t('admin.courses.field_shareable_hint')}
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[13px] font-semibold text-text">
+                      {t('admin.courses.field_shareable')}
+                    </span>
+                    {form.is_shareable && (
+                      <NeonBadge color="green" dot>{t('admin.courses.shareable_on_badge')}</NeonBadge>
+                    )}
+                  </span>
+                  <span className="block text-[12px] text-text-muted mt-1 leading-relaxed">
+                    {t('admin.courses.field_shareable_hint')}
+                  </span>
                 </span>
-              </span>
-            </label>
+                {/* Interruptor */}
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={form.is_shareable}
+                  onChange={(e) => setForm({ ...form, is_shareable: e.target.checked })}
+                />
+                <span
+                  aria-hidden
+                  className={cn(
+                    'relative inline-flex h-6 w-11 shrink-0 mt-0.5 items-center rounded-full border transition-colors duration-200',
+                    form.is_shareable ? 'bg-primary border-primary' : 'bg-subtle border-line',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform duration-200',
+                      form.is_shareable ? 'translate-x-[22px]' : 'translate-x-[2px]',
+                    )}
+                  />
+                </span>
+              </label>
+              {form.is_shareable && !course.is_published && (
+                <p className="mt-3 flex items-start gap-1.5 text-[11px] text-amber-500">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {t('admin.courses.shareable_needs_publish')}
+                </p>
+              )}
+            </div>
 
             <div className="flex justify-end pt-1">
               <Button variant="neon" size="sm" onClick={handleSaveInfo} disabled={saving}>
@@ -671,6 +965,12 @@ export default function CourseEditor() {
             <p className="text-[12px] text-text-muted mb-3">
               {t('admin.courses.course_modules_hint')}
             </p>
+            {course.modules.some((m) => !m.is_published) && (
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-2.5 mb-3">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-[12px] text-text-muted">{t('admin.courses.draft_modules_notice')}</p>
+              </div>
+            )}
             {course.modules.length === 0 ? (
               <GlassCard intensity="subtle" rounded="2xl" className="text-center p-8">
                 <BookOpen className="h-8 w-8 text-text-muted mx-auto mb-2" />
@@ -696,6 +996,23 @@ export default function CourseEditor() {
                         <span className="text-[11px] text-text-subtle">{mod.duration_min} min</span>
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
+                        {mod.is_published ? (
+                          <button
+                            onClick={() => handleToggleModulePublished(mod.id, false)}
+                            title={t('admin.modules.unpublish')}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleModulePublished(mod.id, true)}
+                            className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12px] font-medium transition-colors"
+                            style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                          >
+                            <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish')}
+                          </button>
+                        )}
                         <button
                           onClick={() => handleMoveModule(idx, -1)}
                           disabled={idx === 0}
@@ -785,6 +1102,61 @@ export default function CourseEditor() {
       {/* ── Asignación ── */}
       {tab === 'assign' && (
         <div className="space-y-8">
+          {/* Aviso de borrador: aunque esté "público" o asignado, no llega a nadie sin publicar */}
+          {!course.is_published && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-3">
+              <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-text">{t('admin.courses.draft_notice_title')}</p>
+                <p className="text-[12px] text-text-muted mt-0.5">{t('admin.courses.draft_notice_desc')}</p>
+              </div>
+              <button
+                onClick={handleTogglePublished}
+                className="shrink-0 flex items-center justify-center gap-1.5 min-h-[40px] px-4 rounded-xl text-[13px] font-medium transition-colors"
+                style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.30)' }}
+              >
+                <Eye className="h-4 w-4" /> {t('admin.courses.publish')}
+              </button>
+            </div>
+          )}
+
+          {/* ¿Quién puede ver este curso? (alcance) */}
+          <div>
+            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+              <Eye className="h-4 w-4 text-text-muted" />
+              {t('admin.courses.audience_title')}
+            </h3>
+            <p className="text-[12px] text-text-muted mb-3">{t('admin.courses.audience_hint')}</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {([
+                { v: 'catalog' as const, icon: Globe, title: t('admin.courses.audience_public'), desc: t('admin.courses.audience_public_desc') },
+                { v: 'assigned' as const, icon: Lock, title: t('admin.courses.audience_restricted'), desc: t('admin.courses.audience_restricted_desc') },
+              ]).map(({ v, icon: Icon, title, desc }) => {
+                const active = form.visibility === v
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => handleSetVisibility(v)}
+                    className={cn(
+                      'text-left rounded-2xl border p-4 transition-colors',
+                      active
+                        ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/30'
+                        : 'border-line hover:border-primary/30',
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon className={cn('h-4 w-4', active ? 'text-primary' : 'text-text-muted')} />
+                      <span className="text-[13px] font-semibold text-text">{title}</span>
+                      {active && <Check className="h-4 w-4 text-primary ml-auto" />}
+                    </div>
+                    <p className="text-[12px] text-text-muted leading-relaxed">{desc}</p>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Campañas */}
           <div>
             <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
@@ -792,7 +1164,9 @@ export default function CourseEditor() {
               {t('admin.courses.assign_campaigns_title')}
             </h3>
             <p className="text-[12px] text-text-muted mb-3">
-              {t('admin.courses.assign_campaigns_hint')}
+              {form.visibility === 'catalog'
+                ? t('admin.courses.assign_campaigns_hint_public')
+                : t('admin.courses.assign_campaigns_hint')}
             </p>
             <div className="space-y-2">
               {visibleCampaigns.map((c) => {
@@ -838,7 +1212,11 @@ export default function CourseEditor() {
               <Users className="h-4 w-4 text-text-muted" />
               {t('admin.courses.assign_users_title')}
             </h3>
-            <p className="text-[12px] text-text-muted mb-3">{t('admin.courses.assign_users_hint')}</p>
+            <p className="text-[12px] text-text-muted mb-3">
+              {form.visibility === 'catalog'
+                ? t('admin.courses.assign_users_hint_public')
+                : t('admin.courses.assign_users_hint')}
+            </p>
 
             <div className="relative mb-3 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />

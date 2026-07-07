@@ -17,7 +17,6 @@ import SimulationEditor from './pages/SimulationEditor'
 import ChoiceSimEditor from './pages/ChoiceSimEditor'
 import { TrainerFeedbackPanel } from '@/admin/pages/TrainerFeedbackPanel';
 import LearningMissions from './pages/LearningMissions'
-import Arena from './pages/Arena'
 import Worlds from './pages/Worlds'
 import WorldDetail from './pages/WorldDetail'
 import FeedbackPanel from './pages/FeedbackPanel'
@@ -57,8 +56,9 @@ export default function AdminRouter() {
           <Route path="simulations/:id" element={<SimulationEditor />} />
           <Route path="simulations/choice/new" element={<ChoiceSimEditor />} />
           <Route path="simulations/choice/:id" element={<ChoiceSimEditor />} />
-          <Route path="missions" element={<LearningMissions />} />
-          <Route path="arena" element={<Arena />} />
+          <Route path="missions" element={isSuperAdmin ? <LearningMissions /> : <Navigate to="/admin" replace />} />
+          {/* Arena se unificó dentro de Mundos: las arenas viven dentro de cada mundo. */}
+          <Route path="arena" element={<Navigate to="/admin/worlds" replace />} />
           <Route path="worlds" element={<Worlds />} />
           <Route path="worlds/:id" element={<WorldDetail />} />
           <Route path="feedback" element={<FeedbackPanel />} />

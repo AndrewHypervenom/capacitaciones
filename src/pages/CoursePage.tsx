@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, Check, Clock, GraduationCap, Loader2, Lock, LogOut, Play, Plus } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, Clock, GraduationCap, Loader2, Lock, LogOut, Map, Play, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
@@ -35,6 +36,24 @@ export default function CoursePage() {
   const [enrollBusy, setEnrollBusy] = useState(false);
 
   const course = useMemo(() => courses.find((c) => c.slug === slug), [courses, slug]);
+
+  // Mundo (juego) publicado de este curso, si existe, para el botón "Jugar el mundo".
+  const [worldId, setWorldId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!course?.id) { setWorldId(null); return; }
+    let active = true;
+    supabase
+      .from('worlds')
+      .select('id, status, campaign_id')
+      .eq('course_id', course.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        // Diagnóstico: si RLS bloquea la lectura, data llega null aunque el mundo exista.
+        console.log('[CoursePage] world lookup', { courseId: course.id, data, error });
+        if (active) setWorldId(data?.status === 'published' ? data.id : null);
+      });
+    return () => { active = false; };
+  }, [course?.id]);
 
   const handleEnroll = async () => {
     if (!course) return;
@@ -210,6 +229,16 @@ export default function CoursePage() {
 
                 {/* Auto-inscripción en cursos del catálogo */}
                 <div className="mt-5 flex flex-wrap items-center gap-3">
+                  {worldId && (
+                    <Link
+                      to="/world"
+                      state={{ worldId, from: 'course' }}
+                      className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-6 py-3 text-[14px] font-semibold text-primary shadow-sm transition-all hover:bg-primary/10"
+                    >
+                      <Map className="h-4 w-4" />
+                      {t('courses.play_world')}
+                    </Link>
+                  )}
                   {!course.isAssigned && (
                     <button
                       onClick={handleEnroll}

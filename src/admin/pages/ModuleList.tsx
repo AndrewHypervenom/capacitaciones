@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -226,12 +226,23 @@ export default function ModuleList() {
               </p>
             )}
           </div>
-          <Link to="/admin/modules/new">
-            <Button variant="neon" className="shrink-0 flex items-center gap-1.5 w-full sm:w-auto">
-              <Plus className="h-3.5 w-3.5" />
-              Nuevo módulo
-            </Button>
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+            <Link
+              to={`/admin/import${selectedCampaignId ? `?campaign=${selectedCampaignId}` : ''}`}
+              className="w-full sm:w-auto"
+            >
+              <Button variant="secondary" className="flex items-center gap-1.5 w-full sm:w-auto" title={t('admin.modules.import_ai_hint')}>
+                <Sparkles className="h-3.5 w-3.5" />
+                {t('admin.modules.import_ai')}
+              </Button>
+            </Link>
+            <Link to="/admin/modules/new" className="w-full sm:w-auto">
+              <Button variant="neon" className="flex items-center gap-1.5 w-full sm:w-auto">
+                <Plus className="h-3.5 w-3.5" />
+                {t('admin.modules.new_module')}
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 

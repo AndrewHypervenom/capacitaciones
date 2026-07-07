@@ -39,7 +39,9 @@ import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'certificacion', 'logros', 'simulador'];
 
-export default function LearnerDashboard() {
+// `hideSidebar`: superadmin y capacitador reutilizan este diseño de panel pero
+// sin el menú lateral de secciones; conservan su Navbar superior de staff.
+export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?: boolean } = {}) {
   // Asegurar que la página comience desde arriba al montar el componente
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -149,6 +151,7 @@ export default function LearnerDashboard() {
   return (
     <div className="min-h-screen bg-bg">
       {/* Barra superior — solo en móvil/tablet, donde el sidebar no cabe */}
+      {!hideSidebar && (
       <header className="lg:hidden sticky top-0 z-40 flex h-12 items-center justify-between border-b border-line bg-surface px-4">
         <a href="#inicio" className="flex items-center gap-2">
           <img src="/logo.jpg" alt={t('brand')} className="h-6 w-6 rounded-md" width={24} height={24} />
@@ -166,8 +169,10 @@ export default function LearnerDashboard() {
           </button>
         </div>
       </header>
+      )}
 
       {/* Sidebar de navegación (estilo panel) */}
+      {!hideSidebar && (
       <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 z-30 w-64 flex-col border-r border-line bg-surface">
         {/* Marca */}
         <a href="#inicio" className="flex items-center gap-2.5 px-6 pt-6 pb-5">
@@ -222,8 +227,9 @@ export default function LearnerDashboard() {
           </button>
         </div>
       </aside>
+      )}
 
-      <div className="lg:pl-64">
+      <div className={hideSidebar ? '' : 'lg:pl-64'}>
         <main className="mx-auto max-w-6xl px-4 sm:px-8 pt-10 sm:pt-14 pb-24 overflow-x-hidden">
 
           {/* Hero + estado del aprendizaje */}
