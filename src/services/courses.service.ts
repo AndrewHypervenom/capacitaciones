@@ -200,6 +200,25 @@ export async function getCoursesForCampaign(campaignId: string): Promise<CourseW
   return ((data ?? []) as unknown as CourseWithModules[]).map(sortCourseModules)
 }
 
+/** Curso del CMS con el nombre de su campaña dueña (para la vista "todas"). */
+export type AdminCourse = CourseWithModules & { campaign_name: string | null }
+
+/**
+ * Todos los cursos de todas las campañas (solo superadmin; la RLS lo permite),
+ * con el nombre de la campaña dueña para el CMS.
+ */
+export async function getAllCourses(): Promise<AdminCourse[]> {
+  const { data, error } = await supabase
+    .from('courses')
+    // Desambiguamos el embed (FK directa vs. puente course_campaigns).
+    .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
+    .order('sort_order')
+    .order('created_at')
+  if (error) throw error
+  return ((data ?? []) as unknown as (CourseWithModules & { campaigns: { name: string } | null })[])
+    .map((c) => ({ ...sortCourseModules(c), campaign_name: c.campaigns?.name ?? null }))
+}
+
 export async function getCourseById(courseId: string): Promise<CourseWithModules | null> {
   const { data, error } = await supabase
     .from('courses')

@@ -3,7 +3,7 @@ import i18n from '@/i18n'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Upload, FileText, FileSpreadsheet, Sparkles, Loader2, X,
-  CheckCircle2, AlertTriangle, RotateCcw, BookOpen, ChevronRight, Wand2,
+  CheckCircle2, AlertTriangle, RotateCcw, BookOpen, ChevronRight,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
@@ -13,10 +13,14 @@ import {
   type ExtractedDocument, type ExtractStage,
 } from '@/lib/documentExtract'
 import {
-  analyzeDocument, generateModuleOutline, generateModuleSection,
-  type ProposedModule, type GeneratedModule,
+  generateModuleOutline, generateModuleSection,
+  type GeneratedModule,
 } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
+import {
+  addModuleToCourse, getCourseById, type CourseWithModules,
+} from '@/services/courses.service'
+import { syncCourseWorldById } from '@/services/worlds.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -26,21 +30,8 @@ import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 
-type Phase = 'setup' | 'analyzing' | 'review' | 'generating' | 'preview' | 'done'
-
-interface GenItem {
-  proposed: ProposedModule
-  status: 'pending' | 'generating' | 'done' | 'error'
-  generated?: GeneratedModule
-  progress?: string
-  error?: string
-}
-
-function buildDescription(p: ProposedModule): string {
-  const parts = [p.focus_es?.trim() || p.title_es]
-  if (p.topics?.length) parts.push(`Subtemas a cubrir: ${p.topics.join(', ')}.`)
-  return parts.join('\n')
-}
+// El documento completo se convierte en UN solo módulo (no se divide en varios).
+type Phase = 'setup' | 'generating' | 'preview' | 'done'
 
 export default function ImportContent() {
   const navigate = useNavigate()
@@ -51,6 +42,10 @@ export default function ImportContent() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [campaignId, setCampaignId] = useState(searchParams.get('campaign') ?? authCampaignId ?? '')
 
+  // Si llegamos desde un curso (?courseId=), el módulo se adjunta a ese curso.
+  const courseId = searchParams.get('courseId') ?? ''
+  const [course, setCourse] = useState<CourseWithModules | null>(null)
+
   const [doc, setDoc] = useState<ExtractedDocument | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [readingName, setReadingName] = useState('')
@@ -60,12 +55,10 @@ export default function ImportContent() {
   const [phase, setPhase] = useState<Phase>('setup')
   const [error, setError] = useState<string | null>(null)
 
-  // Propuesta de módulos (revisión)
-  const [proposals, setProposals] = useState<(ProposedModule & { selected: boolean })[]>([])
-
-  // Generación + resultado
-  const [items, setItems] = useState<GenItem[]>([])
-  const [savedIds, setSavedIds] = useState<string[]>([])
+  // Generación + resultado (un único módulo)
+  const [genProgress, setGenProgress] = useState('')
+  const [generated, setGenerated] = useState<GeneratedModule | null>(null)
+  const [savedId, setSavedId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -75,6 +68,19 @@ export default function ImportContent() {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin])
+
+  // Si venimos de un curso, fijamos su campaña y lo recordamos para adjuntar/volver.
+  useEffect(() => {
+    if (!courseId) return
+    getCourseById(courseId)
+      .then((c) => {
+        if (c) {
+          setCourse(c)
+          setCampaignId(c.campaign_id)
+        }
+      })
+      .catch(() => {})
+  }, [courseId])
 
   const campaignName = useMemo(
     () => campaigns.find((c) => c.id === campaignId)?.name,
@@ -100,142 +106,125 @@ export default function ImportContent() {
     }
   }
 
-  const handleAnalyze = async () => {
-    if (!doc || !campaignId) return
-    setPhase('analyzing')
+  const resetToSetup = () => {
+    setGenerated(null)
+    setSavedId(null)
+    setPhase('setup')
     setError(null)
-    try {
-      const { data } = await analyzeDocument({
-        documentText: doc.text,
-        instructions: instructions.trim() || undefined,
-        campaignName,
-        images: doc.images,
-        contextImages: doc.contextImages,
-      })
-      if (!data.modules.length) throw new Error('La IA no propuso módulos. Prueba con instrucciones más específicas.')
-      setProposals(data.modules.map((m) => ({ ...m, selected: true })))
-      setPhase('review')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error analizando el documento')
-      setPhase('setup')
-    }
   }
 
-  const toggleProposal = (idx: number) =>
-    setProposals((prev) => prev.map((p, i) => (i === idx ? { ...p, selected: !p.selected } : p)))
-
-  const updateProposalTitle = (idx: number, title: string) =>
-    setProposals((prev) => prev.map((p, i) => (i === idx ? { ...p, title_es: title } : p)))
-
-  const selectedCount = proposals.filter((p) => p.selected).length
-
   const handleGenerate = async () => {
-    if (!doc) return
-    const selected = proposals.filter((p) => p.selected)
-    if (!selected.length) return
-
-    const initial: GenItem[] = selected.map((p) => ({ proposed: p, status: 'pending' }))
-    setItems(initial)
+    if (!doc || !campaignId) return
     setPhase('generating')
     setError(null)
+    setGenerated(null)
+    setGenProgress('Diseñando el esquema…')
 
+    // Se usa únicamente el conocimiento del documento (sin inventar).
+    const description = instructions.trim()
+      || `Crea un módulo de formación a partir del documento "${doc.fileName}". `
+        + 'Usa únicamente el conocimiento presente en el documento, sin inventar contenido.'
     const docContext = {
       documentText: doc.text,
       images: doc.images,
       contextImages: doc.contextImages,
     }
-    const setItem = (i: number, patch: Partial<GenItem>) =>
-      setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
 
-    for (let i = 0; i < selected.length; i++) {
-      setItem(i, { status: 'generating', progress: 'Diseñando el esquema…' })
-      try {
-        const description = buildDescription(selected[i])
-        // Paso 1: esquema (1 llamada chica).
-        const { data: outline } = await generateModuleOutline({ description, ...docContext })
-        const headings = outline.sections.map((h) => h.heading_es)
+    try {
+      // Paso 1: esquema (1 llamada chica).
+      const { data: outline } = await generateModuleOutline({ description, ...docContext })
+      const headings = outline.sections.map((h) => h.heading_es)
 
-        // Paso 2: cada sección por separado (llamadas chicas, a prueba de límites).
-        const sections: GeneratedModule['sections'] = []
-        for (let s = 0; s < outline.sections.length; s++) {
-          setItem(i, { progress: `Generando sección ${s + 1}/${outline.sections.length}…` })
-          const h = outline.sections[s]
-          try {
-            const { data } = await generateModuleSection({
-              description,
-              moduleTitle: outline.metadata.title_es,
-              moduleSubtitle: outline.metadata.subtitle_es,
-              objectives: outline.metadata.objectives_es,
-              sectionHeading: h.heading_es,
-              sectionIndex: s,
-              totalSections: outline.sections.length,
-              allHeadings: headings,
-              ...docContext,
-            })
-            sections.push({ ...h, blocks: data.blocks })
-          } catch {
-            // Si una sección falla, se omite y se continúa con el resto.
-          }
+      // Paso 2: cada sección por separado (llamadas chicas, a prueba de límites).
+      const sections: GeneratedModule['sections'] = []
+      for (let s = 0; s < outline.sections.length; s++) {
+        setGenProgress(`Generando sección ${s + 1}/${outline.sections.length}…`)
+        const h = outline.sections[s]
+        try {
+          const { data } = await generateModuleSection({
+            description,
+            moduleTitle: outline.metadata.title_es,
+            moduleSubtitle: outline.metadata.subtitle_es,
+            objectives: outline.metadata.objectives_es,
+            sectionHeading: h.heading_es,
+            sectionIndex: s,
+            totalSections: outline.sections.length,
+            allHeadings: headings,
+            ...docContext,
+          })
+          sections.push({ ...h, blocks: data.blocks })
+        } catch {
+          // Si una sección falla, se omite y se continúa con el resto.
         }
-
-        if (!sections.length) throw new Error('No se pudo generar el contenido de las secciones')
-        const generated: GeneratedModule = { metadata: outline.metadata, sections }
-        setItem(i, { status: 'done', generated, progress: undefined })
-      } catch (err) {
-        setItem(i, { status: 'error', progress: undefined, error: err instanceof Error ? err.message : 'Error' })
       }
+
+      if (!sections.length) throw new Error('No se pudo generar el contenido de las secciones')
+      setGenerated({ metadata: outline.metadata, sections })
+      setPhase('preview')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error generando el módulo')
+      setPhase('setup')
     }
-    setPhase('preview')
   }
 
-  const generatedItems = items.filter((it) => it.status === 'done' && it.generated)
-
-  const handleSaveAll = async () => {
-    if (!generatedItems.length) return
+  const handleSave = async () => {
+    if (!generated) return
     setPhase('done')
-    const ids: string[] = []
     try {
-      for (const it of generatedItems) {
-        const id = await saveGeneratedModule(campaignId, it.generated!, doc?.images ?? [])
-        ids.push(id)
+      const id = await saveGeneratedModule(campaignId, generated, doc?.images ?? [])
+      // Si venimos de un curso, adjuntamos el módulo y sincronizamos su mundo
+      // (solo si ya existe; no lo fuerza). Si falla, el módulo igual queda creado.
+      if (courseId && course) {
+        try {
+          const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
+          await addModuleToCourse(courseId, id, maxOrder + 1)
+          await syncCourseWorldById(courseId, { createIfMissing: false }).catch(() => {})
+        } catch { /* módulo queda creado aunque no se adjunte */ }
       }
-      setSavedIds(ids)
-      toast.success(`${ids.length} módulo(s) creado(s) en ${campaignName ?? 'la campaña'}`)
+      setSavedId(id)
+      toast.success(course
+        ? `Módulo creado y agregado a ${course.title_es}`
+        : `Módulo creado en ${campaignName ?? 'la campaña'}`)
     } catch (err) {
       toast.error(`Error guardando: ${err instanceof Error ? err.message : 'desconocido'}`)
-      // Guarda los que sí se hayan creado y vuelve a la vista previa para reintentar el resto
-      setSavedIds(ids)
       setPhase('preview')
     }
   }
 
-  const resetToSetup = () => {
-    setProposals([])
-    setItems([])
-    setPhase('setup')
-    setError(null)
-  }
+  const busy = phase === 'generating'
 
-  const busy = phase === 'analyzing' || phase === 'generating'
+  // Figuras del documento efectivamente usadas por el módulo generado.
+  const usedFigures = useMemo(() => {
+    if (!generated) return []
+    const usedIdx = new Set<number>()
+    generated.sections.forEach((s) =>
+      (s.blocks ?? []).forEach((b) => {
+        if (b.type === 'image' && typeof b.image_index === 'number') usedIdx.add(b.image_index)
+      }),
+    )
+    return [...usedIdx]
+      .map((idx) => doc?.images[idx])
+      .filter((img): img is NonNullable<typeof img> => !!img)
+  }, [generated, doc])
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl mx-auto">
       {/* Encabezado */}
       <div className="mb-6 sm:mb-8">
         <Link
-          to="/admin/campaigns"
+          to={course ? `/admin/courses/${courseId}` : '/admin/campaigns'}
           className="inline-flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors mb-4"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Volver a campañas
+          <ArrowLeft className="h-3.5 w-3.5" /> {course ? 'Volver al curso' : 'Volver a campañas'}
         </Link>
         <p className="text-[11px] text-text-subtle uppercase tracking-wider mb-2">
-          Admin / Campañas / Importar contenido
+          {course ? `Admin / Cursos / ${course.title_es}` : 'Admin / Campañas'} / Generar contenido
         </p>
         <GradientHeading as="h1" variant="white" size="headline">
-          Importar contenido
+          Generar contenido
         </GradientHeading>
         <p className="text-text-muted text-[13px] mt-1">
-          Sube un archivo Word, Excel o PDF. La IA lo analiza y crea uno o varios módulos en 3 idiomas.
+          Sube un archivo Word, Excel o PDF. La IA lo analiza y crea un módulo en 3 idiomas.
         </p>
       </div>
 
@@ -392,226 +381,130 @@ export default function ImportContent() {
         )}
       </AnimatePresence>
 
-      {/* ── Acción: Analizar ── */}
-      {(phase === 'setup' || phase === 'analyzing') && (
+      {/* ── Acción: Generar el módulo ── */}
+      {(phase === 'setup' || phase === 'generating') && (
         <div className="flex justify-end">
           <Button
             variant="neon"
             size="md"
-            disabled={!doc || !campaignId || phase === 'analyzing'}
-            onClick={handleAnalyze}
+            disabled={!doc || !campaignId || phase === 'generating'}
+            onClick={handleGenerate}
             className="min-w-[200px] flex items-center justify-center gap-2"
           >
-            {phase === 'analyzing'
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> {i18n.t('admin.import.analyzing')}</>
-              : <><Wand2 className="h-4 w-4" /> {i18n.t('admin.import.analyze')}</>}
+            {phase === 'generating'
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> {genProgress || 'Generando…'}</>
+              : <><Sparkles className="h-4 w-4" /> Generar módulo</>}
           </Button>
         </div>
       )}
 
-      {/* ── Revisión de la propuesta ── */}
-      {phase === 'review' && (
+      {/* ── Vista previa del módulo generado ── */}
+      {(phase === 'preview' || phase === 'done') && generated && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 border border-brand-violet/15">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[13px] font-semibold text-text">
-                Propuesta: {proposals.length} módulo(s)
-              </span>
-              <button
-                onClick={handleAnalyze}
-                className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text transition-colors px-2 py-1 rounded-lg hover:bg-glass/8"
-              >
-                <RotateCcw className="h-3 w-3" /> Re-analizar
-              </button>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
+                <span className="text-[13px] font-semibold text-text">Módulo generado</span>
+              </div>
+              {phase === 'preview' && (
+                <button
+                  onClick={handleGenerate}
+                  className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text transition-colors px-2 py-1 rounded-lg hover:bg-glass/8"
+                >
+                  <RotateCcw className="h-3 w-3" /> Regenerar
+                </button>
+              )}
             </div>
-            <p className="text-[12px] text-text-muted mb-4">
-              Revisa y desmarca los que no quieras crear. Puedes ajustar el título.
-            </p>
 
-            <div className="space-y-2.5">
-              {proposals.map((p, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'rounded-xl border p-3 transition-colors',
-                    p.selected ? 'border-brand-violet/25 bg-glass/4' : 'border-glass-border/10 bg-transparent opacity-60',
+            {/* Cabecera del módulo */}
+            <div className="flex items-start gap-3 mb-4 p-3 rounded-xl bg-glass/4 border border-glass-border/8">
+              <span className="text-3xl leading-none">{generated.metadata.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-semibold text-text leading-snug">{generated.metadata.title_es}</p>
+                <p className="text-[12px] text-text-muted mt-0.5 leading-snug">{generated.metadata.subtitle_es}</p>
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <NeonBadge color="cyan" className="text-[9px]">{generated.metadata.duration_min} min</NeonBadge>
+                  <span className="text-[11px] text-text-muted">{generated.sections.length} secciones</span>
+                  {usedFigures.length > 0 && (
+                    <span className="text-[11px] text-text-muted">· {usedFigures.length} imagen(es)</span>
                   )}
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      onClick={() => toggleProposal(i)}
-                      className={cn(
-                        'mt-0.5 h-5 w-5 rounded-md border flex items-center justify-center shrink-0 transition-colors',
-                        p.selected
-                          ? 'bg-brand-violet/20 border-brand-violet/40 text-brand-violet'
-                          : 'border-glass-border/30 text-transparent',
-                      )}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <input
-                        value={p.title_es}
-                        onChange={(e) => updateProposalTitle(i, e.target.value)}
-                        className="w-full bg-transparent text-[14px] font-medium text-text focus:outline-none border-b border-transparent focus:border-brand-violet/30 pb-0.5"
-                      />
-                      <p className="text-[12px] text-text-muted mt-1 leading-snug">{p.focus_es}</p>
-                      {p.topics?.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {p.topics.map((t, j) => (
-                            <span key={j} className="text-[10px] px-2 py-0.5 rounded-full bg-glass/8 border border-glass-border/15 text-text-muted">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Secciones */}
+            <div className="space-y-1.5">
+              {generated.sections.map((s, i) => (
+                <div key={i} className="flex items-center gap-2.5 py-2 px-3 rounded-xl bg-glass/3 border border-glass-border/6">
+                  <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">{i + 1}</span>
+                  <span className="text-[12px] text-text flex-1 truncate">{s.heading_es}</span>
+                  <span className="text-[9px] text-text-subtle shrink-0">{s.blocks?.length ?? 0} bloques</span>
                 </div>
               ))}
             </div>
 
-            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-5">
-              <Button type="button" variant="ghost" size="md" onClick={resetToSetup} className="w-full sm:w-auto">
-                <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar archivo
-              </Button>
-              <Button
-                variant="neon"
-                size="md"
-                disabled={selectedCount === 0}
-                onClick={handleGenerate}
-                className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2"
-              >
-                <Sparkles className="h-4 w-4" /> Generar {selectedCount} módulo(s)
-              </Button>
-            </div>
-          </GlassCard>
-        </motion.div>
-      )}
-
-      {/* ── Generación en progreso / Vista previa ── */}
-      {(phase === 'generating' || phase === 'preview' || phase === 'done') && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 border border-brand-violet/15">
-            <div className="flex items-center gap-2 mb-4">
-              <div className={cn(
-                'h-2 w-2 rounded-full',
-                phase === 'generating' ? 'bg-brand-violet animate-pulse' : 'bg-brand-green',
-              )} />
-              <span className="text-[13px] font-semibold text-text">
-                {phase === 'generating' ? 'Generando módulos con Claude…' : 'Módulos generados'}
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {items.map((it, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-glass/4 border border-glass-border/8"
-                >
-                  <div className="w-5 h-5 shrink-0 flex items-center justify-center mt-0.5">
-                    {it.status === 'done' && <CheckCircle2 className="h-4 w-4 text-brand-green" />}
-                    {it.status === 'generating' && <Loader2 className="h-4 w-4 animate-spin text-brand-violet" />}
-                    {it.status === 'pending' && <div className="h-2.5 w-2.5 rounded-full border border-glass-border/30" />}
-                    {it.status === 'error' && <AlertTriangle className="h-4 w-4 text-danger" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {it.generated && <span className="text-lg leading-none">{it.generated.metadata.icon}</span>}
-                      <span className="text-[13px] text-text font-medium truncate">
-                        {it.generated?.metadata.title_es ?? it.proposed.title_es}
-                      </span>
-                    </div>
-                    {it.status === 'generating' && it.progress && (
-                      <p className="text-[11px] text-brand-violet mt-1">{it.progress}</p>
-                    )}
-                    {it.status === 'done' && it.generated && (() => {
-                      const usedIdx = new Set<number>()
-                      it.generated.sections.forEach((s) =>
-                        (s.blocks ?? []).forEach((b) => {
-                          if (b.type === 'image' && typeof b.image_index === 'number') usedIdx.add(b.image_index)
-                        }),
-                      )
-                      const figures = [...usedIdx]
-                        .map((idx) => doc?.images[idx])
-                        .filter((img): img is NonNullable<typeof img> => !!img)
-                      const blockCount = it.generated.sections.reduce((n, s) => n + (s.blocks?.length ?? 0), 0)
-                      return (
-                        <>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <NeonBadge color="cyan" className="text-[9px]">{it.generated.metadata.duration_min} min</NeonBadge>
-                            <span className="text-[11px] text-text-muted">{it.generated.sections.length} secciones</span>
-                            <span className="text-[11px] text-text-muted">· {blockCount} bloques</span>
-                            {figures.length > 0 && (
-                              <span className="text-[11px] text-text-muted">· {figures.length} imagen(es)</span>
-                            )}
-                          </div>
-                          {figures.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-2.5">
-                              {figures.map((img, k) => (
-                                <img
-                                  key={k}
-                                  src={`data:${img.mediaType};base64,${img.dataBase64}`}
-                                  alt={`Figura ${k + 1}`}
-                                  className="h-16 w-24 object-cover rounded-lg border border-glass-border/15 bg-white"
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )
-                    })()}
-                    {it.status === 'error' && (
-                      <p className="text-[11px] text-danger mt-1">{it.error}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {usedFigures.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {usedFigures.map((img, k) => (
+                  <img
+                    key={k}
+                    src={`data:${img.mediaType};base64,${img.dataBase64}`}
+                    alt={`Figura ${k + 1}`}
+                    className="h-16 w-24 object-cover rounded-lg border border-glass-border/15 bg-white"
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Acciones tras la generación */}
             {phase === 'preview' && (
               <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-5">
-                <Button type="button" variant="ghost" size="md" onClick={() => setPhase('review')} className="w-full sm:w-auto">
-                  <ArrowLeft className="h-4 w-4 mr-1.5" /> Volver a la propuesta
+                <Button type="button" variant="ghost" size="md" onClick={resetToSetup} className="w-full sm:w-auto">
+                  <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar archivo
                 </Button>
                 <Button
                   variant="neon"
                   size="md"
-                  disabled={generatedItems.length === 0}
-                  onClick={handleSaveAll}
+                  onClick={handleSave}
                   className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2"
                 >
-                  <BookOpen className="h-4 w-4" /> Guardar {generatedItems.length} módulo(s)
+                  <BookOpen className="h-4 w-4" /> Guardar módulo
                 </Button>
               </div>
             )}
 
             {/* Estado final */}
             {phase === 'done' && (
-              savedIds.length > 0 ? (
+              savedId ? (
                 <div className="mt-5">
                   <div className="flex items-center gap-2 p-3 rounded-xl bg-brand-green/6 border border-brand-green/20 text-brand-green text-[12px] mb-3">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    {savedIds.length} módulo(s) guardado(s) como borrador. Edítalos y publícalos cuando estén listos.
+                    Módulo guardado como borrador. Edítalo y publícalo cuando esté listo.
                   </div>
                   <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <Button type="button" variant="ghost" size="md" onClick={() => navigate('/admin/modules')} className="w-full sm:w-auto">
-                      Ver todos los módulos
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="md"
+                      onClick={() => navigate(course ? `/admin/courses/${courseId}` : '/admin/modules')}
+                      className="w-full sm:w-auto"
+                    >
+                      {course ? 'Volver al curso' : 'Ver todos los módulos'}
                     </Button>
                     <Button
                       variant="neon"
                       size="md"
-                      onClick={() => navigate(`/admin/modules/${savedIds[0]}`)}
+                      onClick={() => navigate(`/admin/modules/${savedId}`)}
                       className="w-full sm:w-auto flex items-center justify-center gap-2"
                     >
-                      Editar el primero <ChevronRight className="h-4 w-4" />
+                      Editar módulo <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-3 mt-5 py-2 text-[13px] text-text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin text-brand-violet" /> Guardando módulos…
+                  <Loader2 className="h-4 w-4 animate-spin text-brand-violet" /> Guardando módulo…
                 </div>
               )
             )}

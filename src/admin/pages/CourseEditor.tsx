@@ -46,11 +46,13 @@ import {
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import {
   ensureCourseWorld,
+  getCourseWorld,
   syncCourseWorldById,
   generateModuleRegionLevels,
   setCourseWorldPublished,
   type SyncResult,
 } from '@/services/worlds.service'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign, Profile } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -93,6 +95,7 @@ export default function CourseEditor() {
   const { courseId } = useParams<{ courseId: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const { isSuperAdmin, campaignId: authCampaignId } = useAuth()
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
@@ -445,13 +448,49 @@ export default function CourseEditor() {
     }
   }
 
+  /**
+   * Tras agregar un módulo, ofrece reflejarlo como región en el mundo del curso:
+   *  - Si el curso YA tiene mundo → confirma crear la región del nuevo módulo.
+   *  - Si el curso NO tiene mundo → ofrece crear el mundo (en borrador) + la región.
+   * En ambos casos, al aceptar, genera los niveles/arenas de las regiones nuevas
+   * con IA en 2º plano. Si cancela, el módulo queda agregado sin tocar el mundo.
+   */
+  const offerWorldRegionForModule = async (moduleTitle: string) => {
+    const world = await getCourseWorld(course.id).catch(() => null)
+    if (world) {
+      const ok = await confirm({
+        title: t('admin.courses.world_region_create_title'),
+        description: t('admin.courses.world_region_create_desc', { title: moduleTitle }),
+        confirmLabel: t('admin.courses.world_region_create_confirm'),
+        cancelLabel: t('admin.courses.world_region_skip'),
+        tone: 'default',
+      })
+      if (!ok) return
+      const result = await syncCourseWorldById(course.id, { createIfMissing: false })
+      generatePendingRegions(result)
+    } else {
+      const ok = await confirm({
+        title: t('admin.courses.world_create_title'),
+        description: t('admin.courses.world_create_desc', { title: moduleTitle }),
+        confirmLabel: t('admin.courses.world_create_confirm'),
+        cancelLabel: t('admin.courses.world_region_skip'),
+        tone: 'default',
+      })
+      if (!ok) return
+      // Crea el mundo (queda en borrador) y sus regiones (una por módulo del curso).
+      const result = await syncCourseWorldById(course.id, { createIfMissing: true })
+      generatePendingRegions(result)
+      setWorldPublished(false)
+    }
+  }
+
   const handleAddModule = async (mod: DbModuleRow) => {
     try {
       const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
       await addModuleToCourse(course.id, mod.id, maxOrder + 1)
       invalidateModulesCache()
       await reload()
-      void syncWorld()
+      await offerWorldRegionForModule(mod.title_es)
     } catch {
       toast.error(t('admin.courses.error_save'))
     }
@@ -1061,7 +1100,7 @@ export default function CourseEditor() {
                   {t('admin.courses.available_modules_hint')}
                 </p>
               </div>
-              <Link to={`/admin/modules/new?courseId=${course.id}`}>
+              <Link to={`/admin/import?campaign=${course.campaign_id}&courseId=${course.id}`}>
                 <Button variant="glass" size="sm" className="flex items-center gap-1.5 shrink-0">
                   <Plus className="h-3.5 w-3.5" />
                   {t('admin.courses.new_module')}

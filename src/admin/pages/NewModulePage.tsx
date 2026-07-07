@@ -596,7 +596,8 @@ export default function NewModulePage() {
   const [searchParams] = useSearchParams()
   const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
 
-  const [mode, setMode] = useState<Mode>('manual')
+  // Modo inicial: ?mode=ai abre directo en "Generar con IA" (p. ej. desde el curso).
+  const [mode, setMode] = useState<Mode>(searchParams.get('mode') === 'ai' ? 'ai' : 'manual')
   const [icon, setIcon] = useState('📚')
   const [titleLang, setTitleLang] = useState<Lang>('es')
   const [title, setTitle] = useState<Record<Lang, string>>({ es: '', en: '', pt: '' })

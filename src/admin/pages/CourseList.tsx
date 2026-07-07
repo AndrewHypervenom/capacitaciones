@@ -6,12 +6,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
   getCoursesForCampaign,
+  getAllCourses,
   createCourse,
   updateCourse,
   deleteCourse,
   getShareableCourses,
   addModuleToCourse,
   type CourseWithModules,
+  type AdminCourse,
   type ShareableCourse,
 } from '@/services/courses.service'
 import {
@@ -35,6 +37,9 @@ import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 
+// Opción "Todas las campañas" en el selector de campaña (solo superadmin).
+const ALL_CAMPAIGNS = '__all__'
+
 export default function CourseList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
@@ -43,7 +48,7 @@ export default function CourseList() {
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
-  const [courses, setCourses] = useState<CourseWithModules[]>([])
+  const [courses, setCourses] = useState<AdminCourse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -187,14 +192,19 @@ export default function CourseList() {
     if (!selectedCampaignId) return
     setLoading(true)
     setError(null)
-    getCoursesForCampaign(selectedCampaignId)
+    const load = selectedCampaignId === ALL_CAMPAIGNS
+      ? getAllCourses()
+      : getCoursesForCampaign(selectedCampaignId).then((cs) =>
+          cs.map((c) => ({ ...c, campaign_name: null }) as AdminCourse),
+        )
+    load
       .then(setCourses)
       .catch(() => setError(t('admin.courses.error_load')))
       .finally(() => setLoading(false))
   }, [selectedCampaignId, t])
 
   useEffect(() => {
-    if (view !== 'shared' || !selectedCampaignId) return
+    if (view !== 'shared' || !selectedCampaignId || selectedCampaignId === ALL_CAMPAIGNS) return
     setSharedLoading(true)
     getShareableCourses(selectedCampaignId)
       .then(setSharedCourses)
@@ -296,6 +306,8 @@ export default function CourseList() {
               variant="glass"
               className="flex items-center gap-1.5 w-full sm:w-auto"
               onClick={openAi}
+              disabled={selectedCampaignId === ALL_CAMPAIGNS}
+              title={selectedCampaignId === ALL_CAMPAIGNS ? t('admin.courses.pick_campaign_to_create') : undefined}
             >
               <Sparkles className="h-3.5 w-3.5" />
               {t('admin.courses.ai_create')}
@@ -304,6 +316,8 @@ export default function CourseList() {
               variant="neon"
               className="flex items-center gap-1.5 w-full sm:w-auto"
               onClick={() => setShowCreate(true)}
+              disabled={selectedCampaignId === ALL_CAMPAIGNS}
+              title={selectedCampaignId === ALL_CAMPAIGNS ? t('admin.courses.pick_campaign_to_create') : undefined}
             >
               <Plus className="h-3.5 w-3.5" />
               {t('admin.courses.new_course')}
@@ -317,8 +331,15 @@ export default function CourseList() {
         <div className="mb-6">
           <FilterDropdown
             value={selectedCampaignId}
-            onChange={setSelectedCampaignId}
-            options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+            onChange={(v) => {
+              // La vista de catálogo compartido necesita una campaña dueña concreta.
+              if (v === ALL_CAMPAIGNS) setView('mine')
+              setSelectedCampaignId(v)
+            }}
+            options={[
+              { value: ALL_CAMPAIGNS, label: t('admin.courses.filter_all_campaigns') },
+              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+            ]}
             className="max-w-xs"
           />
         </div>
@@ -335,7 +356,8 @@ export default function CourseList() {
         </button>
         <button
           onClick={() => setView('shared')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] ${view === 'shared' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
+          disabled={selectedCampaignId === ALL_CAMPAIGNS}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] disabled:opacity-40 disabled:cursor-not-allowed ${view === 'shared' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
         >
           <Share2 className="h-4 w-4" />
           {t('admin.courses.tab_shared')}
@@ -454,7 +476,12 @@ export default function CourseList() {
           <GraduationCap className="h-10 w-10 text-text-muted mx-auto mb-3" />
           <p className="text-text-muted text-[14px] mb-2">{t('admin.courses.empty_title')}</p>
           <p className="text-text-subtle text-[12px] mb-6">{t('admin.courses.empty_hint')}</p>
-          <Button variant="neon" className="flex items-center gap-1.5 mx-auto" onClick={() => setShowCreate(true)}>
+          <Button
+            variant="neon"
+            className="flex items-center gap-1.5 mx-auto"
+            onClick={() => setShowCreate(true)}
+            disabled={selectedCampaignId === ALL_CAMPAIGNS}
+          >
             <Plus className="h-3.5 w-3.5" />
             {t('admin.courses.new_course')}
           </Button>
@@ -508,6 +535,11 @@ export default function CourseList() {
                   <span>·</span>
                   {t(`admin.courses.level_${course.level}`)}
                 </div>
+                {selectedCampaignId === ALL_CAMPAIGNS && course.campaign_name && (
+                  <p className="text-[11px] text-text-subtle mt-1">
+                    {t('admin.courses.shared_from', { name: course.campaign_name })}
+                  </p>
+                )}
               </div>
 
               {/* Acciones */}
