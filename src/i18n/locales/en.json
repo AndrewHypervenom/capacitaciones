@@ -1,6 +1,18 @@
 {
   "brand": "LearningAI",
   "brand.tagline": "Operational excellence academy",
+  "worldgen": {
+    "course_title": "World: {{name}}",
+    "world_title": "Creating world: {{name}}",
+    "outline": "Designing the world and its regions with AI…",
+    "starting": "Preparing {{n}} region(s)…",
+    "region_progress": "Region {{i}}/{{n}}: {{title}} — generating levels and quiz with AI…",
+    "done": "Done: {{n}} region(s) with their levels",
+    "world_done": "World created with {{n}} region(s)",
+    "partial": "{{ok}} region(s) ready, {{fail}} failed. Retry with \"Sync\" in the course.",
+    "error": "Levels could not be generated. Retry with \"Sync\" in the course.",
+    "world_error": "The world could not be created. Please try again."
+  },
   "errors": {
     "boundary": {
       "title": "Something went wrong",

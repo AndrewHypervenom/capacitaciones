@@ -29,7 +29,7 @@ import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import { toast, useToastStore } from '@/stores/toastStore'
+import { toast } from '@/stores/toastStore'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import type { Campaign } from '@/types/database'
 
@@ -654,32 +654,10 @@ export default function NewModulePage() {
       const maxOrder = target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0
       await addModuleToCourse(courseId, moduleId, maxOrder + 1)
       // Solo sincroniza el mundo si el curso YA tiene uno (opt-in). La región
-      // nueva y sus niveles/quiz se generan con IA en 2º plano; un toast
-      // persistente indica el progreso hasta que termine.
-      let genToastId: string | null = null
-      const dismissGenToast = () => {
-        if (genToastId) useToastStore.getState().dismiss(genToastId)
-      }
-      void syncCourseWorldAndGenerate(courseId, {
-        onStart: () => {
-          genToastId = useToastStore.getState().push({
-            kind: 'info',
-            title: 'Creando la región en el mundo del curso…',
-            description: 'Generando niveles y quiz con IA. Puede tardar un minuto; te avisamos al terminar.',
-            duration: 180000,
-          })
-        },
-      })
-        .then(({ world, generated, failed }) => {
-          dismissGenToast()
-          if (!world) return
-          if (generated > 0) toast.success('Región del mundo creada con sus niveles')
-          if (failed > 0) toast.error('La región del mundo quedó sin niveles; sincronizá el mundo desde el curso')
-        })
-        .catch(() => {
-          dismissGenToast()
-          toast.error('No se pudo actualizar el mundo del curso')
-        })
+      // nueva y sus niveles/quiz se generan con IA en 2º plano; el progreso y
+      // el resultado se ven en el indicador global de procesos.
+      void syncCourseWorldAndGenerate(courseId)
+        .catch(() => toast.error('No se pudo actualizar el mundo del curso'))
     } catch {
       /* si falla el adjuntar, el módulo igual queda creado (suelto) */
     }

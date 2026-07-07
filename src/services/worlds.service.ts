@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { getModuleContextText } from '@/services/ai.service'
+import { bgTask } from '@/stores/bgTaskStore'
+import i18n from '@/i18n'
 
 // ─── Tipos ───────────────────────────────────────────────────────
 
@@ -16,7 +18,7 @@ export interface WorldRow {
   status: string
 }
 
-/** Una región recién creada cuyos niveles (3-5) hay que generar con IA en 2º plano. */
+/** Una región recién creada cuyos niveles (2-3, quiz corto c/u) hay que generar con IA en 2º plano. */
 export interface PendingRegion {
   regionId: string
   moduleId: string
@@ -350,24 +352,27 @@ export async function syncCourseWorldById(
 }
 
 /**
- * Sincroniza el mundo del curso (si existe) y genera con IA los niveles/quizzes
- * de las regiones nuevas. Pensado para los flujos que agregan un módulo fuera
- * del editor del curso (Generar contenido / Crear módulo), donde antes la
- * región quedaba sin crear o sin niveles.
+ * Genera con IA los niveles/quizzes de las regiones pendientes, reportando el
+ * paso actual en el indicador global de procesos (bgTask): qué región va,
+ * si terminó bien o qué falló. Único camino de generación por regiones.
  */
-export async function syncCourseWorldAndGenerate(
-  courseId: string,
-  opts: {
-    /** Se invoca cuando hay regiones nuevas por poblar (antes de llamar a la IA). */
-    onStart?: (count: number) => void
-  } = {},
-): Promise<{ world: WorldRow | null; generated: number; failed: number }> {
-  const { world, pendingRegions } = await syncCourseWorldById(courseId, { createIfMissing: false })
-  if (!world || pendingRegions.length === 0) return { world, generated: 0, failed: 0 }
-  opts.onStart?.(pendingRegions.length)
+export async function generatePendingRegionLevels(
+  world: WorldRow,
+  pendingRegions: PendingRegion[],
+): Promise<{ generated: number; failed: number }> {
+  if (pendingRegions.length === 0) return { generated: 0, failed: 0 }
+  const n = pendingRegions.length
+  const taskId = bgTask.start(
+    i18n.t('worldgen.course_title', { name: world.name }),
+    i18n.t('worldgen.starting', { n }),
+  )
   let generated = 0
   let failed = 0
-  for (const r of pendingRegions) {
+  for (let i = 0; i < n; i++) {
+    const r = pendingRegions[i]
+    bgTask.update(taskId, {
+      detail: i18n.t('worldgen.region_progress', { i: i + 1, n, title: r.moduleTitle }),
+    })
     try {
       await generateModuleRegionLevels(world, r.regionId, r.moduleId)
       generated++
@@ -376,6 +381,22 @@ export async function syncCourseWorldAndGenerate(
       failed++
     }
   }
+  if (failed === 0) bgTask.succeed(taskId, i18n.t('worldgen.done', { n: generated }))
+  else if (generated === 0) bgTask.fail(taskId, i18n.t('worldgen.error'))
+  else bgTask.fail(taskId, i18n.t('worldgen.partial', { ok: generated, fail: failed }))
+  return { generated, failed }
+}
+
+/**
+ * Sincroniza el mundo del curso (si existe) y genera con IA los niveles/quizzes
+ * de las regiones nuevas o vacías. El progreso se ve en el indicador global.
+ */
+export async function syncCourseWorldAndGenerate(
+  courseId: string,
+): Promise<{ world: WorldRow | null; generated: number; failed: number }> {
+  const { world, pendingRegions } = await syncCourseWorldById(courseId, { createIfMissing: false })
+  if (!world || pendingRegions.length === 0) return { world, generated: 0, failed: 0 }
+  const { generated, failed } = await generatePendingRegionLevels(world, pendingRegions)
   return { world, generated, failed }
 }
 
@@ -417,47 +438,64 @@ export async function generateStandaloneWorldFromTopic(opts: {
   regionCount?: number
   bgType?: string
 }): Promise<string> {
-  const outline = (await postGenerateWorld({
-    mode: 'world',
-    topic: opts.topic,
-    regionCount: opts.regionCount,
-    bgType: opts.bgType,
-  })) as GeneratedWorldOutline
+  const taskId = bgTask.start(
+    i18n.t('worldgen.world_title', { name: opts.topic.slice(0, 40) }),
+    i18n.t('worldgen.outline'),
+  )
+  try {
+    const outline = (await postGenerateWorld({
+      mode: 'world',
+      topic: opts.topic,
+      regionCount: opts.regionCount,
+      bgType: opts.bgType,
+    })) as GeneratedWorldOutline
 
-  const world = await insertStandaloneWorld({
-    campaignId: opts.campaignId,
-    name: outline.name || opts.topic.slice(0, 60),
-    description: outline.description ?? null,
-    icon: outline.icon,
-    bgType: outline.bg_type ?? opts.bgType,
-  })
+    const world = await insertStandaloneWorld({
+      campaignId: opts.campaignId,
+      name: outline.name || opts.topic.slice(0, 60),
+      description: outline.description ?? null,
+      icon: outline.icon,
+      bgType: outline.bg_type ?? opts.bgType,
+    })
 
-  const regions = outline.regions ?? []
-  for (let i = 0; i < regions.length; i++) {
-    const r = regions[i]
-    const { data: region, error } = await supabase
-      .from('world_regions')
-      .insert({
-        world_id: world.id,
-        name: r.name || `Región ${i + 1}`,
-        description: r.description ?? null,
-        icon: (r.icon && r.icon.length <= 2) ? r.icon : '📍',
-        order_index: i,
+    const regions = outline.regions ?? []
+    for (let i = 0; i < regions.length; i++) {
+      const r = regions[i]
+      bgTask.update(taskId, {
+        detail: i18n.t('worldgen.region_progress', {
+          i: i + 1,
+          n: regions.length,
+          title: r.name || `Región ${i + 1}`,
+        }),
       })
-      .select('id')
-      .single()
-    if (error) throw error
-    try {
-      await generateRegionLevels(world, (region as { id: string }).id, {
-        title: r.name || `Región ${i + 1}`,
-        moduleText: r.subtopic || r.description || r.name || opts.topic,
-      })
-    } catch (e) {
-      // Si falla una región, seguimos; queda sin niveles y se puede reintentar/editar.
-      console.error('Fallo generando niveles de región standalone:', e)
+      const { data: region, error } = await supabase
+        .from('world_regions')
+        .insert({
+          world_id: world.id,
+          name: r.name || `Región ${i + 1}`,
+          description: r.description ?? null,
+          icon: (r.icon && r.icon.length <= 2) ? r.icon : '📍',
+          order_index: i,
+        })
+        .select('id')
+        .single()
+      if (error) throw error
+      try {
+        await generateRegionLevels(world, (region as { id: string }).id, {
+          title: r.name || `Región ${i + 1}`,
+          moduleText: r.subtopic || r.description || r.name || opts.topic,
+        })
+      } catch (e) {
+        // Si falla una región, seguimos; queda sin niveles y se puede reintentar/editar.
+        console.error('Fallo generando niveles de región standalone:', e)
+      }
     }
+    bgTask.succeed(taskId, i18n.t('worldgen.world_done', { n: regions.length }))
+    return world.id
+  } catch (e) {
+    bgTask.fail(taskId, i18n.t('worldgen.world_error'))
+    throw e
   }
-  return world.id
 }
 
 /** Genera un mundo a partir de módulos existentes: una región (3-5 niveles) por módulo. */
@@ -466,36 +504,49 @@ export async function generateStandaloneWorldFromModules(opts: {
   name: string
   moduleIds: string[]
 }): Promise<string> {
-  const world = await insertStandaloneWorld({
-    campaignId: opts.campaignId,
-    name: opts.name,
-    bgType: 'corporate',
-  })
+  const taskId = bgTask.start(
+    i18n.t('worldgen.world_title', { name: opts.name }),
+    i18n.t('worldgen.starting', { n: opts.moduleIds.length }),
+  )
+  try {
+    const world = await insertStandaloneWorld({
+      campaignId: opts.campaignId,
+      name: opts.name,
+      bgType: 'corporate',
+    })
 
-  for (let i = 0; i < opts.moduleIds.length; i++) {
-    const moduleId = opts.moduleIds[i]
-    const { data: mod } = await supabase
-      .from('modules').select('title_es, icon').eq('id', moduleId).single()
-    const title = (mod as { title_es?: string })?.title_es ?? 'Módulo'
-    const icon = (mod as { icon?: string })?.icon
-
-    const { data: region, error } = await supabase
-      .from('world_regions')
-      .insert({
-        world_id: world.id,
-        module_id: moduleId,
-        name: title,
-        icon: (icon && icon.length <= 2) ? icon : '📍',
-        order_index: i,
+    for (let i = 0; i < opts.moduleIds.length; i++) {
+      const moduleId = opts.moduleIds[i]
+      const { data: mod } = await supabase
+        .from('modules').select('title_es, icon').eq('id', moduleId).single()
+      const title = (mod as { title_es?: string })?.title_es ?? 'Módulo'
+      const icon = (mod as { icon?: string })?.icon
+      bgTask.update(taskId, {
+        detail: i18n.t('worldgen.region_progress', { i: i + 1, n: opts.moduleIds.length, title }),
       })
-      .select('id')
-      .single()
-    if (error) throw error
-    try {
-      await generateModuleRegionLevels(world, (region as { id: string }).id, moduleId)
-    } catch (e) {
-      console.error('Fallo generando niveles de región (módulo):', moduleId, e)
+
+      const { data: region, error } = await supabase
+        .from('world_regions')
+        .insert({
+          world_id: world.id,
+          module_id: moduleId,
+          name: title,
+          icon: (icon && icon.length <= 2) ? icon : '📍',
+          order_index: i,
+        })
+        .select('id')
+        .single()
+      if (error) throw error
+      try {
+        await generateModuleRegionLevels(world, (region as { id: string }).id, moduleId)
+      } catch (e) {
+        console.error('Fallo generando niveles de región (módulo):', moduleId, e)
+      }
     }
+    bgTask.succeed(taskId, i18n.t('worldgen.world_done', { n: opts.moduleIds.length }))
+    return world.id
+  } catch (e) {
+    bgTask.fail(taskId, i18n.t('worldgen.world_error'))
+    throw e
   }
-  return world.id
 }

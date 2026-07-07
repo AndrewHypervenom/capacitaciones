@@ -23,6 +23,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { initAuth } from '@/stores/authStore';
 import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
+import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 
 // Admin CMS — lazy loaded (code-split, no se carga para learners)
@@ -96,6 +97,7 @@ export default function App() {
         />
       </Routes>
       <Toaster />
+      <BgTaskIndicator />
       <UpdatePrompt />
       </ConfirmProvider>
     </BrowserRouter>

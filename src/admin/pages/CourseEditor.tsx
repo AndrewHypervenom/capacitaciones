@@ -49,7 +49,7 @@ import {
   ensureCourseWorld,
   getCourseWorld,
   syncCourseWorldById,
-  generateModuleRegionLevels,
+  generatePendingRegionLevels,
   setCourseWorldPublished,
   type SyncResult,
 } from '@/services/worlds.service'
@@ -419,24 +419,12 @@ export default function CourseEditor() {
    * Mantiene el mundo espejo del curso al día y dispara la generación de los
    * quizzes de arena faltantes en 2º plano (no bloquea la edición del curso).
    */
-  // Genera en 2º plano los niveles (3-5 con quiz) de cada región nueva del mundo.
+  // Genera en 2º plano los niveles con quiz de cada región nueva o vacía.
+  // El progreso y el resultado se ven en el indicador global de procesos.
   const generatePendingRegions = (result: SyncResult) => {
     const { world, pendingRegions } = result
     if (!world || pendingRegions.length === 0) return
-    toast.success(t('admin.courses.world_quiz_generating', { count: pendingRegions.length }))
-    ;(async () => {
-      let ok = 0
-      for (const r of pendingRegions) {
-        try {
-          await generateModuleRegionLevels(world, r.regionId, r.moduleId)
-          ok++
-        } catch (e) {
-          console.error('Fallo generando niveles de la región del módulo', r.moduleId, e)
-        }
-      }
-      if (ok > 0) toast.success(t('admin.courses.world_quiz_ready', { count: ok }))
-      else toast.error(t('admin.courses.world_quiz_error'))
-    })()
+    void generatePendingRegionLevels(world, pendingRegions)
   }
 
   // Botón "Sincronizar" del panel de publicación: reconcilia regiones con los

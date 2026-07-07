@@ -1,6 +1,18 @@
 {
   "brand": "LearningAI",
   "brand.tagline": "Academia de excelência operacional",
+  "worldgen": {
+    "course_title": "Mundo: {{name}}",
+    "world_title": "Criando mundo: {{name}}",
+    "outline": "Desenhando o mundo e suas regiões com IA…",
+    "starting": "Preparando {{n}} região(ões)…",
+    "region_progress": "Região {{i}}/{{n}}: {{title}} — gerando níveis e quiz com IA…",
+    "done": "Pronto: {{n}} região(ões) com seus níveis",
+    "world_done": "Mundo criado com {{n}} região(ões)",
+    "partial": "{{ok}} região(ões) prontas, {{fail}} com erro. Tente de novo com \"Sincronizar\" no curso.",
+    "error": "Não foi possível gerar os níveis. Tente de novo com \"Sincronizar\" no curso.",
+    "world_error": "Não foi possível criar o mundo. Tente novamente."
+  },
   "errors": {
     "boundary": {
       "title": "Algo deu errado",
