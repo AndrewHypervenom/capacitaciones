@@ -335,6 +335,31 @@ export async function syncCourseWorldById(
   return { world, pendingRegions }
 }
 
+/**
+ * Sincroniza el mundo del curso (si existe) y genera con IA los niveles/quizzes
+ * de las regiones nuevas. Pensado para los flujos que agregan un módulo fuera
+ * del editor del curso (Generar contenido / Crear módulo), donde antes la
+ * región quedaba sin crear o sin niveles.
+ */
+export async function syncCourseWorldAndGenerate(
+  courseId: string,
+): Promise<{ world: WorldRow | null; generated: number; failed: number }> {
+  const { world, pendingRegions } = await syncCourseWorldById(courseId, { createIfMissing: false })
+  if (!world || pendingRegions.length === 0) return { world, generated: 0, failed: 0 }
+  let generated = 0
+  let failed = 0
+  for (const r of pendingRegions) {
+    try {
+      await generateModuleRegionLevels(world, r.regionId, r.moduleId)
+      generated++
+    } catch (e) {
+      console.error('Fallo generando niveles de la región del módulo', r.moduleId, e)
+      failed++
+    }
+  }
+  return { world, generated, failed }
+}
+
 // ─── Mundos standalone (con IA, sin curso) ───────────────────────
 
 /** Crea la fila del mundo standalone (sin curso). */

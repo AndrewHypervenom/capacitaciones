@@ -20,7 +20,7 @@ import { saveGeneratedModule } from '@/services/modules.service'
 import {
   addModuleToCourse, getCourseById, type CourseWithModules,
 } from '@/services/courses.service'
-import { syncCourseWorldById } from '@/services/worlds.service'
+import { syncCourseWorldAndGenerate } from '@/services/worlds.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -178,7 +178,15 @@ export default function ImportContent() {
         try {
           const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
           await addModuleToCourse(courseId, id, maxOrder + 1)
-          await syncCourseWorldById(courseId, { createIfMissing: false }).catch(() => {})
+          // Refleja el módulo como región del mundo del curso (si tiene mundo) y
+          // genera sus niveles/quiz con IA en 2º plano, sin bloquear el guardado.
+          void syncCourseWorldAndGenerate(courseId)
+            .then(({ world, generated, failed }) => {
+              if (!world) return
+              if (generated > 0) toast.success('Región del mundo creada con sus niveles')
+              if (failed > 0) toast.error('La región del mundo quedó sin niveles; sincronizá el mundo desde el curso')
+            })
+            .catch(() => toast.error('No se pudo actualizar el mundo del curso'))
         } catch { /* módulo queda creado aunque no se adjunte */ }
       }
       setSavedId(id)

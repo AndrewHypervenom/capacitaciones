@@ -15,7 +15,7 @@ import {
   type CourseWithModules,
 } from '@/services/courses.service'
 import { generateModule, type CacheUsage, type GeneratedModule } from '@/services/ai.service'
-import { syncCourseWorldById } from '@/services/worlds.service'
+import { syncCourseWorldAndGenerate } from '@/services/worlds.service'
 import {
   extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
   type ExtractStage, type ExtractedImage,
@@ -653,10 +653,15 @@ export default function NewModulePage() {
       const target = courses.find((c) => c.id === courseId)
       const maxOrder = target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0
       await addModuleToCourse(courseId, moduleId, maxOrder + 1)
-      // Solo sincroniza la estructura del mundo si el curso YA tiene uno (opt-in).
-      // La región nueva queda sin niveles; se generan al activar/sincronizar el
-      // mundo desde el editor del curso, cuando haya contenido.
-      await syncCourseWorldById(courseId, { createIfMissing: false }).catch(() => {})
+      // Solo sincroniza el mundo si el curso YA tiene uno (opt-in). La región
+      // nueva y sus niveles/quiz se generan con IA en 2º plano.
+      void syncCourseWorldAndGenerate(courseId)
+        .then(({ world, generated, failed }) => {
+          if (!world) return
+          if (generated > 0) toast.success('Región del mundo creada con sus niveles')
+          if (failed > 0) toast.error('La región del mundo quedó sin niveles; sincronizá el mundo desde el curso')
+        })
+        .catch(() => toast.error('No se pudo actualizar el mundo del curso'))
     } catch {
       /* si falla el adjuntar, el módulo igual queda creado (suelto) */
     }
