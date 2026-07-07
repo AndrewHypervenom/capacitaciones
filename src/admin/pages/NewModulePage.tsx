@@ -652,9 +652,10 @@ export default function NewModulePage() {
       const target = courses.find((c) => c.id === courseId)
       const maxOrder = target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0
       await addModuleToCourse(courseId, moduleId, maxOrder + 1)
-      // Sincroniza la estructura del mundo (región+nivel del módulo). El quiz de
-      // arena se generará luego desde el editor del curso, cuando haya contenido.
-      await syncCourseWorldById(courseId).catch(() => {})
+      // Solo sincroniza la estructura del mundo si el curso YA tiene uno (opt-in).
+      // La región nueva queda sin niveles; se generan al activar/sincronizar el
+      // mundo desde el editor del curso, cuando haya contenido.
+      await syncCourseWorldById(courseId, { createIfMissing: false }).catch(() => {})
     } catch {
       /* si falla el adjuntar, el módulo igual queda creado (suelto) */
     }

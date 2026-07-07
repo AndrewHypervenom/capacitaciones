@@ -47,7 +47,7 @@ import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/servic
 import {
   ensureCourseWorld,
   syncCourseWorldById,
-  generateAndAttachModuleQuiz,
+  generateModuleRegionLevels,
   setCourseWorldPublished,
   type SyncResult,
 } from '@/services/worlds.service'
@@ -296,14 +296,6 @@ export default function CourseEditor() {
     }
   }
 
-  const courseWorldLike = () => ({
-    id: course.id,
-    campaign_id: course.campaign_id,
-    title_es: course.title_es,
-    description_es: course.description_es,
-    color: course.color,
-  })
-
   const handleTogglePublished = async () => {
     const next = !course.is_published
     try {
@@ -319,7 +311,12 @@ export default function CourseEditor() {
   const handleToggleWorldPublished = async () => {
     const next = !worldPublished
     try {
-      if (next) await ensureCourseWorld(courseWorldLike())
+      // Al activar el mundo por primera vez, lo crea y genera sus regiones (una por
+      // módulo, cada una con 3-5 niveles) con IA en 2º plano.
+      if (next) {
+        const result = await syncCourseWorldById(course.id, { createIfMissing: true })
+        generatePendingRegions(result)
+      }
       await setCourseWorldPublished(course.id, next)
       setWorldPublished(next)
       toast.success(next ? t('admin.courses.world_published') : t('admin.courses.world_unpublished'))
@@ -351,7 +348,8 @@ export default function CourseEditor() {
       for (const m of course.modules.filter((m) => !m.is_published)) {
         await toggleModulePublished(m.id, true)
       }
-      await ensureCourseWorld(courseWorldLike())
+      const result = await syncCourseWorldById(course.id, { createIfMissing: true })
+      generatePendingRegions(result)
       await setCourseWorldPublished(course.id, true)
       setWorldPublished(true)
       invalidateModulesCache()
@@ -416,32 +414,35 @@ export default function CourseEditor() {
    * Mantiene el mundo espejo del curso al día y dispara la generación de los
    * quizzes de arena faltantes en 2º plano (no bloquea la edición del curso).
    */
-  const syncWorld = async () => {
-    let result: SyncResult
-    try {
-      result = await syncCourseWorldById(course.id)
-    } catch (e) {
-      console.error('No se pudo sincronizar el mundo del curso:', e)
-      return
-    }
-    const { world, pending } = result
-    if (pending.length === 0) return
-
-    // Generación de quizzes con IA en segundo plano, secuencial para no saturar.
-    toast.success(t('admin.courses.world_quiz_generating', { count: pending.length }))
+  // Genera en 2º plano los niveles (3-5 con quiz) de cada región nueva del mundo.
+  const generatePendingRegions = (result: SyncResult) => {
+    const { world, pendingRegions } = result
+    if (!world || pendingRegions.length === 0) return
+    toast.success(t('admin.courses.world_quiz_generating', { count: pendingRegions.length }))
     ;(async () => {
       let ok = 0
-      for (const p of pending) {
+      for (const r of pendingRegions) {
         try {
-          await generateAndAttachModuleQuiz(world, p.moduleId, p.levelId)
+          await generateModuleRegionLevels(world, r.regionId, r.moduleId)
           ok++
         } catch (e) {
-          console.error('Fallo generando quiz del módulo', p.moduleId, e)
+          console.error('Fallo generando niveles de la región del módulo', r.moduleId, e)
         }
       }
       if (ok > 0) toast.success(t('admin.courses.world_quiz_ready', { count: ok }))
       else toast.error(t('admin.courses.world_quiz_error'))
     })()
+  }
+
+  const syncWorld = async () => {
+    try {
+      // createIfMissing:false → si el curso optó por no tener mundo, agregar/quitar
+      // módulos no fuerza su creación. Solo se sincroniza cuando el mundo ya existe.
+      const result = await syncCourseWorldById(course.id, { createIfMissing: false })
+      generatePendingRegions(result)
+    } catch (e) {
+      console.error('No se pudo sincronizar el mundo del curso:', e)
+    }
   }
 
   const handleAddModule = async (mod: DbModuleRow) => {

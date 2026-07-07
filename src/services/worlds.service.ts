@@ -16,31 +16,35 @@ export interface WorldRow {
   status: string
 }
 
-/** Un módulo que aún no tiene su quiz de arena generado (para el auto-sync en 2º plano). */
-export interface PendingQuiz {
+/** Una región recién creada cuyos niveles (3-5) hay que generar con IA en 2º plano. */
+export interface PendingRegion {
+  regionId: string
   moduleId: string
-  levelId: string
   moduleTitle: string
 }
 
 export interface SyncResult {
-  world: WorldRow
-  /** Módulos con nivel recién creado (o sin quiz) que hay que generar con IA. */
-  pending: PendingQuiz[]
+  /** El mundo del curso, o null si no existía y no se pidió crearlo. */
+  world: WorldRow | null
+  /** Regiones nuevas (módulos recién sumados) que hay que poblar con IA. */
+  pendingRegions: PendingRegion[]
 }
 
-// Estructura que devuelve la Edge Function generate-world.
+// Estructuras que devuelve la Edge Function generate-world.
 interface GenQuizOption { text: string; correct: boolean; explanation?: string }
 interface GenQuizStep { question: string; context?: string; options: GenQuizOption[] }
 interface GeneratedQuiz { title: string; description?: string; icon?: string; steps: GenQuizStep[] }
-interface GeneratedRegion {
-  name: string; description?: string; icon?: string
-  level?: { name?: string; description?: string; icon?: string }
+interface GeneratedLevel {
+  name?: string; description?: string; icon?: string
   quiz?: GeneratedQuiz
 }
-interface GeneratedWorld {
-  name: string; description?: string; icon?: string; bg_type?: string
-  regions: GeneratedRegion[]
+interface GeneratedRegionLevels { levels?: GeneratedLevel[] }
+interface GeneratedWorldOutlineRegion {
+  name?: string; description?: string; icon?: string; subtopic?: string
+}
+interface GeneratedWorldOutline {
+  name?: string; description?: string; icon?: string; bg_type?: string
+  regions?: GeneratedWorldOutlineRegion[]
 }
 
 const VALID_BG = ['airline', 'bank', 'health', 'corporate', 'tech']
@@ -86,20 +90,19 @@ function toArenaSteps(gen: GeneratedQuiz): Json {
 
 /** Inserta un arena_quiz publicado a partir de un quiz generado. Devuelve su id. */
 async function insertArenaQuiz(
-  campaignId: string,
-  themeColor: string,
-  themeType: string,
+  world: WorldRow,
   gen: GeneratedQuiz,
 ): Promise<string> {
   const { data, error } = await supabase
     .from('arena_quizzes')
     .insert({
-      campaign_id: campaignId,
+      campaign_id: world.campaign_id,
+      world_id: world.id,
       title: gen.title || 'Reto',
       description: gen.description ?? null,
       theme_icon: gen.icon || '📋',
-      theme_color: themeColor,
-      theme_type: normBg(themeType),
+      theme_color: world.color,
+      theme_type: normBg(world.bg_type),
       status: 'published',
       steps: toArenaSteps(gen),
     })
@@ -107,6 +110,74 @@ async function insertArenaQuiz(
     .single()
   if (error) throw error
   return (data as { id: string }).id
+}
+
+// ─── Generación de los niveles de una región ─────────────────────
+
+interface RegionSource {
+  /** Título del subtema/módulo. */
+  title: string
+  subtitle?: string
+  /** Contenido de referencia (texto del módulo o descripción del subtema). */
+  moduleText: string
+  levelCount?: number
+}
+
+/**
+ * Genera con IA 3-5 niveles (cada uno con su quiz de arena) para una región y
+ * los inserta. Los sub-niveles llevan `module_id = null`: el vínculo 1:1 con el
+ * módulo lo conserva la región, no cada nivel.
+ */
+export async function generateRegionLevels(
+  world: WorldRow,
+  regionId: string,
+  source: RegionSource,
+): Promise<void> {
+  const gen = (await postGenerateWorld({
+    mode: 'region',
+    moduleTitle: source.title,
+    moduleSubtitle: source.subtitle ?? '',
+    moduleText: source.moduleText,
+    levelCount: source.levelCount,
+  })) as GeneratedRegionLevels
+
+  const levels = gen.levels ?? []
+  for (let i = 0; i < levels.length; i++) {
+    const lv = levels[i]
+    let quizId: string | null = null
+    if (lv.quiz && (lv.quiz.steps?.length ?? 0) > 0) {
+      quizId = await insertArenaQuiz(world, lv.quiz)
+    }
+    await supabase.from('world_levels').insert({
+      world_id: world.id,
+      region_id: regionId,
+      module_id: null,
+      name: lv.name || `${source.title} · ${i + 1}`,
+      description: lv.description ?? null,
+      icon: (lv.icon && lv.icon.length <= 2) ? lv.icon : '⭐',
+      order_index: i,
+      quiz_id: quizId,
+    })
+  }
+}
+
+/** Genera los niveles de una región espejo de un módulo, tomando su contenido. */
+export async function generateModuleRegionLevels(
+  world: WorldRow,
+  regionId: string,
+  moduleId: string,
+): Promise<void> {
+  const { data: mod } = await supabase
+    .from('modules')
+    .select('title_es, subtitle_es')
+    .eq('id', moduleId)
+    .single()
+  const moduleText = await getModuleContextText(moduleId).catch(() => '')
+  await generateRegionLevels(world, regionId, {
+    title: (mod as { title_es?: string })?.title_es ?? 'Módulo',
+    subtitle: (mod as { subtitle_es?: string | null })?.subtitle_es ?? '',
+    moduleText,
+  })
 }
 
 // ─── Mundo de un curso ───────────────────────────────────────────
@@ -124,12 +195,8 @@ export interface CourseLike {
  * (índice único parcial worlds_course_id_uidx garantiza uno solo por curso).
  */
 export async function ensureCourseWorld(course: CourseLike): Promise<WorldRow> {
-  const { data: existing } = await supabase
-    .from('worlds')
-    .select('*')
-    .eq('course_id', course.id)
-    .maybeSingle()
-  if (existing) return existing as WorldRow
+  const existing = await getCourseWorld(course.id)
+  if (existing) return existing
 
   const { data, error } = await supabase
     .from('worlds')
@@ -155,6 +222,16 @@ export async function ensureCourseWorld(course: CourseLike): Promise<WorldRow> {
   return data as WorldRow
 }
 
+/** Lee el mundo espejo de un curso sin crearlo. Null si todavía no existe. */
+export async function getCourseWorld(courseId: string): Promise<WorldRow | null> {
+  const { data } = await supabase
+    .from('worlds')
+    .select('*')
+    .eq('course_id', courseId)
+    .maybeSingle()
+  return (data as WorldRow | null) ?? null
+}
+
 /** Publica o despublica el mundo espejo de un curso (para atarlo a la publicación del curso). */
 export async function setCourseWorldPublished(courseId: string, published: boolean): Promise<void> {
   const { error } = await supabase
@@ -165,12 +242,21 @@ export async function setCourseWorldPublished(courseId: string, published: boole
 }
 
 /**
- * Reconcilia el mundo de un curso con sus módulos: una región + un nivel por
- * módulo (espejo de course_sort_order), crea los que faltan, reordena y borra
- * los que ya no están. NO genera quizzes (eso va en 2º plano); devuelve los
- * módulos cuyo nivel quedó sin quiz para que el llamador los complete con IA.
+ * Reconcilia el mundo de un curso con sus módulos: una región por módulo (espejo
+ * de course_sort_order). Crea las regiones que faltan, reordena y borra (con sus
+ * niveles) las de módulos que ya no están. NO genera los niveles/quizzes (eso va
+ * en 2º plano); devuelve las regiones nuevas para que el llamador las complete.
+ *
+ * `createIfMissing` (default true): si es false y el curso aún no tiene mundo,
+ * no crea nada y devuelve `{ world: null, pendingRegions: [] }`. Se usa al
+ * agregar módulos, para no forzar un mundo en cursos que optaron por no tenerlo.
  */
-export async function syncCourseWorldById(courseId: string): Promise<SyncResult> {
+export async function syncCourseWorldById(
+  courseId: string,
+  opts: { createIfMissing?: boolean } = {},
+): Promise<SyncResult> {
+  const createIfMissing = opts.createIfMissing ?? true
+
   const { data: course, error: cErr } = await supabase
     .from('courses')
     .select('id, campaign_id, title_es, description_es, color')
@@ -178,7 +264,11 @@ export async function syncCourseWorldById(courseId: string): Promise<SyncResult>
     .single()
   if (cErr) throw cErr
 
-  const world = await ensureCourseWorld(course as CourseLike)
+  let world = await getCourseWorld(courseId)
+  if (!world) {
+    if (!createIfMissing) return { world: null, pendingRegions: [] }
+    world = await ensureCourseWorld(course as CourseLike)
+  }
 
   const { data: modulesData } = await supabase
     .from('modules')
@@ -187,27 +277,23 @@ export async function syncCourseWorldById(courseId: string): Promise<SyncResult>
     .order('course_sort_order')
   const modules = (modulesData ?? []) as Array<{ id: string; title_es: string; icon: string; course_sort_order: number }>
 
-  const [{ data: regionsData }, { data: levelsData }] = await Promise.all([
-    supabase.from('world_regions').select('id, module_id, order_index, name').eq('world_id', world.id),
-    supabase.from('world_levels').select('id, module_id, region_id, quiz_id, order_index').eq('world_id', world.id),
-  ])
+  const { data: regionsData } = await supabase
+    .from('world_regions')
+    .select('id, module_id, order_index, name')
+    .eq('world_id', world.id)
   const regionByModule = new Map(
     ((regionsData ?? []) as Array<{ id: string; module_id: string | null; order_index: number; name: string }>)
       .filter((r) => r.module_id).map((r) => [r.module_id as string, r]),
   )
-  const levelByModule = new Map(
-    ((levelsData ?? []) as Array<{ id: string; module_id: string | null; region_id: string; quiz_id: string | null; order_index: number }>)
-      .filter((l) => l.module_id).map((l) => [l.module_id as string, l]),
-  )
 
   const currentModuleIds = new Set(modules.map((m) => m.id))
-  const pending: PendingQuiz[] = []
+  const pendingRegions: PendingRegion[] = []
 
   // Alta / actualización por módulo (respetando el orden del curso).
   for (let i = 0; i < modules.length; i++) {
     const m = modules[i]
     const orderIndex = i
-    let region = regionByModule.get(m.id)
+    const region = regionByModule.get(m.id)
 
     if (region) {
       if (region.order_index !== orderIndex || region.name !== m.title_es) {
@@ -215,6 +301,7 @@ export async function syncCourseWorldById(courseId: string): Promise<SyncResult>
           .update({ order_index: orderIndex, name: m.title_es })
           .eq('id', region.id)
       }
+      // Región existente → conserva sus niveles; no se regenera.
     } else {
       const { data: newRegion, error } = await supabase
         .from('world_regions')
@@ -223,197 +310,148 @@ export async function syncCourseWorldById(courseId: string): Promise<SyncResult>
           module_id: m.id,
           name: m.title_es,
           description: null,
-          icon: '📍',
+          icon: (m.icon && m.icon.length <= 2) ? m.icon : '📍',
           order_index: orderIndex,
         })
-        .select('id, module_id, order_index, name')
+        .select('id')
         .single()
       if (error) throw error
-      region = newRegion as { id: string; module_id: string | null; order_index: number; name: string }
-    }
-
-    let level = levelByModule.get(m.id)
-    if (!level) {
-      const { data: newLevel, error } = await supabase
-        .from('world_levels')
-        .insert({
-          world_id: world.id,
-          region_id: region.id,
-          module_id: m.id,
-          name: m.title_es,
-          description: null,
-          icon: (m.icon && m.icon.length <= 2) ? m.icon : '⭐',
-          order_index: orderIndex,
-          quiz_id: null,
-        })
-        .select('id, module_id, region_id, quiz_id, order_index')
-        .single()
-      if (error) throw error
-      level = newLevel as { id: string; module_id: string | null; region_id: string; quiz_id: string | null; order_index: number }
-    } else if (level.order_index !== orderIndex) {
-      await supabase.from('world_levels').update({ order_index: orderIndex }).eq('id', level.id)
-    }
-
-    if (!level.quiz_id) {
-      pending.push({ moduleId: m.id, levelId: level.id, moduleTitle: m.title_es })
+      pendingRegions.push({
+        regionId: (newRegion as { id: string }).id,
+        moduleId: m.id,
+        moduleTitle: m.title_es,
+      })
     }
   }
 
-  // Baja: módulos que ya no están en el curso → borrar su nivel y región.
+  // Baja: módulos que ya no están → borrar su región y todos sus niveles.
   const staleModuleIds = [...regionByModule.keys()].filter((mid) => !currentModuleIds.has(mid))
   if (staleModuleIds.length) {
     const staleRegionIds = staleModuleIds.map((mid) => regionByModule.get(mid)!.id)
-    await supabase.from('world_levels').delete().in('module_id', staleModuleIds)
+    await supabase.from('world_levels').delete().in('region_id', staleRegionIds)
     await supabase.from('world_regions').delete().in('id', staleRegionIds)
   }
 
-  return { world, pending }
-}
-
-/**
- * Genera con IA el quiz de arena de un módulo y lo engancha a su nivel.
- * Pensado para correr en 2º plano tras la sincronización.
- */
-export async function generateAndAttachModuleQuiz(
-  world: WorldRow,
-  moduleId: string,
-  levelId: string,
-): Promise<void> {
-  const { data: mod } = await supabase
-    .from('modules')
-    .select('title_es, subtitle_es')
-    .eq('id', moduleId)
-    .single()
-  const moduleText = await getModuleContextText(moduleId).catch(() => '')
-
-  const gen = (await postGenerateWorld({
-    mode: 'quiz',
-    moduleTitle: (mod as { title_es?: string })?.title_es ?? '',
-    moduleSubtitle: (mod as { subtitle_es?: string | null })?.subtitle_es ?? '',
-    moduleText,
-  })) as GeneratedQuiz
-
-  const quizId = await insertArenaQuiz(world.campaign_id, world.color, world.bg_type, gen)
-  const { error } = await supabase.from('world_levels').update({ quiz_id: quizId }).eq('id', levelId)
-  if (error) throw error
+  return { world, pendingRegions }
 }
 
 // ─── Mundos standalone (con IA, sin curso) ───────────────────────
 
-/** Genera un mundo completo desde un tema libre (regiones + niveles + quizzes). */
+/** Crea la fila del mundo standalone (sin curso). */
+async function insertStandaloneWorld(opts: {
+  campaignId: string
+  name: string
+  description?: string | null
+  icon?: string
+  bgType?: string
+}): Promise<WorldRow> {
+  const { data, error } = await supabase
+    .from('worlds')
+    .insert({
+      campaign_id: opts.campaignId,
+      course_id: null,
+      name: opts.name,
+      description: opts.description ?? null,
+      icon: opts.icon || '🌍',
+      color: '#00C228',
+      bg_type: normBg(opts.bgType),
+      status: 'draft',
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as WorldRow
+}
+
+/**
+ * Genera un mundo completo desde un tema libre: primero el esqueleto (mundo +
+ * regiones), luego 3-5 niveles con quiz por cada región. Devuelve el id del mundo.
+ */
 export async function generateStandaloneWorldFromTopic(opts: {
   campaignId: string
   topic: string
   regionCount?: number
   bgType?: string
 }): Promise<string> {
-  const gen = (await postGenerateWorld({
+  const outline = (await postGenerateWorld({
     mode: 'world',
     topic: opts.topic,
     regionCount: opts.regionCount,
     bgType: opts.bgType,
-  })) as GeneratedWorld
+  })) as GeneratedWorldOutline
 
-  const bg = normBg(gen.bg_type ?? opts.bgType)
-  const { data: world, error } = await supabase
-    .from('worlds')
-    .insert({
-      campaign_id: opts.campaignId,
-      course_id: null,
-      name: gen.name || opts.topic.slice(0, 60),
-      description: gen.description ?? null,
-      icon: gen.icon || '🌍',
-      color: '#00C228',
-      bg_type: bg,
-      status: 'draft',
-    })
-    .select('*')
-    .single()
-  if (error) throw error
-  const w = world as WorldRow
+  const world = await insertStandaloneWorld({
+    campaignId: opts.campaignId,
+    name: outline.name || opts.topic.slice(0, 60),
+    description: outline.description ?? null,
+    icon: outline.icon,
+    bgType: outline.bg_type ?? opts.bgType,
+  })
 
-  for (let i = 0; i < (gen.regions ?? []).length; i++) {
-    const r = gen.regions[i]
-    const { data: region, error: rErr } = await supabase
+  const regions = outline.regions ?? []
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i]
+    const { data: region, error } = await supabase
       .from('world_regions')
-      .insert({ world_id: w.id, name: r.name, description: r.description ?? null, icon: r.icon || '📍', order_index: i })
+      .insert({
+        world_id: world.id,
+        name: r.name || `Región ${i + 1}`,
+        description: r.description ?? null,
+        icon: (r.icon && r.icon.length <= 2) ? r.icon : '📍',
+        order_index: i,
+      })
       .select('id')
       .single()
-    if (rErr) throw rErr
-
-    let quizId: string | null = null
-    if (r.quiz && (r.quiz.steps?.length ?? 0) > 0) {
-      quizId = await insertArenaQuiz(w.campaign_id, w.color, bg, r.quiz)
+    if (error) throw error
+    try {
+      await generateRegionLevels(world, (region as { id: string }).id, {
+        title: r.name || `Región ${i + 1}`,
+        moduleText: r.subtopic || r.description || r.name || opts.topic,
+      })
+    } catch (e) {
+      // Si falla una región, seguimos; queda sin niveles y se puede reintentar/editar.
+      console.error('Fallo generando niveles de región standalone:', e)
     }
-    await supabase.from('world_levels').insert({
-      world_id: w.id,
-      region_id: (region as { id: string }).id,
-      name: r.level?.name || r.name,
-      description: r.level?.description ?? null,
-      icon: r.level?.icon || '⭐',
-      order_index: i,
-      quiz_id: quizId,
-    })
   }
-  return w.id
+  return world.id
 }
 
-/** Genera un mundo a partir de módulos existentes: una región+nivel+quiz por módulo. */
+/** Genera un mundo a partir de módulos existentes: una región (3-5 niveles) por módulo. */
 export async function generateStandaloneWorldFromModules(opts: {
   campaignId: string
   name: string
   moduleIds: string[]
 }): Promise<string> {
-  const { data: world, error } = await supabase
-    .from('worlds')
-    .insert({
-      campaign_id: opts.campaignId,
-      course_id: null,
-      name: opts.name,
-      icon: '🌍',
-      color: '#00C228',
-      bg_type: 'corporate',
-      status: 'draft',
-    })
-    .select('*')
-    .single()
-  if (error) throw error
-  const w = world as WorldRow
+  const world = await insertStandaloneWorld({
+    campaignId: opts.campaignId,
+    name: opts.name,
+    bgType: 'corporate',
+  })
 
   for (let i = 0; i < opts.moduleIds.length; i++) {
     const moduleId = opts.moduleIds[i]
     const { data: mod } = await supabase
-      .from('modules').select('title_es, subtitle_es, icon').eq('id', moduleId).single()
+      .from('modules').select('title_es, icon').eq('id', moduleId).single()
     const title = (mod as { title_es?: string })?.title_es ?? 'Módulo'
     const icon = (mod as { icon?: string })?.icon
-    const moduleText = await getModuleContextText(moduleId).catch(() => '')
 
-    const { data: region, error: rErr } = await supabase
+    const { data: region, error } = await supabase
       .from('world_regions')
-      .insert({ world_id: w.id, module_id: moduleId, name: title, icon: '📍', order_index: i })
+      .insert({
+        world_id: world.id,
+        module_id: moduleId,
+        name: title,
+        icon: (icon && icon.length <= 2) ? icon : '📍',
+        order_index: i,
+      })
       .select('id')
       .single()
-    if (rErr) throw rErr
-
-    let quizId: string | null = null
+    if (error) throw error
     try {
-      const gen = (await postGenerateWorld({
-        mode: 'quiz', moduleTitle: title, moduleSubtitle: (mod as { subtitle_es?: string | null })?.subtitle_es ?? '', moduleText,
-      })) as GeneratedQuiz
-      quizId = await insertArenaQuiz(w.campaign_id, w.color, w.bg_type, gen)
-    } catch {
-      // Si falla el quiz de un módulo, seguimos; el nivel queda sin quiz.
+      await generateModuleRegionLevels(world, (region as { id: string }).id, moduleId)
+    } catch (e) {
+      console.error('Fallo generando niveles de región (módulo):', moduleId, e)
     }
-
-    await supabase.from('world_levels').insert({
-      world_id: w.id,
-      region_id: (region as { id: string }).id,
-      module_id: moduleId,
-      name: title,
-      icon: (icon && icon.length <= 2) ? icon : '⭐',
-      order_index: i,
-      quiz_id: quizId,
-    })
   }
-  return w.id
+  return world.id
 }

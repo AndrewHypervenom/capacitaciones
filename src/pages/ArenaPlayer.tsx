@@ -91,6 +91,9 @@ function useSFX() {
 }
 
 const OPT_LABELS = ['A','B','C','D']
+// Tamaño de sección (preguntas por ronda). El contenido se genera en niveles de
+// 6 preguntas = 3 secciones de 2.
+const SECTION_SIZE = 2
 
 export default function ArenaPlayer() {
   const navigate = useNavigate()
@@ -251,7 +254,7 @@ export default function ArenaPlayer() {
   const handleNextGroup = useCallback(() => {
     if (!quiz) return
     play('click')
-    const nextStart = (groupIndex + 1) * 3
+    const nextStart = (groupIndex + 1) * SECTION_SIZE
     setGroupIndex(g => g + 1)
     setCurrentQ(nextStart)
     setPlanePos(nextStart)
@@ -293,8 +296,8 @@ export default function ArenaPlayer() {
   const stars    = getStarsFromScore(scorePct, locationState?.minScorePct ?? quiz.min_score_pct)
   const planePct = quiz.steps.length > 1 ? (planePos/(quiz.steps.length-1))*80+8 : 8
 
-  const groupStart       = groupIndex * 3
-  const groupEnd         = Math.min(groupStart + 3, quiz.steps.length)
+  const groupStart       = groupIndex * SECTION_SIZE
+  const groupEnd         = Math.min(groupStart + SECTION_SIZE, quiz.steps.length)
   const groupSteps       = quiz.steps.slice(groupStart, groupEnd)
   const isLastGroup      = groupEnd >= quiz.steps.length
   const allGroupAnswered = groupSteps.every((_,gi) => selected[groupStart + gi] !== undefined)
@@ -468,7 +471,7 @@ export default function ArenaPlayer() {
 
         {/* ══ TARJETAS DE PREGUNTA ══ */}
         <section className="ap-questions" style={{padding:'0 7% 60px'}}>
-          <div className="ap-questions-grid" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:20}}>
+          <div className="ap-questions-grid" style={{display:'grid',gridTemplateColumns:'repeat(2, 1fr)',gap:20}}>
             {groupSteps.map((s,gi) => {
               const i         = groupStart + gi
               const isDone    = selected[i] !== undefined
