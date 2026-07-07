@@ -1,6 +1,13 @@
 {
   "brand": "LearningAI",
   "brand.tagline": "Academia de excelência operacional",
+  "errors": {
+    "boundary": {
+      "title": "Algo deu errado",
+      "description": "Ocorreu um erro ao carregar esta tela. Recarregue a página para continuar.",
+      "reload": "Recarregar"
+    }
+  },
   "update": {
     "title": "Nova versão disponível",
     "description": "Atualize para ver as últimas mudanças do site.",

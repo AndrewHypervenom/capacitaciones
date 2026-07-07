@@ -1,6 +1,13 @@
 {
   "brand": "LearningAI",
   "brand.tagline": "Operational excellence academy",
+  "errors": {
+    "boundary": {
+      "title": "Something went wrong",
+      "description": "There was an error loading this view. Reload the page to continue.",
+      "reload": "Reload"
+    }
+  },
   "update": {
     "title": "New version available",
     "description": "Refresh to get the latest changes.",

@@ -28,6 +28,14 @@ import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 // Admin CMS — lazy loaded (code-split, no se carga para learners)
 const AdminRouter = lazy(() => import('@/admin/AdminRouter'));
 
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-bg">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-text/20 border-t-neon-cyan" />
+    </div>
+  );
+}
+
 function AuthInit() {
   useEffect(() => { initAuth() }, []);
   return null;
@@ -81,7 +89,7 @@ export default function App() {
         <Route
           path="/admin/*"
           element={
-            <Suspense fallback={null}>
+            <Suspense fallback={<RouteFallback />}>
               <AdminRouter />
             </Suspense>
           }
