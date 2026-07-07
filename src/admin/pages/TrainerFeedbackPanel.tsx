@@ -8,6 +8,7 @@ import {
   Code, LayoutTemplate, CheckCircle2, XCircle, Info, MessageSquare, Search,
   SlidersHorizontal, ChevronDown, ArrowDownUp, Clock, Send, Sparkles,
   ClipboardCheck, Award, ChevronRight, GraduationCap, Gamepad2, Video, HelpCircle,
+  ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
@@ -376,7 +377,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
     <div className="flex flex-col h-screen bg-bg text-text overflow-hidden font-sans">
 
       {/* ===== Barra superior con resumen global ===== */}
-      <header className="shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-6 py-4 flex items-center justify-between gap-4">
+      <header className="shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-11 h-11 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center shrink-0">
             <ClipboardCheck className="w-5 h-5 text-green-500" />
@@ -400,7 +401,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ===== Columna Izquierda: bandeja de entregas ===== */}
-        <aside className="w-[360px] xl:w-[400px] shrink-0 border-r border-line flex flex-col h-full bg-bg">
+        <aside className={cn(
+          'w-full md:w-[360px] xl:w-[400px] md:shrink-0 border-r border-line flex-col h-full bg-bg',
+          selectedAttempt ? 'hidden md:flex' : 'flex',
+        )}>
           <div className="p-4 border-b border-line shrink-0 space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted/60" />
@@ -509,10 +513,21 @@ export const TrainerFeedbackPanel: React.FC = () => {
         </aside>
 
         {/* ===== Detalle de la Entrega ===== */}
-        <main className="flex-1 flex flex-col h-full bg-zinc-50 dark:bg-[#111217] overflow-hidden">
+        <main className={cn(
+          'flex-1 flex-col h-full bg-zinc-50 dark:bg-[#111217] overflow-hidden',
+          selectedAttempt ? 'flex' : 'hidden md:flex',
+        )}>
           {selectedAttempt ? (
             <div className="flex flex-col h-full overflow-y-auto custom-scrollbar">
-              <div className="p-8 space-y-6 max-w-4xl w-full mx-auto">
+              {/* Volver a la lista — solo en móvil, donde el detalle ocupa toda la pantalla */}
+              <button
+                onClick={() => setSelectedAttempt(null)}
+                className="md:hidden shrink-0 flex items-center gap-2 px-4 py-3 border-b border-line text-[13px] font-medium text-text-muted hover:text-text transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                {t('admin.trainer_panel.back_to_list', 'Volver a la lista')}
+              </button>
+              <div className="p-4 sm:p-8 space-y-6 max-w-4xl w-full mx-auto">
 
                 {/* Hero del alumno */}
                 <div className="bg-white dark:bg-zinc-900/50 rounded-2xl border border-line shadow-sm p-6">

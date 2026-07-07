@@ -460,6 +460,7 @@
     "nav": {
       "panel": "Painel",
       "ai_usage": "Uso de IA",
+      "chat": "Chat de ajuda",
       "campaigns": "Campanhas",
       "courses": "Cursos",
       "modules": "Módulos",
@@ -478,7 +479,8 @@
       "evaluaciones": "Avaliações",
       "group_people": "Pessoas",
       "group_content": "Conteúdo",
-      "group_challenges": "Desafios e Simulações"
+      "group_challenges": "Desafios e Simulações",
+      "group_ai": "Inteligência Artificial"
     },
     "dashboard": {
       "title": "Painel Admin",
@@ -943,6 +945,7 @@
       "load_err_title": "Não foi possível carregar os envios",
       "all_caught_up": "Tudo em dia!",
       "all_caught_up_desc": "Não há envios pendentes de avaliação.",
+      "back_to_list": "Voltar à lista",
       "type_game": "Jogo",
       "type_quiz": "Quiz",
       "type_video_quiz": "Quiz de vídeo",

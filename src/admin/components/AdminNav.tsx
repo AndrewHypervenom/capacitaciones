@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, LogOut, ArrowLeft, BookOpen, Menu, X, ChevronDown, Trophy } from 'lucide-react'
+import { LayoutDashboard, Users, LogOut, ArrowLeft, BookOpen, Menu, X, ChevronDown, Trophy, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
@@ -48,12 +48,17 @@ export function AdminNav() {
       title: "",
       items: [
         { to: '/admin', label: t('admin.nav.panel', 'Panel'), end: true },
-        // Historial del chat de ayuda: solo superadmin.
-        ...(isSuperAdmin ? [{ to: '/admin/chat', label: t('admin.nav.chat', 'Chat de ayuda'), end: false }] : []),
-        // Panel de uso de IA y costos: solo superadmin.
-        ...(isSuperAdmin ? [{ to: '/admin/ai-usage', label: t('admin.nav.ai_usage', 'Uso de IA'), end: false }] : []),
       ]
     },
+    // Sección de Inteligencia Artificial (chat de ayuda + uso/costos): solo superadmin.
+    ...(isSuperAdmin ? [{
+      title: t('admin.nav.group_ai', 'Inteligencia Artificial'),
+      icon: Sparkles,
+      items: [
+        { to: '/admin/chat', label: t('admin.nav.chat', 'Chat de ayuda'), end: false },
+        { to: '/admin/ai-usage', label: t('admin.nav.ai_usage', 'Uso de IA'), end: false },
+      ]
+    }] : []),
     {
       title: t('admin.nav.group_people', 'Personas'),
       icon: Users,

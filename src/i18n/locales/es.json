@@ -460,6 +460,7 @@
     "nav": {
       "panel": "Panel",
       "ai_usage": "Uso de IA",
+      "chat": "Chat de ayuda",
       "campaigns": "Campañas",
       "courses": "Cursos",
       "modules": "Módulos",
@@ -478,7 +479,8 @@
       "evaluaciones": "Evaluaciones",
       "group_people": "Personas",
       "group_content": "Contenido",
-      "group_challenges": "Retos y Simulaciones"
+      "group_challenges": "Retos y Simulaciones",
+      "group_ai": "Inteligencia Artificial"
     },
     "dashboard": {
       "title": "Panel Admin",
@@ -943,6 +945,7 @@
       "load_err_title": "No se pudieron cargar las entregas",
       "all_caught_up": "¡Todo al día!",
       "all_caught_up_desc": "No hay entregas pendientes por evaluar.",
+      "back_to_list": "Volver a la lista",
       "type_game": "Juego",
       "type_quiz": "Quiz",
       "type_video_quiz": "Quiz de video",

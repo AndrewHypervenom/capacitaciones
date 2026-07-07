@@ -460,6 +460,7 @@
     "nav": {
       "panel": "Dashboard",
       "ai_usage": "AI usage",
+      "chat": "Help chat",
       "campaigns": "Campaigns",
       "courses": "Courses",
       "modules": "Modules",
@@ -478,7 +479,8 @@
       "evaluaciones": "Evaluations",
       "group_people": "People",
       "group_content": "Content",
-      "group_challenges": "Challenges & Simulations"
+      "group_challenges": "Challenges & Simulations",
+      "group_ai": "Artificial Intelligence"
     },
     "dashboard": {
       "title": "Admin Panel",
@@ -943,6 +945,7 @@
       "load_err_title": "Could not load submissions",
       "all_caught_up": "All caught up!",
       "all_caught_up_desc": "There are no submissions pending evaluation.",
+      "back_to_list": "Back to list",
       "type_game": "Game",
       "type_quiz": "Quiz",
       "type_video_quiz": "Video quiz",
