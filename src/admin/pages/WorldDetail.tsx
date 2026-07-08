@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical } from 'lucide-react'
+import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { toast } from '@/stores/toastStore'
+import { generateLevelsForRegion } from '@/services/worlds.service'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -13,7 +15,7 @@ interface World {
   bg_type: string; status: string
   sound_theme: string; transition_type: string; character_emoji: string
 }
-interface Region { id: string; name: string; description: string; icon: string; order_index: number; world_id: string }
+interface Region { id: string; name: string; description: string; icon: string; order_index: number; world_id: string; module_id: string | null }
 interface Level  { id: string; name: string; description: string; icon: string; order_index: number; region_id: string; world_id: string; quiz_id: string | null; min_score_pct: number | null }
 interface Quiz   { id: string; title: string }
 
@@ -50,6 +52,12 @@ export default function WorldDetail() {
   const [levelForm, setLevelForm] = useState({ name:'', description:'', icon:'⭐', order_index:0, quiz_id:'', min_score_pct: null as number | null })
   const [savingLevel, setSavingLevel] = useState(false)
   const [levelScoreError, setLevelScoreError] = useState<string | null>(null)
+
+  // Generar niveles con IA (por región)
+  const [aiRegion, setAiRegion] = useState<Region | null>(null)
+  const [aiLevels, setAiLevels] = useState<number | ''>('')
+  const [aiQuestions, setAiQuestions] = useState<number | ''>('')
+  const [aiGenerating, setAiGenerating] = useState(false)
 
   // Reset progress
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -177,6 +185,47 @@ export default function WorldDetail() {
     if (!ok) return
     await supabase.from('world_levels').delete().eq('id', l.id)
     setLevels(prev => prev.filter(x => x.id !== l.id))
+  }
+
+  /* ── Generar niveles con IA (por región) ── */
+  const openAiGen = (region: Region) => {
+    setAiRegion(region)
+    setAiLevels(3)
+    setAiQuestions(6)
+  }
+  const runAiGen = async () => {
+    if (!world || !aiRegion) return
+    setAiGenerating(true)
+    try {
+      await generateLevelsForRegion({
+        worldId: world.id,
+        regionId: aiRegion.id,
+        regionName: aiRegion.name,
+        regionDescription: aiRegion.description,
+        moduleId: aiRegion.module_id,
+        levelCount: aiLevels === '' ? 3 : Number(aiLevels),
+        questionsPerLevel: aiQuestions === '' ? 6 : Number(aiQuestions),
+      })
+      // Recarga niveles + quizzes recién generados y expande la región.
+      const [{ data: lData }, { data: qData }] = await Promise.all([
+        supabase.from('world_levels').select('*').eq('world_id', world.id).order('order_index'),
+        (() => {
+          const q = supabase.from('arena_quizzes').select('id, title').order('created_at')
+          if (world.campaign_id) q.eq('campaign_id', world.campaign_id)
+          return q
+        })(),
+      ])
+      setLevels((lData ?? []) as Level[])
+      setQuizzes((qData ?? []) as Quiz[])
+      setExpanded(prev => ({ ...prev, [aiRegion.id]: true }))
+      toast.success(i18n.t('admin.worlds.ai_gen_ok'))
+      setAiRegion(null)
+    } catch (e) {
+      console.error('Error generando niveles con IA:', e)
+      toast.error(i18n.t('admin.worlds.ai_gen_error'), (e as Error).message)
+    } finally {
+      setAiGenerating(false)
+    }
   }
 
   const resetProgress = async () => {
@@ -357,6 +406,14 @@ export default function WorldDetail() {
                       {region.description && <p className="text-[12px] text-text-muted truncate mt-0.5">{region.description}</p>}
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button onClick={e => { e.stopPropagation(); openAiGen(region) }}
+                        title={i18n.t('admin.worlds.ai_gen_levels')}
+                        className="flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-lg text-[11px] font-medium transition-colors"
+                        style={{ background:'rgba(139,92,246,0.12)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.25)' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.20)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.12)'}>
+                        <Sparkles className="h-3.5 w-3.5"/> <span className="hidden sm:inline">IA</span>
+                      </button>
                       <button onClick={e => { e.stopPropagation(); openEditRegion(region) }}
                         className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle">
                         <Pencil className="h-4 w-4"/>
@@ -375,11 +432,18 @@ export default function WorldDetail() {
                       {regionLevels.length === 0 ? (
                         <div className="px-5 py-6 text-center">
                           <div className="text-[12px] text-text-muted mb-3">{i18n.t('admin.worlds.no_levels_hint')}</div>
-                          <button onClick={() => openNewLevel(region.id)}
-                            className="flex items-center justify-center min-h-[44px] text-[12px] font-medium px-3 py-1.5 rounded-lg"
-                            style={{ background:`${tc}12`, color:tc, border:`1px solid ${tc}25` }}>
-                            + Agregar nivel
-                          </button>
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            <button onClick={() => openAiGen(region)}
+                              className="flex items-center justify-center gap-1.5 min-h-[44px] text-[12px] font-medium px-3 py-1.5 rounded-lg"
+                              style={{ background:'rgba(139,92,246,0.12)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.25)' }}>
+                              <Sparkles className="h-3.5 w-3.5"/> {i18n.t('admin.worlds.ai_gen_levels')}
+                            </button>
+                            <button onClick={() => openNewLevel(region.id)}
+                              className="flex items-center justify-center min-h-[44px] text-[12px] font-medium px-3 py-1.5 rounded-lg"
+                              style={{ background:`${tc}12`, color:tc, border:`1px solid ${tc}25` }}>
+                              + Agregar nivel
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div>
@@ -570,6 +634,64 @@ export default function WorldDetail() {
               <button onClick={saveLevel} disabled={savingLevel} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
                 style={{ background:'rgba(0,194,40,0.14)', color:'#00C228', border:'1px solid rgba(0,194,40,0.28)' }}>
                 {savingLevel ? 'Guardando…' : editingLevel ? 'Guardar' : 'Crear nivel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Generar niveles con IA (modal) ── */}
+      {aiRegion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget && !aiGenerating) setAiRegion(null) }}>
+          <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
+              <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
+                <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
+                {i18n.t('admin.worlds.ai_gen_title')}
+              </h2>
+              <button onClick={() => !aiGenerating && setAiRegion(null)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+                <X className="h-4 w-4"/>
+              </button>
+            </div>
+            <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
+              <div className="flex items-center gap-3 rounded-xl bg-bg border border-line px-3.5 py-3">
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center text-[18px] shrink-0" style={{ background:`${tc}15` }}>{aiRegion.icon}</div>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-text truncate">{aiRegion.name}</div>
+                  {aiRegion.description && <div className="text-[11px] text-text-muted truncate">{aiRegion.description}</div>}
+                </div>
+              </div>
+              <p className="text-[12px] text-text-muted">{i18n.t('admin.worlds.ai_gen_desc')}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
+                  <input type="number" min={1} max={10} value={aiLevels}
+                    onChange={e => setAiLevels(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
+                    placeholder={i18n.t('admin.worlds.gen_levels_ph')}
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                </div>
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_questions_label')}</label>
+                  <input type="number" min={1} max={10} value={aiQuestions}
+                    onChange={e => setAiQuestions(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
+                    placeholder={i18n.t('admin.worlds.gen_questions_ph')}
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                </div>
+              </div>
+              <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_scope_hint')}</p>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
+              <button onClick={() => !aiGenerating && setAiRegion(null)} disabled={aiGenerating}
+                className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors disabled:opacity-50">
+                {i18n.t('confirm.cancel')}
+              </button>
+              <button onClick={runAiGen} disabled={aiGenerating}
+                className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
+                style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
+                {aiGenerating
+                  ? <><Loader2 className="h-4 w-4 animate-spin"/> {i18n.t('admin.worlds.ai_gen_generating')}</>
+                  : <><Sparkles className="h-4 w-4"/> {i18n.t('admin.worlds.ai_gen_submit')}</>}
               </button>
             </div>
           </div>

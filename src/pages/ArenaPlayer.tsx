@@ -91,9 +91,9 @@ function useSFX() {
 }
 
 const OPT_LABELS = ['A','B','C','D']
-// Tamaño de sección (preguntas por ronda). El contenido se genera en niveles de
-// 6 preguntas = 3 secciones de 2.
-const SECTION_SIZE = 2
+// Tamaño de sección (preguntas por ronda). Por defecto los niveles tienen
+// 6 preguntas = 2 secciones de 3.
+const SECTION_SIZE = 3
 
 export default function ArenaPlayer() {
   const navigate = useNavigate()

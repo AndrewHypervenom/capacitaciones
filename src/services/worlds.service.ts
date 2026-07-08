@@ -162,9 +162,8 @@ export async function generateRegionLevelsFlexible(
   opts: WorldGenOptions = {},
 ): Promise<void> {
   const levelCount = clampInt(opts.levelCount, 1, 10, 3)
-  const questionsPerLevel = opts.questionsPerLevel
-    ? clampInt(opts.questionsPerLevel, 1, 10, 3)
-    : undefined
+  // Sin valor → 6 preguntas por nivel (2 secciones de 3). Ya no "lo decide la IA".
+  const questionsPerLevel = clampInt(opts.questionsPerLevel, 1, 10, 6)
 
   // 1. Esqueleto de niveles (barato, una sola llamada).
   const outline = (await postGenerateWorld({
@@ -288,6 +287,46 @@ export async function generateModuleRegionLevels(
     subtitle: (mod as { subtitle_es?: string | null })?.subtitle_es ?? '',
     moduleText,
   }, opts)
+}
+
+/**
+ * Genera con IA los niveles de una región YA existente (usado desde el detalle
+ * del mundo). Reporta el progreso en el indicador global. Si la región refleja
+ * un módulo (`moduleId`), toma el contenido del módulo; si no, usa el nombre y la
+ * descripción de la región como fuente.
+ */
+export async function generateLevelsForRegion(opts: {
+  worldId: string
+  regionId: string
+  regionName: string
+  regionDescription?: string | null
+  moduleId?: string | null
+  levelCount?: number
+  questionsPerLevel?: number
+}): Promise<void> {
+  const { data: w } = await supabase.from('worlds').select('*').eq('id', opts.worldId).single()
+  if (!w) throw new Error('Mundo no encontrado')
+  const world = w as WorldRow
+  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel }
+
+  const taskId = bgTask.start(
+    i18n.t('worldgen.world_title', { name: opts.regionName }),
+    i18n.t('worldgen.outline'),
+  )
+  try {
+    if (opts.moduleId) {
+      await generateModuleRegionLevels(world, opts.regionId, opts.moduleId, genOpts)
+    } else {
+      await generateRegionLevelsFlexible(world, opts.regionId, {
+        title: opts.regionName,
+        moduleText: [opts.regionName, opts.regionDescription].filter(Boolean).join('. '),
+      }, genOpts)
+    }
+    bgTask.succeed(taskId, i18n.t('worldgen.done', { n: 1 }))
+  } catch (e) {
+    bgTask.fail(taskId, i18n.t('worldgen.error'))
+    throw e
+  }
 }
 
 // ─── Mundo de un curso ───────────────────────────────────────────

@@ -123,9 +123,9 @@ export default function Worlds() {
   const openGenerator = (prefill?: { campaignId?: string; name?: string }) => {
     setGenTab('topic')
     setGenTopic('')
-    setGenRegionCount('')
-    setGenLevelCount('')
-    setGenQuestionCount('')
+    setGenRegionCount(3)
+    setGenLevelCount(3)
+    setGenQuestionCount(6)
     setGenBg('corporate')
     setGenName(prefill?.name ?? '')
     setGenModuleIds([])
@@ -166,9 +166,9 @@ export default function Worlds() {
         newId = await generateStandaloneWorldFromTopic({
           campaignId: genCampaign,
           topic: genTopic.trim(),
-          regionCount: genRegionCount === '' ? undefined : Number(genRegionCount),
-          levelCount: genLevelCount === '' ? undefined : Number(genLevelCount),
-          questionsPerLevel: genQuestionCount === '' ? undefined : Number(genQuestionCount),
+          regionCount: genRegionCount === '' ? 3 : Number(genRegionCount),
+          levelCount: genLevelCount === '' ? 3 : Number(genLevelCount),
+          questionsPerLevel: genQuestionCount === '' ? 6 : Number(genQuestionCount),
           bgType: genBg,
         })
       } else {
@@ -177,8 +177,8 @@ export default function Worlds() {
           campaignId: genCampaign,
           name: genName.trim() || t('admin.worlds.gen_default_name'),
           moduleIds: genModuleIds,
-          levelCount: genLevelCount === '' ? undefined : Number(genLevelCount),
-          questionsPerLevel: genQuestionCount === '' ? undefined : Number(genQuestionCount),
+          levelCount: genLevelCount === '' ? 3 : Number(genLevelCount),
+          questionsPerLevel: genQuestionCount === '' ? 6 : Number(genQuestionCount),
         })
       }
       toast.success(t('admin.worlds.gen_ok'))
