@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, Loader2 } from 'lucide-react'
+import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, Loader2, BookOpen, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -11,10 +11,11 @@ import i18n from '@/i18n'
 
 interface World {
   id: string; name: string; description: string | null
-  campaign_id: string | null; icon: string; color: string
+  campaign_id: string | null; course_id: string | null; icon: string; color: string
   bg_type: string; status: string
   sound_theme: string; transition_type: string; character_emoji: string
 }
+interface CourseModule { id: string; title_es: string; icon: string | null }
 interface Region { id: string; name: string; description: string; icon: string; order_index: number; world_id: string; module_id: string | null }
 interface Level  { id: string; name: string; description: string; icon: string; order_index: number; region_id: string; world_id: string; quiz_id: string | null; min_score_pct: number | null }
 interface Quiz   { id: string; title: string }
@@ -39,10 +40,15 @@ export default function WorldDetail() {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string,boolean>>({})
 
+  // Curso ligado (si el mundo tiene course_id) y sus módulos, para basar regiones.
+  const [linkedCourse, setLinkedCourse] = useState<{ id: string; title_es: string } | null>(null)
+  const [courseModules, setCourseModules] = useState<CourseModule[]>([])
+
   // Region modal
   const [regionModal, setRegionModal] = useState(false)
   const [editingRegion, setEditingRegion] = useState<Region | null>(null)
   const [regionForm, setRegionForm] = useState({ name:'', description:'', icon:'📍', order_index:0 })
+  const [regionModuleId, setRegionModuleId] = useState<string>('') // '' = región personalizada (sin módulo)
   const [savingRegion, setSavingRegion] = useState(false)
 
   // Level modal
@@ -83,6 +89,13 @@ export default function WorldDetail() {
         if (wData.campaign_id) qQuery.eq('campaign_id', wData.campaign_id)
         const { data: qData } = await qQuery
         setQuizzes((qData ?? []) as Quiz[])
+        // Curso ligado + sus módulos (para basar regiones y anclar la IA).
+        if (wData.course_id) {
+          const { data: cData } = await supabase.from('courses').select('id, title_es').eq('id', wData.course_id).maybeSingle()
+          setLinkedCourse((cData as { id: string; title_es: string } | null) ?? null)
+          const { data: mData } = await supabase.from('modules').select('id, title_es, icon').eq('course_id', wData.course_id).order('course_sort_order')
+          setCourseModules((mData ?? []) as CourseModule[])
+        }
       }
       const { data: rData } = await supabase.from('world_regions').select('*').eq('world_id', id).order('order_index')
       const regionList = (rData ?? []) as Region[]
@@ -109,17 +122,30 @@ export default function WorldDetail() {
   const openNewRegion = () => {
     setEditingRegion(null)
     setRegionForm({ name:'', description:'', icon:'📍', order_index: regions.length })
+    setRegionModuleId('')
     setRegionModal(true)
   }
   const openEditRegion = (r: Region) => {
     setEditingRegion(r)
     setRegionForm({ name:r.name, description:r.description, icon:r.icon, order_index:r.order_index })
+    setRegionModuleId(r.module_id ?? '')
     setRegionModal(true)
+  }
+  // Al elegir un módulo del curso, prellena nombre/ícono para dejar clara la
+  // correspondencia región ↔ módulo (fuente de la IA).
+  const pickRegionModule = (moduleId: string) => {
+    setRegionModuleId(moduleId)
+    const m = courseModules.find(x => x.id === moduleId)
+    if (m) setRegionForm(f => ({
+      ...f,
+      name: f.name.trim() ? f.name : m.title_es,
+      icon: (m.icon && m.icon.length <= 2) ? m.icon : f.icon,
+    }))
   }
   const saveRegion = async () => {
     if (!regionForm.name.trim() || !world) return
     setSavingRegion(true)
-    const payload = { name:regionForm.name.trim(), description:regionForm.description.trim(), icon:regionForm.icon||'📍', order_index:regionForm.order_index, world_id:world.id }
+    const payload = { name:regionForm.name.trim(), description:regionForm.description.trim(), icon:regionForm.icon||'📍', order_index:regionForm.order_index, world_id:world.id, module_id: regionModuleId || null }
     if (editingRegion) {
       const { data, error } = await supabase.from('world_regions').update(payload).eq('id', editingRegion.id).select().single()
       if (!error && data) setRegions(prev => prev.map(r => r.id === editingRegion.id ? data as Region : r))
@@ -301,6 +327,22 @@ export default function WorldDetail() {
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${world.status==='published' ? 'text-[#00C228]' : 'text-text-muted'}`} style={{ background: world.status==='published' ? 'rgba(0,194,40,0.1)' : 'rgb(var(--glass-border) / 0.06)' }}>
                 {world.status === 'published' ? 'Publicado' : 'Borrador'}
               </span>
+              {/* Vínculo con el curso: la fuente de conocimiento del mundo. */}
+              {linkedCourse ? (
+                <button
+                  onClick={() => navigate(`/admin/courses/${linkedCourse.id}`)}
+                  className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors"
+                  style={{ background:'rgba(99,102,241,0.12)', color:'#6366F1', border:'1px solid rgba(99,102,241,0.25)' }}
+                  title={i18n.t('admin.worlds.go_to_course')}>
+                  <BookOpen className="h-3 w-3" /> {i18n.t('admin.worlds.linked_course')}: {linkedCourse.title_es}
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium"
+                  style={{ background:'rgba(245,158,11,0.10)', color:'#f59e0b', border:'1px solid rgba(245,158,11,0.25)' }}
+                  title={i18n.t('admin.worlds.not_linked_hint')}>
+                  <AlertTriangle className="h-3 w-3" /> {i18n.t('admin.worlds.not_linked')}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex flex-row sm:flex-col gap-2">
@@ -359,6 +401,19 @@ export default function WorldDetail() {
           </div>
           <p className="text-[11px] text-text-muted mt-3 opacity-60">{i18n.t('admin.worlds.auto_save_hint')}</p>
         </div>
+
+        {/* ── Aviso de vínculo con el curso ── */}
+        {linkedCourse ? (
+          <div className="flex items-start gap-2.5 mb-4 rounded-xl px-3.5 py-3" style={{ background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.20)' }}>
+            <BookOpen className="h-4 w-4 shrink-0 mt-0.5" style={{ color:'#6366F1' }} />
+            <p className="text-[12px] text-text-muted leading-relaxed">{i18n.t('admin.worlds.course_linked_banner')}</p>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2.5 mb-4 rounded-xl px-3.5 py-3" style={{ background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.20)' }}>
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color:'#f59e0b' }} />
+            <p className="text-[12px] text-text-muted leading-relaxed">{i18n.t('admin.worlds.not_linked_banner')}</p>
+          </div>
+        )}
 
         {/* ── Regions ── */}
         <div className="flex items-center justify-between gap-3 mb-4">
@@ -528,6 +583,26 @@ export default function WorldDetail() {
               </button>
             </div>
             <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
+              {/* Basar la región en un módulo del curso → la IA genera sus niveles
+                  anclada al contenido del módulo (sin inventar). */}
+              {linkedCourse && (
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.region_from_module')}</label>
+                  <div className="relative">
+                    <select value={regionModuleId} onChange={e => pickRegionModule(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer min-h-[44px]">
+                      <option value="">{i18n.t('admin.worlds.region_custom')}</option>
+                      {courseModules
+                        .filter(m => m.id === regionModuleId || !regions.some(r => r.module_id === m.id))
+                        .map(m => <option key={m.id} value={m.id}>{m.title_es}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none"/>
+                  </div>
+                  <p className="text-[11px] text-text-muted mt-1">
+                    {regionModuleId ? i18n.t('admin.worlds.region_module_hint') : i18n.t('admin.worlds.region_custom_hint')}
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.name_required')}</label>
                 <input required value={regionForm.name} onChange={e => setRegionForm(f => ({...f,name:e.target.value}))}
