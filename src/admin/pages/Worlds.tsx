@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Plus, X, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Map, Sparkles, Loader2,
   Swords, Check,
@@ -79,6 +79,7 @@ function normalizeRow(row: Record<string, unknown>): World {
 
 export default function Worlds() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [worlds, setWorlds] = useState<World[]>([])
@@ -110,6 +111,8 @@ export default function Worlds() {
   const [genCampaign, setGenCampaign] = useState('')
   const [genTopic, setGenTopic] = useState('')
   const [genRegionCount, setGenRegionCount] = useState<number | ''>('')
+  const [genLevelCount, setGenLevelCount] = useState<number | ''>('')
+  const [genQuestionCount, setGenQuestionCount] = useState<number | ''>('')
   const [genBg, setGenBg] = useState<string>('corporate')
   const [genName, setGenName] = useState('')
   const [genModules, setGenModules] = useState<DbModuleRow[]>([])
@@ -117,16 +120,29 @@ export default function Worlds() {
   const [genModulesLoading, setGenModulesLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
 
-  const openGenerator = () => {
+  const openGenerator = (prefill?: { campaignId?: string; name?: string }) => {
     setGenTab('topic')
     setGenTopic('')
     setGenRegionCount('')
+    setGenLevelCount('')
+    setGenQuestionCount('')
     setGenBg('corporate')
-    setGenName('')
+    setGenName(prefill?.name ?? '')
     setGenModuleIds([])
-    setGenCampaign(scopedToCampaign ? (campaignId ?? '') : '')
+    setGenCampaign(prefill?.campaignId || (scopedToCampaign ? (campaignId ?? '') : ''))
     setGenOpen(true)
   }
+
+  // Llegada desde el editor de un curso ("Configurar mundo"): abre el generador
+  // con la campaña (y nombre) del curso ya elegidos. Nada se crea automático.
+  useEffect(() => {
+    const st = location.state as { generateFor?: { campaignId?: string; name?: string } } | null
+    if (st?.generateFor) {
+      openGenerator(st.generateFor)
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state])
 
   useEffect(() => {
     if (!genOpen || genTab !== 'modules' || !genCampaign) return
@@ -151,6 +167,8 @@ export default function Worlds() {
           campaignId: genCampaign,
           topic: genTopic.trim(),
           regionCount: genRegionCount === '' ? undefined : Number(genRegionCount),
+          levelCount: genLevelCount === '' ? undefined : Number(genLevelCount),
+          questionsPerLevel: genQuestionCount === '' ? undefined : Number(genQuestionCount),
           bgType: genBg,
         })
       } else {
@@ -159,6 +177,8 @@ export default function Worlds() {
           campaignId: genCampaign,
           name: genName.trim() || t('admin.worlds.gen_default_name'),
           moduleIds: genModuleIds,
+          levelCount: genLevelCount === '' ? undefined : Number(genLevelCount),
+          questionsPerLevel: genQuestionCount === '' ? undefined : Number(genQuestionCount),
         })
       }
       toast.success(t('admin.worlds.gen_ok'))
@@ -379,6 +399,33 @@ export default function Worlds() {
   const filtered = worlds.filter(w => filterCampaign === 'all' || w.campaign_id === filterCampaign)
   const currentWorldCampaign = form.campaign_id || (scopedToCampaign ? (campaignId ?? '') : '')
 
+  // Controles de alcance del contenido generado, compartidos por ambas pestañas
+  // del generador: cuántos niveles por región y cuántas preguntas por nivel.
+  const levelQuestionInputs = (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
+        <input
+          type="number" min={1} max={10}
+          value={genLevelCount}
+          onChange={e => setGenLevelCount(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
+          placeholder={i18n.t('admin.worlds.gen_levels_ph')}
+          className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"
+        />
+      </div>
+      <div>
+        <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_questions_label')}</label>
+        <input
+          type="number" min={1} max={10}
+          value={genQuestionCount}
+          onChange={e => setGenQuestionCount(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
+          placeholder={i18n.t('admin.worlds.gen_questions_ph')}
+          className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"
+        />
+      </div>
+    </div>
+  )
+
   if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
@@ -413,7 +460,7 @@ export default function Worlds() {
           <h1 className="text-[20px] sm:text-[24px] font-bold text-text">{i18n.t('admin.worlds.title')}</h1>
           <div className="flex items-center gap-2">
             <button
-              onClick={openGenerator}
+              onClick={() => openGenerator()}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
               style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6', border: '1px solid rgba(139,92,246,0.25)' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.20)' }}
@@ -937,6 +984,8 @@ export default function Worlds() {
                       </div>
                     </div>
                   </div>
+                  {levelQuestionInputs}
+                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_scope_hint')}</p>
                   <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_topic_hint')}</p>
                 </>
               ) : (
@@ -985,6 +1034,8 @@ export default function Worlds() {
                       </div>
                     )}
                   </div>
+                  {levelQuestionInputs}
+                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_scope_hint')}</p>
                   <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_modules_hint')}</p>
                 </>
               )}

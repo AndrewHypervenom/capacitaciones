@@ -16,10 +16,6 @@ import {
   type AdminCourse,
   type ShareableCourse,
 } from '@/services/courses.service'
-import {
-  syncCourseWorldById,
-  generatePendingRegionLevels,
-} from '@/services/worlds.service'
 import { generateModuleOutline, generateModuleSection, type GeneratedModule } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
 import {
@@ -76,14 +72,10 @@ export default function CourseList() {
   const [aiProgress, setAiProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
   const [aiBusy, setAiBusy] = useState(false)
   const [aiStepMsg, setAiStepMsg] = useState<string | null>(null)
-  // Opt-in: generar el mundo gamificado con IA (apagado por defecto para no gastar
-  // IA en cursos que no lo necesitan).
-  const [aiWithWorld, setAiWithWorld] = useState(false)
 
   const openAi = () => {
     setAiTitle(''); setAiDoc(null); setAiReadingName(''); setAiStepMsg(null)
     setAiProgress({ stage: 'reading', ratio: 0 })
-    setAiWithWorld(false)
     setShowAi(true)
   }
 
@@ -152,14 +144,9 @@ export default function CourseList() {
       const moduleId = await saveGeneratedModule(selectedCampaignId, generated, aiDoc.images)
       await addModuleToCourse(course.id, moduleId, 1)
 
-      // 4) Opcional: generar el mundo gamificado (región + 2-3 niveles con quiz corto).
-      //    Solo si el usuario lo pidió, para no gastar IA de más. El progreso
-      //    y el resultado se ven también en el indicador global de procesos.
-      if (aiWithWorld) {
-        setAiStepMsg(t('admin.courses.ai_step_world'))
-        const { world, pendingRegions } = await syncCourseWorldById(course.id, { createIfMissing: true })
-        if (world) await generatePendingRegionLevels(world, pendingRegions)
-      }
+      // El mundo (gamificación) NO se crea acá: es opcional y se arma aparte,
+      // en la sección Mundos, con la cantidad de regiones/niveles/preguntas que
+      // elija el capacitador. Crear el curso solo crea el curso y su módulo.
 
       invalidateModulesCache()
       toast.success(t('admin.courses.ai_created_ok'))
@@ -711,31 +698,6 @@ export default function CourseList() {
               </button>
             )}
             <input ref={aiFileRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleAiFile} />
-
-            {/* Opción: generar el mundo gamificado con IA */}
-            <button
-              type="button"
-              onClick={() => !aiBusy && setAiWithWorld((v) => !v)}
-              disabled={aiBusy}
-              className="w-full flex items-start gap-3 mb-4 px-3.5 py-3 rounded-xl border text-left transition-colors disabled:opacity-60"
-              style={aiWithWorld
-                ? { background: 'rgba(139,92,246,0.08)', borderColor: 'rgba(139,92,246,0.35)' }
-                : { background: 'transparent', borderColor: 'rgb(var(--line))' }}
-            >
-              <span
-                className="mt-0.5 h-5 w-9 rounded-full shrink-0 relative transition-colors"
-                style={{ background: aiWithWorld ? '#8B5CF6' : 'rgb(var(--subtle))' }}
-              >
-                <span
-                  className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
-                  style={{ left: aiWithWorld ? '18px' : '2px' }}
-                />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[12.5px] font-medium text-text">{t('admin.courses.ai_world_toggle')}</span>
-                <span className="block text-[11px] text-text-muted leading-relaxed">{t('admin.courses.ai_world_toggle_hint')}</span>
-              </span>
-            </button>
 
             {/* Estado de generación */}
             {aiBusy && aiStepMsg && (

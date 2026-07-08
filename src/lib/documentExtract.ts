@@ -5,6 +5,8 @@ export interface ExtractedImage {
   mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
   /** Base64 puro, sin el prefijo `data:...;base64,`. */
   dataBase64: string
+  /** Página del documento (1-based) donde apareció la figura. Ancla la captura a su paso. */
+  page?: number
 }
 
 export interface ExtractedDocument {
@@ -40,6 +42,8 @@ const MIN_FIGURE_DIM = 160 // descarta logos/íconos diminutos
 const FIGURE_MAX_DIM = 1100 // techo de resolución de figuras (controla peso de la petición)
 const PDF_RENDER_MAX_DIM = 1500
 const PDF_JPEG_QUALITY = 0.72
+// Modo manual: tope de páginas a rasterizar como contexto de layout (captura+paso juntos).
+const MANUAL_PAGE_CAP = 24
 const FIGURE_JPEG_QUALITY = 0.82
 const MIN_EMBEDDED_IMAGE_B64 = 2000 // descarta íconos/viñetas diminutas (Word)
 
@@ -252,23 +256,27 @@ async function extractPdfFigures(
     return out
   }
 
+  // `mapWithConcurrency` preserva el orden de páginas, y dentro de cada página el
+  // orden de pintado, así que las figuras quedan en ORDEN DE LECTURA. Eso es clave
+  // para anclar cada captura a su paso en un manual paso a paso.
   const perPage = await mapWithConcurrency(pageNums, FIGURE_CONCURRENCY, async (p) => {
     // Toda la página está acotada: si algo se traba, se descarta y seguimos.
     const res = await withTimeout(figuresForPage(p), PAGE_TIMEOUT_MS, [] as string[])
     onPageDone?.()
-    return res
+    return res.map((base64) => ({ base64, page: p }))
   })
 
   // Dedup global (una misma figura puede repetirse en varias páginas) y tope final.
+  // Conservamos la página de la PRIMERA aparición para anclar la captura a su paso.
   const figures: ExtractedImage[] = []
   const seen = new Set<string>()
   for (const list of perPage) {
-    for (const base64 of list) {
+    for (const { base64, page } of list) {
       if (figures.length >= MAX_IMAGES) break
       const sig = `${base64.length}:${base64.slice(0, 48)}`
       if (seen.has(sig)) continue
       seen.add(sig)
-      figures.push({ mediaType: 'image/jpeg', dataBase64: base64 })
+      figures.push({ mediaType: 'image/jpeg', dataBase64: base64, page })
     }
   }
   return figures
@@ -299,7 +307,11 @@ async function renderPdfPage(page: import('pdfjs-dist').PDFPageProxy): Promise<s
  * Procesa un PDF: extrae el texto, las figuras embebidas (insertables) y, solo si el PDF
  * no tiene texto (escaneado), renderiza las páginas como imágenes de contexto para la visión.
  */
-async function parsePdf(buffer: ArrayBuffer, onProgress?: ExtractProgressFn): Promise<{
+async function parsePdf(
+  buffer: ArrayBuffer,
+  onProgress?: ExtractProgressFn,
+  manualMode = false,
+): Promise<{
   text: string
   figures: ExtractedImage[]
   pageImages: ExtractedImage[]
@@ -347,18 +359,23 @@ async function parsePdf(buffer: ArrayBuffer, onProgress?: ExtractProgressFn): Pr
   ])
   const text = pagesText.filter(Boolean).join('\n\n')
 
-  // Solo para PDFs escaneados (sin texto): renderizamos páginas para que la IA pueda leerlas.
+  // Renderizamos páginas completas como contexto visual cuando:
+  //  - el PDF es escaneado (sin texto): única forma de que la IA lo "lea", o
+  //  - modo manual: aunque haya texto, la IA necesita ver el layout de cada página
+  //    (texto + captura juntos) para asociar cada captura con su paso exacto.
   const pageImages: ExtractedImage[] = []
-  if (!text) {
-    const maxPages = Math.min(pdf.numPages, MAX_IMAGES)
+  if (!text || manualMode) {
+    onProgress?.({ stage: 'images', ratio: 0.9 })
+    const cap = manualMode ? MANUAL_PAGE_CAP : MAX_IMAGES
+    const maxPages = Math.min(pdf.numPages, cap)
     const nums = Array.from({ length: maxPages }, (_, i) => i + 1)
     const rendered = await mapWithConcurrency(nums, FIGURE_CONCURRENCY, async (n) => {
       const page = await pdf.getPage(n)
       return renderPdfPage(page)
     })
-    for (const base64 of rendered) {
-      if (base64) pageImages.push({ mediaType: 'image/jpeg', dataBase64: base64 })
-    }
+    rendered.forEach((base64, i) => {
+      if (base64) pageImages.push({ mediaType: 'image/jpeg', dataBase64: base64, page: i + 1 })
+    })
   }
 
   return { text, figures, pageImages }
@@ -389,6 +406,83 @@ async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]>
   return images
 }
 
+// ─── Recorte de capturas (modo manual, PDF escaneado) ─────────
+
+/** Recuadro de una captura dentro de una página, en porcentaje (0-100). */
+export interface CaptureBox {
+  x: number; y: number; w: number; h: number
+}
+/** Detección de capturas por página, tal como la devuelve la IA (`detectCaptures`). */
+export interface CaptureDetection {
+  pages?: { page: number; captures?: CaptureBox[] }[]
+}
+
+function loadImageEl(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen para recortar'))
+    img.src = src
+  })
+}
+
+const CROP_PAD_PCT = 1.5 // margen extra alrededor del recuadro, para no cortar la captura
+
+/** Recorta una región (en %) de una imagen de página y la devuelve como JPEG base64. */
+async function cropRegion(pageImg: ExtractedImage, box: CaptureBox): Promise<ExtractedImage | null> {
+  const img = await loadImageEl(`data:${pageImg.mediaType};base64,${pageImg.dataBase64}`)
+  const W = img.naturalWidth, H = img.naturalHeight
+  if (!W || !H) return null
+
+  const pct = (v: number) => Math.max(0, Math.min(100, v)) / 100
+  const x0 = pct(box.x - CROP_PAD_PCT) * W
+  const y0 = pct(box.y - CROP_PAD_PCT) * H
+  const x1 = pct(box.x + box.w + CROP_PAD_PCT) * W
+  const y1 = pct(box.y + box.h + CROP_PAD_PCT) * H
+  const cw = Math.round(x1 - x0)
+  const ch = Math.round(y1 - y0)
+  // Descarta recuadros ínfimos (ruido de detección).
+  if (cw < MIN_FIGURE_DIM * 0.6 || ch < MIN_FIGURE_DIM * 0.4) return null
+
+  const canvas = document.createElement('canvas')
+  canvas.width = cw
+  canvas.height = ch
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.drawImage(img, Math.round(x0), Math.round(y0), cw, ch, 0, 0, cw, ch)
+  const base64 = canvas.toDataURL('image/jpeg', FIGURE_JPEG_QUALITY).split(',')[1] ?? null
+  canvas.width = 0
+  canvas.height = 0
+  if (!base64) return null
+  return { mediaType: 'image/jpeg', dataBase64: base64, page: pageImg.page }
+}
+
+/**
+ * A partir de las páginas renderizadas y la detección de la IA, recorta cada captura
+ * relevante y devuelve las figuras insertables (en orden de página). El índice `page`
+ * de la detección refiere a la POSICIÓN de la página en `pages`.
+ */
+export async function cropCaptures(
+  pages: ExtractedImage[],
+  detection: CaptureDetection,
+): Promise<ExtractedImage[]> {
+  const out: ExtractedImage[] = []
+  for (const p of detection.pages ?? []) {
+    const pageImg = pages[p.page]
+    if (!pageImg) continue
+    for (const box of p.captures ?? []) {
+      if (out.length >= MAX_IMAGES) return out
+      try {
+        const crop = await cropRegion(pageImg, box)
+        if (crop) out.push(crop)
+      } catch {
+        // recorte fallido: se omite y se sigue
+      }
+    }
+  }
+  return out
+}
+
 // ─── Orquestador ──────────────────────────────────────────────
 
 /**
@@ -400,7 +494,9 @@ async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]>
 export async function extractDocumentText(
   file: File,
   onProgress?: ExtractProgressFn,
+  opts: { manualMode?: boolean } = {},
 ): Promise<ExtractedDocument> {
+  const manualMode = opts.manualMode ?? false
   const ext = extOf(file.name)
   onProgress?.({ stage: 'reading', ratio: 0.04 })
 
@@ -428,7 +524,7 @@ export async function extractDocumentText(
   } else if (PDF_EXT.includes(ext)) {
     kind = 'pdf'
     const buffer = await readAsArrayBuffer(file)
-    const parsed = await parsePdf(buffer, onProgress)
+    const parsed = await parsePdf(buffer, onProgress, manualMode)
     text = parsed.text
     images = parsed.figures
     contextImages = parsed.pageImages

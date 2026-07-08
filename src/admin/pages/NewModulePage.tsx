@@ -14,7 +14,6 @@ import {
   getCourseById,
   type CourseWithModules,
 } from '@/services/courses.service'
-import { syncCourseWorldAndGenerate } from '@/services/worlds.service'
 import { useTranslation } from 'react-i18next'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -180,11 +179,8 @@ export default function NewModulePage() {
       const target = courses.find((c) => c.id === courseId)
       const maxOrder = target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0
       await addModuleToCourse(courseId, moduleId, maxOrder + 1)
-      // Solo sincroniza el mundo si el curso YA tiene uno (opt-in). La región
-      // nueva y sus niveles/quiz se generan con IA en 2º plano; el progreso y
-      // el resultado se ven en el indicador global de procesos.
-      void syncCourseWorldAndGenerate(courseId)
-        .catch(() => toast.error('No se pudo actualizar el mundo del curso'))
+      // El mundo (gamificación) se crea y configura aparte, en la sección Mundos.
+      // Adjuntar un módulo no genera ni sincroniza nada de mundos.
     } catch {
       /* si falla el adjuntar, el módulo igual queda creado (suelto) */
     }

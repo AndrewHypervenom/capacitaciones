@@ -4,6 +4,12 @@ import { getModuleContextText } from '@/services/ai.service'
 import { bgTask } from '@/stores/bgTaskStore'
 import i18n from '@/i18n'
 
+/**
+ * Puntaje mínimo (%) por defecto para niveles/quizzes generados con IA. Sin un
+ * umbral (null) el nivel deja pasar aunque el aprendiz responda todo mal.
+ */
+const DEFAULT_LEVEL_MIN_SCORE_PCT = 80
+
 // ─── Tipos ───────────────────────────────────────────────────────
 
 export interface WorldRow {
@@ -107,6 +113,7 @@ async function insertArenaQuiz(
       theme_type: normBg(world.bg_type),
       status: 'published',
       steps: toArenaSteps(gen),
+      min_score_pct: DEFAULT_LEVEL_MIN_SCORE_PCT,
     })
     .select('id')
     .single()
@@ -123,6 +130,90 @@ interface RegionSource {
   /** Contenido de referencia (texto del módulo o descripción del subtema). */
   moduleText: string
   levelCount?: number
+}
+
+/**
+ * Opciones de generación flexible elegidas por el capacitador en Mundos.
+ *  · levelCount        → niveles por región
+ *  · questionsPerLevel → preguntas por nivel (undefined = la IA decide 2-3)
+ */
+export interface WorldGenOptions {
+  levelCount?: number
+  questionsPerLevel?: number
+}
+
+const clampInt = (v: number | undefined, min: number, max: number, fallback: number): number => {
+  const n = Math.round(v ?? fallback)
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback
+}
+
+interface GeneratedLevelOutline { name?: string; description?: string; icon?: string; focus?: string }
+
+/**
+ * Generación flexible de una región: primero el esqueleto de N niveles
+ * (level-outline, sin preguntas) y luego el quiz de cada nivel por separado
+ * (quiz, con nº de preguntas pedido). Se hace nivel por nivel para no exceder el
+ * límite de tokens en configuraciones grandes (p. ej. 10 niveles × 6 preguntas).
+ */
+export async function generateRegionLevelsFlexible(
+  world: WorldRow,
+  regionId: string,
+  source: RegionSource,
+  opts: WorldGenOptions = {},
+): Promise<void> {
+  const levelCount = clampInt(opts.levelCount, 1, 10, 3)
+  const questionsPerLevel = opts.questionsPerLevel
+    ? clampInt(opts.questionsPerLevel, 1, 10, 3)
+    : undefined
+
+  // 1. Esqueleto de niveles (barato, una sola llamada).
+  const outline = (await postGenerateWorld({
+    mode: 'level-outline',
+    moduleTitle: source.title,
+    moduleSubtitle: source.subtitle ?? '',
+    moduleText: source.moduleText,
+    levelCount,
+  })) as { levels?: GeneratedLevelOutline[] }
+
+  const skeletons = (outline.levels ?? []).slice(0, levelCount)
+
+  // order_index global al mundo (ver nota en generateRegionLevels).
+  const { data: regionRow } = await supabase
+    .from('world_regions')
+    .select('order_index')
+    .eq('id', regionId)
+    .single()
+  const base = ((regionRow as { order_index?: number } | null)?.order_index ?? 0) * 100
+
+  for (let i = 0; i < skeletons.length; i++) {
+    const lv = skeletons[i]
+    // 2. Quiz del nivel (una llamada por nivel, con el enfoque para no repetir).
+    let quizId: string | null = null
+    try {
+      const quiz = (await postGenerateWorld({
+        mode: 'quiz',
+        moduleTitle: lv.name || source.title,
+        moduleSubtitle: source.subtitle ?? '',
+        moduleText: source.moduleText,
+        focus: lv.focus ?? lv.description ?? '',
+        questionCount: questionsPerLevel,
+      })) as GeneratedQuiz
+      if ((quiz.steps?.length ?? 0) > 0) quizId = await insertArenaQuiz(world, quiz)
+    } catch (e) {
+      console.error('Fallo generando el quiz de un nivel; queda sin quiz:', e)
+    }
+    await supabase.from('world_levels').insert({
+      world_id: world.id,
+      region_id: regionId,
+      module_id: null,
+      name: lv.name || `${source.title} · ${i + 1}`,
+      description: lv.description ?? null,
+      icon: (lv.icon && lv.icon.length <= 2) ? lv.icon : '⭐',
+      order_index: base + i,
+      quiz_id: quizId,
+      min_score_pct: DEFAULT_LEVEL_MIN_SCORE_PCT,
+    })
+  }
 }
 
 /**
@@ -172,6 +263,9 @@ export async function generateRegionLevels(
       icon: (lv.icon && lv.icon.length <= 2) ? lv.icon : '⭐',
       order_index: base + i,
       quiz_id: quizId,
+      // Puntaje mínimo por defecto: sin esto el nivel deja pasar respondiendo
+      // todo mal (null = sin umbral). El capacitador puede ajustarlo luego.
+      min_score_pct: DEFAULT_LEVEL_MIN_SCORE_PCT,
     })
   }
 }
@@ -181,6 +275,7 @@ export async function generateModuleRegionLevels(
   world: WorldRow,
   regionId: string,
   moduleId: string,
+  opts: WorldGenOptions = {},
 ): Promise<void> {
   const { data: mod } = await supabase
     .from('modules')
@@ -188,11 +283,11 @@ export async function generateModuleRegionLevels(
     .eq('id', moduleId)
     .single()
   const moduleText = await getModuleContextText(moduleId).catch(() => '')
-  await generateRegionLevels(world, regionId, {
+  await generateRegionLevelsFlexible(world, regionId, {
     title: (mod as { title_es?: string })?.title_es ?? 'Módulo',
     subtitle: (mod as { subtitle_es?: string | null })?.subtitle_es ?? '',
     moduleText,
-  })
+  }, opts)
 }
 
 // ─── Mundo de un curso ───────────────────────────────────────────
@@ -450,6 +545,8 @@ export async function generateStandaloneWorldFromTopic(opts: {
   topic: string
   regionCount?: number
   bgType?: string
+  levelCount?: number
+  questionsPerLevel?: number
 }): Promise<string> {
   const taskId = bgTask.start(
     i18n.t('worldgen.world_title', { name: opts.topic.slice(0, 40) }),
@@ -494,10 +591,10 @@ export async function generateStandaloneWorldFromTopic(opts: {
         .single()
       if (error) throw error
       try {
-        await generateRegionLevels(world, (region as { id: string }).id, {
+        await generateRegionLevelsFlexible(world, (region as { id: string }).id, {
           title: r.name || `Región ${i + 1}`,
           moduleText: r.subtopic || r.description || r.name || opts.topic,
-        })
+        }, { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel })
       } catch (e) {
         // Si falla una región, seguimos; queda sin niveles y se puede reintentar/editar.
         console.error('Fallo generando niveles de región standalone:', e)
@@ -516,6 +613,8 @@ export async function generateStandaloneWorldFromModules(opts: {
   campaignId: string
   name: string
   moduleIds: string[]
+  levelCount?: number
+  questionsPerLevel?: number
 }): Promise<string> {
   const taskId = bgTask.start(
     i18n.t('worldgen.world_title', { name: opts.name }),
@@ -551,7 +650,9 @@ export async function generateStandaloneWorldFromModules(opts: {
         .single()
       if (error) throw error
       try {
-        await generateModuleRegionLevels(world, (region as { id: string }).id, moduleId)
+        await generateModuleRegionLevels(world, (region as { id: string }).id, moduleId, {
+          levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel,
+        })
       } catch (e) {
         console.error('Fallo generando niveles de región (módulo):', moduleId, e)
       }

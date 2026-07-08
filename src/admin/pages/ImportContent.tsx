@@ -3,24 +3,23 @@ import i18n from '@/i18n'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Upload, FileText, FileSpreadsheet, Sparkles, Loader2, X,
-  CheckCircle2, AlertTriangle, RotateCcw, BookOpen, ChevronRight,
+  CheckCircle2, AlertTriangle, RotateCcw, BookOpen, ChevronRight, ListChecks,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
-  extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
-  type ExtractedDocument, type ExtractStage,
+  extractDocumentText, cropCaptures, ACCEPTED_DOC_EXTENSIONS,
+  type ExtractedDocument, type ExtractStage, type ExtractedImage,
 } from '@/lib/documentExtract'
 import {
-  generateModuleOutline, generateModuleSection,
+  generateModuleOutline, generateModuleSection, detectCaptures,
   type GeneratedModule,
 } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
 import {
   addModuleToCourse, getCourseById, type CourseWithModules,
 } from '@/services/courses.service'
-import { syncCourseWorldAndGenerate } from '@/services/worlds.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -55,6 +54,13 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
   const [progress, setProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
   const [instructions, setInstructions] = useState('')
 
+  // Modo manual paso a paso: fidelidad máxima a un manual/procedimiento. Rasteriza
+  // cada página (captura+paso juntos), ancla las capturas a su paso y usa un prompt
+  // que conserva y ordena los pasos en vez de resumir. Guardamos el último archivo
+  // para poder re-extraer cuando el usuario cambia el toggle.
+  const [manualMode, setManualMode] = useState(false)
+  const lastFileRef = useRef<File | null>(null)
+
   const [phase, setPhase] = useState<Phase>('setup')
   const [error, setError] = useState<string | null>(null)
 
@@ -62,6 +68,10 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
   const [genProgress, setGenProgress] = useState('')
   const [generated, setGenerated] = useState<GeneratedModule | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
+  // Figuras finales usadas en la generación (para PDFs escaneados en modo manual son
+  // las capturas recortadas; en el resto, las figuras del documento). El image_index
+  // del módulo refiere a este arreglo, así que es el que se guarda.
+  const [figures, setFigures] = useState<ExtractedImage[]>([])
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -90,28 +100,43 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
     [campaigns, campaignId],
   )
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const extractFile = async (file: File, manual: boolean) => {
     setError(null)
     setReadingName(file.name)
     setProgress({ stage: 'reading', ratio: 0 })
     setExtracting(true)
     try {
-      const extracted = await extractDocumentText(file, (p) => setProgress(p))
+      const extracted = await extractDocumentText(file, (p) => setProgress(p), { manualMode: manual })
       setDoc(extracted)
     } catch (err) {
       setDoc(null)
       setError(err instanceof Error ? err.message : 'No se pudo leer el archivo')
     } finally {
       setExtracting(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (!file) return
+    lastFileRef.current = file
+    await extractFile(file, manualMode)
+  }
+
+  // Al cambiar el modo manual re-extraemos el mismo archivo (el modo manual
+  // rasteriza páginas que no se generan en modo normal, y viceversa).
+  const handleToggleManual = async (next: boolean) => {
+    setManualMode(next)
+    if (lastFileRef.current && phase === 'setup') {
+      await extractFile(lastFileRef.current, next)
     }
   }
 
   const resetToSetup = () => {
     setGenerated(null)
     setSavedId(null)
+    setFigures([])
     setPhase('setup')
     setError(null)
   }
@@ -127,10 +152,29 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
     const description = instructions.trim()
       || `Crea un módulo de formación a partir del documento "${doc.fileName}". `
         + 'Usa únicamente el conocimiento presente en el documento, sin inventar contenido.'
+
+    // Modo manual + PDF escaneado (sin texto): las "figuras" que trae pdf.js son las
+    // páginas enteras. En su lugar, la IA localiza las capturas relevantes y las
+    // recortamos para insertar solo el pantallazo limpio.
+    let images: ExtractedImage[] = doc.images
+    const isScanned = manualMode && !doc.text.trim() && doc.contextImages.length > 0
+    if (isScanned) {
+      setGenProgress('Localizando capturas en las páginas…')
+      try {
+        const { data } = await detectCaptures({ contextImages: doc.contextImages })
+        const crops = await cropCaptures(doc.contextImages, data)
+        if (crops.length) images = crops
+      } catch {
+        // si la detección/recorte falla, seguimos con lo que haya (mejor algo que nada)
+      }
+    }
+    setFigures(images)
+
     const docContext = {
       documentText: doc.text,
-      images: doc.images,
+      images,
       contextImages: doc.contextImages,
+      manualMode,
     }
 
     try {
@@ -174,18 +218,15 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
     if (!generated) return
     setPhase('done')
     try {
-      const id = await saveGeneratedModule(campaignId, generated, doc?.images ?? [])
+      const id = await saveGeneratedModule(campaignId, generated, figures)
       // Si venimos de un curso, adjuntamos el módulo y sincronizamos su mundo
       // (solo si ya existe; no lo fuerza). Si falla, el módulo igual queda creado.
       if (courseId && course) {
         try {
           const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
           await addModuleToCourse(courseId, id, maxOrder + 1)
-          // Refleja el módulo como región del mundo del curso (si tiene mundo) y
-          // genera sus niveles/quiz con IA en 2º plano; el progreso y el
-          // resultado se ven en el indicador global de procesos.
-          void syncCourseWorldAndGenerate(courseId)
-            .catch(() => toast.error('No se pudo actualizar el mundo del curso'))
+          // El mundo (gamificación) NO se toca acá: se crea y configura aparte,
+          // en la sección Mundos. Crear/adjuntar un módulo no genera nada.
         } catch { /* módulo queda creado aunque no se adjunte */ }
       }
       setSavedId(id)
@@ -210,9 +251,9 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
       }),
     )
     return [...usedIdx]
-      .map((idx) => doc?.images[idx])
+      .map((idx) => figures[idx])
       .filter((img): img is NonNullable<typeof img> => !!img)
-  }, [generated, doc])
+  }, [generated, figures])
 
   return (
     <div className={embedded ? '' : 'p-4 sm:p-8 max-w-3xl mx-auto'}>
@@ -269,14 +310,16 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] text-text font-medium truncate">{doc.fileName}</div>
                 <div className="text-[11px] text-text-muted">
-                  {(doc.text.length / 1000).toFixed(1)}k caracteres extraídos
-                  {doc.images.length > 0 && ` · ${doc.images.length} figura(s) del documento`}
-                  {doc.contextImages.length > 0 && ` · ${doc.contextImages.length} página(s) para análisis visual`}
+                  {doc.text.trim()
+                    ? `${(doc.text.length / 1000).toFixed(1)}k caracteres extraídos`
+                    : 'Sin texto (documento escaneado) — se leerá con visión'}
+                  {doc.images.length > 0 && doc.text.trim() && ` · ${doc.images.length} figura(s) del documento`}
+                  {doc.contextImages.length > 0 && ` · ${doc.contextImages.length} página(s)${manualMode && !doc.text.trim() ? ' — se recortarán las capturas' : ' para análisis visual'}`}
                 </div>
               </div>
               {!busy && phase === 'setup' && (
                 <button
-                  onClick={() => { setDoc(null); resetToSetup() }}
+                  onClick={() => { setDoc(null); lastFileRef.current = null; resetToSetup() }}
                   className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
                   title={i18n.t('admin.import.remove_file')}
                 >
@@ -353,6 +396,47 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
           className="hidden"
           onChange={handleFile}
         />
+
+        {/* Modo manual paso a paso */}
+        {phase === 'setup' && (
+          <button
+            type="button"
+            onClick={() => handleToggleManual(!manualMode)}
+            disabled={extracting}
+            className={cn(
+              'mt-5 w-full flex items-start gap-3 rounded-xl px-4 py-3 text-left transition-all border',
+              manualMode
+                ? 'bg-brand-violet/8 border-brand-violet/30'
+                : 'bg-glass/4 border-glass-border/10 hover:border-brand-violet/20',
+              extracting && 'opacity-60 cursor-wait',
+            )}
+          >
+            <div className={cn(
+              'mt-0.5 h-8 w-8 shrink-0 flex items-center justify-center rounded-lg transition-colors',
+              manualMode ? 'bg-brand-violet/20 text-brand-violet' : 'bg-glass/8 text-text-muted',
+            )}>
+              <ListChecks className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-medium text-text">Manual / paso a paso</span>
+                {/* Interruptor */}
+                <span className={cn(
+                  'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                  manualMode ? 'bg-brand-violet' : 'bg-glass/20',
+                )}>
+                  <span className={cn(
+                    'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all',
+                    manualMode ? 'left-[18px]' : 'left-0.5',
+                  )} />
+                </span>
+              </div>
+              <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
+                Fidelidad máxima a un procedimiento: conserva cada paso en orden e inserta la captura de cada paso. Úsalo para manuales con pantallazos exactos (analiza más a fondo; tarda un poco más).
+              </p>
+            </div>
+          </button>
+        )}
 
         {/* Instrucciones opcionales */}
         {phase === 'setup' && (

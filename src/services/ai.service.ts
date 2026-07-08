@@ -103,6 +103,8 @@ export async function generateSimulation(opts: {
 export interface DocImage {
   mediaType: string
   dataBase64: string
+  /** Página del documento (1-based) donde apareció la figura; ancla la captura a su paso. */
+  page?: number
 }
 
 /** Contexto del documento compartido por las llamadas de generación (se cachea en el servidor). */
@@ -110,6 +112,8 @@ export interface DocContext {
   documentText?: string
   images?: DocImage[]
   contextImages?: DocImage[]
+  /** Modo manual paso a paso: fidelidad máxima, conservar y anclar cada captura a su paso. */
+  manualMode?: boolean
 }
 
 export type GeneratedSectionStyle = 'default' | 'immersive' | 'spotlight' | 'feature'
@@ -183,6 +187,27 @@ async function postGenerateModule(
     throw new Error(result.error ?? 'Error generando módulo')
   }
   return { data: result.data, usage: result.usage as CacheUsage }
+}
+
+/** Recuadro de una captura dentro de una página (porcentaje 0-100). */
+export interface CaptureBox { x: number; y: number; w: number; h: number; caption_es?: string }
+export interface CaptureDetection {
+  pages?: { page: number; captures?: CaptureBox[] }[]
+}
+
+/**
+ * Modo manual + PDF escaneado: localiza con visión las capturas relevantes de cada
+ * página (recuadros en %). El cliente las recorta luego con `cropCaptures`.
+ */
+export async function detectCaptures(opts: {
+  contextImages: DocImage[]
+}): Promise<{ data: CaptureDetection; usage: CacheUsage }> {
+  const { data, usage } = await postGenerateModule({
+    mode: 'detect-figures',
+    description: '',
+    contextImages: opts.contextImages,
+  })
+  return { data: (data ?? { pages: [] }) as CaptureDetection, usage }
 }
 
 export async function generateModule(opts: {

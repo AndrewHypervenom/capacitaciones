@@ -15,7 +15,6 @@ import {
   Info,
   Lock,
   Plus,
-  RefreshCw,
   Save,
   Search,
   Share2,
@@ -24,7 +23,6 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
   updateCourse,
@@ -45,15 +43,7 @@ import {
   type CourseStats,
 } from '@/services/courses.service'
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
-import {
-  ensureCourseWorld,
-  getCourseWorld,
-  syncCourseWorldById,
-  generatePendingRegionLevels,
-  setCourseWorldPublished,
-  type SyncResult,
-} from '@/services/worlds.service'
-import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { getCourseWorld } from '@/services/worlds.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign, Profile } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -96,7 +86,6 @@ export default function CourseEditor() {
   const { courseId } = useParams<{ courseId: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const confirm = useConfirm()
   const { isSuperAdmin, campaignId: authCampaignId } = useAuth()
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
@@ -105,9 +94,6 @@ export default function CourseEditor() {
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
   const [openingWorld, setOpeningWorld] = useState(false)
-  // Estado de publicación del mundo espejo del curso (independiente del curso).
-  const [worldPublished, setWorldPublished] = useState<boolean | null>(null)
-  const [syncingWorld, setSyncingWorld] = useState(false)
 
   // Información editable
   const [form, setForm] = useState({
@@ -178,19 +164,6 @@ export default function CourseEditor() {
   useEffect(() => {
     if (!courseId) return
     getCourseStats(courseId).then(setStats).catch(() => setStats(null))
-  }, [courseId])
-
-  // Estado de publicación del mundo del curso (para el panel de Publicación).
-  useEffect(() => {
-    if (!courseId) return
-    let active = true
-    supabase
-      .from('worlds')
-      .select('status')
-      .eq('course_id', courseId)
-      .maybeSingle()
-      .then(({ data }) => { if (active) setWorldPublished(data ? data.status === 'published' : false) })
-    return () => { active = false }
   }, [courseId])
 
   // Datos de asignación
@@ -313,23 +286,6 @@ export default function CourseEditor() {
     }
   }
 
-  const handleToggleWorldPublished = async () => {
-    const next = !worldPublished
-    try {
-      // Al activar el mundo por primera vez, lo crea y genera sus regiones (una por
-      // módulo, cada una con 3-5 niveles) con IA en 2º plano.
-      if (next) {
-        const result = await syncCourseWorldById(course.id, { createIfMissing: true })
-        generatePendingRegions(result)
-      }
-      await setCourseWorldPublished(course.id, next)
-      setWorldPublished(next)
-      toast.success(next ? t('admin.courses.world_published') : t('admin.courses.world_unpublished'))
-    } catch {
-      toast.error(t('admin.courses.error_save'))
-    }
-  }
-
   const handlePublishAllModules = async () => {
     try {
       for (const m of course.modules.filter((m) => !m.is_published)) {
@@ -343,7 +299,8 @@ export default function CourseEditor() {
     }
   }
 
-  // Publica todo de un tiro: curso + módulos + mundo.
+  // Publica el contenido del curso: curso + módulos. NO toca los mundos: la
+  // gamificación se crea y gestiona aparte, en la sección Mundos.
   const handlePublishAll = async () => {
     try {
       if (!course.is_published) {
@@ -353,10 +310,6 @@ export default function CourseEditor() {
       for (const m of course.modules.filter((m) => !m.is_published)) {
         await toggleModulePublished(m.id, true)
       }
-      const result = await syncCourseWorldById(course.id, { createIfMissing: true })
-      generatePendingRegions(result)
-      await setCourseWorldPublished(course.id, true)
-      setWorldPublished(true)
       invalidateModulesCache()
       await reload()
       toast.success(t('admin.courses.published_all_ok'))
@@ -365,21 +318,21 @@ export default function CourseEditor() {
     }
   }
 
-  // Abre el mundo espejo del curso. Si aún no existe (cursos previos a la
-  // integración), lo crea al vuelo y luego navega.
+  // Lleva a Mundos para crear/configurar el mundo del curso. Si el curso ya tiene
+  // un mundo (creado antes en Mundos), lo abre; si no, abre el generador de Mundos
+  // con la campaña y el nombre del curso ya elegidos. Nunca crea nada automático.
   const handleViewWorld = async () => {
     setOpeningWorld(true)
     try {
-      const world = await ensureCourseWorld({
-        id: course.id,
-        campaign_id: course.campaign_id,
-        title_es: course.title_es,
-        description_es: course.description_es,
-        color: course.color,
-      })
-      navigate(`/admin/worlds/${world.id}`)
-    } catch {
-      toast.error(t('admin.courses.error_save'))
+      const world = await getCourseWorld(course.id).catch(() => null)
+      if (world) {
+        navigate(`/admin/worlds/${world.id}`)
+      } else {
+        navigate('/admin/worlds', {
+          state: { generateFor: { campaignId: course.campaign_id, name: course.title_es } },
+        })
+      }
+    } finally {
       setOpeningWorld(false)
     }
   }
@@ -415,95 +368,12 @@ export default function CourseEditor() {
     }
   }
 
-  /**
-   * Mantiene el mundo espejo del curso al día y dispara la generación de los
-   * quizzes de arena faltantes en 2º plano (no bloquea la edición del curso).
-   */
-  // Genera en 2º plano los niveles con quiz de cada región nueva o vacía.
-  // El progreso y el resultado se ven en el indicador global de procesos.
-  const generatePendingRegions = (result: SyncResult) => {
-    const { world, pendingRegions } = result
-    if (!world || pendingRegions.length === 0) return
-    void generatePendingRegionLevels(world, pendingRegions)
-  }
-
-  // Botón "Sincronizar" del panel de publicación: reconcilia regiones con los
-  // módulos del curso y genera con IA los niveles de las regiones nuevas o vacías.
-  const handleSyncWorld = async () => {
-    setSyncingWorld(true)
-    try {
-      const result = await syncCourseWorldById(course.id, { createIfMissing: false })
-      if (!result.world) {
-        toast.info(t('admin.courses.world_sync_none'))
-        return
-      }
-      if (result.pendingRegions.length === 0) {
-        toast.success(t('admin.courses.world_sync_ok'))
-        return
-      }
-      generatePendingRegions(result)
-    } catch (e) {
-      console.error('No se pudo sincronizar el mundo del curso:', e)
-      toast.error(t('admin.courses.error_save'))
-    } finally {
-      setSyncingWorld(false)
-    }
-  }
-
-  const syncWorld = async () => {
-    try {
-      // createIfMissing:false → si el curso optó por no tener mundo, agregar/quitar
-      // módulos no fuerza su creación. Solo se sincroniza cuando el mundo ya existe.
-      const result = await syncCourseWorldById(course.id, { createIfMissing: false })
-      generatePendingRegions(result)
-    } catch (e) {
-      console.error('No se pudo sincronizar el mundo del curso:', e)
-    }
-  }
-
-  /**
-   * Tras agregar un módulo, ofrece reflejarlo como región en el mundo del curso:
-   *  - Si el curso YA tiene mundo → confirma crear la región del nuevo módulo.
-   *  - Si el curso NO tiene mundo → ofrece crear el mundo (en borrador) + la región.
-   * En ambos casos, al aceptar, genera los niveles/arenas de las regiones nuevas
-   * con IA en 2º plano. Si cancela, el módulo queda agregado sin tocar el mundo.
-   */
-  const offerWorldRegionForModule = async (moduleTitle: string) => {
-    const world = await getCourseWorld(course.id).catch(() => null)
-    if (world) {
-      const ok = await confirm({
-        title: t('admin.courses.world_region_create_title'),
-        description: t('admin.courses.world_region_create_desc', { title: moduleTitle }),
-        confirmLabel: t('admin.courses.world_region_create_confirm'),
-        cancelLabel: t('admin.courses.world_region_skip'),
-        tone: 'default',
-      })
-      if (!ok) return
-      const result = await syncCourseWorldById(course.id, { createIfMissing: false })
-      generatePendingRegions(result)
-    } else {
-      const ok = await confirm({
-        title: t('admin.courses.world_create_title'),
-        description: t('admin.courses.world_create_desc', { title: moduleTitle }),
-        confirmLabel: t('admin.courses.world_create_confirm'),
-        cancelLabel: t('admin.courses.world_region_skip'),
-        tone: 'default',
-      })
-      if (!ok) return
-      // Crea el mundo (queda en borrador) y sus regiones (una por módulo del curso).
-      const result = await syncCourseWorldById(course.id, { createIfMissing: true })
-      generatePendingRegions(result)
-      setWorldPublished(false)
-    }
-  }
-
   const handleAddModule = async (mod: DbModuleRow) => {
     try {
       const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
       await addModuleToCourse(course.id, mod.id, maxOrder + 1)
       invalidateModulesCache()
       await reload()
-      await offerWorldRegionForModule(mod.title_es)
     } catch {
       toast.error(t('admin.courses.error_save'))
     }
@@ -514,7 +384,6 @@ export default function CourseEditor() {
       await removeModuleFromCourse(moduleId)
       invalidateModulesCache()
       await reload()
-      void syncWorld()
     } catch {
       toast.error(t('admin.courses.error_save'))
     }
@@ -674,12 +543,13 @@ export default function CourseEditor() {
         </div>
       </div>
 
-      {/* Panel de Publicación: curso, módulos y mundo, cada uno independiente */}
+      {/* Panel de Publicación: solo curso y módulos. El mundo (gamificación) se
+          crea y gestiona aparte, en la sección Mundos. */}
       {(() => {
         const total = course.modules.length
         const pubModules = course.modules.filter((m) => m.is_published).length
         const modulesAllPublished = total === 0 || pubModules === total
-        const everythingPublished = course.is_published && worldPublished === true && modulesAllPublished
+        const everythingPublished = course.is_published && modulesAllPublished
         return (
           <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 mb-6">
             <div className="flex items-start justify-between gap-3 mb-3">
@@ -726,33 +596,31 @@ export default function CourseEditor() {
                   </span>
                 )}
               </div>
-              {/* Mundo */}
+              {/* Mundo (gamificación): opcional y se arma en Mundos, no acá */}
               <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
                 <Globe className="h-4 w-4 text-text-muted shrink-0" />
-                <span className="flex-1 text-[13px] font-medium text-text">{t('admin.courses.publish_world')}</span>
-                <button
-                  onClick={handleSyncWorld}
-                  disabled={syncingWorld}
-                  className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium border border-line text-text-muted hover:text-text transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw className={cn('h-3.5 w-3.5', syncingWorld && 'animate-spin')} />
-                  {t('admin.courses.world_sync')}
-                </button>
-                <span className={cn('text-[11px] font-semibold', worldPublished ? 'text-primary' : 'text-text-muted')}>
-                  {worldPublished ? t('admin.courses.published') : t('admin.courses.draft')}
+                <span className="flex-1 text-[13px] font-medium text-text">
+                  {t('admin.courses.publish_world')}
+                  <span className="ml-2 text-[11px] font-normal text-text-muted">{t('admin.courses.world_optional_hint')}</span>
                 </span>
-                <Toggle on={!!worldPublished} onClick={handleToggleWorldPublished} label={t('admin.courses.publish_world')} />
+                <button
+                  onClick={handleViewWorld}
+                  disabled={openingWorld}
+                  className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-colors disabled:opacity-50"
+                  style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                >
+                  <Globe className="h-3.5 w-3.5" />
+                  {t('admin.courses.world_configure')}
+                </button>
               </div>
             </div>
 
-            {/* Aviso: el curso está publicado pero falta el mundo o algún módulo */}
-            {course.is_published && (worldPublished === false || !modulesAllPublished) && (
+            {/* Aviso: el curso está publicado pero falta publicar algún módulo */}
+            {course.is_published && !modulesAllPublished && (
               <div className="flex items-start gap-2 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-2.5">
                 <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-px" />
                 <p className="text-[12px] text-text-muted">
-                  {worldPublished === false
-                    ? t('admin.courses.missing_world')
-                    : t('admin.courses.missing_modules')}
+                  {t('admin.courses.missing_modules')}
                 </p>
               </div>
             )}
