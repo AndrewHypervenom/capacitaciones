@@ -100,6 +100,7 @@ function toArenaSteps(gen: GeneratedQuiz): Json {
 async function insertArenaQuiz(
   world: WorldRow,
   gen: GeneratedQuiz,
+  minScorePct: number = DEFAULT_LEVEL_MIN_SCORE_PCT,
 ): Promise<string> {
   const { data, error } = await supabase
     .from('arena_quizzes')
@@ -113,7 +114,7 @@ async function insertArenaQuiz(
       theme_type: normBg(world.bg_type),
       status: 'published',
       steps: toArenaSteps(gen),
-      min_score_pct: DEFAULT_LEVEL_MIN_SCORE_PCT,
+      min_score_pct: minScorePct,
     })
     .select('id')
     .single()
@@ -140,6 +141,8 @@ interface RegionSource {
 export interface WorldGenOptions {
   levelCount?: number
   questionsPerLevel?: number
+  /** Puntaje mínimo (%) para aprobar cada nivel generado (0-100). Default 80. */
+  minScorePct?: number
 }
 
 /** Mínimo de caracteres de contenido para generar sin que la IA invente. */
@@ -176,6 +179,9 @@ export async function generateRegionLevelsFlexible(
   const levelCount = clampInt(opts.levelCount, 1, 10, 3)
   // Sin valor → 6 preguntas por nivel (2 secciones de 3). Ya no "lo decide la IA".
   const questionsPerLevel = clampInt(opts.questionsPerLevel, 1, 10, 6)
+  // Puntaje mínimo para aprobar cada nivel (default 80). Sin umbral el nivel
+  // dejaría pasar respondiendo todo mal.
+  const minScorePct = clampInt(opts.minScorePct, 0, 100, DEFAULT_LEVEL_MIN_SCORE_PCT)
 
   // 1. Esqueleto de niveles (barato, una sola llamada).
   const outline = (await postGenerateWorld({
@@ -209,7 +215,7 @@ export async function generateRegionLevelsFlexible(
         focus: lv.focus ?? lv.description ?? '',
         questionCount: questionsPerLevel,
       })) as GeneratedQuiz
-      if ((quiz.steps?.length ?? 0) > 0) quizId = await insertArenaQuiz(world, quiz)
+      if ((quiz.steps?.length ?? 0) > 0) quizId = await insertArenaQuiz(world, quiz, minScorePct)
     } catch (e) {
       console.error('Fallo generando el quiz de un nivel; queda sin quiz:', e)
     }
@@ -222,7 +228,7 @@ export async function generateRegionLevelsFlexible(
       icon: (lv.icon && lv.icon.length <= 2) ? lv.icon : '⭐',
       order_index: base + i,
       quiz_id: quizId,
-      min_score_pct: DEFAULT_LEVEL_MIN_SCORE_PCT,
+      min_score_pct: minScorePct,
     })
   }
 }
@@ -315,11 +321,12 @@ export async function generateLevelsForRegion(opts: {
   moduleId?: string | null
   levelCount?: number
   questionsPerLevel?: number
+  minScorePct?: number
 }): Promise<void> {
   const { data: w } = await supabase.from('worlds').select('*').eq('id', opts.worldId).single()
   if (!w) throw new Error('Mundo no encontrado')
   const world = w as WorldRow
-  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel }
+  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel, minScorePct: opts.minScorePct }
 
   const taskId = bgTask.start(
     i18n.t('worldgen.world_title', { name: opts.regionName }),

@@ -16,6 +16,13 @@ interface ArenaQuiz  {
 }
 
 /* ── Normalize ── */
+// Hash estable de un string → número (para ordenar de forma determinista).
+function hashStr(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0
+  return h
+}
+
 function normalizeQuiz(raw: Record<string, unknown>): ArenaQuiz {
   const steps = Array.isArray(raw.steps) ? raw.steps : []
   return {
@@ -29,19 +36,27 @@ function normalizeQuiz(raw: Record<string, unknown>): ArenaQuiz {
     xp_per_question: (raw.xp_per_question as number) ?? 10,
     min_score_pct: (raw.min_score_pct as number | null) ?? null,
     status: (raw.status as string) ?? 'draft',
-    steps: steps.map((s: Record<string, unknown>) => ({
-      id: typeof s.id === 'string' && s.id ? s.id : crypto.randomUUID(),
-      question: typeof s.question === 'string' ? s.question : '',
-      context: typeof s.context === 'string' ? s.context : '',
-      options: Array.isArray(s.options)
+    steps: steps.map((s: Record<string, unknown>) => {
+      const stepId = typeof s.id === 'string' && s.id ? s.id : crypto.randomUUID()
+      const options = (Array.isArray(s.options)
         ? (s.options as Record<string, unknown>[]).map(o => ({
             id: typeof o.id === 'string' && o.id ? o.id : crypto.randomUUID(),
             text: typeof o.text === 'string' ? o.text : '',
             correct: o.correct === true,
             explanation: typeof o.explanation === 'string' ? o.explanation : '',
           }))
-        : [],
-    })),
+        : [])
+        // La IA suele poner la correcta primera (posición A). Reordenamos las
+        // opciones de forma determinista (sembrada por el id de la pregunta) para
+        // que la correcta no quede siempre en A, y el orden sea estable por pregunta.
+        .sort((a, b) => hashStr(stepId + a.id) - hashStr(stepId + b.id))
+      return {
+        id: stepId,
+        question: typeof s.question === 'string' ? s.question : '',
+        context: typeof s.context === 'string' ? s.context : '',
+        options,
+      }
+    }),
   }
 }
 
@@ -294,7 +309,11 @@ export default function ArenaPlayer() {
   const scorePct = Math.round((correctCount / quiz.steps.length) * 100)
   const passed   = (locationState?.minScorePct ?? quiz.min_score_pct) === null || scorePct >= (locationState?.minScorePct ?? quiz.min_score_pct)!
   const stars    = getStarsFromScore(scorePct, locationState?.minScorePct ?? quiz.min_score_pct)
-  const planePct = quiz.steps.length > 1 ? (planePos/(quiz.steps.length-1))*80+8 : 8
+  // Cada "sección" (P1, P2…) agrupa SECTION_SIZE preguntas. El recorrido muestra
+  // una parada por sección, no por pregunta.
+  const sectionCount     = Math.ceil(quiz.steps.length / SECTION_SIZE)
+  const currentSection   = Math.floor(currentQ / SECTION_SIZE)
+  const planePct = sectionCount > 1 ? (currentSection/(sectionCount-1))*80+8 : 8
 
   const groupStart       = groupIndex * SECTION_SIZE
   const groupEnd         = Math.min(groupStart + SECTION_SIZE, quiz.steps.length)
@@ -417,7 +436,7 @@ export default function ArenaPlayer() {
               {t('arena.route_label', { title: quiz.title })}
             </div>
             <div style={{overflowX:'auto',paddingBottom:4}}>
-            <div style={{position:'relative',height:52,minWidth:`${Math.max(quiz.steps.length * 44 + 44, 280)}px`}}>
+            <div style={{position:'relative',height:52,minWidth:`${Math.max(sectionCount * 96 + 60, 280)}px`}}>
               {/* Línea de ruta — alineada al centro de los círculos (16px = radio) */}
               <div style={{position:'absolute',top:16,left:0,right:0,height:3,background:'rgb(var(--subtle))',borderRadius:2,transform:'translateY(-50%)',zIndex:0}}>
                 <div style={{position:'absolute',top:0,left:0,height:'100%',width:`${planePct}%`,background:`linear-gradient(90deg,${tc},${tc}88)`,borderRadius:2,transition:'width .8s cubic-bezier(.4,0,.2,1)'}} />
@@ -434,16 +453,19 @@ export default function ArenaPlayer() {
               </div>
               {/* Checkpoints — la etiqueta va absoluta debajo para no descentrar el círculo */}
               <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
-                {quiz.steps.map((_,i) => {
-                  const done   = selected[i] !== undefined
-                  const active = i === currentQ
-                  const locked = !done && i > currentQ
+                {Array.from({ length: sectionCount }).map((_, si) => {
+                  const secStart = si * SECTION_SIZE
+                  const secEnd   = Math.min(secStart + SECTION_SIZE, quiz.steps.length)
+                  const secTotal = secEnd - secStart
+                  const done     = quiz.steps.slice(secStart, secEnd).every((_, k) => selected[secStart + k] !== undefined)
+                  const active   = si === groupIndex
+                  const locked   = si > groupIndex
                   return (
-                    <div key={i} style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <div key={si} style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
                       <div className={`ap-checkpoint${active ? ' ap-cp-active' : ''}`} style={{
-                        width:32,height:32,borderRadius:'50%',
+                        width:34,height:34,borderRadius:'50%',
                         display:'flex',alignItems:'center',justifyContent:'center',
-                        fontSize:done?'.85rem':'.72rem',fontWeight:700,
+                        fontSize:done?'.85rem':'.68rem',fontWeight:700,
                         // Fondo siempre OPACO (tinte sobre superficie en el activo) para
                         // que la línea de ruta quede oculta detrás del círculo, no cruzándolo.
                         background:done?tc:active?`linear-gradient(${tc}18,${tc}18), rgb(var(--surface))`:'rgb(var(--subtle))',
@@ -453,10 +475,10 @@ export default function ArenaPlayer() {
                         transition:'all .3s',
                         position:'relative',zIndex:1,
                       }}>
-                        {done?'✓':i+1}
+                        {done?'✓':`P${si+1}`}
                       </div>
-                      <div style={{position:'absolute',top:'100%',marginTop:6,fontSize:'.55rem',color:active?tc:done?tc:'rgb(var(--text-muted))',fontWeight:active||done?600:400,opacity:locked?.4:1,whiteSpace:'nowrap'}}>
-                        P{i+1}
+                      <div style={{position:'absolute',top:'100%',marginTop:6,fontSize:'.55rem',color:active?tc:done?tc:'rgb(var(--text-muted))',fontWeight:active||done?600:400,opacity:locked?.4:1,whiteSpace:'nowrap',textAlign:'center'}}>
+                        {t('arena.questions', { count: secTotal })}
                       </div>
                     </div>
                   )
@@ -474,7 +496,19 @@ export default function ArenaPlayer() {
 
         {/* ══ TARJETAS DE PREGUNTA ══ */}
         <section className="ap-questions" style={{padding:'0 7% 60px'}}>
-          <div className="ap-questions-grid" style={{display:'grid',gridTemplateColumns:'repeat(2, 1fr)',gap:20}}>
+          {/* Cabecera de la sección actual: deja claro que P = sección con N preguntas */}
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+            <span style={{fontSize:'.82rem',fontWeight:700,color:tc,background:`${tc}12`,border:`1px solid ${tc}28`,borderRadius:8,padding:'3px 12px'}}>
+              P{groupIndex+1}
+            </span>
+            <span style={{fontSize:'.78rem',fontWeight:600,color:'rgb(var(--text))'}}>
+              {t('arena.section_label', { n: groupIndex+1 })}
+            </span>
+            <span style={{fontSize:'.72rem',color:'rgb(var(--text-muted))'}}>
+              · {t('arena.questions', { count: groupSteps.length })}
+            </span>
+          </div>
+          <div className="ap-questions-grid" style={{display:'grid',gridTemplateColumns:`repeat(${groupSteps.length}, 1fr)`,gap:20}}>
             {groupSteps.map((s,gi) => {
               const i         = groupStart + gi
               const isDone    = selected[i] !== undefined
@@ -511,7 +545,7 @@ export default function ArenaPlayer() {
                       ))}
                     </div>
                     <span style={{fontSize:'.65rem',color:'rgb(var(--text-muted))',flex:1,letterSpacing:'.5px'}}>
-                      {quiz.title.toUpperCase().replace(/ /g,'_')}_ARENA · pregunta_{String(i+1).padStart(2,'0')}.exe
+                      {quiz.title.toUpperCase().replace(/ /g,'_')} · pregunta_{String(i+1).padStart(2,'0')}.exe
                     </span>
                     <span style={{fontSize:'.65rem',fontWeight:700,color:tc,background:`${tc}12`,border:`1px solid ${tc}25`,borderRadius:4,padding:'2px 8px'}}>
                       {String(i+1).padStart(2,'0')}
@@ -522,7 +556,7 @@ export default function ArenaPlayer() {
                   <div className="ap-card-body" style={{padding:'20px 24px'}}>
                     {/* Mission label */}
                     <div style={{display:'flex',alignItems:'center',gap:8,fontSize:'.72rem',fontWeight:600,color:tc,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:14}}>
-                      {isDone?'✓':isActive?'▶':'🔒'} {t('arena.mission_label', { n: i+1 })} · {isLocked?t('arena.mission_locked'):isDone?t('arena.mission_completed'):t('arena.mission_active')}
+                      {isDone?'✓':isActive?'▶':'🔒'} {t('arena.question_of', { n: gi+1, total: groupSteps.length })} · {isLocked?t('arena.mission_locked'):isDone?t('arena.mission_completed'):t('arena.mission_active')}
                     </div>
 
                     {/* Context */}

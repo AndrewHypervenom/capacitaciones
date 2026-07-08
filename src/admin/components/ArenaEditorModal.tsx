@@ -273,7 +273,7 @@ export function ArenaEditorModal({
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
           <h2 className="text-[16px] font-semibold text-text">
-            {editing ? 'Editar arena' : 'Nueva arena'}
+            {editing ? 'Editar quiz' : 'Nuevo quiz'}
           </h2>
           <button
             onClick={onClose}
@@ -285,7 +285,7 @@ export function ArenaEditorModal({
 
         {crumb && (
           <div className="px-4 sm:px-6 py-2 text-[11.5px] text-text-muted border-b border-line bg-green-500/[0.04] shrink-0">
-            <span className="text-green-600 dark:text-green-400 font-medium">{crumb}</span> · esta arena vive dentro del mundo
+            <span className="text-green-600 dark:text-green-400 font-medium">{crumb}</span> · este quiz vive dentro del mundo
           </div>
         )}
 
@@ -514,7 +514,7 @@ export function ArenaEditorModal({
               className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
               style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.28)' }}
             >
-              {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Agregar arena'}
+              {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear quiz'}
             </button>
           </div>
         </form>

@@ -5,7 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
-import { generateLevelsForRegion } from '@/services/worlds.service'
+import { generateLevelsForRegion, generateModuleRegionLevels } from '@/services/worlds.service'
+import type { WorldRow } from '@/services/worlds.service'
+import { ArenaEditorModal, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -23,6 +25,11 @@ interface Quiz   { id: string; title: string }
 const BG_LABELS: Record<string,string> = { airline:'Aerolínea', bank:'Banco', health:'Salud', corporate:'Corporativo', tech:'Tecnología' }
 const SOUND_LABELS: Record<string,string> = { airport:'Aeropuerto', bank:'Banco', nature:'Naturaleza', tech:'Tecnología', neutral:'Neutral' }
 const TRANS_LABELS: Record<string,string> = { clouds:'Nubes ☁️', cards:'Cartas 💳', pulse:'Pulso ❤️', rocket:'Cohete 🚀', terminal:'Terminal 💻', confetti:'Confeti 🎉', scan:'Escaneo 🔍', warp:'Hipersalto 💫' }
+
+// Cada sección (P1, P2… en el recorrido del aprendiz) agrupa esta cantidad de
+// preguntas. Coincide con SECTION_SIZE en ArenaPlayer para que las paradas del
+// mapa y las preguntas por sección estén alineadas.
+const QUESTIONS_PER_SECTION = 3
 
 export default function WorldDetail() {
   const { id } = useParams<{ id: string }>()
@@ -54,6 +61,8 @@ export default function WorldDetail() {
   // Level modal
   const [levelModal, setLevelModal] = useState(false)
   const [editingLevel, setEditingLevel] = useState<Level | null>(null)
+  // Crear un quiz nuevo inline (sin salir del modal de nivel).
+  const [quizEditorOpen, setQuizEditorOpen] = useState(false)
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null)
   const [levelForm, setLevelForm] = useState({ name:'', description:'', icon:'⭐', order_index:0, quiz_id:'', min_score_pct: null as number | null })
   const [savingLevel, setSavingLevel] = useState(false)
@@ -62,8 +71,16 @@ export default function WorldDetail() {
   // Generar niveles con IA (por región)
   const [aiRegion, setAiRegion] = useState<Region | null>(null)
   const [aiLevels, setAiLevels] = useState<number | ''>('')
-  const [aiQuestions, setAiQuestions] = useState<number | ''>('')
+  const [aiSections, setAiSections] = useState<number | ''>(2)
+  const [aiMinScore, setAiMinScore] = useState<number | ''>(80)
   const [aiGenerating, setAiGenerating] = useState(false)
+
+  // Generar en bloque todas las regiones del curso (una por módulo) con sus niveles.
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLevels, setBulkLevels] = useState<number | ''>(3)
+  const [bulkSections, setBulkSections] = useState<number | ''>(2)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ i: number; n: number; title: string } | null>(null)
 
   // Reset progress
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -84,10 +101,10 @@ export default function WorldDetail() {
           transition_type: (raw.transition_type as string) ?? 'clouds',
           character_emoji: (raw.character_emoji as string) ?? '🧑',
         })
-        // Load quizzes
-        const qQuery = supabase.from('arena_quizzes').select('id, title').order('created_at')
-        if (wData.campaign_id) qQuery.eq('campaign_id', wData.campaign_id)
-        const { data: qData } = await qQuery
+        // Solo los quizzes de ESTE mundo (no toda la campaña), para que el picker
+        // no se llene con quizzes de otros mundos.
+        const { data: qData } = await supabase
+          .from('arena_quizzes').select('id, title').eq('world_id', id).order('created_at')
         setQuizzes((qData ?? []) as Quiz[])
         // Curso ligado + sus módulos (para basar regiones y anclar la IA).
         if (wData.course_id) {
@@ -158,16 +175,33 @@ export default function WorldDetail() {
     }
     setSavingRegion(false); setRegionModal(false)
   }
+  // Borra el arena_quiz de un nivel si ningún otro nivel lo usa (evita quizzes
+  // huérfanos que después ensucian el picker "Quiz del nivel").
+  const deleteQuizIfOrphan = async (quizId: string | null) => {
+    if (!quizId) return
+    const { count } = await supabase
+      .from('world_levels').select('id', { count: 'exact', head: true }).eq('quiz_id', quizId)
+    if ((count ?? 0) === 0) {
+      await supabase.from('arena_quizzes').delete().eq('id', quizId)
+      setQuizzes(prev => prev.filter(q => q.id !== quizId))
+    }
+  }
+
   const deleteRegion = async (r: Region) => {
     const ok = await confirm({
       title: t('confirm.delete_region_title'),
       description: t('confirm.delete_region_desc', { name: r.name }),
     })
     if (!ok) return
+    // Quizzes de los niveles de esta región, para borrarlos si quedan huérfanos.
+    const quizIds = Array.from(new Set(
+      levels.filter(x => x.region_id === r.id).map(x => x.quiz_id).filter(Boolean),
+    )) as string[]
     await supabase.from('world_levels').delete().eq('region_id', r.id)
     await supabase.from('world_regions').delete().eq('id', r.id)
     setRegions(prev => prev.filter(x => x.id !== r.id))
     setLevels(prev => prev.filter(x => x.region_id !== r.id))
+    for (const qid of quizIds) await deleteQuizIfOrphan(qid)
   }
 
   /* ── Level CRUD ── */
@@ -211,13 +245,50 @@ export default function WorldDetail() {
     if (!ok) return
     await supabase.from('world_levels').delete().eq('id', l.id)
     setLevels(prev => prev.filter(x => x.id !== l.id))
+    await deleteQuizIfOrphan(l.quiz_id)
+  }
+
+  // Quizzes de este mundo que no están asignados a ningún nivel (huérfanos,
+  // típicamente restos de niveles borrados o de generaciones descartadas).
+  const orphanQuizzes = quizzes.filter(q => !levels.some(l => l.quiz_id === q.id))
+
+  // Borra los quizzes huérfanos de este mundo. Guarda contra referencias cruzadas
+  // (un quiz usado por un nivel de otro mundo no se toca).
+  const cleanupOrphanQuizzes = async () => {
+    if (!world || orphanQuizzes.length === 0) return
+    const orphanIds = orphanQuizzes.map(q => q.id)
+    const { data: refs } = await supabase.from('world_levels').select('quiz_id').in('quiz_id', orphanIds)
+    const referenced = new Set((refs ?? []).map(r => (r as { quiz_id: string | null }).quiz_id))
+    const toDelete = orphanIds.filter(qid => !referenced.has(qid))
+    if (toDelete.length === 0) return
+    const ok = await confirm({
+      title: t('admin.worlds.cleanup_quizzes_title', { defaultValue: 'Limpiar quizzes sin usar' }),
+      description: t('admin.worlds.cleanup_quizzes_desc', { count: toDelete.length, defaultValue: `Se eliminarán ${toDelete.length} quiz(zes) que no están asignados a ningún nivel de este mundo. Esta acción no se puede deshacer.` }),
+    })
+    if (!ok) return
+    const { error } = await supabase.from('arena_quizzes').delete().in('id', toDelete)
+    if (!error) {
+      setQuizzes(prev => prev.filter(q => !toDelete.includes(q.id)))
+      toast.success(t('admin.worlds.cleanup_quizzes_ok', { count: toDelete.length, defaultValue: `${toDelete.length} quiz(zes) eliminados` }))
+    } else {
+      console.error('Error limpiando quizzes huérfanos:', error)
+      toast.error(t('admin.worlds.cleanup_quizzes_error', { defaultValue: 'No se pudieron eliminar los quizzes' }), error.message)
+    }
+  }
+
+  // Quiz recién creado inline → lo sumo a la lista y lo dejo seleccionado en el nivel.
+  const onQuizCreated = (q: ArenaQuiz) => {
+    setQuizzes(prev => (prev.some(x => x.id === q.id) ? prev : [...prev, { id: q.id, title: q.title }]))
+    setLevelForm(f => ({ ...f, quiz_id: q.id }))
+    setQuizEditorOpen(false)
   }
 
   /* ── Generar niveles con IA (por región) ── */
   const openAiGen = (region: Region) => {
     setAiRegion(region)
     setAiLevels(3)
-    setAiQuestions(6)
+    setAiSections(2)
+    setAiMinScore(80)
   }
   const runAiGen = async () => {
     if (!world || !aiRegion) return
@@ -230,15 +301,14 @@ export default function WorldDetail() {
         regionDescription: aiRegion.description,
         moduleId: aiRegion.module_id,
         levelCount: aiLevels === '' ? 3 : Number(aiLevels),
-        questionsPerLevel: aiQuestions === '' ? 6 : Number(aiQuestions),
+        questionsPerLevel: (aiSections === '' ? 2 : Number(aiSections)) * QUESTIONS_PER_SECTION,
+        minScorePct: aiMinScore === '' ? 80 : Number(aiMinScore),
       })
       // Recarga niveles + quizzes recién generados y expande la región.
       const [{ data: lData }, { data: qData }] = await Promise.all([
         supabase.from('world_levels').select('*').eq('world_id', world.id).order('order_index'),
         (() => {
-          const q = supabase.from('arena_quizzes').select('id, title').order('created_at')
-          if (world.campaign_id) q.eq('campaign_id', world.campaign_id)
-          return q
+          return supabase.from('arena_quizzes').select('id, title').eq('world_id', world.id).order('created_at')
         })(),
       ])
       setLevels((lData ?? []) as Level[])
@@ -251,6 +321,72 @@ export default function WorldDetail() {
       toast.error(i18n.t('admin.worlds.ai_gen_error'), (e as Error).message)
     } finally {
       setAiGenerating(false)
+    }
+  }
+
+  // Módulos del curso que todavía no tienen su región en este mundo.
+  const modulesWithoutRegion = courseModules.filter(
+    m => !regions.some(r => r.module_id === m.id),
+  )
+
+  /* ── Generar en bloque: una región por módulo pendiente + sus niveles ── */
+  const runBulkGen = async () => {
+    if (!world || modulesWithoutRegion.length === 0) return
+    setBulkBusy(true)
+    const lvl = bulkLevels === '' ? 3 : Number(bulkLevels)
+    const qpl = (bulkSections === '' ? 2 : Number(bulkSections)) * QUESTIONS_PER_SECTION
+    const pending = modulesWithoutRegion
+    let ok = 0
+    let failed = 0
+    try {
+      for (let i = 0; i < pending.length; i++) {
+        const m = pending[i]
+        setBulkProgress({ i: i + 1, n: pending.length, title: m.title_es })
+        // 1. Crear la región espejo del módulo (order_index continúa la lista).
+        const { data: region, error } = await supabase
+          .from('world_regions')
+          .insert({
+            world_id: world.id,
+            module_id: m.id,
+            name: m.title_es,
+            description: null,
+            icon: (m.icon && m.icon.length <= 2) ? m.icon : '📍',
+            order_index: regions.length + i,
+          })
+          .select('*')
+          .single()
+        if (error || !region) { failed++; continue }
+        // 2. Generar sus niveles/quizzes con IA a partir del contenido del módulo.
+        try {
+          await generateModuleRegionLevels(world as unknown as WorldRow, (region as Region).id, m.id, {
+            levelCount: lvl, questionsPerLevel: qpl,
+          })
+          ok++
+        } catch (e) {
+          console.error('Fallo generando niveles de la región del módulo', m.id, e)
+          failed++
+        }
+      }
+      // Recarga regiones + niveles + quizzes reales generados.
+      const [{ data: rData }, { data: lData }, { data: qData }] = await Promise.all([
+        supabase.from('world_regions').select('*').eq('world_id', world.id).order('order_index'),
+        supabase.from('world_levels').select('*').eq('world_id', world.id).order('order_index'),
+        (() => {
+          return supabase.from('arena_quizzes').select('id, title').eq('world_id', world.id).order('created_at')
+        })(),
+      ])
+      const newRegions = (rData ?? []) as Region[]
+      setRegions(newRegions)
+      setLevels((lData ?? []) as Level[])
+      setQuizzes((qData ?? []) as Quiz[])
+      if (newRegions.length > 0) setExpanded({ [newRegions[0].id]: true })
+      if (failed === 0) toast.success(i18n.t('admin.worlds.bulk_gen_ok', { count: ok, defaultValue: `Se crearon ${ok} regiones con sus niveles` }))
+      else if (ok === 0) toast.error(i18n.t('admin.worlds.ai_gen_error'))
+      else toast.success(i18n.t('admin.worlds.bulk_gen_partial', { ok, fail: failed, defaultValue: `${ok} regiones listas, ${failed} fallaron` }))
+      setBulkOpen(false)
+    } finally {
+      setBulkBusy(false)
+      setBulkProgress(null)
     }
   }
 
@@ -415,19 +551,109 @@ export default function WorldDetail() {
           </div>
         )}
 
+        {/* ── Generar regiones desde el curso (una por módulo) ── */}
+        {linkedCourse && modulesWithoutRegion.length > 0 && (
+          <div className="mb-4 rounded-2xl p-4 sm:p-5" style={{ background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.22)' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background:'rgba(139,92,246,0.14)' }}>
+                <Sparkles className="h-5 w-5" style={{ color:'#8B5CF6' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-semibold text-text">
+                  {modulesWithoutRegion.length === courseModules.length
+                    ? i18n.t('admin.worlds.bulk_cta_title', { name: linkedCourse.title_es, count: modulesWithoutRegion.length, defaultValue: `Armá este mundo desde “${linkedCourse.title_es}”` })
+                    : i18n.t('admin.worlds.bulk_cta_more', { count: modulesWithoutRegion.length, defaultValue: `${modulesWithoutRegion.length} módulo(s) del curso todavía sin región` })}
+                </div>
+                <div className="text-[12px] text-text-muted mt-0.5">
+                  {i18n.t('admin.worlds.bulk_cta_desc', { count: modulesWithoutRegion.length, defaultValue: `La IA crea una región por módulo y genera sus niveles y preguntas a partir del contenido. Todo queda editable.` })}
+                </div>
+              </div>
+              <button onClick={() => setBulkOpen(true)}
+                className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-semibold shrink-0 transition-colors"
+                style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.24)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.16)'}>
+                <Sparkles className="h-4 w-4" />
+                {i18n.t('admin.worlds.bulk_cta_btn', { count: modulesWithoutRegion.length, defaultValue: `Generar ${modulesWithoutRegion.length} regiones` })}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Preview en vivo del recorrido ── */}
+        {regions.length > 0 && (
+          <div className="mb-4 rounded-2xl bg-surface border border-line p-3.5 sm:p-4">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-[16px]">{world.character_emoji || '🧑'}</span>
+              <span className="text-[12px] font-semibold text-text-muted uppercase tracking-wider">
+                {i18n.t('admin.worlds.preview_title', { defaultValue: 'Así se verá el recorrido' })}
+              </span>
+            </div>
+            <div className="flex items-stretch gap-2 overflow-x-auto pb-1">
+              {regions.sort((a,b) => a.order_index - b.order_index).map((region, ri) => {
+                const rLevels = levels.filter(l => l.region_id === region.id).sort((a,b) => a.order_index - b.order_index)
+                return (
+                  <div key={region.id} className="flex items-center gap-2 shrink-0">
+                    {ri > 0 && <ChevronRight className="h-3.5 w-3.5 text-text-subtle/50 shrink-0" />}
+                    <button
+                      onClick={() => setExpanded(prev => ({ ...prev, [region.id]: true }))}
+                      title={region.name}
+                      className="flex flex-col items-center gap-1.5 rounded-xl px-3 py-2 border transition-colors hover:bg-bg"
+                      style={{ borderColor:`${tc}22`, background:`${tc}08` }}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[15px]">{region.icon}</span>
+                        <span className="text-[12px] font-medium text-text max-w-[120px] truncate">{region.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {rLevels.length === 0 ? (
+                          <span className="text-[10px] text-amber-500">{i18n.t('admin.worlds.preview_empty_region', { defaultValue: 'sin niveles' })}</span>
+                        ) : rLevels.map(l => (
+                          <span key={l.id} title={l.name}
+                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            style={l.quiz_id
+                              ? { background: tc }
+                              : { background:'transparent', border:'1.5px solid #f59e0b' }} />
+                        ))}
+                      </div>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex items-center gap-3 mt-2.5 text-[10.5px] text-text-muted">
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background:tc }} /> {i18n.t('admin.worlds.preview_with_quiz', { defaultValue: 'nivel con quiz' })}</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background:'transparent', border:'1.5px solid #f59e0b' }} /> {i18n.t('admin.worlds.preview_no_quiz', { defaultValue: 'sin quiz' })}</span>
+            </div>
+          </div>
+        )}
+
         {/* ── Regions ── */}
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
             <h2 className="text-[15px] sm:text-[16px] font-bold text-text">{i18n.t('admin.worlds.regions_levels')}</h2>
             <p className="text-[12px] text-text-muted mt-0.5 hidden sm:block">{i18n.t('admin.worlds.regions_hint')}</p>
           </div>
-          <button onClick={openNewRegion}
-            className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors shrink-0 min-h-[44px]"
-            style={{ background:'rgba(0,194,40,0.12)', color:'#00C228', border:'1px solid rgba(0,194,40,0.25)' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.20)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.12)'}>
-            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4"/> <span className="hidden xs:inline">{i18n.t('admin.worlds.new_f')}</span> región
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {orphanQuizzes.length > 0 && (
+              <button onClick={cleanupOrphanQuizzes}
+                title={i18n.t('admin.worlds.cleanup_quizzes_title', { defaultValue: 'Limpiar quizzes sin usar' })}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors min-h-[44px]"
+                style={{ background:'rgba(245,158,11,0.10)', color:'#f59e0b', border:'1px solid rgba(245,158,11,0.25)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(245,158,11,0.18)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(245,158,11,0.10)'}>
+                <Trash2 className="h-3.5 w-3.5"/>
+                <span className="hidden sm:inline">{i18n.t('admin.worlds.cleanup_quizzes_btn', { count: orphanQuizzes.length, defaultValue: `Limpiar ${orphanQuizzes.length} quiz sin usar` })}</span>
+                <span className="sm:hidden">{orphanQuizzes.length}</span>
+              </button>
+            )}
+            <button onClick={openNewRegion}
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors min-h-[44px]"
+              style={{ background:'rgba(0,194,40,0.12)', color:'#00C228', border:'1px solid rgba(0,194,40,0.25)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.20)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.12)'}>
+              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4"/> <span className="hidden xs:inline">{i18n.t('admin.worlds.new_f')}</span> región
+            </button>
+          </div>
         </div>
 
         {regions.length === 0 ? (
@@ -658,16 +884,32 @@ export default function WorldDetail() {
                   className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.arena_quiz')}</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[12px] font-medium text-text-muted">{i18n.t('admin.worlds.arena_quiz')}</label>
+                  <button type="button" onClick={() => setQuizEditorOpen(true)}
+                    className="flex items-center gap-1 text-[11px] font-medium transition-opacity hover:opacity-70"
+                    style={{ color:'#00C228' }}>
+                    <Plus className="h-3 w-3" /> {i18n.t('admin.worlds.quiz_new', { defaultValue: 'Crear quiz nuevo' })}
+                  </button>
+                </div>
                 <div className="relative">
                   <select value={levelForm.quiz_id} onChange={e => setLevelForm(f => ({...f,quiz_id:e.target.value}))}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer min-h-[44px]">
                     <option value="">{i18n.t('admin.worlds.no_quiz_assigned')}</option>
-                    {quizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                    {/* Solo quizzes SIN USAR de este mundo (más el ya asignado a este
+                        nivel al editar). Los que ya están en otro nivel no se listan
+                        para no ensuciar el picker: lo normal es "Crear quiz nuevo". */}
+                    {quizzes
+                      .filter(q => q.id === levelForm.quiz_id || !levels.some(l => l.quiz_id === q.id))
+                      .map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none"/>
                 </div>
-                <p className="text-[11px] text-text-muted mt-1">{i18n.t('admin.worlds.quiz_create_first')}</p>
+                <p className="text-[11px] text-text-muted mt-1">
+                  {quizzes.filter(q => q.id === levelForm.quiz_id || !levels.some(l => l.quiz_id === q.id)).length === 0
+                    ? i18n.t('admin.worlds.quiz_none_yet', { defaultValue: 'Todavía no hay quizzes sin usar. Creá uno con “Crear quiz nuevo”.' })
+                    : i18n.t('admin.worlds.quiz_pick_or_create', { defaultValue: 'Reutilizá un quiz sin usar de este mundo, o creá uno nuevo.' })}
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -747,14 +989,23 @@ export default function WorldDetail() {
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
                 </div>
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_questions_label')}</label>
-                  <input type="number" min={1} max={10} value={aiQuestions}
-                    onChange={e => setAiQuestions(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
-                    placeholder={i18n.t('admin.worlds.gen_questions_ph')}
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_sections_label')}</label>
+                  <input type="number" min={1} max={5} value={aiSections}
+                    onChange={e => setAiSections(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
                 </div>
               </div>
-              <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_scope_hint')}</p>
+              <p className="text-[11px] text-text-muted -mt-1">{i18n.t('admin.worlds.gen_sections_hint', { total: (aiSections === '' ? 2 : Number(aiSections)) * QUESTIONS_PER_SECTION })}</p>
+              <div>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_min_score_label')}</label>
+                <div className="relative">
+                  <input type="number" min={0} max={100} value={aiMinScore}
+                    onChange={e => setAiMinScore(e.target.value === '' ? '' : Math.max(0, Math.min(100, Number(e.target.value))))}
+                    className="w-full px-3 py-2.5 pr-8 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-text-muted pointer-events-none">%</span>
+                </div>
+                <p className="text-[11px] text-text-muted mt-1">{i18n.t('admin.worlds.gen_min_score_hint')}</p>
+              </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => !aiGenerating && setAiRegion(null)} disabled={aiGenerating}
@@ -768,6 +1019,91 @@ export default function WorldDetail() {
                   ? <><Loader2 className="h-4 w-4 animate-spin"/> {i18n.t('admin.worlds.ai_gen_generating')}</>
                   : <><Sparkles className="h-4 w-4"/> {i18n.t('admin.worlds.ai_gen_submit')}</>}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Crear quiz nuevo inline (desde el modal de nivel) ── */}
+      {quizEditorOpen && world && (
+        <ArenaEditorModal
+          editing={null}
+          defaultCampaignId={world.campaign_id}
+          worldId={world.id}
+          scopedToCampaign
+          campaigns={[]}
+          crumb={`Mundos › ${world.name}`}
+          onClose={() => setQuizEditorOpen(false)}
+          onSaved={onQuizCreated}
+        />
+      )}
+
+      {/* ── Generar regiones desde el curso (modal en bloque) ── */}
+      {bulkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget && !bulkBusy) setBulkOpen(false) }}>
+          <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
+              <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
+                <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
+                {i18n.t('admin.worlds.bulk_modal_title', { defaultValue: 'Generar regiones desde el curso' })}
+              </h2>
+              <button onClick={() => !bulkBusy && setBulkOpen(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+                <X className="h-4 w-4"/>
+              </button>
+            </div>
+            <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
+              {bulkBusy && bulkProgress ? (
+                <div className="py-4 text-center space-y-3">
+                  <Loader2 className="h-7 w-7 animate-spin mx-auto" style={{ color:'#8B5CF6' }} />
+                  <div className="text-[13px] font-medium text-text">
+                    {i18n.t('admin.worlds.bulk_progress', { i: bulkProgress.i, n: bulkProgress.n, defaultValue: `Región ${bulkProgress.i} de ${bulkProgress.n}` })}
+                  </div>
+                  <div className="text-[12px] text-text-muted truncate">{bulkProgress.title}</div>
+                  <div className="h-1.5 w-full rounded-full bg-subtle overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width:`${(bulkProgress.i / bulkProgress.n) * 100}%`, background:'#8B5CF6' }} />
+                  </div>
+                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.bulk_progress_hint', { defaultValue: 'Podés cerrar esta ventana; la generación sigue en segundo plano.' })}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3" style={{ background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.20)' }}>
+                    <BookOpen className="h-4 w-4 shrink-0 mt-0.5" style={{ color:'#8B5CF6' }} />
+                    <p className="text-[12px] text-text-muted leading-relaxed">
+                      {i18n.t('admin.worlds.bulk_modal_desc', { count: modulesWithoutRegion.length, defaultValue: `Se crearán ${modulesWithoutRegion.length} regiones (una por módulo) y la IA generará sus niveles y preguntas desde el contenido de cada módulo.` })}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
+                      <input type="number" min={1} max={10} value={bulkLevels}
+                        onChange={e => setBulkLevels(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
+                        className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_sections_label')}</label>
+                      <input type="number" min={1} max={5} value={bulkSections}
+                        onChange={e => setBulkSections(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
+                        className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_sections_hint', { total: (bulkSections === '' ? 2 : Number(bulkSections)) * QUESTIONS_PER_SECTION })}</p>
+                </>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
+              <button onClick={() => !bulkBusy && setBulkOpen(false)} disabled={bulkBusy}
+                className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors disabled:opacity-50">
+                {bulkBusy ? i18n.t('admin.worlds.bulk_close', { defaultValue: 'Cerrar' }) : i18n.t('confirm.cancel')}
+              </button>
+              {!bulkBusy && (
+                <button onClick={runBulkGen}
+                  className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium"
+                  style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
+                  <Sparkles className="h-4 w-4"/>
+                  {i18n.t('admin.worlds.bulk_modal_submit', { count: modulesWithoutRegion.length, defaultValue: `Generar ${modulesWithoutRegion.length} regiones` })}
+                </button>
+              )}
             </div>
           </div>
         </div>

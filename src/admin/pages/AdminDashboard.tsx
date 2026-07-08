@@ -99,13 +99,13 @@ export default function AdminDashboard() {
       cta: 'Ver misiones',
     },
     {
-      to: '/admin/arena',
+      to: '/admin/worlds',
       icon: Trophy,
       iconColor: '#00C228',
       iconBg: 'rgba(0,194,40,0.10)',
-      title: 'Arena',
-      desc: 'Desafíos interactivos gamificados por campaña',
-      cta: 'Ver Arena',
+      title: 'Mundos',
+      desc: 'Mundos gamificados con regiones, niveles y quizzes por campaña',
+      cta: 'Ver mundos',
     },
   ]
 
