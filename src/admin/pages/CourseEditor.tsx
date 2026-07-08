@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
   updateCourse,
@@ -398,7 +399,6 @@ export default function CourseEditor() {
       await reorderCourseModules(mods.map((m, i) => ({ id: m.id, course_sort_order: i + 1 })))
       invalidateModulesCache()
       await reload()
-      void syncWorld()
     } catch {
       toast.error(t('admin.courses.error_save'))
     }
