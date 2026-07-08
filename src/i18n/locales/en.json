@@ -685,7 +685,7 @@
       "publish_course": "Course",
       "publish_modules": "Modules",
       "publish_world": "World (game)",
-      "world_optional_hint": "optional · built in Worlds",
+      "world_optional_hint": "optional · generated from the course modules",
       "world_configure": "Set up world",
       "world_sync": "Sync",
       "world_sync_ok": "World up to date: every module already has its region",

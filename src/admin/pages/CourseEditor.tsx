@@ -44,7 +44,7 @@ import {
   type CourseStats,
 } from '@/services/courses.service'
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
-import { getCourseWorld } from '@/services/worlds.service'
+import { getCourseWorld, syncCourseWorldById } from '@/services/worlds.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign, Profile } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -319,9 +319,10 @@ export default function CourseEditor() {
     }
   }
 
-  // Lleva a Mundos para crear/configurar el mundo del curso. Si el curso ya tiene
-  // un mundo (creado antes en Mundos), lo abre; si no, abre el generador de Mundos
-  // con la campaña y el nombre del curso ya elegidos. Nunca crea nada automático.
+  // Abre el mundo del curso. Si aún no existe, lo crea LIGADO al curso: una región
+  // por módulo (ancladas a su contenido), SIN generar niveles todavía. Los niveles
+  // se generan luego, región por región, desde el detalle del mundo (con IA anclada
+  // al contenido del módulo). Nunca se inventa ni se crea un mundo suelto.
   const handleViewWorld = async () => {
     setOpeningWorld(true)
     try {
@@ -329,10 +330,12 @@ export default function CourseEditor() {
       if (world) {
         navigate(`/admin/worlds/${world.id}`)
       } else {
-        navigate('/admin/worlds', {
-          state: { generateFor: { campaignId: course.campaign_id, name: course.title_es } },
-        })
+        const { world: created } = await syncCourseWorldById(course.id, { createIfMissing: true })
+        if (created) navigate(`/admin/worlds/${created.id}`)
+        else toast.error(t('admin.courses.error_save'))
       }
+    } catch {
+      toast.error(t('admin.courses.error_save'))
     } finally {
       setOpeningWorld(false)
     }

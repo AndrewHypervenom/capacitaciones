@@ -685,7 +685,7 @@
       "publish_course": "Curso",
       "publish_modules": "Módulos",
       "publish_world": "Mundo (juego)",
-      "world_optional_hint": "opcional · se arma en Mundos",
+      "world_optional_hint": "opcional · se genera desde los módulos del curso",
       "world_configure": "Configurar mundo",
       "world_sync": "Sincronizar",
       "world_sync_ok": "Mundo al día: cada módulo ya tiene su región",

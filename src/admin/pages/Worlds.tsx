@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
-  Plus, X, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Map, Sparkles, Loader2,
+  Plus, X, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Map,
   Swords, Check,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -11,11 +11,6 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { getModulesRaw, type DbModuleRow } from '@/services/modules.service'
-import {
-  generateStandaloneWorldFromTopic,
-  generateStandaloneWorldFromModules,
-} from '@/services/worlds.service'
 import { ArenaEditorModal, normalizeArenaRow, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
 
 type WorldStatus = 'draft' | 'published'
@@ -79,7 +74,6 @@ function normalizeRow(row: Record<string, unknown>): World {
 
 export default function Worlds() {
   const navigate = useNavigate()
-  const location = useLocation()
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [worlds, setWorlds] = useState<World[]>([])
@@ -104,93 +98,6 @@ export default function Worlds() {
   // ── Editor de una arena (sub-modal) ──
   const [arenaEditorOpen, setArenaEditorOpen] = useState(false)
   const [arenaEditing, setArenaEditing] = useState<ArenaQuiz | null>(null)
-
-  // ── Generador con IA (standalone) ──
-  const [genOpen, setGenOpen] = useState(false)
-  const [genTab, setGenTab] = useState<'topic' | 'modules'>('topic')
-  const [genCampaign, setGenCampaign] = useState('')
-  const [genTopic, setGenTopic] = useState('')
-  const [genRegionCount, setGenRegionCount] = useState<number | ''>('')
-  const [genLevelCount, setGenLevelCount] = useState<number | ''>('')
-  const [genQuestionCount, setGenQuestionCount] = useState<number | ''>('')
-  const [genBg, setGenBg] = useState<string>('corporate')
-  const [genName, setGenName] = useState('')
-  const [genModules, setGenModules] = useState<DbModuleRow[]>([])
-  const [genModuleIds, setGenModuleIds] = useState<string[]>([])
-  const [genModulesLoading, setGenModulesLoading] = useState(false)
-  const [generating, setGenerating] = useState(false)
-
-  const openGenerator = (prefill?: { campaignId?: string; name?: string }) => {
-    setGenTab('topic')
-    setGenTopic('')
-    setGenRegionCount(3)
-    setGenLevelCount(3)
-    setGenQuestionCount(6)
-    setGenBg('corporate')
-    setGenName(prefill?.name ?? '')
-    setGenModuleIds([])
-    setGenCampaign(prefill?.campaignId || (scopedToCampaign ? (campaignId ?? '') : ''))
-    setGenOpen(true)
-  }
-
-  // Llegada desde el editor de un curso ("Configurar mundo"): abre el generador
-  // con la campaña (y nombre) del curso ya elegidos. Nada se crea automático.
-  useEffect(() => {
-    const st = location.state as { generateFor?: { campaignId?: string; name?: string } } | null
-    if (st?.generateFor) {
-      openGenerator(st.generateFor)
-      navigate(location.pathname, { replace: true, state: {} })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.state])
-
-  useEffect(() => {
-    if (!genOpen || genTab !== 'modules' || !genCampaign) return
-    setGenModulesLoading(true)
-    getModulesRaw(genCampaign)
-      .then((rows) => setGenModules(rows))
-      .catch(() => setGenModules([]))
-      .finally(() => setGenModulesLoading(false))
-  }, [genOpen, genTab, genCampaign])
-
-  const toggleGenModule = (id: string) =>
-    setGenModuleIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-
-  const handleGenerate = async () => {
-    if (!genCampaign) { toast.error(t('admin.worlds.gen_pick_campaign')); return }
-    setGenerating(true)
-    try {
-      let newId: string
-      if (genTab === 'topic') {
-        if (!genTopic.trim()) { toast.error(t('admin.worlds.gen_topic_required')); setGenerating(false); return }
-        newId = await generateStandaloneWorldFromTopic({
-          campaignId: genCampaign,
-          topic: genTopic.trim(),
-          regionCount: genRegionCount === '' ? 3 : Number(genRegionCount),
-          levelCount: genLevelCount === '' ? 3 : Number(genLevelCount),
-          questionsPerLevel: genQuestionCount === '' ? 6 : Number(genQuestionCount),
-          bgType: genBg,
-        })
-      } else {
-        if (genModuleIds.length === 0) { toast.error(t('admin.worlds.gen_modules_required')); setGenerating(false); return }
-        newId = await generateStandaloneWorldFromModules({
-          campaignId: genCampaign,
-          name: genName.trim() || t('admin.worlds.gen_default_name'),
-          moduleIds: genModuleIds,
-          levelCount: genLevelCount === '' ? 3 : Number(genLevelCount),
-          questionsPerLevel: genQuestionCount === '' ? 6 : Number(genQuestionCount),
-        })
-      }
-      toast.success(t('admin.worlds.gen_ok'))
-      setGenOpen(false)
-      navigate(`/admin/worlds/${newId}`)
-    } catch (e) {
-      console.error('Error generando mundo con IA:', e)
-      toast.error(t('admin.worlds.gen_error'), (e as Error).message)
-    } finally {
-      setGenerating(false)
-    }
-  }
 
   async function load() {
     if (scopedToCampaign && !campaignId) {
@@ -399,33 +306,6 @@ export default function Worlds() {
   const filtered = worlds.filter(w => filterCampaign === 'all' || w.campaign_id === filterCampaign)
   const currentWorldCampaign = form.campaign_id || (scopedToCampaign ? (campaignId ?? '') : '')
 
-  // Controles de alcance del contenido generado, compartidos por ambas pestañas
-  // del generador: cuántos niveles por región y cuántas preguntas por nivel.
-  const levelQuestionInputs = (
-    <div className="grid grid-cols-2 gap-3">
-      <div>
-        <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
-        <input
-          type="number" min={1} max={10}
-          value={genLevelCount}
-          onChange={e => setGenLevelCount(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
-          placeholder={i18n.t('admin.worlds.gen_levels_ph')}
-          className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"
-        />
-      </div>
-      <div>
-        <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_questions_label')}</label>
-        <input
-          type="number" min={1} max={10}
-          value={genQuestionCount}
-          onChange={e => setGenQuestionCount(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
-          placeholder={i18n.t('admin.worlds.gen_questions_ph')}
-          className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"
-        />
-      </div>
-    </div>
-  )
-
   if (!authLoading && scopedToCampaign && !campaignId) {
     return (
       <div className="p-4 sm:p-8">
@@ -459,16 +339,6 @@ export default function Worlds() {
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-[20px] sm:text-[24px] font-bold text-text">{i18n.t('admin.worlds.title')}</h1>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => openGenerator()}
-              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
-              style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6', border: '1px solid rgba(139,92,246,0.25)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.20)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.12)' }}
-            >
-              <Sparkles className="h-4 w-4" />
-              {i18n.t('admin.worlds.gen_button')}
-            </button>
             <button
               onClick={openWizardNew}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
@@ -896,171 +766,6 @@ export default function Worlds() {
         />
       )}
 
-      {/* ── Generador con IA ── */}
-      {genOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget && !generating) setGenOpen(false) }}
-        >
-          <div className="worlds-modal w-full max-w-lg rounded-2xl bg-surface border border-line flex flex-col overflow-hidden" style={{ maxHeight: '90vh' }}>
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
-              <h2 className="text-[16px] font-semibold text-text flex items-center gap-2">
-                <Sparkles className="h-4 w-4" style={{ color: '#8B5CF6' }} />
-                {i18n.t('admin.worlds.gen_title')}
-              </h2>
-              <button onClick={() => !generating && setGenOpen(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="flex gap-1 px-4 sm:px-6 pt-4 shrink-0">
-              {(['topic', 'modules'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setGenTab(tab)}
-                  className="flex-1 min-h-[40px] rounded-xl text-[13px] font-medium transition-colors"
-                  style={genTab === tab
-                    ? { background: 'rgba(139,92,246,0.14)', color: '#8B5CF6', border: '1px solid rgba(139,92,246,0.28)' }
-                    : { background: 'transparent', color: 'rgb(var(--text-muted))', border: '1px solid rgb(var(--glass-border) / 0.10)' }}
-                >
-                  {tab === 'topic' ? i18n.t('admin.worlds.gen_tab_topic') : i18n.t('admin.worlds.gen_tab_modules')}
-                </button>
-              ))}
-            </div>
-
-            <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
-              {!scopedToCampaign && (
-                <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
-                  <div className="relative">
-                    <select
-                      value={genCampaign}
-                      onChange={e => setGenCampaign(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none min-h-[44px]"
-                    >
-                      <option value="">{i18n.t('admin.worlds.gen_pick_campaign')}</option>
-                      {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
-                  </div>
-                </div>
-              )}
-
-              {genTab === 'topic' ? (
-                <>
-                  <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_topic_label')}</label>
-                    <textarea
-                      value={genTopic}
-                      onChange={e => setGenTopic(e.target.value)}
-                      placeholder={i18n.t('admin.worlds.gen_topic_ph')}
-                      rows={3}
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#8B5CF6]/50 transition-colors resize-none"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_regions_label')}</label>
-                      <input
-                        type="number" min={1} max={8}
-                        value={genRegionCount}
-                        onChange={e => setGenRegionCount(e.target.value === '' ? '' : Math.max(1, Math.min(8, Number(e.target.value))))}
-                        placeholder={i18n.t('admin.worlds.gen_regions_ph')}
-                        className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.bg_type')}</label>
-                      <div className="relative">
-                        <select
-                          value={genBg}
-                          onChange={e => setGenBg(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none min-h-[44px]"
-                        >
-                          {BG_TYPES.map(bt => <option key={bt} value={bt}>{BG_LABELS[bt]}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                  {levelQuestionInputs}
-                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_scope_hint')}</p>
-                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_topic_hint')}</p>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_name_label')}</label>
-                    <input
-                      value={genName}
-                      onChange={e => setGenName(e.target.value)}
-                      placeholder={i18n.t('admin.worlds.gen_name_ph')}
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none min-h-[44px]"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-[12px] font-medium text-text-muted">{i18n.t('admin.worlds.gen_modules_label')}</label>
-                      <span className="text-[11px] text-text-muted">{genModuleIds.length} {i18n.t('admin.worlds.gen_selected')}</span>
-                    </div>
-                    {!genCampaign ? (
-                      <p className="text-[12px] text-text-muted py-4 text-center">{i18n.t('admin.worlds.gen_pick_campaign')}</p>
-                    ) : genModulesLoading ? (
-                      <div className="py-6 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-text-muted" /></div>
-                    ) : genModules.length === 0 ? (
-                      <p className="text-[12px] text-text-muted py-4 text-center">{i18n.t('admin.worlds.gen_no_modules')}</p>
-                    ) : (
-                      <div className="max-h-64 overflow-y-auto rounded-xl border border-line divide-y divide-line/50">
-                        {genModules.map(m => {
-                          const checked = genModuleIds.includes(m.id)
-                          return (
-                            <button
-                              key={m.id}
-                              onClick={() => toggleGenModule(m.id)}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg/40"
-                            >
-                              <span
-                                className="h-5 w-5 rounded-md flex items-center justify-center shrink-0 text-[11px]"
-                                style={checked ? { background: '#8B5CF6', color: 'white' } : { border: '1px solid rgb(var(--glass-border) / 0.3)' }}
-                              >
-                                {checked ? '✓' : ''}
-                              </span>
-                              <span className="text-[16px]">{(m.icon && m.icon.length <= 2) ? m.icon : '📘'}</span>
-                              <span className="text-[13px] text-text truncate">{m.title_es}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  {levelQuestionInputs}
-                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_scope_hint')}</p>
-                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_modules_hint')}</p>
-                </>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
-              <button
-                type="button"
-                onClick={() => !generating && setGenOpen(false)}
-                className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors border border-line"
-              >
-                {i18n.t('confirm.cancel')}
-              </button>
-              <button
-                onClick={handleGenerate}
-                disabled={generating}
-                className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
-                style={{ background: 'rgba(139,92,246,0.16)', color: '#8B5CF6', border: '1px solid rgba(139,92,246,0.30)' }}
-              >
-                {generating ? <><Loader2 className="h-4 w-4 animate-spin" /> {i18n.t('admin.worlds.gen_generating')}</> : <><Sparkles className="h-4 w-4" /> {i18n.t('admin.worlds.gen_submit')}</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }

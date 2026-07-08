@@ -142,6 +142,9 @@ export interface WorldGenOptions {
   questionsPerLevel?: number
 }
 
+/** Mínimo de caracteres de contenido para generar sin que la IA invente. */
+const MIN_SOURCE_CHARS = 120
+
 const clampInt = (v: number | undefined, min: number, max: number, fallback: number): number => {
   const n = Math.round(v ?? fallback)
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback
@@ -161,6 +164,15 @@ export async function generateRegionLevelsFlexible(
   source: RegionSource,
   opts: WorldGenOptions = {},
 ): Promise<void> {
+  // Anti-invención: sin contenido real de origen NO se genera (la IA inventaría).
+  // Los mundos deben estar anclados al contenido del curso/módulo.
+  if ((source.moduleText ?? '').trim().length < MIN_SOURCE_CHARS) {
+    throw new Error(
+      'El contenido de origen es insuficiente para generar sin inventar. ' +
+      'Asegurate de que el módulo tenga contenido (texto) y volvé a intentar.',
+    )
+  }
+
   const levelCount = clampInt(opts.levelCount, 1, 10, 3)
   // Sin valor → 6 preguntas por nivel (2 secciones de 3). Ya no "lo decide la IA".
   const questionsPerLevel = clampInt(opts.questionsPerLevel, 1, 10, 6)
