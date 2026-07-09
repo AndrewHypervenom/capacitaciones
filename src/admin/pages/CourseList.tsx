@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -11,18 +11,18 @@ import {
   updateCourse,
   deleteCourse,
   getShareableCourses,
-  addModuleToCourse,
   type CourseWithModules,
   type AdminCourse,
   type ShareableCourse,
 } from '@/services/courses.service'
-import { generateModuleOutline, generateModuleSection, type GeneratedModule } from '@/services/ai.service'
-import { saveGeneratedModule } from '@/services/modules.service'
+import { runCourseAiGeneration, COURSE_AI_CREATED_EVENT } from '@/services/courseAi.service'
 import {
   extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
   type ExtractedDocument, type ExtractStage,
 } from '@/lib/documentExtract'
 import { invalidateModulesCache } from '@/hooks/useModules'
+import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
+import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -47,6 +47,9 @@ export default function CourseList() {
   const [courses, setCourses] = useState<AdminCourse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Se incrementa para forzar recarga de la lista (p. ej. cuando una creación con
+  // IA en segundo plano termina mientras seguimos en esta pantalla).
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Catálogo compartido por otras campañas (matrícula viva)
   const [view, setView] = useState<'mine' | 'shared'>('mine')
@@ -64,29 +67,31 @@ export default function CourseList() {
 
   // Asistente "Crear curso con IA" (documento → 1 módulo → mundo, todo en borrador)
   const aiFileRef = useRef<HTMLInputElement>(null)
+  const aiLastFileRef = useRef<File | null>(null)
   const [showAi, setShowAi] = useState(false)
   const [aiTitle, setAiTitle] = useState('')
   const [aiDoc, setAiDoc] = useState<ExtractedDocument | null>(null)
   const [aiReadingName, setAiReadingName] = useState('')
   const [aiExtracting, setAiExtracting] = useState(false)
+  const [aiManualMode, setAiManualMode] = useState(false)
   const [aiProgress, setAiProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
-  const [aiBusy, setAiBusy] = useState(false)
-  const [aiStepMsg, setAiStepMsg] = useState<string | null>(null)
 
   const openAi = () => {
-    setAiTitle(''); setAiDoc(null); setAiReadingName(''); setAiStepMsg(null)
+    setAiTitle(''); setAiDoc(null); setAiReadingName(''); setAiManualMode(false)
+    aiLastFileRef.current = null
     setAiProgress({ stage: 'reading', ratio: 0 })
     setShowAi(true)
   }
 
-  const handleAiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // Extrae texto e imágenes del documento. `manual` controla el modo paso a paso,
+  // que además renderiza las páginas del PDF como contexto visual (aunque haya texto)
+  // y, en PDFs escaneados, permite recortar las capturas de cada paso.
+  const extractAiFile = async (file: File, manual: boolean) => {
     setAiReadingName(file.name)
     setAiProgress({ stage: 'reading', ratio: 0 })
     setAiExtracting(true)
     try {
-      const extracted = await extractDocumentText(file, (p) => setAiProgress(p))
+      const extracted = await extractDocumentText(file, (p) => setAiProgress(p), { manualMode: manual })
       setAiDoc(extracted)
       if (!aiTitle.trim()) setAiTitle(extracted.fileName.replace(/\.[^.]+$/, ''))
     } catch (err) {
@@ -94,70 +99,37 @@ export default function CourseList() {
       toast.error(err instanceof Error ? err.message : t('admin.courses.ai_read_error'))
     } finally {
       setAiExtracting(false)
-      if (aiFileRef.current) aiFileRef.current.value = ''
     }
   }
 
-  const handleAiCreate = async () => {
-    if (!aiTitle.trim() || !aiDoc || !selectedCampaignId || aiBusy) return
-    setAiBusy(true)
-    try {
-      const description = aiTitle.trim()
-      const docContext = {
-        documentText: aiDoc.text || undefined,
-        images: aiDoc.images.length ? aiDoc.images : undefined,
-        contextImages: aiDoc.contextImages.length ? aiDoc.contextImages : undefined,
-      }
+  const handleAiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (aiFileRef.current) aiFileRef.current.value = ''
+    if (!file) return
+    aiLastFileRef.current = file
+    await extractAiFile(file, aiManualMode)
+  }
 
-      // 1) Esquema del módulo (llamada chica). Antes de crear el curso, así un
-      //    fallo temprano no deja un curso vacío.
-      setAiStepMsg(t('admin.courses.ai_step_outline'))
-      const { data: outline } = await generateModuleOutline({ description, ...docContext })
-      const headings = outline.sections.map((h) => h.heading_es)
+  // Al cambiar el modo manual re-extraemos el mismo archivo (cambia el set de imágenes).
+  const handleToggleAiManual = async (next: boolean) => {
+    setAiManualMode(next)
+    if (aiLastFileRef.current) await extractAiFile(aiLastFileRef.current, next)
+  }
 
-      // 2) Cada sección por separado (a prueba de límites de tokens) con progreso.
-      const sections: GeneratedModule['sections'] = []
-      for (let s = 0; s < outline.sections.length; s++) {
-        setAiStepMsg(t('admin.courses.ai_step_section', { n: s + 1, total: outline.sections.length }))
-        const h = outline.sections[s]
-        try {
-          const { data } = await generateModuleSection({
-            description,
-            moduleTitle: outline.metadata.title_es,
-            moduleSubtitle: outline.metadata.subtitle_es,
-            objectives: outline.metadata.objectives_es,
-            sectionHeading: h.heading_es,
-            sectionIndex: s,
-            totalSections: outline.sections.length,
-            allHeadings: headings,
-            ...docContext,
-          })
-          sections.push({ ...h, blocks: data.blocks })
-        } catch { /* si una sección falla, se omite y seguimos */ }
-      }
-      if (!sections.length) throw new Error(t('admin.courses.ai_no_sections'))
-      const generated: GeneratedModule = { metadata: outline.metadata, sections }
-
-      // 3) Crear el curso (borrador) y engancharle el módulo (borrador).
-      setAiStepMsg(t('admin.courses.ai_step_course'))
-      const course = await createCourse(selectedCampaignId, { title_es: description, description_es: null })
-      const moduleId = await saveGeneratedModule(selectedCampaignId, generated, aiDoc.images)
-      await addModuleToCourse(course.id, moduleId, 1)
-
-      // El mundo (gamificación) NO se crea acá: es opcional y se arma aparte,
-      // en la sección Mundos, con la cantidad de regiones/niveles/preguntas que
-      // elija el capacitador. Crear el curso solo crea el curso y su módulo.
-
-      invalidateModulesCache()
-      toast.success(t('admin.courses.ai_created_ok'))
-      setShowAi(false)
-      navigate(`/admin/courses/${course.id}`)
-    } catch (e) {
-      toast.error(t('admin.courses.ai_created_error'), (e as Error).message)
-    } finally {
-      setAiBusy(false)
-      setAiStepMsg(null)
+  // La generación con IA corre en SEGUNDO PLANO (bgTaskStore global): cerramos el
+  // modal de inmediato y el proceso continúa aunque el usuario navegue a otra vista.
+  // El mundo (gamificación) NO se crea acá: es opcional y se arma aparte en Mundos.
+  const handleAiCreate = () => {
+    if (!aiTitle.trim() || !aiDoc || !selectedCampaignId) return
+    const input = {
+      campaignId: selectedCampaignId,
+      title: aiTitle.trim(),
+      doc: aiDoc,
+      manualMode: aiManualMode,
     }
+    setShowAi(false)
+    toast.success(t('admin.courses.ai_started_bg'))
+    void runCourseAiGeneration(input)
   }
 
   useEffect(() => {
@@ -185,7 +157,20 @@ export default function CourseList() {
       .then(setCourses)
       .catch(() => setError(t('admin.courses.error_load')))
       .finally(() => setLoading(false))
-  }, [selectedCampaignId, t])
+  }, [selectedCampaignId, t, refreshKey])
+
+  // Cuando una creación de curso con IA (en segundo plano) termina, refrescamos la
+  // lista si el curso pertenece a la campaña que estamos viendo.
+  useEffect(() => {
+    const onCreated = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { campaignId?: string } | undefined
+      if (selectedCampaignId === ALL_CAMPAIGNS || detail?.campaignId === selectedCampaignId) {
+        setRefreshKey((k) => k + 1)
+      }
+    }
+    window.addEventListener(COURSE_AI_CREATED_EVENT, onCreated)
+    return () => window.removeEventListener(COURSE_AI_CREATED_EVENT, onCreated)
+  }, [selectedCampaignId])
 
   useEffect(() => {
     if (view !== 'shared' || !selectedCampaignId || selectedCampaignId === ALL_CAMPAIGNS) return
@@ -262,6 +247,9 @@ export default function CourseList() {
       toast.error(t('admin.courses.error_delete'))
     }
   }
+
+  const createBackdrop = useBackdropDismiss(() => setShowCreate(false), !creating)
+  const aiBackdrop = useBackdropDismiss(() => setShowAi(false), !aiExtracting)
 
   return (
     <div className="p-4 sm:p-8">
@@ -560,7 +548,7 @@ export default function CourseList() {
       {showCreate && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => !creating && setShowCreate(false)}
+          {...createBackdrop}
         >
           <div
             className="w-full max-w-md rounded-2xl bg-bg border border-line p-6 shadow-xl"
@@ -618,7 +606,7 @@ export default function CourseList() {
       {showAi && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => !aiBusy && !aiExtracting && setShowAi(false)}
+          {...aiBackdrop}
         >
           <div
             className="w-full max-w-md rounded-2xl bg-bg border border-line p-6 shadow-xl"
@@ -630,7 +618,7 @@ export default function CourseList() {
                 {t('admin.courses.ai_create')}
               </h2>
               <button
-                onClick={() => !aiBusy && setShowAi(false)}
+                onClick={() => setShowAi(false)}
                 className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
                 aria-label={t('admin.nav.close_menu')}
               >
@@ -647,7 +635,6 @@ export default function CourseList() {
               value={aiTitle}
               onChange={(e) => setAiTitle(e.target.value)}
               placeholder={t('admin.courses.field_title_ph')}
-              disabled={aiBusy}
               className="w-full mb-4 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none focus:border-primary disabled:opacity-60"
             />
 
@@ -678,14 +665,15 @@ export default function CourseList() {
               <div className="flex items-center gap-2 mb-4 text-[12px] text-brand-violet px-3.5 py-2.5 rounded-xl bg-brand-violet/6 border border-brand-violet/15">
                 <FileText className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate flex-1">
-                  {aiDoc.fileName} — {(aiDoc.text.length / 1000).toFixed(1)}k {t('admin.courses.ai_chars')}
-                  {aiDoc.images.length > 0 && ` · ${aiDoc.images.length} ${t('admin.courses.ai_figures')}`}
+                  {aiDoc.fileName} — {aiDoc.text.trim()
+                    ? `${(aiDoc.text.length / 1000).toFixed(1)}k ${t('admin.courses.ai_chars')}`
+                    : t('admin.courses.ai_scanned')}
+                  {aiDoc.images.length > 0 && aiDoc.text.trim() && ` · ${aiDoc.images.length} ${t('admin.courses.ai_figures')}`}
+                  {aiDoc.contextImages.length > 0 && ` · ${aiDoc.contextImages.length} ${aiManualMode && !aiDoc.text.trim() ? t('admin.courses.ai_pages_crop') : t('admin.courses.ai_pages_vision')}`}
                 </span>
-                {!aiBusy && (
-                  <button onClick={() => setAiDoc(null)} className="text-text-muted hover:text-danger shrink-0">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                <button onClick={() => { setAiDoc(null); aiLastFileRef.current = null }} className="text-text-muted hover:text-danger shrink-0">
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
             ) : (
               <button
@@ -699,28 +687,53 @@ export default function CourseList() {
             )}
             <input ref={aiFileRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleAiFile} />
 
-            {/* Estado de generación */}
-            {aiBusy && aiStepMsg && (
-              <div className="flex items-center gap-2 mb-4 rounded-xl bg-brand-violet/6 border border-brand-violet/15 px-3.5 py-2.5 text-[12px] text-text">
-                <Loader2 className="h-4 w-4 animate-spin text-brand-violet shrink-0" />
-                <span className="truncate">{aiStepMsg}</span>
+            {/* Modo manual paso a paso (fidelidad máxima a un procedimiento con capturas) */}
+            <button
+              type="button"
+              onClick={() => handleToggleAiManual(!aiManualMode)}
+              disabled={aiExtracting}
+              className={cn(
+                'mb-4 w-full flex items-start gap-3 rounded-xl px-3.5 py-3 text-left transition-all border',
+                aiManualMode ? 'bg-brand-violet/8 border-brand-violet/30' : 'bg-glass/4 border-glass-border/10 hover:border-brand-violet/20',
+                aiExtracting && 'opacity-60 cursor-wait',
+              )}
+            >
+              <div className={cn(
+                'mt-0.5 h-7 w-7 shrink-0 flex items-center justify-center rounded-lg transition-colors',
+                aiManualMode ? 'bg-brand-violet/20 text-brand-violet' : 'bg-glass/8 text-text-muted',
+              )}>
+                <ListChecks className="h-3.5 w-3.5" />
               </div>
-            )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-medium text-text">{t('admin.import.manual_mode')}</span>
+                  <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', aiManualMode ? 'bg-brand-violet' : 'bg-glass/20')}>
+                    <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all', aiManualMode ? 'left-[18px]' : 'left-0.5')} />
+                  </span>
+                </div>
+                <p className="text-[11px] text-text-muted mt-0.5 leading-snug">{t('admin.import.manual_mode_hint')}</p>
+              </div>
+            </button>
+
+            {/* La generación corre en segundo plano: al pulsar "Generar", el modal se
+                cierra y el avance se ve en el indicador global de tareas. */}
+            <p className="flex items-center gap-1.5 text-[11px] text-text-subtle mb-4">
+              <Sparkles className="h-3 w-3 shrink-0" />
+              {t('admin.courses.ai_started_bg')}
+            </p>
 
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowAi(false)} disabled={aiBusy}>
+              <Button variant="ghost" size="sm" onClick={() => setShowAi(false)}>
                 {t('admin.courses.cancel')}
               </Button>
               <Button
                 variant="neon"
                 size="sm"
                 onClick={handleAiCreate}
-                disabled={aiBusy || aiExtracting || !aiTitle.trim() || !aiDoc}
+                disabled={aiExtracting || !aiTitle.trim() || !aiDoc}
                 className="flex items-center gap-1.5"
               >
-                {aiBusy
-                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('admin.courses.ai_generating')}</>
-                  : <><Sparkles className="h-3.5 w-3.5" /> {t('admin.courses.ai_generate')}</>}
+                <Sparkles className="h-3.5 w-3.5" /> {t('admin.courses.ai_generate')}
               </Button>
             </div>
           </div>

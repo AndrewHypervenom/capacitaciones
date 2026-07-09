@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { setGlobalNavigate } from '@/lib/nav';
 import { useTranslation } from 'react-i18next';
 import { AppShell } from '@/components/layout/AppShell';
 import Welcome from '@/pages/Welcome';
@@ -42,6 +43,13 @@ function AuthInit() {
   return null;
 }
 
+/** Publica el navigate del router para uso desde servicios/tareas en 2º plano. */
+function NavigationBridge() {
+  const navigate = useNavigate();
+  useEffect(() => { setGlobalNavigate((to) => navigate(to)); }, [navigate]);
+  return null;
+}
+
 function LanguageSync() {
   const { profile } = useAuth();
   const syncFromProfile = useUserStore((s) => s.syncFromProfile);
@@ -65,6 +73,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthInit />
+      <NavigationBridge />
       <LanguageSync />
       <ConfirmProvider>
       <Routes>

@@ -60,7 +60,7 @@ const normBg = (v?: string) => (v && VALID_BG.includes(v) ? v : 'corporate')
 
 // ─── Edge Function ───────────────────────────────────────────────
 
-async function postGenerateWorld(body: Record<string, unknown>): Promise<unknown> {
+async function postGenerateWorld(body: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')
 
@@ -74,12 +74,22 @@ async function postGenerateWorld(body: Record<string, unknown>): Promise<unknown
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify(body),
+      signal,
     },
   )
   const result = await res.json()
   if (!res.ok || result.error) throw new Error(result.error ?? 'Error generando con IA')
   return result.data
 }
+
+/** Se emite al terminar de generar niveles de mundo en 2º plano (para refrescar el detalle). */
+export const WORLD_LEVELS_EVENT = 'world_levels_generated'
+
+/** Error interno que marca "cancelado por el usuario" (para distinguirlo de un fallo real). */
+export class CanceledError extends Error {
+  constructor() { super('canceled'); this.name = 'CanceledError' }
+}
+const throwIfAborted = (signal?: AbortSignal) => { if (signal?.aborted) throw new CanceledError() }
 
 /** Convierte un quiz generado por IA en el `steps` (JSON) de arena_quizzes, con ids. */
 function toArenaSteps(gen: GeneratedQuiz): Json {
@@ -166,6 +176,7 @@ export async function generateRegionLevelsFlexible(
   regionId: string,
   source: RegionSource,
   opts: WorldGenOptions = {},
+  signal?: AbortSignal,
 ): Promise<void> {
   // Anti-invención: sin contenido real de origen NO se genera (la IA inventaría).
   // Los mundos deben estar anclados al contenido del curso/módulo.
@@ -184,13 +195,14 @@ export async function generateRegionLevelsFlexible(
   const minScorePct = clampInt(opts.minScorePct, 0, 100, DEFAULT_LEVEL_MIN_SCORE_PCT)
 
   // 1. Esqueleto de niveles (barato, una sola llamada).
+  throwIfAborted(signal)
   const outline = (await postGenerateWorld({
     mode: 'level-outline',
     moduleTitle: source.title,
     moduleSubtitle: source.subtitle ?? '',
     moduleText: source.moduleText,
     levelCount,
-  })) as { levels?: GeneratedLevelOutline[] }
+  }, signal)) as { levels?: GeneratedLevelOutline[] }
 
   const skeletons = (outline.levels ?? []).slice(0, levelCount)
 
@@ -203,6 +215,7 @@ export async function generateRegionLevelsFlexible(
   const base = ((regionRow as { order_index?: number } | null)?.order_index ?? 0) * 100
 
   for (let i = 0; i < skeletons.length; i++) {
+    throwIfAborted(signal)
     const lv = skeletons[i]
     // 2. Quiz del nivel (una llamada por nivel, con el enfoque para no repetir).
     let quizId: string | null = null
@@ -214,7 +227,7 @@ export async function generateRegionLevelsFlexible(
         moduleText: source.moduleText,
         focus: lv.focus ?? lv.description ?? '',
         questionCount: questionsPerLevel,
-      })) as GeneratedQuiz
+      }, signal)) as GeneratedQuiz
       if ((quiz.steps?.length ?? 0) > 0) quizId = await insertArenaQuiz(world, quiz, minScorePct)
     } catch (e) {
       console.error('Fallo generando el quiz de un nivel; queda sin quiz:', e)
@@ -293,6 +306,7 @@ export async function generateModuleRegionLevels(
   regionId: string,
   moduleId: string,
   opts: WorldGenOptions = {},
+  signal?: AbortSignal,
 ): Promise<void> {
   const { data: mod } = await supabase
     .from('modules')
@@ -304,16 +318,22 @@ export async function generateModuleRegionLevels(
     title: (mod as { title_es?: string })?.title_es ?? 'Módulo',
     subtitle: (mod as { subtitle_es?: string | null })?.subtitle_es ?? '',
     moduleText,
-  }, opts)
+  }, opts, signal)
+}
+
+/** Notifica que un mundo terminó de generar niveles (parcial o total) para refrescar el detalle. */
+function emitWorldLevels(worldId: string) {
+  window.dispatchEvent(new CustomEvent(WORLD_LEVELS_EVENT, { detail: { worldId } }))
 }
 
 /**
- * Genera con IA los niveles de una región YA existente (usado desde el detalle
- * del mundo). Reporta el progreso en el indicador global. Si la región refleja
- * un módulo (`moduleId`), toma el contenido del módulo; si no, usa el nombre y la
- * descripción de la región como fuente.
+ * Genera con IA los niveles de una región YA existente (desde el detalle del
+ * mundo) en SEGUNDO PLANO y de forma CANCELABLE. No bloquea ni lanza: reporta el
+ * progreso/resultado en el indicador global y, al terminar, emite
+ * `WORLD_LEVELS_EVENT` para que el detalle se refresque. Al cancelar conserva los
+ * niveles ya insertados y lo marca como incompleto.
  */
-export async function generateLevelsForRegion(opts: {
+export function generateLevelsForRegion(opts: {
   worldId: string
   regionId: string
   regionName: string
@@ -322,30 +342,99 @@ export async function generateLevelsForRegion(opts: {
   levelCount?: number
   questionsPerLevel?: number
   minScorePct?: number
-}): Promise<void> {
-  const { data: w } = await supabase.from('worlds').select('*').eq('id', opts.worldId).single()
-  if (!w) throw new Error('Mundo no encontrado')
-  const world = w as WorldRow
-  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel, minScorePct: opts.minScorePct }
-
-  const taskId = bgTask.start(
+}): void {
+  const { id: taskId, signal } = bgTask.startCancelable(
     i18n.t('worldgen.world_title', { name: opts.regionName }),
     i18n.t('worldgen.outline'),
   )
-  try {
-    if (opts.moduleId) {
-      await generateModuleRegionLevels(world, opts.regionId, opts.moduleId, genOpts)
-    } else {
-      await generateRegionLevelsFlexible(world, opts.regionId, {
-        title: opts.regionName,
-        moduleText: [opts.regionName, opts.regionDescription].filter(Boolean).join('. '),
-      }, genOpts)
+  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel, minScorePct: opts.minScorePct }
+
+  void (async () => {
+    const { data: w } = await supabase.from('worlds').select('*').eq('id', opts.worldId).single()
+    if (!w) { bgTask.fail(taskId, i18n.t('worldgen.error')); return }
+    const world = w as WorldRow
+    try {
+      if (opts.moduleId) {
+        await generateModuleRegionLevels(world, opts.regionId, opts.moduleId, genOpts, signal)
+      } else {
+        await generateRegionLevelsFlexible(world, opts.regionId, {
+          title: opts.regionName,
+          moduleText: [opts.regionName, opts.regionDescription].filter(Boolean).join('. '),
+        }, genOpts, signal)
+      }
+      bgTask.succeed(taskId, i18n.t('worldgen.done', { n: 1 }))
+    } catch (e) {
+      if (e instanceof CanceledError || signal.aborted) {
+        bgTask.markCanceled(taskId, { detail: i18n.t('bgtask.canceled_incomplete'), incomplete: true })
+      } else {
+        bgTask.fail(taskId, i18n.t('worldgen.error'))
+      }
+    } finally {
+      emitWorldLevels(world.id)
     }
-    bgTask.succeed(taskId, i18n.t('worldgen.done', { n: 1 }))
-  } catch (e) {
-    bgTask.fail(taskId, i18n.t('worldgen.error'))
-    throw e
-  }
+  })()
+}
+
+/**
+ * Genera EN BLOQUE (2º plano, cancelable) una región por cada módulo dado y sus
+ * niveles con IA. Conserva lo ya creado si se cancela y lo marca como incompleto.
+ * Emite `WORLD_LEVELS_EVENT` al terminar para refrescar el detalle del mundo.
+ */
+export function generateBulkModuleRegions(
+  world: WorldRow,
+  modules: { id: string; title_es: string; icon?: string | null }[],
+  baseOrderIndex: number,
+  opts: WorldGenOptions = {},
+): void {
+  const { id: taskId, signal } = bgTask.startCancelable(
+    i18n.t('worldgen.course_title', { name: world.name }),
+    i18n.t('worldgen.starting', { n: modules.length }),
+  )
+  void (async () => {
+    let ok = 0
+    let failed = 0
+    try {
+      for (let i = 0; i < modules.length; i++) {
+        throwIfAborted(signal)
+        const m = modules[i]
+        bgTask.update(taskId, {
+          detail: i18n.t('worldgen.region_progress', { i: i + 1, n: modules.length, title: m.title_es }),
+        })
+        const { data: region, error } = await supabase
+          .from('world_regions')
+          .insert({
+            world_id: world.id,
+            module_id: m.id,
+            name: m.title_es,
+            description: null,
+            icon: (m.icon && m.icon.length <= 2) ? m.icon : '📍',
+            order_index: baseOrderIndex + i,
+          })
+          .select('id')
+          .single()
+        if (error || !region) { failed++; continue }
+        try {
+          await generateModuleRegionLevels(world, (region as { id: string }).id, m.id, opts, signal)
+          ok++
+        } catch (e) {
+          if (e instanceof CanceledError || signal.aborted) throw e
+          console.error('Fallo generando niveles de región (módulo):', m.id, e)
+          failed++
+        }
+      }
+      if (failed === 0) bgTask.succeed(taskId, i18n.t('worldgen.done', { n: ok }))
+      else if (ok === 0) bgTask.fail(taskId, i18n.t('worldgen.error'))
+      else bgTask.succeed(taskId, { detail: i18n.t('worldgen.partial', { ok, fail: failed }), incomplete: true })
+    } catch (e) {
+      if (e instanceof CanceledError || signal.aborted) {
+        bgTask.markCanceled(taskId, { detail: i18n.t('bgtask.canceled_incomplete'), incomplete: true })
+      } else {
+        bgTask.fail(taskId, i18n.t('worldgen.error'))
+      }
+    } finally {
+      emitWorldLevels(world.id)
+    }
+  })()
 }
 
 // ─── Mundo de un curso ───────────────────────────────────────────

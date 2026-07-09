@@ -15,6 +15,7 @@ import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
+import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { cn } from '@/lib/cn';
 
@@ -159,6 +160,7 @@ export default function CoursePage() {
   const completed = total > 0 && done === total;
 
   return (
+    <>
     <div className="mx-auto max-w-4xl px-4 sm:px-8 pt-8 sm:pt-12 pb-24">
       <Reveal>
         <Link
@@ -613,5 +615,7 @@ export default function CoursePage() {
         </Reveal>
       )}
     </div>
+    <ScrollToTopButton />
+    </>
   );
 }

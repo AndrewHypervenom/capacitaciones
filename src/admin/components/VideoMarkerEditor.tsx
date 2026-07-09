@@ -485,8 +485,10 @@ export function VideoMarkerEditor({
       setUploadError('Solo se aceptan videos MP4, WebM u OGG')
       return
     }
-    if (file.size > 500 * 1024 * 1024) {
-      setUploadError('El video excede 500 MB')
+    // Tope de 50 MB: es el límite global de subida del proyecto Supabase (plan Free);
+    // superarlo da 400. Para videos más pesados, usar YouTube.
+    if (file.size > 50 * 1024 * 1024) {
+      setUploadError(t('admin.modules.media_video_size_error'))
       return
     }
     setUploading(true)

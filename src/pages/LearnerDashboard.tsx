@@ -23,6 +23,9 @@ import {
 } from '@/stores/progressStore';
 import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
+import { useHasWorld } from '@/hooks/useHasWorld';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 import { signOut } from '@/services/auth.service';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -31,6 +34,11 @@ import { Reveal } from '@/components/ui/Reveal';
 import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
+
+// Insignias ligadas a una función opcional (no universal): se ocultan como meta
+// para quien no tiene esa función. `simulator-unlocked` solo aparece si ya se
+// ganó; `world-explorer` aparece si el aprendiz tiene mundo (aunque siga bloqueada).
+const CONDITIONAL_BADGE_IDS = new Set(['simulator-unlocked', 'world-explorer']);
 
 // `hideSidebar`: superadmin y capacitador reutilizan este diseño de panel pero
 // sin el menú lateral de secciones; conservan su Navbar superior de staff.
@@ -45,14 +53,23 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
   const { name, language, reset } = useUserStore();
   const { modules: allModules, loading: modulesLoading } = useModules();
   const { courses } = useLearnerCourses();
+  const { user } = useAuth();
 
   // Universo de módulos que cuenta para certificación, simulador e insignias:
   // los módulos de los cursos asignados (a la persona o a su campaña), no los
   // del catálogo abierto. Todo módulo vive dentro de un curso tras la migración.
+  // El panel principal solo muestra cursos asignados (a la campaña o al aprendiz).
+  // Los cursos abiertos "para todo el mundo" no se mezclan aquí: se exploran en
+  // /courses, para que el aprendiz no crea que debe hacer cursos que no son suyos.
+  const dashboardCourses = useMemo(() => courses.filter((c) => c.isAssigned), [courses]);
   const assignedCourseIds = useMemo(
-    () => new Set(courses.filter((c) => c.isAssigned).map((c) => c.id)),
-    [courses],
+    () => new Set(dashboardCourses.map((c) => c.id)),
+    [dashboardCourses],
   );
+  // Mundos van ligados a cursos: solo hay "Mi Mundo" si alguno de sus cursos
+  // asignados tiene un mundo publicado (no todos los cursos tienen mundo).
+  const assignedCourseIdList = useMemo(() => [...assignedCourseIds], [assignedCourseIds]);
+  const { hasWorld } = useHasWorld(assignedCourseIdList);
   const modules = useMemo(
     () => allModules.filter((m) => m.courseId && assignedCourseIds.has(m.courseId)),
     [allModules, assignedCourseIds],
@@ -60,14 +77,52 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
   const progressState = useProgressStore();
   const { xp, streak, badges } = progressState;
   const recheckBadges = useProgressStore((s) => s.recheckBadges);
+  const awardBadge = useProgressStore((s) => s.awardBadge);
 
   useEffect(() => {
     if (!modulesLoading && modules.length > 0) {
       recheckBadges(modules);
     }
   }, [modulesLoading, modules, recheckBadges]);
+
+  // Logro de mundo: se otorga (también retroactivamente) si el aprendiz ya
+  // completó al menos un nivel en cualquier mundo. Solo consultamos si tiene
+  // mundo y aún no lo ha ganado.
+  useEffect(() => {
+    if (!hasWorld || !user?.id || badges.includes('world-explorer')) return;
+    let active = true;
+    supabase
+      .from('world_progress')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('completed', true)
+      .then(({ count }) => {
+        if (active && (count ?? 0) > 0) awardBadge('world-explorer');
+      });
+    return () => {
+      active = false;
+    };
+  }, [hasWorld, user?.id, badges, awardBadge]);
   const xpLevel = getXPLevel(xp);
   const xpProgress = getXPProgress(xp);
+
+  // Insignias condicionales: dependen de una función que no todos los aprendices
+  // tienen. Se muestran si ya se ganaron o si su función está disponible para el
+  // aprendiz (p. ej. el logro de mundo solo si tiene mundo).
+  const badgeAvailable = useMemo<Record<string, boolean>>(
+    () => ({ 'world-explorer': hasWorld }),
+    [hasWorld],
+  );
+  const visibleBadges = useMemo(
+    () =>
+      BADGE_DEFS.filter(
+        (b) =>
+          !CONDITIONAL_BADGE_IDS.has(b.id) ||
+          badges.includes(b.id) ||
+          badgeAvailable[b.id],
+      ),
+    [badges, badgeAvailable],
+  );
 
   const total = modules.length;
   // Only count completions for modules that actually exist right now
@@ -274,15 +329,15 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
               </p>
             </Reveal>
 
-            {courses.length === 0 ? (
-              <div className="rounded-3xl border border-line bg-surface p-8 text-center text-[14px] text-text-muted">
+            {dashboardCourses.length === 0 && (
+              <div className="mb-5 rounded-3xl border border-line bg-surface p-8 text-center text-[14px] text-text-muted">
                 {t('dashboard.courses_empty')}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {[...courses]
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {dashboardCourses.length > 0 &&
+                [...dashboardCourses]
                   .sort((a, b) => {
-                    if (a.isAssigned !== b.isAssigned) return a.isAssigned ? -1 : 1;
                     if (a.isMandatory !== b.isMandatory) return a.isMandatory ? -1 : 1;
                     return 0;
                   })
@@ -340,8 +395,29 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
                       </Reveal>
                     );
                   })}
-              </div>
-            )}
+              <Reveal delay={dashboardCourses.length * 60}>
+                <Link
+                  to="/courses"
+                  className="group flex h-full flex-col justify-center gap-3 rounded-3xl border border-dashed border-line bg-surface/60 p-6 text-center transition-all duration-300 hover:border-primary hover:bg-surface"
+                >
+                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Compass className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-semibold tracking-tight text-text">
+                      {t('dashboard.explore_cta_title')}
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-text-muted">
+                      {t('dashboard.explore_cta_subtitle')}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center justify-center gap-1 text-[13px] font-semibold text-primary">
+                    {t('dashboard.courses_title')}
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+              </Reveal>
+            </div>
           </section>
 
           {/* Recursos Complementarios */}
@@ -381,31 +457,33 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
                 </Link>
               </Reveal>
 
-              <Reveal delay={60}>
-                <button
-                  type="button"
-                  onClick={() => navigate('/world')}
-                  className="flex w-full items-center gap-4 rounded-2xl border border-line bg-surface p-4 text-left transition-all hover:border-primary hover:shadow-card-hover"
-                >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-subtle text-text-muted">
-                    <Globe className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-                      Mapa
-                    </p>
-                    <h4 className="text-[15px] font-semibold text-text truncate">
-                      Mi Mundo
-                    </h4>
-                    <p className="text-[13px] text-text-muted truncate">
-                      Explora tu mapa de capacitación y completa niveles
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-[13px] font-medium text-text-muted">
-                    Explorar →
-                  </span>
-                </button>
-              </Reveal>
+              {hasWorld && (
+                <Reveal delay={60}>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/world')}
+                    className="flex w-full items-center gap-4 rounded-2xl border border-line bg-surface p-4 text-left transition-all hover:border-primary hover:shadow-card-hover"
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-subtle text-text-muted">
+                      <Globe className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+                        Mapa
+                      </p>
+                      <h4 className="text-[15px] font-semibold text-text truncate">
+                        Mi Mundo
+                      </h4>
+                      <p className="text-[13px] text-text-muted truncate">
+                        Explora tu mapa de capacitación y completa niveles
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[13px] font-medium text-text-muted">
+                      Explorar →
+                    </span>
+                  </button>
+                </Reveal>
+              )}
             </div>
           </section>
 
@@ -416,7 +494,7 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
                 {t('dashboard.badges_title')}
               </h2>
               <span className="text-[12px] tabular-nums text-text-subtle">
-                {t('dashboard.badges_unlocked', { n: badges.length, total: BADGE_DEFS.length })}
+                {t('dashboard.badges_unlocked', { n: badges.length, total: visibleBadges.length })}
               </span>
             </div>
 
@@ -482,7 +560,7 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
 
             {/* Grilla de insignias */}
             <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
-              {BADGE_DEFS.map((badge) => {
+              {visibleBadges.map((badge) => {
                 const earned = badges.includes(badge.id);
                 return (
                   <div
@@ -514,16 +592,12 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
           <Reveal>
             <div className="mb-6 h-px w-full bg-line" />
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-text-muted">
-              <span>{t('dashboard.footer_modules', { n: total })}</span>
               {remainingMinutes > 0 && (
-                <>
-                  <span className="text-text-subtle">·</span>
-                  <span>{t('dashboard.footer_minutes', { n: remainingMinutes })}</span>
-                </>
+                <span>{t('dashboard.footer_minutes', { n: remainingMinutes })}</span>
               )}
               {nextModule && (
                 <>
-                  <span className="text-text-subtle">·</span>
+                  {remainingMinutes > 0 && <span className="text-text-subtle">·</span>}
                   <span>{t('dashboard.footer_next', { title: nextModule.title[language] })}</span>
                 </>
               )}

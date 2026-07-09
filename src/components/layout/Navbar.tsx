@@ -48,8 +48,8 @@ export function Navbar() {
           <span className="hidden min-[480px]:inline font-semibold tracking-tight text-[14px]">{t('brand')}</span>
         </Link>
 
-        {/* Los aprendices navegan desde su panel; los enlaces centrales son solo para staff */}
-        {isAdminOrCapacitador && (
+        {/* Staff: enlaces de gestión; aprendices: acceso directo al catálogo */}
+        {isAdminOrCapacitador ? (
           <nav className="hidden md:flex items-center gap-1">
             <NavLink to="/dashboard" className={linkClass} end>
               {t('nav.dashboard')}
@@ -59,6 +59,15 @@ export function Navbar() {
             </NavLink>
             <NavLink to="/admin" className={linkClass}>
               {adminLabel}
+            </NavLink>
+          </nav>
+        ) : (
+          <nav className="flex items-center gap-1">
+            <NavLink to="/dashboard" className={linkClass} end>
+              {t('nav.dashboard')}
+            </NavLink>
+            <NavLink to="/courses" className={linkClass}>
+              {t('nav.explore')}
             </NavLink>
           </nav>
         )}

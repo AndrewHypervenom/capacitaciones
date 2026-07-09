@@ -21,7 +21,10 @@ interface MediaUploaderProps {
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif'
 const VIDEO_ACCEPT = 'video/mp4,video/webm,video/ogg'
 const IMAGE_MAX = 10 * 1024 * 1024
-const VIDEO_MAX = 500 * 1024 * 1024
+// Tope de subida de video. Supabase impone un límite GLOBAL de proyecto (50 MB en el
+// plan Free) que aplica por encima del file_size_limit del bucket; superarlo da 400.
+// Para videos más pesados, usar la pestaña de YouTube.
+const VIDEO_MAX = 50 * 1024 * 1024
 
 function extractYouTubeId(input: string): string | null {
   const patterns = [
@@ -175,8 +178,10 @@ export function MediaUploader({
       try {
         const url = await uploadSectionMedia(file, campaignId, moduleId, sectionId, setProgress)
         onSaved(kind, url)
-      } catch {
-        setError(t('admin.modules.media_upload_error'))
+      } catch (err) {
+        console.error('[MediaUploader] upload failed', err)
+        const msg = err instanceof Error ? err.message : ''
+        setError(msg ? `${t('admin.modules.media_upload_error')}: ${msg}` : t('admin.modules.media_upload_error'))
       } finally {
         setUploading(false)
         setProgress(0)
@@ -287,7 +292,7 @@ export function MediaUploader({
             accept={VIDEO_ACCEPT}
             hint={t('admin.modules.media_video_hint')}
             browse={t('admin.modules.media_browse')}
-            sizeHint="MP4, WebM, OGG · máx 500 MB"
+            sizeHint={t('admin.modules.media_video_size_hint')}
             disabled={!isSectionSaved}
             disabledMsg={t('admin.modules.media_save_section_first')}
             uploading={uploading}

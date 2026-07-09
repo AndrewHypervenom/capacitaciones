@@ -3,26 +3,19 @@ import i18n from '@/i18n'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Upload, FileText, FileSpreadsheet, Sparkles, Loader2, X,
-  CheckCircle2, AlertTriangle, RotateCcw, BookOpen, ChevronRight, ListChecks,
+  AlertTriangle, ListChecks,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
-  extractDocumentText, cropCaptures, ACCEPTED_DOC_EXTENSIONS,
-  type ExtractedDocument, type ExtractStage, type ExtractedImage,
+  extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
+  type ExtractedDocument, type ExtractStage,
 } from '@/lib/documentExtract'
-import {
-  generateModuleOutline, generateModuleSection, detectCaptures,
-  type GeneratedModule,
-} from '@/services/ai.service'
-import { saveGeneratedModule } from '@/services/modules.service'
-import {
-  addModuleToCourse, getCourseById, type CourseWithModules,
-} from '@/services/courses.service'
+import { runModuleAiGeneration } from '@/services/moduleAi.service'
+import { getCourseById, type CourseWithModules } from '@/services/courses.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
-import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
@@ -30,7 +23,8 @@ import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 
 // El documento completo se convierte en UN solo módulo (no se divide en varios).
-type Phase = 'setup' | 'generating' | 'preview' | 'done'
+// La generación con IA corre en SEGUNDO PLANO (indicador global, cancelable): esta
+// pantalla solo prepara el documento y dispara el proceso.
 
 // `embedded`: cuando se renderiza dentro de otra pantalla (p. ej. la pestaña
 // "Generar con IA" de NewModulePage) se oculta la cabecera y el contenedor
@@ -53,25 +47,11 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
   const [readingName, setReadingName] = useState('')
   const [progress, setProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
   const [instructions, setInstructions] = useState('')
-
-  // Modo manual paso a paso: fidelidad máxima a un manual/procedimiento. Rasteriza
-  // cada página (captura+paso juntos), ancla las capturas a su paso y usa un prompt
-  // que conserva y ordena los pasos en vez de resumir. Guardamos el último archivo
-  // para poder re-extraer cuando el usuario cambia el toggle.
-  const [manualMode, setManualMode] = useState(false)
-  const lastFileRef = useRef<File | null>(null)
-
-  const [phase, setPhase] = useState<Phase>('setup')
   const [error, setError] = useState<string | null>(null)
 
-  // Generación + resultado (un único módulo)
-  const [genProgress, setGenProgress] = useState('')
-  const [generated, setGenerated] = useState<GeneratedModule | null>(null)
-  const [savedId, setSavedId] = useState<string | null>(null)
-  // Figuras finales usadas en la generación (para PDFs escaneados en modo manual son
-  // las capturas recortadas; en el resto, las figuras del documento). El image_index
-  // del módulo refiere a este arreglo, así que es el que se guarda.
-  const [figures, setFigures] = useState<ExtractedImage[]>([])
+  // Modo manual paso a paso: fidelidad máxima a un manual/procedimiento.
+  const [manualMode, setManualMode] = useState(false)
+  const lastFileRef = useRef<File | null>(null)
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -124,136 +104,30 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
     await extractFile(file, manualMode)
   }
 
-  // Al cambiar el modo manual re-extraemos el mismo archivo (el modo manual
-  // rasteriza páginas que no se generan en modo normal, y viceversa).
+  // Al cambiar el modo manual re-extraemos el mismo archivo.
   const handleToggleManual = async (next: boolean) => {
     setManualMode(next)
-    if (lastFileRef.current && phase === 'setup') {
+    if (lastFileRef.current) {
       await extractFile(lastFileRef.current, next)
     }
   }
 
-  const resetToSetup = () => {
-    setGenerated(null)
-    setSavedId(null)
-    setFigures([])
-    setPhase('setup')
-    setError(null)
-  }
-
-  const handleGenerate = async () => {
+  // Dispara la generación EN SEGUNDO PLANO y devuelve el control de inmediato:
+  // el avance (y el botón Cancelar) viven en el indicador global de tareas.
+  const handleGenerate = () => {
     if (!doc || !campaignId) return
-    setPhase('generating')
-    setError(null)
-    setGenerated(null)
-    setGenProgress('Diseñando el esquema…')
-
-    // Se usa únicamente el conocimiento del documento (sin inventar).
-    const description = instructions.trim()
-      || `Crea un módulo de formación a partir del documento "${doc.fileName}". `
-        + 'Usa únicamente el conocimiento presente en el documento, sin inventar contenido.'
-
-    // Modo manual + PDF escaneado (sin texto): las "figuras" que trae pdf.js son las
-    // páginas enteras. En su lugar, la IA localiza las capturas relevantes y las
-    // recortamos para insertar solo el pantallazo limpio.
-    let images: ExtractedImage[] = doc.images
-    const isScanned = manualMode && !doc.text.trim() && doc.contextImages.length > 0
-    if (isScanned) {
-      setGenProgress('Localizando capturas en las páginas…')
-      try {
-        const { data } = await detectCaptures({ contextImages: doc.contextImages })
-        const crops = await cropCaptures(doc.contextImages, data)
-        if (crops.length) images = crops
-      } catch {
-        // si la detección/recorte falla, seguimos con lo que haya (mejor algo que nada)
-      }
-    }
-    setFigures(images)
-
-    const docContext = {
-      documentText: doc.text,
-      images,
-      contextImages: doc.contextImages,
+    const nextOrder = course ? Math.max(0, ...course.modules.map((m) => m.course_sort_order)) + 1 : 1
+    runModuleAiGeneration({
+      campaignId,
+      instructions,
+      doc,
       manualMode,
-    }
-
-    try {
-      // Paso 1: esquema (1 llamada chica).
-      const { data: outline } = await generateModuleOutline({ description, ...docContext })
-      const headings = outline.sections.map((h) => h.heading_es)
-
-      // Paso 2: cada sección por separado (llamadas chicas, a prueba de límites).
-      const sections: GeneratedModule['sections'] = []
-      for (let s = 0; s < outline.sections.length; s++) {
-        setGenProgress(`Generando sección ${s + 1}/${outline.sections.length}…`)
-        const h = outline.sections[s]
-        try {
-          const { data } = await generateModuleSection({
-            description,
-            moduleTitle: outline.metadata.title_es,
-            moduleSubtitle: outline.metadata.subtitle_es,
-            objectives: outline.metadata.objectives_es,
-            sectionHeading: h.heading_es,
-            sectionIndex: s,
-            totalSections: outline.sections.length,
-            allHeadings: headings,
-            ...docContext,
-          })
-          sections.push({ ...h, blocks: data.blocks })
-        } catch {
-          // Si una sección falla, se omite y se continúa con el resto.
-        }
-      }
-
-      if (!sections.length) throw new Error('No se pudo generar el contenido de las secciones')
-      setGenerated({ metadata: outline.metadata, sections })
-      setPhase('preview')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error generando el módulo')
-      setPhase('setup')
-    }
+      course: course ? { id: course.id, nextOrder } : null,
+    })
+    toast.success(i18n.t('admin.import.bg_started'))
+    // Volvemos al curso/lista; el módulo aparecerá cuando termine (aviso + acción).
+    navigate(course ? `/admin/courses/${courseId}` : '/admin/modules')
   }
-
-  const handleSave = async () => {
-    if (!generated) return
-    setPhase('done')
-    try {
-      const id = await saveGeneratedModule(campaignId, generated, figures)
-      // Si venimos de un curso, adjuntamos el módulo y sincronizamos su mundo
-      // (solo si ya existe; no lo fuerza). Si falla, el módulo igual queda creado.
-      if (courseId && course) {
-        try {
-          const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
-          await addModuleToCourse(courseId, id, maxOrder + 1)
-          // El mundo (gamificación) NO se toca acá: se crea y configura aparte,
-          // en la sección Mundos. Crear/adjuntar un módulo no genera nada.
-        } catch { /* módulo queda creado aunque no se adjunte */ }
-      }
-      setSavedId(id)
-      toast.success(course
-        ? `Módulo creado y agregado a ${course.title_es}`
-        : `Módulo creado en ${campaignName ?? 'la campaña'}`)
-    } catch (err) {
-      toast.error(`Error guardando: ${err instanceof Error ? err.message : 'desconocido'}`)
-      setPhase('preview')
-    }
-  }
-
-  const busy = phase === 'generating'
-
-  // Figuras del documento efectivamente usadas por el módulo generado.
-  const usedFigures = useMemo(() => {
-    if (!generated) return []
-    const usedIdx = new Set<number>()
-    generated.sections.forEach((s) =>
-      (s.blocks ?? []).forEach((b) => {
-        if (b.type === 'image' && typeof b.image_index === 'number') usedIdx.add(b.image_index)
-      }),
-    )
-    return [...usedIdx]
-      .map((idx) => figures[idx])
-      .filter((img): img is NonNullable<typeof img> => !!img)
-  }, [generated, figures])
 
   return (
     <div className={embedded ? '' : 'p-4 sm:p-8 max-w-3xl mx-auto'}>
@@ -317,15 +191,13 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
                   {doc.contextImages.length > 0 && ` · ${doc.contextImages.length} página(s)${manualMode && !doc.text.trim() ? ' — se recortarán las capturas' : ' para análisis visual'}`}
                 </div>
               </div>
-              {!busy && phase === 'setup' && (
-                <button
-                  onClick={() => { setDoc(null); lastFileRef.current = null; resetToSetup() }}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
-                  title={i18n.t('admin.import.remove_file')}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+              <button
+                onClick={() => { setDoc(null); lastFileRef.current = null; setError(null) }}
+                className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
+                title={i18n.t('admin.import.remove_file')}
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
             {(doc.images.length > 0 || doc.contextImages.length > 0) && (
               <div className="px-4 pb-3 pt-1 border-t border-brand-violet/10">
@@ -366,7 +238,6 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
                 {Math.round(progress.ratio * 100)}%
               </span>
             </div>
-            {/* Barra de progreso */}
             <div className="mt-3 h-1.5 w-full rounded-full bg-glass/10 overflow-hidden">
               <motion.div
                 className="h-full rounded-full bg-brand-violet"
@@ -398,69 +269,64 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
         />
 
         {/* Modo manual paso a paso */}
-        {phase === 'setup' && (
-          <button
-            type="button"
-            onClick={() => handleToggleManual(!manualMode)}
-            disabled={extracting}
-            className={cn(
-              'mt-5 w-full flex items-start gap-3 rounded-xl px-4 py-3 text-left transition-all border',
-              manualMode
-                ? 'bg-brand-violet/8 border-brand-violet/30'
-                : 'bg-glass/4 border-glass-border/10 hover:border-brand-violet/20',
-              extracting && 'opacity-60 cursor-wait',
-            )}
-          >
-            <div className={cn(
-              'mt-0.5 h-8 w-8 shrink-0 flex items-center justify-center rounded-lg transition-colors',
-              manualMode ? 'bg-brand-violet/20 text-brand-violet' : 'bg-glass/8 text-text-muted',
-            )}>
-              <ListChecks className="h-4 w-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-text">Manual / paso a paso</span>
-                {/* Interruptor */}
+        <button
+          type="button"
+          onClick={() => handleToggleManual(!manualMode)}
+          disabled={extracting}
+          className={cn(
+            'mt-5 w-full flex items-start gap-3 rounded-xl px-4 py-3 text-left transition-all border',
+            manualMode
+              ? 'bg-brand-violet/8 border-brand-violet/30'
+              : 'bg-glass/4 border-glass-border/10 hover:border-brand-violet/20',
+            extracting && 'opacity-60 cursor-wait',
+          )}
+        >
+          <div className={cn(
+            'mt-0.5 h-8 w-8 shrink-0 flex items-center justify-center rounded-lg transition-colors',
+            manualMode ? 'bg-brand-violet/20 text-brand-violet' : 'bg-glass/8 text-text-muted',
+          )}>
+            <ListChecks className="h-4 w-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[13px] font-medium text-text">Manual / paso a paso</span>
+              <span className={cn(
+                'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                manualMode ? 'bg-brand-violet' : 'bg-glass/20',
+              )}>
                 <span className={cn(
-                  'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-                  manualMode ? 'bg-brand-violet' : 'bg-glass/20',
-                )}>
-                  <span className={cn(
-                    'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all',
-                    manualMode ? 'left-[18px]' : 'left-0.5',
-                  )} />
-                </span>
-              </div>
-              <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
-                Fidelidad máxima a un procedimiento: conserva cada paso en orden e inserta la captura de cada paso. Úsalo para manuales con pantallazos exactos (analiza más a fondo; tarda un poco más).
-              </p>
+                  'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all',
+                  manualMode ? 'left-[18px]' : 'left-0.5',
+                )} />
+              </span>
             </div>
-          </button>
-        )}
+            <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
+              Fidelidad máxima a un procedimiento: conserva cada paso en orden e inserta la captura de cada paso. Úsalo para manuales con pantallazos exactos (analiza más a fondo; tarda un poco más).
+            </p>
+          </div>
+        </button>
 
         {/* Instrucciones opcionales */}
-        {phase === 'setup' && (
-          <div className="mt-5">
-            <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
-              Instrucciones para la IA <span className="text-text-subtle normal-case font-normal">{i18n.t('admin.import.optional')}</span>
-            </label>
-            <textarea
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              placeholder={i18n.t('admin.import.ph_prompt')}
-              rows={2}
-              className={cn(
-                'w-full rounded-xl px-4 py-3 text-[13px] text-text resize-none',
-                'bg-glass/5 border border-glass-border/10',
-                'focus:border-brand-violet/30 focus:bg-glass/8 focus:outline-none',
-                'placeholder:text-text-subtle transition-colors',
-              )}
-            />
-          </div>
-        )}
+        <div className="mt-5">
+          <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
+            Instrucciones para la IA <span className="text-text-subtle normal-case font-normal">{i18n.t('admin.import.optional')}</span>
+          </label>
+          <textarea
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder={i18n.t('admin.import.ph_prompt')}
+            rows={2}
+            className={cn(
+              'w-full rounded-xl px-4 py-3 text-[13px] text-text resize-none',
+              'bg-glass/5 border border-glass-border/10',
+              'focus:border-brand-violet/30 focus:bg-glass/8 focus:outline-none',
+              'placeholder:text-text-subtle transition-colors',
+            )}
+          />
+        </div>
       </GlassCard>
 
-      {/* Error */}
+      {/* Error de extracción */}
       <AnimatePresence>
         {error && (
           <motion.div
@@ -474,136 +340,22 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
         )}
       </AnimatePresence>
 
-      {/* ── Acción: Generar el módulo ── */}
-      {(phase === 'setup' || phase === 'generating') && (
-        <div className="flex justify-end">
-          <Button
-            variant="neon"
-            size="md"
-            disabled={!doc || !campaignId || phase === 'generating'}
-            onClick={handleGenerate}
-            className="min-w-[200px] flex items-center justify-center gap-2"
-          >
-            {phase === 'generating'
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> {genProgress || 'Generando…'}</>
-              : <><Sparkles className="h-4 w-4" /> Generar módulo</>}
-          </Button>
-        </div>
-      )}
-
-      {/* ── Vista previa del módulo generado ── */}
-      {(phase === 'preview' || phase === 'done') && generated && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 border border-brand-violet/15">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
-                <span className="text-[13px] font-semibold text-text">Módulo generado</span>
-              </div>
-              {phase === 'preview' && (
-                <button
-                  onClick={handleGenerate}
-                  className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text transition-colors px-2 py-1 rounded-lg hover:bg-glass/8"
-                >
-                  <RotateCcw className="h-3 w-3" /> Regenerar
-                </button>
-              )}
-            </div>
-
-            {/* Cabecera del módulo */}
-            <div className="flex items-start gap-3 mb-4 p-3 rounded-xl bg-glass/4 border border-glass-border/8">
-              <span className="text-3xl leading-none">{generated.metadata.icon}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-semibold text-text leading-snug">{generated.metadata.title_es}</p>
-                <p className="text-[12px] text-text-muted mt-0.5 leading-snug">{generated.metadata.subtitle_es}</p>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <NeonBadge color="cyan" className="text-[9px]">{generated.metadata.duration_min} min</NeonBadge>
-                  <span className="text-[11px] text-text-muted">{generated.sections.length} secciones</span>
-                  {usedFigures.length > 0 && (
-                    <span className="text-[11px] text-text-muted">· {usedFigures.length} imagen(es)</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Secciones */}
-            <div className="space-y-1.5">
-              {generated.sections.map((s, i) => (
-                <div key={i} className="flex items-center gap-2.5 py-2 px-3 rounded-xl bg-glass/3 border border-glass-border/6">
-                  <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">{i + 1}</span>
-                  <span className="text-[12px] text-text flex-1 truncate">{s.heading_es}</span>
-                  <span className="text-[9px] text-text-subtle shrink-0">{s.blocks?.length ?? 0} bloques</span>
-                </div>
-              ))}
-            </div>
-
-            {usedFigures.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {usedFigures.map((img, k) => (
-                  <img
-                    key={k}
-                    src={`data:${img.mediaType};base64,${img.dataBase64}`}
-                    alt={`Figura ${k + 1}`}
-                    className="h-16 w-24 object-cover rounded-lg border border-glass-border/15 bg-white"
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Acciones tras la generación */}
-            {phase === 'preview' && (
-              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-5">
-                <Button type="button" variant="ghost" size="md" onClick={resetToSetup} className="w-full sm:w-auto">
-                  <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar archivo
-                </Button>
-                <Button
-                  variant="neon"
-                  size="md"
-                  onClick={handleSave}
-                  className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-2"
-                >
-                  <BookOpen className="h-4 w-4" /> Guardar módulo
-                </Button>
-              </div>
-            )}
-
-            {/* Estado final */}
-            {phase === 'done' && (
-              savedId ? (
-                <div className="mt-5">
-                  <div className="flex items-center gap-2 p-3 rounded-xl bg-brand-green/6 border border-brand-green/20 text-brand-green text-[12px] mb-3">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    Módulo guardado como borrador. Edítalo y publícalo cuando esté listo.
-                  </div>
-                  <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="md"
-                      onClick={() => navigate(course ? `/admin/courses/${courseId}` : '/admin/modules')}
-                      className="w-full sm:w-auto"
-                    >
-                      {course ? 'Volver al curso' : 'Ver todos los módulos'}
-                    </Button>
-                    <Button
-                      variant="neon"
-                      size="md"
-                      onClick={() => navigate(`/admin/modules/${savedId}`)}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2"
-                    >
-                      Editar módulo <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 mt-5 py-2 text-[13px] text-text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin text-brand-violet" /> Guardando módulo…
-                </div>
-              )
-            )}
-          </GlassCard>
-        </motion.div>
-      )}
+      {/* ── Acción: generar (en segundo plano) ── */}
+      <p className="flex items-center gap-1.5 text-[11px] text-text-subtle mb-3">
+        <Sparkles className="h-3 w-3 shrink-0" />
+        {i18n.t('admin.import.bg_started')}
+      </p>
+      <div className="flex justify-end">
+        <Button
+          variant="neon"
+          size="md"
+          disabled={!doc || !campaignId || extracting}
+          onClick={handleGenerate}
+          className="min-w-[200px] flex items-center justify-center gap-2"
+        >
+          <Sparkles className="h-4 w-4" /> Generar módulo
+        </Button>
+      </div>
     </div>
   )
 }

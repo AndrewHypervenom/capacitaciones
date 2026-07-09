@@ -32,6 +32,7 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id: 'streak-7',            emoji: '💫', label: 'Imparable',            description: '7 días consecutivos de aprendizaje' },
   { id: 'simulator-unlocked',  emoji: '📞', label: 'Simulador Desbloqueado', description: 'Desbloquea el simulador de llamadas' },
   { id: 'quiz-ace',            emoji: '🧠', label: 'Mente Brillante',      description: 'Responde 5 quizzes correctamente' },
+  { id: 'world-explorer',      emoji: '🗺️', label: 'Explorador',           description: 'Completa tu primer nivel en un mundo' },
 ];
 
 // ─── XP level tiers ───────────────────────────────────────────

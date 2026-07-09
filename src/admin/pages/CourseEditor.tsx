@@ -21,6 +21,7 @@ import {
   Save,
   Search,
   Share2,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react'
@@ -47,7 +48,7 @@ import {
   type CourseStats,
 } from '@/services/courses.service'
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
-import { getCourseWorld, syncCourseWorldById } from '@/services/worlds.service'
+import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, type WorldRow } from '@/services/worlds.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign, CertConditions, Profile } from '@/types/database'
@@ -100,6 +101,9 @@ export default function CourseEditor() {
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
   const [openingWorld, setOpeningWorld] = useState(false)
+  // Estado del mundo del curso: undefined = cargando, null = no existe, objeto = existe (draft/published)
+  const [world, setWorld] = useState<WorldRow | null | undefined>(undefined)
+  const [publishingWorld, setPublishingWorld] = useState(false)
 
   // Información editable
   const [form, setForm] = useState({
@@ -183,6 +187,17 @@ export default function CourseEditor() {
   useEffect(() => {
     if (!courseId) return
     getCourseStats(courseId).then(setStats).catch(() => setStats(null))
+  }, [courseId])
+
+  // Estado del mundo (juego) del curso, para mostrarlo en la barra de publicación:
+  // si no existe (hay que crearlo), si está en borrador o si ya está publicado.
+  useEffect(() => {
+    if (!courseId) return
+    let active = true
+    getCourseWorld(courseId)
+      .then((w) => { if (active) setWorld(w) })
+      .catch(() => { if (active) setWorld(null) })
+    return () => { active = false }
   }, [courseId])
 
   // Datos de asignación
@@ -363,6 +378,24 @@ export default function CourseEditor() {
       toast.success(t('admin.courses.published_all_ok'))
     } catch {
       toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  // Publica / despublica el mundo del curso (independiente de "Publicar todo",
+  // que solo toca curso + módulos). El mundo es opcional: el aprendiz solo lo juega
+  // si está publicado.
+  const handleToggleWorldPublished = async () => {
+    if (!world) return
+    const next = world.status !== 'published'
+    setPublishingWorld(true)
+    try {
+      await setCourseWorldPublished(course.id, next)
+      setWorld({ ...world, status: next ? 'published' : 'draft' })
+      toast.success(next ? t('admin.courses.world_published') : t('admin.courses.world_unpublished'))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setPublishingWorld(false)
     }
   }
 
@@ -630,86 +663,126 @@ export default function CourseEditor() {
         </div>
       </div>
 
-      {/* Panel de Publicación: solo curso y módulos. El mundo (gamificación) se
-          crea y gestiona aparte, en la sección Mundos. */}
+      {/* Barra compacta de publicación: estado del curso + módulos + acción única.
+          El mundo (gamificación) se gestiona aparte, en el botón "Ver mundo" del header. */}
       {(() => {
         const total = course.modules.length
         const pubModules = course.modules.filter((m) => m.is_published).length
         const modulesAllPublished = total === 0 || pubModules === total
         const everythingPublished = course.is_published && modulesAllPublished
         return (
-          <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 mb-6">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div className="min-w-0">
-                <h3 className="text-[14px] font-semibold text-text">{t('admin.courses.publish_panel_title')}</h3>
-                <p className="text-[12px] text-text-muted">{t('admin.courses.publish_panel_hint')}</p>
-              </div>
-              {!everythingPublished && (
-                <Button variant="neon" size="sm" onClick={handlePublishAll} className="flex items-center gap-1.5 shrink-0">
-                  <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all')}
-                </Button>
-              )}
-            </div>
-            <div className="space-y-2">
-              {/* Curso */}
-              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+          <div className="rounded-2xl border border-line bg-surface px-4 py-3 mb-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-text-subtle"
+                title={t('admin.courses.publish_panel_hint')}
+              >
+                {t('admin.courses.publish_panel_title')}
+              </span>
+
+              {/* Chip: Curso */}
+              <div className="flex items-center gap-2 rounded-xl border border-line px-3 py-1.5">
                 <GraduationCap className="h-4 w-4 text-text-muted shrink-0" />
-                <span className="flex-1 text-[13px] font-medium text-text">{t('admin.courses.publish_course')}</span>
-                <span className={cn('text-[11px] font-semibold', course.is_published ? 'text-primary' : 'text-text-muted')}>
+                <span className="text-[13px] font-medium text-text">{t('admin.courses.publish_course')}</span>
+                <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                  course.is_published ? 'bg-primary/10 text-primary' : 'bg-glass/8 text-text-muted')}>
                   {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
                 </span>
                 <Toggle on={course.is_published} onClick={handleTogglePublished} label={t('admin.courses.publish_course')} />
               </div>
-              {/* Módulos */}
-              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+
+              {/* Chip: Módulos */}
+              <div className="flex items-center gap-2 rounded-xl border border-line px-3 py-1.5">
                 <BookOpen className="h-4 w-4 text-text-muted shrink-0" />
-                <span className="flex-1 text-[13px] font-medium text-text">
-                  {t('admin.courses.publish_modules')}
-                  <span className="ml-2 text-[11px] font-normal text-text-muted">
+                <span className="text-[13px] font-medium text-text">{t('admin.courses.publish_modules')}</span>
+                {total === 0 ? (
+                  <span className="rounded-full bg-glass/8 px-2 py-0.5 text-[10px] font-semibold text-text-muted">
+                    {t('admin.courses.no_modules_short')}
+                  </span>
+                ) : modulesAllPublished ? (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                     {t('admin.courses.modules_published_count', { n: pubModules, total })}
                   </span>
-                </span>
-                {total > 0 && !modulesAllPublished ? (
-                  <button
-                    onClick={handlePublishAllModules}
-                    className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-colors"
-                    style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-                  >
-                    <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all_modules')}
-                  </button>
                 ) : (
-                  <span className={cn('text-[11px] font-semibold', modulesAllPublished && total > 0 ? 'text-primary' : 'text-text-muted')}>
-                    {total === 0 ? t('admin.courses.no_modules_short') : t('admin.courses.all_published')}
-                  </span>
+                  <>
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-500">
+                      {t('admin.courses.modules_published_count', { n: pubModules, total })}
+                    </span>
+                    <button
+                      onClick={handlePublishAllModules}
+                      className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors"
+                      style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                    >
+                      <Eye className="h-3 w-3" /> {t('admin.courses.publish_all_modules')}
+                    </button>
+                  </>
                 )}
               </div>
-              {/* Mundo (gamificación): opcional y se arma en Mundos, no acá */}
-              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+
+              {/* Chip: Mundo (juego) — opcional. Muestra si hay que crearlo, si está en borrador o publicado. */}
+              <div className="flex items-center gap-2 rounded-xl border border-line px-3 py-1.5">
                 <Globe className="h-4 w-4 text-text-muted shrink-0" />
-                <span className="flex-1 text-[13px] font-medium text-text">
-                  {t('admin.courses.publish_world')}
-                  <span className="ml-2 text-[11px] font-normal text-text-muted">{t('admin.courses.world_optional_hint')}</span>
-                </span>
-                <button
-                  onClick={handleViewWorld}
-                  disabled={openingWorld}
-                  className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-colors disabled:opacity-50"
-                  style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-                >
-                  <Globe className="h-3.5 w-3.5" />
-                  {t('admin.courses.world_configure')}
-                </button>
+                <span className="text-[13px] font-medium text-text">{t('admin.courses.world_label')}</span>
+                {world === undefined ? (
+                  <span className="h-3 w-3 rounded-full bg-glass/20 animate-pulse" aria-hidden />
+                ) : world === null ? (
+                  <button
+                    onClick={handleViewWorld}
+                    disabled={openingWorld}
+                    className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium text-text-muted border border-line transition-colors hover:text-text disabled:opacity-50"
+                  >
+                    <Sparkles className="h-3 w-3" /> {t('admin.courses.world_create')}
+                  </button>
+                ) : world.status === 'published' ? (
+                  <>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      {t('admin.courses.published')}
+                    </span>
+                    <Toggle on onClick={handleToggleWorldPublished} label={t('admin.courses.publish_world')} />
+                  </>
+                ) : (
+                  <>
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-500">
+                      {t('admin.courses.draft')}
+                    </span>
+                    <button
+                      onClick={handleToggleWorldPublished}
+                      disabled={publishingWorld}
+                      className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50"
+                      style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                    >
+                      <Eye className="h-3 w-3" /> {t('admin.courses.world_publish')}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Acción principal / estado global (curso + módulos; el mundo va aparte) */}
+              <div className="ml-auto flex items-center gap-2">
+                {everythingPublished ? (
+                  <span className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
+                    <Check className="h-3.5 w-3.5" /> {t('admin.courses.all_published')}
+                  </span>
+                ) : (
+                  <Button variant="neon" size="sm" onClick={handlePublishAll} className="flex items-center gap-1.5 shrink-0">
+                    <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all')}
+                  </Button>
+                )}
               </div>
             </div>
 
-            {/* Aviso: el curso está publicado pero falta publicar algún módulo */}
+            {/* Avisos: curso publicado pero falta contenido por publicar */}
             {course.is_published && !modulesAllPublished && (
-              <div className="flex items-start gap-2 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-2.5">
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-px" />
-                <p className="text-[12px] text-text-muted">
-                  {t('admin.courses.missing_modules')}
-                </p>
-              </div>
+              <p className="flex items-start gap-1.5 mt-2 text-[11px] text-amber-500">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                {t('admin.courses.missing_modules')}
+              </p>
+            )}
+            {course.is_published && world && world.status !== 'published' && (
+              <p className="flex items-start gap-1.5 mt-2 text-[11px] text-amber-500">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                {t('admin.courses.missing_world')}
+              </p>
             )}
           </div>
         )

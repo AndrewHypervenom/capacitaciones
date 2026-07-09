@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, Loader2, BookOpen, AlertTriangle } from 'lucide-react'
+import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, BookOpen, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
-import { generateLevelsForRegion, generateModuleRegionLevels } from '@/services/worlds.service'
+import { generateLevelsForRegion, generateBulkModuleRegions, WORLD_LEVELS_EVENT } from '@/services/worlds.service'
 import type { WorldRow } from '@/services/worlds.service'
 import { ArenaEditorModal, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
 import { useTranslation } from 'react-i18next'
@@ -73,14 +73,11 @@ export default function WorldDetail() {
   const [aiLevels, setAiLevels] = useState<number | ''>('')
   const [aiSections, setAiSections] = useState<number | ''>(2)
   const [aiMinScore, setAiMinScore] = useState<number | ''>(80)
-  const [aiGenerating, setAiGenerating] = useState(false)
 
   // Generar en bloque todas las regiones del curso (una por módulo) con sus niveles.
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLevels, setBulkLevels] = useState<number | ''>(3)
   const [bulkSections, setBulkSections] = useState<number | ''>(2)
-  const [bulkBusy, setBulkBusy] = useState(false)
-  const [bulkProgress, setBulkProgress] = useState<{ i: number; n: number; title: string } | null>(null)
 
   // Reset progress
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -125,6 +122,25 @@ export default function WorldDetail() {
       setLoading(false)
     }
     load()
+  }, [id])
+
+  // Refresca regiones/niveles/quizzes cuando una generación en 2º plano de ESTE
+  // mundo termina (total, parcial o cancelada), sin recargar la página.
+  useEffect(() => {
+    if (!id) return
+    const onGenerated = async (e: Event) => {
+      if ((e as CustomEvent).detail?.worldId !== id) return
+      const [{ data: rData }, { data: lData }, { data: qData }] = await Promise.all([
+        supabase.from('world_regions').select('*').eq('world_id', id).order('order_index'),
+        supabase.from('world_levels').select('*').eq('world_id', id).order('order_index'),
+        supabase.from('arena_quizzes').select('id, title').eq('world_id', id).order('created_at'),
+      ])
+      setRegions((rData ?? []) as Region[])
+      setLevels((lData ?? []) as Level[])
+      setQuizzes((qData ?? []) as Quiz[])
+    }
+    window.addEventListener(WORLD_LEVELS_EVENT, onGenerated)
+    return () => window.removeEventListener(WORLD_LEVELS_EVENT, onGenerated)
   }, [id])
 
   /* ── Theme autosave ── */
@@ -290,38 +306,24 @@ export default function WorldDetail() {
     setAiSections(2)
     setAiMinScore(80)
   }
-  const runAiGen = async () => {
+  // Dispara la generación EN SEGUNDO PLANO (cancelable) y cierra el modal: el
+  // avance vive en el indicador global. Al terminar, WORLD_LEVELS_EVENT refresca.
+  const runAiGen = () => {
     if (!world || !aiRegion) return
-    setAiGenerating(true)
-    try {
-      await generateLevelsForRegion({
-        worldId: world.id,
-        regionId: aiRegion.id,
-        regionName: aiRegion.name,
-        regionDescription: aiRegion.description,
-        moduleId: aiRegion.module_id,
-        levelCount: aiLevels === '' ? 3 : Number(aiLevels),
-        questionsPerLevel: (aiSections === '' ? 2 : Number(aiSections)) * QUESTIONS_PER_SECTION,
-        minScorePct: aiMinScore === '' ? 80 : Number(aiMinScore),
-      })
-      // Recarga niveles + quizzes recién generados y expande la región.
-      const [{ data: lData }, { data: qData }] = await Promise.all([
-        supabase.from('world_levels').select('*').eq('world_id', world.id).order('order_index'),
-        (() => {
-          return supabase.from('arena_quizzes').select('id, title').eq('world_id', world.id).order('created_at')
-        })(),
-      ])
-      setLevels((lData ?? []) as Level[])
-      setQuizzes((qData ?? []) as Quiz[])
-      setExpanded(prev => ({ ...prev, [aiRegion.id]: true }))
-      toast.success(i18n.t('admin.worlds.ai_gen_ok'))
-      setAiRegion(null)
-    } catch (e) {
-      console.error('Error generando niveles con IA:', e)
-      toast.error(i18n.t('admin.worlds.ai_gen_error'), (e as Error).message)
-    } finally {
-      setAiGenerating(false)
-    }
+    const region = aiRegion
+    generateLevelsForRegion({
+      worldId: world.id,
+      regionId: region.id,
+      regionName: region.name,
+      regionDescription: region.description,
+      moduleId: region.module_id,
+      levelCount: aiLevels === '' ? 3 : Number(aiLevels),
+      questionsPerLevel: (aiSections === '' ? 2 : Number(aiSections)) * QUESTIONS_PER_SECTION,
+      minScorePct: aiMinScore === '' ? 80 : Number(aiMinScore),
+    })
+    setExpanded(prev => ({ ...prev, [region.id]: true }))
+    toast.success(i18n.t('admin.worlds.ai_gen_started'))
+    setAiRegion(null)
   }
 
   // Módulos del curso que todavía no tienen su región en este mundo.
@@ -330,64 +332,20 @@ export default function WorldDetail() {
   )
 
   /* ── Generar en bloque: una región por módulo pendiente + sus niveles ── */
-  const runBulkGen = async () => {
+  // En SEGUNDO PLANO (cancelable): crea la región y genera niveles por cada módulo
+  // pendiente. Al terminar, WORLD_LEVELS_EVENT refresca la vista.
+  const runBulkGen = () => {
     if (!world || modulesWithoutRegion.length === 0) return
-    setBulkBusy(true)
     const lvl = bulkLevels === '' ? 3 : Number(bulkLevels)
     const qpl = (bulkSections === '' ? 2 : Number(bulkSections)) * QUESTIONS_PER_SECTION
-    const pending = modulesWithoutRegion
-    let ok = 0
-    let failed = 0
-    try {
-      for (let i = 0; i < pending.length; i++) {
-        const m = pending[i]
-        setBulkProgress({ i: i + 1, n: pending.length, title: m.title_es })
-        // 1. Crear la región espejo del módulo (order_index continúa la lista).
-        const { data: region, error } = await supabase
-          .from('world_regions')
-          .insert({
-            world_id: world.id,
-            module_id: m.id,
-            name: m.title_es,
-            description: null,
-            icon: (m.icon && m.icon.length <= 2) ? m.icon : '📍',
-            order_index: regions.length + i,
-          })
-          .select('*')
-          .single()
-        if (error || !region) { failed++; continue }
-        // 2. Generar sus niveles/quizzes con IA a partir del contenido del módulo.
-        try {
-          await generateModuleRegionLevels(world as unknown as WorldRow, (region as Region).id, m.id, {
-            levelCount: lvl, questionsPerLevel: qpl,
-          })
-          ok++
-        } catch (e) {
-          console.error('Fallo generando niveles de la región del módulo', m.id, e)
-          failed++
-        }
-      }
-      // Recarga regiones + niveles + quizzes reales generados.
-      const [{ data: rData }, { data: lData }, { data: qData }] = await Promise.all([
-        supabase.from('world_regions').select('*').eq('world_id', world.id).order('order_index'),
-        supabase.from('world_levels').select('*').eq('world_id', world.id).order('order_index'),
-        (() => {
-          return supabase.from('arena_quizzes').select('id, title').eq('world_id', world.id).order('created_at')
-        })(),
-      ])
-      const newRegions = (rData ?? []) as Region[]
-      setRegions(newRegions)
-      setLevels((lData ?? []) as Level[])
-      setQuizzes((qData ?? []) as Quiz[])
-      if (newRegions.length > 0) setExpanded({ [newRegions[0].id]: true })
-      if (failed === 0) toast.success(i18n.t('admin.worlds.bulk_gen_ok', { count: ok, defaultValue: `Se crearon ${ok} regiones con sus niveles` }))
-      else if (ok === 0) toast.error(i18n.t('admin.worlds.ai_gen_error'))
-      else toast.success(i18n.t('admin.worlds.bulk_gen_partial', { ok, fail: failed, defaultValue: `${ok} regiones listas, ${failed} fallaron` }))
-      setBulkOpen(false)
-    } finally {
-      setBulkBusy(false)
-      setBulkProgress(null)
-    }
+    generateBulkModuleRegions(
+      world as unknown as WorldRow,
+      modulesWithoutRegion.map(m => ({ id: m.id, title_es: m.title_es, icon: m.icon })),
+      regions.length,
+      { levelCount: lvl, questionsPerLevel: qpl },
+    )
+    toast.success(i18n.t('admin.worlds.ai_gen_started'))
+    setBulkOpen(false)
   }
 
   const resetProgress = async () => {
@@ -960,14 +918,14 @@ export default function WorldDetail() {
       {/* ── Generar niveles con IA (modal) ── */}
       {aiRegion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget && !aiGenerating) setAiRegion(null) }}>
+          onClick={e => { if (e.target === e.currentTarget) setAiRegion(null) }}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
                 <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
                 {i18n.t('admin.worlds.ai_gen_title')}
               </h2>
-              <button onClick={() => !aiGenerating && setAiRegion(null)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+              <button onClick={() => setAiRegion(null)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
             </div>
@@ -1008,16 +966,14 @@ export default function WorldDetail() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
-              <button onClick={() => !aiGenerating && setAiRegion(null)} disabled={aiGenerating}
-                className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors disabled:opacity-50">
+              <button onClick={() => setAiRegion(null)}
+                className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">
                 {i18n.t('confirm.cancel')}
               </button>
-              <button onClick={runAiGen} disabled={aiGenerating}
-                className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
+              <button onClick={runAiGen}
+                className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium"
                 style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
-                {aiGenerating
-                  ? <><Loader2 className="h-4 w-4 animate-spin"/> {i18n.t('admin.worlds.ai_gen_generating')}</>
-                  : <><Sparkles className="h-4 w-4"/> {i18n.t('admin.worlds.ai_gen_submit')}</>}
+                <Sparkles className="h-4 w-4"/> {i18n.t('admin.worlds.ai_gen_submit')}
               </button>
             </div>
           </div>
@@ -1041,69 +997,51 @@ export default function WorldDetail() {
       {/* ── Generar regiones desde el curso (modal en bloque) ── */}
       {bulkOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget && !bulkBusy) setBulkOpen(false) }}>
+          onClick={e => { if (e.target === e.currentTarget) setBulkOpen(false) }}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
                 <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
                 {i18n.t('admin.worlds.bulk_modal_title', { defaultValue: 'Generar regiones desde el curso' })}
               </h2>
-              <button onClick={() => !bulkBusy && setBulkOpen(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+              <button onClick={() => setBulkOpen(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
             </div>
             <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
-              {bulkBusy && bulkProgress ? (
-                <div className="py-4 text-center space-y-3">
-                  <Loader2 className="h-7 w-7 animate-spin mx-auto" style={{ color:'#8B5CF6' }} />
-                  <div className="text-[13px] font-medium text-text">
-                    {i18n.t('admin.worlds.bulk_progress', { i: bulkProgress.i, n: bulkProgress.n, defaultValue: `Región ${bulkProgress.i} de ${bulkProgress.n}` })}
-                  </div>
-                  <div className="text-[12px] text-text-muted truncate">{bulkProgress.title}</div>
-                  <div className="h-1.5 w-full rounded-full bg-subtle overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width:`${(bulkProgress.i / bulkProgress.n) * 100}%`, background:'#8B5CF6' }} />
-                  </div>
-                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.bulk_progress_hint', { defaultValue: 'Podés cerrar esta ventana; la generación sigue en segundo plano.' })}</p>
+              <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3" style={{ background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.20)' }}>
+                <BookOpen className="h-4 w-4 shrink-0 mt-0.5" style={{ color:'#8B5CF6' }} />
+                <p className="text-[12px] text-text-muted leading-relaxed">
+                  {i18n.t('admin.worlds.bulk_modal_desc', { count: modulesWithoutRegion.length, defaultValue: `Se crearán ${modulesWithoutRegion.length} regiones (una por módulo) y la IA generará sus niveles y preguntas desde el contenido de cada módulo.` })}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
+                  <input type="number" min={1} max={10} value={bulkLevels}
+                    onChange={e => setBulkLevels(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
                 </div>
-              ) : (
-                <>
-                  <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3" style={{ background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.20)' }}>
-                    <BookOpen className="h-4 w-4 shrink-0 mt-0.5" style={{ color:'#8B5CF6' }} />
-                    <p className="text-[12px] text-text-muted leading-relaxed">
-                      {i18n.t('admin.worlds.bulk_modal_desc', { count: modulesWithoutRegion.length, defaultValue: `Se crearán ${modulesWithoutRegion.length} regiones (una por módulo) y la IA generará sus niveles y preguntas desde el contenido de cada módulo.` })}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
-                      <input type="number" min={1} max={10} value={bulkLevels}
-                        onChange={e => setBulkLevels(e.target.value === '' ? '' : Math.max(1, Math.min(10, Number(e.target.value))))}
-                        className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_sections_label')}</label>
-                      <input type="number" min={1} max={5} value={bulkSections}
-                        onChange={e => setBulkSections(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
-                        className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_sections_hint', { total: (bulkSections === '' ? 2 : Number(bulkSections)) * QUESTIONS_PER_SECTION })}</p>
-                </>
-              )}
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_sections_label')}</label>
+                  <input type="number" min={1} max={5} value={bulkSections}
+                    onChange={e => setBulkSections(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                </div>
+              </div>
+              <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_sections_hint', { total: (bulkSections === '' ? 2 : Number(bulkSections)) * QUESTIONS_PER_SECTION })}</p>
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
-              <button onClick={() => !bulkBusy && setBulkOpen(false)} disabled={bulkBusy}
-                className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors disabled:opacity-50">
-                {bulkBusy ? i18n.t('admin.worlds.bulk_close', { defaultValue: 'Cerrar' }) : i18n.t('confirm.cancel')}
+              <button onClick={() => setBulkOpen(false)}
+                className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">
+                {i18n.t('confirm.cancel')}
               </button>
-              {!bulkBusy && (
-                <button onClick={runBulkGen}
-                  className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium"
-                  style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
-                  <Sparkles className="h-4 w-4"/>
-                  {i18n.t('admin.worlds.bulk_modal_submit', { count: modulesWithoutRegion.length, defaultValue: `Generar ${modulesWithoutRegion.length} regiones` })}
-                </button>
-              )}
+              <button onClick={runBulkGen}
+                className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium"
+                style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
+                <Sparkles className="h-4 w-4"/>
+                {i18n.t('admin.worlds.bulk_modal_submit', { count: modulesWithoutRegion.length, defaultValue: `Generar ${modulesWithoutRegion.length} regiones` })}
+              </button>
             </div>
           </div>
         </div>

@@ -17,6 +17,7 @@ import {
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useModules } from '@/hooks/useModules';
+import { useLearnerCourses } from '@/hooks/useLearnerCourses';
 import { useProgressStore } from '@/stores/progressStore';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
@@ -31,6 +32,7 @@ import { cn } from '@/lib/cn';
 import type { ContentBlock } from '@/types/blocks';
 import type { ModuleSection, SectionMedia } from '@/data/modules';
 import { ModulePageSkeleton } from '@/components/ui/Skeleton';
+import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer';
 import { toast } from '@/stores/toastStore';
 import { getModuleFeedbackForUser } from '@/services/activity.service';
@@ -97,7 +99,16 @@ export default function ModulePage() {
 
   const { completedModules, markModule, earnXP, updateStreak } = useProgressStore();
   const { modules, loading } = useModules();
+  const { courses } = useLearnerCourses();
   const module = useMemo(() => modules.find((m) => m.id === id), [id, modules]);
+  // Botón "Volver": si el módulo pertenece a un curso, regresa a su página; si no,
+  // al panel del aprendiz. El curso se enruta por slug, no por id.
+  const backCourse = useMemo(
+    () => (module?.courseId ? courses.find((c) => c.id === module.courseId) : undefined),
+    [courses, module?.courseId],
+  );
+  const backTo = backCourse ? `/courses/${backCourse.slug}` : '/dashboard';
+  const backLabel = backCourse ? t('module.back_to_course') : t('module.back');
   // Los hermanos de navegación son los módulos del mismo curso (ordenados por
   // su posición en el curso) o, si no pertenece a un curso, los del plan general.
   const siblings = useMemo(() => {
@@ -354,6 +365,15 @@ export default function ModulePage() {
         {/* ── Portada del módulo: meta + título + subtítulo + objetivos ── */}
         <header className="mb-12">
           <Reveal>
+            <Link
+              to={backTo}
+              className="inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text transition-colors mb-6"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              {backLabel}
+            </Link>
+          </Reveal>
+          <Reveal>
             <div className="flex flex-wrap items-center gap-3 mb-5">
               <NeonBadge color="neutral">
                 {t('module.of_modules', { idx: moduleIndex + 1, total: modules.length })}
@@ -571,12 +591,14 @@ export default function ModulePage() {
         </div>
       </div>
         
-      <FeedbackModal 
+      <FeedbackModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)} 
-        attempts={latestAttemptsPerSection} 
-        computedMetrics={computedMetrics as any} 
+        onClose={() => setIsModalOpen(false)}
+        attempts={latestAttemptsPerSection}
+        computedMetrics={computedMetrics as any}
       />
+
+      <ScrollToTopButton />
     </>
   );
 }

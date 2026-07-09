@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock } from 'lucide-react'
+import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X } from 'lucide-react'
 import { GenerationProgress, SIMULATION_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -66,6 +66,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<GeneratedDialogue | GeneratedChoice | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!campaignId) return
@@ -80,21 +81,28 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
 
   const handleGenerate = async () => {
     if (!description.trim()) return
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setError(null)
     setPreview(null)
     try {
       let moduleContext: string | undefined
       if (selectedModuleId) moduleContext = await getModuleContextText(selectedModuleId)
-      const result = await generateSimulation({ type, description, moduleContext })
+      const result = await generateSimulation({ type, description, moduleContext }, controller.signal)
       setPreview(result.data)
       notifyCache(result.usage)
     } catch (e) {
+      // Cancelación del usuario: no es un error, se descarta en silencio.
+      if (controller.signal.aborted || (e as Error)?.name === 'AbortError') return
       setError((e as Error).message)
     } finally {
+      abortRef.current = null
       setLoading(false)
     }
   }
+
+  const handleCancel = () => abortRef.current?.abort()
 
   const handleApply = () => {
     if (preview) {
@@ -169,6 +177,17 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false }: Props) 
             active={loading}
             title={i18n.t('admin.simulations.ai_gen.title_generating')}
           />
+
+          {loading && (
+            <div className="flex justify-end">
+              <button
+                onClick={handleCancel}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text hover:border-glass-border/40 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" /> {i18n.t('bgtask.cancel')}
+              </button>
+            </div>
+          )}
 
           {preview && !loading && (
             <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleGenerate} />

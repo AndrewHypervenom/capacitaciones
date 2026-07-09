@@ -75,7 +75,7 @@ export async function generateSimulation(opts: {
   type: 'dialogue' | 'choice'
   description: string
   moduleContext?: string
-}): Promise<{ data: GeneratedScenario; usage: CacheUsage }> {
+}, signal?: AbortSignal): Promise<{ data: GeneratedScenario; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')
 
@@ -89,6 +89,7 @@ export async function generateSimulation(opts: {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify(opts),
+      signal,
     },
   )
 
@@ -158,13 +159,14 @@ function deepFillTranslations(value: any): any {
 }
 
 /** Traduce (en/pt) un JSON generado en español, con Haiku. Devuelve el mismo objeto relleno. */
-async function translateGenerated<T>(payload: T): Promise<T> {
-  const { data } = await postGenerateModule({ mode: 'translate', payload, description: '' })
+async function translateGenerated<T>(payload: T, signal?: AbortSignal): Promise<T> {
+  const { data } = await postGenerateModule({ mode: 'translate', payload, description: '' }, signal)
   return data as T
 }
 
 async function postGenerateModule(
   body: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<{ data: unknown; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')
@@ -179,6 +181,7 @@ async function postGenerateModule(
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify(body),
+      signal,
     },
   )
 
@@ -201,12 +204,12 @@ export interface CaptureDetection {
  */
 export async function detectCaptures(opts: {
   contextImages: DocImage[]
-}): Promise<{ data: CaptureDetection; usage: CacheUsage }> {
+}, signal?: AbortSignal): Promise<{ data: CaptureDetection; usage: CacheUsage }> {
   const { data, usage } = await postGenerateModule({
     mode: 'detect-figures',
     description: '',
     contextImages: opts.contextImages,
-  })
+  }, signal)
   return { data: (data ?? { pages: [] }) as CaptureDetection, usage }
 }
 
@@ -243,11 +246,11 @@ export async function generateModule(opts: {
  */
 export async function generateModuleOutline(opts: {
   description: string
-} & DocContext): Promise<{ data: ModuleOutline; usage: CacheUsage }> {
-  const { data, usage } = await postGenerateModule({ mode: 'outline', esOnly: true, ...opts })
+} & DocContext, signal?: AbortSignal): Promise<{ data: ModuleOutline; usage: CacheUsage }> {
+  const { data, usage } = await postGenerateModule({ mode: 'outline', esOnly: true, ...opts }, signal)
   let outline = data as ModuleOutline
   try {
-    outline = await translateGenerated(outline)
+    outline = await translateGenerated(outline, signal)
   } catch { /* si falla la traducción, la red de seguridad copia el español */ }
   return { data: deepFillTranslations(outline) as ModuleOutline, usage }
 }
@@ -265,11 +268,11 @@ export async function generateModuleSection(opts: {
   sectionIndex: number
   totalSections: number
   allHeadings: string[]
-} & DocContext): Promise<{ data: { blocks: GeneratedBlock[] }; usage: CacheUsage }> {
-  const { data, usage } = await postGenerateModule({ mode: 'section', esOnly: true, ...opts })
+} & DocContext, signal?: AbortSignal): Promise<{ data: { blocks: GeneratedBlock[] }; usage: CacheUsage }> {
+  const { data, usage } = await postGenerateModule({ mode: 'section', esOnly: true, ...opts }, signal)
   let blocks = (data as { blocks?: GeneratedBlock[] })?.blocks ?? []
   try {
-    const translated = await translateGenerated<{ blocks: GeneratedBlock[] }>({ blocks })
+    const translated = await translateGenerated<{ blocks: GeneratedBlock[] }>({ blocks }, signal)
     if (translated?.blocks?.length) blocks = translated.blocks
   } catch { /* si falla la traducción, la red de seguridad copia el español */ }
   return { data: { blocks: deepFillTranslations(blocks) as GeneratedBlock[] }, usage }

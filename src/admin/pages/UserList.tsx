@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, User, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload } from 'lucide-react'
+import { Loader2, UserPlus, Shield, User, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -46,6 +46,11 @@ export default function UserList() {
   const [loading, setLoading] = useState(true)
   const [inviting, setInviting] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteName, setInviteName] = useState('')
+  // Edición inline del nombre de un usuario existente
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [savingName, setSavingName] = useState(false)
   const [inviteRole, setInviteRole] = useState<'learner' | 'capacitador' | 'superadmin'>('learner')
   const [inviteCampaign, setInviteCampaign] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -129,6 +134,7 @@ export default function UserList() {
           },
           body: JSON.stringify({
             email: inviteEmail.trim(),
+            name: inviteName.trim(),
             role: inviteRole,
             campaignId: inviteCampaign || null,
           }),
@@ -141,12 +147,30 @@ export default function UserList() {
       setCreatedPassword(json.password ?? '')
       setInviteSuccess(true)
       setInviteEmail('')
+      setInviteName('')
 
       await refreshData()
     } catch (err: unknown) {
       setInviteError(err instanceof Error ? err.message : 'Error al crear usuario')
     } finally {
       setInviteLoading(false)
+    }
+  }
+
+  const startEditName = (user: ProfileWithEmail) => {
+    setEditingId(user.id)
+    setEditName(user.display_name ?? '')
+  }
+
+  const handleSaveName = async (userId: string) => {
+    const name = editName.trim()
+    setSavingName(true)
+    try {
+      await supabase.from('profiles').update({ display_name: name || null }).eq('id', userId)
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, display_name: name || null } : u))
+      setEditingId(null)
+    } finally {
+      setSavingName(false)
     }
   }
 
@@ -284,6 +308,13 @@ export default function UserList() {
           ) : (
             <div className="space-y-3">
               <input
+                type="text"
+                placeholder={i18n.t('admin.users.ph_name')}
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none min-h-[44px]"
+              />
+              <input
                 type="email"
                 placeholder={i18n.t('admin.users.ph_email')}
                 value={inviteEmail}
@@ -398,19 +429,59 @@ export default function UserList() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-[13px] text-text truncate">{user.display_name ?? 'Sin nombre'}</span>
-                      {!user.onboarded && (
-                        <span
-                          className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
-                          style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}
-                          title={t('admin.users.pending_hint')}
+                    {editingId === user.id ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <input
+                          autoFocus
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveName(user.id)
+                            if (e.key === 'Escape') setEditingId(null)
+                          }}
+                          placeholder={t('admin.users.ph_name')}
+                          className="min-w-0 flex-1 rounded-lg px-2 py-1 text-[13px] text-text bg-subtle border border-line outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={() => handleSaveName(user.id)}
+                          disabled={savingName}
+                          className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-green-600 hover:bg-green-500/10 disabled:opacity-50 transition-colors"
+                          title={t('admin.courses.save')}
                         >
-                          <Clock className="h-3 w-3" />
-                          {t('admin.users.pending')}
-                        </span>
-                      )}
-                    </div>
+                          {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-4 w-4" />}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                          title={t('admin.courses.cancel')}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 min-w-0 group">
+                        <span className="text-[13px] text-text truncate">{user.display_name ?? 'Sin nombre'}</span>
+                        {isSuperAdmin && (
+                          <button
+                            onClick={() => startEditName(user)}
+                            className="shrink-0 h-6 w-6 flex items-center justify-center rounded-md text-text-subtle hover:text-text hover:bg-glass/6 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
+                            title={t('admin.users.edit_name')}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {!user.onboarded && (
+                          <span
+                            className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}
+                            title={t('admin.users.pending_hint')}
+                          >
+                            <Clock className="h-3 w-3" />
+                            {t('admin.users.pending')}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="text-[11px] text-text-subtle truncate">
                       {tempCreds[user.id]?.email ?? `${user.id.slice(0, 8)}…`}
                     </div>
