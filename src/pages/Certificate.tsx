@@ -1,17 +1,19 @@
-import { useRef, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Download, Lock, ShieldCheck } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
-import {
-  useProgressStore,
-  selectCertificationEarned,
-  selectBestAttempt,
-  CERTIFICATION_MIN_SCORE,
-} from '@/stores/progressStore';
-import { useModules } from '@/hooks/useModules';
+import { getCourseById, type CourseWithModules } from '@/services/courses.service';
+import { getCourseCertStatus, issueCertification } from '@/services/certification.service';
+import type { CourseCertStatus } from '@/types/database';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
+
+function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
+  if (lang === 'en') return en || es || '';
+  if (lang === 'pt') return pt || es || '';
+  return es || '';
+}
 
 const GOLD = '#C9A052';
 const NAVY = '#1C2B4B';
@@ -106,14 +108,14 @@ function CertificateSeal() {
   );
 }
 
-function LockedPreview() {
+function LockedPreview({ minScore, backTo }: { minScore: number; backTo: string }) {
   const { t } = useTranslation();
   const nav = useNavigate();
 
   return (
     <div className="mx-auto max-w-3xl px-5 pt-16 pb-24">
       <Link
-        to="/dashboard"
+        to={backTo}
         className="inline-flex items-center gap-2 text-[13px] text-text-muted hover:text-text mb-8"
       >
         <ArrowLeft className="h-3.5 w-3.5" /> {t('certificate.back')}
@@ -173,9 +175,9 @@ function LockedPreview() {
                 {t('certificate.locked_title')}
               </h1>
               <p className="text-text-muted text-[14px] mb-6">
-                {t('certificate.locked_hint', { score: CERTIFICATION_MIN_SCORE })}
+                {t('certificate.locked_hint', { score: minScore })}
               </p>
-              <Button onClick={() => nav('/dashboard')} size="md">
+              <Button onClick={() => nav(backTo)} size="md">
                 {t('certificate.back')}
               </Button>
             </div>
@@ -188,23 +190,62 @@ function LockedPreview() {
 
 export default function Certificate() {
   const { t, i18n } = useTranslation();
+  const { courseId } = useParams<{ courseId: string }>();
   const { name, language } = useUserStore();
-  const { planModules: modules, loading: modulesLoading } = useModules();
-  const progressState = useProgressStore();
-  const earned = selectCertificationEarned(progressState, modules);
-  const bestAttempt = selectBestAttempt(progressState);
-  const completedModules = progressState.completedModules.filter((id) =>
-    modules.some((m) => m.id === id),
-  );
+  const [course, setCourse] = useState<CourseWithModules | null>(null);
+  const [status, setStatus] = useState<CourseCertStatus | null>(null);
+  const [loading, setLoading] = useState(true);
   const certRef = useRef<HTMLElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const backTo = courseId ? `/courses` : '/dashboard';
 
-  if (modulesLoading) return null;
-  if (!earned) return <LockedPreview />;
+  useEffect(() => {
+    let active = true;
+    if (!courseId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    Promise.all([getCourseById(courseId), getCourseCertStatus(courseId)])
+      .then(async ([c, st]) => {
+        if (!active) return;
+        setCourse(c);
+        // Auto-emitir si cumple condiciones pero aún no está certificado.
+        if (st.all_met && !st.certified) {
+          try {
+            await issueCertification(courseId);
+            const fresh = await getCourseCertStatus(courseId);
+            if (active) setStatus(fresh);
+          } catch {
+            if (active) setStatus(st);
+          }
+        } else if (active) {
+          setStatus(st);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [courseId]);
+
+  if (loading) return null;
+
+  const earned = !!status && (status.certified || status.all_met);
+  if (!earned) return <LockedPreview minScore={status?.min_score ?? 70} backTo={backTo} />;
 
   const lang = i18n.resolvedLanguage ?? language;
-  const issuedOn = formatDate(new Date(), lang);
-  const certId = (bestAttempt?.id ?? `${name}-${Date.now()}`).slice(0, 16).toUpperCase();
+  const courseTitle = course
+    ? pickText(course.title_es, course.title_en, course.title_pt, lang)
+    : '';
+  const issuedOn = formatDate(status.issued_at ? new Date(status.issued_at) : new Date(), lang);
+  const bestScore = status.cert_score ?? status.best_score;
+  const completedCount = status.modules_done;
+  const totalModules = status.modules_total;
+  const certId = (status.cert_id ?? `${name}-${Date.now()}`).slice(0, 16).toUpperCase();
 
   const handleDownload = async () => {
     if (!certRef.current || downloading) return;
@@ -249,7 +290,7 @@ export default function Certificate() {
       {/* Controls */}
       <div className="flex items-center justify-between mb-8">
         <Link
-          to="/dashboard"
+          to={backTo}
           className="inline-flex items-center gap-2 text-[13px] text-text-muted hover:text-text"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> {t('certificate.back')}
@@ -390,6 +431,14 @@ export default function Certificate() {
               }}>
                 {t('certificate.completion_text')}
               </p>
+              {courseTitle && (
+                <div style={{
+                  fontSize: 20, fontWeight: 700, color: NAVY,
+                  marginTop: 14, letterSpacing: 0.5,
+                }}>
+                  {courseTitle}
+                </div>
+              )}
             </div>
 
             {/* Stats */}
@@ -403,10 +452,10 @@ export default function Certificate() {
                   {t('certificate.modules_completed')}
                 </div>
                 <div style={{ fontSize: 42, fontWeight: 700, color: NAVY, lineHeight: 1 }}>
-                  {completedModules.length}
+                  {completedCount}
                 </div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 5 }}>
-                  {t('certificate.of_total', { total: modules.length })}
+                  {t('certificate.of_total', { total: totalModules })}
                 </div>
               </div>
 
@@ -419,7 +468,7 @@ export default function Certificate() {
                   {t('certificate.best_score')}
                 </div>
                 <div style={{ fontSize: 42, fontWeight: 700, color: GOLD, lineHeight: 1 }}>
-                  {bestAttempt?.score ?? 0}
+                  {bestScore}
                 </div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 5 }}>
                   {t('certificate.score_unit')}

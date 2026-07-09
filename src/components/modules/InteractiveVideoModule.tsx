@@ -291,6 +291,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
           status: pct >= 75 ? 'completed' : 'failed',
           time_spent_seconds: 0,
           submitted_answers: {
+            marker_id: activeMarker.id,
             aciertos: score,
             total,
             errores: total - score,

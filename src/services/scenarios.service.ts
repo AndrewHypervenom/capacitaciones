@@ -78,3 +78,15 @@ export async function getAllScenariosForCampaign(campaignId: string) {
   if (error) throw error
   return data ?? []
 }
+
+/** Escenarios publicados que pertenecen a un curso (para el bloque del aprendiz). */
+export async function getScenariosForCourse(courseId: string): Promise<Scenario[]> {
+  const { data, error } = await supabase
+    .from('scenarios')
+    .select('*')
+    .eq('course_id', courseId)
+    .eq('is_published', true)
+    .order('created_at')
+  if (error) throw error
+  return (data ?? []).map(dbRowToScenario)
+}

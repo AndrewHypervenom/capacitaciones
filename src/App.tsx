@@ -79,6 +79,7 @@ export default function App() {
           <Route path="/simulator/run/:id" element={<SimulatorRun />} />
           <Route path="/simulator/result/:id" element={<SimulatorResult />} />
           <Route path="/simulator/choice/:id" element={<ChoiceSimulatorRun />} />
+          <Route path="/certificate/:courseId" element={<Certificate />} />
           <Route path="/certificate" element={<Certificate />} />
           <Route path="/quiz" element={<LiveQuizPlay />} />
         </Route>

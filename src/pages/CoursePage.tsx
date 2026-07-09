@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, Check, Clock, GraduationCap, Loader2, Lock, LogOut, Map, Play, Plus } from 'lucide-react';
+import { ArrowLeft, Award, BookOpen, Check, Clock, Flame, GraduationCap, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
+import type { Scenario } from '@/data/scenarios';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { selfEnroll, unenrollSelf } from '@/services/courses.service';
+import { getScenariosForCourse } from '@/services/scenarios.service';
+import { getCourseCertStatus } from '@/services/certification.service';
+import type { CourseCertStatus } from '@/types/database';
+import { CountryFlag } from '@/components/layout/CountryFlag';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { ProgressRing } from '@/components/ui/ProgressRing';
@@ -24,6 +29,7 @@ function pickText(es: string | null, en: string | null, pt: string | null, lang:
 export default function CoursePage() {
   const { slug } = useParams<{ slug: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const { t } = useTranslation();
 
   // Si llegaste desde la vista de cursos, volver ahí; si no, a la página principal.
@@ -36,6 +42,25 @@ export default function CoursePage() {
   const [enrollBusy, setEnrollBusy] = useState(false);
 
   const course = useMemo(() => courses.find((c) => c.slug === slug), [courses, slug]);
+
+  // Simulador y certificación del curso (capa de evaluación).
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [certStatus, setCertStatus] = useState<CourseCertStatus | null>(null);
+  useEffect(() => {
+    if (!course?.id) {
+      setScenarios([]);
+      setCertStatus(null);
+      return;
+    }
+    let active = true;
+    getScenariosForCourse(course.id)
+      .then((s) => { if (active) setScenarios(s); })
+      .catch(() => { if (active) setScenarios([]); });
+    getCourseCertStatus(course.id)
+      .then((st) => { if (active) setCertStatus(st); })
+      .catch(() => { if (active) setCertStatus(null); });
+    return () => { active = false; };
+  }, [course?.id, completedSlugs]);
 
   // Mundo (juego) publicado de este curso, si existe, para el botón "Jugar el mundo".
   const [worldId, setWorldId] = useState<string | null>(null);
@@ -357,6 +382,215 @@ export default function CoursePage() {
           );
         })}
       </div>
+
+      {/* ── Practicar: simulador de llamadas del curso ── */}
+      {scenarios.length > 0 && (() => {
+        const rule = course.sim_unlock_rule;
+        const unlockModule = course.sim_unlock_module_id
+          ? course.modules.find((m) => m.id === course.sim_unlock_module_id)
+          : null;
+        const simUnlocked =
+          rule === 'from_start' ||
+          (rule === 'after_modules' && completed) ||
+          (rule === 'after_module' && !!unlockModule && completedSlugs.includes(unlockModule.slug)) ||
+          (rule === 'after_module' && !unlockModule && completed);
+
+        return (
+          <Reveal className="mt-12">
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-text mb-1">
+                  <PhoneCall className="h-5 w-5" style={{ color: course.color }} />
+                  {t('course_practice.title')}
+                </h2>
+                <p className="text-[14px] text-text-muted">{t('course_practice.subtitle')}</p>
+              </div>
+              {simUnlocked && certStatus && certStatus.best_score > 0 && (
+                <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-[12px] font-semibold tabular-nums text-primary">
+                  {t('course_practice.best_score', { score: certStatus.best_score })}
+                </span>
+              )}
+            </div>
+
+            {!simUnlocked ? (
+              <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-subtle text-text-muted">
+                  <Lock className="h-5 w-5" />
+                </div>
+                <p className="text-[14px] text-text-muted">
+                  {rule === 'after_module' && unlockModule
+                    ? t('course_practice.locked_after_module', {
+                        title: pickText(unlockModule.title_es, unlockModule.title_en, unlockModule.title_pt, language),
+                      })
+                    : t('course_practice.locked_after_modules')}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {scenarios.map((scn) => (
+                  <button
+                    key={scn.id}
+                    onClick={() =>
+                      navigate(`/simulator/run/${scn.id}`, {
+                        state: {
+                          courseId: course.id,
+                          campaignId: course.campaign_id,
+                          returnTo: `/courses/${course.slug}`,
+                        },
+                      })
+                    }
+                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all hover:border-primary hover:shadow-card-hover"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CountryFlag code={scn.country} size={18} />
+                        <span className="text-[12px] text-text-muted">
+                          {t(`simulator.countries.${scn.country}`, scn.country)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3].map((d) => (
+                          <Flame
+                            key={d}
+                            className={cn('h-3.5 w-3.5', d <= scn.difficulty ? 'text-primary' : 'text-line')}
+                            fill={d <= scn.difficulty ? 'currentColor' : 'none'}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <h3 className="text-[15px] font-semibold tracking-tight text-text mb-1.5">
+                      {scn.title[language]}
+                    </h3>
+                    <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
+                      {scn.summary[language]}
+                    </p>
+                    <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
+                      {t('simulator.take_call')} →
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Reveal>
+        );
+      })()}
+
+      {/* ── Acreditar: certificado del curso ── */}
+      {certStatus && (certStatus.require_all_modules || certStatus.require_simulator) && (() => {
+        const reqTotal =
+          (certStatus.require_all_modules ? 1 : 0) + (certStatus.require_simulator ? 1 : 0);
+        const reqMet =
+          (certStatus.require_all_modules && certStatus.modules_ok ? 1 : 0) +
+          (certStatus.require_simulator && certStatus.simulator_ok ? 1 : 0);
+        const ready = certStatus.all_met || certStatus.certified;
+        const modulesPct =
+          certStatus.modules_total > 0 ? certStatus.modules_done / certStatus.modules_total : 0;
+        const simPct =
+          certStatus.min_score > 0 ? Math.min(1, certStatus.best_score / certStatus.min_score) : 0;
+
+        return (
+          <Reveal className="mt-12">
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-text mb-1">
+                  <Award className="h-5 w-5" style={{ color: course.color }} />
+                  {t('course_cert.title')}
+                </h2>
+                <p className="text-[14px] text-text-muted">{t('course_cert.subtitle')}</p>
+              </div>
+              {!ready && (
+                <span className="shrink-0 rounded-full bg-subtle px-3 py-1 text-[12px] font-semibold tabular-nums text-text-muted">
+                  {t('course_cert.reqs_met', { done: reqMet, total: reqTotal })}
+                </span>
+              )}
+            </div>
+
+            {ready ? (
+              <Link
+                to={`/certificate/${course.id}`}
+                className="flex items-center gap-5 rounded-3xl border border-primary/30 bg-surface p-6 transition-all hover:border-primary hover:shadow-card-hover"
+              >
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-on-primary">
+                  <Award className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary mb-1">
+                    {t('course_cert.ready_tag')}
+                  </p>
+                  <div className="text-[18px] font-semibold tracking-tight text-text">
+                    {t('course_cert.ready_title')}
+                  </div>
+                </div>
+                <span className="shrink-0 text-[13px] font-medium text-text-muted">
+                  {t('course_cert.view')} →
+                </span>
+              </Link>
+            ) : (
+              <div className="rounded-3xl border border-line bg-surface p-6 space-y-6">
+                {/* Requisito: módulos */}
+                {certStatus.require_all_modules && (
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                      certStatus.modules_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
+                    )}>
+                      {certStatus.modules_ok ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-[13px] font-bold">1</span>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-medium text-text mb-1.5">{t('course_cert.req_modules')}</div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
+                        <motion.div
+                          className="h-full rounded-full bg-primary"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${modulesPct * 100}%` }}
+                          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+                        />
+                      </div>
+                    </div>
+                    <span className={cn(
+                      'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums',
+                      certStatus.modules_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
+                    )}>
+                      {certStatus.modules_done}/{certStatus.modules_total}
+                    </span>
+                  </div>
+                )}
+                {/* Requisito: simulador */}
+                {certStatus.require_simulator && (
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                      certStatus.simulator_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
+                    )}>
+                      {certStatus.simulator_ok ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-[13px] font-bold">2</span>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-medium text-text mb-1.5">
+                        {t('course_cert.req_simulator', { score: certStatus.min_score })}
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
+                        <motion.div
+                          className="h-full rounded-full bg-primary"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${simPct * 100}%` }}
+                          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+                        />
+                      </div>
+                    </div>
+                    <span className={cn(
+                      'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums',
+                      certStatus.simulator_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
+                    )}>
+                      {certStatus.best_score}/{certStatus.min_score}
+                    </span>
+                  </div>
+                )}
+                <p className="text-[13px] text-text-muted pt-1">{t('course_cert.pending_hint')}</p>
+              </div>
+            )}
+          </Reveal>
+        );
+      })()}
 
       {/* Barra de progreso al pie */}
       {total > 0 && (

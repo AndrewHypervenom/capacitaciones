@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { MicOff, PauseCircle, PhoneForwarded, PhoneOff } from 'lucide-react';
 import { getScenario } from '@/data/scenarios';
@@ -18,9 +18,24 @@ export default function SimulatorRun() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
   const nav = useNavigate();
+  const location = useLocation();
   const language = useUserStore((s) => s.language);
-  const { active, setActive, setLastResult } = useSimStore();
+  const { active, setActive, setLastResult, setContext } = useSimStore();
   const { scenarios: dbScenarios, loading: scenariosLoading } = useScenarios();
+
+  // Contexto de curso (si se entró desde la página del curso).
+  useEffect(() => {
+    const st = location.state as
+      | { courseId?: string; campaignId?: string; returnTo?: string }
+      | null;
+    if (st && (st.courseId || st.returnTo)) {
+      setContext({
+        courseId: st.courseId ?? null,
+        campaignId: st.campaignId ?? null,
+        returnTo: st.returnTo ?? null,
+      });
+    }
+  }, [location.state, setContext]);
 
   // Prefer DB scenario (from campaign), fall back to hardcoded
   const scenario = useMemo(() => {

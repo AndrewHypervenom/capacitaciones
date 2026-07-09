@@ -10,6 +10,21 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+/** Condiciones de certificación configurables por el capacitador (por curso). */
+export interface CertConditions {
+  require_all_modules: boolean
+  min_modules_pct: number
+  /** Puntaje mínimo (0-100) que el aprendiz debe promediar en las actividades
+   *  de un módulo (quizzes/juegos) para que ese módulo cuente como aprobado.
+   *  Aplica a todos los módulos del curso. */
+  module_pass_pct: number
+  require_simulator: boolean
+  min_score: number
+  required_scenario_slugs: string[]
+  require_world: boolean
+  valid_months: number | null
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -86,6 +101,10 @@ export interface Database {
           is_shareable: boolean
           copied_from: string | null
           created_by: string | null
+          cert_conditions: CertConditions
+          sim_unlock_rule: 'after_modules' | 'from_start' | 'after_module'
+          sim_unlock_module_id: string | null
+          sim_max_attempts: number | null
           created_at: string
           updated_at: string
         }
@@ -110,6 +129,10 @@ export interface Database {
           is_shareable?: boolean
           copied_from?: string | null
           created_by?: string | null
+          cert_conditions?: CertConditions
+          sim_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
+          sim_unlock_module_id?: string | null
+          sim_max_attempts?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -131,6 +154,10 @@ export interface Database {
           is_published?: boolean
           sort_order?: number
           is_shareable?: boolean
+          cert_conditions?: CertConditions
+          sim_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
+          sim_unlock_module_id?: string | null
+          sim_max_attempts?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -460,6 +487,9 @@ export interface Database {
           start_node_id: string
           nodes: Json
           is_published: boolean
+          course_id: string | null
+          pass_score: number
+          counts_for_cert: boolean
           created_at: string
         }
         Insert: {
@@ -486,6 +516,9 @@ export interface Database {
           start_node_id?: string
           nodes?: Json
           is_published?: boolean
+          course_id?: string | null
+          pass_score?: number
+          counts_for_cert?: boolean
           created_at?: string
         }
         Update: {
@@ -512,6 +545,69 @@ export interface Database {
           start_node_id?: string
           nodes?: Json
           is_published?: boolean
+          course_id?: string | null
+          pass_score?: number
+          counts_for_cert?: boolean
+        }
+        Relationships: []
+      }
+      simulator_attempts: {
+        Row: {
+          id: string
+          user_id: string
+          course_id: string | null
+          campaign_id: string | null
+          scenario_slug: string
+          score: number
+          checklist_pct: number
+          empathy_pct: number
+          resolved: boolean
+          duration_sec: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          course_id?: string | null
+          campaign_id?: string | null
+          scenario_slug: string
+          score?: number
+          checklist_pct?: number
+          empathy_pct?: number
+          resolved?: boolean
+          duration_sec?: number
+          created_at?: string
+        }
+        Update: {
+          score?: number
+          checklist_pct?: number
+          empathy_pct?: number
+          resolved?: boolean
+          duration_sec?: number
+        }
+        Relationships: []
+      }
+      certifications: {
+        Row: {
+          id: string
+          user_id: string
+          course_id: string
+          campaign_id: string | null
+          cert_id: string
+          score: number
+          issued_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          course_id: string
+          campaign_id?: string | null
+          cert_id: string
+          score?: number
+          issued_at?: string
+        }
+        Update: {
+          score?: number
         }
         Relationships: []
       }
@@ -1118,6 +1214,28 @@ export interface Database {
           global_enrolled: number
         }
       }
+      get_course_certification_status: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      issue_certification: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      get_course_evaluation_results: {
+        Args: { p_course_id: string }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          modules_done: number
+          modules_total: number
+          best_score: number
+          attempts_count: number
+          certified: boolean
+          cert_id: string | null
+          issued_at: string | null
+        }[]
+      }
     }
     Enums: Record<string, never>
   }
@@ -1133,6 +1251,38 @@ export type ModuleSection = Database['public']['Tables']['module_sections']['Row
 export type SectionQuiz = Database['public']['Tables']['section_quizzes']['Row']
 export type Scenario = Database['public']['Tables']['scenarios']['Row']
 export type ChoiceScenario = Database['public']['Tables']['choice_scenarios']['Row']
+export type SimulatorAttemptRow = Database['public']['Tables']['simulator_attempts']['Row']
+export type Certification = Database['public']['Tables']['certifications']['Row']
+export type CourseEvaluationResult = Database['public']['Functions']['get_course_evaluation_results']['Returns'][number]
+
+/** Estado de certificación devuelto por get_course_certification_status. */
+export interface CourseCertStatus {
+  modules_done: number
+  modules_total: number
+  modules_ok: boolean
+  best_score: number
+  min_score: number
+  require_simulator: boolean
+  require_all_modules: boolean
+  simulator_ok: boolean
+  all_met: boolean
+  certified: boolean
+  cert_id: string | null
+  issued_at: string | null
+  cert_score: number | null
+}
+
+/** Constante por defecto de condiciones (coincide con el DEFAULT del SQL). */
+export const DEFAULT_CERT_CONDITIONS: CertConditions = {
+  require_all_modules: true,
+  min_modules_pct: 100,
+  module_pass_pct: 80,
+  require_simulator: false,
+  min_score: 70,
+  required_scenario_slugs: [],
+  require_world: false,
+  valid_months: null,
+}
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type UserProgress = Database['public']['Tables']['user_progress']['Row']
 

@@ -10,7 +10,9 @@ import {
   Target,
   AlertTriangle,
   Lightbulb,
-  UserCheck
+  Lock,
+  UserCheck,
+  X
 } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,6 +24,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { GradientHeading } from '@/components/ui/GradientHeading';
 import { NeonBadge } from '@/components/ui/NeonBadge';
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck';
+import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
 import { ModuleTOC } from '@/components/modules/ModuleTOC';
 import { SectionLayout } from '@/components/modules/SectionLayout';
 import { cn } from '@/lib/cn';
@@ -31,6 +34,7 @@ import { ModulePageSkeleton } from '@/components/ui/Skeleton';
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer';
 import { toast } from '@/stores/toastStore';
 import { getModuleFeedbackForUser } from '@/services/activity.service';
+import { getCourseModulePassPct } from '@/services/courses.service';
 import type { Language } from '@/stores/userStore';
 import { FeedbackModal } from '@/components/modules/FeedbackModal';
 
@@ -55,6 +59,20 @@ function MediaBlock({ media, language }: { media: SectionMedia; language: Langua
     </figure>
   );
 }
+
+type GradedUnitType = 'KNOWLEDGE_CHECK' | 'SORT_PROCESS' | 'CLASSIFY_CASES' | 'VIDEO_QUIZ';
+interface GradedUnit {
+  key: string;
+  sectionIndex: number;
+  type: GradedUnitType;
+  detail: string;
+}
+const ACTIVITY_LABEL_KEY: Record<GradedUnitType, string> = {
+  KNOWLEDGE_CHECK: 'module.activity_quiz',
+  SORT_PROCESS: 'module.activity_sort',
+  CLASSIFY_CASES: 'module.activity_classify',
+  VIDEO_QUIZ: 'module.activity_video',
+};
 
 export default function ModulePage() {
   const { id } = useParams(); 
@@ -157,6 +175,99 @@ export default function ModulePage() {
       };
     });
   }, [attemptsFeedback, modules, language]);
+
+  // ─── COMPUERTA DE APROBACIÓN DEL MÓDULO ──────────────────────────────────
+  // Un módulo solo se completa si el promedio de sus actividades calificables
+  // (quizzes + juegos) alcanza el umbral configurado por el curso (default 80).
+  // Un intento no realizado cuenta como 0, así que hay que hacerlas y aprobarlas.
+  const [coursePassPct, setCoursePassPct] = useState<number>(80);
+  useEffect(() => {
+    const cid = module?.courseId;
+    if (!cid) { setCoursePassPct(80); return; }
+    let active = true;
+    getCourseModulePassPct(cid)
+      .then((p) => { if (active) setCoursePassPct(p); })
+      .catch(() => { /* mantiene default */ });
+    return () => { active = false; };
+  }, [module?.courseId]);
+
+  // Actividades calificables esperadas del módulo, con la misma clave que usa
+  // el registro de intentos (`section_id__GAME_TYPE`) para poder cruzarlas.
+  const gradedUnits = useMemo<GradedUnit[]>(() => {
+    const GRADED_BLOCK: Record<string, 'SORT_PROCESS' | 'CLASSIFY_CASES'> = {
+      'game-sort': 'SORT_PROCESS',
+      'game-classify': 'CLASSIFY_CASES',
+    };
+    const units: GradedUnit[] = [];
+    const secs = (module?.sections ?? []) as any[];
+    secs.forEach((s, i) => {
+      const sid = s.id;
+      if (!sid) return; // sin id no se puede cruzar con los intentos → no se exige
+      const heading = (s.heading?.[language] as string) ?? '';
+      if (s.quiz) units.push({ key: `${sid}__KNOWLEDGE_CHECK`, sectionIndex: i, type: 'KNOWLEDGE_CHECK', detail: heading });
+      if (Array.isArray(s.blocks)) {
+        for (const b of s.blocks) {
+          const gt = GRADED_BLOCK[(b as any)?.type];
+          if (gt) units.push({ key: `${sid}__${gt}`, sectionIndex: i, type: gt, detail: heading });
+        }
+      }
+      // Video interactivo: cada marcador tipo quiz es una unidad independiente.
+      if (Array.isArray(s.videoMarkers)) {
+        for (const mk of s.videoMarkers as any[]) {
+          if (mk?.type === 'quiz') {
+            units.push({
+              key: `${sid}__VIDEO_QUIZ__${mk.id}`,
+              sectionIndex: i,
+              type: 'VIDEO_QUIZ',
+              detail: (mk.title?.[language] as string) || heading,
+            });
+          }
+        }
+      }
+    });
+    const seen = new Set<string>();
+    return units.filter((u) => (seen.has(u.key) ? false : (seen.add(u.key), true)));
+  }, [module, language]);
+
+  // Puntaje por unidad calificable, tomando el ÚLTIMO intento de cada una.
+  // Se construye desde los intentos crudos (no los colapsados por sección) para
+  // poder desglosar el video interactivo por marcador (marker_id).
+  const scoreByUnit = useMemo(() => {
+    const ordered = [...(attemptsFeedback ?? [])].sort((a: any, b: any) => {
+      const ta = a.started_at ? new Date(a.started_at).getTime() : 0;
+      const tb = b.started_at ? new Date(b.started_at).getTime() : 0;
+      return ta - tb; // ascendente: el intento más nuevo pisa al viejo
+    });
+    const m = new Map<string, number>();
+    for (const a of ordered as any[]) {
+      const sid = a.section_id || a.id;
+      const key =
+        a.game_type === 'VIDEO_QUIZ'
+          ? `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`
+          : `${sid}__${a.game_type}`;
+      m.set(key, typeof a.score === 'number' ? a.score : 0);
+    }
+    return m;
+  }, [attemptsFeedback]);
+
+  const moduleGate = useMemo(() => {
+    type Pending = { unit: GradedUnit; status: 'failed' | 'pending'; score: number | null };
+    const total = gradedUnits.length;
+    // Módulo sin actividades calificables → no hay compuerta (solo lectura).
+    if (total === 0) return { active: false, score: 100, done: 0, total: 0, canComplete: true, pending: [] as Pending[] };
+    let sum = 0;
+    let done = 0;
+    const pending: Pending[] = [];
+    for (const u of gradedUnits) {
+      const has = scoreByUnit.has(u.key);
+      const sc = scoreByUnit.get(u.key) ?? 0;
+      sum += sc;
+      if (has) done++;
+      if (sc < coursePassPct) pending.push({ unit: u, status: has ? 'failed' : 'pending', score: has ? sc : null });
+    }
+    const score = Math.round(sum / total);
+    return { active: true, score, done, total, canComplete: score >= coursePassPct, pending };
+  }, [gradedUnits, scoreByUnit, coursePassPct]);
   
   // ─── PROCESAMIENTO DINÁMICO DE MÉTRICAS CARD LATERAL ───
   const computedMetrics = useMemo(() => {
@@ -229,6 +340,7 @@ export default function ModulePage() {
   if (!module) return <div className="text-center pt-20 text-text-muted">{t('module.not_found')}</div>;
 
   const handleComplete = () => {
+    if (!moduleGate.canComplete) return; // compuerta: no aprobó las actividades
     earnXP(100);
     updateStreak();
     markModule(module.id, siblings.length);
@@ -314,9 +426,32 @@ export default function ModulePage() {
 
           <article className="space-y-20 min-w-0">
             {module.sections.map((s: ModuleSection, i: number) => {
-              if (s.style === 'video-interactive') return null;
               const quizIdx = quizIndexMap[i];
-          
+
+              // Video interactivo: se renderiza (con ids reales) para que el
+              // aprendiz responda sus quizzes y cuenten en la compuerta.
+              if (s.style === 'video-interactive') {
+                return (
+                  <Reveal as="section" key={i} delay={Math.min(i * 60, 200)}>
+                    <div id={`section-${i}`} className="scroll-mt-28">
+                      <div className="text-[10.5px] uppercase tracking-widest text-text-subtle mb-4">
+                        {String(i + 1).padStart(2, '0')} — {String(module.sections.length).padStart(2, '0')}
+                      </div>
+                      <h2 className="font-bold text-[clamp(1.6rem,2.5vw+0.5rem,2.2rem)] tracking-[-0.03em] leading-tight mb-5">
+                        {(s.heading as any)?.[language]}
+                      </h2>
+                      <InteractiveVideoModule
+                        section={s}
+                        language={language}
+                        userId={targetUserId ?? undefined}
+                        campaignId={module.campaign_id}
+                        moduleId={module.dbId || module.id}
+                      />
+                    </div>
+                  </Reveal>
+                );
+              }
+
               return (
                 <Reveal as="section" key={i} delay={Math.min(i * 60, 200)}>
                   <div id={`section-${i}`} className="scroll-mt-28">
@@ -372,8 +507,48 @@ export default function ModulePage() {
               );
             })}
 
+            {/* Desglose: actividades que faltan por aprobar para completar el módulo */}
+            {!completed && moduleGate.active && !moduleGate.canComplete && moduleGate.pending.length > 0 && (
+              <div className="mt-14 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-5">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Lock className="h-4 w-4 text-amber-500 shrink-0" />
+                  <h3 className="text-[14px] font-semibold text-text">{t('module.pending_title')}</h3>
+                  <span className="ml-auto text-[12px] tabular-nums text-text-muted">
+                    {t('module.pending_progress', { done: moduleGate.done, total: moduleGate.total })}
+                  </span>
+                </div>
+                <p className="text-[12px] text-text-muted mb-4">
+                  {t('module.pending_hint', { threshold: coursePassPct, score: moduleGate.score })}
+                </p>
+                <ul className="space-y-2">
+                  {moduleGate.pending.map((p) => (
+                    <li key={p.unit.key}>
+                      <a
+                        href={`#section-${p.unit.sectionIndex}`}
+                        className="group flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5 transition-colors hover:border-primary/40"
+                      >
+                        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                          p.status === 'failed' ? 'bg-neon-magenta/10 text-neon-magenta' : 'bg-subtle text-text-muted')}>
+                          {p.status === 'failed' ? <X className="h-4 w-4" strokeWidth={3} /> : <Lock className="h-3.5 w-3.5" />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13px] font-medium text-text truncate">{t(ACTIVITY_LABEL_KEY[p.unit.type])}</div>
+                          {p.unit.detail && <div className="text-[11px] text-text-subtle truncate">{p.unit.detail}</div>}
+                        </div>
+                        <span className={cn('shrink-0 text-[11px] font-semibold tabular-nums',
+                          p.status === 'failed' ? 'text-neon-magenta' : 'text-text-subtle')}>
+                          {p.status === 'failed' ? `${p.score}/${coursePassPct}` : t('module.pending_not_started')}
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-text-subtle transition-colors group-hover:text-primary" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-6 border-t border-glass-border/10">
-              <button 
+              <button
                 type="button"
                 className="w-full sm:w-auto mr-auto px-5 py-2.5 flex items-center justify-center gap-2 border border-neon-green/30 text-neon-green bg-neon-green/5 hover:bg-neon-green/10 transition-all rounded-xl text-[13px] font-medium shadow-[0_0_15px_rgba(0,255,100,0.05)]"
                 onClick={() => setIsModalOpen(true)}
@@ -382,7 +557,7 @@ export default function ModulePage() {
                 Ver Feedback y Progreso
               </button>
               {!completed && (
-                <Button variant="neon" size="md" onClick={handleComplete}>
+                <Button variant="neon" size="md" onClick={handleComplete} disabled={!moduleGate.canComplete}>
                   <Check className="h-4 w-4" strokeWidth={3} /> {t('module.mark_complete')}
                 </Button>
               )}

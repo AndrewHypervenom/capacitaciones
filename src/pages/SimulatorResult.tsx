@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Award, Check, Clock, HeartHandshake, ShieldCheck } from 'lucide-react';
 import { getScenario } from '@/data/scenarios';
+import { useScenarios } from '@/hooks/useScenarios';
 import { useSimStore } from '@/stores/simStore';
-import {
-  useProgressStore,
-  selectCertificationEarned,
-} from '@/stores/progressStore';
-import { useModules } from '@/hooks/useModules';
-import { useUserStore } from '@/stores/userStore';
+import { useProgressStore } from '@/stores/progressStore';
+import { useAuth } from '@/hooks/useAuth';
 import { scoreRun, formatDuration } from '@/lib/scoring';
+import { saveSimulatorAttempt, getCourseCertStatus } from '@/services/certification.service';
+import type { CourseCertStatus } from '@/types/database';
+import { useUserStore } from '@/stores/userStore';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
@@ -21,14 +21,18 @@ export default function SimulatorResult() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const language = useUserStore((s) => s.language);
+  const { user } = useAuth();
   const lastResult = useSimStore((s) => s.lastResult);
+  const context = useSimStore((s) => s.context);
   const addAttempt = useProgressStore((s) => s.addAttempt);
-  const progressState = useProgressStore();
-  const { planModules: modules } = useModules();
-  const certificationEarned = selectCertificationEarned(progressState, modules);
+  const { scenarios: dbScenarios } = useScenarios();
   const recordedRef = useRef(false);
+  const [certStatus, setCertStatus] = useState<CourseCertStatus | null>(null);
 
-  const scenario = useMemo(() => (id ? getScenario(id) : undefined), [id]);
+  const scenario = useMemo(() => {
+    if (!id) return undefined;
+    return dbScenarios.find((s) => s.id === id) ?? getScenario(id);
+  }, [id, dbScenarios]);
 
   const valid = !!scenario && !!lastResult && lastResult.scenarioId === scenario.id;
 
@@ -46,6 +50,7 @@ export default function SimulatorResult() {
   useEffect(() => {
     if (!valid || !scenario || !lastResult || !computed || recordedRef.current) return;
     recordedRef.current = true;
+    // Progreso local (fuente de la UI del panel)
     addAttempt({
       id: `${scenario.id}-${lastResult.startedAt}`,
       scenarioId: scenario.id,
@@ -56,12 +61,36 @@ export default function SimulatorResult() {
       empathyPct: computed.empathyPct,
       resolved: computed.resolved,
     });
-  }, [valid, scenario, lastResult, computed, addAttempt]);
+    // Persistir en BD (auditable + visible al capacitador)
+    if (user?.id) {
+      saveSimulatorAttempt(user.id, {
+        courseId: context?.courseId ?? null,
+        campaignId: context?.campaignId ?? null,
+        scenarioSlug: scenario.id,
+        score: computed.score,
+        checklistPct: computed.checklistPct,
+        empathyPct: computed.empathyPct,
+        resolved: computed.resolved,
+        durationSec: computed.durationSec,
+      })
+        .then(() => {
+          // Refrescar estado de certificación del curso, si venimos de un curso
+          if (context?.courseId) {
+            return getCourseCertStatus(context.courseId).then(setCertStatus);
+          }
+        })
+        .catch(() => {
+          /* no bloquear la UI */
+        });
+    }
+  }, [valid, scenario, lastResult, computed, addAttempt, user?.id, context]);
 
   if (!valid || !scenario || !computed) return null;
 
   const { score, durationSec, checklistPct, empathyPct, resolved } = computed;
   const tier = score >= 85 ? 'excellent' : score >= 65 ? 'good' : 'needs-work';
+  const returnTo = context?.returnTo ?? '/dashboard';
+  const certReady = !!certStatus?.all_met;
 
   const metrics = [
     {
@@ -141,10 +170,10 @@ export default function SimulatorResult() {
         ))}
       </div>
 
-      {certificationEarned && (
+      {certReady && context?.courseId && (
         <Reveal delay={320}>
           <Link
-            to="/certificate"
+            to={`/certificate/${context.courseId}`}
             className="group block surface-card p-6 mb-8 hover:bg-subtle transition-colors"
           >
             <div className="flex items-center gap-4">
@@ -167,12 +196,22 @@ export default function SimulatorResult() {
 
       <Reveal delay={400}>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button variant="secondary" size="lg" onClick={() => nav(`/simulator/run/${scenario.id}`)}>
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() =>
+              nav(`/simulator/run/${scenario.id}`, {
+                state: context
+                  ? { courseId: context.courseId, campaignId: context.campaignId, returnTo: context.returnTo }
+                  : undefined,
+              })
+            }
+          >
             {t('simulator.retry')}
           </Button>
-          <Link to="/dashboard">
+          <Link to={returnTo}>
             <Button size="lg">
-              {t('simulator.back_dashboard')}
+              {context?.returnTo ? t('simulator.back_to_course') : t('simulator.back_dashboard')}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>

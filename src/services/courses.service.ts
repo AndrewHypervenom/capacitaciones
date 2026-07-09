@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import type { Course } from '@/types/database'
+import type { CertConditions, Course } from '@/types/database'
+import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 
 // ─── Tipos ───────────────────────────────────────────────────────
 
@@ -43,8 +44,11 @@ export interface LearnerCourse extends CourseWithModules {
   selfEnrolled: boolean
 }
 
+// Desambiguamos la relación courses<->modules nombrando la FK modules.course_id.
+// Si no, un segundo vínculo courses->modules (p. ej. sim_unlock_module_id) vuelve
+// ambiguo el embed y PostgREST responde 400 ("more than one relationship").
 const COURSE_MODULES_SELECT =
-  'modules(id, slug, icon, duration_min, course_sort_order, is_published, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt)'
+  'modules!modules_course_id_fkey(id, slug, icon, duration_min, course_sort_order, is_published, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt)'
 
 function sortCourseModules<T extends { modules: CourseModuleSummary[] }>(course: T): T {
   course.modules = (course.modules ?? []).sort(
@@ -170,6 +174,22 @@ export async function getCourseStats(courseId: string): Promise<CourseStats> {
   const { data, error } = await supabase.rpc('get_course_stats', { p_course_id: courseId })
   if (error) throw error
   return data as unknown as CourseStats
+}
+
+/**
+ * Puntaje mínimo (0-100) para aprobar cada módulo del curso. Es la compuerta que
+ * define qué significa "completar un módulo" (promedio de sus actividades). Si el
+ * curso no existe o no tiene condiciones, devuelve el default.
+ */
+export async function getCourseModulePassPct(courseId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('courses')
+    .select('cert_conditions')
+    .eq('id', courseId)
+    .maybeSingle()
+  if (error || !data) return DEFAULT_CERT_CONDITIONS.module_pass_pct
+  const cc = data.cert_conditions as CertConditions | null
+  return cc?.module_pass_pct ?? DEFAULT_CERT_CONDITIONS.module_pass_pct
 }
 
 /** Un curso por slug con sus módulos publicados (para la página de detalle). */

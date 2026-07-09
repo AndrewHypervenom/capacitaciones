@@ -3,27 +3,20 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
-  Award,
   BookOpen,
-  Check,
   Compass,
-  FlaskConical,
   Globe,
   GraduationCap,
   Home,
   Lock,
   LogOut,
   Medal,
-  PhoneCall,
   Zap,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUserStore } from '@/stores/userStore';
 import {
   useProgressStore,
-  selectSimulatorUnlocked,
-  SIMULATOR_UNLOCK_THRESHOLD,
-  CERTIFICATION_MIN_SCORE,
   BADGE_DEFS,
   getXPLevel,
   getXPProgress,
@@ -37,7 +30,7 @@ import { ProgressRing } from '@/components/ui/ProgressRing';
 import { Reveal } from '@/components/ui/Reveal';
 import { cn } from '@/lib/cn';
 
-const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'certificacion', 'logros', 'simulador'];
+const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
 
 // `hideSidebar`: superadmin y capacitador reutilizan este diseño de panel pero
 // sin el menú lateral de secciones; conservan su Navbar superior de staff.
@@ -65,7 +58,7 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
     [allModules, assignedCourseIds],
   );
   const progressState = useProgressStore();
-  const { xp, streak, badges, attempts } = progressState;
+  const { xp, streak, badges } = progressState;
   const recheckBadges = useProgressStore((s) => s.recheckBadges);
 
   useEffect(() => {
@@ -84,13 +77,6 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
   const done = completedModules.length;
   const progressPct = total > 0 ? Math.min(1, done / total) : 0;
 
-  const simulatorUnlocked = selectSimulatorUnlocked({ ...progressState, completedModules });
-  const allModulesDone = total > 0 && done === total;
-  const bestScore = attempts.length > 0 ? Math.max(...attempts.map((a) => a.score)) : 0;
-  const hasSimulatorScore = attempts.some((a) => a.score >= CERTIFICATION_MIN_SCORE);
-  const certificationEarned = allModulesDone && hasSimulatorScore;
-
-  const remainingForUnlock = Math.max(0, SIMULATOR_UNLOCK_THRESHOLD - done);
   const remainingMinutes = modules
     .filter((m) => !completedModules.includes(m.id))
     .reduce((acc, m) => acc + m.duration, 0);
@@ -100,9 +86,7 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
     { icon: Home, label: t('dashboard.sidebar_home'), id: 'inicio' },
     { icon: BookOpen, label: t('dashboard.sidebar_courses'), id: 'cursos' },
     { icon: Compass, label: t('dashboard.sidebar_resources'), id: 'recursos' },
-    { icon: GraduationCap, label: t('dashboard.sidebar_cert'), id: 'certificacion' },
     { icon: Medal, label: t('dashboard.sidebar_achievements'), id: 'logros' },
-    { icon: FlaskConical, label: t('dashboard.sidebar_lab'), id: 'simulador' },
   ];
 
   // Scroll-spy: resalta en el sidebar la sección visible
@@ -425,124 +409,6 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
             </div>
           </section>
 
-          {/* Certificación */}
-          <Reveal as="section" className="mb-16 md:mb-20 scroll-mt-16" id="certificacion">
-            <div className="mb-8">
-              <h2 className="text-2xl font-semibold tracking-tight text-text mb-1">
-                {t('dashboard.cert_section_title')}
-              </h2>
-              <p className="text-[15px] text-text-muted">
-                {t('dashboard.cert_section_subtitle')}
-              </p>
-            </div>
-
-            {certificationEarned ? (
-              <Link
-                to="/certificate"
-                className="flex items-center gap-5 rounded-3xl border border-primary/30 bg-surface p-6 md:p-8 transition-all hover:border-primary hover:shadow-card-hover"
-              >
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-on-primary">
-                  <Award className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary mb-1">
-                    {t('dashboard.certificate_ready_title')}
-                  </p>
-                  <div className="text-[19px] font-semibold tracking-tight text-text">
-                    {t('dashboard.certificate_ready_subtitle')}
-                  </div>
-                </div>
-                <span className="shrink-0 text-[13px] font-medium text-text-muted">
-                  {t('dashboard.certificate_cta')} →
-                </span>
-              </Link>
-            ) : (
-              <div className="rounded-3xl border border-line bg-surface p-6 md:p-8">
-                <div className="space-y-6 mb-6">
-                  {/* Requisito 1: módulos */}
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                      allModulesDone ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
-                      {allModulesDone
-                        ? <Check className="h-4 w-4" strokeWidth={3} />
-                        : <span className="text-[13px] font-bold">1</span>
-                      }
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[14px] font-medium text-text mb-1.5">
-                        {t('dashboard.cert_req_modules')}
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
-                        <motion.div
-                          className="h-full rounded-full bg-primary"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${total > 0 ? Math.min(100, (done / total) * 100) : 0}%` }}
-                          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-                        />
-                      </div>
-                      <div className="mt-1 text-[11px] tabular-nums text-text-subtle">
-                        {t('dashboard.cert_req_modules_sub', { done, total })}
-                      </div>
-                    </div>
-                    <span className={cn(
-                      'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums',
-                      allModulesDone ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
-                      {done}/{total}
-                    </span>
-                  </div>
-
-                  {/* Requisito 2: simulador */}
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                      hasSimulatorScore ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
-                      {hasSimulatorScore
-                        ? <Check className="h-4 w-4" strokeWidth={3} />
-                        : <span className="text-[13px] font-bold">2</span>
-                      }
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[14px] font-medium text-text mb-1.5">
-                        {t('dashboard.cert_req_simulator', { score: CERTIFICATION_MIN_SCORE })}
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
-                        <motion.div
-                          className="h-full rounded-full bg-primary"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min(100, (bestScore / CERTIFICATION_MIN_SCORE) * 100)}%` }}
-                          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-                        />
-                      </div>
-                      <div className="mt-1 text-[11px] tabular-nums text-text-subtle">
-                        {attempts.length > 0
-                          ? t('dashboard.cert_req_simulator_sub', { best: bestScore })
-                          : t('dashboard.cert_req_simulator_none')
-                        }
-                      </div>
-                    </div>
-                    <span className={cn(
-                      'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums',
-                      hasSimulatorScore ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
-                      {bestScore}/100
-                    </span>
-                  </div>
-                </div>
-
-                <Link
-                  to="/certificate"
-                  className="inline-block rounded-lg border border-line px-4 py-2 text-[13px] font-semibold text-text transition-colors hover:border-primary hover:text-primary"
-                >
-                  {t('dashboard.cert_preview')} →
-                </Link>
-              </div>
-            )}
-          </Reveal>
-
           {/* Insignias y logros */}
           <Reveal as="section" className="mb-16 md:mb-20 scroll-mt-16" id="logros">
             <div className="mb-8 flex items-end justify-between">
@@ -642,61 +508,6 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
                 );
               })}
             </div>
-          </Reveal>
-
-          {/* Simulador / laboratorio de práctica */}
-          <Reveal as="section" className="mb-16 scroll-mt-16" id="simulador">
-            {simulatorUnlocked ? (
-              <Link
-                to="/simulator"
-                className="flex flex-col md:flex-row items-start md:items-center gap-6 rounded-3xl border border-primary/25 bg-surface p-6 md:p-8 transition-all hover:border-primary hover:shadow-card-hover"
-              >
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <PhoneCall className="h-7 w-7" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary mb-1">
-                    {t('dashboard.status_available')}
-                  </p>
-                  <h3 className="text-2xl font-semibold tracking-tight text-text mb-1">
-                    {t('dashboard.simulator_card_title_unlocked')}
-                  </h3>
-                  <p className="max-w-xl text-[15px] leading-relaxed text-text-muted">
-                    {t('dashboard.simulator_card_subtitle_unlocked')}
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-lg bg-primary px-5 py-2.5 text-[13px] font-semibold text-on-primary">
-                  {t('dashboard.simulator_cta')}
-                </span>
-              </Link>
-            ) : (
-              <div className="flex flex-col md:flex-row items-start md:items-center gap-6 rounded-3xl border border-line bg-surface p-6 md:p-8">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-subtle text-text-muted">
-                  <Lock className="h-7 w-7" />
-                </div>
-                <div className="flex-1 w-full">
-                  <h3 className="text-2xl font-semibold tracking-tight text-text mb-1">
-                    {t('dashboard.panel_sim_locked_title')}
-                  </h3>
-                  <p className="mb-4 max-w-xl text-[15px] leading-relaxed text-text-muted">
-                    {t('dashboard.simulator_card_subtitle_locked', { remaining: remainingForUnlock })}
-                  </p>
-                  <div className="max-w-md">
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
-                      <motion.div
-                        className="h-full rounded-full bg-primary"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(100, (done / SIMULATOR_UNLOCK_THRESHOLD) * 100)}%` }}
-                        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-                      />
-                    </div>
-                    <div className="mt-1.5 text-[11px] tabular-nums text-text-subtle">
-                      {Math.min(done, SIMULATOR_UNLOCK_THRESHOLD)} / {SIMULATOR_UNLOCK_THRESHOLD}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </Reveal>
 
           {/* Estadísticas de pie de página */}

@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
+  Award,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   BookOpen,
   Check,
+  ChevronDown,
   Eye,
   FolderOpen,
   Globe,
@@ -14,6 +16,7 @@ import {
   ImagePlus,
   Info,
   Lock,
+  PhoneCall,
   Plus,
   Save,
   Search,
@@ -45,8 +48,10 @@ import {
 } from '@/services/courses.service'
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { getCourseWorld, syncCourseWorldById } from '@/services/worlds.service'
+import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
-import type { Campaign, Profile } from '@/types/database'
+import type { Campaign, CertConditions, Profile } from '@/types/database'
+import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -54,7 +59,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 
-type Tab = 'info' | 'modules' | 'assign'
+type Tab = 'info' | 'modules' | 'assign' | 'evaluation'
 type Lang = 'es' | 'en' | 'pt'
 
 const COLOR_PRESETS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#14B8A6']
@@ -126,6 +131,16 @@ export default function CourseEditor() {
   const [draftUsers, setDraftUsers] = useState<Record<string, boolean>>({})
   const [savingAssign, setSavingAssign] = useState(false)
 
+  // ── Evaluación (condiciones del certificado + simulador + resultados) ──
+  const [cond, setCond] = useState<CertConditions>(DEFAULT_CERT_CONDITIONS)
+  const [simRule, setSimRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
+  const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
+  const [savingEval, setSavingEval] = useState(false)
+  const [campaignScenarios, setCampaignScenarios] = useState<ScenarioRow[]>([])
+  // El simulador es opcional y poco frecuente: la sección va plegada por defecto
+  // y se auto-expande solo si el curso ya lo usa (escenarios ligados o requerido).
+  const [simOpen, setSimOpen] = useState(false)
+
   const reload = useCallback(async () => {
     if (!courseId) return
     const c = await getCourseById(courseId)
@@ -147,6 +162,9 @@ export default function CourseEditor() {
       visibility: c.visibility,
       is_shareable: c.is_shareable ?? false,
     })
+    setCond({ ...DEFAULT_CERT_CONDITIONS, ...(c.cert_conditions ?? {}) })
+    setSimRule(c.sim_unlock_rule ?? 'after_modules')
+    setSimUnlockModuleId(c.sim_unlock_module_id ?? null)
   }, [courseId, navigate])
 
   useEffect(() => {
@@ -236,6 +254,35 @@ export default function CourseEditor() {
     )
     return !campSame || !userSame
   }, [courseCampaigns, assignments, draftCampaigns, draftUsers])
+
+  // Escenarios de la campaña (para ligarlos al curso) + resultados de evaluación.
+  // Estos hooks van ANTES de cualquier return temprano (Reglas de Hooks).
+  const loadEvalData = useCallback(async () => {
+    if (!course?.campaign_id) return
+    getAllScenariosAdmin(course.campaign_id).then(setCampaignScenarios).catch(() => {})
+  }, [course?.campaign_id])
+
+  useEffect(() => {
+    if (tab === 'evaluation') void loadEvalData()
+  }, [tab, loadEvalData])
+
+  const courseScenarios = useMemo(
+    () => campaignScenarios.filter((s) => s.course_id === courseId),
+    [campaignScenarios, courseId],
+  )
+  const otherScenarios = useMemo(
+    () => campaignScenarios.filter((s) => s.course_id !== courseId),
+    [campaignScenarios, courseId],
+  )
+
+  // Requiere el simulador para certificar, pero no hay escenarios ligados:
+  // ningún aprendiz podría certificarse. Se resalta como configuración incompleta.
+  const simRequiredButEmpty = cond.require_simulator && courseScenarios.length === 0
+
+  // Auto-expandir la sección del simulador cuando el curso sí lo usa.
+  useEffect(() => {
+    if (courseScenarios.length > 0 || cond.require_simulator) setSimOpen(true)
+  }, [courseScenarios.length, cond.require_simulator])
 
   if (loading || !course) {
     return (
@@ -490,10 +537,47 @@ export default function CourseEditor() {
     }
   }
 
+  const handleSaveConditions = async () => {
+    if (!course) return
+    setSavingEval(true)
+    try {
+      await updateCourse(course.id, {
+        cert_conditions: cond,
+        sim_unlock_rule: simRule,
+        sim_unlock_module_id: simRule === 'after_module' ? simUnlockModuleId : null,
+      })
+      toast.success(t('admin.courses.saved_ok'))
+      await reload()
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setSavingEval(false)
+    }
+  }
+
+  const handleToggleScenarioCourse = async (s: ScenarioRow, attach: boolean) => {
+    try {
+      await updateScenario(s.id, { course_id: attach ? (courseId ?? null) : null })
+      await loadEvalData()
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  const handleScenarioPassScore = async (s: ScenarioRow, pass_score: number) => {
+    try {
+      await updateScenario(s.id, { pass_score })
+      setCampaignScenarios((prev) => prev.map((x) => (x.id === s.id ? { ...x, pass_score } : x)))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
   const tabs: Array<{ id: Tab; label: string; icon: typeof Info }> = [
     { id: 'info', label: t('admin.courses.tab_info'), icon: Info },
     { id: 'modules', label: t('admin.courses.tab_modules'), icon: BookOpen },
     { id: 'assign', label: t('admin.courses.tab_assign'), icon: Users },
+    { id: 'evaluation', label: t('admin.courses.tab_evaluation'), icon: Award },
   ]
 
   const inputCls =
@@ -1237,6 +1321,258 @@ export default function CourseEditor() {
               <Save className="h-3.5 w-3.5" />
               {savingAssign ? t('admin.courses.saving') : t('admin.courses.save_assignments')}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Evaluación: condiciones del certificado + simulador + resultados ── */}
+      {tab === 'evaluation' && (
+        <div className="space-y-10">
+          {/* 1. Condiciones del certificado */}
+          <div>
+            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+              <Award className="h-4 w-4 text-text-muted" />
+              {t('admin.courses.cert_conditions_title')}
+            </h3>
+            <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.cert_conditions_hint')}</p>
+
+            <div className="space-y-3">
+              {/* Completar módulos */}
+              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-3">
+                <BookOpen className="h-4 w-4 text-text-muted shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-medium text-text">{t('admin.courses.cond_modules')}</div>
+                  {cond.require_all_modules ? (
+                    <div className="text-[11px] text-text-muted">{t('admin.courses.cond_modules_all')}</div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] text-text-muted">{t('admin.courses.cond_modules_pct')}</span>
+                      <input
+                        type="number" min={0} max={100}
+                        value={cond.min_modules_pct}
+                        onChange={(e) => setCond({ ...cond, min_modules_pct: Math.max(0, Math.min(100, +e.target.value)) })}
+                        className="w-16 rounded-lg border border-line bg-surface px-2 py-1 text-[13px] text-text"
+                      />
+                      <span className="text-[11px] text-text-muted">%</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setCond({ ...cond, require_all_modules: !cond.require_all_modules })}
+                  className={cn('shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold border',
+                    cond.require_all_modules ? 'bg-primary/10 border-primary/30 text-primary' : 'border-line text-text-muted')}
+                >
+                  {cond.require_all_modules ? t('admin.courses.cond_all') : t('admin.courses.cond_partial')}
+                </button>
+              </div>
+
+              {/* Puntaje mínimo por módulo: define qué es "completar un módulo" */}
+              <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-3">
+                <Check className="h-4 w-4 text-text-muted shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-medium text-text">{t('admin.courses.cond_module_score')}</div>
+                  <div className="text-[11px] text-text-muted">{t('admin.courses.cond_module_score_hint')}</div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <input
+                    type="number" min={0} max={100}
+                    value={cond.module_pass_pct}
+                    onChange={(e) => setCond({ ...cond, module_pass_pct: Math.max(0, Math.min(100, +e.target.value)) })}
+                    className="w-16 rounded-lg border border-line bg-surface px-2 py-1 text-[13px] text-text"
+                  />
+                  <span className="text-[12px] text-text-muted">%</span>
+                </div>
+              </div>
+
+              {/* Requiere simulador */}
+              <div className="rounded-xl border border-line px-3.5 py-3">
+                <div className="flex items-center gap-3">
+                  <PhoneCall className="h-4 w-4 text-text-muted shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-medium text-text">{t('admin.courses.cond_simulator')}</div>
+                    <div className="text-[11px] text-text-muted">{t('admin.courses.cond_simulator_hint')}</div>
+                  </div>
+                  <Toggle on={cond.require_simulator} onClick={() => setCond({ ...cond, require_simulator: !cond.require_simulator })} />
+                </div>
+                {cond.require_simulator && (
+                  <div className="flex items-center gap-2 mt-3 pl-7">
+                    <span className="text-[12px] text-text-muted">{t('admin.courses.cond_min_score')}</span>
+                    <input
+                      type="number" min={0} max={100}
+                      value={cond.min_score}
+                      onChange={(e) => setCond({ ...cond, min_score: Math.max(0, Math.min(100, +e.target.value)) })}
+                      className="w-16 rounded-lg border border-line bg-surface px-2 py-1 text-[13px] text-text"
+                    />
+                    <span className="text-[12px] text-text-muted">/ 100</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Config incompleta: requiere simulador pero no hay escenarios */}
+              {simRequiredButEmpty && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-3">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="text-[12px] text-text-muted">
+                    <span className="block font-semibold text-text mb-0.5">
+                      {t('admin.courses.sim_missing_scenarios_title')}
+                    </span>
+                    {t('admin.courses.sim_missing_scenarios_warn')}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Vista previa de las condiciones */}
+            <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3">
+              <p className="text-[12px] text-text-muted mb-1 font-medium">{t('admin.courses.cond_preview')}</p>
+              <ul className="text-[13px] text-text space-y-0.5">
+                {cond.require_all_modules && <li>· {t('admin.courses.cond_preview_modules_all')}</li>}
+                {!cond.require_all_modules && <li>· {t('admin.courses.cond_preview_modules_pct', { pct: cond.min_modules_pct })}</li>}
+                <li>· {t('admin.courses.cond_preview_module_score', { pct: cond.module_pass_pct })}</li>
+                {cond.require_simulator && <li>· {t('admin.courses.cond_preview_simulator', { score: cond.min_score })}</li>}
+              </ul>
+            </div>
+
+            <div className="flex justify-end mt-4">
+              <Button variant="neon" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
+                <Save className="h-3.5 w-3.5" />
+                {savingEval ? t('admin.courses.saving') : t('admin.courses.save')}
+              </Button>
+            </div>
+          </div>
+
+          {/* 2. Simulador del curso — opcional y poco frecuente: sección plegable */}
+          <div className={cn('rounded-2xl border overflow-hidden', simRequiredButEmpty ? 'border-amber-500/40' : 'border-line')}>
+            <button
+              type="button"
+              onClick={() => setSimOpen((v) => !v)}
+              aria-expanded={simOpen}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-glass/5 transition-colors"
+            >
+              <PhoneCall className="h-4 w-4 text-text-muted shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[14px] font-semibold text-text">{t('admin.courses.sim_section_title')}</span>
+                  <span className="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                    {t('admin.courses.sim_optional_tag')}
+                  </span>
+                  {simRequiredButEmpty && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                      <AlertTriangle className="h-3 w-3" /> {t('admin.courses.sim_action_needed')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-text-muted mt-0.5">
+                  {courseScenarios.length > 0
+                    ? t('admin.courses.sim_summary_count', { n: courseScenarios.length })
+                    : t('admin.courses.sim_summary_none')}
+                </p>
+              </div>
+              <ChevronDown className={cn('h-4 w-4 text-text-muted shrink-0 transition-transform', simOpen && 'rotate-180')} />
+            </button>
+
+            {simOpen && (
+              <div className="border-t border-line px-4 pb-4 pt-4 space-y-4">
+                <p className="text-[12px] text-text-muted">{t('admin.courses.sim_section_hint')}</p>
+
+                {/* Regla de desbloqueo */}
+                <div className="rounded-xl border border-line px-3.5 py-3">
+                  <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_unlock_label')}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['after_modules', 'from_start', 'after_module'] as const).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setSimRule(r)}
+                        className={cn('px-3 py-1.5 rounded-lg text-[12px] font-medium border',
+                          simRule === r ? 'border-primary/40 bg-primary/10 text-primary' : 'border-line text-text-muted hover:text-text')}
+                      >
+                        {t(`admin.courses.sim_unlock_${r}`)}
+                      </button>
+                    ))}
+                  </div>
+                  {simRule === 'after_module' && (
+                    <select
+                      value={simUnlockModuleId ?? ''}
+                      onChange={(e) => setSimUnlockModuleId(e.target.value || null)}
+                      className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-text"
+                    >
+                      <option value="">{t('admin.courses.sim_unlock_pick_module')}</option>
+                      {course.modules.map((m) => (
+                        <option key={m.id} value={m.id}>{m.title_es}</option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="flex justify-end mt-3">
+                    <Button variant="glass" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
+                      <Save className="h-3.5 w-3.5" /> {t('admin.courses.save')}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Escenarios ligados al curso */}
+                <div>
+                  <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_in_course')}</div>
+                  {courseScenarios.length === 0 ? (
+                    <div className={cn(
+                      'flex items-start gap-2.5 rounded-xl px-3.5 py-3 border',
+                      cond.require_simulator ? 'border-amber-500/30 bg-amber-500/8' : 'border-dashed border-line',
+                    )}>
+                      {cond.require_simulator && <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />}
+                      <p className="text-[12px] text-text-muted">
+                        {cond.require_simulator
+                          ? t('admin.courses.sim_missing_scenarios_warn')
+                          : t('admin.courses.sim_none_in_course')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {courseScenarios.map((s) => (
+                        <div key={s.id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                          <PhoneCall className="h-4 w-4 text-primary shrink-0" />
+                          <span className="flex-1 min-w-0 text-[13px] text-text truncate">{s.title_es}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[11px] text-text-muted">{t('admin.courses.sim_pass')}</span>
+                            <input
+                              type="number" min={0} max={100} defaultValue={s.pass_score}
+                              onBlur={(e) => handleScenarioPassScore(s, Math.max(0, Math.min(100, +e.target.value)))}
+                              className="w-14 rounded-lg border border-line bg-surface px-2 py-1 text-[12px] text-text"
+                            />
+                          </div>
+                          <button
+                            onClick={() => handleToggleScenarioCourse(s, false)}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
+                            title={t('admin.courses.remove_from_course')}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Escenarios disponibles para agregar */}
+                {otherScenarios.length > 0 && (
+                  <div>
+                    <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_available')}</div>
+                    <div className="space-y-2">
+                      {otherScenarios.map((s) => (
+                        <div key={s.id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                          <PhoneCall className="h-4 w-4 text-text-subtle shrink-0" />
+                          <span className="flex-1 min-w-0 text-[13px] text-text truncate">
+                            {s.title_es}
+                            {s.course_id && <span className="ml-2 text-[10px] text-text-subtle">{t('admin.courses.sim_in_other_course')}</span>}
+                          </span>
+                          <Button variant="glass" size="sm" onClick={() => handleToggleScenarioCourse(s, true)} className="flex items-center gap-1 shrink-0">
+                            <Plus className="h-3.5 w-3.5" /> {t('admin.courses.add')}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

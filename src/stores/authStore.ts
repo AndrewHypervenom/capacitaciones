@@ -25,16 +25,41 @@ export const useAuthStore = create<AuthState>((set) => ({
 
 // Inicializa la sesión y escucha cambios de auth
 export function initAuth() {
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    useAuthStore.getState().setSession(session)
-    if (session) {
+  supabase.auth
+    .getSession()
+    .then(async ({ data: { session }, error }) => {
+      // Refresh token inválido/ausente (sesión muerta en el servidor): limpiar la
+      // sesión local en vez de quedar en un estado roto reintentando renovar.
+      if (error) {
+        await supabase.auth.signOut({ scope: 'local' })
+        useAuthStore.getState().reset()
+        return
+      }
+      if (!session) {
+        useAuthStore.getState().setLoading(false)
+        return
+      }
+      // getSession() devuelve el token guardado aunque esté vencido y su refresh
+      // token ya no exista. Validamos contra el servidor: si no se puede renovar,
+      // la sesión está muerta y toda llamada a la BD fallaría (401/400). En ese
+      // caso limpiamos y mandamos a login limpio en vez de mostrar errores sueltos.
+      const { error: userError } = await supabase.auth.getUser()
+      if (userError) {
+        await supabase.auth.signOut({ scope: 'local' })
+        useAuthStore.getState().reset()
+        return
+      }
+      useAuthStore.getState().setSession(session)
       fetchProfile(session.user.id)
-    } else {
-      useAuthStore.getState().setLoading(false)
-    }
-  })
+    })
+    .catch(() => {
+      void supabase.auth.signOut({ scope: 'local' })
+      useAuthStore.getState().reset()
+    })
 
   supabase.auth.onAuthStateChange((event, session) => {
+    // Fallo al renovar el token: Supabase emite SIGNED_OUT con session=null.
+    // Dejamos que el flujo de "sin sesión" de abajo limpie el perfil y redirija.
     useAuthStore.getState().setSession(session)
     // USER_UPDATED se dispara al cambiar la contraseña (onboarding). Re-leer el
     // perfil aquí provoca una carrera que pisa el onboarded=true recién marcado,
