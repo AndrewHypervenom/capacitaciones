@@ -455,7 +455,7 @@ function SectionEditorPanel({
         callout_es: isVideoInteractive ? null : (hasCallout ? callout.es || null : null),
         callout_en: isVideoInteractive ? null : (hasCallout ? callout.en || null : null),
         callout_pt: isVideoInteractive ? null : (hasCallout ? callout.pt || null : null),
-        media_type: (isVideoInteractive ? (mediaUrl ? 'video' : null) : (hasMedia ? mediaType : null)),
+        media_type: (isVideoInteractive ? (mediaUrl ? mediaType : null) : (hasMedia ? mediaType : null)),
         media_url: isVideoInteractive ? mediaUrl : (hasMedia ? mediaUrl : null),
         media_caption_es: isVideoInteractive ? null : (hasMedia ? mediaCaption.es || null : null),
         media_caption_en: isVideoInteractive ? null : (hasMedia ? mediaCaption.en || null : null),
@@ -503,7 +503,7 @@ function SectionEditorPanel({
         callout_es: isVideoInteractive ? null : (hasCallout ? callout.es || null : null),
         callout_en: isVideoInteractive ? null : (hasCallout ? callout.en || null : null),
         callout_pt: isVideoInteractive ? null : (hasCallout ? callout.pt || null : null),
-        media_type: isVideoInteractive ? (mediaUrl ? 'video' : null) : (hasMedia ? mediaType : null),
+        media_type: isVideoInteractive ? (mediaUrl ? mediaType : null) : (hasMedia ? mediaType : null),
         media_url: isVideoInteractive ? mediaUrl : (hasMedia ? mediaUrl : null),
         media_caption_es: isVideoInteractive ? null : (hasMedia ? mediaCaption.es || null : null),
         media_caption_en: isVideoInteractive ? null : (hasMedia ? mediaCaption.en || null : null),
@@ -614,11 +614,12 @@ function SectionEditorPanel({
             campaignId={campaignId}
             moduleId={section.module_id}
             videoUrl={mediaUrl}
+            videoType={mediaType === 'youtube' ? 'youtube' : mediaType === 'video' ? 'video' : null}
             markers={videoMarkers}
             lang={lang}
-            onVideoChange={(url) => {
+            onVideoChange={(url, type) => {
               setMediaUrl(url)
-              setMediaType(url ? 'video' : null)
+              setMediaType(url ? type : null)
               setHasMedia(!!url)
               onDirty(true)
             }}

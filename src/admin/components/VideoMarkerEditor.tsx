@@ -12,6 +12,7 @@ import {
   ChevronUp,
   Upload,
   Video,
+  Youtube,
   Languages,
   Loader2,
 } from 'lucide-react'
@@ -21,17 +22,21 @@ import type { VideoMarkerRaw, VideoQuestionRaw } from '@/services/modules.servic
 import { moduleAiAssist } from '@/services/ai.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import { YouTubePlayer } from '@/components/modules/YouTubePlayer'
+import { extractYouTubeId, type PlayerLike } from '@/lib/youtube'
 
 type Lang = 'es' | 'en' | 'pt'
+type VideoSource = 'video' | 'youtube'
 
 interface VideoMarkerEditorProps {
   sectionId: string
   campaignId: string
   moduleId: string
   videoUrl: string | null
+  videoType?: VideoSource | null
   markers: VideoMarkerRaw[]
   lang: Lang
-  onVideoChange: (url: string | null) => void
+  onVideoChange: (url: string | null, type: VideoSource | null) => void
   onMarkersChange: (markers: VideoMarkerRaw[]) => void
 }
 
@@ -411,6 +416,7 @@ export function VideoMarkerEditor({
   campaignId,
   moduleId,
   videoUrl,
+  videoType,
   markers,
   lang,
   onVideoChange,
@@ -418,11 +424,14 @@ export function VideoMarkerEditor({
 }: VideoMarkerEditorProps) {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<PlayerLike | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [videoDuration, setVideoDuration] = useState(0)
+  const [videoMode, setVideoMode] = useState<VideoSource>(videoType === 'youtube' ? 'youtube' : 'video')
+  const [ytInput, setYtInput] = useState('')
+  const isYouTube = videoType === 'youtube'
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addingType, setAddingType] = useState<'chapter' | 'quiz' | null>(null)
   const [translatingAll, setTranslatingAll] = useState(false)
@@ -495,12 +504,24 @@ export function VideoMarkerEditor({
     setUploadError(null)
     try {
       const url = await uploadSectionMedia(file, campaignId, moduleId, sectionId)
-      onVideoChange(url)
+      onVideoChange(url, 'video')
     } catch {
       setUploadError('Error al subir el video')
     } finally {
       setUploading(false)
     }
+  }
+
+  const handleUseYouTube = () => {
+    const id = extractYouTubeId(ytInput)
+    if (!id) {
+      setUploadError(t('admin.modules.media_youtube_invalid'))
+      return
+    }
+    setUploadError(null)
+    setVideoDuration(0)
+    onVideoChange(id, 'youtube')
+    setYtInput('')
   }
 
   const getCurrentTime = () => videoRef.current?.currentTime ?? 0
@@ -553,42 +574,109 @@ export function VideoMarkerEditor({
 
         {videoUrl ? (
           <div className="rounded-2xl overflow-hidden border border-glass-border/10 bg-black">
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              controls
-              preload="metadata"
-              className="w-full max-h-72 block"
-              onLoadedMetadata={() => setVideoDuration(videoRef.current?.duration ?? 0)}
-            />
-          </div>
-        ) : (
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault()
-              const file = e.dataTransfer.files[0]
-              if (file) handleFileSelect(file)
-            }}
-            onClick={() => fileInputRef.current?.click()}
-            className="flex flex-col items-center justify-center gap-3 h-32 rounded-2xl border-2 border-dashed border-glass-border/15 bg-glass/3 hover:border-blue-400/30 hover:bg-blue-400/4 cursor-pointer transition-colors"
-          >
-            {uploading ? (
-              <div className="flex items-center gap-2 text-text-muted text-[13px]">
-                <div className="h-4 w-4 border-2 border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
-                Subiendo video…
-              </div>
+            {isYouTube ? (
+              <YouTubePlayer
+                videoId={videoUrl}
+                controls
+                playerRef={videoRef}
+                className="w-full aspect-video block"
+                onReady={() => setVideoDuration(videoRef.current?.duration ?? 0)}
+              />
             ) : (
-              <>
-                <Video className="h-8 w-8 text-text-subtle" />
-                <p className="text-[13px] text-text-muted text-center">
-                  Arrastra un video MP4/WebM aquí o{' '}
-                  <span className="text-blue-400 font-medium">{t('admin.modules.media_browse')}</span>
-                </p>
-                <p className="text-[11px] text-text-subtle">{t('admin.modules.vme.video_specs')}</p>
-              </>
+              <video
+                ref={(el) => { videoRef.current = el }}
+                src={videoUrl}
+                controls
+                preload="metadata"
+                className="w-full max-h-72 block"
+                onLoadedMetadata={() => setVideoDuration(videoRef.current?.duration ?? 0)}
+              />
             )}
           </div>
+        ) : (
+          <>
+            {/* Selector de fuente: subir archivo o YouTube */}
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => { setVideoMode('video'); setUploadError(null) }}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors',
+                  videoMode === 'video'
+                    ? 'text-blue-400 bg-blue-400/8 border-blue-400/25'
+                    : 'text-text-muted glass border-glass-border/10 hover:text-text',
+                )}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Subir archivo
+              </button>
+              <button
+                type="button"
+                onClick={() => { setVideoMode('youtube'); setUploadError(null) }}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors',
+                  videoMode === 'youtube'
+                    ? 'text-red-400 bg-red-400/8 border-red-400/25'
+                    : 'text-text-muted glass border-glass-border/10 hover:text-text',
+                )}
+              >
+                <Youtube className="h-3.5 w-3.5" />
+                YouTube
+              </button>
+            </div>
+
+            {videoMode === 'video' ? (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const file = e.dataTransfer.files[0]
+                  if (file) handleFileSelect(file)
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center justify-center gap-3 h-32 rounded-2xl border-2 border-dashed border-glass-border/15 bg-glass/3 hover:border-blue-400/30 hover:bg-blue-400/4 cursor-pointer transition-colors"
+              >
+                {uploading ? (
+                  <div className="flex items-center gap-2 text-text-muted text-[13px]">
+                    <div className="h-4 w-4 border-2 border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
+                    Subiendo video…
+                  </div>
+                ) : (
+                  <>
+                    <Video className="h-8 w-8 text-text-subtle" />
+                    <p className="text-[13px] text-text-muted text-center">
+                      Arrastra un video MP4/WebM aquí o{' '}
+                      <span className="text-blue-400 font-medium">{t('admin.modules.media_browse')}</span>
+                    </p>
+                    <p className="text-[11px] text-text-subtle">{t('admin.modules.vme.video_specs')}</p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    value={ytInput}
+                    onChange={(e) => { setYtInput(e.target.value); setUploadError(null) }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleUseYouTube() }}
+                    placeholder={t('admin.modules.media_youtube_placeholder')}
+                    className="flex-1 rounded-xl px-4 py-2.5 text-[13px] text-text bg-glass/8 border border-glass-border/10 outline-none focus:border-red-400/40 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleUseYouTube}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium text-red-400 bg-red-400/8 border border-red-400/25 hover:bg-red-400/12 transition-colors shrink-0"
+                  >
+                    <Youtube className="h-4 w-4" />
+                    Usar
+                  </button>
+                </div>
+                <p className="text-[11px] text-text-subtle">
+                  Pega la URL o el ID del video. Ideal para videos largos (sin límite de tamaño).
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         <input
@@ -607,19 +695,11 @@ export function VideoMarkerEditor({
           <div className="flex gap-2 mt-2">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-text-muted glass border border-glass-border/10 hover:text-text transition-colors"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              {uploading ? 'Subiendo…' : 'Cambiar video'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onVideoChange(null)}
+              onClick={() => onVideoChange(null, null)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-danger/70 hover:text-danger glass border border-glass-border/10 hover:bg-danger/6 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Eliminar video
+              {isYouTube ? 'Cambiar video' : 'Eliminar video'}
             </button>
           </div>
         )}

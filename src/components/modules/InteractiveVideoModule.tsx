@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { VideoQuizOverlay } from './VideoQuizOverlay'
+import { YouTubePlayer } from './YouTubePlayer'
+import type { PlayerLike } from '@/lib/youtube'
 import { saveActivityAttempt } from '@/services/activity.service'
 import type { ModuleSection, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
@@ -53,12 +55,13 @@ interface QuizResult {
 
 export function InteractiveVideoModule({ section, language, userId, campaignId, moduleId }: InteractiveVideoModuleProps) {
   const { t } = useTranslation()
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<PlayerLike | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const chapterListRef = useRef<HTMLDivElement>(null)
   const triggeredRef = useRef<Set<string>>(new Set())
   const lastSaveRef = useRef(0)
+  const lastTimeRef = useRef(0)
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -82,6 +85,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
 
   const markers = section.videoMarkers ?? []
   const videoUrl = section.media?.url ?? null
+  const isYouTube = section.media?.type === 'youtube'
   const sortedMarkers = [...markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
 
   const activeChapterIdx = sortedMarkers.reduce((acc, m, i) => {
@@ -167,21 +171,28 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const handleTimeUpdate = useCallback(() => {
     const v = videoRef.current
     if (!v) return
-    setCurrentTime(v.currentTime)
+    const cur = v.currentTime
+    const prev = lastTimeRef.current
+    lastTimeRef.current = cur
+    setCurrentTime(cur)
+    // Mantener la duración fresca (YouTube la expone tarde y sin evento propio).
+    if (v.duration) setDuration((d) => (Math.abs(v.duration - d) > 0.5 ? v.duration : d))
 
     // Guardar posición cada SAVE_INTERVAL segundos
-    if (v.currentTime - lastSaveRef.current >= SAVE_INTERVAL) {
-      lastSaveRef.current = v.currentTime
+    if (cur - lastSaveRef.current >= SAVE_INTERVAL) {
+      lastSaveRef.current = cur
       try {
-        localStorage.setItem(getProgressKey(section.heading?.es), String(v.currentTime))
+        localStorage.setItem(getProgressKey(section.heading?.es), String(cur))
       } catch { /* ignore */ }
     }
 
-    // Verificar marcadores de quiz
+    // Verificar marcadores de quiz por CRUCE (prev < marcador ≤ actual). Esto funciona
+    // igual con el evento denso de <video> nativo que con el sondeo de YouTube (~250ms),
+    // donde el tiempo salta y una ventana fija se saltaría el marcador.
     for (const m of sortedMarkers) {
       if (m.type !== 'quiz') continue
       if (triggeredRef.current.has(m.id)) continue
-      if (Math.abs(v.currentTime - m.timeSeconds) < 0.5 && v.currentTime >= m.timeSeconds) {
+      if (prev < m.timeSeconds && cur >= m.timeSeconds) {
         triggeredRef.current.add(m.id)
         v.pause()
         setPlaying(false)
@@ -205,7 +216,11 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const seekTo = (secs: number) => {
     const v = videoRef.current
     if (!v) return
-    v.currentTime = Math.max(0, Math.min(secs, duration))
+    const clamped = Math.max(0, Math.min(secs, duration))
+    v.currentTime = clamped
+    // Sincronizar la referencia de cruce: un salto manual no debe disparar quizzes
+    // intermedios; solo el avance natural de la reproducción los cruza.
+    lastTimeRef.current = clamped
   }
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -258,8 +273,9 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   }
 
   const handlePiP = async () => {
-    const v = videoRef.current
-    if (!v || !document.pictureInPictureEnabled) return
+    // PiP solo aplica al <video> nativo; YouTube va por iframe y no lo soporta aquí.
+    const v = videoRef.current as HTMLVideoElement | null
+    if (!v || typeof v.requestPictureInPicture !== 'function' || !document.pictureInPictureEnabled) return
     if (document.pictureInPictureElement) {
       await document.exitPictureInPicture()
     } else {
@@ -319,6 +335,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     const dur = videoRef.current?.duration ?? 0
     setDuration(dur)
     triggeredRef.current.clear()
+    lastTimeRef.current = videoRef.current?.currentTime ?? 0
 
     try {
       const saved = parseFloat(localStorage.getItem(getProgressKey(section.heading?.es)) ?? '0')
@@ -466,18 +483,31 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     >
       {/* ── Área de video ── */}
       <div className={cn('relative bg-black', fullscreen ? 'flex-1 flex flex-col' : 'aspect-video w-full')}>
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          className="absolute inset-0 w-full h-full object-contain cursor-pointer"
-          preload="metadata"
-          onClick={togglePlay}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onEnded={() => setPlaying(false)}
-        />
+        {isYouTube && videoUrl ? (
+          <YouTubePlayer
+            videoId={videoUrl}
+            playerRef={videoRef}
+            className="absolute inset-0 w-full h-full [&_iframe]:pointer-events-auto"
+            onReady={handleLoadedMetadata}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => setPlaying(false)}
+            onTimeUpdate={handleTimeUpdate}
+          />
+        ) : (
+          <video
+            ref={(el) => { videoRef.current = el }}
+            src={videoUrl ?? undefined}
+            className="absolute inset-0 w-full h-full object-contain cursor-pointer"
+            preload="metadata"
+            onClick={togglePlay}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onTimeUpdate={handleTimeUpdate}
+            onLoadedMetadata={handleLoadedMetadata}
+            onEnded={() => setPlaying(false)}
+          />
+        )}
 
         {/* Toast de reanudar */}
         <AnimatePresence>
@@ -746,8 +776,8 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                 )}
               </div>
 
-              {/* Imagen en imagen */}
-              {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
+              {/* Imagen en imagen (no disponible con YouTube) */}
+              {!isYouTube && typeof document !== 'undefined' && document.pictureInPictureEnabled && (
                 <button
                   type="button"
                   onClick={handlePiP}

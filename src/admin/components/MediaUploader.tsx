@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { extractYouTubeId } from '@/lib/youtube'
 
 type MediaType = 'image' | 'youtube' | 'video'
 type Tab = 'image' | 'video' | 'youtube'
@@ -25,18 +26,6 @@ const IMAGE_MAX = 10 * 1024 * 1024
 // plan Free) que aplica por encima del file_size_limit del bucket; superarlo da 400.
 // Para videos más pesados, usar la pestaña de YouTube.
 const VIDEO_MAX = 50 * 1024 * 1024
-
-function extractYouTubeId(input: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/,
-    /^([A-Za-z0-9_-]{11})$/,
-  ]
-  for (const p of patterns) {
-    const m = input.trim().match(p)
-    if (m) return m[1]
-  }
-  return null
-}
 
 function DropZone({
   accept,

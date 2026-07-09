@@ -213,7 +213,7 @@ export default function ModulePreview() {
                         body: { es: [], en: [], pt: [] },
                         style: 'video-interactive',
                         media: s.media_url
-                          ? { type: 'video', url: s.media_url }
+                          ? { type: s.media_type === 'youtube' ? 'youtube' : 'video', url: s.media_url }
                           : undefined,
                         videoMarkers: mapVideoMarkersFromDb(s.video_markers),
                       }
