@@ -276,6 +276,9 @@ export default function Certificate() {
   // real en actividades del curso (quizzes/juegos).
   const scoreValue = requireSim ? simScore : activity.score;
   const showScore = scoreValue != null && scoreValue > 0;
+  // Vista del capacitador: mejor puntuación registrada del aprendiz. Se muestra
+  // como dato aparte salvo cuando ya es el puntaje principal (curso con simulador).
+  const bestScore = trainerMode && !requireSim ? (learner?.best_score ?? null) : null;
   // Fecha de finalización: último quiz/juego resuelto; si no hay, la de emisión.
   const issuedAtRaw = trainerMode ? learner?.issued_at : status?.issued_at;
   const dateSource = activity.completedAt ?? issuedAtRaw ?? null;
@@ -456,6 +459,17 @@ export default function Certificate() {
                       <MetaItem
                         label={t('certificate.best_score')}
                         value={`${scoreValue}/100`}
+                        accent
+                      />
+                    </>
+                  )}
+                  {/* Vista del capacitador: mejor puntuación registrada del aprendiz */}
+                  {trainerMode && bestScore != null && bestScore > 0 && (
+                    <>
+                      <div style={{ width: 1, height: 34, background: GRAY_LIGHT }} />
+                      <MetaItem
+                        label={t('certificate.trainer_best_score')}
+                        value={`${bestScore}/100`}
                         accent
                       />
                     </>

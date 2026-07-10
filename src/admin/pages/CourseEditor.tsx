@@ -131,6 +131,7 @@ export default function CourseEditor() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
   const [userSearch, setUserSearch] = useState('')
+  const [campaignSearch, setCampaignSearch] = useState('')
   // Borradores: id → obligatorio (solo entradas asignadas). Ausente = no asignado.
   const [draftCampaigns, setDraftCampaigns] = useState<Record<string, boolean>>({})
   const [draftUsers, setDraftUsers] = useState<Record<string, boolean>>({})
@@ -224,15 +225,17 @@ export default function CourseEditor() {
       .select('*')
       .order('name')
       .then(({ data }) => setCampaigns(data ?? []))
-    // El capacitador solo asigna a personas de su propia campaña; el superadmin, a todas.
+    // El capacitador solo asigna a los aprendices de su propia campaña; el
+    // superadmin puede asignar a CUALQUIER usuario del sitio (todos los roles y
+    // campañas), por lo que no se filtra ni por rol ni por campaña.
     {
       let profilesQuery = supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'learner')
         .order('display_name')
-      if (!isSuperAdmin && authCampaignId) {
-        profilesQuery = profilesQuery.eq('campaign_id', authCampaignId)
+      if (!isSuperAdmin) {
+        profilesQuery = profilesQuery.eq('role', 'learner')
+        if (authCampaignId) profilesQuery = profilesQuery.eq('campaign_id', authCampaignId)
       }
       profilesQuery.then(({ data }) => setProfiles((data ?? []) as Profile[]))
     }
@@ -247,6 +250,12 @@ export default function CourseEditor() {
     () => (isSuperAdmin ? campaigns : campaigns.filter((c) => c.id === authCampaignId)),
     [campaigns, isSuperAdmin, authCampaignId],
   )
+
+  const filteredCampaigns = useMemo(() => {
+    const q = campaignSearch.trim().toLowerCase()
+    if (!q) return visibleCampaigns
+    return visibleCampaigns.filter((c) => (c.name ?? '').toLowerCase().includes(q))
+  }, [visibleCampaigns, campaignSearch])
 
   const filteredProfiles = useMemo(() => {
     const q = userSearch.trim().toLowerCase()
@@ -1269,8 +1278,24 @@ export default function CourseEditor() {
                 ? t('admin.courses.assign_campaigns_hint_public')
                 : t('admin.courses.assign_campaigns_hint')}
             </p>
-            <div className="space-y-2">
-              {visibleCampaigns.map((c) => {
+            {visibleCampaigns.length > 1 && (
+              <div className="relative mb-3 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />
+                <input
+                  value={campaignSearch}
+                  onChange={(e) => setCampaignSearch(e.target.value)}
+                  placeholder={t('admin.courses.search_campaigns_ph')}
+                  className={cn(inputCls, 'pl-9')}
+                />
+              </div>
+            )}
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+              {filteredCampaigns.length === 0 ? (
+                <p className="text-[12px] text-text-subtle py-4 text-center">
+                  {t('admin.courses.no_campaigns')}
+                </p>
+              ) : (
+              filteredCampaigns.map((c) => {
                 const isAssigned = c.id in draftCampaigns
                 const isMandatory = draftCampaigns[c.id]
                 return (
@@ -1303,7 +1328,8 @@ export default function CourseEditor() {
                     </div>
                   </GlassCard>
                 )
-              })}
+              })
+              )}
             </div>
           </div>
 
@@ -1353,8 +1379,15 @@ export default function CourseEditor() {
                             {(p.display_name || '?').charAt(0)}
                           </span>
                           <span className="min-w-0">
-                            <span className="block text-[13px] text-text truncate">
-                              {p.display_name || p.id.slice(0, 8)}
+                            <span className="flex items-center gap-1.5 min-w-0">
+                              <span className="block text-[13px] text-text truncate">
+                                {p.display_name || p.id.slice(0, 8)}
+                              </span>
+                              {p.role !== 'learner' && (
+                                <span className="shrink-0 rounded-full border border-line px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-text-muted">
+                                  {t(`roles.${p.role}`)}
+                                </span>
+                              )}
                             </span>
                             {campaignName && (
                               <span className="block text-[11px] text-text-subtle truncate">
