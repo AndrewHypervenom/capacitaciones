@@ -443,6 +443,91 @@ export async function removeCourseAssignment(courseId: string, userId: string): 
   if (error) throw error
 }
 
+// ─── Superadmin: cursos de un usuario + restablecer ──────────────
+
+/** Resumen de un curso del catálogo para un usuario, con su desempeño (vista superadmin). */
+export interface AdminUserCourse {
+  course_id: string
+  slug: string
+  title_es: string
+  icon: string | null
+  is_mandatory: boolean
+  /** El curso está asignado a la persona (directo o por su campaña) vs. solo catálogo. */
+  is_assigned: boolean
+  total_modules: number
+  /** Desempeño 0-100 (promedio del último intento por unidad), o null si no hay actividad. */
+  score: number | null
+  /** Fecha (ISO) del último quiz/juego resuelto = cuándo terminó, o null. */
+  completed_at: string | null
+  /** El usuario ya tiene certificado emitido de este curso. */
+  certified: boolean
+}
+
+/**
+ * TODO el catálogo de cursos con el progreso de una persona (asignados o no),
+ * con bandera `is_assigned`. Solo superadmin: la RPC corre SECURITY DEFINER y
+ * valida el rol server-side.
+ */
+export async function getUserCoursesAdmin(userId: string): Promise<AdminUserCourse[]> {
+  const { data, error } = await supabase.rpc('get_user_courses_admin', { p_user_id: userId })
+  if (error) throw error
+  return (data ?? []) as unknown as AdminUserCourse[]
+}
+
+// ─── Superadmin: panel global (matriz usuarios × cursos) ─────────
+
+export interface AdminOverviewUser {
+  id: string
+  display_name: string | null
+  role: 'superadmin' | 'capacitador' | 'learner'
+  campaign_id: string | null
+}
+
+export interface AdminOverviewCourse {
+  course_id: string
+  title_es: string
+  icon: string | null
+  campaign_id: string | null
+  is_published: boolean
+}
+
+export interface AdminOverviewCell {
+  user_id: string
+  course_id: string
+  score: number | null
+  completed_at: string | null
+  certified: boolean
+}
+
+export interface AdminOverview {
+  users: AdminOverviewUser[]
+  courses: AdminOverviewCourse[]
+  progress: AdminOverviewCell[]
+}
+
+/**
+ * Matriz global de TODOS los usuarios × TODOS los cursos con su desempeño y
+ * certificación. Solo superadmin (validado server-side en la RPC).
+ */
+export async function getAllCoursesProgressAdmin(): Promise<AdminOverview> {
+  const { data, error } = await supabase.rpc('get_all_courses_progress_admin')
+  if (error) throw error
+  return (data ?? { users: [], courses: [], progress: [] }) as unknown as AdminOverview
+}
+
+/**
+ * Restablece el progreso de un usuario en un curso para que lo haga de nuevo:
+ * borra intentos/completados/respuestas de los módulos del curso y elimina su
+ * certificación e intentos de simulador. Solo superadmin (validado en la RPC).
+ */
+export async function resetUserCourseAdmin(userId: string, courseId: string): Promise<void> {
+  const { error } = await supabase.rpc('reset_user_course_admin', {
+    p_user_id: userId,
+    p_course_id: courseId,
+  })
+  if (error) throw error
+}
+
 // ─── Portada del curso ───────────────────────────────────────────
 
 export async function uploadCourseCover(file: File, courseId: string): Promise<string> {

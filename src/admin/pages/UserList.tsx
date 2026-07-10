@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, User, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X } from 'lucide-react'
+import { Loader2, UserPlus, Shield, User, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
+import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
 import type { Profile, Campaign } from '@/types/database'
 
@@ -38,6 +39,8 @@ export default function UserList() {
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [assignUser, setAssignUser] = useState<ProfileWithEmail | null>(null)
+  // Vista superadmin de cursos + restablecer progreso de una persona.
+  const [resetUser, setResetUser] = useState<ProfileWithEmail | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [campaignFilter, setCampaignFilter] = useState('')
@@ -548,6 +551,15 @@ export default function UserList() {
                   >
                     <BarChart3 className="h-4 w-4" />
                   </button>
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => setResetUser(user)}
+                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                      title={t('admin.users.manage_courses')}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
                 {isSuperAdmin && (
                   <button
@@ -573,6 +585,10 @@ export default function UserList() {
 
       {assignUser && (
         <UserCoursesModal user={assignUser} onClose={() => setAssignUser(null)} />
+      )}
+
+      {resetUser && (
+        <UserCourseResetModal user={resetUser} onClose={() => setResetUser(null)} />
       )}
 
       {bulkOpen && (

@@ -1243,6 +1243,18 @@ export interface Database {
           issued_at: string | null
         }[]
       }
+      get_user_courses_admin: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
+      reset_user_course_admin: {
+        Args: { p_user_id: string; p_course_id: string }
+        Returns: undefined
+      }
+      get_all_courses_progress_admin: {
+        Args: Record<string, never>
+        Returns: Json
+      }
     }
     Enums: Record<string, never>
   }
