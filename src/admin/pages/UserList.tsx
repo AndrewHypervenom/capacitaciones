@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard } from 'lucide-react'
+import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { toast } from '@/stores/toastStore'
+import { recompressAllAvatars, type RecompressProgress } from '@/services/avatarMaintenance'
 import { Avatar } from '@/components/ui/Avatar'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
@@ -67,6 +69,9 @@ export default function UserList() {
   // vía RLS). Permite copiar el bloque de credenciales de cualquier pendiente.
   const [tempCreds, setTempCreds] = useState<Record<string, TempCred>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  // Recompresión masiva de avatares existentes (mantenimiento superadmin).
+  const [optimizing, setOptimizing] = useState(false)
+  const [optProgress, setOptProgress] = useState<RecompressProgress | null>(null)
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -110,6 +115,34 @@ export default function UserList() {
     ])
     setUsers(updated ?? [])
     setTempCreds(mapCreds(creds))
+  }
+
+  const handleRecompress = async () => {
+    const ok = await confirm({
+      title: t('admin.users.optimize_photos'),
+      description: t('admin.users.optimize_photos_confirm'),
+      confirmLabel: t('admin.users.optimize_photos'),
+      tone: 'default',
+    })
+    if (!ok) return
+    setOptimizing(true)
+    setOptProgress(null)
+    try {
+      const result = await recompressAllAvatars(setOptProgress)
+      await refreshData()
+      toast.success(
+        t('admin.users.optimize_done', {
+          n: result.optimized,
+          mb: (result.bytesSaved / (1024 * 1024)).toFixed(1),
+        }),
+      )
+      if (result.failed > 0) toast.error(t('admin.users.optimize_failed', { n: result.failed }))
+    } catch (err) {
+      toast.error(t('profile.save_error', 'No se pudo guardar'), (err as Error).message)
+    } finally {
+      setOptimizing(false)
+      setOptProgress(null)
+    }
   }
 
   const copyCreds = (userId: string, email: string, password: string) => {
@@ -252,6 +285,17 @@ export default function UserList() {
         </div>
         {isSuperAdmin && (
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleRecompress}
+              disabled={optimizing}
+              title={t('admin.users.optimize_photos_hint')}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px] disabled:opacity-70"
+            >
+              {optimizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageDown className="h-4 w-4" />}
+              {optimizing && optProgress
+                ? `${optProgress.done}/${optProgress.total}`
+                : t('admin.users.optimize_photos')}
+            </button>
             <button
               onClick={() => setBulkOpen(true)}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"

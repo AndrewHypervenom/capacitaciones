@@ -1,19 +1,35 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft, Loader2, Award, CheckCircle2, BookOpen, GraduationCap,
   IdCard, Phone, MapPin, Briefcase, CalendarDays, BarChart3,
+  Pencil, Save, X, Camera,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { Avatar } from '@/components/ui/Avatar'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { updateProfile, uploadAvatar } from '@/services/auth.service'
 import { getUserCoursesAdmin, type AdminUserCourse } from '@/services/courses.service'
+import { toast } from '@/stores/toastStore'
 import type { Profile } from '@/types/database'
 import { cn } from '@/lib/cn'
 
 const COUNTRY_LABEL: Record<string, string> = { CO: 'Colombia', MX: 'México', AR: 'Argentina' }
+
+interface EditForm {
+  display_name: string
+  job_title: string
+  national_id: string
+  phone: string
+  country: string
+  bio: string
+}
+const emptyForm: EditForm = { display_name: '', job_title: '', national_id: '', phone: '', country: 'CO', bio: '' }
+const MAX_AVATAR_BYTES = 3 * 1024 * 1024 // 3 MB
 
 /**
  * Hoja de vida de una persona para el panel de gestión: datos personales +
@@ -32,6 +48,77 @@ export default function UserProfile() {
   const [courses, setCourses] = useState<AdminUserCourse[]>([])
   const [coursesDenied, setCoursesDenied] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  // Edición del perfil (solo superadmin). El servicio updateProfile ya recibe el
+  // userId destino; la RLS profiles_update_superadmin autoriza filas ajenas.
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState<EditForm>(emptyForm)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const startEdit = () => {
+    if (!profile) return
+    setForm({
+      display_name: profile.display_name ?? '',
+      job_title: profile.job_title ?? '',
+      national_id: profile.national_id ?? '',
+      phone: profile.phone ?? '',
+      country: profile.country ?? 'CO',
+      bio: profile.bio ?? '',
+    })
+    setEditing(true)
+  }
+
+  const set = (k: keyof EditForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const handleSave = async () => {
+    if (!profile) return
+    setSaving(true)
+    try {
+      const updated = await updateProfile(profile.id, {
+        display_name: form.display_name.trim() || null,
+        job_title: form.job_title.trim() || null,
+        national_id: form.national_id.trim() || null,
+        phone: form.phone.trim() || null,
+        country: form.country || null,
+        bio: form.bio.trim() || null,
+      })
+      setProfile(updated as Profile)
+      setEditing(false)
+      toast.success(t('profile.saved', 'Perfil actualizado'))
+    } catch (err) {
+      toast.error(t('profile.save_error', 'No se pudo guardar'), (err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !profile) return
+    if (!file.type.startsWith('image/')) {
+      toast.error(t('profile.avatar_invalid', 'Elige un archivo de imagen'))
+      return
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error(t('profile.avatar_too_big', 'La imagen supera los 3 MB'))
+      return
+    }
+    setUploading(true)
+    try {
+      const url = await uploadAvatar(profile.id, file)
+      const updated = await updateProfile(profile.id, { avatar_url: url })
+      setProfile(updated as Profile)
+      toast.success(t('profile.avatar_saved', 'Foto actualizada'))
+    } catch (err) {
+      toast.error(t('profile.save_error', 'No se pudo guardar'), (err as Error).message)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   useEffect(() => {
     let alive = true
@@ -112,6 +199,8 @@ export default function UserProfile() {
     { icon: CalendarDays, label: t('admin.users.member_since'), value: fmtDate(profile.created_at) },
   ]
 
+  const editLabel = 'mb-1.5 block text-[12px] font-semibold uppercase tracking-wide text-text-subtle'
+
   return (
     <div className="mx-auto max-w-4xl p-4 sm:p-8">
       <button
@@ -124,7 +213,23 @@ export default function UserProfile() {
       {/* Encabezado tipo hoja de vida */}
       <GlassCard intensity="subtle" rounded="2xl" padding="none" className="mb-6">
         <div className="flex flex-col items-center gap-5 p-6 text-center sm:flex-row sm:items-center sm:text-left sm:p-8">
-          <Avatar src={profile.avatar_url} name={profile.display_name} size={88} />
+          <div className="relative shrink-0">
+            <Avatar src={profile.avatar_url} name={profile.display_name} size={88} />
+            {isSuperAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  aria-label={t('profile.change_photo', 'Cambiar foto')}
+                  className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-surface bg-primary text-on-primary shadow-sm transition-transform hover:scale-105 disabled:opacity-60"
+                >
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                </button>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
+              </>
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-[22px] font-extrabold tracking-tight text-text">
               {profile.display_name || t('profile.no_name')}
@@ -147,6 +252,12 @@ export default function UserProfile() {
               {email && <span className="text-[12px] text-text-subtle">{email}</span>}
             </div>
           </div>
+          {isSuperAdmin && !editing && (
+            <Button variant="secondary" size="sm" onClick={startEdit} className="shrink-0 self-start">
+              <Pencil className="h-3.5 w-3.5" />
+              {t('admin.users.edit_profile', 'Editar perfil')}
+            </Button>
+          )}
         </div>
       </GlassCard>
 
@@ -171,22 +282,79 @@ export default function UserProfile() {
       {/* Datos personales */}
       <div className="mb-6 rounded-2xl border border-line bg-surface p-6">
         <h2 className="mb-4 text-[15px] font-semibold text-text">{t('profile.personal_info')}</h2>
-        <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-          {dataRows.map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex items-start gap-3">
-              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-text-subtle" />
-              <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-wide text-text-subtle">{label}</div>
-                <div className="text-[14px] text-text">{value || <span className="text-text-subtle">—</span>}</div>
+
+        {editing ? (
+          <>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className={editLabel}>{t('profile.full_name', 'Nombre completo')}</label>
+                <Input value={form.display_name} onChange={set('display_name')} placeholder={t('profile.full_name', 'Nombre completo')} />
+              </div>
+              <div>
+                <label className={editLabel}>{t('profile.job_title', 'Cargo')}</label>
+                <Input value={form.job_title} onChange={set('job_title')} placeholder={t('profile.job_title_ph', 'Ej. Asesor comercial')} />
+              </div>
+              <div>
+                <label className={editLabel}>{t('profile.national_id', 'Cédula / Documento')}</label>
+                <Input value={form.national_id} onChange={set('national_id')} inputMode="numeric" placeholder="123456789" />
+              </div>
+              <div>
+                <label className={editLabel}>{t('profile.phone', 'Teléfono')}</label>
+                <Input value={form.phone} onChange={set('phone')} inputMode="tel" placeholder="+57 300 000 0000" />
+              </div>
+              <div>
+                <label className={editLabel}>{t('profile.country', 'País')}</label>
+                <select
+                  value={form.country}
+                  onChange={set('country')}
+                  className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] text-text outline-none transition-colors focus:border-brand-green"
+                >
+                  <option value="CO">Colombia</option>
+                  <option value="MX">México</option>
+                  <option value="AR">Argentina</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className={editLabel}>{t('profile.bio', 'Acerca de mí')}</label>
+                <textarea
+                  value={form.bio}
+                  onChange={set('bio')}
+                  rows={3}
+                  placeholder={t('profile.bio_ph', 'Cuéntanos algo sobre ti (opcional)')}
+                  className="w-full resize-none rounded-2xl border border-line bg-surface px-4 py-3 text-[15px] text-text outline-none transition-colors placeholder:text-text-subtle/70 focus:border-brand-green"
+                />
               </div>
             </div>
-          ))}
-        </div>
-        {profile.bio && (
-          <div className="mt-5 border-t border-line pt-4">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-text-subtle">{t('profile.bio')}</div>
-            <p className="text-[14px] leading-relaxed text-text-muted">{profile.bio}</p>
-          </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+                <X className="h-4 w-4" /> {t('confirm.cancel', 'Cancelar')}
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {t('profile.save', 'Guardar cambios')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+              {dataRows.map(({ icon: Icon, label, value }) => (
+                <div key={label} className="flex items-start gap-3">
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-text-subtle" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-wide text-text-subtle">{label}</div>
+                    <div className="text-[14px] text-text">{value || <span className="text-text-subtle">—</span>}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {profile.bio && (
+              <div className="mt-5 border-t border-line pt-4">
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-text-subtle">{t('profile.bio')}</div>
+                <p className="text-[14px] leading-relaxed text-text-muted">{profile.bio}</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 

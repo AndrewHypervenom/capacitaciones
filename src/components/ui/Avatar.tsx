@@ -21,7 +21,15 @@ export function Avatar({ src, name, size = 36, className }: AvatarProps) {
       style={{ width: size, height: size }}
     >
       {src ? (
-        <img src={src} alt={name ?? ''} className="h-full w-full object-cover" />
+        <img
+          src={src}
+          alt={name ?? ''}
+          width={size}
+          height={size}
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-cover"
+        />
       ) : (
         <span
           className="flex h-full w-full items-center justify-center font-bold uppercase"
