@@ -11,10 +11,12 @@ import {
   updateCourse,
   deleteCourse,
   getShareableCourses,
+  previewEnrollSelf,
   type CourseWithModules,
   type AdminCourse,
   type ShareableCourse,
 } from '@/services/courses.service'
+import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
 import { runCourseAiGeneration, COURSE_AI_CREATED_EVENT } from '@/services/courseAi.service'
 import {
   extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
@@ -40,7 +42,9 @@ export default function CourseList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const navigate = useNavigate()
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { user, campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  // Curso que se está abriendo "como aprendiz" (auto-inscripción en curso).
+  const [previewingId, setPreviewingId] = useState<string | null>(null)
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
@@ -229,6 +233,28 @@ export default function CourseList() {
       invalidateModulesCache()
     } catch {
       toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  // "Ver como aprendiz": auto-inscribe al staff en su propio curso y salta a la
+  // vista de aprendiz, donde el curso ya aparece en "Mis cursos". Solo tiene sentido
+  // con el curso publicado: el panel de aprendiz solo lista cursos publicados.
+  const handleViewAsLearner = async (course: CourseWithModules) => {
+    if (!course.is_published) {
+      toast.error(t('admin.courses.view_as_learner_publish_first'))
+      return
+    }
+    if (!user?.id) return
+    setPreviewingId(course.id)
+    try {
+      await previewEnrollSelf(course.id)
+      invalidateLearnerCoursesCache()
+      toast.success(t('admin.courses.view_as_learner_ok'))
+      navigate('/dashboard')
+    } catch {
+      toast.error(t('admin.courses.view_as_learner_error'))
+    } finally {
+      setPreviewingId(null)
     }
   }
 
@@ -516,6 +542,21 @@ export default function CourseList() {
 
               {/* Acciones */}
               <div className="flex items-center justify-end gap-1 px-3 pb-3 opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => handleViewAsLearner(course)}
+                  disabled={previewingId === course.id}
+                  title={course.is_published ? t('admin.courses.view_as_learner') : t('admin.courses.view_as_learner_publish_first')}
+                  className={cn(
+                    'h-9 w-9 flex items-center justify-center rounded-lg transition-colors hover:bg-glass/8',
+                    course.is_published ? 'text-text-muted hover:text-primary' : 'text-text-subtle/50',
+                  )}
+                >
+                  {previewingId === course.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GraduationCap className="h-4 w-4" />
+                  )}
+                </button>
                 <button
                   onClick={() => handleTogglePublished(course)}
                   title={course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}

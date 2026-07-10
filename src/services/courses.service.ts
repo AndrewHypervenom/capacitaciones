@@ -150,6 +150,17 @@ export async function selfEnroll(courseId: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * Auto-inscribe al staff (capacitador/superadmin) en un curso PROPIO ya publicado
+ * para poder previsualizarlo "como aprendiz". A diferencia de `selfEnroll` (solo
+ * cursos de catálogo), esto acepta cualquier curso publicado que el staff gestione.
+ * SECURITY DEFINER en el RPC valida rol, propiedad y publicación.
+ */
+export async function previewEnrollSelf(courseId: string): Promise<void> {
+  const { error } = await supabase.rpc('preview_enroll_self', { p_course_id: courseId })
+  if (error) throw error
+}
+
 /** Salir de un curso en el que el aprendiz se auto-inscribió. */
 export async function unenrollSelf(courseId: string): Promise<void> {
   const { error } = await supabase.rpc('unenroll_self', { p_course_id: courseId })

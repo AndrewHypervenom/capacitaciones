@@ -209,6 +209,10 @@ export default function UserProfile() {
           <div className="space-y-2">
             {assigned.map((c) => {
               const completed = fmtDate(c.completed_at)
+              // Un curso certificado está, por definición, completado: el certificado
+              // manda sobre la ausencia de progreso en user_progress (que puede quedar
+              // desincronizado). Evita el estado contradictorio "Certificado" + "Pendiente".
+              const isDone = c.certified || !!completed
               return (
                 <div key={c.course_id} className="flex items-center gap-3 rounded-xl border border-line px-4 py-3">
                   <div className="min-w-0 flex-1">
@@ -229,18 +233,18 @@ export default function UserProfile() {
                           <CheckCircle2 className="h-3 w-3 text-green-500" />
                           {t('admin.users.col_score')}: <b className="text-text">{c.score}%</b>
                         </span>
-                      ) : (
+                      ) : !c.certified ? (
                         <span>{t('admin.users.no_activity')}</span>
-                      )}
+                      ) : null}
                       <span>{t('courses.modules_count', { n: c.total_modules })}</span>
                       {completed && <span>{t('admin.users.col_completed')}: {completed}</span>}
                     </div>
                   </div>
                   <div className={cn(
                     'shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold',
-                    completed ? 'bg-[rgba(34,197,94,0.15)] text-[#16a34a]' : 'bg-subtle text-text-muted',
+                    isDone ? 'bg-[rgba(34,197,94,0.15)] text-[#16a34a]' : 'bg-subtle text-text-muted',
                   )}>
-                    {completed ? t('admin.users.status_done') : t('admin.users.status_pending')}
+                    {isDone ? t('admin.users.status_done') : t('admin.users.status_pending')}
                   </div>
                 </div>
               )

@@ -135,7 +135,9 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                 <div className="space-y-2">
                   {courses.map((c, i) => {
                     const completed = fmtDate(c.completed_at)
-                    const hasActivity = c.score != null || completed != null
+                    // El certificado también es algo que restablecer (borra certifications),
+                    // aunque no haya quedado actividad en user_progress.
+                    const hasActivity = c.score != null || completed != null || c.certified
                     // Separador visual entre cursos asignados y el resto del catálogo.
                     const prev = courses[i - 1]
                     const showCatalogHeader = !c.is_assigned && (i === 0 || prev?.is_assigned)
@@ -171,9 +173,9 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                                   <CheckCircle2 className="h-3 w-3 text-green-500" />
                                   {t('admin.users.col_score')}: <b className="text-text">{c.score}%</b>
                                 </span>
-                              ) : (
+                              ) : !c.certified ? (
                                 <span>{t('admin.users.no_activity')}</span>
-                              )}
+                              ) : null}
                               {completed && (
                                 <span>
                                   {t('admin.users.col_completed')}: {completed}
