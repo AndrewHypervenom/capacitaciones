@@ -1,6 +1,6 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LogOut, Settings } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { useModules } from '@/hooks/useModules';
@@ -9,15 +9,14 @@ import { signOut } from '@/services/auth.service';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
+import { ViewSwitcher } from './ViewSwitcher';
 import { cn } from '@/lib/cn';
 
 export function Navbar() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const { name, reset } = useUserStore();
-  const { isAdminOrCapacitador, isSuperAdmin } = useAuth();
-  // El capacitador no debe ver la palabra "Admin"; para él es su panel de gestión.
-  const adminLabel = isSuperAdmin ? t('nav.admin', 'Admin') : t('nav.manage', 'Gestión');
+  const { isAdminOrCapacitador } = useAuth();
   const completedModules = useProgressStore((s) => s.completedModules);
   const { planModules: modules } = useModules();
   const progress = modules.length > 0 ? completedModules.length / modules.length : 0;
@@ -57,9 +56,6 @@ export function Navbar() {
             <NavLink to="/simulator" className={linkClass}>
               {t('nav.simulator')}
             </NavLink>
-            <NavLink to="/admin" className={linkClass}>
-              {adminLabel}
-            </NavLink>
           </nav>
         ) : (
           <nav className="flex items-center gap-1">
@@ -73,21 +69,14 @@ export function Navbar() {
         )}
 
         <div className="flex items-center gap-1 sm:gap-2">
+          {/* "Ver como": salto instantáneo a la vista de aprendiz y de vuelta. */}
+          {isAdminOrCapacitador && <ViewSwitcher variant="inline" />}
           <div className="hidden sm:flex items-center gap-2 h-8 pr-1">
             <ProgressRing value={progress} size={20} stroke={2} />
             <span className="text-[12px] text-text-muted max-w-[100px] truncate">{name}</span>
           </div>
           <LanguageSwitcher />
           <ThemeToggle />
-          {isAdminOrCapacitador && (
-            <Link
-              to="/admin"
-              aria-label={adminLabel}
-              className="h-8 w-8 inline-flex items-center justify-center rounded-full text-text-muted hover:text-text hover:bg-subtle transition-colors md:hidden"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Link>
-          )}
           <button
             onClick={handleLogout}
             aria-label={t('nav.logout')}

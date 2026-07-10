@@ -60,6 +60,11 @@
     "admin": "Admin",
     "manage": "Gestão"
   },
+  "view_switcher": {
+    "learner": "Aprendiz",
+    "caption": "Ver como",
+    "aria": "Mudar de visão"
+  },
   "my_feedback": {
     "title": "Meus retornos",
     "subtitle": "Os comentários que seu instrutor deixou sobre suas atividades.",
@@ -540,7 +545,6 @@
       "feedback": "Progresso",
       "overview": "Visão global",
       "generate_module": "Gerar módulo IA",
-      "back_to_app": "Voltar ao app",
       "open_menu": "Abrir menu",
       "close_menu": "Fechar menu",
       "evaluaciones": "Avaliações",

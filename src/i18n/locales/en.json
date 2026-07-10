@@ -60,6 +60,11 @@
     "admin": "Admin",
     "manage": "Manage"
   },
+  "view_switcher": {
+    "learner": "Learner",
+    "caption": "View as",
+    "aria": "Switch view"
+  },
   "my_feedback": {
     "title": "My feedback",
     "subtitle": "The comments your trainer left about your activities.",
@@ -540,7 +545,6 @@
       "feedback": "Progress",
       "overview": "Global view",
       "generate_module": "Generate module AI",
-      "back_to_app": "Back to app",
       "open_menu": "Open menu",
       "close_menu": "Close menu",
       "evaluaciones": "Evaluations",

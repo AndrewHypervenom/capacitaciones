@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, LogOut, ArrowLeft, BookOpen, Menu, X, ChevronDown, Trophy, Sparkles } from 'lucide-react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { LayoutDashboard, Users, LogOut, BookOpen, Menu, X, ChevronDown, Trophy, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { ViewSwitcher } from '@/components/layout/ViewSwitcher'
 import { cn } from '@/lib/cn'
 
 type NeonColor = 'green' | 'violet' | 'cyan' | 'magenta' | 'amber' | 'neutral'
@@ -123,6 +124,9 @@ export function AdminNav() {
         </button>
         <img src="/logo.jpg" alt="LearningAI" className="h-7 w-7 rounded-md ring-1 ring-glass-border/10" />
         <div className="text-[13px] font-semibold text-text">{panelTitle}</div>
+        <div className="ml-auto">
+          <ViewSwitcher variant="inline" onSwitch={() => setIsOpen(false)} />
+        </div>
       </div>
 
       {/* Overlay (mobile drawer) */}
@@ -169,6 +173,9 @@ export function AdminNav() {
           <NeonBadge color={roleColor} className="text-[9px]">
             {roleLabel}
           </NeonBadge>
+
+          {/* "Ver como": alterna al instante entre gestión y vista de aprendiz. */}
+          <ViewSwitcher variant="block" className="mt-3" onSwitch={() => setIsOpen(false)} />
         </div>
 
         {/* Navigation */} 
@@ -271,14 +278,6 @@ export function AdminNav() {
             <LanguageSwitcher />
             <ThemeToggle />
           </div>
-          <Link
-            to="/dashboard"
-            onClick={() => setIsOpen(false)}
-            className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors border border-transparent"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('admin.nav.back_to_app')}
-          </Link>
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] text-text-muted hover:text-danger hover:bg-danger/6 transition-colors border border-transparent"

@@ -60,6 +60,11 @@
     "admin": "Admin",
     "manage": "Gestión"
   },
+  "view_switcher": {
+    "learner": "Aprendiz",
+    "caption": "Ver como",
+    "aria": "Cambiar de vista"
+  },
   "my_feedback": {
     "title": "Mis retroalimentaciones",
     "subtitle": "Los comentarios que tu capacitador dejó sobre tus actividades.",
@@ -540,7 +545,6 @@
       "feedback": "Progreso",
       "overview": "Vista global",
       "generate_module": "Generar módulo IA",
-      "back_to_app": "Volver a la app",
       "open_menu": "Abrir menú",
       "close_menu": "Cerrar menú",
       "evaluaciones": "Evaluaciones",

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Loader2, Eye, EyeOff, KeyRound } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -6,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 
 export function Onboarding() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -36,6 +38,12 @@ export function Onboarding() {
       if (dbError) throw dbError
 
       setProfile({ ...profile, onboarded: true })
+
+      // El staff (superadmin/capacitador) va directo a su panel de gestión;
+      // el aprendiz se queda en su dashboard (AppShell ya renderiza el Outlet).
+      if (profile.role === 'superadmin' || profile.role === 'capacitador') {
+        navigate('/admin', { replace: true })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('onboarding.error_generic'))
     } finally {

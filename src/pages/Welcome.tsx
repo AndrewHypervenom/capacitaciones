@@ -45,12 +45,21 @@ const stagger = {
 
 export default function Welcome() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, profile, isAdminOrCapacitador } = useAuth();
   const { t } = useTranslation();
 
+  // Redirección post-login según el rol: el staff (superadmin/capacitador) aterriza
+  // en su panel de gestión; el aprendiz en su dashboard. Esperamos a que el perfil
+  // esté cargado (no solo la sesión) para conocer el rol y evitar la carrera en la
+  // que `isAuthenticated` ya es true pero `profile` sigue null tras el login.
   useEffect(() => {
-    if (!authLoading && isAuthenticated) navigate('/dashboard', { replace: true });
-  }, [isAuthenticated, authLoading, navigate]);
+    if (authLoading || !isAuthenticated || !profile) return;
+    // El staff aterriza en su panel; el aprendiz en su dashboard. Si aún no completó
+    // el onboarding (crear contraseña), lo mandamos a /dashboard, donde AppShell
+    // muestra esa pantalla — /admin no la gatea.
+    const target = isAdminOrCapacitador && profile.onboarded ? '/admin' : '/dashboard';
+    navigate(target, { replace: true });
+  }, [isAuthenticated, authLoading, profile, isAdminOrCapacitador, navigate]);
 
   const [stats, setStats] = useState([
     { value: 0, label: t('welcome.stat_lessons') },
@@ -125,7 +134,8 @@ export default function Welcome() {
     setSubmitting(true);
     try {
       await signInWithEmail(email.trim(), password);
-      navigate('/dashboard', { replace: true });
+      // El destino (panel vs dashboard) lo resuelve el efecto de arriba una vez
+      // que el perfil (y por tanto el rol) termina de cargar.
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t('welcome.error_invalid');
       if (msg.includes('Invalid login credentials')) {
