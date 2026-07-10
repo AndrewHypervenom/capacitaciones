@@ -10,6 +10,7 @@ import Courses from '@/pages/Courses';
 import CoursePage from '@/pages/CoursePage';
 import ModulePage from '@/pages/ModulePage';
 import MyFeedback from '@/pages/MyFeedback';
+import Profile from '@/pages/Profile';
 import SimulatorSetup from '@/pages/SimulatorSetup';
 import SimulatorRun from '@/pages/SimulatorRun';
 import SimulatorResult from '@/pages/SimulatorResult';
@@ -82,6 +83,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route element={<AppShell requireAuth />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/courses" element={<Courses />} />
           <Route path="/courses/:slug" element={<CoursePage />} />
           <Route path="/modules/:id" element={<ModulePage />} />

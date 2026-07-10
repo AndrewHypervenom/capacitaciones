@@ -17,6 +17,7 @@ export function useAuth() {
     // Puede acceder al panel admin (aunque con permisos restringidos)
     isAdminOrCapacitador: role === 'superadmin' || role === 'capacitador',
     displayName: profile?.display_name ?? session?.user?.email ?? '',
+    avatarUrl: profile?.avatar_url ?? null,
     country: profile?.country ?? 'CO',
     language: profile?.language ?? 'es',
   }

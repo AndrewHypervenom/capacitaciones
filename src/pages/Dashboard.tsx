@@ -1,10 +1,9 @@
 import LearnerDashboard from './LearnerDashboard';
-import { useAuth } from '@/hooks/useAuth';
 
-// Todos (aprendiz, capacitador, superadmin) usan el mismo diseño de panel.
-// El aprendiz trae el menú lateral de secciones; superadmin y capacitador lo
-// omiten porque navegan desde su Navbar superior de staff.
+// Todos (aprendiz, capacitador, superadmin) ven el mismo panel de aprendiz, con
+// su menú lateral de secciones. Para el staff que mira "como aprendiz" esto es
+// clave: la vista debe verse idéntica a la del aprendiz. El botón para volver a
+// gestión (ViewSwitcher) vive dentro del propio sidebar del panel.
 export default function Dashboard() {
-  const { isAdminOrCapacitador } = useAuth();
-  return <LearnerDashboard hideSidebar={isAdminOrCapacitador} />;
+  return <LearnerDashboard />;
 }

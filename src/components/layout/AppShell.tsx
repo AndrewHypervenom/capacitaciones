@@ -19,13 +19,15 @@ function ScrollToTop() {
 
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
-  const { isAuthenticated, loading, profile, isAdminOrCapacitador } = useAuth();
+  const { isAuthenticated, loading, profile } = useAuth();
   const reducedMotion = useReducedMotion();
   useProgressSync();
 
   // El panel del aprendiz trae su propio shell (sidebar con idioma, tema y
-  // cierre de sesión), así que ahí el Navbar global sobra.
-  const learnerPanel = requireAuth && !isAdminOrCapacitador && location.pathname === '/dashboard';
+  // cierre de sesión), así que ahí el Navbar global sobra. También aplica cuando
+  // un staff mira "como aprendiz": debe ver el panel idéntico al del aprendiz,
+  // sin el Navbar de gestión (el ViewSwitcher para volver vive en ese sidebar).
+  const learnerPanel = requireAuth && location.pathname === '/dashboard';
 
   const blank = <div className="min-h-screen bg-bg" />;
 

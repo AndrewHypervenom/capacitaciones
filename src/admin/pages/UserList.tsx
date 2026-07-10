@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, User, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw } from 'lucide-react'
+import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { Avatar } from '@/components/ui/Avatar'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
@@ -424,11 +425,12 @@ export default function UserList() {
                 style={{ gridTemplateColumns: isSuperAdmin ? '1fr auto auto auto auto' : '1fr auto auto' }}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-subtle">
-                    {user.role === 'superadmin' ? (
-                      <Shield className="h-3.5 w-3.5 text-yellow-400" />
-                    ) : (
-                      <User className="h-3.5 w-3.5 text-text-muted" />
+                  <div className="relative shrink-0">
+                    <Avatar src={user.avatar_url} name={user.display_name} size={32} />
+                    {user.role === 'superadmin' && (
+                      <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-surface ring-1 ring-line">
+                        <Shield className="h-2.5 w-2.5 text-yellow-500" />
+                      </span>
                     )}
                   </div>
                   <div className="min-w-0">
@@ -463,7 +465,13 @@ export default function UserList() {
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 min-w-0 group">
-                        <span className="text-[13px] text-text truncate">{user.display_name ?? 'Sin nombre'}</span>
+                        <button
+                          onClick={() => navigate(`/admin/users/${user.id}`)}
+                          className="text-[13px] text-text truncate text-left hover:text-primary hover:underline transition-colors"
+                          title={t('admin.users.view_profile')}
+                        >
+                          {user.display_name ?? 'Sin nombre'}
+                        </button>
                         {isSuperAdmin && (
                           <button
                             onClick={() => startEditName(user)}
@@ -488,6 +496,23 @@ export default function UserList() {
                     <div className="text-[11px] text-text-subtle truncate">
                       {tempCreds[user.id]?.email ?? `${user.id.slice(0, 8)}…`}
                     </div>
+                    {(user.job_title || user.national_id || user.phone) && (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-text-muted">
+                        {user.job_title && <span className="truncate">{user.job_title}</span>}
+                        {user.national_id && (
+                          <>
+                            {user.job_title && <span className="text-text-subtle">·</span>}
+                            <span className="truncate">{t('profile.national_id')}: {user.national_id}</span>
+                          </>
+                        )}
+                        {user.phone && (
+                          <>
+                            {(user.job_title || user.national_id) && <span className="text-text-subtle">·</span>}
+                            <span className="truncate">{user.phone}</span>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 {isSuperAdmin ? (
@@ -525,6 +550,14 @@ export default function UserList() {
                   </select>
                 )}
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => navigate(`/admin/users/${user.id}`)}
+                    className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+                    title={t('admin.users.view_profile')}
+                  >
+                    <IdCard className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t('admin.users.view_profile')}</span>
+                  </button>
                   {isSuperAdmin && tempCreds[user.id] && (
                     <button
                       onClick={() => copyCreds(user.id, tempCreds[user.id].email, tempCreds[user.id].temp_password)}

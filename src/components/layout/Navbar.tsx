@@ -10,13 +10,14 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { ViewSwitcher } from './ViewSwitcher';
+import { Avatar } from '@/components/ui/Avatar';
 import { cn } from '@/lib/cn';
 
 export function Navbar() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const { name, reset } = useUserStore();
-  const { isAdminOrCapacitador } = useAuth();
+  const { isAdminOrCapacitador, avatarUrl } = useAuth();
   const completedModules = useProgressStore((s) => s.completedModules);
   const { planModules: modules } = useModules();
   const progress = modules.length > 0 ? completedModules.length / modules.length : 0;
@@ -71,10 +72,15 @@ export function Navbar() {
         <div className="flex items-center gap-1 sm:gap-2">
           {/* "Ver como": salto instantáneo a la vista de aprendiz y de vuelta. */}
           {isAdminOrCapacitador && <ViewSwitcher variant="inline" />}
-          <div className="hidden sm:flex items-center gap-2 h-8 pr-1">
+          <Link
+            to="/profile"
+            className="hidden sm:flex items-center gap-2 h-8 pr-1 rounded-full transition-opacity hover:opacity-80"
+            title={t('profile.title', 'Mi perfil')}
+          >
             <ProgressRing value={progress} size={20} stroke={2} />
+            <Avatar src={avatarUrl} name={name} size={24} />
             <span className="text-[12px] text-text-muted max-w-[100px] truncate">{name}</span>
-          </div>
+          </Link>
           <LanguageSwitcher />
           <ThemeToggle />
           <button

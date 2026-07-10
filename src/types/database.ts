@@ -676,6 +676,11 @@ export interface Database {
           role: 'superadmin' | 'capacitador' | 'learner'
           campaign_id: string | null
           onboarded: boolean
+          avatar_url: string | null
+          phone: string | null
+          national_id: string | null
+          job_title: string | null
+          bio: string | null
           created_at: string
           updated_at: string
         }
@@ -687,6 +692,11 @@ export interface Database {
           role?: 'superadmin' | 'capacitador' | 'learner'
           campaign_id?: string | null
           onboarded?: boolean
+          avatar_url?: string | null
+          phone?: string | null
+          national_id?: string | null
+          job_title?: string | null
+          bio?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -697,6 +707,11 @@ export interface Database {
           role?: 'superadmin' | 'capacitador' | 'learner'
           campaign_id?: string | null
           onboarded?: boolean
+          avatar_url?: string | null
+          phone?: string | null
+          national_id?: string | null
+          job_title?: string | null
+          bio?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -6,6 +6,7 @@ import CampaignList from './pages/CampaignList'
 import NewModulePage from './pages/NewModulePage'
 import ImportContent from './pages/ImportContent'
 import UserList from './pages/UserList'
+import UserProfile from './pages/UserProfile'
 import AdminOverview from './pages/AdminOverview'
 import LiveQuizAdmin from './pages/LiveQuizAdmin'
 import ModuleList from './pages/ModuleList'
@@ -49,6 +50,7 @@ export default function AdminRouter() {
           <Route path="modules/:moduleId/preview" element={<ModulePreview />} />
           {/* Usuarios: superadmin (todo) y capacitador (solo su campaña, lectura + asignar cursos) */}
           <Route path="users" element={isSuperAdmin || isCapacitador ? <UserList /> : <Navigate to="/admin" replace />} />
+          <Route path="users/:id" element={isSuperAdmin || isCapacitador ? <UserProfile /> : <Navigate to="/admin" replace />} />
           {/* Panel global (matriz usuarios × cursos): solo superadmin */}
           <Route path="overview" element={isSuperAdmin ? <AdminOverview /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />

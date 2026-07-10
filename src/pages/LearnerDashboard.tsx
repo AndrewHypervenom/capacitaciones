@@ -29,6 +29,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { signOut } from '@/services/auth.service';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
+import { ViewSwitcher } from '@/components/layout/ViewSwitcher';
+import { Avatar } from '@/components/ui/Avatar';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { Reveal } from '@/components/ui/Reveal';
@@ -41,9 +43,10 @@ const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
 // ganó; `world-explorer` aparece si el aprendiz tiene mundo (aunque siga bloqueada).
 const CONDITIONAL_BADGE_IDS = new Set(['simulator-unlocked', 'world-explorer']);
 
-// `hideSidebar`: superadmin y capacitador reutilizan este diseño de panel pero
-// sin el menú lateral de secciones; conservan su Navbar superior de staff.
-export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?: boolean } = {}) {
+// Todos ven este panel con su menú lateral. El staff que mira "como aprendiz"
+// lo ve idéntico al aprendiz; para volver a gestión usa el ViewSwitcher que se
+// inserta en el sidebar y en la barra móvil (invisible para los aprendices).
+export default function LearnerDashboard() {
   // Asegurar que la página comience desde arriba al montar el componente
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -54,7 +57,7 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
   const { name, language, reset } = useUserStore();
   const { modules: allModules, loading: modulesLoading } = useModules();
   const { courses } = useLearnerCourses();
-  const { user } = useAuth();
+  const { user, avatarUrl } = useAuth();
 
   // Universo de módulos que cuenta para certificación, simulador e insignias:
   // los módulos de los cursos asignados (a la persona o a su campaña), no los
@@ -191,13 +194,17 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
   return (
     <div className="min-h-screen bg-bg">
       {/* Barra superior — solo en móvil/tablet, donde el sidebar no cabe */}
-      {!hideSidebar && (
       <header className="lg:hidden sticky top-0 z-40 flex h-12 items-center justify-between border-b border-line bg-surface px-4">
         <a href="#inicio" className="flex items-center gap-2">
           <img src="/logo.jpg" alt={t('brand')} className="h-6 w-6 rounded-md" width={24} height={24} />
           <span className="text-[14px] font-semibold tracking-tight text-text">{t('brand')}</span>
         </a>
         <div className="flex items-center gap-2">
+          {/* Solo staff: volver a gestión sin salir de la vista de aprendiz */}
+          <ViewSwitcher variant="inline" />
+          <Link to="/profile" aria-label={t('profile.title', 'Mi perfil')}>
+            <Avatar src={avatarUrl} name={name} size={28} />
+          </Link>
           <LanguageSwitcher />
           <ThemeToggle />
           <button
@@ -209,16 +216,17 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
           </button>
         </div>
       </header>
-      )}
 
       {/* Sidebar de navegación (estilo panel) */}
-      {!hideSidebar && (
       <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 z-30 w-64 flex-col border-r border-line bg-surface">
         {/* Marca */}
         <a href="#inicio" className="flex items-center gap-2.5 px-6 pt-6 pb-5">
           <img src="/logo.jpg" alt={t('brand')} className="h-8 w-8 rounded-lg" width={32} height={32} />
           <span className="text-[16px] font-bold tracking-tight text-text">{t('brand')}</span>
         </a>
+
+        {/* Cambio de vista (solo staff): arriba, para volver a gestión al instante */}
+        <ViewSwitcher variant="block" className="px-4 pb-4" />
 
         {/* Navegación por secciones */}
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
@@ -254,15 +262,17 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
 
         {/* Pie del sidebar: usuario, idioma, tema y salida */}
         <div className="border-t border-line px-4 py-4">
-          <div className="mb-3 flex items-center gap-3 px-1">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[14px] font-bold uppercase text-primary">
-              {(name || '?').charAt(0)}
-            </div>
+          <Link
+            to="/profile"
+            className="mb-3 flex items-center gap-3 rounded-2xl px-1 py-1 transition-colors hover:bg-subtle"
+            title={t('profile.title', 'Mi perfil')}
+          >
+            <Avatar src={avatarUrl} name={name} size={36} />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-text">{name}</p>
               <p className="text-[11px] text-text-subtle">Nv. {xpLevel.level} · {xpLevel.label}</p>
             </div>
-          </div>
+          </Link>
           <div className="mb-3 flex items-center gap-2">
             <LanguageSwitcher />
             <ThemeToggle />
@@ -276,9 +286,8 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
           </button>
         </div>
       </aside>
-      )}
 
-      <div className={hideSidebar ? '' : 'lg:pl-64'}>
+      <div className="lg:pl-64">
         <main className="mx-auto max-w-6xl px-4 sm:px-8 pt-10 sm:pt-14 pb-24 overflow-x-hidden">
 
           {/* Hero + estado del aprendizaje */}

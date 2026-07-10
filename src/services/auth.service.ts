@@ -31,7 +31,19 @@ export async function getProfile(userId: string) {
   return data
 }
 
-export async function updateProfile(userId: string, updates: { display_name?: string | null; country?: string | null; language?: string | null }) {
+export async function updateProfile(
+  userId: string,
+  updates: {
+    display_name?: string | null
+    country?: string | null
+    language?: string | null
+    avatar_url?: string | null
+    phone?: string | null
+    national_id?: string | null
+    job_title?: string | null
+    bio?: string | null
+  },
+) {
   const { data, error } = await supabase
     .from('profiles')
     .update(updates)
@@ -40,4 +52,22 @@ export async function updateProfile(userId: string, updates: { display_name?: st
     .single()
   if (error) throw error
   return data
+}
+
+// Sube la foto de perfil al bucket `avatars` bajo la carpeta del propio usuario
+// (`<uid>/...`, requisito de las políticas RLS) y devuelve la URL pública.
+export async function uploadAvatar(userId: string, file: File): Promise<string> {
+  const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
+  const path = `${userId}/avatar-${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('avatars')
+    .upload(path, file, { contentType: file.type, upsert: true })
+  if (error) throw error
+  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl
+}
+
+// Cambia la contraseña del usuario autenticado vía Supabase Auth.
+export async function changePassword(newPassword: string) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw error
 }

@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher'
+import { Avatar } from '@/components/ui/Avatar'
 import { cn } from '@/lib/cn'
 
 type NeonColor = 'green' | 'violet' | 'cyan' | 'magenta' | 'amber' | 'neutral'
@@ -26,7 +27,7 @@ interface MenuCategory {
 
 export function AdminNav() {
   const { t } = useTranslation()
-  const { displayName, isSuperAdmin, isCapacitador } = useAuth()
+  const { displayName, avatarUrl, isSuperAdmin, isCapacitador } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
@@ -165,14 +166,21 @@ export function AdminNav() {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="px-1 mb-1.5">
-            <div className="text-[12px] text-text truncate font-medium" title={displayName}>
-              {displayName}
+          {/* Perfil: avatar + nombre; lleva a la vista de perfil editable. */}
+          <NavLink
+            to="/profile"
+            onClick={() => setIsOpen(false)}
+            className="flex items-center gap-2.5 rounded-xl px-1 py-1.5 mb-1 transition-colors hover:bg-glass-border/10"
+            title={t('profile.title', 'Mi perfil')}
+          >
+            <Avatar src={avatarUrl} name={displayName} size={32} />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] text-text truncate font-medium">{displayName}</div>
+              <NeonBadge color={roleColor} className="text-[9px] mt-0.5">
+                {roleLabel}
+              </NeonBadge>
             </div>
-          </div>
-          <NeonBadge color={roleColor} className="text-[9px]">
-            {roleLabel}
-          </NeonBadge>
+          </NavLink>
 
           {/* "Ver como": alterna al instante entre gestión y vista de aprendiz. */}
           <ViewSwitcher variant="block" className="mt-3" onSwitch={() => setIsOpen(false)} />
