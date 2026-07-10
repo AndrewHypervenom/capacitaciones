@@ -226,44 +226,53 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
 };
 
 /**
- * Busca el intento específico en el JSON, inyecta el feedback y guarda el nuevo estado de la celda
+ * Busca el intento específico en el JSON, inyecta el feedback y guarda el nuevo estado de la celda.
+ *
+ * Un usuario puede tener VARIAS filas en user_progress (una por campaña), así que
+ * no podemos usar .maybeSingle()/.single() por user_id (lanzaría con múltiples
+ * filas y el feedback se perdía). Buscamos la fila que realmente contiene el
+ * intento y actualizamos ESA por su id.
  */
 export const saveTrainerFeedback = async (payload: FeedbackPayload) => {
   try {
-    // 1. Traer la fila actual del usuario de progreso
-    const { data: currentProgress, error: fetchError } = await supabase
+    // 1. Traer TODAS las filas de progreso del usuario (puede tener varias campañas).
+    const { data: rows, error: fetchError } = await supabase
       .from('user_progress')
-      .select('attempts')
-      .eq('user_id', payload.user_id)
-      .maybeSingle();
+      .select('id, attempts')
+      .eq('user_id', payload.user_id);
 
     if (fetchError) throw fetchError;
-    if (!currentProgress || !Array.isArray(currentProgress.attempts)) throw new Error("No se halló el árbol de intentos");
+    if (!rows || rows.length === 0) throw new Error("No se halló el árbol de intentos");
 
-    // 2. Modificar el intento específico dentro de la lista en memoria
-    const updatedAttempts = currentProgress.attempts.map((attempt: any) => {
-      if (attempt.id === payload.attempt_id) {
-        return {
-          ...attempt,
-          trainer_id: payload.trainer_id,
-          trainer_comment: payload.trainer_comment,
-          feedback_date: payload.feedback_date,
-          status: 'evaluated' 
-        };
-      }
-      return attempt;
-    });
+    // 2. Ubicar la fila que contiene el intento a evaluar.
+    const targetRow = rows.find(
+      (r) => Array.isArray(r.attempts) && r.attempts.some((a: any) => a.id === payload.attempt_id),
+    );
+    if (!targetRow) throw new Error("No se encontró el intento a evaluar");
 
-    // 3. Actualizar la celda completa de vuelta en user_progress
+    // 3. Inyectar el feedback en ese intento.
+    const updatedAttempts = (targetRow.attempts as any[]).map((attempt: any) =>
+      attempt.id === payload.attempt_id
+        ? {
+            ...attempt,
+            trainer_id: payload.trainer_id,
+            trainer_comment: payload.trainer_comment,
+            feedback_date: payload.feedback_date,
+            status: 'evaluated',
+          }
+        : attempt,
+    );
+
+    // 4. Guardar de vuelta actualizando exactamente esa fila por su id.
     const { data, error } = await supabase
       .from('user_progress')
       .update({ attempts: updatedAttempts })
-      .eq('user_id', payload.user_id)
+      .eq('id', targetRow.id)
       .select()
       .single();
 
     if (error) throw error;
-    
+
     //  Disparamos el evento también aquí por si el alumno está viendo su pantalla mientras el profesor califica
     window.dispatchEvent(new Event('activity_attempt_saved'));
 
@@ -271,5 +280,93 @@ export const saveTrainerFeedback = async (payload: FeedbackPayload) => {
   } catch (error) {
     console.error("Error guardando el feedback en el JSON de user_progress:", error);
     return { data: null, error };
+  }
+};
+
+// ==========================================
+// 4. RETROALIMENTACIONES DEL APRENDIZ (vista central)
+// ==========================================
+
+export interface StudentFeedbackItem {
+  id: string;
+  game_type: string;
+  score: number;
+  trainer_comment: string;
+  feedback_date: string | null;
+  started_at: string | null;
+  module_slug: string | null;
+  module_title: { es: string; en: string | null; pt: string | null } | null;
+  section_heading: { es: string; en: string | null; pt: string | null } | null;
+}
+
+/**
+ * Todas las retroalimentaciones que un capacitador dejó al aprendiz (a través de
+ * todos sus módulos/campañas), con el nombre real del módulo/sección para poder
+ * consultarlas en un solo lugar. Ordenadas de la más reciente a la más antigua.
+ */
+export const getMyTrainerFeedback = async (
+  userId: string,
+): Promise<{ data: StudentFeedbackItem[]; error: unknown }> => {
+  try {
+    const { data: progressRows, error } = await supabase
+      .from('user_progress')
+      .select('attempts')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    const allAttempts = (progressRows ?? []).flatMap((row) =>
+      Array.isArray(row.attempts) ? row.attempts : [],
+    );
+    const withFeedback = allAttempts.filter(
+      (a: any) => a?.trainer_comment && String(a.trainer_comment).trim().length > 0,
+    );
+    if (withFeedback.length === 0) return { data: [], error: null };
+
+    const sectionIds = [...new Set(withFeedback.map((a: any) => a.section_id).filter(Boolean))];
+    const [sectionsRes, modulesRes] = await Promise.all([
+      sectionIds.length
+        ? supabase
+            .from('module_sections')
+            .select('id, module_id, heading_es, heading_en, heading_pt')
+            .in('id', sectionIds)
+        : Promise.resolve({ data: [] as any[] }),
+      supabase.from('modules').select('id, slug, title_es, title_en, title_pt'),
+    ]);
+    const sections = sectionsRes.data ?? [];
+    const modules = modulesRes.data ?? [];
+
+    const items: StudentFeedbackItem[] = withFeedback.map((a: any) => {
+      const sec = sections.find((s: any) => s.id === a.section_id) || null;
+      const moduleId = a.module_id || sec?.module_id || null;
+      const mod = moduleId ? modules.find((m: any) => m.id === moduleId) || null : null;
+      return {
+        id: a.id,
+        game_type: a.game_type || '',
+        score: a.score ?? 0,
+        trainer_comment: String(a.trainer_comment),
+        feedback_date: a.feedback_date ?? null,
+        started_at: a.started_at ?? null,
+        module_slug: mod?.slug ?? null,
+        module_title: mod
+          ? { es: mod.title_es, en: mod.title_en, pt: mod.title_pt }
+          : null,
+        section_heading: sec
+          ? { es: sec.heading_es, en: sec.heading_en, pt: sec.heading_pt }
+          : null,
+      };
+    });
+
+    // Más reciente primero (por fecha de feedback; si falta, por fecha del intento).
+    items.sort((x, y) => {
+      const tx = new Date(x.feedback_date || x.started_at || 0).getTime();
+      const ty = new Date(y.feedback_date || y.started_at || 0).getTime();
+      return ty - tx;
+    });
+
+    return { data: items, error: null };
+  } catch (error) {
+    console.error('Error obteniendo las retroalimentaciones del aprendiz:', error);
+    return { data: [], error };
   }
 };

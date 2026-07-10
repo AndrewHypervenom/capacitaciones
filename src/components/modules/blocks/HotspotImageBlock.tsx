@@ -17,14 +17,30 @@ export function HotspotImageBlockRenderer({ block, language }: Props) {
 
   return (
     <figure className="space-y-3">
-      <div className="relative rounded-2xl overflow-hidden border border-line select-none">
-        <img
-          src={block.url}
-          alt={block.caption?.[language] || block.caption?.es || ''}
-          loading="lazy"
-          className="w-full block"
-        />
-        {block.points.map((pt, i) => (
+      {/* Contenedor sin recorte: el globo del marcador puede salirse de la imagen
+          sin quedar oculto. El overflow/borde redondeado van solo sobre la imagen. */}
+      <div className="relative select-none">
+        <div className="rounded-2xl overflow-hidden border border-line">
+          <img
+            src={block.url}
+            alt={block.caption?.[language] || block.caption?.es || ''}
+            loading="lazy"
+            className="w-full block"
+          />
+        </div>
+        {block.points.map((pt, i) => {
+          // Apertura inteligente: si el marcador está en la mitad inferior el globo
+          // sube; si está pegado a un borde lateral, se alinea hacia adentro. Así el
+          // texto nunca queda cortado ni oculto dentro de la imagen.
+          const openUp = pt.y > 55
+          const nearLeft = pt.x < 22
+          const nearRight = pt.x > 78
+          const horizClass = nearLeft
+            ? 'left-0 translate-x-0'
+            : nearRight
+              ? 'right-0 translate-x-0'
+              : 'left-1/2 -translate-x-1/2'
+          return (
           <div
             key={i}
             className={cn('absolute -translate-x-1/2 -translate-y-1/2', active === i ? 'z-20' : 'z-10')}
@@ -48,11 +64,15 @@ export function HotspotImageBlockRenderer({ block, language }: Props) {
             <AnimatePresence>
               {active === i && (
                 <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                  initial={{ opacity: 0, y: openUp ? -6 : 6, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                  exit={{ opacity: 0, y: openUp ? -6 : 6, scale: 0.96 }}
                   transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute left-1/2 top-9 -translate-x-1/2 w-56 max-w-[70vw] glass-strong rounded-xl border border-glass-border/15 p-3 shadow-xl text-left"
+                  className={cn(
+                    'absolute w-56 max-w-[70vw] rounded-xl border border-line bg-surface p-3 shadow-xl text-left',
+                    openUp ? 'bottom-9' : 'top-9',
+                    horizClass,
+                  )}
                 >
                   <p className="text-[13px] font-semibold text-text mb-1">
                     {pt.title[language] || pt.title.es}
@@ -64,7 +84,8 @@ export function HotspotImageBlockRenderer({ block, language }: Props) {
               )}
             </AnimatePresence>
           </div>
-        ))}
+          )
+        })}
       </div>
       {block.caption?.[language] && (
         <figcaption className="text-[12.5px] text-text-subtle text-center">

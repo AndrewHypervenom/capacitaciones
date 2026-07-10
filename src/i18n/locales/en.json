@@ -55,9 +55,25 @@
     "simulator": "Simulator",
     "certificate": "Certificate",
     "explore": "Explore",
+    "feedback": "Feedback",
     "logout": "Log out",
     "admin": "Admin",
     "manage": "Manage"
+  },
+  "my_feedback": {
+    "title": "My feedback",
+    "subtitle": "The comments your trainer left about your activities.",
+    "empty_title": "No feedback yet",
+    "empty_desc": "When your trainer reviews your activities, their comments will show up here.",
+    "kpi_total": "Comments",
+    "kpi_avg": "Avg. performance",
+    "module_fallback": "Module",
+    "open_module": "Go to module",
+    "type_quiz": "Assessment",
+    "type_video": "Video quiz",
+    "type_classify": "Classification",
+    "type_sort": "Sequencing",
+    "type_activity": "Activity"
   },
   "dashboard": {
     "greeting": "Hi, {{name}}",

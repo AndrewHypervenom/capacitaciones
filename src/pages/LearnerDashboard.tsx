@@ -11,6 +11,7 @@ import {
   Lock,
   LogOut,
   Medal,
+  MessageSquare,
   Zap,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -240,6 +241,15 @@ export default function LearnerDashboard({ hideSidebar = false }: { hideSidebar?
               </a>
             );
           })}
+
+          {/* Retroalimentación del capacitador: página propia (no una sección) */}
+          <Link
+            to="/feedback"
+            className="flex items-center gap-3 rounded-full px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:bg-subtle hover:text-text"
+          >
+            <MessageSquare className="h-4 w-4 shrink-0 text-text-subtle" />
+            {t('nav.feedback', 'Retroalimentación')}
+          </Link>
         </nav>
 
         {/* Pie del sidebar: usuario, idioma, tema y salida */}

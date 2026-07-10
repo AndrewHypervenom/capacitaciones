@@ -55,9 +55,25 @@
     "simulator": "Simulador",
     "certificate": "Certificado",
     "explore": "Explorar",
+    "feedback": "Retorno",
     "logout": "Sair",
     "admin": "Admin",
     "manage": "Gestão"
+  },
+  "my_feedback": {
+    "title": "Meus retornos",
+    "subtitle": "Os comentários que seu instrutor deixou sobre suas atividades.",
+    "empty_title": "Você ainda não tem retornos",
+    "empty_desc": "Quando seu instrutor revisar suas atividades, os comentários aparecerão aqui.",
+    "kpi_total": "Comentários",
+    "kpi_avg": "Desempenho méd.",
+    "module_fallback": "Módulo",
+    "open_module": "Ir ao módulo",
+    "type_quiz": "Avaliação",
+    "type_video": "Quiz de vídeo",
+    "type_classify": "Classificação",
+    "type_sort": "Sequenciamento",
+    "type_activity": "Atividade"
   },
   "dashboard": {
     "greeting": "Olá, {{name}}",

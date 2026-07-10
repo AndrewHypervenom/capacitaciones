@@ -55,9 +55,25 @@
     "simulator": "Simulador",
     "certificate": "Certificado",
     "explore": "Explorar",
+    "feedback": "Retroalimentación",
     "logout": "Salir",
     "admin": "Admin",
     "manage": "Gestión"
+  },
+  "my_feedback": {
+    "title": "Mis retroalimentaciones",
+    "subtitle": "Los comentarios que tu capacitador dejó sobre tus actividades.",
+    "empty_title": "Aún no tienes retroalimentaciones",
+    "empty_desc": "Cuando tu capacitador revise tus actividades, sus comentarios aparecerán aquí.",
+    "kpi_total": "Comentarios",
+    "kpi_avg": "Desempeño prom.",
+    "module_fallback": "Módulo",
+    "open_module": "Ir al módulo",
+    "type_quiz": "Evaluación",
+    "type_video": "Quiz de video",
+    "type_classify": "Clasificación",
+    "type_sort": "Secuenciación",
+    "type_activity": "Actividad"
   },
   "dashboard": {
     "greeting": "Hola, {{name}}",
