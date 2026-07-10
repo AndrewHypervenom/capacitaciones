@@ -1,15 +1,23 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, XCircle, PlayCircle, ChevronRight, Trophy } from 'lucide-react'
+import { CheckCircle2, XCircle, PlayCircle, ChevronRight, Trophy, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { playQuizSound } from '@/lib/sound'
 import type { VideoQuizMarker, VideoQuizQuestion } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
 interface VideoQuizOverlayProps {
   marker: VideoQuizMarker
   language: Language
+  /** Se dispara al terminar de responder (pantalla de resultados). Persiste el intento
+   *  aunque el aprendiz cierre sin pulsar "Continuar". */
+  onGraded: (score: number, total: number) => void
+  /** Se dispara al pulsar "Continuar video": cierra el overlay y reanuda la reproducción. */
   onComplete: (score: number, total: number) => void
+  /** Cierra el overlay y regresa al segmento anterior para repasar la información;
+   *  el quiz se vuelve a mostrar al cruzar de nuevo el marcador. */
+  onReview: () => void
 }
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E']
@@ -45,7 +53,7 @@ function ConfettiPiece({ color, angle, delay, isBar }: { color: string; angle: n
 
 type Phase = 'question' | 'summary'
 
-export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOverlayProps) {
+export function VideoQuizOverlay({ marker, language, onGraded, onComplete, onReview }: VideoQuizOverlayProps) {
   const { t } = useTranslation()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selected, setSelected] = useState<number | null>(null)
@@ -71,6 +79,7 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
     if (isAnswered) return
     setSelected(i)
     setAnswered((prev) => ({ ...prev, [currentIdx]: i }))
+    playQuizSound(i === q.correct ? 'correct' : 'wrong')
   }
 
   const handleNext = () => {
@@ -85,7 +94,11 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
     if (finalScore / questions.length >= 0.75) {
       setShowConfetti(true)
       setTimeout(() => setShowConfetti(false), 1500)
+      playQuizSound('complete')
     }
+    // Persistir el resultado en cuanto se termina de responder, sin depender de
+    // que el aprendiz pulse "Continuar" (podría cerrar la página antes).
+    onGraded(finalScore, questions.length)
     setPhase('summary')
   }
 
@@ -122,23 +135,34 @@ export function VideoQuizOverlay({ marker, language, onComplete }: VideoQuizOver
                   {marker.title[lang] || marker.title.es}
                 </span>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {questions.map((_, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      'rounded-full transition-all duration-300',
-                      i < currentIdx
-                        ? 'h-2 w-2 bg-neon-green'
-                        : i === currentIdx
-                          ? 'h-2.5 w-2.5 bg-amber-400'
-                          : 'h-2 w-2 bg-zinc-700',
-                    )}
-                  />
-                ))}
-                <span className="ml-1 text-[11px] text-zinc-600 font-mono tabular-nums">
-                  {currentIdx + 1}/{questions.length}
-                </span>
+              <div className="flex items-center gap-4 shrink-0">
+                {/* Repasar: cierra el quiz y vuelve al segmento anterior del video */}
+                <button
+                  type="button"
+                  onClick={onReview}
+                  className="flex items-center gap-1.5 text-[12px] font-medium text-zinc-400 hover:text-white transition-colors"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t('video.review_info')}</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  {questions.map((_, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        'rounded-full transition-all duration-300',
+                        i < currentIdx
+                          ? 'h-2 w-2 bg-neon-green'
+                          : i === currentIdx
+                            ? 'h-2.5 w-2.5 bg-amber-400'
+                            : 'h-2 w-2 bg-zinc-700',
+                      )}
+                    />
+                  ))}
+                  <span className="ml-1 text-[11px] text-zinc-600 font-mono tabular-nums">
+                    {currentIdx + 1}/{questions.length}
+                  </span>
+                </div>
               </div>
             </div>
 

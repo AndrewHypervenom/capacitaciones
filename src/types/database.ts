@@ -224,6 +224,7 @@ export interface Database {
           key_takeaways_es: string[]
           key_takeaways_en: string[] | null
           key_takeaways_pt: string[] | null
+          sound_theme: string | null
           is_published: boolean
           created_at: string
           updated_at: string
@@ -249,6 +250,7 @@ export interface Database {
           key_takeaways_es?: string[]
           key_takeaways_en?: string[] | null
           key_takeaways_pt?: string[] | null
+          sound_theme?: string | null
           is_published?: boolean
           created_at?: string
           updated_at?: string
@@ -274,6 +276,7 @@ export interface Database {
           key_takeaways_es?: string[]
           key_takeaways_en?: string[] | null
           key_takeaways_pt?: string[] | null
+          sound_theme?: string | null
           is_published?: boolean
           updated_at?: string
         }
@@ -1216,6 +1219,10 @@ export interface Database {
       }
       get_course_certification_status: {
         Args: { p_course_id: string }
+        Returns: Json
+      }
+      get_course_activity_summary: {
+        Args: { p_course_id: string; p_user_id: string }
         Returns: Json
       }
       issue_certification: {

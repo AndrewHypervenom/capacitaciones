@@ -28,19 +28,24 @@ export const saveActivityAttempt = async (attemptData: any) => {
   console.log("================================");
 
   try {
-    // 1. Obtener el progreso actual del usuario (si existe)
-    const { data: currentProgress, error: fetchError } = await supabase
+    // 1. Obtener el progreso actual del usuario (si existe).
+    // NO usamos .maybeSingle(): si por historial existieran filas duplicadas de
+    // (user_id, campaign_id), .maybeSingle() lanzaría y el intento se perdería en
+    // silencio. Traemos todas y trabajamos sobre la más reciente.
+    const { data: progressRows, error: fetchError } = await supabase
       .from('user_progress')
-      .select('attempts')
+      .select('id, attempts')
       .eq('user_id', attemptData.user_id)
       .eq('campaign_id', attemptData.campaign_id)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
 
     if (fetchError) throw fetchError;
 
+    const currentProgress = progressRows && progressRows.length > 0 ? progressRows[0] : null;
+
     // 2. Preparar el arreglo de intentos previo o uno nuevo
-    let currentAttempts = currentProgress && Array.isArray(currentProgress.attempts) 
-      ? currentProgress.attempts 
+    let currentAttempts = currentProgress && Array.isArray(currentProgress.attempts)
+      ? currentProgress.attempts
       : [];
 
     // Estructuramos el nuevo intento
@@ -62,12 +67,12 @@ export const saveActivityAttempt = async (attemptData: any) => {
     let data, error;
 
     if (currentProgress) {
-      // ✅ Ya existe la fila → update normal
+      // ✅ Ya existe la fila → update por id (no por user+campaign, para no tocar
+      // eventuales filas duplicadas y actualizar exactamente la más reciente).
       ({ data, error } = await supabase
         .from('user_progress')
         .update({ attempts: currentAttempts })
-        .eq('user_id', attemptData.user_id)
-        .eq('campaign_id', attemptData.campaign_id)
+        .eq('id', currentProgress.id)
         .select());
     } else {
       // ✅ No existía fila de user_progress para este usuario/campaña → la creamos

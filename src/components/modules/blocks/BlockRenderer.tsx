@@ -30,9 +30,10 @@ interface Props {
   noAnimate?: boolean;
   userId?: string;
   campaignId?: string;
-  onGameScore?: (score: number, total: number) => void;
+  /** Último intento guardado por actividad (clave `${sectionId}__GAME_TYPE` o `KC__quizKey`). */
+  savedAttempts?: Map<string, any>;
 }
-function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex, campaignId, onGameScore }: Omit<Props, 'noAnimate'>) {
+function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex, campaignId, savedAttempts }: Omit<Props, 'noAnimate'>) {
   switch (block.type) {
     case 'paragraph':
       return (
@@ -125,13 +126,16 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
     case 'callout':
       return <Callout kind={block.kind} text={block.text[language] || block.text.es} />;
 
-   case 'quiz':
+   case 'quiz': {
       if (!moduleId) return null;
+      const quizKey = sectionId ? `${sectionId}:b${blockIndex ?? 0}` : undefined;
       return (
         <KnowledgeCheck
           moduleId={moduleId}
           sectionIdx={blockIndex ?? 0}
           sectionId={sectionId}
+          quizKey={quizKey}
+          savedAttempt={quizKey ? savedAttempts?.get(`KC__${quizKey}`) : undefined}
           userId={userId}
           campaignId={campaignId}
           quiz={{
@@ -147,6 +151,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           language={language}
         />
       );
+    }
 
     case 'flashcard':
       return <FlashcardBlockRenderer block={block} language={language} />;
@@ -186,7 +191,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           {block.columns.map((col, i) => (
             <div key={i} className="space-y-5 min-w-0 px-5 py-4 rounded-xl bg-glass/10 border border-glass-border/8">
               {col.blocks.map((b, j) => (
-                <BlockRenderer key={j} block={b} language={language} moduleId={moduleId} blockIndex={j} noAnimate userId={userId} campaignId={campaignId} onGameScore={onGameScore} sectionId={sectionId}/>
+                <BlockRenderer key={j} block={b} language={language} moduleId={moduleId} blockIndex={j} noAnimate userId={userId} campaignId={campaignId} sectionId={sectionId} savedAttempts={savedAttempts}/>
               ))}
             </div>
           ))}
@@ -208,7 +213,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           campaignId={campaignId}
           moduleId={moduleId}
           sectionId={sectionId}
-          onScoreChange={onGameScore}
+          savedAttempt={sectionId ? savedAttempts?.get(`${sectionId}__SORT_PROCESS`) : undefined}
         />
       );
 
@@ -221,7 +226,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           campaignId={campaignId}
           moduleId={moduleId}
           sectionId={sectionId}
-          onScoreChange={onGameScore}
+          savedAttempt={sectionId ? savedAttempts?.get(`${sectionId}__CLASSIFY_CASES`) : undefined}
         />
       );
     case 'cards':
@@ -260,7 +265,7 @@ function blockSpacing(type: ContentBlock['type']): string {
   }
 }
 
-export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate, userId, campaignId, onGameScore, sectionId }: Props) {
+export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate, userId, campaignId, sectionId, savedAttempts }: Props) {
 
   // campaignId ya llega resuelto desde ModulePage → module.campaign_id.
   // No usamos fallback de UUID de ceros: si falta, avisamos y dejamos
@@ -280,7 +285,7 @@ export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate
       userId={userId}
       campaignId={idSeguro}
       sectionId={sectionId}
-      onGameScore={onGameScore}
+      savedAttempts={savedAttempts}
     />
   );
 

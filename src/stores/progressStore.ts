@@ -67,7 +67,7 @@ export function getXPProgress(xp: number): number {
 interface ProgressState {
   completedModules: string[];
   attempts: SimulatorAttempt[];
-  checkAnswers: Record<string, Record<number, number>>;
+  checkAnswers: Record<string, Record<string, number>>;
   xp: number;
   streak: number;
   lastActivityDate: string | null;
@@ -75,7 +75,7 @@ interface ProgressState {
   quizCorrectCount: number;
   markModule: (id: string, totalModules?: number) => string[];
   unmarkModule: (id: string) => void;
-  recordCheck: (moduleId: string, sectionIdx: number, optionIdx: number) => void;
+  recordCheck: (moduleId: string, quizKey: string, optionIdx: number) => void;
   addAttempt: (attempt: SimulatorAttempt) => void;
   earnXP: (amount: number) => void;
   updateStreak: () => void;
@@ -125,13 +125,13 @@ export const useProgressStore = create<ProgressState>()(
       unmarkModule: (id) =>
         set({ completedModules: get().completedModules.filter((m) => m !== id) }),
 
-      recordCheck: (moduleId, sectionIdx, optionIdx) =>
+      recordCheck: (moduleId, quizKey, optionIdx) =>
         set({
           checkAnswers: {
             ...get().checkAnswers,
             [moduleId]: {
               ...(get().checkAnswers[moduleId] ?? {}),
-              [sectionIdx]: optionIdx,
+              [quizKey]: optionIdx,
             },
           },
         }),

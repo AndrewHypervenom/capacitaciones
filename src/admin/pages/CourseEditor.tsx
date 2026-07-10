@@ -50,8 +50,9 @@ import {
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, type WorldRow } from '@/services/worlds.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
+import { getCourseEvaluationResults } from '@/services/certification.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
-import type { Campaign, CertConditions, Profile } from '@/types/database'
+import type { Campaign, CertConditions, Profile, CourseEvaluationResult } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -141,6 +142,9 @@ export default function CourseEditor() {
   const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
   const [savingEval, setSavingEval] = useState(false)
   const [campaignScenarios, setCampaignScenarios] = useState<ScenarioRow[]>([])
+  // Resultados por aprendiz (para ver/descargar sus certificados).
+  const [results, setResults] = useState<CourseEvaluationResult[]>([])
+  const [resultsLoading, setResultsLoading] = useState(false)
   // El simulador es opcional y poco frecuente: la sección va plegada por defecto
   // y se auto-expande solo si el curso ya lo usa (escenarios ligados o requerido).
   const [simOpen, setSimOpen] = useState(false)
@@ -273,9 +277,17 @@ export default function CourseEditor() {
   // Escenarios de la campaña (para ligarlos al curso) + resultados de evaluación.
   // Estos hooks van ANTES de cualquier return temprano (Reglas de Hooks).
   const loadEvalData = useCallback(async () => {
-    if (!course?.campaign_id) return
-    getAllScenariosAdmin(course.campaign_id).then(setCampaignScenarios).catch(() => {})
-  }, [course?.campaign_id])
+    if (course?.campaign_id) {
+      getAllScenariosAdmin(course.campaign_id).then(setCampaignScenarios).catch(() => {})
+    }
+    if (courseId) {
+      setResultsLoading(true)
+      getCourseEvaluationResults(courseId)
+        .then(setResults)
+        .catch(() => setResults([]))
+        .finally(() => setResultsLoading(false))
+    }
+  }, [course?.campaign_id, courseId])
 
   useEffect(() => {
     if (tab === 'evaluation') void loadEvalData()
@@ -1644,6 +1656,61 @@ export default function CourseEditor() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* 3. Resultados por aprendiz — ver/descargar sus certificados */}
+          <div>
+            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+              <GraduationCap className="h-4 w-4 text-text-muted" />
+              {t('admin.courses.results_title')}
+            </h3>
+            <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.results_hint')}</p>
+
+            {resultsLoading ? (
+              <div className="text-[13px] text-text-muted">{t('admin.courses.results_loading')}</div>
+            ) : results.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-text-muted">
+                {t('admin.courses.results_empty')}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {results.map((r) => {
+                  const pct = r.modules_total > 0 ? Math.round((r.modules_done / r.modules_total) * 100) : 0
+                  return (
+                    <div key={r.user_id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-subtle border border-line flex items-center justify-center text-[12px] font-semibold text-text-muted">
+                        {(r.display_name || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-medium text-text truncate">
+                          {r.display_name || r.user_id.slice(0, 8)}
+                        </div>
+                        <div className="text-[11px] text-text-muted">
+                          {t('admin.courses.results_modules', { done: r.modules_done, total: r.modules_total })} · {pct}%
+                        </div>
+                      </div>
+                      {r.certified ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-semibold text-primary shrink-0">
+                          <Award className="h-3 w-3" /> {t('admin.courses.results_certified')}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold text-text-muted shrink-0">
+                          {t('admin.courses.results_in_progress')}
+                        </span>
+                      )}
+                      {r.certified && (
+                        <Link
+                          to={`/certificate/${courseId}/${r.user_id}`}
+                          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-text hover:bg-glass/5"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> {t('admin.courses.view_certificate')}
+                        </Link>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

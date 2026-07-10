@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, RefreshCcw, Trophy, Timer, AlertCircle } from 'lucide-react';
 import { saveActivityAttempt } from '@/services/activity.service';
+import { CompletedActivityBanner } from './CompletedActivityBanner';
 import type { GameSortBlock, GameSortProcess } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
@@ -78,7 +79,8 @@ interface Props {
   campaignId?: string;
   moduleId?: string;
   sectionId?: string;
-  onScoreChange?: (score: number, total: number) => void;
+  /** Último intento guardado en la base (para restaurar "ya completado"). */
+  savedAttempt?: any;
 }
 
 const fadeSlide = {
@@ -88,9 +90,13 @@ const fadeSlide = {
   transition: { duration: 0.22, ease: 'easeOut' },
 };
 
-export default function SortGameBlock({ block, language, userId, campaignId, moduleId, sectionId }: Props) {
+export default function SortGameBlock({ block, language, userId, campaignId, moduleId, sectionId, savedAttempt }: Props) {
   const { t } = useTranslation();
   const processes = normalizeProcesses(block);
+
+  // Si el aprendiz ya lo completó (intento en la base) y no ha vuelto a interactuar
+  // en esta sesión, mostramos el aviso "ya completado" en vez de rearrancar el juego.
+  const [interacted, setInteracted] = useState(false);
 
   // ESTADOS INTERNOS
   const [processIdx, setProcessIdx] = useState(0);
@@ -115,9 +121,10 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
 
           const scoreFirstTryLocal = processes.length - usedHelp.filter(Boolean).length;
           const scoreWithHelpLocal = usedHelp.filter(Boolean).length;
-          const pct = processes.length > 0
-            ? Math.round((scoreFirstTryLocal / processes.length) * 100)
-            : 100;
+          // Llegar a la fase 'final' significa que se completaron TODOS los procesos,
+          // así que completar = 100% (estado 'completed'). Los reintentos no bajan el
+          // puntaje; solo quedan como dato informativo en "Flujos por Corregir".
+          const pct = 100;
 
           let mensajeDetalle: string | null = null;
           if (scoreWithHelpLocal > 0) {
@@ -197,6 +204,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
 
   const handleDrop = (targetId: string) => {
     if (!dragId || dragId === targetId) return;
+    setInteracted(true);
     setItems((prev) => {
       const next = [...prev];
       const from = next.findIndex((s) => s.id === dragId);
@@ -253,12 +261,24 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   };
 
   const handleReset = () => {
+    setInteracted(true);
     setProcessIdx(0);
     setItems(shuffled(processes[0].steps));
     setUsedHelp(new Array(processes.length).fill(false));
     setElapsed(0);
     setPhase('playing');
   };
+
+  // Vista "ya completado": intento previo en la base y sin interacción en esta sesión.
+  if (savedAttempt && !interacted) {
+    return (
+      <CompletedActivityBanner
+        scorePct={savedAttempt.score}
+        detail={savedAttempt.submitted_answers?.mensaje_detalle ?? null}
+        onRedo={handleReset}
+      />
+    );
+  }
 
   const scoreFirstTry = processes.length - usedHelp.filter(Boolean).length;
   const scoreWithHelp = usedHelp.filter(Boolean).length;
@@ -502,7 +522,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                   <span className="text-emerald-500 text-xs">🎯</span>
                 </div>
                 <p className="text-2xl font-bold text-neutral-800 dark:text-text">
-                  {processes.length > 0 ? Math.round((scoreFirstTry / processes.length) * 100) : 100}%
+                  100%
                 </p>
                 <p className="text-[10px] text-text-subtle/80 dark:text-text-subtle">
                   {t('module.blocks.sort.efficiency_detail', { total: processes.length, done: scoreFirstTry })}

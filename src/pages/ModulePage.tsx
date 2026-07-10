@@ -29,6 +29,7 @@ import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoMod
 import { ModuleTOC } from '@/components/modules/ModuleTOC';
 import { SectionLayout } from '@/components/modules/SectionLayout';
 import { cn } from '@/lib/cn';
+import { setQuizSoundTheme } from '@/lib/sound';
 import type { ContentBlock } from '@/types/blocks';
 import type { ModuleSection, SectionMedia } from '@/data/modules';
 import { ModulePageSkeleton } from '@/components/ui/Skeleton';
@@ -88,19 +89,16 @@ export default function ModulePage() {
   const isTrainer = userRole === 'capacitador' || userRole === 'superadmin';
   const targetUserId = userId; 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [gameScores, setGameScores] = useState<Record<string, { aciertos: number; total: number }>>({});
-  
-  const handleGameScore = (sectionId: string, aciertos: number, total: number) => {
-    setGameScores(prev => ({
-      ...prev,
-      [sectionId]: { aciertos, total }
-    }));
-  };
 
   const { completedModules, markModule, earnXP, updateStreak } = useProgressStore();
   const { modules, loading } = useModules();
   const { courses } = useLearnerCourses();
   const module = useMemo(() => modules.find((m) => m.id === id), [id, modules]);
+
+  // Tema de sonido de los quizzes (elegido por el capacitador en el módulo).
+  useEffect(() => {
+    setQuizSoundTheme(module?.soundTheme);
+  }, [module?.soundTheme]);
   // Botón "Volver": si el módulo pertenece a un curso, regresa a su página; si no,
   // al panel del aprendiz. El curso se enruta por slug, no por id.
   const backCourse = useMemo(
@@ -217,10 +215,15 @@ export default function ModulePage() {
       const heading = (s.heading?.[language] as string) ?? '';
       if (s.quiz) units.push({ key: `${sid}__KNOWLEDGE_CHECK`, sectionIndex: i, type: 'KNOWLEDGE_CHECK', detail: heading });
       if (Array.isArray(s.blocks)) {
-        for (const b of s.blocks) {
-          const gt = GRADED_BLOCK[(b as any)?.type];
-          if (gt) units.push({ key: `${sid}__${gt}`, sectionIndex: i, type: gt, detail: heading });
-        }
+        s.blocks.forEach((b: any, bi: number) => {
+          const gt = GRADED_BLOCK[b?.type];
+          if (gt) { units.push({ key: `${sid}__${gt}`, sectionIndex: i, type: gt, detail: heading }); return; }
+          // Quiz como bloque dinámico (módulos de IA): cada uno es una unidad
+          // calificable independiente, identificada por su llave `sid:bIndex`.
+          if (b?.type === 'quiz') {
+            units.push({ key: `KC__${sid}:b${bi}`, sectionIndex: i, type: 'KNOWLEDGE_CHECK', detail: heading });
+          }
+        });
       }
       // Video interactivo: cada marcador tipo quiz es una unidad independiente.
       if (Array.isArray(s.videoMarkers)) {
@@ -252,14 +255,67 @@ export default function ModulePage() {
     const m = new Map<string, number>();
     for (const a of ordered as any[]) {
       const sid = a.section_id || a.id;
-      const key =
-        a.game_type === 'VIDEO_QUIZ'
-          ? `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`
-          : `${sid}__${a.game_type}`;
+      const quizKey = a.submitted_answers?.quiz_key;
+      let key: string;
+      if (a.game_type === 'VIDEO_QUIZ') {
+        key = `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`;
+      } else if (a.game_type === 'KNOWLEDGE_CHECK' && quizKey) {
+        // Quiz-bloque: se cruza por su llave única, no por sección.
+        key = `KC__${quizKey}`;
+      } else {
+        key = `${sid}__${a.game_type}`;
+      }
       m.set(key, typeof a.score === 'number' ? a.score : 0);
     }
     return m;
   }, [attemptsFeedback]);
+
+  // Igual que scoreByUnit pero guardando el intento COMPLETO (no solo el score),
+  // para que cada actividad interactiva pueda restaurar su estado "ya completado"
+  // desde la base y el aprendiz no tenga que rehacerla al volver al módulo.
+  const attemptByUnit = useMemo(() => {
+    const ordered = [...(attemptsFeedback ?? [])].sort((a: any, b: any) => {
+      const ta = a.started_at ? new Date(a.started_at).getTime() : 0;
+      const tb = b.started_at ? new Date(b.started_at).getTime() : 0;
+      return ta - tb; // ascendente: el intento más nuevo pisa al viejo
+    });
+    const m = new Map<string, any>();
+    for (const a of ordered as any[]) {
+      const sid = a.section_id || a.id;
+      const quizKey = a.submitted_answers?.quiz_key;
+      let key: string;
+      if (a.game_type === 'VIDEO_QUIZ') {
+        key = `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`;
+      } else if (a.game_type === 'KNOWLEDGE_CHECK' && quizKey) {
+        key = `KC__${quizKey}`;
+      } else {
+        key = `${sid}__${a.game_type}`;
+      }
+      m.set(key, a);
+    }
+    return m;
+  }, [attemptsFeedback]);
+
+  // Resultados guardados de los quizzes de video, por sección → por marcador.
+  // Permite que el reproductor restaure "quiz ya hecho" y no obligue a repetirlo
+  // para poder avanzar el video (la compuerta de avance mira completedQuizzes).
+  const videoQuizResultsBySection = useMemo(() => {
+    const out: Record<string, Record<string, { score: number; total: number }>> = {};
+    const secs = (module?.sections ?? []) as any[];
+    for (const s of secs) {
+      if (!s.id || !Array.isArray(s.videoMarkers)) continue;
+      for (const mk of s.videoMarkers as any[]) {
+        if (mk?.type !== 'quiz') continue;
+        const at = attemptByUnit.get(`${s.id}__VIDEO_QUIZ__${mk.id}`);
+        if (!at) continue;
+        const sa = at.submitted_answers ?? {};
+        const total = typeof sa.total === 'number' ? sa.total : (mk.questions?.length ?? 0);
+        const score = typeof sa.aciertos === 'number' ? sa.aciertos : 0;
+        (out[s.id] ??= {})[mk.id] = { score, total };
+      }
+    }
+    return out;
+  }, [attemptByUnit, module]);
 
   const moduleGate = useMemo(() => {
     type Pending = { unit: GradedUnit; status: 'failed' | 'pending'; score: number | null };
@@ -466,6 +522,7 @@ export default function ModulePage() {
                         userId={targetUserId ?? undefined}
                         campaignId={module.campaign_id}
                         moduleId={module.dbId || module.id}
+                        savedQuizResults={s.id ? videoQuizResultsBySection[s.id] : undefined}
                       />
                     </div>
                   </Reveal>
@@ -492,9 +549,10 @@ export default function ModulePage() {
                               language={language}
                               moduleId={module.dbId || module.id}
                               sectionId={s.id}
-                              blockIndex={j} 
+                              blockIndex={j}
                               userId={targetUserId ?? ''}
                               campaignId={module.campaign_id}
+                              savedAttempts={attemptByUnit}
                             />
                           ))}
                         </div>
@@ -519,6 +577,7 @@ export default function ModulePage() {
                         language={language}
                         quizIndex={quizIdx >= 0 ? quizIdx : undefined}
                         totalQuizzes={totalQuizzes}
+                        savedAttempt={s.id ? attemptByUnit.get(`${s.id}__KNOWLEDGE_CHECK`) : undefined}
                       />
                     )}
                     </SectionLayout>

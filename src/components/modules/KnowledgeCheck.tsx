@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X, Sparkles, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,6 +7,7 @@ import type { Language } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/cn';
+import { playQuizSound } from '@/lib/sound';
 import { saveActivityAttempt } from '@/services/activity.service';
 
 interface Props {
@@ -19,9 +20,44 @@ interface Props {
   language: Language;
   quizIndex?: number;
   totalQuizzes?: number;
+  /**
+   * Identificador único del quiz dentro del módulo. Necesario para los quizzes
+   * que vienen como bloques dinámicos (varios por sección): sin él, todos los
+   * bloques de una sección colisionarían en el store y en la compuerta. Se
+   * guarda en el intento (`quiz_key`) para poder cruzarlo con `gradedUnits`.
+   */
+  quizKey?: string;
+  /**
+   * Último intento guardado en la base para este quiz. Permite restaurar la
+   * respuesta cuando el store local (localStorage) no la tiene todavía —p. ej.
+   * en otro dispositivo o tras limpiar el navegador— para que el aprendiz no
+   * tenga que responderla de nuevo.
+   */
+  savedAttempt?: any;
 }
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'];
+
+/**
+ * Deduce el índice de la opción elegida a partir de un intento guardado.
+ * Prioriza el índice explícito (`opcion_index`); si es un intento antiguo,
+ * intenta casar el texto en cualquier idioma; como último recurso, si acertó
+ * (score 100) asume la opción correcta.
+ */
+function restoredOptionIndex(savedAttempt: any, quiz: SectionQuiz): number | null {
+  const sa = savedAttempt?.submitted_answers;
+  if (!sa) return null;
+  if (typeof sa.opcion_index === 'number' && sa.opcion_index >= 0) return sa.opcion_index;
+  const chosen = sa.opcion_elegida;
+  if (typeof chosen === 'string') {
+    for (const lang of ['es', 'en', 'pt'] as const) {
+      const idx = quiz.options[lang]?.indexOf(chosen);
+      if (typeof idx === 'number' && idx >= 0) return idx;
+    }
+  }
+  if (savedAttempt?.score === 100) return quiz.correct;
+  return null;
+}
 
 const CONFETTI_COLORS = [
   'bg-neon-green',
@@ -74,15 +110,43 @@ export function KnowledgeCheck({
   language,
   quizIndex,
   totalQuizzes,
+  quizKey,
+  savedAttempt,
 }: Props) {
   const { t } = useTranslation();
   const recordCheck = useProgressStore((s) => s.recordCheck);
 
-  // stored: respuesta persistida en el store (null si nunca respondió)
-  const stored = useProgressStore((s) => s.checkAnswers[moduleId]?.[sectionIdx]);
+  // Llave estable del quiz dentro del módulo: la explícita (bloques) o el índice
+  // de sección (quiz de sección tradicional).
+  const storeKey = quizKey ?? String(sectionIdx);
 
-  // Inicializar con la respuesta guardada; undefined → null para que el tipo sea consistente
-  const [selected, setSelected] = useState<number | null>(null);
+  // stored: respuesta persistida en el store (undefined si nunca respondió, -1 si la borró)
+  const stored = useProgressStore((s) => s.checkAnswers[moduleId]?.[storeKey]);
+
+  // Inicializar con la respuesta guardada para que al volver a la página el quiz
+  // siga mostrándose respondido (y no parezca que "no se guardó nada"). El store
+  // local manda; si no tiene nada (undefined), caemos al intento de la base.
+  const [selected, setSelected] = useState<number | null>(() => {
+    if (typeof stored === 'number' && stored >= 0) return stored;
+    if (stored === undefined) {
+      const idx = restoredOptionIndex(savedAttempt, quiz);
+      if (idx !== null && idx >= 0) return idx;
+    }
+    return null;
+  });
+
+  // El intento de la base puede llegar de forma asíncrona (fetch en ModulePage):
+  // si aún no hay respuesta local ni selección, restauramos desde la base y
+  // sincronizamos el store para que la compuerta del módulo la cuente.
+  useEffect(() => {
+    if (selected !== null || stored !== undefined) return;
+    const idx = restoredOptionIndex(savedAttempt, quiz);
+    if (idx !== null && idx >= 0) {
+      setSelected(idx);
+      recordCheck(moduleId, storeKey, idx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedAttempt, stored]);
   const [showConfetti, setShowConfetti] = useState(false);
   const reducedMotion = useReducedMotion();
 
@@ -92,7 +156,10 @@ export function KnowledgeCheck({
 
     // 1. Actualizar estado local y store
     setSelected(i);
-    recordCheck(moduleId, sectionIdx, i);
+    recordCheck(moduleId, storeKey, i);
+
+    // Sonido de feedback (usa el tema del módulo activo).
+    playQuizSound(i === quiz.correct ? 'correct' : 'wrong');
 
     // 2. Guardar intento en backend (solo si tenemos los ids necesarios)
     if (userId && campaignId) {
@@ -107,6 +174,8 @@ export function KnowledgeCheck({
         status: isCorrect ? 'completed' : 'failed',
         time_spent_seconds: 0,
         submitted_answers: {
+          quiz_key: quizKey ?? null,
+          opcion_index: i,
           aciertos: isCorrect ? 1 : 0,
           total: 1,
           errores: isCorrect ? 0 : 1,
@@ -131,7 +200,7 @@ export function KnowledgeCheck({
   const retry = () => {
     setSelected(null);
     // Limpiamos también el store para que al volver a la página no quede bloqueado
-    recordCheck(moduleId, sectionIdx, -1); // -1 = sin respuesta
+    recordCheck(moduleId, storeKey, -1); // -1 = sin respuesta
   };
 
   const answered = selected !== null;
@@ -299,20 +368,22 @@ export function KnowledgeCheck({
                   {quiz.explanation[language]}
                 </p>
 
-                {/* Solo mostrar "Intentar de nuevo" si falló */}
-                {!correct && (
+                {/* Siempre permitir volver a responder: si falló, para corregir; si
+                    acertó, para poder re-registrar el intento (p. ej. quizzes que
+                    quedaron marcados localmente pero sin guardarse en la base). */}
                 <button
                   onClick={retry}
                   className={cn(
                     "mt-4 flex items-center gap-1.5 text-[12.5px] font-medium transition-colors cursor-pointer",
-                    "text-neon-magenta/70 hover:text-neon-magenta"
+                    correct
+                      ? "text-text-subtle hover:text-text"
+                      : "text-neon-magenta/70 hover:text-neon-magenta"
                   )}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Intentar de nuevo
+                  {correct ? t('module.blocks.completed_redo') : t('module.blocks.retry')}
                 </button>
-              )}
-                
+
               </div>
             </motion.div>
           )}

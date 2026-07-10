@@ -96,7 +96,7 @@
     /* Verde primario del panel del aprendiz — más brillante en oscuro */
     --primary: 0 194 40;
     --on-primary: 0 0 0;
-    /* Tokens de glassmorphism — modo oscuro (marca Positivo S+: verde + magenta) */
+    /* Tokens de glassmorphism — modo oscuro (marca LearningAI: verde + magenta) */
     --glass-bg: 255 255 255;
     --glass-border: 255 255 255;
     --neon-green: 0 194 40;

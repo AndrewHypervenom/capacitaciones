@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { saveActivityAttempt } from '@/services/activity.service';
+import { CompletedActivityBanner } from './CompletedActivityBanner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, Trophy, RefreshCcw } from 'lucide-react';
 import type { GameClassifyBlock, ClassifyCase } from '@/types/blocks';
@@ -15,7 +16,8 @@ interface Props {
   campaignId?: string;
   moduleId?: string;
   sectionId?: string;
-  onScoreChange?: (score: number, total: number) => void;
+  /** Último intento guardado en la base (para restaurar "ya completado"). */
+  savedAttempt?: any;
 }
 
 const CATEGORY_STYLES: Record<string, { border: string; bg: string; text: string; badge: string }> = {
@@ -61,8 +63,11 @@ function playSound(type: 'success' | 'error' | 'final') {
   } catch { /* silencio */ }
 }
 
-export function ClassifyGameBlockRenderer({ block, language, userId, campaignId, moduleId, sectionId }: Props) {
+export function ClassifyGameBlockRenderer({ block, language, userId, campaignId, moduleId, sectionId, savedAttempt }: Props) {
   const { t } = useTranslation();
+  // Vista "ya completado": si hay intento en la base y el aprendiz no ha vuelto a
+  // interactuar en esta sesión, mostramos el aviso en vez de rearrancar el juego.
+  const [interacted, setInteracted] = useState(false);
   const [assigned, setAssigned] = useState<Record<string, ClassifyCase[]>>(() =>
     Object.fromEntries(block.categories.map((c) => [c.id, []]))
   );
@@ -87,6 +92,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
   }, [submitted]);
 
   const handleDragStart = (caseId: string, fromCategory: string | null) => {
+    setInteracted(true);
     dragCase.current = { caseId, fromCategory };
   };
 
@@ -196,12 +202,24 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
   };
 
   const handleReset = () => {
+    setInteracted(true);
     setAssigned(Object.fromEntries(block.categories.map((c) => [c.id, []])));
     setUnassigned([...block.cases].sort(() => Math.random() - 0.5));
     setSubmitted(false);
     setElapsedSeconds(0);
     setFallosDetectados(0);
   };
+
+  // Aviso "ya completado" (intento previo en la base, sin interacción esta sesión).
+  if (savedAttempt && !interacted) {
+    return (
+      <CompletedActivityBanner
+        scorePct={savedAttempt.score}
+        detail={savedAttempt.submitted_answers?.mensaje_detalle ?? null}
+        onRedo={handleReset}
+      />
+    );
+  }
 
   const correctCount = submitted
     ? block.cases.filter((c) => assigned[c.correctCategoryId]?.find((a) => a.id === c.id)).length

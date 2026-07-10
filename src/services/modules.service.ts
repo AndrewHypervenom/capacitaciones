@@ -78,6 +78,7 @@ export interface DbModuleRow {
   key_takeaways_es: string[]
   key_takeaways_en: string[] | null
   key_takeaways_pt: string[] | null
+  sound_theme: string | null
   is_published: boolean
   created_at: string
   updated_at: string
@@ -154,6 +155,7 @@ function dbRowToLearningModule(
     key_takeaways_es: string[]
     key_takeaways_en: string[] | null
     key_takeaways_pt: string[] | null
+    sound_theme?: string | null
     module_sections: Array<{
       id: string
       sort_order: number
@@ -300,6 +302,7 @@ function dbRowToLearningModule(
       en: row.key_takeaways_en ?? row.key_takeaways_es ?? [],
       pt: row.key_takeaways_pt ?? row.key_takeaways_es ?? [],
     },
+    soundTheme: row.sound_theme ?? 'chime',
     sections,
   }
 }

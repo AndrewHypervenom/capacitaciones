@@ -60,21 +60,21 @@ export function AdminNav() {
       ]
     }] : []),
     {
-      title: t('admin.nav.group_people', 'Personas'),
-      icon: Users,
-      items: [
-        { to: '/admin/campaigns', label: t('admin.nav.campaigns', 'Campañas'), end: false },
-        { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false },
-        { to: '/admin/feedback', label: t('admin.nav.feedback', 'Progreso unificado'), end: false },
-        { to: '/admin/evaluaciones', label: t('admin.nav.evaluaciones', 'Evaluaciones'), end: false }
-      ]
-    },
-    {
       title: t('admin.nav.group_content', 'Contenido'),
       icon: BookOpen,
       items: [
+        { to: '/admin/campaigns', label: t('admin.nav.campaigns', 'Campañas'), end: false },
         { to: '/admin/courses', label: t('admin.nav.courses', 'Cursos'), end: false },
         { to: '/admin/modules', label: t('admin.nav.modules', 'Módulos'), end: false }
+      ]
+    },
+    {
+      title: t('admin.nav.group_people', 'Personas'),
+      icon: Users,
+      items: [
+        { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false },
+        { to: '/admin/feedback', label: t('admin.nav.feedback', 'Progreso unificado'), end: false },
+        { to: '/admin/evaluaciones', label: t('admin.nav.evaluaciones', 'Evaluaciones'), end: false }
       ]
     },
     {

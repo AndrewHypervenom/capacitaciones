@@ -86,6 +86,8 @@ export interface LearningModule {
   duration: number;
   objectives: Record<Language, string[]>;
   keyTakeaways: Record<Language, string[]>;
+  /** Tema de sonido de los quizzes ('chime' | 'arcade' | 'soft' | 'off'). */
+  soundTheme?: string;
   sections: ModuleSection[];
 }
 
@@ -193,9 +195,9 @@ export const MODULES: LearningModule[] = [
                 },
                 correct: 2,
                 explanation: T(
-                  'La operación atiende clientes en Colombia, México y Argentina desde una misma plataforma Five9.',
-                  'The operation serves customers in Colombia, Mexico and Argentina from one Five9 platform.',
-                  'A operação atende clientes na Colômbia, México e Argentina a partir de uma única plataforma Five9.',
+                  'La operación atiende clientes en Colombia, México y Argentina desde una misma plataforma LearningAI.',
+                  'The operation serves customers in Colombia, Mexico and Argentina from one LearningAI platform.',
+                  'A operação atende clientes na Colômbia, México e Argentina a partir de uma única plataforma LearningAI.',
                 ),
               },
               {
@@ -206,15 +208,15 @@ export const MODULES: LearningModule[] = [
                   'Qual plataforma coordena toda a operação?',
                 ),
                 options: {
-                  es: ['Salesforce', 'Zendesk', 'Five9', 'Freshdesk'],
-                  en: ['Salesforce', 'Zendesk', 'Five9', 'Freshdesk'],
-                  pt: ['Salesforce', 'Zendesk', 'Five9', 'Freshdesk'],
+                  es: ['Salesforce', 'Zendesk', 'LearningAI', 'Freshdesk'],
+                  en: ['Salesforce', 'Zendesk', 'LearningAI', 'Freshdesk'],
+                  pt: ['Salesforce', 'Zendesk', 'LearningAI', 'Freshdesk'],
                 },
                 correct: 2,
                 explanation: T(
-                  'Five9 es la plataforma centralizada que une los tres países bajo una misma gestión.',
-                  'Five9 is the centralized platform that unites the three countries under one management.',
-                  'Five9 é a plataforma centralizada que une os três países sob uma mesma gestão.',
+                  'LearningAI es la plataforma centralizada que une los tres países bajo una misma gestión.',
+                  'LearningAI is the centralized platform that unites the three countries under one management.',
+                  'LearningAI é a plataforma centralizada que une os três países sob uma mesma gestão.',
                 ),
               },
             ],
@@ -278,15 +280,15 @@ export const MODULES: LearningModule[] = [
         body: {
           es: [
             'Entregamos experiencias memorables en cada llamada. Detrás de cada contacto hay una persona confiando en que encontraremos una solución rápida, humana y clara.',
-            'Este módulo es una visión panorámica: la operación atiende clientes en Colombia, México y Argentina desde una misma plataforma Five9, coordinada por supervisores regionales.',
+            'Este módulo es una visión panorámica: la operación atiende clientes en Colombia, México y Argentina desde una misma plataforma LearningAI, coordinada por supervisores regionales.',
           ],
           en: [
             'We deliver memorable experiences on every call. Behind each contact there is a person trusting us to find a fast, human and clear solution.',
-            'This module is a panoramic view: the operation serves customers in Colombia, Mexico and Argentina from one Five9 platform, coordinated by regional supervisors.',
+            'This module is a panoramic view: the operation serves customers in Colombia, Mexico and Argentina from one LearningAI platform, coordinated by regional supervisors.',
           ],
           pt: [
             'Entregamos experiências memoráveis em cada ligação. Atrás de cada contato há uma pessoa confiando que encontraremos uma solução rápida, humana e clara.',
-            'Este módulo é uma visão panorâmica: a operação atende clientes na Colômbia, México e Argentina a partir de uma única plataforma Five9, coordenada por supervisores regionais.',
+            'Este módulo é uma visão panorâmica: a operação atende clientes na Colômbia, México e Argentina a partir de uma única plataforma LearningAI, coordenada por supervisores regionais.',
           ],
         },
         quiz: {
@@ -298,25 +300,25 @@ export const MODULES: LearningModule[] = [
           options: {
             es: [
               'Solo Colombia, con supervisores locales.',
-              'Tres países (CO, MX, AR) coordinados desde una sola plataforma Five9.',
+              'Tres países (CO, MX, AR) coordinados desde una sola plataforma LearningAI.',
               'Una operación global multilenguaje.',
             ],
             en: [
               'Colombia only, with local supervisors.',
-              'Three countries (CO, MX, AR) coordinated from a single Five9 platform.',
+              'Three countries (CO, MX, AR) coordinated from a single LearningAI platform.',
               'A global multilingual operation.',
             ],
             pt: [
               'Apenas Colômbia, com supervisores locais.',
-              'Três países (CO, MX, AR) coordenados em uma única plataforma Five9.',
+              'Três países (CO, MX, AR) coordenados em uma única plataforma LearningAI.',
               'Uma operação global multilíngue.',
             ],
           },
           correct: 1,
           explanation: T(
-            'La operación cubre CO, MX y AR sobre una misma plataforma Five9 con supervisores regionales.',
-            'The operation covers CO, MX and AR on the same Five9 platform with regional supervisors.',
-            'A operação cobre CO, MX e AR na mesma plataforma Five9 com supervisores regionais.',
+            'La operación cubre CO, MX y AR sobre una misma plataforma LearningAI con supervisores regionales.',
+            'The operation covers CO, MX and AR on the same LearningAI platform with regional supervisors.',
+            'A operação cobre CO, MX e AR na mesma plataforma LearningAI com supervisores regionais.',
           ),
         },
       },
@@ -324,17 +326,17 @@ export const MODULES: LearningModule[] = [
         heading: T('Qué se espera de ti', 'What we expect from you', 'O que esperamos de você'),
         body: {
           es: [
-            'Puntualidad absoluta en el login de Five9 al inicio del turno.',
+            'Puntualidad absoluta en el login de LearningAI al inicio del turno.',
             'Seguir el protocolo de saludo, verificación de identidad, diagnóstico, resolución y cierre.',
             'Documentar cada llamada con la disposición correcta antes de pasar a la siguiente.',
           ],
           en: [
-            'Absolute punctuality when logging into Five9 at shift start.',
+            'Absolute punctuality when logging into LearningAI at shift start.',
             'Follow the protocol: greeting, ID verification, diagnosis, resolution and closing.',
             'Document every call with the correct disposition before taking the next one.',
           ],
           pt: [
-            'Pontualidade absoluta no login do Five9 no início do turno.',
+            'Pontualidade absoluta no login do LearningAI no início do turno.',
             'Seguir o protocolo: saudação, verificação de identidade, diagnóstico, resolução e encerramento.',
             'Documentar cada ligação com a disposição correta antes de atender a próxima.',
           ],
@@ -381,10 +383,10 @@ export const MODULES: LearningModule[] = [
     ],
   },
   {
-    id: 'five9-fundamentos',
+    id: 'plataforma-fundamentos',
     icon: 'Headphones',
     duration: 14,
-    title: T('Fundamentos de Five9', 'Five9 fundamentals', 'Fundamentos do Five9'),
+    title: T('Fundamentos de LearningAI', 'LearningAI fundamentals', 'Fundamentos do LearningAI'),
     subtitle: T(
       'Interfaz, estados del agente, disposiciones y atajos que usarás todos los días.',
       'Interface, agent states, dispositions and shortcuts you will use every day.',
@@ -393,17 +395,17 @@ export const MODULES: LearningModule[] = [
     objectives: TL(
       [
         'Distinguir entre los estados READY, NOT READY y ACW.',
-        'Reconocer cada zona de la interfaz Five9.',
+        'Reconocer cada zona de la interfaz LearningAI.',
         'Aplicar buenas prácticas con el softphone.',
       ],
       [
         'Distinguish between READY, NOT READY and ACW states.',
-        'Recognize every zone of the Five9 interface.',
+        'Recognize every zone of the LearningAI interface.',
         'Apply best practices with the softphone.',
       ],
       [
         'Distinguir entre os estados READY, NOT READY e ACW.',
-        'Reconhecer cada área da interface Five9.',
+        'Reconhecer cada área da interface LearningAI.',
         'Aplicar boas práticas com o softphone.',
       ],
     ),
@@ -1023,7 +1025,7 @@ export const MODULES: LearningModule[] = [
         },
       },
       {
-        heading: T('Documentación en Five9', 'Documentation in Five9', 'Documentação no Five9'),
+        heading: T('Documentación en LearningAI', 'Documentation in LearningAI', 'Documentação no LearningAI'),
         body: {
           es: [
             'Selecciona la disposición correcta. Si dudas, pregunta al supervisor en el canal.',

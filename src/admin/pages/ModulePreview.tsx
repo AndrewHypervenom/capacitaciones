@@ -12,6 +12,7 @@ import { SectionLayout } from '@/components/modules/SectionLayout'
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule'
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer'
 import { cn } from '@/lib/cn'
+import { setQuizSoundTheme } from '@/lib/sound'
 import type { CalloutKind, ModuleSection, SectionStyle } from '@/data/modules'
 import type { ContentBlock } from '@/types/blocks'
 
@@ -29,7 +30,7 @@ export default function ModulePreview() {
   useEffect(() => {
     if (!moduleId) return
     getModuleWithSectionsRaw(moduleId)
-      .then((data) => { setMod(data); setLoading(false) })
+      .then((data) => { setMod(data); setQuizSoundTheme(data.sound_theme); setLoading(false) })
       .catch(() => setLoading(false))
   }, [moduleId])
 

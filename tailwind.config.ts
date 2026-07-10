@@ -44,7 +44,7 @@ export default {
           cyan:    'rgb(var(--neon-cyan) / <alpha-value>)',
           magenta: 'rgb(var(--neon-magenta) / <alpha-value>)',
         },
-        // Paleta estática para hero / landing (marca Positivo S+)
+        // Paleta estática para hero / landing (marca LearningAI)
         'positivo-green': '#00C228',
         'positivo-magenta': '#E11D74',
         'apple-gray': '#86868b',

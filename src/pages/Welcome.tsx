@@ -208,7 +208,7 @@ export default function Welcome() {
         }}
       >
         <div className="flex items-center gap-2.5">
-          <img src="/logo.jpg" alt="Positivo S+" className="h-7 w-7 rounded-lg" />
+          <img src="/logo.jpg" alt="LearningAI" className="h-7 w-7 rounded-lg" />
           <span className="font-bold text-[15px] tracking-tight text-text">LearningAI</span>
         </div>
         <div className="flex items-center gap-2">
@@ -414,13 +414,13 @@ export default function Welcome() {
                         borderBottom: '1px solid rgb(var(--line))',
                       }}
                     >
-                      <img src="/logo.jpg" alt="Positivo S+" className="h-10 w-10 rounded-xl flex-shrink-0" />
+                      <img src="/logo.jpg" alt="LearningAI" className="h-10 w-10 rounded-xl flex-shrink-0" />
                       <div>
                         <h2 className="text-[19px] font-bold tracking-[-0.025em] text-text leading-tight">
                           {t('welcome.login_title')}
                         </h2>
                         <p className="text-[11px] tracking-wide mt-0.5" style={{ color: 'rgb(var(--text-subtle))' }}>
-                          LearningAI · Positivo S+
+                          LearningAI
                         </p>
                       </div>
                     </motion.div>

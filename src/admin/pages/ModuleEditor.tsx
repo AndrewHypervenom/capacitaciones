@@ -21,6 +21,7 @@ import {
   Square,
   Star,
   Trash2,
+  Volume2,
   X,
   ZoomIn,
   ArrowDownUp,
@@ -67,6 +68,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import { QUIZ_SOUND_THEMES, playQuizSound } from '@/lib/sound'
 import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
@@ -1017,6 +1019,7 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
   })
   const [icon, setIcon] = useState(mod.icon)
   const [duration, setDuration] = useState(String(mod.duration_min))
+  const [soundTheme, setSoundTheme] = useState(mod.sound_theme ?? 'chime')
 
   const parseLines = (text: string) =>
     text.split('\n').map((l) => l.trim()).filter(Boolean)
@@ -1025,7 +1028,7 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
   useEffect(() => {
     if (!isFirstRender.current) onDirty(true)
     isFirstRender.current = false
-  }, [title, subtitle, icon, duration])
+  }, [title, subtitle, icon, duration, soundTheme])
 
   const handleSave = async () => {
     setSaving(true)
@@ -1047,6 +1050,7 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
         key_takeaways_pt: parseLines(keyTakeaways.pt),
         icon,
         duration_min: parseInt(duration, 10) || 0,
+        sound_theme: soundTheme,
       }
       await updateModuleMetadata(mod.id, updates)
       onSaved(updates)
@@ -1142,6 +1146,29 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
             <FieldLabel>{t('admin.modules.field_duration')}</FieldLabel>
             <GlassInput value={duration} onChange={setDuration} placeholder="8" />
           </div>
+        </div>
+
+        <div>
+          <FieldLabel>{t('admin.modules.field_sound')}</FieldLabel>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {QUIZ_SOUND_THEMES.map(({ value, labelKey }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => { setSoundTheme(value); playQuizSound('correct', value) }}
+                className={cn(
+                  'flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl transition-all duration-200 glass border',
+                  soundTheme === value
+                    ? 'border-neon-green/30 bg-neon-green/8 text-neon-green'
+                    : 'border-glass-border/8 text-text-muted hover:border-glass-border/20 hover:text-text',
+                )}
+              >
+                <Volume2 className={cn('h-4 w-4', value === 'off' && 'opacity-40')} />
+                <span className="text-[10px] font-semibold uppercase tracking-wide">{t(labelKey)}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-text-subtle mt-1.5">{t('admin.modules.field_sound_hint')}</p>
         </div>
 
         <div>

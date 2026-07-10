@@ -31,6 +31,9 @@ interface InteractiveVideoModuleProps {
   userId?: string
   campaignId?: string
   moduleId?: string
+  /** Resultados guardados en la base (markerId → {score,total}) para restaurar
+   *  los quizzes ya hechos y no obligar a repetirlos para avanzar el video. */
+  savedQuizResults?: Record<string, QuizResult>
 }
 
 function formatTime(s: number): string {
@@ -53,7 +56,7 @@ interface QuizResult {
   total: number
 }
 
-export function InteractiveVideoModule({ section, language, userId, campaignId, moduleId }: InteractiveVideoModuleProps) {
+export function InteractiveVideoModule({ section, language, userId, campaignId, moduleId, savedQuizResults }: InteractiveVideoModuleProps) {
   const { t } = useTranslation()
   const videoRef = useRef<PlayerLike | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -75,7 +78,9 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const [showOverlay, setShowOverlay] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [seeking, setSeeking] = useState(false)
-  const [completedQuizzes, setCompletedQuizzes] = useState<Record<string, QuizResult>>({})
+  // Se inicializa con los intentos ya guardados en la base para no obligar a
+  // rehacer quizzes de video ya aprobados al volver al módulo.
+  const [completedQuizzes, setCompletedQuizzes] = useState<Record<string, QuizResult>>(() => ({ ...(savedQuizResults ?? {}) }))
   const [showResumeToast, setShowResumeToast] = useState(false)
   const [savedTime, setSavedTime] = useState(0)
   const [showFsChapters, setShowFsChapters] = useState(false)
@@ -92,6 +97,25 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     if (m.timeSeconds <= currentTime) return i
     return acc
   }, -1)
+
+  // Los intentos de la base pueden llegar async (fetch en ModulePage). Fusionamos
+  // los quizzes ya hechos que aún no estén en el estado y los marcamos como
+  // "ya cruzados" para que el overlay no vuelva a interrumpir la reproducción.
+  useEffect(() => {
+    if (!savedQuizResults) return
+    setCompletedQuizzes((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const [id, res] of Object.entries(savedQuizResults)) {
+        if (!(id in next)) {
+          next[id] = res
+          triggeredRef.current.add(id)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [savedQuizResults])
 
   // Desplazar la lista de capítulos al ítem activo — solo dentro de la lista, nunca la página
   useEffect(() => {
@@ -213,14 +237,29 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     }
   }
 
+  // Tiempo del primer quiz de video AÚN no realizado. Actúa como tope: el aprendiz
+  // no puede adelantar el video más allá de un quiz que no ha hecho.
+  const firstPendingQuizTime = (): number | null => {
+    for (const m of sortedMarkers) {
+      if (m.type === 'quiz' && !completedQuizzes[m.id]) return m.timeSeconds
+    }
+    return null
+  }
+
   const seekTo = (secs: number) => {
     const v = videoRef.current
     if (!v) return
-    const clamped = Math.max(0, Math.min(secs, duration))
-    v.currentTime = clamped
+    let target = Math.max(0, Math.min(secs, duration))
+    // Compuerta de avance: si hay un quiz pendiente por delante, no se puede saltar
+    // más allá de él. Se ubica justo antes para que la reproducción lo cruce y dispare.
+    const gate = firstPendingQuizTime()
+    if (gate != null && target > gate) {
+      target = Math.max(0, gate - 0.4)
+    }
+    v.currentTime = target
     // Sincronizar la referencia de cruce: un salto manual no debe disparar quizzes
     // intermedios; solo el avance natural de la reproducción los cruza.
-    lastTimeRef.current = clamped
+    lastTimeRef.current = target
   }
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -289,35 +328,57 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     setShowRates(false)
   }
 
-  const handleOverlayComplete = (score: number, total: number) => {
-    if (activeMarker) {
-      setCompletedQuizzes((prev) => ({ ...prev, [activeMarker.id]: { score, total } }))
+  // Se dispara al terminar de responder (pantalla de resultados del overlay).
+  // Marca el quiz como hecho y persiste el intento aunque el aprendiz cierre sin
+  // pulsar "Continuar". Con el quiz ya hecho, se libera el avance del video.
+  const handleQuizGraded = (score: number, total: number) => {
+    if (!activeMarker) return
+    setCompletedQuizzes((prev) => ({ ...prev, [activeMarker.id]: { score, total } }))
 
-      // Registrar el intento para que aparezca en el panel de evaluaciones.
-      // Solo si tenemos los ids reales (el preview de admin no los pasa → no ensucia datos).
-      if (userId && campaignId) {
-        const pct = total > 0 ? Math.round((score / total) * 100) : 0
-        void saveActivityAttempt({
-          user_id: userId,
-          campaign_id: campaignId,
-          module_id: moduleId || '',
-          section_id: section.id || '',
-          game_type: 'VIDEO_QUIZ',
-          score: pct,
-          status: pct >= 75 ? 'completed' : 'failed',
-          time_spent_seconds: 0,
-          submitted_answers: {
-            marker_id: activeMarker.id,
-            aciertos: score,
-            total,
-            errores: total - score,
-            tema: activeMarker.title[lang],
-          },
-        })
-      }
+    // Registrar el intento para que aparezca en el panel de evaluaciones y cuente
+    // en la compuerta del módulo. Solo si tenemos los ids reales (el preview de
+    // admin no los pasa → no ensucia datos).
+    if (userId && campaignId) {
+      const pct = total > 0 ? Math.round((score / total) * 100) : 0
+      void saveActivityAttempt({
+        user_id: userId,
+        campaign_id: campaignId,
+        module_id: moduleId || '',
+        section_id: section.id || '',
+        game_type: 'VIDEO_QUIZ',
+        score: pct,
+        status: pct >= 75 ? 'completed' : 'failed',
+        time_spent_seconds: 0,
+        submitted_answers: {
+          marker_id: activeMarker.id,
+          aciertos: score,
+          total,
+          errores: total - score,
+          tema: activeMarker.title[lang],
+        },
+      })
     }
+  }
+
+  const handleOverlayComplete = () => {
     setShowOverlay(false)
     setActiveMarker(null)
+    videoRef.current?.play()
+    setPlaying(true)
+  }
+
+  // "Repasar el video": cierra el quiz sin responderlo y regresa al inicio del
+  // segmento (marcador anterior) para volver a ver la información. Como el quiz
+  // sigue pendiente, la compuerta de avance se mantiene y el overlay reaparece
+  // al cruzar de nuevo el marcador.
+  const handleReviewQuiz = () => {
+    if (!activeMarker) return
+    const markerTime = activeMarker.timeSeconds
+    triggeredRef.current.delete(activeMarker.id)
+    setShowOverlay(false)
+    setActiveMarker(null)
+    const prev = sortedMarkers.filter((m) => m.timeSeconds < markerTime).pop()
+    seekTo(prev ? prev.timeSeconds : Math.max(0, markerTime - 20))
     videoRef.current?.play()
     setPlaying(true)
   }
@@ -335,6 +396,8 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     const dur = videoRef.current?.duration ?? 0
     setDuration(dur)
     triggeredRef.current.clear()
+    // Re-sembrar los quizzes ya hechos para que no vuelvan a interrumpir el video.
+    for (const id of Object.keys(completedQuizzes)) triggeredRef.current.add(id)
     lastTimeRef.current = videoRef.current?.currentTime ?? 0
 
     try {
@@ -559,7 +622,9 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
               key={activeMarker.id}
               marker={activeMarker}
               language={language}
+              onGraded={handleQuizGraded}
               onComplete={handleOverlayComplete}
+              onReview={handleReviewQuiz}
             />
           )}
         </AnimatePresence>

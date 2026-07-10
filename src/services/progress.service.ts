@@ -3,7 +3,7 @@ import type { SimulatorAttempt } from '@/stores/progressStore'
 
 export interface ProgressData {
   completedModules: string[]
-  checkAnswers: Record<string, Record<number, number>>
+  checkAnswers: Record<string, Record<string, number>>
   attempts: SimulatorAttempt[]
   xp: number
   streak: number
@@ -27,7 +27,7 @@ export async function getProgress(userId: string, campaignId: string): Promise<P
 
   return {
     completedModules: data.completed_modules ?? [],
-    checkAnswers: (data.check_answers ?? {}) as unknown as Record<string, Record<number, number>>,
+    checkAnswers: (data.check_answers ?? {}) as unknown as Record<string, Record<string, number>>,
     attempts: (data.attempts ?? []) as unknown as SimulatorAttempt[],
     xp: data.xp_total ?? 0,
     streak: data.streak_days ?? 0,
@@ -42,14 +42,21 @@ export async function upsertProgress(
   campaignId: string,
   progress: ProgressData,
 ) {
+  // IMPORTANTE: NO escribir `attempts` ni `check_answers` aquí.
+  // La columna `user_progress.attempts` es propiedad exclusiva de
+  // `saveActivityAttempt` (intentos de quizzes/juegos). El store local guarda en
+  // su propio `attempts` los intentos del SIMULADOR, que no tienen nada que ver;
+  // si los mandáramos aquí, este upsert (que corre en segundo plano desde
+  // useProgressSync) SOBRESCRIBIRÍA y borraría los intentos de actividades → el
+  // candado del módulo se quedaba en "0 hechas". El localStorage es la fuente de
+  // verdad de la UI y nadie lee de vuelta estas columnas (getProgress no se usa),
+  // así que solo espejamos lo agregado (módulos completados, xp, racha, insignias).
   const { error } = await supabase
     .from('user_progress')
     .upsert({
       user_id: userId,
       campaign_id: campaignId,
       completed_modules: progress.completedModules,
-      check_answers: progress.checkAnswers,
-      attempts: progress.attempts as unknown as import('@/types/database').Json,
       xp_total: progress.xp,
       streak_days: progress.streak,
       last_activity: progress.lastActivityDate,
