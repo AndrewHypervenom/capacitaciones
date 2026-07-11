@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users } from 'lucide-react'
+import { Select } from '@/components/ui/Select'
 import {
   fetchAiUsage, fetchAiUsageUsers, functionLabel, functionColor, FUNCTION_META,
   type AiUsageData, type AiUsageFilters, type AiUsageRow, type UserOption,
@@ -125,33 +126,35 @@ export default function AiUsage() {
 
         {/* Función + modelo + usuario + búsqueda */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <select
+          <Select
+            className="sm:w-auto sm:min-w-[180px]"
             value={functionName}
-            onChange={(e) => setFunctionName(e.target.value)}
-            className="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-text outline-none focus:border-[rgb(var(--brand-green))]/40"
-          >
-            <option value="all">Todos los tipos</option>
-            {Object.entries(FUNCTION_META).map(([key, m]) => (
-              <option key={key} value={key}>{m.icon} {m.label}</option>
-            ))}
-          </select>
+            onChange={setFunctionName}
+            options={[
+              { value: 'all', label: 'Todos los tipos' },
+              ...Object.entries(FUNCTION_META).map(([key, m]) => ({
+                value: key,
+                label: `${m.icon} ${m.label}`,
+              })),
+            ]}
+          />
 
-          <select
+          <Select
+            className="sm:w-auto sm:min-w-[160px]"
             value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-text outline-none focus:border-[rgb(var(--brand-green))]/40"
-          >
-            {MODEL_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
+            onChange={setModel}
+            options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+          />
 
-          <select
+          <Select
+            className="sm:w-auto sm:min-w-[200px] sm:max-w-[200px]"
             value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            className="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-text outline-none focus:border-[rgb(var(--brand-green))]/40 sm:max-w-[200px]"
-          >
-            <option value="all">Todos los usuarios</option>
-            {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
+            onChange={setUserId}
+            options={[
+              { value: 'all', label: 'Todos los usuarios' },
+              ...users.map((u) => ({ value: u.id, label: u.name })),
+            ]}
+          />
 
           <form
             className="relative sm:max-w-xs w-full"

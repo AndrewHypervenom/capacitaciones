@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Avatar } from '@/components/ui/Avatar'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { updateProfile, uploadAvatar } from '@/services/auth.service'
 import { getUserCoursesAdmin, type AdminUserCourse } from '@/services/courses.service'
@@ -304,15 +305,16 @@ export default function UserProfile() {
               </div>
               <div>
                 <label className={editLabel}>{t('profile.country', 'País')}</label>
-                <select
+                <Select
                   value={form.country}
-                  onChange={set('country')}
-                  className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] text-text outline-none transition-colors focus:border-brand-green"
-                >
-                  <option value="CO">Colombia</option>
-                  <option value="MX">México</option>
-                  <option value="AR">Argentina</option>
-                </select>
+                  onChange={(v) => setForm((f) => ({ ...f, country: v }))}
+                  className="[&>button]:h-12 [&>button]:rounded-2xl [&>button]:px-4 [&>button]:text-[15px]"
+                  options={[
+                    { value: 'CO', label: 'Colombia' },
+                    { value: 'MX', label: 'México' },
+                    { value: 'AR', label: 'Argentina' },
+                  ]}
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className={editLabel}>{t('profile.bio', 'Acerca de mí')}</label>

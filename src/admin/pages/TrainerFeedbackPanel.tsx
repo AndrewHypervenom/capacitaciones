@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getPendingAttempts, saveTrainerFeedback, FeedbackPayload } from '@/services/activity.service';
+import { getModuleTimesForUsers, type ModuleTimeRow } from '@/services/moduleTime.service';
+import { formatElapsed } from '@/hooks/useModuleTimer';
 import { useAuth } from '@/hooks/useAuth';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/stores/toastStore';
@@ -28,6 +30,7 @@ interface SubmittedAnswers {
 interface PendingAttempt {
   id: string;
   user_id: string;
+  module_id?: string | null;
   game_type: string;
   score: number;
   submitted_answers: SubmittedAnswers | null;
@@ -63,6 +66,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const confirm = useConfirm();
 
   const [attempts, setAttempts] = useState<PendingAttempt[]>([]);
+  // Tiempo activo por aprendiz+módulo, indexado por `${user_id}:${module_id}`.
+  const [moduleTimes, setModuleTimes] = useState<Record<string, ModuleTimeRow>>({});
   const [selectedAttempt, setSelectedAttempt] = useState<PendingAttempt | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +108,14 @@ export const TrainerFeedbackPanel: React.FC = () => {
       setLoading(true);
       const { data, error: fetchError } = await getPendingAttempts({ excludeSuperadmins: !isSuperAdmin });
       if (fetchError) setError(t('admin.trainer_panel.load_err_title'));
-      else if (data) setAttempts(data as PendingAttempt[]);
+      else if (data) {
+        const rows = data as PendingAttempt[];
+        setAttempts(rows);
+        // Cargamos el tiempo activo de todos los aprendices con entregas en una
+        // sola consulta y lo cruzamos por user_id+module_id al pintar cada intento.
+        const userIds = rows.map((r) => r.user_id).filter(Boolean);
+        getModuleTimesForUsers(userIds).then(setModuleTimes);
+      }
       setLoading(false);
     };
     loadAttempts();
@@ -566,6 +578,27 @@ export const TrainerFeedbackPanel: React.FC = () => {
                           <Clock className="w-3 h-3" />
                           {t('admin.trainer_panel.submitted_at')} {relativeTime(selectedAttempt.started_at)}
                         </div>
+                        {/* Tiempo activo real que el aprendiz pasó en el módulo */}
+                        {(() => {
+                          const mt = selectedAttempt.module_id
+                            ? moduleTimes[`${selectedAttempt.user_id}:${selectedAttempt.module_id}`]
+                            : undefined;
+                          return (
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                                <Clock className="w-3 h-3" />
+                                {t('admin.trainer_panel.module_time_label')}:{' '}
+                                {mt ? formatElapsed(mt.elapsedMs) : t('admin.trainer_panel.module_time_none')}
+                              </span>
+                              {mt?.completedAt && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/10 border border-green-500/20 text-[10px] font-bold uppercase tracking-wide text-green-600 dark:text-green-400">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  {t('admin.trainer_panel.module_time_completed')}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 

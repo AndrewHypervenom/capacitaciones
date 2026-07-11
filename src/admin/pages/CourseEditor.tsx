@@ -57,6 +57,7 @@ import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
@@ -1609,16 +1610,16 @@ export default function CourseEditor() {
                     ))}
                   </div>
                   {simRule === 'after_module' && (
-                    <select
+                    <Select
+                      className="mt-3"
                       value={simUnlockModuleId ?? ''}
-                      onChange={(e) => setSimUnlockModuleId(e.target.value || null)}
-                      className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-text"
-                    >
-                      <option value="">{t('admin.courses.sim_unlock_pick_module')}</option>
-                      {course.modules.map((m) => (
-                        <option key={m.id} value={m.id}>{m.title_es}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => setSimUnlockModuleId(v || null)}
+                      placeholder={t('admin.courses.sim_unlock_pick_module')}
+                      options={[
+                        { value: '', label: t('admin.courses.sim_unlock_pick_module') },
+                        ...course.modules.map((m) => ({ value: m.id, label: m.title_es })),
+                      ]}
+                    />
                   )}
                   <div className="flex justify-end mt-3">
                     <Button variant="glass" size="sm" onClick={handleSaveConditions} disabled={savingEval}>

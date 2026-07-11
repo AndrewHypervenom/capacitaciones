@@ -20,6 +20,7 @@ import {
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
 import { FilterDropdown } from './FilterDropdown';
+import { Select } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
 import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import i18n from '@/i18n';
@@ -988,18 +989,20 @@ function ClassifyInlineEditor({ block, onChange, lang }: { block: any; onChange:
                 className="w-full bg-transparent text-[14px] text-text outline-none"
               />
             </div>
-            <select
+            <Select
+              compact
+              className="shrink-0 w-auto max-w-[40%]"
               value={c.correctCategoryId ?? ''}
-              onChange={(e) => editCaseCategory(c.id, e.target.value)}
-              className="shrink-0 glass rounded-xl px-2 py-1.5 border border-glass-border/10 text-[13px] text-text bg-transparent outline-none max-w-[40%]"
-            >
-              <option value="">{i18n.t('admin.modules.be.category_dash')}</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name?.[lang] || cat.name?.es || i18n.t('admin.modules.be.no_name')}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => editCaseCategory(c.id, v)}
+              placeholder={i18n.t('admin.modules.be.category_dash')}
+              options={[
+                { value: '', label: i18n.t('admin.modules.be.category_dash') },
+                ...categories.map((cat) => ({
+                  value: cat.id,
+                  label: cat.name?.[lang] || cat.name?.es || i18n.t('admin.modules.be.no_name'),
+                })),
+              ]}
+            />
             <button
               type="button"
               onClick={() => deleteCase(c.id)}

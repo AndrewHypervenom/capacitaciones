@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import i18n from '@/i18n'
 import { Plus, Trash2, Layers, FileText } from 'lucide-react'
+import { Select } from '@/components/ui/Select'
 import type { DbSectionRow } from '@/services/modules.service'
 import type { GameClassifyBlock, ClassifyCategory, ClassifyCase } from '@/types/blocks'
 import { cn } from '@/lib/cn'
@@ -12,8 +13,10 @@ interface Props {
 }
 
 const AVAILABLE_COLORS = ['purple', 'pink', 'red', 'orange', 'blue', 'green']
-const SELECT_CLASS =
-  'border border-glass-border/10 bg-surface px-2 py-1.5 rounded-lg text-[12px] text-text outline-none focus:border-neon-green/30 dark:bg-neutral-800 [&>option]:bg-surface [&>option]:text-text dark:[&>option]:bg-neutral-800'
+const COLOR_HEX: Record<string, string> = {
+  purple: '#a855f7', pink: '#ec4899', red: '#ef4444',
+  orange: '#f97316', blue: '#3b82f6', green: '#22c55e',
+}
 
 export function ClassifyGameEditor({ section, language, onBlockChange }: Props) {
   // Inicializamos el bloque leyendo los datos guardados o creando una plantilla base limpia
@@ -164,19 +167,22 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                 className="flex-1 bg-transparent px-3 py-1.5 border border-glass-border/10 rounded-lg text-[13px] text-text focus:border-neon-green/30 outline-none"
               />
 
-              <select
+              <Select
+                compact
+                tinted
+                className="w-auto shrink-0"
                 value={cat.color || 'purple'}
-                onChange={(e) => {
+                onChange={(v) => {
                   const nextCats = [...block.categories]
-                  nextCats[idx].color = e.target.value
+                  nextCats[idx].color = v
                   updateBlock({ ...block, categories: nextCats })
                 }}
-                className={SELECT_CLASS}
-              >
-                {AVAILABLE_COLORS.map(color => (
-                  <option key={color} value={color}>{color.toUpperCase()}</option>
-                ))}
-              </select>
+                options={AVAILABLE_COLORS.map(color => ({
+                  value: color,
+                  label: color.toUpperCase(),
+                  color: COLOR_HEX[color],
+                }))}
+              />
 
               <button
                 type="button"
@@ -237,22 +243,24 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                 <label className="text-[11px] uppercase tracking-wider text-text-muted font-medium">
                   Categoría Correcta:
                 </label>
-                <select
+                <Select
+                  compact
+                  className="flex-1"
                   value={c.correctCategoryId}
-                  onChange={(e) => {
+                  onChange={(v) => {
                     const nextCases = [...block.cases]
-                    nextCases[idx].correctCategoryId = e.target.value
+                    nextCases[idx].correctCategoryId = v
                     updateBlock({ ...block, cases: nextCases })
                   }}
-                  className={cn(SELECT_CLASS, 'flex-1 py-1')}
-                >
-                  <option value="">{i18n.t('admin.modules.be.ge_select_category')}</option>
-                  {block.categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name[language] || cat.name['es'] || 'Sin nombre'}
-                    </option>
-                  ))}
-                </select>
+                  placeholder={i18n.t('admin.modules.be.ge_select_category')}
+                  options={[
+                    { value: '', label: i18n.t('admin.modules.be.ge_select_category') },
+                    ...block.categories.map(cat => ({
+                      value: cat.id,
+                      label: cat.name[language] || cat.name['es'] || 'Sin nombre',
+                    })),
+                  ]}
+                />
               </div>
             </div>
           ))}

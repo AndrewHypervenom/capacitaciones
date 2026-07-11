@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, ChevronDown } from 'lucide-react'
+import { X } from 'lucide-react'
+import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -321,33 +322,23 @@ export function ArenaEditorModal({
               {!scopedToCampaign && (
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
-                  <div className="relative">
-                    <select
-                      value={form.campaign_id}
-                      onChange={e => setForm(f => ({ ...f, campaign_id: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none min-h-[44px]"
-                    >
-                      <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
-                      {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
-                  </div>
+                  <Select
+                    value={form.campaign_id}
+                    onChange={v => setForm(f => ({ ...f, campaign_id: v }))}
+                    options={[
+                      { value: '', label: i18n.t('admin.worlds.no_campaign') },
+                      ...campaigns.map(c => ({ value: c.id, label: c.name })),
+                    ]}
+                  />
                 </div>
               )}
               <div>
                 <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.arena.theme_type')}</label>
-                <div className="relative">
-                  <select
-                    value={form.theme_type}
-                    onChange={e => setForm(f => ({ ...f, theme_type: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none min-h-[44px]"
-                  >
-                    {THEME_TYPES.map(tt => (
-                      <option key={tt} value={tt}>{THEME_LABELS[tt]}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
-                </div>
+                <Select
+                  value={form.theme_type}
+                  onChange={v => setForm(f => ({ ...f, theme_type: v }))}
+                  options={THEME_TYPES.map(tt => ({ value: tt, label: THEME_LABELS[tt] }))}
+                />
               </div>
             </div>
 

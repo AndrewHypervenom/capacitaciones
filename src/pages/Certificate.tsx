@@ -272,13 +272,16 @@ export default function Certificate() {
     ? !!course?.cert_conditions?.require_simulator
     : !!status!.require_simulator;
   const simScore = trainerMode ? learner!.best_score : (status!.cert_score ?? status!.best_score);
-  // Puntaje: si el curso exige simulador, el del simulador; si no, el desempeño
-  // real en actividades del curso (quizzes/juegos).
-  const scoreValue = requireSim ? simScore : activity.score;
+  // Puntaje "Mejor Puntaje" IDÉNTICO para aprendiz y capacitador (paridad):
+  //  - Si el curso exige simulador → el mejor puntaje del simulador.
+  //  - Si no → el desempeño real en actividades (quizzes/juegos).
+  // En la vista del capacitador el desempeño del aprendiz llega por el RPC
+  // get_course_activity_summary (SECURITY DEFINER). Si por algo no viniera,
+  // caemos al mejor puntaje registrado del aprendiz para no dejar el dato vacío.
+  const scoreValue = requireSim
+    ? simScore
+    : (activity.score ?? (trainerMode ? (learner?.best_score ?? null) : null));
   const showScore = scoreValue != null && scoreValue > 0;
-  // Vista del capacitador: mejor puntuación registrada del aprendiz. Se muestra
-  // como dato aparte salvo cuando ya es el puntaje principal (curso con simulador).
-  const bestScore = trainerMode && !requireSim ? (learner?.best_score ?? null) : null;
   // Fecha de finalización: último quiz/juego resuelto; si no hay, la de emisión.
   const issuedAtRaw = trainerMode ? learner?.issued_at : status?.issued_at;
   const dateSource = activity.completedAt ?? issuedAtRaw ?? null;
@@ -453,23 +456,13 @@ export default function Certificate() {
                     label={t('certificate.modules_completed')}
                     value={`${completedCount}/${totalModules}`}
                   />
+                  {/* Mejor Puntaje: mismo dato para el aprendiz y para el capacitador */}
                   {showScore && (
                     <>
                       <div style={{ width: 1, height: 34, background: GRAY_LIGHT }} />
                       <MetaItem
                         label={t('certificate.best_score')}
                         value={`${scoreValue}/100`}
-                        accent
-                      />
-                    </>
-                  )}
-                  {/* Vista del capacitador: mejor puntuación registrada del aprendiz */}
-                  {trainerMode && bestScore != null && bestScore > 0 && (
-                    <>
-                      <div style={{ width: 1, height: 34, background: GRAY_LIGHT }} />
-                      <MetaItem
-                        label={t('certificate.trainer_best_score')}
-                        value={`${bestScore}/100`}
                         accent
                       />
                     </>

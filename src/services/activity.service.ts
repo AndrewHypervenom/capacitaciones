@@ -195,6 +195,9 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
           allFormattedAttempts.push({
             id: attempt.id || crypto.randomUUID(),
             user_id: row.user_id,
+            // UUID real del módulo (module.dbId); lo usa el panel para leer el
+            // tiempo activo del aprendiz en ese módulo desde module_time.
+            module_id: moduleId,
             game_type: attempt.game_type || (sectionData?.section_style === 'game-classify' ? 'CLASSIFY_CASES' : 'SORT_PROCESS'),
             score: attempt.score ?? 100,
             started_at: attempt.started_at || row.updated_at || new Date().toISOString(),

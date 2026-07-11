@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Target, X, ChevronDown, BookOpen, Video, FileText, Zap, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Target, X, BookOpen, Video, FileText, Zap, Pencil, Trash2 } from 'lucide-react'
+import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
@@ -471,34 +472,28 @@ export default function LearningMissions() {
                 {campaigns.length > 0 && !scopedToCampaign && (
                   <div>
                     <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
-                    <div className="relative">
-                      <select
-                        value={form.campaign_id}
-                        onChange={e => setForm(f => ({ ...f, campaign_id: e.target.value }))}
-                        className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none"
-                      >
-                        <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
-                        {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
-                    </div>
+                    <Select
+                      value={form.campaign_id}
+                      onChange={v => setForm(f => ({ ...f, campaign_id: v }))}
+                      options={[
+                        { value: '', label: i18n.t('admin.worlds.no_campaign') },
+                        ...campaigns.map(c => ({ value: c.id, label: c.name })),
+                      ]}
+                    />
                   </div>
                 )}
 
                 {/* Categoría */}
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.category')}</label>
-                  <div className="relative">
-                    <select
-                      value={form.category}
-                      onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors appearance-none"
-                    >
-                      <option value="">{i18n.t('admin.worlds.no_category')}</option>
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
-                  </div>
+                  <Select
+                    value={form.category}
+                    onChange={v => setForm(f => ({ ...f, category: v }))}
+                    options={[
+                      { value: '', label: i18n.t('admin.worlds.no_category') },
+                      ...CATEGORIES.map(c => ({ value: c, label: c })),
+                    ]}
+                  />
                 </div>
 
                 {/* Pasos dinámicos */}
@@ -534,26 +529,19 @@ export default function LearningMissions() {
                             className="flex-1 min-w-0 text-[13px] bg-transparent text-text placeholder-text-subtle focus:outline-none"
                           />
                           {/* Type selector */}
-                          <div className="relative shrink-0">
-                            <select
-                              value={step.type}
-                              onChange={e => updateStep(step.id, { type: e.target.value as StepType })}
-                              className="pl-6 pr-2 py-1 min-h-[36px] rounded-lg text-[11px] font-medium border appearance-none focus:outline-none transition-colors cursor-pointer"
-                              style={{
-                                background: `${STEP_COLORS[step.type]}15`,
-                                color: STEP_COLORS[step.type],
-                                borderColor: `${STEP_COLORS[step.type]}30`,
-                              }}
-                            >
-                              {(Object.keys(STEP_LABELS) as StepType[]).map(t => (
-                                <option key={t} value={t}>{STEP_LABELS[t]}</option>
-                              ))}
-                            </select>
-                            <StepIcon
-                              className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none"
-                              style={{ color: STEP_COLORS[step.type] }}
-                            />
-                          </div>
+                          <Select
+                            compact
+                            tinted
+                            className="w-auto shrink-0"
+                            leadingIcon={<StepIcon className="h-3 w-3" style={{ color: STEP_COLORS[step.type] }} />}
+                            value={step.type}
+                            onChange={v => updateStep(step.id, { type: v as StepType })}
+                            options={(Object.keys(STEP_LABELS) as StepType[]).map(t => ({
+                              value: t,
+                              label: STEP_LABELS[t],
+                              color: STEP_COLORS[t],
+                            }))}
+                          />
                           <button
                             type="button"
                             onClick={() => removeStep(step.id)}

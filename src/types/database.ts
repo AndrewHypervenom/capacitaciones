@@ -818,6 +818,30 @@ export interface Database {
         }
         Relationships: []
       }
+      module_time: {
+        Row: {
+          user_id: string
+          module_id: string
+          elapsed_ms: number
+          completed_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          module_id: string
+          elapsed_ms?: number
+          completed_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          module_id?: string
+          elapsed_ms?: number
+          completed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       worlds: {
         Row: {
           id: string

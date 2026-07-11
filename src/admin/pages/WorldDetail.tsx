@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, X, ChevronDown, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, BookOpen, AlertTriangle } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, BookOpen, AlertTriangle } from 'lucide-react'
+import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -463,23 +464,13 @@ export default function WorldDetail() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.sound')}</label>
-              <div className="relative">
-                <select value={world.sound_theme||'neutral'} onChange={e => handleTheme('sound_theme',e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer">
-                  {Object.entries(SOUND_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none"/>
-              </div>
+              <Select value={world.sound_theme||'neutral'} onChange={v => handleTheme('sound_theme',v)}
+                options={Object.entries(SOUND_LABELS).map(([k,v]) => ({ value: k, label: v }))} />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.transition')}</label>
-              <div className="relative">
-                <select value={world.transition_type||'clouds'} onChange={e => handleTheme('transition_type',e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer">
-                  {Object.entries(TRANS_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none"/>
-              </div>
+              <Select value={world.transition_type||'clouds'} onChange={v => handleTheme('transition_type',v)}
+                options={Object.entries(TRANS_LABELS).map(([k,v]) => ({ value: k, label: v }))} />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.character')}</label>
@@ -772,16 +763,13 @@ export default function WorldDetail() {
               {linkedCourse && (
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.region_from_module')}</label>
-                  <div className="relative">
-                    <select value={regionModuleId} onChange={e => pickRegionModule(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer min-h-[44px]">
-                      <option value="">{i18n.t('admin.worlds.region_custom')}</option>
-                      {courseModules
+                  <Select value={regionModuleId} onChange={v => pickRegionModule(v)}
+                    options={[
+                      { value: '', label: i18n.t('admin.worlds.region_custom') },
+                      ...courseModules
                         .filter(m => m.id === regionModuleId || !regions.some(r => r.module_id === m.id))
-                        .map(m => <option key={m.id} value={m.id}>{m.title_es}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none"/>
-                  </div>
+                        .map(m => ({ value: m.id, label: m.title_es })),
+                    ]} />
                   <p className="text-[11px] text-text-muted mt-1">
                     {regionModuleId ? i18n.t('admin.worlds.region_module_hint') : i18n.t('admin.worlds.region_custom_hint')}
                   </p>
@@ -850,19 +838,16 @@ export default function WorldDetail() {
                     <Plus className="h-3 w-3" /> {i18n.t('admin.worlds.quiz_new', { defaultValue: 'Crear quiz nuevo' })}
                   </button>
                 </div>
-                <div className="relative">
-                  <select value={levelForm.quiz_id} onChange={e => setLevelForm(f => ({...f,quiz_id:e.target.value}))}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none appearance-none cursor-pointer min-h-[44px]">
-                    <option value="">{i18n.t('admin.worlds.no_quiz_assigned')}</option>
-                    {/* Solo quizzes SIN USAR de este mundo (más el ya asignado a este
-                        nivel al editar). Los que ya están en otro nivel no se listan
-                        para no ensuciar el picker: lo normal es "Crear quiz nuevo". */}
-                    {quizzes
+                {/* Solo quizzes SIN USAR de este mundo (más el ya asignado a este
+                    nivel al editar). Los que ya están en otro nivel no se listan
+                    para no ensuciar el picker: lo normal es "Crear quiz nuevo". */}
+                <Select value={levelForm.quiz_id} onChange={v => setLevelForm(f => ({...f,quiz_id:v}))}
+                  options={[
+                    { value: '', label: i18n.t('admin.worlds.no_quiz_assigned') },
+                    ...quizzes
                       .filter(q => q.id === levelForm.quiz_id || !levels.some(l => l.quiz_id === q.id))
-                      .map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none"/>
-                </div>
+                      .map(q => ({ value: q.id, label: q.title })),
+                  ]} />
                 <p className="text-[11px] text-text-muted mt-1">
                   {quizzes.filter(q => q.id === levelForm.quiz_id || !levels.some(l => l.quiz_id === q.id)).length === 0
                     ? i18n.t('admin.worlds.quiz_none_yet', { defaultValue: 'Todavía no hay quizzes sin usar. Creá uno con “Crear quiz nuevo”.' })

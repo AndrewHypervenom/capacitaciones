@@ -8,6 +8,7 @@ import { useUserStore } from '@/stores/userStore';
 import { updateProfile, uploadAvatar, changePassword } from '@/services/auth.service';
 import { Avatar } from '@/components/ui/Avatar';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { NeonBadge } from '@/components/ui/NeonBadge';
 import { toast } from '@/stores/toastStore';
@@ -187,15 +188,16 @@ export default function Profile() {
           </div>
           <div>
             <label className={label}>{t('profile.country', 'País')}</label>
-            <select
+            <Select
               value={form.country}
-              onChange={set('country')}
-              className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] text-text outline-none transition-colors focus:border-brand-green"
-            >
-              <option value="CO">Colombia</option>
-              <option value="MX">México</option>
-              <option value="AR">Argentina</option>
-            </select>
+              onChange={(v) => setForm((f) => ({ ...f, country: v }))}
+              className="[&>button]:h-12 [&>button]:rounded-2xl [&>button]:px-4 [&>button]:text-[15px]"
+              options={[
+                { value: 'CO', label: 'Colombia' },
+                { value: 'MX', label: 'México' },
+                { value: 'AR', label: 'Argentina' },
+              ]}
+            />
           </div>
           <div className="sm:col-span-2">
             <label className={label}>{t('profile.bio', 'Acerca de mí')}</label>

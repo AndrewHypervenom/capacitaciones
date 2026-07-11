@@ -10,6 +10,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { recompressAllAvatars, type RecompressProgress } from '@/services/avatarMaintenance'
 import { Avatar } from '@/components/ui/Avatar'
+import { Select } from '@/components/ui/Select'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
@@ -273,6 +274,15 @@ export default function UserList() {
     capacitador: t('roles.capacitador'),
     learner: t('roles.learner'),
   }
+  const roleOptions = (['learner', 'capacitador', 'superadmin'] as const).map((r) => ({
+    value: r,
+    label: roleLabel[r],
+    color: roleText[r],
+  }))
+  const campaignOptions = (empty: string) => [
+    { value: '', label: empty },
+    ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+  ]
 
   return (
     <div className="p-4 sm:p-8">
@@ -373,28 +383,19 @@ export default function UserList() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
-                    <select
+                    <Select
                       value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value as Profile['role'])}
-                      className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
-                    >
-                      <option value="learner">{roleLabel.learner}</option>
-                      <option value="capacitador">{roleLabel.capacitador}</option>
-                      <option value="superadmin">{roleLabel.superadmin}</option>
-                    </select>
+                      onChange={(v) => setInviteRole(v as Profile['role'])}
+                      options={roleOptions}
+                    />
                   </div>
                   <div>
                     <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">{i18n.t('admin.users.col_campaign')}</label>
-                    <select
+                    <Select
                       value={inviteCampaign}
-                      onChange={(e) => setInviteCampaign(e.target.value)}
-                      className="w-full rounded-xl px-3 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none min-h-[44px]"
-                    >
-                      <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
-                      {campaigns.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                      onChange={setInviteCampaign}
+                      options={campaignOptions(i18n.t('admin.worlds.no_campaign'))}
+                    />
                   </div>
                 </div>
               )}
@@ -433,16 +434,12 @@ export default function UserList() {
             />
           </div>
           {isSuperAdmin && (
-            <select
+            <Select
+              className="sm:w-56"
               value={campaignFilter}
-              onChange={(e) => setCampaignFilter(e.target.value)}
-              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] text-text outline-none focus:border-primary min-h-[44px] sm:w-56"
-            >
-              <option value="">{t('admin.users.all_campaigns')}</option>
-              {campaigns.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+              onChange={setCampaignFilter}
+              options={campaignOptions(t('admin.users.all_campaigns'))}
+            />
           )}
         </div>
       )}
@@ -560,19 +557,14 @@ export default function UserList() {
                   </div>
                 </div>
                 {isSuperAdmin ? (
-                  <select
+                  <Select
+                    compact
+                    tinted
+                    className="w-auto shrink-0"
                     value={user.role}
-                    onChange={(e) => handleRoleChange(user.id, e.target.value as Profile['role'])}
-                    className="rounded-lg px-2 py-1 text-[11px] font-medium border-0 outline-none min-h-[44px]"
-                    style={{
-                      background: roleColors[user.role],
-                      color: roleText[user.role],
-                    }}
-                  >
-                    <option value="learner">{roleLabel.learner}</option>
-                    <option value="capacitador">{roleLabel.capacitador}</option>
-                    <option value="superadmin">{roleLabel.superadmin}</option>
-                  </select>
+                    onChange={(v) => handleRoleChange(user.id, v as Profile['role'])}
+                    options={roleOptions}
+                  />
                 ) : (
                   <span
                     className="rounded-lg px-2.5 py-1 text-[11px] font-medium"
@@ -582,16 +574,13 @@ export default function UserList() {
                   </span>
                 )}
                 {isSuperAdmin && (
-                  <select
+                  <Select
+                    compact
+                    className="w-auto shrink-0"
                     value={user.campaign_id ?? ''}
-                    onChange={(e) => handleCampaignChange(user.id, e.target.value)}
-                    className="rounded-lg px-2 py-1 text-[11px] text-text-muted bg-subtle border-0 outline-none min-h-[44px]"
-                  >
-                    <option value="">{i18n.t('admin.worlds.no_campaign')}</option>
-                    {campaigns.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => handleCampaignChange(user.id, v)}
+                    options={campaignOptions(i18n.t('admin.worlds.no_campaign'))}
+                  />
                 )}
                 <div className="flex items-center gap-1">
                   <button

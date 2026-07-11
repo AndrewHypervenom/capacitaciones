@@ -38,6 +38,7 @@ import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer';
 import { toast } from '@/stores/toastStore';
 import { getModuleFeedbackForUser } from '@/services/activity.service';
 import { getCourseModulePassPct } from '@/services/courses.service';
+import { useModuleTimer } from '@/hooks/useModuleTimer';
 import type { Language } from '@/stores/userStore';
 import { FeedbackModal } from '@/components/modules/FeedbackModal';
 
@@ -120,7 +121,12 @@ export default function ModulePage() {
   const moduleIndex = useMemo(() => siblings.findIndex((m) => m.id === id), [id, siblings]);
   const nextModule = moduleIndex >= 0 ? siblings[moduleIndex + 1] : undefined;
   const completed = module ? completedModules.includes(module.id) : false;
-  
+
+  // Cronómetro real de tiempo activo en el módulo (se pausa al cambiar de
+  // pestaña, sobrevive recargas, se persiste en BD y se congela al completar).
+  // Usamos dbId (UUID real) porque module.id es el slug y el FK apunta a modules.id.
+  const { label: activeTimeLabel } = useModuleTimer(module?.dbId ?? module?.id, userId, completed);
+
   const [attemptsFeedback, setAttemptsFeedback] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [apprenticeComment, setApprenticeComment] = useState('');
@@ -372,8 +378,9 @@ export default function ModulePage() {
     const sectionsToCorrect = currentAttempts.filter((a: any) => (a.score || 0) < 70).length;
 
     return {
-      timeSpent: '12 min 45 s',
-      efficiency: averageEfficiency, 
+      // El tiempo real lo aporta useModuleTimer; se inyecta al pasar a FeedbackModal.
+      timeSpent: t('module.metric_pending'),
+      efficiency: averageEfficiency,
       pendingSectionsCount: sectionsToCorrect,
       goodAt: approvedNames.length > 0 ? t('module.metric_good_strong', { names: approvedNames.slice(0, 2).join(', ') }) : t('module.metric_good_patterns'),
       badAt: failedNames.length > 0 ? t('module.metric_bad_anomalies', { names: failedNames.join(', ') }) : t('module.metric_bad_false_pos'),
@@ -654,7 +661,7 @@ export default function ModulePage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         attempts={latestAttemptsPerSection}
-        computedMetrics={computedMetrics as any}
+        computedMetrics={{ ...computedMetrics, timeSpent: activeTimeLabel } as any}
       />
 
       <ScrollToTopButton />
