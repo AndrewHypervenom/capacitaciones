@@ -31,7 +31,7 @@ export function useModules() {
         .eq('is_active', true)
         .order('created_at')
         .limit(1)
-        .single()
+        .maybeSingle() // 0 campañas activas ⇒ null (evita el 406 de .single())
         .then(({ data }) => {
           if (data?.id) setResolvedCampaignId(data.id)
           else setLoading(false)

@@ -11,7 +11,9 @@ import {
   Lock,
   LogOut,
   Medal,
+  Menu,
   MessageSquare,
+  X,
   Zap,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -148,6 +150,24 @@ export default function LearnerDashboard() {
     { icon: Medal, label: t('dashboard.sidebar_achievements'), id: 'logros' },
   ];
 
+  // Menú móvil: en pantallas chicas la barra superior colapsa en un solo botón
+  // que abre este panel (navegación + ajustes), evitando el header sobrecargado.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const closeMenu = () => setMobileMenuOpen(false);
+
+  // Cierra el menú al pasar a desktop y bloquea el scroll de fondo mientras está abierto.
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onResize = () => { if (window.innerWidth >= 1024) setMobileMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileMenuOpen(false); };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [mobileMenuOpen]);
+
   // Scroll-spy: resalta en el sidebar la sección visible
   const [activeSection, setActiveSection] = useState('inicio');
   useEffect(() => {
@@ -193,40 +213,63 @@ export default function LearnerDashboard() {
 
   return (
     <div className="min-h-screen bg-bg">
-      {/* Barra superior — solo en móvil/tablet, donde el sidebar no cabe */}
-      <header className="lg:hidden sticky top-0 z-40 flex h-12 items-center justify-between border-b border-line bg-surface px-4">
-        <a href="#inicio" className="flex items-center gap-2">
-          <img src="/logo.jpg" alt={t('brand')} className="h-6 w-6 rounded-md" width={24} height={24} />
+      {/* Barra superior móvil/tablet — mismo patrón que el panel de gestión
+          (AdminNav): botón de menú a la izquierda, logo, y a la derecha el
+          cambio de vista. El tema vive dentro del drawer, no en la barra, para
+          que aprendiz y gestión se vean idénticos al alternar de rol. */}
+      <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-line bg-surface px-3">
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          aria-label={t('nav.menu', 'Menú')}
+          aria-expanded={mobileMenuOpen}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-subtle hover:text-text"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <a href="#inicio" onClick={closeMenu} className="flex items-center gap-2">
+          <img src="/logo.jpg" alt={t('brand')} className="h-7 w-7 rounded-md" width={28} height={28} />
           <span className="text-[14px] font-semibold tracking-tight text-text">{t('brand')}</span>
         </a>
-        <div className="flex items-center gap-2">
-          {/* Solo staff: volver a gestión sin salir de la vista de aprendiz */}
-          <ViewSwitcher variant="inline" />
-          <Link to="/profile" aria-label={t('profile.title', 'Mi perfil')}>
-            <Avatar src={avatarUrl} name={name} size={28} />
-          </Link>
-          <LanguageSwitcher />
-          <ThemeToggle />
-          <button
-            onClick={handleLogout}
-            aria-label={t('nav.logout')}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-subtle hover:text-text"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-          </button>
+        <div className="ml-auto">
+          {/* Solo staff: alternar gestión ⇄ aprendiz sin abrir el drawer */}
+          <ViewSwitcher variant="inline" onSwitch={closeMenu} />
         </div>
       </header>
 
-      {/* Sidebar de navegación (estilo panel) */}
-      <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 z-30 w-64 flex-col border-r border-line bg-surface">
-        {/* Marca */}
-        <a href="#inicio" className="flex items-center gap-2.5 px-6 pt-6 pb-5">
-          <img src="/logo.jpg" alt={t('brand')} className="h-8 w-8 rounded-lg" width={32} height={32} />
-          <span className="text-[16px] font-bold tracking-tight text-text">{t('brand')}</span>
-        </a>
+      {/* Overlay del drawer móvil (mismo patrón que el panel de gestión) */}
+      {mobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 bg-black/50"
+          onClick={closeMenu}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar de navegación (estilo panel). En móvil es un drawer que se
+          desliza desde la izquierda, igual que el panel de capacitador/superadmin. */}
+      <aside
+        className={cn(
+          'fixed left-0 top-0 bottom-0 z-[60] flex w-72 max-w-[85vw] flex-col border-r border-line bg-surface transition-transform duration-300 ease-in-out lg:z-30 lg:w-64 lg:translate-x-0',
+          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        {/* Marca + cerrar (el cierre solo se ve en móvil) */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-5 lg:pb-5">
+          <a href="#inicio" onClick={closeMenu} className="flex items-center gap-2.5">
+            <img src="/logo.jpg" alt={t('brand')} className="h-8 w-8 rounded-lg" width={32} height={32} />
+            <span className="text-[16px] font-bold tracking-tight text-text">{t('brand')}</span>
+          </a>
+          <button
+            onClick={closeMenu}
+            aria-label={t('nav.close_menu', 'Cerrar menú')}
+            className="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle hover:text-text"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
         {/* Cambio de vista (solo staff): arriba, para volver a gestión al instante */}
-        <ViewSwitcher variant="block" className="px-4 pb-4" />
+        <ViewSwitcher variant="block" className="px-4 pb-4" onSwitch={closeMenu} />
 
         {/* Navegación por secciones */}
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
@@ -236,6 +279,7 @@ export default function LearnerDashboard() {
               <a
                 key={id}
                 href={`#${id}`}
+                onClick={closeMenu}
                 aria-current={active ? 'true' : undefined}
                 className={cn(
                   'flex items-center gap-3 rounded-full px-4 py-2.5 text-[13px] font-medium transition-colors',
@@ -253,6 +297,7 @@ export default function LearnerDashboard() {
           {/* Retroalimentación del capacitador: página propia (no una sección) */}
           <Link
             to="/feedback"
+            onClick={closeMenu}
             className="flex items-center gap-3 rounded-full px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:bg-subtle hover:text-text"
           >
             <MessageSquare className="h-4 w-4 shrink-0 text-text-subtle" />
@@ -264,6 +309,7 @@ export default function LearnerDashboard() {
         <div className="border-t border-line px-4 py-4">
           <Link
             to="/profile"
+            onClick={closeMenu}
             className="mb-3 flex items-center gap-3 rounded-2xl px-1 py-1 transition-colors hover:bg-subtle"
             title={t('profile.title', 'Mi perfil')}
           >
@@ -273,7 +319,7 @@ export default function LearnerDashboard() {
               <p className="text-[11px] text-text-subtle">Nv. {xpLevel.level} · {xpLevel.label}</p>
             </div>
           </Link>
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex items-center justify-between px-1 py-1">
             <LanguageSwitcher />
             <ThemeToggle />
           </div>

@@ -67,10 +67,14 @@ export function ViewSwitcher({ variant = 'inline', className, onSwitch }: ViewSw
           key={key}
           role="tab"
           aria-selected={active}
+          aria-label={label}
+          title={label}
           onClick={() => go(to, active)}
           className={cn(
             'relative z-10 inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition-colors duration-200',
-            block ? 'flex-1 px-2.5 py-2 text-[12.5px]' : 'px-3 py-1.5 text-[12px]',
+            // Inline: en móvil solo iconos (evita saturar la barra superior);
+            // el texto reaparece desde sm. Block: siempre con texto.
+            block ? 'flex-1 px-2.5 py-2 text-[12.5px]' : 'px-2.5 py-1.5 text-[12px] sm:px-3',
             active ? 'text-text' : 'text-text-muted hover:text-text',
           )}
         >
@@ -93,7 +97,7 @@ export function ViewSwitcher({ variant = 'inline', className, onSwitch }: ViewSw
               active ? accent.icon : 'text-text-muted',
             )}
           />
-          <span className="whitespace-nowrap">{label}</span>
+          <span className={cn('whitespace-nowrap', !block && 'hidden sm:inline')}>{label}</span>
         </button>
       ))}
     </div>
