@@ -24,6 +24,7 @@ import WorldMap from '@/pages/WorldMap';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { initAuth } from '@/stores/authStore';
+import { loadGamification } from '@/services/gamification.service';
 import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
 import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
@@ -42,6 +43,15 @@ function RouteFallback() {
 
 function AuthInit() {
   useEffect(() => { initAuth() }, []);
+  return null;
+}
+
+/** Carga la configuración de gamificación (logros + niveles XP) una sola vez. */
+function GamificationInit() {
+  const { isAuthenticated } = useAuth();
+  useEffect(() => {
+    if (isAuthenticated) void loadGamification();
+  }, [isAuthenticated]);
   return null;
 }
 
@@ -77,6 +87,7 @@ export default function App() {
       <AuthInit />
       <NavigationBridge />
       <LanguageSync />
+      <GamificationInit />
       <ConfirmProvider>
       <Routes>
         <Route path="/" element={<Welcome />} />

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
+import { useProgressStore } from '@/stores/progressStore'
 
 /* ── Types ── */
 interface World {
@@ -406,6 +407,15 @@ export default function WorldMap() {
   const completedCount = completedIds.size
   const totalCount     = levels.length
   const progressPct    = totalCount > 0 ? (completedCount/totalCount)*100 : 0
+
+  // Avance de mundo → motor de reglas: "Explorador" (≥1 nivel) y "Conquistador"
+  // (mundo completo). Los umbrales viven en las defs configurables.
+  useEffect(() => {
+    if (completedCount > 0) {
+      const worldDone = totalCount > 0 && completedCount >= totalCount ? 1 : 0
+      useProgressStore.getState().recordWorldProgress(completedCount, worldDone)
+    }
+  }, [completedCount, totalCount])
 
   /* Stars score per level */
   const getStars = (level: Level): number => {

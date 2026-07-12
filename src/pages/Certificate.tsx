@@ -12,6 +12,7 @@ import {
 import type { CourseCertStatus, CourseEvaluationResult } from '@/types/database';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
+import { useProgressStore } from '@/stores/progressStore';
 
 function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
   if (lang === 'en') return en || es || '';
@@ -228,6 +229,20 @@ export default function Certificate() {
       active = false;
     };
   }, [courseId, viewUserId]);
+
+  // Logros de certificación: solo para el aprendiz mirando su PROPIO certificado
+  // ya ganado. "Certificado" al obtenerlo; "Cuadro de Honor" si el puntaje ≥95%.
+  const recordCertification = useProgressStore((s) => s.recordCertification);
+  useEffect(() => {
+    if (trainerMode || !status || !courseId) return;
+    const earnedCert = status.certified || status.all_met;
+    if (!earnedCert) return;
+    // Registra la certificación + su puntaje; el motor otorga "Certificado",
+    // "Cuadro de Honor" (≥95%) y cualquier logro de certificación configurado.
+    const requireSim = !!status.require_simulator;
+    const score = requireSim ? (status.cert_score ?? status.best_score) : activity.score;
+    recordCertification(courseId, score);
+  }, [trainerMode, status, courseId, activity.score, recordCertification]);
 
   if (loading) return null;
 

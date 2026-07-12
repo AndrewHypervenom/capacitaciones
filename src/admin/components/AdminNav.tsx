@@ -77,6 +77,8 @@ export function AdminNav() {
         { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false },
         // Panel global (matriz usuarios × cursos): solo superadmin.
         ...(isSuperAdmin ? [{ to: '/admin/overview', label: t('admin.nav.overview', 'Vista global'), end: false }] : []),
+        // Gamificación (logros + niveles XP): solo superadmin.
+        ...(isSuperAdmin ? [{ to: '/admin/gamification', label: t('admin.nav.gamification', 'Gamificación'), end: false }] : []),
         { to: '/admin/feedback', label: t('admin.nav.feedback', 'Progreso unificado'), end: false },
         { to: '/admin/evaluaciones', label: t('admin.nav.evaluaciones', 'Evaluaciones'), end: false }
       ]

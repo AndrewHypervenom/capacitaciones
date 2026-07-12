@@ -716,6 +716,97 @@ export interface Database {
         }
         Relationships: []
       }
+      achievement_defs: {
+        Row: {
+          id: string
+          emoji: string
+          category: 'progress' | 'streak' | 'excellence' | 'certification' | 'optional'
+          metric: string
+          threshold: number
+          rare: boolean
+          requires: 'world' | 'simulator' | null
+          enabled: boolean
+          builtin: boolean
+          sort_order: number
+          label_es: string
+          label_en: string | null
+          label_pt: string | null
+          description_es: string
+          description_en: string | null
+          description_pt: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          emoji?: string
+          category?: 'progress' | 'streak' | 'excellence' | 'certification' | 'optional'
+          metric: string
+          threshold?: number
+          rare?: boolean
+          requires?: 'world' | 'simulator' | null
+          enabled?: boolean
+          builtin?: boolean
+          sort_order?: number
+          label_es: string
+          label_en?: string | null
+          label_pt?: string | null
+          description_es?: string
+          description_en?: string | null
+          description_pt?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          emoji?: string
+          category?: 'progress' | 'streak' | 'excellence' | 'certification' | 'optional'
+          metric?: string
+          threshold?: number
+          rare?: boolean
+          requires?: 'world' | 'simulator' | null
+          enabled?: boolean
+          builtin?: boolean
+          sort_order?: number
+          label_es?: string
+          label_en?: string | null
+          label_pt?: string | null
+          description_es?: string
+          description_en?: string | null
+          description_pt?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      xp_levels: {
+        Row: {
+          level: number
+          min_xp: number
+          max_xp: number
+          color: string
+          label_es: string
+          label_en: string | null
+          label_pt: string | null
+        }
+        Insert: {
+          level: number
+          min_xp: number
+          max_xp: number
+          color?: string
+          label_es: string
+          label_en?: string | null
+          label_pt?: string | null
+        }
+        Update: {
+          level?: number
+          min_xp?: number
+          max_xp?: number
+          color?: string
+          label_es?: string
+          label_en?: string | null
+          label_pt?: string | null
+        }
+        Relationships: []
+      }
       live_quizzes: {
         Row: {
           id: string

@@ -61,6 +61,8 @@ export default function SimulatorResult() {
       empathyPct: computed.empathyPct,
       resolved: computed.resolved,
     });
+    // El logro "As del Simulador" (u otros por puntaje de simulador) los otorga
+    // el motor de reglas dentro de addAttempt, según el umbral configurado.
     // Persistir en BD (auditable + visible al capacitador)
     if (user?.id) {
       saveSimulatorAttempt(user.id, {

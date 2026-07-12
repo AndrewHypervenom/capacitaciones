@@ -417,7 +417,7 @@ export default function ModulePage() {
     if (!moduleGate.canComplete) return; // compuerta: no aprobó las actividades
     earnXP(100);
     updateStreak();
-    markModule(module.id, siblings.length);
+    markModule(module.id, siblings.map((s) => s.id));
     toast.success(t('module.completed_toast', { title: module.title[language] }));
     if (nextModule) setTimeout(() => nav(`/modules/${nextModule.id}`), 600);
   };

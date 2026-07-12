@@ -24,6 +24,7 @@ import WorldDetail from './pages/WorldDetail'
 import FeedbackPanel from './pages/FeedbackPanel'
 import ChatLogs from './pages/ChatLogs'
 import AiUsage from './pages/AiUsage'
+import Gamification from './pages/Gamification'
 import { HelpWidget } from '@/components/help/HelpWidget'
 
 export default function AdminRouter() {
@@ -53,6 +54,8 @@ export default function AdminRouter() {
           <Route path="users/:id" element={isSuperAdmin || isCapacitador ? <UserProfile /> : <Navigate to="/admin" replace />} />
           {/* Panel global (matriz usuarios × cursos): solo superadmin */}
           <Route path="overview" element={isSuperAdmin ? <AdminOverview /> : <Navigate to="/admin" replace />} />
+          {/* Gamificación: logros + niveles de XP (solo superadmin) */}
+          <Route path="gamification" element={isSuperAdmin ? <Gamification /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
           {/* Historial del chat de ayuda: solo superadmin */}
           <Route path="chat" element={isSuperAdmin ? <ChatLogs /> : <Navigate to="/admin" replace />} />

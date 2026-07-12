@@ -115,6 +115,10 @@ export function KnowledgeCheck({
 }: Props) {
   const { t } = useTranslation();
   const recordCheck = useProgressStore((s) => s.recordCheck);
+  const recordQuizResult = useProgressStore((s) => s.recordQuizResult);
+  // Marca si el aprendiz ya falló ESTA pregunta: si luego la acierta al
+  // reintentar, cuenta como redención ("Segunda Oportunidad").
+  const [failedBefore, setFailedBefore] = useState(false);
 
   // Llave estable del quiz dentro del módulo: la explícita (bloques) o el índice
   // de sección (quiz de sección tradicional).
@@ -158,8 +162,16 @@ export function KnowledgeCheck({
     setSelected(i);
     recordCheck(moduleId, storeKey, i);
 
+    const isCorrectAnswer = i === quiz.correct;
+
     // Sonido de feedback (usa el tema del módulo activo).
-    playQuizSound(i === quiz.correct ? 'correct' : 'wrong');
+    playQuizSound(isCorrectAnswer ? 'correct' : 'wrong');
+
+    // Alimentar los logros de desempeño: aciertos totales, racha de aciertos y
+    // redención (fallar y luego acertar la misma pregunta). Un fallo reinicia la
+    // racha dentro del store.
+    recordQuizResult(isCorrectAnswer, isCorrectAnswer && failedBefore);
+    if (!isCorrectAnswer) setFailedBefore(true);
 
     // 2. Guardar intento en backend (solo si tenemos los ids necesarios)
     if (userId && campaignId) {

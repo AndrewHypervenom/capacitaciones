@@ -18,12 +18,15 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUserStore } from '@/stores/userStore';
+import { useProgressStore } from '@/stores/progressStore';
 import {
-  useProgressStore,
-  BADGE_DEFS,
+  useGamificationStore,
   getXPLevel,
   getXPProgress,
-} from '@/stores/progressStore';
+  badgeLabel,
+  badgeDescription,
+  xpLevelLabel,
+} from '@/stores/gamificationStore';
 import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
 import { useHasWorld } from '@/hooks/useHasWorld';
@@ -39,11 +42,6 @@ import { Reveal } from '@/components/ui/Reveal';
 import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
-
-// Insignias ligadas a una función opcional (no universal): se ocultan como meta
-// para quien no tiene esa función. `simulator-unlocked` solo aparece si ya se
-// ganó; `world-explorer` aparece si el aprendiz tiene mundo (aunque siga bloqueada).
-const CONDITIONAL_BADGE_IDS = new Set(['simulator-unlocked', 'world-explorer']);
 
 // Todos ven este panel con su menú lateral. El staff que mira "como aprendiz"
 // lo ve idéntico al aprendiz; para volver a gestión usa el ViewSwitcher que se
@@ -83,7 +81,23 @@ export default function LearnerDashboard() {
   const progressState = useProgressStore();
   const { xp, streak, badges } = progressState;
   const recheckBadges = useProgressStore((s) => s.recheckBadges);
-  const awardBadge = useProgressStore((s) => s.awardBadge);
+  const recordWorldProgress = useProgressStore((s) => s.recordWorldProgress);
+
+  // Definiciones vivas (editables por el superadmin); caen a los defaults de
+  // fábrica si la BD aún no cargó. Solo las habilitadas cuentan y se muestran.
+  const allBadgeDefs = useGamificationStore((s) => s.badgeDefs);
+  const xpLevels = useGamificationStore((s) => s.xpLevels);
+  const badgeDefs = useMemo(
+    () => allBadgeDefs.filter((b) => b.enabled !== false),
+    [allBadgeDefs],
+  );
+  // Insignias ligadas a una función opcional (mundo/simulador): se derivan de
+  // `requires`. Las de mundo se muestran si el aprendiz tiene mundo; las de
+  // simulador solo si ya se ganaron (no hay señal de disponibilidad).
+  const conditionalIds = useMemo(
+    () => new Set(badgeDefs.filter((b) => b.requires).map((b) => b.id)),
+    [badgeDefs],
+  );
 
   useEffect(() => {
     if (!modulesLoading && modules.length > 0) {
@@ -91,9 +105,8 @@ export default function LearnerDashboard() {
     }
   }, [modulesLoading, modules, recheckBadges]);
 
-  // Logro de mundo: se otorga (también retroactivamente) si el aprendiz ya
-  // completó al menos un nivel en cualquier mundo. Solo consultamos si tiene
-  // mundo y aún no lo ha ganado.
+  // Avance de mundo (también retroactivo): cuenta los niveles completados en
+  // cualquier mundo y deja que el motor otorgue "Explorador" y afines.
   useEffect(() => {
     if (!hasWorld || !user?.id || badges.includes('world-explorer')) return;
     let active = true;
@@ -103,31 +116,41 @@ export default function LearnerDashboard() {
       .eq('user_id', user.id)
       .eq('completed', true)
       .then(({ count }) => {
-        if (active && (count ?? 0) > 0) awardBadge('world-explorer');
+        if (active && (count ?? 0) > 0) recordWorldProgress(count ?? 0);
       });
     return () => {
       active = false;
     };
-  }, [hasWorld, user?.id, badges, awardBadge]);
-  const xpLevel = getXPLevel(xp);
-  const xpProgress = getXPProgress(xp);
+  }, [hasWorld, user?.id, badges, recordWorldProgress]);
+  const xpLevel = getXPLevel(xp, xpLevels);
+  const xpProgress = getXPProgress(xp, xpLevels);
+  const nextLevel = useMemo(
+    () => xpLevels.find((l) => l.level === xpLevel.level + 1),
+    [xpLevels, xpLevel.level],
+  );
 
-  // Insignias condicionales: dependen de una función que no todos los aprendices
-  // tienen. Se muestran si ya se ganaron o si su función está disponible para el
-  // aprendiz (p. ej. el logro de mundo solo si tiene mundo).
   const badgeAvailable = useMemo<Record<string, boolean>>(
-    () => ({ 'world-explorer': hasWorld }),
-    [hasWorld],
+    () =>
+      Object.fromEntries(
+        badgeDefs.filter((b) => b.requires === 'world').map((b) => [b.id, hasWorld]),
+      ),
+    [badgeDefs, hasWorld],
   );
   const visibleBadges = useMemo(
     () =>
-      BADGE_DEFS.filter(
+      badgeDefs.filter(
         (b) =>
-          !CONDITIONAL_BADGE_IDS.has(b.id) ||
+          !conditionalIds.has(b.id) ||
           badges.includes(b.id) ||
           badgeAvailable[b.id],
       ),
-    [badges, badgeAvailable],
+    [badgeDefs, conditionalIds, badges, badgeAvailable],
+  );
+  // Contar solo lo ganado ENTRE lo visible (un id viejo ya retirado —p. ej.
+  // 'simulator-unlocked'— no debe inflar el contador).
+  const earnedVisibleCount = useMemo(
+    () => visibleBadges.filter((b) => badges.includes(b.id)).length,
+    [visibleBadges, badges],
   );
 
   const total = modules.length;
@@ -316,7 +339,7 @@ export default function LearnerDashboard() {
             <Avatar src={avatarUrl} name={name} size={36} />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-text">{name}</p>
-              <p className="text-[11px] text-text-subtle">Nv. {xpLevel.level} · {xpLevel.label}</p>
+              <p className="text-[11px] text-text-subtle">Nv. {xpLevel.level} · {xpLevelLabel(xpLevel, language)}</p>
             </div>
           </Link>
           <div className="mb-3 flex items-center justify-between px-1 py-1">
@@ -559,7 +582,7 @@ export default function LearnerDashboard() {
                 {t('dashboard.badges_title')}
               </h2>
               <span className="text-[12px] tabular-nums text-text-subtle">
-                {t('dashboard.badges_unlocked', { n: badges.length, total: visibleBadges.length })}
+                {t('dashboard.badges_unlocked', { n: earnedVisibleCount, total: visibleBadges.length })}
               </span>
             </div>
 
@@ -573,7 +596,7 @@ export default function LearnerDashboard() {
                       className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal"
                       style={{ background: `${xpLevel.color}18`, color: xpLevel.color }}
                     >
-                      Nv. {xpLevel.level} · {xpLevel.label}
+                      Nv. {xpLevel.level} · {xpLevelLabel(xpLevel, language)}
                     </span>
                   </span>
                   <span className="text-[13px] font-bold tabular-nums text-text">
@@ -589,14 +612,13 @@ export default function LearnerDashboard() {
                     transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
                   />
                 </div>
-                {xpLevel.level < 4 && (
+                {nextLevel && (
                   <p className="text-[11px] tabular-nums text-text-subtle">
-                    {t('dashboard.xp_to_next', { xp, max: xpLevel.maxXP, rank: [
-                      '',
-                      t('dashboard.rank_apprentice'),
-                      t('dashboard.rank_expert'),
-                      t('dashboard.rank_master'),
-                    ][xpLevel.level] ?? t('dashboard.rank_master') })}
+                    {t('dashboard.xp_to_next', {
+                      xp,
+                      max: xpLevel.maxXP,
+                      rank: xpLevelLabel(nextLevel, language),
+                    })}
                   </p>
                 )}
               </div>
@@ -633,22 +655,36 @@ export default function LearnerDashboard() {
                 return (
                   <div
                     key={badge.id}
-                    title={badge.description}
+                    title={badgeDescription(badge, language)}
                     className={cn(
                       'flex flex-col items-center gap-2 cursor-default',
                       !earned && 'opacity-40',
                     )}
                   >
                     <div className={cn(
-                      'flex aspect-square w-full items-center justify-center rounded-2xl border text-2xl',
+                      'relative flex aspect-square w-full items-center justify-center rounded-2xl border text-2xl',
                       earned
-                        ? 'border-primary/25 bg-primary/10'
+                        ? badge.rare
+                          ? 'border-amber-400/40 bg-amber-400/10 ring-1 ring-amber-400/30'
+                          : 'border-primary/25 bg-primary/10'
                         : 'border-line bg-subtle text-text-subtle',
                     )}>
                       {earned ? badge.emoji : <Lock className="h-5 w-5" />}
+                      {/* Marca de logro poco común */}
+                      {badge.rare && (
+                        <span
+                          className={cn(
+                            'absolute -right-1 -top-1 text-[10px]',
+                            !earned && 'opacity-60',
+                          )}
+                          title="Logro poco común"
+                        >
+                          ⭐
+                        </span>
+                      )}
                     </div>
                     <p className="w-full truncate text-center text-[10px] font-medium text-text-muted">
-                      {badge.label}
+                      {badgeLabel(badge, language)}
                     </p>
                   </div>
                 );
