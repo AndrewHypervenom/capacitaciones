@@ -139,7 +139,7 @@ export function SortGameEditor({ block, onChange, lang }: Props) {
                    title: { es: '', en: '', pt: '', ...proc.title, [lang]: e.target.value },
                   })
                 }
-                placeholder={`Nombre del proceso ${procIdx + 1}`}
+                placeholder={i18n.t('admin.modules.ph_process_name', { n: procIdx + 1 })}
                 className="bg-transparent text-[13.5px] font-medium text-text focus:outline-none placeholder:text-text-subtle/40 min-w-0 flex-1"
               />
             </div>

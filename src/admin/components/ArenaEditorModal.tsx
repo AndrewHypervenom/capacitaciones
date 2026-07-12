@@ -56,11 +56,11 @@ interface QuizForm {
 
 const THEME_TYPES: ThemeType[] = ['airline', 'bank', 'health', 'corporate', 'tech']
 const THEME_LABELS: Record<ThemeType, string> = {
-  airline: 'Aerolínea',
-  bank: 'Banco',
-  health: 'Salud',
-  corporate: 'Corporativo',
-  tech: 'Tecnología',
+  airline: 'admin.arena.theme_airline',
+  bank: 'admin.arena.theme_bank',
+  health: 'admin.arena.theme_health',
+  corporate: 'admin.arena.theme_corporate',
+  tech: 'admin.arena.theme_tech',
 }
 
 const newOption = (): QuizOption => ({
@@ -274,7 +274,7 @@ export function ArenaEditorModal({
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
           <h2 className="text-[16px] font-semibold text-text">
-            {editing ? 'Editar quiz' : 'Nuevo quiz'}
+            {editing ? i18n.t('common.edit_quiz') : i18n.t('common.new_quiz')}
           </h2>
           <button
             onClick={onClose}
@@ -337,7 +337,7 @@ export function ArenaEditorModal({
                 <Select
                   value={form.theme_type}
                   onChange={v => setForm(f => ({ ...f, theme_type: v }))}
-                  options={THEME_TYPES.map(tt => ({ value: tt, label: THEME_LABELS[tt] }))}
+                  options={THEME_TYPES.map(tt => ({ value: tt, label: i18n.t(THEME_LABELS[tt]) }))}
                 />
               </div>
             </div>
@@ -387,7 +387,7 @@ export function ArenaEditorModal({
                   className="text-[11px] font-medium transition-opacity hover:opacity-70"
                   style={{ color: '#00C228' }}
                 >
-                  + Agregar pregunta
+                  + {i18n.t('common.add_question')}
                 </button>
               </div>
 
@@ -396,7 +396,7 @@ export function ArenaEditorModal({
                   <div key={step.id} className="rounded-xl border border-line bg-bg p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wide">
-                        Pregunta {si + 1}
+                        {i18n.t('common.question_n', { n: si + 1 })}
                       </span>
                       <button
                         type="button"
@@ -435,7 +435,7 @@ export function ArenaEditorModal({
                             className="text-[10px] font-medium hover:opacity-70 transition-opacity"
                             style={{ color: '#00C228' }}
                           >
-                            + Opción
+                            + {i18n.t('common.add_option')}
                           </button>
                         )}
                       </div>
@@ -457,7 +457,7 @@ export function ArenaEditorModal({
                               <input
                                 value={opt.text}
                                 onChange={e => updateOption(step.id, opt.id, { text: e.target.value })}
-                                placeholder={`Opción ${oi + 1}...`}
+                                placeholder={i18n.t('common.option_n_ph', { n: oi + 1 })}
                                 className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12px] bg-surface text-text placeholder-text-subtle focus:outline-none transition-colors"
                                 style={
                                   opt.correct
@@ -497,7 +497,7 @@ export function ArenaEditorModal({
               onClick={onClose}
               className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors border border-line"
             >
-              Cancelar
+              {i18n.t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -505,7 +505,7 @@ export function ArenaEditorModal({
               className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
               style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.28)' }}
             >
-              {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear quiz'}
+              {saving ? i18n.t('common.saving') : editing ? i18n.t('common.save_changes') : i18n.t('common.create_quiz')}
             </button>
           </div>
         </form>

@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { X, CheckCircle, AlertCircle, Info, Award } from 'lucide-react';
 import { useToastStore, type Toast, type ToastKind } from '@/stores/toastStore';
 import { cn } from '@/lib/cn';
+import i18n from '@/i18n';
 
 const kindConfig: Record<ToastKind, {
   icon: React.ComponentType<{ className?: string }>;
@@ -69,7 +70,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       <button
         onClick={() => dismiss(toast.id)}
         className="shrink-0 mt-0.5 text-text-subtle hover:text-text transition-colors"
-        aria-label="Cerrar"
+        aria-label={i18n.t('common.close')}
       >
         <X className="h-3.5 w-3.5" />
       </button>

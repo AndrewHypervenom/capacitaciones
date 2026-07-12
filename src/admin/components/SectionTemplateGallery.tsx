@@ -3,6 +3,7 @@ import { X, FileText, Lightbulb, Image, HelpCircle, LayoutTemplate, ZoomIn, Star
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { cn } from '@/lib/cn'
+import i18n from '@/i18n'
 import type { SectionTemplate } from './AddSectionMenu'
 
 interface SectionTemplateGalleryProps {
@@ -205,88 +206,88 @@ function GameClassifyPreview() {
 const TEMPLATES: TemplateCard[] = [
   {
     key: 'text',
-    label: 'Solo texto',
-    description: 'Encabezado y párrafos de contenido',
+    label: 'admin.modules.stg_text_label',
+    description: 'admin.modules.stg_text_desc',
     icon: FileText,
     color: 'green',
     preview: <TextOnlyPreview />,
   },
   {
     key: 'text-callout',
-    label: 'Texto + Callout',
-    description: 'Contenido con caja de aviso destacada',
+    label: 'admin.modules.stg_callout_label',
+    description: 'admin.modules.stg_callout_desc',
     icon: Lightbulb,
     color: 'green',
     preview: <TextCalloutPreview />,
   },
   {
     key: 'text-media',
-    label: 'Texto + Media',
-    description: 'Contenido con imagen o video',
+    label: 'admin.modules.stg_media_label',
+    description: 'admin.modules.stg_media_desc',
     icon: Image,
     color: 'cyan',
     preview: <TextMediaPreview />,
   },
   {
     key: 'text-quiz',
-    label: 'Texto + Quiz',
-    description: 'Contenido con verificación de conocimiento',
+    label: 'admin.modules.stg_quiz_label',
+    description: 'admin.modules.stg_quiz_desc',
     icon: HelpCircle,
     color: 'violet',
     preview: <TextQuizPreview />,
   },
   {
     key: 'full',
-    label: 'Completo',
-    description: 'Todo incluido: texto, media, callout y quiz',
+    label: 'admin.modules.stg_full_label',
+    description: 'admin.modules.stg_full_desc',
     icon: LayoutTemplate,
     color: 'amber',
     preview: <FullPreview />,
   },
   {
     key: 'hero',
-    label: 'Hero',
-    description: 'Imagen de fondo a pantalla completa',
+    label: 'admin.modules.template_hero',
+    description: 'admin.modules.stg_hero_desc',
     icon: ZoomIn,
     color: 'green',
     preview: <HeroPreview />,
   },
   {
     key: 'spotlight',
-    label: 'Spotlight',
-    description: 'Sección oscura premium, centrada',
+    label: 'admin.modules.template_spotlight',
+    description: 'admin.modules.stg_spotlight_desc',
     icon: Star,
     color: 'violet',
     preview: <SpotlightPreview />,
   },
   {
     key: 'feature',
-    label: 'Feature',
-    description: 'Estilo Apple centrado con ícono',
+    label: 'admin.modules.template_feature',
+    description: 'admin.modules.stg_feature_desc',
     icon: Layers,
     color: 'cyan',
     preview: <FeaturePreview />,
   },
   {
     key: 'video-interactive',
-    label: 'Video Interactivo',
-    description: 'Video con capítulos y quizzes integrados',
+    label: 'admin.modules.stg_video_label',
+    description: 'admin.modules.stg_video_desc',
     icon: Clapperboard,
     color: 'blue',
     preview: <VideoInteractivePreview />,
   },
   {
     key: 'game-sort',
-    label: 'Juego: Ordenar Procesos',
-    description: 'Actividad interactiva de arrastrar y ordenar pasos',
+    label: 'admin.modules.stg_game_sort_label',
+    description: 'admin.modules.stg_game_sort_desc',
     icon: FileText,
     color: 'blue',
     preview: <GameSortPreview />,
   },
   {
     key: 'game-classify', 
-    label: 'Juego: Clasificar Casos',
-    description: 'Arrastrar casos operativos a categorías de fraude',
+    label: 'admin.modules.stg_game_classify_label',
+    description: 'admin.modules.stg_game_classify_desc',
     icon: Layers,   
     color: 'blue', 
     preview: <GameClassifyPreview /> 
@@ -376,8 +377,8 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
                           <Icon className="h-3.5 w-3.5" />
                         </div>
                         <div>
-                          <div className="text-[13px] font-semibold text-text leading-tight">{label}</div>
-                          <div className="text-[11px] text-text-muted leading-snug mt-0.5">{description}</div>
+                          <div className="text-[13px] font-semibold text-text leading-tight">{i18n.t(label)}</div>
+                          <div className="text-[11px] text-text-muted leading-snug mt-0.5">{i18n.t(description)}</div>
                         </div>
                       </div>
                     </button>

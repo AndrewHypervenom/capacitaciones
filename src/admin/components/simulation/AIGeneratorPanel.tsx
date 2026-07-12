@@ -264,8 +264,8 @@ function PreviewBox({
           </div>
         )}
         <div>
-          <div className="text-text-subtle mb-0.5">i18n.t('admin.simulations.ai_gen.steps')</div>
-          <div className="text-text">{nodeEntries.length} momentos de conversación</div>
+          <div className="text-text-subtle mb-0.5">{i18n.t('admin.simulations.ai_gen.steps')}</div>
+          <div className="text-text">{i18n.t('admin.simulations.ai_gen_moments', { count: nodeEntries.length })}</div>
         </div>
       </div>
 

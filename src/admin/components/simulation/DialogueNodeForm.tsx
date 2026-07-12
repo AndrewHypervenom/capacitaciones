@@ -211,9 +211,9 @@ export function DialogueNodeForm({ nodeId, data, allNodeIds, onChange }: Props) 
             value={data.terminal ?? ''}
             onChange={(v) => update({ terminal: (v || undefined) as DialogueNodeData['terminal'] })}
             options={[
-              { value: '', label: 'No termina aquí' },
-              { value: 'resolved', label: 'Llamada resuelta' },
-              { value: 'unresolved', label: 'Llamada sin resolver' },
+              { value: '', label: t('admin.simulations.dlg_no_end') },
+              { value: 'resolved', label: t('admin.simulations.dlg_resolved') },
+              { value: 'unresolved', label: t('admin.simulations.dlg_unresolved') },
             ]}
           />
         </div>

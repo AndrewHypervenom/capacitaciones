@@ -138,16 +138,16 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
             to={course ? `/admin/courses/${courseId}` : '/admin/campaigns'}
             className="inline-flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors mb-4"
           >
-            <ArrowLeft className="h-3.5 w-3.5" /> {course ? 'Volver al curso' : 'Volver a campañas'}
+            <ArrowLeft className="h-3.5 w-3.5" /> {course ? i18n.t('admin.import.back_to_course') : i18n.t('admin.import.back_to_campaigns')}
           </Link>
           <p className="text-[11px] text-text-subtle uppercase tracking-wider mb-2">
-            {course ? `Admin / Cursos / ${course.title_es}` : 'Admin / Campañas'} / Generar contenido
+            {course ? i18n.t('admin.import.crumb_course', { title: course.title_es }) : i18n.t('admin.import.crumb_campaigns')} / {i18n.t('admin.import.title_generate')}
           </p>
           <GradientHeading as="h1" variant="white" size="headline">
-            Generar contenido
+            {i18n.t('admin.import.title_generate')}
           </GradientHeading>
           <p className="text-text-muted text-[13px] mt-1">
-            Sube un archivo Word, Excel o PDF. La IA lo analiza y crea un módulo en 3 idiomas.
+            {i18n.t('admin.import.subtitle')}
           </p>
         </div>
       )}
@@ -158,13 +158,13 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
         {isSuperAdmin && campaigns.length > 0 && (
           <div className="mb-5">
             <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
-              Campaña destino
+              {i18n.t('admin.import.campaign_target')}
             </label>
             <FilterDropdown
               value={campaignId}
               onChange={setCampaignId}
               options={[
-                { value: '', label: '— Seleccionar campaña —' },
+                { value: '', label: i18n.t('admin.import.select_campaign_dash') },
                 ...campaigns.map((c) => ({ value: c.id, label: c.name })),
               ]}
             />
@@ -173,7 +173,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
 
         {/* Archivo */}
         <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
-          Documento fuente
+          {i18n.t('admin.import.source_document')}
         </label>
         {doc ? (
           <div className="rounded-xl bg-brand-violet/6 border border-brand-violet/15">
@@ -185,10 +185,10 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
                 <div className="text-[13px] text-text font-medium truncate">{doc.fileName}</div>
                 <div className="text-[11px] text-text-muted">
                   {doc.text.trim()
-                    ? `${(doc.text.length / 1000).toFixed(1)}k caracteres extraídos`
-                    : 'Sin texto (documento escaneado) — se leerá con visión'}
-                  {doc.images.length > 0 && doc.text.trim() && ` · ${doc.images.length} figura(s) del documento`}
-                  {doc.contextImages.length > 0 && ` · ${doc.contextImages.length} página(s)${manualMode && !doc.text.trim() ? ' — se recortarán las capturas' : ' para análisis visual'}`}
+                    ? i18n.t('admin.import.chars_extracted', { n: (doc.text.length / 1000).toFixed(1) })
+                    : i18n.t('admin.import.no_text_scanned')}
+                  {doc.images.length > 0 && doc.text.trim() && ` ${i18n.t('admin.import.figures_from_doc', { n: doc.images.length })}`}
+                  {doc.contextImages.length > 0 && ` ${manualMode && !doc.text.trim() ? i18n.t('admin.import.pages_crop', { n: doc.contextImages.length }) : i18n.t('admin.import.pages_visual', { n: doc.contextImages.length })}`}
                 </div>
               </div>
               <button
@@ -207,7 +207,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
                       <img
                         key={k}
                         src={`data:${img.mediaType};base64,${img.dataBase64}`}
-                        alt={`Figura ${k + 1} del documento`}
+                        alt={i18n.t('admin.import.fig_alt', { n: k + 1 })}
                         className="h-16 w-24 object-cover rounded-lg border border-glass-border/15 bg-white"
                       />
                     ))}
@@ -215,7 +215,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
                 )}
                 {doc.images.length === 0 && doc.contextImages.length > 0 && (
                   <p className="text-[11px] text-text-subtle">
-                    No se detectaron figuras insertables; las páginas se usarán solo para el análisis de la IA.
+                    {i18n.t('admin.import.no_insertable_figures')}
                   </p>
                 )}
               </div>
@@ -289,7 +289,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[13px] font-medium text-text">Manual / paso a paso</span>
+              <span className="text-[13px] font-medium text-text">{i18n.t('admin.import.manual_step_by_step')}</span>
               <span className={cn(
                 'relative h-5 w-9 shrink-0 rounded-full transition-colors',
                 manualMode ? 'bg-brand-violet' : 'bg-glass/20',
@@ -301,7 +301,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
               </span>
             </div>
             <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
-              Fidelidad máxima a un procedimiento: conserva cada paso en orden e inserta la captura de cada paso. Úsalo para manuales con pantallazos exactos (analiza más a fondo; tarda un poco más).
+              {i18n.t('admin.import.manual_desc')}
             </p>
           </div>
         </button>
@@ -309,7 +309,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
         {/* Instrucciones opcionales */}
         <div className="mt-5">
           <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
-            Instrucciones para la IA <span className="text-text-subtle normal-case font-normal">{i18n.t('admin.import.optional')}</span>
+            {i18n.t('admin.import.ai_instructions')} <span className="text-text-subtle normal-case font-normal">{i18n.t('admin.import.optional')}</span>
           </label>
           <textarea
             value={instructions}
@@ -353,7 +353,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
           onClick={handleGenerate}
           className="min-w-[200px] flex items-center justify-center gap-2"
         >
-          <Sparkles className="h-4 w-4" /> Generar módulo
+          <Sparkles className="h-4 w-4" /> {i18n.t('admin.import.generate_module')}
         </Button>
       </div>
     </div>

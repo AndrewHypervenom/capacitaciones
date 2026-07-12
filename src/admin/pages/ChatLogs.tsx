@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { Loader2, Search, ChevronDown, ChevronRight, Zap, Bot, HelpCircle, MessageSquare } from 'lucide-react'
 import {
   fetchHelpKpis, fetchHelpLogs, fetchTopUnanswered,
   type HelpKpis, type HelpLogRow, type HelpLogSource,
 } from '@/services/helpLog.service'
 
-const SOURCE_META: Record<HelpLogSource, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
-  faq:      { label: 'Respuesta rápida', color: '#22c55e', icon: Zap },
-  ai:       { label: 'IA',               color: '#8b5cf6', icon: Bot },
-  no_match: { label: 'Sin respuesta',    color: '#ef4444', icon: HelpCircle },
+const SOURCE_META: Record<HelpLogSource, { labelKey: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
+  faq:      { labelKey: 'admin.chat_logs.src_faq',      color: '#22c55e', icon: Zap },
+  ai:       { labelKey: 'admin.chat_logs.src_ai',       color: '#8b5cf6', icon: Bot },
+  no_match: { labelKey: 'admin.chat_logs.src_no_match', color: '#ef4444', icon: HelpCircle },
 }
 
 type FilterSource = HelpLogSource | 'all'
@@ -16,10 +18,11 @@ type FilterSource = HelpLogSource | 'all'
 const FEED_LIMIT = 200
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleString(i18n.language, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
 export default function ChatLogs() {
+  const { t } = useTranslation()
   const [kpis, setKpis] = useState<HelpKpis | null>(null)
   const [gaps, setGaps] = useState<{ label: string; count: number }[]>([])
   const [rows, setRows] = useState<HelpLogRow[]>([])
@@ -54,17 +57,17 @@ export default function ChatLogs() {
   const pct = (n: number) => (kpis && kpis.total > 0 ? Math.round((n / kpis.total) * 100) : 0)
 
   const chips: { key: FilterSource; label: string; color?: string; count?: number }[] = useMemo(() => [
-    { key: 'all', label: 'Todas', count: kpis?.total },
-    { key: 'faq', label: SOURCE_META.faq.label, color: SOURCE_META.faq.color, count: kpis?.faq },
-    { key: 'ai', label: SOURCE_META.ai.label, color: SOURCE_META.ai.color, count: kpis?.ai },
-    { key: 'no_match', label: SOURCE_META.no_match.label, color: SOURCE_META.no_match.color, count: kpis?.no_match },
-  ], [kpis])
+    { key: 'all', label: t('admin.chat_logs.filter_all'), count: kpis?.total },
+    { key: 'faq', label: t(SOURCE_META.faq.labelKey), color: SOURCE_META.faq.color, count: kpis?.faq },
+    { key: 'ai', label: t(SOURCE_META.ai.labelKey), color: SOURCE_META.ai.color, count: kpis?.ai },
+    { key: 'no_match', label: t(SOURCE_META.no_match.labelKey), color: SOURCE_META.no_match.color, count: kpis?.no_match },
+  ], [kpis, t])
 
   return (
     <div className="p-4 sm:p-8">
       <div className="mb-6">
-        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Chat de ayuda</h1>
-        <p className="text-[13px] text-text-muted">Historial y analítica del asistente: qué preguntan, qué se resuelve solo y qué usó IA.</p>
+        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{t('admin.chat_logs.title')}</h1>
+        <p className="text-[13px] text-text-muted">{t('admin.chat_logs.subtitle')}</p>
       </div>
 
       {loading ? (
@@ -75,17 +78,17 @@ export default function ChatLogs() {
         <>
           {/* ── KPIs ── */}
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5">
-            <KpiCard label="Consultas totales" value={String(kpis?.total ?? 0)} />
-            <KpiCard label="Respuesta rápida" value={`${pct(kpis?.faq ?? 0)}%`} sub={`${kpis?.faq ?? 0}`} color={SOURCE_META.faq.color} />
-            <KpiCard label="Resueltas con IA" value={`${pct(kpis?.ai ?? 0)}%`} sub={`${kpis?.ai ?? 0}`} color={SOURCE_META.ai.color} />
-            <KpiCard label="Sin respuesta" value={`${pct(kpis?.no_match ?? 0)}%`} sub={`${kpis?.no_match ?? 0}`} color={SOURCE_META.no_match.color} />
+            <KpiCard label={t('admin.chat_logs.kpi_total')} value={String(kpis?.total ?? 0)} />
+            <KpiCard label={t('admin.chat_logs.src_faq')} value={`${pct(kpis?.faq ?? 0)}%`} sub={`${kpis?.faq ?? 0}`} color={SOURCE_META.faq.color} />
+            <KpiCard label={t('admin.chat_logs.kpi_ai')} value={`${pct(kpis?.ai ?? 0)}%`} sub={`${kpis?.ai ?? 0}`} color={SOURCE_META.ai.color} />
+            <KpiCard label={t('admin.chat_logs.src_no_match')} value={`${pct(kpis?.no_match ?? 0)}%`} sub={`${kpis?.no_match ?? 0}`} color={SOURCE_META.no_match.color} />
           </section>
 
           {/* ── Vacíos de conocimiento ── */}
           {gaps.length > 0 && (
             <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-4 sm:mb-5">
-              <h3 className="text-[11px] uppercase tracking-wider text-text-muted mb-1">Preguntas sin respuesta más frecuentes</h3>
-              <p className="text-[13px] text-text-muted mb-4">Buenas candidatas para agregar a la base de respuestas rápidas y así ahorrar IA.</p>
+              <h3 className="text-[11px] uppercase tracking-wider text-text-muted mb-1">{t('admin.chat_logs.gaps_title')}</h3>
+              <p className="text-[13px] text-text-muted mb-4">{t('admin.chat_logs.gaps_subtitle')}</p>
               <div className="space-y-2">
                 {gaps.map((g, i) => (
                   <div key={i} className="flex items-center gap-3">
@@ -109,7 +112,7 @@ export default function ChatLogs() {
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Buscar en las preguntas…"
+                placeholder={t('admin.chat_logs.search_ph')}
                 className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2 text-[13px] text-text placeholder:text-text-muted/60 outline-none focus:border-[rgb(var(--brand-green))]/40 transition-colors"
               />
             </form>
@@ -144,8 +147,8 @@ export default function ChatLogs() {
           ) : rows.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line p-6 sm:p-12 text-center">
               <MessageSquare className="h-7 w-7 text-text-subtle mx-auto mb-3" />
-              <div className="text-[15px] font-medium text-text mb-1">Sin conversaciones</div>
-              <div className="text-[13px] text-text-muted">Aún no hay registros con estos filtros.</div>
+              <div className="text-[15px] font-medium text-text mb-1">{t('admin.chat_logs.empty_title')}</div>
+              <div className="text-[13px] text-text-muted">{t('admin.chat_logs.empty_desc')}</div>
             </div>
           ) : (
             <>
@@ -162,25 +165,25 @@ export default function ChatLogs() {
                       >
                         <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10.5px] font-medium shrink-0" style={{ background: `${meta.color}1a`, color: meta.color }}>
                           <Icon className="h-3 w-3" />
-                          <span className="hidden sm:inline">{meta.label}</span>
+                          <span className="hidden sm:inline">{t(meta.labelKey)}</span>
                         </span>
                         <div className="min-w-0">
                           <div className="text-[13px] text-text truncate">{r.question}</div>
                           <div className="text-[11px] text-text-muted truncate">
-                            {r.display_name ?? 'Usuario'}{r.campaign_name ? ` · ${r.campaign_name}` : ''} · {fmtDate(r.created_at)}
+                            {r.display_name ?? t('admin.chat_logs.user_fallback')}{r.campaign_name ? ` · ${r.campaign_name}` : ''} · {fmtDate(r.created_at)}
                           </div>
                         </div>
                         {isOpen ? <ChevronDown className="h-4 w-4 text-text-muted shrink-0" /> : <ChevronRight className="h-4 w-4 text-text-muted shrink-0" />}
                       </button>
                       {isOpen && (
                         <div className="px-4 pb-4 pt-1 bg-subtle/40 border-t border-line space-y-3">
-                          <Field label="Pregunta" value={r.question} />
-                          <Field label="Respuesta" value={r.answer || '—'} />
+                          <Field label={t('admin.chat_logs.col_question')} value={r.question} />
+                          <Field label={t('admin.chat_logs.col_answer')} value={r.answer || '—'} />
                           <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-text-muted">
-                            <span>Rol: {r.role ?? '—'}</span>
-                            <span>Idioma: {r.lang ?? '—'}</span>
-                            <span>Pantalla: {r.page ?? '—'}</span>
-                            {r.faq_id && <span>Entrada: {r.faq_id}</span>}
+                            <span>{t('admin.chat_logs.meta_role')} {r.role ?? '—'}</span>
+                            <span>{t('admin.chat_logs.meta_lang')} {r.lang ?? '—'}</span>
+                            <span>{t('admin.chat_logs.meta_page')} {r.page ?? '—'}</span>
+                            {r.faq_id && <span>{t('admin.chat_logs.meta_entry')} {r.faq_id}</span>}
                           </div>
                         </div>
                       )}
@@ -190,7 +193,7 @@ export default function ChatLogs() {
               </div>
               {rows.length >= FEED_LIMIT && (
                 <p className="text-center text-[11.5px] text-text-subtle mt-3">
-                  Mostrando las {FEED_LIMIT} más recientes. Usa la búsqueda o los filtros para acotar.
+                  {t('admin.chat_logs.showing_recent', { limit: FEED_LIMIT })}
                 </p>
               )}
             </>

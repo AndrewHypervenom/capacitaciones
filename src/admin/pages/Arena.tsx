@@ -58,11 +58,11 @@ interface QuizForm {
 
 const THEME_TYPES: ThemeType[] = ['airline', 'bank', 'health', 'corporate', 'tech']
 const THEME_LABELS: Record<ThemeType, string> = {
-  airline: 'Aerolínea',
-  bank: 'Banco',
-  health: 'Salud',
-  corporate: 'Corporativo',
-  tech: 'Tecnología',
+  airline: 'admin.arena.theme_airline',
+  bank: 'admin.arena.theme_bank',
+  health: 'admin.arena.theme_health',
+  corporate: 'admin.arena.theme_corporate',
+  tech: 'admin.arena.theme_tech',
 }
 
 const newOption = (): QuizOption => ({
@@ -360,7 +360,7 @@ export default function Arena() {
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
           >
             <Plus className="h-4 w-4" />
-            Nuevo quiz
+            {i18n.t('common.new_quiz')}
           </button>
         </div>
         <p className="text-text-muted text-[13px] mb-8">
@@ -372,7 +372,7 @@ export default function Arena() {
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
-            options={[{ value: '', label: 'Todas las campañas' }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
+            options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
             className="mb-5 max-w-xs"
           />
         )}
@@ -402,7 +402,7 @@ export default function Arena() {
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
             >
               <Plus className="h-4 w-4" />
-              Nuevo quiz
+              {i18n.t('common.new_quiz')}
             </button>
           </div>
         ) : (
@@ -451,7 +451,7 @@ export default function Arena() {
                           className="text-[11px] px-2 py-0.5 rounded-full font-medium"
                           style={{ background: `${q.theme_color}15`, color: q.theme_color }}
                         >
-                          {THEME_LABELS[q.theme_type] ?? q.theme_type}
+                          {THEME_LABELS[q.theme_type] ? i18n.t(THEME_LABELS[q.theme_type]) : q.theme_type}
                         </span>
                         <span className="text-[11px] text-text-muted">
                           {q.steps.length} pregunta{q.steps.length !== 1 ? 's' : ''}
@@ -526,7 +526,7 @@ export default function Arena() {
             {/* Modal header */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[16px] font-semibold text-text">
-                {editingId ? 'Editar quiz' : 'Nuevo quiz'}
+                {editingId ? i18n.t('common.edit_quiz') : i18n.t('common.new_quiz')}
               </h2>
               <button
                 onClick={closeModal}
@@ -584,7 +584,7 @@ export default function Arena() {
                     <Select
                       value={form.theme_type}
                       onChange={v => setForm(f => ({ ...f, theme_type: v }))}
-                      options={THEME_TYPES.map(t => ({ value: t, label: THEME_LABELS[t] }))}
+                      options={THEME_TYPES.map(tt => ({ value: tt, label: i18n.t(THEME_LABELS[tt]) }))}
                     />
                   </div>
                 </div>
@@ -635,7 +635,7 @@ export default function Arena() {
                       className="text-[11px] font-medium transition-opacity hover:opacity-70"
                       style={{ color: '#00C228' }}
                     >
-                      + Agregar pregunta
+                      + {i18n.t('common.add_question')}
                     </button>
                   </div>
 
@@ -648,7 +648,7 @@ export default function Arena() {
                         {/* Step header */}
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wide">
-                            Pregunta {si + 1}
+                            {i18n.t('common.question_n', { n: si + 1 })}
                           </span>
                           <button
                             type="button"
@@ -691,7 +691,7 @@ export default function Arena() {
                                 className="text-[10px] font-medium hover:opacity-70 transition-opacity"
                                 style={{ color: '#00C228' }}
                               >
-                                + Opción
+                                + {i18n.t('common.add_option')}
                               </button>
                             )}
                           </div>
@@ -714,7 +714,7 @@ export default function Arena() {
                                   <input
                                     value={opt.text}
                                     onChange={e => updateOption(step.id, opt.id, { text: e.target.value })}
-                                    placeholder={`Opción ${oi + 1}...`}
+                                    placeholder={i18n.t('common.option_n_ph', { n: oi + 1 })}
                                     className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12px] bg-surface text-text placeholder-text-subtle focus:outline-none transition-colors"
                                     style={
                                       opt.correct
@@ -755,7 +755,7 @@ export default function Arena() {
                   onClick={closeModal}
                   className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors border border-line"
                 >
-                  Cancelar
+                  {i18n.t('common.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -765,7 +765,7 @@ export default function Arena() {
                   onMouseEnter={e => { if (!saving) (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.24)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.14)' }}
                 >
-                  {saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Crear quiz'}
+                  {saving ? i18n.t('common.saving') : editingId ? i18n.t('common.save_changes') : i18n.t('common.create_quiz')}
                 </button>
               </div>
             </form>

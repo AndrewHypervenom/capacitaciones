@@ -122,7 +122,7 @@ function LockedPreview({ minScore, backTo }: { minScore: number; backTo: string 
               <div style={{ fontSize: 13, letterSpacing: 3, color: GRAY_MED, textTransform: 'uppercase' }}>
                 {t('certificate.title')}
               </div>
-              <div style={{ fontSize: 44, fontWeight: 300 }}>Tu Nombre Aquí</div>
+              <div style={{ fontSize: 44, fontWeight: 300 }}>{t('certificate.sample_name')}</div>
               <div style={{ width: 60, height: 3, background: GREEN, borderRadius: 2 }} />
               <div style={{ fontSize: 15, color: GRAY_MED, maxWidth: 460, textAlign: 'center' }}>
                 {t('certificate.completion_text')}

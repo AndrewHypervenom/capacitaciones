@@ -193,9 +193,9 @@ export default function Profile() {
               onChange={(v) => setForm((f) => ({ ...f, country: v }))}
               className="[&>button]:h-12 [&>button]:rounded-2xl [&>button]:px-4 [&>button]:text-[15px]"
               options={[
-                { value: 'CO', label: 'Colombia' },
-                { value: 'MX', label: 'México' },
-                { value: 'AR', label: 'Argentina' },
+                { value: 'CO', label: t('simulator.countries.CO') },
+                { value: 'MX', label: t('simulator.countries.MX') },
+                { value: 'AR', label: t('simulator.countries.AR') },
               ]}
             />
           </div>

@@ -304,7 +304,7 @@ function QuizEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
         type="text"
         value={block.question[lang]}
         onChange={(e) => onChange({ ...block, question: { ...block.question, [lang]: e.target.value } })}
-        placeholder={`Pregunta (${lang})...`}
+        placeholder={i18n.t('admin.modules.be.ph_question', { lang })}
         className="w-full bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none font-medium"
       />
       <div className="space-y-2">
@@ -320,7 +320,7 @@ function QuizEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
                 const next = block.options.map((o, j) => j === i ? { text: { ...o.text, [lang]: e.target.value } } : o);
                 onChange({ ...block, options: next });
               }}
-              placeholder={`Opción ${i + 1} (${lang})...`}
+              placeholder={i18n.t('admin.modules.be.ph_option_n', { n: i + 1, lang })}
               className={cn('flex-1 bg-transparent text-[13px] placeholder:text-text-subtle outline-none',
                 block.correct === i ? 'text-neon-green' : 'text-text-muted')}
             />
@@ -331,7 +331,7 @@ function QuizEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
         type="text"
         value={block.explanation[lang]}
         onChange={(e) => onChange({ ...block, explanation: { ...block.explanation, [lang]: e.target.value } })}
-        placeholder={`Explicación (${lang})...`}
+        placeholder={i18n.t('admin.modules.be.ph_explanation', { lang })}
         className="w-full bg-transparent text-[12.5px] text-text-subtle placeholder:text-text-subtle outline-none italic"
       />
     </div>
@@ -344,7 +344,7 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
       {block.cards.map((card, i) => (
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-text-subtle font-medium">Tarjeta {i + 1}</span>
+            <span className="text-[11px] text-text-subtle font-medium">{i18n.t('admin.modules.be.card_n', { n: i + 1 })}</span>
             <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, cards: block.cards.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors">
               <Trash2 className="h-3 w-3" />
@@ -355,7 +355,7 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
               const next = block.cards.map((c, j) => j === i ? { ...c, front: { ...c.front, [lang]: e.target.value } } : c);
               onChange({ ...block, cards: next });
             }}
-            placeholder={`Frente (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_front', { lang })}
             className="w-full bg-transparent text-[13px] text-text placeholder:text-text-subtle outline-none" />
           <div className="h-px bg-glass-border/10" />
           <input type="text" value={card.back[lang]}
@@ -363,7 +363,7 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
               const next = block.cards.map((c, j) => j === i ? { ...c, back: { ...c.back, [lang]: e.target.value } } : c);
               onChange({ ...block, cards: next });
             }}
-            placeholder={`Reverso (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_back', { lang })}
             className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none" />
         </div>
       ))}
@@ -381,7 +381,7 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
       {block.items.map((item, i) => (
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-text-subtle">Ítem {i + 1}</span>
+            <span className="text-[11px] text-text-subtle">{i18n.t('admin.modules.be.item_n', { n: i + 1 })}</span>
             <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
           </div>
@@ -390,14 +390,14 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
               const next = block.items.map((it, j) => j === i ? { ...it, question: { ...it.question, [lang]: e.target.value } } : it);
               onChange({ ...block, items: next });
             }}
-            placeholder={`Pregunta (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_question', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none" />
           <textarea value={item.answer[lang]}
             onChange={(e) => {
               const next = block.items.map((it, j) => j === i ? { ...it, answer: { ...it.answer, [lang]: e.target.value } } : it);
               onChange({ ...block, items: next });
             }}
-            placeholder={`Respuesta (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_answer', { lang })}
             rows={2}
             className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none" />
         </div>
@@ -417,7 +417,7 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
       {block.tabs.map((tab, i) => (
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Pestaña {i + 1}</span>
+            <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">{i18n.t('admin.modules.be.tab_n', { n: i + 1 })}</span>
             <button
               onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, tabs: block.tabs.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors"
@@ -432,7 +432,7 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
               const next = block.tabs.map((t, j) => j === i ? { ...t, label: { ...t.label, [lang]: e.target.value } } : t);
               onChange({ ...block, tabs: next });
             }}
-            placeholder={`Nombre de pestaña (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_tab_name', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none border-b border-glass-border/10 pb-1"
           />
           <textarea
@@ -441,7 +441,7 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
               const next = block.tabs.map((t, j) => j === i ? { ...t, content: { ...t.content, [lang]: e.target.value } } : t);
               onChange({ ...block, tabs: next });
             }}
-            placeholder={`Contenido (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_content', { lang })}
             rows={3}
             className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
           />
@@ -468,7 +468,7 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
               <div className="h-5 w-5 rounded-full bg-neon-green/15 border border-neon-green/25 flex items-center justify-center">
                 <span className="text-[9px] font-bold text-neon-green">{i + 1}</span>
               </div>
-              <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Evento {i + 1}</span>
+              <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">{i18n.t('admin.modules.be.event_n', { n: i + 1 })}</span>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -505,7 +505,7 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
               const next = block.items.map((it, j) => j === i ? { ...it, description: { ...it.description, [lang]: e.target.value } } : it);
               onChange({ ...block, items: next });
             }}
-            placeholder={`Descripción (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_description', { lang })}
             rows={2}
             className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
           />
@@ -575,7 +575,7 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
               type="text"
               value={h[lang]}
               onChange={(e) => updateHeader(ci, e.target.value)}
-              placeholder={`Col ${ci + 1} (${lang})`}
+              placeholder={i18n.t('admin.modules.be.ph_col_n', { n: ci + 1, lang })}
               className="flex-1 glass rounded-lg px-2 py-1.5 text-[12px] font-semibold text-text placeholder:text-text-subtle outline-none min-w-0"
             />
             <button
@@ -607,7 +607,7 @@ function ComparisonEditor({ block, onChange, lang }: { block: ContentBlock & { t
                 type="text"
                 value={cell[lang]}
                 onChange={(e) => updateCell(ri, ci, e.target.value)}
-                placeholder={`Celda (${lang})`}
+                placeholder={i18n.t('admin.modules.be.ph_cell', { lang })}
                 className="flex-1 glass rounded-lg px-2 py-1.5 text-[12px] text-text placeholder:text-text-subtle outline-none min-w-0"
               />
             ))}
@@ -725,7 +725,7 @@ function QuoteEditorBlock({ block, onChange, lang }: { block: ContentBlock & { t
       <MLInput value={block.text[lang]} onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })} multiline lang={lang} placeholder={i18n.t('admin.modules.be.ph_quote')} />
       <input type="text" value={block.author?.[lang] ?? ''}
         onChange={(e) => onChange({ ...block, author: { ...(block.author ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
-        placeholder={`Autor (${lang}, opcional)...`}
+        placeholder={i18n.t('admin.modules.be.ph_author', { lang })}
         className="w-full bg-transparent text-[12.5px] italic text-text-subtle placeholder:text-text-subtle outline-none" />
     </div>
   );
@@ -821,7 +821,7 @@ function SortGameEditor({
                 type="text"
                 value={step.text?.[lang] ?? ''}
                 onChange={(e) => handleEditStep(step.id, e.target.value)}
-                placeholder={`Paso ${index + 1}...`}
+                placeholder={i18n.t('admin.modules.be.ph_step_n', { n: index + 1 })}
                 className="w-full bg-transparent text-[14px] text-text outline-none"
               />
             </div>
@@ -1055,7 +1055,7 @@ function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 
                 placeholder={i18n.t('admin.modules.be.ph_emoji')}
                 className="w-12 bg-transparent text-[15px] text-center text-text placeholder:text-text-subtle outline-none"
               />
-              <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Tarjeta {i + 1}</span>
+              <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">{i18n.t('admin.modules.be.card_n', { n: i + 1 })}</span>
             </div>
             <button onClick={async () => { if (await confirmRemove('confirm.delete_block_title', 'confirm.delete_block_desc')) onChange({ ...block, items: block.items.filter((_, j) => j !== i) }) }}
               className="text-text-subtle hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
@@ -1114,7 +1114,7 @@ function StatEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
             type="text"
             value={s.label[lang]}
             onChange={(e) => onChange({ ...block, items: block.items.map((it, j) => j === i ? { ...it, label: { ...it.label, [lang]: e.target.value } } : it) })}
-            placeholder={`Etiqueta (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_label', { lang })}
             className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none"
           />
         </div>
@@ -1187,7 +1187,7 @@ function HotspotEditor({
       {block.points.map((pt, i) => (
         <div key={i} className="glass rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">Punto {i + 1}</span>
+            <span className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide">{i18n.t('admin.modules.be.point_n', { n: i + 1 })}</span>
             <div className="flex items-center gap-2">
               <label className="text-[10px] text-text-subtle">X</label>
               <input type="number" min={0} max={100} value={pt.x}
@@ -1207,7 +1207,7 @@ function HotspotEditor({
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none" />
           <textarea value={pt.text[lang]}
             onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, text: { ...p.text, [lang]: e.target.value } } : p) })}
-            placeholder={`Descripción (${lang})...`}
+            placeholder={i18n.t('admin.modules.be.ph_description', { lang })}
             rows={2}
             className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none" />
         </div>
@@ -1215,7 +1215,7 @@ function HotspotEditor({
 
       <input type="text" value={block.caption?.[lang] ?? ''}
         onChange={(e) => onChange({ ...block, caption: { ...(block.caption ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
-        placeholder={`Pie de imagen (${lang}, opcional)...`}
+        placeholder={i18n.t('admin.modules.be.ph_image_caption', { lang })}
         className="w-full bg-transparent text-[12.5px] italic text-text-subtle placeholder:text-text-subtle outline-none" />
     </div>
   );

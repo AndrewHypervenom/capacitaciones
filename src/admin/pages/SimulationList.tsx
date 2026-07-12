@@ -83,8 +83,8 @@ export default function SimulationList() {
     try {
       await deleteScenario(row.id)
       setDialogueRows((prev) => prev.filter((r) => r.id !== row.id))
-      toast.success('Simulación eliminada')
-    } catch { toast.error('Error al eliminar') }
+      toast.success(t('admin.simulations.list_toast_deleted'))
+    } catch { toast.error(t('admin.simulations.list_toast_delete_error')) }
   }
 
   const handleToggleChoice = async (row: ChoiceScenarioRow) => {
@@ -104,13 +104,13 @@ export default function SimulationList() {
     try {
       await deleteChoiceScenario(row.id)
       setChoiceRows((prev) => prev.filter((r) => r.id !== row.id))
-      toast.success('Simulación eliminada')
-    } catch { toast.error('Error al eliminar') }
+      toast.success(t('admin.simulations.list_toast_deleted'))
+    } catch { toast.error(t('admin.simulations.list_toast_delete_error')) }
   }
 
   const handleSeed = async () => {
     if (!selectedCampaignId) return
-    if (!window.confirm('¿Importar las simulaciones de muestra a esta campaña? Se sobreescribirán si ya existen.')) return
+    if (!window.confirm(t('admin.simulations.seed_confirm'))) return
     setSeeding(true)
     try {
       const [d, c] = await Promise.all([
@@ -172,7 +172,7 @@ export default function SimulationList() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 p-1 rounded-xl glass w-fit border border-glass-border/10">
-        {([['dialogue', 'Llamadas', PhoneCall], ['choice', 'Opción múltiple', MessageSquare]] as const).map(
+        {([['dialogue', t('admin.simulations.tab_calls'), PhoneCall], ['choice', t('admin.simulations.tab_choice'), MessageSquare]] as const).map(
           ([key, label, Icon]) => (
             <button
               key={key}

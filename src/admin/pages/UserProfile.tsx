@@ -19,7 +19,7 @@ import { toast } from '@/stores/toastStore'
 import type { Profile } from '@/types/database'
 import { cn } from '@/lib/cn'
 
-const COUNTRY_LABEL: Record<string, string> = { CO: 'Colombia', MX: 'México', AR: 'Argentina' }
+const COUNTRY_LABEL: Record<string, string> = { CO: 'simulator.countries.CO', MX: 'simulator.countries.MX', AR: 'simulator.countries.AR' }
 
 interface EditForm {
   display_name: string
@@ -196,7 +196,7 @@ export default function UserProfile() {
     { icon: Briefcase, label: t('profile.job_title'), value: profile.job_title },
     { icon: IdCard, label: t('profile.national_id'), value: profile.national_id },
     { icon: Phone, label: t('profile.phone'), value: profile.phone },
-    { icon: MapPin, label: t('profile.country'), value: profile.country ? (COUNTRY_LABEL[profile.country] ?? profile.country) : null },
+    { icon: MapPin, label: t('profile.country'), value: profile.country ? (COUNTRY_LABEL[profile.country] ? t(COUNTRY_LABEL[profile.country]) : profile.country) : null },
     { icon: CalendarDays, label: t('admin.users.member_since'), value: fmtDate(profile.created_at) },
   ]
 
@@ -310,9 +310,9 @@ export default function UserProfile() {
                   onChange={(v) => setForm((f) => ({ ...f, country: v }))}
                   className="[&>button]:h-12 [&>button]:rounded-2xl [&>button]:px-4 [&>button]:text-[15px]"
                   options={[
-                    { value: 'CO', label: 'Colombia' },
-                    { value: 'MX', label: 'México' },
-                    { value: 'AR', label: 'Argentina' },
+                    { value: 'CO', label: t('simulator.countries.CO') },
+                    { value: 'MX', label: t('simulator.countries.MX') },
+                    { value: 'AR', label: t('simulator.countries.AR') },
                   ]}
                 />
               </div>

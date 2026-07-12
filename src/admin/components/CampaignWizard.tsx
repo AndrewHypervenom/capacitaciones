@@ -384,7 +384,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                     className="flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text transition-colors disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <ChevronLeft className="h-4 w-4" />
-                    Anterior
+                    {i18n.t('common.previous')}
                   </button>
 
                   {step < 3 ? (
@@ -394,7 +394,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                       disabled={!canGoNext}
                       onClick={() => setStep((s) => (s + 1) as WizardStep)}
                     >
-                      Siguiente
+                      {i18n.t('common.next')}
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   ) : (

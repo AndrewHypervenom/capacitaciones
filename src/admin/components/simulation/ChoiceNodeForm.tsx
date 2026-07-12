@@ -202,7 +202,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
               onClick={addOption}
               className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors"
             >
-              <Plus className="h-3.5 w-3.5" /> Agregar opción
+              <Plus className="h-3.5 w-3.5" /> {t('common.add_option_full')}
             </button>
           </div>
 
@@ -210,7 +210,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
             {(data.options ?? []).map((opt, idx) => (
               <div key={idx} className="p-4 rounded-xl bg-glass/4 border border-glass-border/8 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-text-muted">Opción {idx + 1}</span>
+                  <span className="text-xs font-medium text-text-muted">{t('common.option_n_label', { n: idx + 1 })}</span>
                   <button onClick={() => removeOption(idx)} className="text-text-subtle hover:text-danger transition-colors">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -235,7 +235,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
                       value={opt.nextId}
                       onChange={(v) => updateOption(idx, { nextId: v })}
                       options={[
-                        { value: '', label: '— Seleccionar —' },
+                        { value: '', label: t('common.select_dash') },
                         ...allNodeIds.map((nid) => ({ value: nid, label: nid })),
                       ]}
                       compact

@@ -112,7 +112,7 @@ function QuestionEditor({
             {index + 1}
           </span>
           <span className="text-[12px] font-medium text-text truncate max-w-[200px]">
-            {(q[qField] as string) || `Pregunta ${index + 1}`}
+            {(q[qField] as string) || t('admin.modules.vme.question_n', { n: index + 1 })}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -133,7 +133,7 @@ function QuestionEditor({
         <div className="px-3 pb-3 space-y-3 border-t border-glass-border/8">
           <div className="pt-3">
             <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
-              Pregunta ({lang.toUpperCase()})
+              {t('admin.modules.vme.question_label', { lang: lang.toUpperCase() })}
             </label>
             <textarea
               value={q[qField] as string}
@@ -146,7 +146,7 @@ function QuestionEditor({
 
           <div>
             <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1.5">
-              Opciones — marca la correcta
+              {t('admin.modules.vme.options_mark_correct')}
             </label>
             <div className="space-y-1.5">
               {(['A','B','C','D'] as const).map((letter, i) => {
@@ -172,7 +172,7 @@ function QuestionEditor({
                         onChange({ ...q, [optsField]: next })
                       }}
                       className="flex-1 rounded-lg px-2.5 py-1.5 text-[12px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none placeholder:text-text-subtle"
-                      placeholder={`Opción ${letter}`}
+                      placeholder={t('admin.modules.vme.ph_option_letter', { letter })}
                     />
                   </div>
                 )
@@ -182,7 +182,7 @@ function QuestionEditor({
 
           <div>
             <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
-              Explicación ({lang.toUpperCase()})
+              {t('admin.modules.vme.explanation_label', { lang: lang.toUpperCase() })}
             </label>
             <textarea
               value={q[expField] as string}
@@ -252,7 +252,7 @@ function MarkerEditForm({
         return updated
       })
     } catch {
-      setTranslateError('Error al traducir. Intenta de nuevo.')
+      setTranslateError(t('common.translate_error'))
     } finally {
       setTranslating(false)
     }
@@ -302,7 +302,7 @@ function MarkerEditForm({
         </div>
         <div className="flex-1">
           <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
-            Título ({lang.toUpperCase()})
+            {t('admin.modules.vme.title_label', { lang: lang.toUpperCase() })}
           </label>
           <input
             value={draft[titleField]}
@@ -337,13 +337,13 @@ function MarkerEditForm({
             return (
               <div key={l}>
                 <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
-                  Título ({l.toUpperCase()})
+                  {t('admin.modules.vme.title_label', { lang: l.toUpperCase() })}
                 </label>
                 <input
                   value={draft[f]}
                   onChange={(e) => setDraft((p) => ({ ...p, [f]: e.target.value }))}
                   className="w-full rounded-lg px-2.5 py-1.5 text-[12px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none placeholder:text-text-subtle"
-                  placeholder={`Título en ${l.toUpperCase()}`}
+                  placeholder={t('admin.modules.vme.ph_title_lang', { lang: l.toUpperCase() })}
                 />
               </div>
             )
@@ -356,14 +356,14 @@ function MarkerEditForm({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
-              Preguntas ({(draft.questions ?? []).length})
+              {t('admin.modules.vme.questions_count', { count: (draft.questions ?? []).length })}
             </label>
             <button
               type="button"
               onClick={addQuestion}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-400/8 transition-colors border border-blue-400/20"
             >
-              <Plus className="h-3 w-3" /> Agregar pregunta
+              <Plus className="h-3 w-3" /> {t('admin.modules.vme.add_question')}
             </button>
           </div>
           {(draft.questions ?? []).map((q, i) => (
@@ -383,7 +383,7 @@ function MarkerEditForm({
               onClick={addQuestion}
               className="w-full py-3 rounded-xl border border-dashed border-glass-border/20 text-[12px] text-text-subtle hover:border-blue-400/30 hover:text-blue-400 transition-colors"
             >
-              + Agregar primera pregunta
+              {t('admin.modules.vme.add_first_question')}
             </button>
           )}
         </div>
@@ -395,14 +395,14 @@ function MarkerEditForm({
           onClick={onCancel}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text glass border border-glass-border/10 transition-colors"
         >
-          <X className="h-3.5 w-3.5" /> Cancelar
+          <X className="h-3.5 w-3.5" /> {t('common.cancel')}
         </button>
         <button
           type="button"
           onClick={() => onSave(draft)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-neon-green bg-neon-green/8 border border-neon-green/20 hover:bg-neon-green/12 transition-colors"
         >
-          <Check className="h-3.5 w-3.5" /> Guardar
+          <Check className="h-3.5 w-3.5" /> {t('common.save')}
         </button>
       </div>
     </div>
@@ -477,7 +477,7 @@ export function VideoMarkerEditor({
       })
       onMarkersChange(updated)
     } catch {
-      setTranslateAllError('Error al traducir. Intenta de nuevo.')
+      setTranslateAllError(t('common.translate_error'))
     } finally {
       setTranslatingAll(false)
     }
@@ -491,7 +491,7 @@ export function VideoMarkerEditor({
       return
     }
     if (!['video/mp4', 'video/webm', 'video/ogg'].includes(file.type)) {
-      setUploadError('Solo se aceptan videos MP4, WebM u OGG')
+      setUploadError(t('admin.modules.vme.video_only_formats'))
       return
     }
     // Tope de 50 MB: es el límite global de subida del proyecto Supabase (plan Free);
@@ -506,7 +506,7 @@ export function VideoMarkerEditor({
       const url = await uploadSectionMedia(file, campaignId, moduleId, sectionId)
       onVideoChange(url, 'video')
     } catch {
-      setUploadError('Error al subir el video')
+      setUploadError(t('admin.modules.vme.video_upload_error'))
     } finally {
       setUploading(false)
     }
@@ -569,7 +569,7 @@ export function VideoMarkerEditor({
       {/* Subida / vista previa del video */}
       <div>
         <label className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
-          Video del módulo
+          {t('admin.modules.vme.module_video')}
         </label>
 
         {videoUrl ? (
@@ -608,7 +608,7 @@ export function VideoMarkerEditor({
                 )}
               >
                 <Upload className="h-3.5 w-3.5" />
-                Subir archivo
+                {t('admin.modules.vme.upload_file')}
               </button>
               <button
                 type="button"
@@ -639,13 +639,13 @@ export function VideoMarkerEditor({
                 {uploading ? (
                   <div className="flex items-center gap-2 text-text-muted text-[13px]">
                     <div className="h-4 w-4 border-2 border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
-                    Subiendo video…
+                    {t('admin.modules.vme.uploading_video')}
                   </div>
                 ) : (
                   <>
                     <Video className="h-8 w-8 text-text-subtle" />
                     <p className="text-[13px] text-text-muted text-center">
-                      Arrastra un video MP4/WebM aquí o{' '}
+                      {t('admin.modules.vme.drag_video')}{' '}
                       <span className="text-blue-400 font-medium">{t('admin.modules.media_browse')}</span>
                     </p>
                     <p className="text-[11px] text-text-subtle">{t('admin.modules.vme.video_specs')}</p>
@@ -668,11 +668,11 @@ export function VideoMarkerEditor({
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium text-red-400 bg-red-400/8 border border-red-400/25 hover:bg-red-400/12 transition-colors shrink-0"
                   >
                     <Youtube className="h-4 w-4" />
-                    Usar
+                    {t('common.use')}
                   </button>
                 </div>
                 <p className="text-[11px] text-text-subtle">
-                  Pega la URL o el ID del video. Ideal para videos largos (sin límite de tamaño).
+                  {t('admin.modules.vme.youtube_hint')}
                 </p>
               </div>
             )}
@@ -699,7 +699,7 @@ export function VideoMarkerEditor({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-danger/70 hover:text-danger glass border border-glass-border/10 hover:bg-danger/6 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              {isYouTube ? 'Cambiar video' : 'Eliminar video'}
+              {isYouTube ? t('admin.modules.vme.change_video') : t('admin.modules.vme.delete_video')}
             </button>
           </div>
         )}
@@ -713,7 +713,7 @@ export function VideoMarkerEditor({
       {videoUrl && videoDuration > 0 && (
         <div>
           <label className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2">
-            Línea de tiempo · Click para posicionar
+            {t('admin.modules.vme.timeline_label')}
           </label>
           <div
             className="relative h-8 rounded-full bg-glass/8 border border-glass-border/10 cursor-pointer"
@@ -750,11 +750,11 @@ export function VideoMarkerEditor({
           <div className="flex items-center gap-3 mt-2">
             <span className="flex items-center gap-1.5 text-[11px] text-text-subtle">
               <span className="h-2.5 w-2.5 rounded-full bg-blue-400 inline-block" />
-              Capítulo
+              {t('admin.modules.vme.legend_chapter')}
             </span>
             <span className="flex items-center gap-1.5 text-[11px] text-text-subtle">
               <span className="h-2.5 w-2.5 rounded-full bg-amber-400 inline-block" />
-              Quiz
+              {t('admin.modules.vme.legend_quiz')}
             </span>
           </div>
         </div>
@@ -769,7 +769,7 @@ export function VideoMarkerEditor({
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-medium text-blue-400 bg-blue-400/8 border border-blue-400/20 hover:bg-blue-400/12 transition-colors"
           >
             <BookOpen className="h-3.5 w-3.5" />
-            + Agregar capítulo
+            {t('admin.modules.vme.add_chapter')}
           </button>
           <button
             type="button"
@@ -777,11 +777,11 @@ export function VideoMarkerEditor({
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-[12px] font-medium text-amber-400 bg-amber-400/8 border border-amber-400/20 hover:bg-amber-400/12 transition-colors"
           >
             <ClipboardList className="h-3.5 w-3.5" />
-            + Agregar quiz
+            {t('admin.modules.vme.add_quiz')}
           </button>
           {videoDuration > 0 && videoRef.current && (
             <span className="flex items-center text-[11px] text-text-subtle ml-auto">
-              Tiempo actual: {formatTime(videoRef.current?.currentTime ?? 0)}
+              {t('admin.modules.vme.current_time')} {formatTime(videoRef.current?.currentTime ?? 0)}
             </span>
           )}
         </div>
@@ -792,7 +792,7 @@ export function VideoMarkerEditor({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-              Marcadores ({sortedMarkers.length})
+              {t('admin.modules.vme.markers_count', { count: sortedMarkers.length })}
             </label>
             <button
               type="button"
@@ -872,7 +872,7 @@ export function VideoMarkerEditor({
 
       {markers.length === 0 && videoUrl && (
         <div className="py-6 text-center text-[12px] text-text-subtle border border-dashed border-glass-border/10 rounded-xl">
-          Sin marcadores. Usa los botones para agregar capítulos o quizzes.
+          {t('admin.modules.vme.no_markers')}
         </div>
       )}
     </div>

@@ -215,14 +215,14 @@ export default function ModuleList() {
         <div className="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <p className="text-[11px] text-text-subtle uppercase tracking-wider mb-3">
-              Admin / Módulos
+              {t('admin.modules.crumb')}
             </p>
             <GradientHeading as="h1" variant="white" size="headline">
               {t('admin.modules.title')}
             </GradientHeading>
             {selectedCampaignName && (
               <p className="text-text-muted text-[13px] mt-1">
-                Campaña: <span className="font-medium text-text">{selectedCampaignName}</span>
+                {t('admin.modules.campaign_label')} <span className="font-medium text-text">{selectedCampaignName}</span>
               </p>
             )}
           </div>
@@ -286,7 +286,7 @@ export default function ModuleList() {
             <Link to="/admin/modules/new">
               <Button variant="neon" className="flex items-center gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
-                Crear primer módulo
+                {t('admin.modules.create_first')}
               </Button>
             </Link>
           </GlassCard>

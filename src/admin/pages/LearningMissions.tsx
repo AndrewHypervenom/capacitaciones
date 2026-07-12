@@ -180,8 +180,8 @@ export default function LearningMissions() {
       console.error('La misión no se borró (0 filas afectadas). Falta una política RLS DELETE en guided_missions.')
       await confirm({
         title: t('confirm.delete_mission_title'),
-        description: 'No se pudo borrar la misión: la base de datos rechazó la operación (permisos RLS). Avisá al superadmin.',
-        confirmLabel: 'Entendido',
+        description: t('admin.worlds.lm_toast_delete_rls'),
+        confirmLabel: t('common.understood'),
       })
       return
     }
@@ -290,7 +290,7 @@ export default function LearningMissions() {
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
-            options={[{ value: '', label: 'Todas las campañas' }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
+            options={[{ value: '', label: t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
             className="mb-5 max-w-xs"
           />
         )}
@@ -431,7 +431,7 @@ export default function LearningMissions() {
           >
             {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-line shrink-0">
-              <h2 className="text-[16px] font-semibold text-text">{editingId ? 'Editar misión' : 'Nueva misión'}</h2>
+              <h2 className="text-[16px] font-semibold text-text">{editingId ? t('admin.worlds.lm_edit_mission') : t('admin.worlds.lm_new_mission')}</h2>
               <button
                 onClick={closeModal}
                 className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
@@ -500,7 +500,7 @@ export default function LearningMissions() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-[12px] font-medium text-text-muted">
-                      Pasos <span className="text-text-subtle font-normal">({form.steps.length})</span>
+                      {t('common.steps')} <span className="text-text-subtle font-normal">({form.steps.length})</span>
                     </label>
                     <button
                       type="button"
@@ -525,7 +525,7 @@ export default function LearningMissions() {
                           <input
                             value={step.title}
                             onChange={e => updateStep(step.id, { title: e.target.value })}
-                            placeholder={`Nombre del paso ${i + 1}`}
+                            placeholder={t('admin.worlds.lm_ph_step_name', { n: i + 1 })}
                             className="flex-1 min-w-0 text-[13px] bg-transparent text-text placeholder-text-subtle focus:outline-none"
                           />
                           {/* Type selector */}
@@ -574,7 +574,7 @@ export default function LearningMissions() {
                   onMouseEnter={e => { if (!saving) (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.24)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.14)' }}
                 >
-                  {saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Crear misión'}
+                  {saving ? t('common.saving') : editingId ? t('common.save_changes') : t('admin.worlds.lm_create_mission')}
                 </button>
               </div>
             </form>

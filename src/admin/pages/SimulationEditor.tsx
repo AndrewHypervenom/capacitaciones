@@ -158,11 +158,11 @@ export default function SimulationEditor() {
   }, [id, isNew])
 
   const handleSave = async () => {
-    if (!campaignId) return toast.error('Sin campaña asignada')
-    if (!meta.title_es.trim()) return toast.error('El título en español es requerido')
+    if (!campaignId) return toast.error(t('admin.simulations.toast_no_campaign'))
+    if (!meta.title_es.trim()) return toast.error(t('admin.simulations.toast_title_required'))
     const finalSlug = meta.slug.trim() || slugify(meta.title_es)
-    if (!finalSlug) return toast.error('Agrega un título para generar el identificador')
-    if (!meta.start_node_id || !nodes[meta.start_node_id]) return toast.error('El paso inicial no existe')
+    if (!finalSlug) return toast.error(t('admin.simulations.toast_slug_needs_title'))
+    if (!meta.start_node_id || !nodes[meta.start_node_id]) return toast.error(t('admin.simulations.toast_start_missing'))
 
     setSaving(true)
     try {
@@ -278,7 +278,7 @@ export default function SimulationEditor() {
         </button>
         <div className="flex-1 min-w-0">
           <GradientHeading as="h1" className="text-lg md:text-xl truncate">
-            {isNew ? 'Nueva simulación de llamada' : meta.title_es || 'Editor de simulación'}
+            {isNew ? t('admin.simulations.new_call_sim') : meta.title_es || t('admin.simulations.call_editor')}
           </GradientHeading>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
@@ -320,9 +320,9 @@ export default function SimulationEditor() {
       {/* Tabs */}
       <div className="flex gap-1 mb-6 p-1 rounded-xl glass w-fit border border-glass-border/10">
         {([
-          ['meta', 'General'],
-          ['nodes', 'Conversación'],
-          ['checklist', 'Evaluación'],
+          ['meta', t('admin.simulations.tab_general')],
+          ['nodes', t('admin.simulations.tab_conversation')],
+          ['checklist', t('admin.simulations.tab_checklist')],
         ] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('px-4 py-2.5 md:py-2 rounded-lg text-sm transition-all min-h-[44px] md:min-h-0',
@@ -345,9 +345,9 @@ export default function SimulationEditor() {
                   value={meta.country}
                   onChange={(v) => setMeta((m) => ({ ...m, country: v as 'CO' | 'MX' | 'AR' }))}
                   options={[
-                    { value: 'CO', label: 'Colombia (CO)' },
-                    { value: 'MX', label: 'México (MX)' },
-                    { value: 'AR', label: 'Argentina (AR)' },
+                    { value: 'CO', label: t('admin.simulations.country_co') },
+                    { value: 'MX', label: t('admin.simulations.country_mx') },
+                    { value: 'AR', label: t('admin.simulations.country_ar') },
                   ]}
                 />
               </div>
@@ -357,9 +357,9 @@ export default function SimulationEditor() {
                   value={String(meta.difficulty)}
                   onChange={(v) => setMeta((m) => ({ ...m, difficulty: Number(v) as 1 | 2 | 3 }))}
                   options={[
-                    { value: '1', label: 'Fácil' },
-                    { value: '2', label: 'Media' },
-                    { value: '3', label: 'Difícil' },
+                    { value: '1', label: t('admin.simulations.diff_easy') },
+                    { value: '2', label: t('admin.simulations.diff_medium') },
+                    { value: '3', label: t('admin.simulations.diff_hard') },
                   ]}
                 />
               </div>

@@ -315,7 +315,7 @@ export default function LiveQuizAdmin() {
           style={{ background: '#00C228' }}
         >
           <Zap className="h-4 w-4" />
-          Crear quiz
+          {i18n.t('admin.livequiz.create_quiz')}
         </button>
       </div>
 
@@ -327,7 +327,7 @@ export default function LiveQuizAdmin() {
             className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === 'all' ? 'text-[#00C228]' : 'bg-subtle text-text-muted hover:text-text'}`}
             style={filterCampaign === 'all' ? { background: 'rgba(0,194,40,0.12)', border: '1px solid rgba(0,194,40,0.3)' } : {}}
           >
-            Todas
+            {i18n.t('livequiz.filter_all')}
           </button>
           {campaigns.map((c) => (
             <button
@@ -346,7 +346,7 @@ export default function LiveQuizAdmin() {
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 text-text-subtle animate-spin" /></div>
       ) : filteredQuizzes.length === 0 ? (
         <div className="text-center py-20 text-text-subtle text-[14px]">
-          {quizzes.length === 0 ? 'No hay quizzes aun. ¡Crea el primero!' : 'No hay quizzes para esta campaña.'}
+          {quizzes.length === 0 ? i18n.t('livequiz.empty_none') : i18n.t('livequiz.empty_campaign')}
         </div>
       ) : (
         <div className="rounded-2xl border border-line overflow-x-auto">
@@ -415,7 +415,7 @@ export default function LiveQuizAdmin() {
   if (view === 'create') return (
     <div className="p-4 sm:p-8 max-w-2xl">
       <button onClick={() => setView('list')} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
-        <ChevronLeft className="h-4 w-4" /> Volver
+        <ChevronLeft className="h-4 w-4" /> {i18n.t('common.back')}
       </button>
       <h1 className="text-[22px] font-bold text-text mb-6">{i18n.t('admin.livequiz.create_quiz')}</h1>
 
@@ -432,7 +432,7 @@ export default function LiveQuizAdmin() {
             value={formCampaign}
             onChange={setFormCampaign}
             options={[
-              { value: '', label: 'Seleccionar campaña' },
+              { value: '', label: i18n.t('livequiz.select_campaign') },
               ...campaigns.map((c) => ({ value: c.id, label: c.name })),
             ]}
           />
@@ -443,7 +443,7 @@ export default function LiveQuizAdmin() {
         {formQuestions.map((q, qi) => (
           <div key={qi} className="rounded-2xl p-4 sm:p-5 bg-subtle border border-line">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[12px] text-text-muted uppercase tracking-wider">Pregunta {qi + 1}</span>
+              <span className="text-[12px] text-text-muted uppercase tracking-wider">{i18n.t('common.question_n', { n: qi + 1 })}</span>
               {formQuestions.length > 1 && (
                 <button onClick={async () => {
                     if (await confirm({ title: t('confirm.delete_question_title'), description: t('confirm.delete_question_desc') }))
@@ -480,7 +480,7 @@ export default function LiveQuizAdmin() {
                     </span>
                     <input
                       type="text"
-                      placeholder={`Opcion ${OPTION_LABELS[oi]}`}
+                      placeholder={i18n.t('livequiz.option_label_ph', { label: OPTION_LABELS[oi] })}
                       value={opt}
                       onChange={(e) => updateOption(qi, oi, e.target.value)}
                       className="flex-1 rounded-lg px-2.5 py-1.5 text-[12px] text-text bg-surface border border-line outline-none"
@@ -511,7 +511,7 @@ export default function LiveQuizAdmin() {
           onClick={() => setFormQuestions((prev) => [...prev, emptyQuestion()])}
           className="w-full rounded-xl py-3 min-h-[44px] text-[13px] text-text-muted hover:text-text border border-dashed border-line hover:border-line transition-colors flex items-center justify-center gap-2"
         >
-          <Plus className="h-4 w-4" /> Agregar pregunta
+          <Plus className="h-4 w-4" /> {i18n.t('common.add_question')}
         </button>
       </div>
 
@@ -522,7 +522,7 @@ export default function LiveQuizAdmin() {
         style={{ background: '#00C228' }}
       >
         {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-        Crear y abrir sesion
+        {i18n.t('livequiz.create_open')}
       </button>
     </div>
   )
@@ -535,7 +535,7 @@ export default function LiveQuizAdmin() {
   return (
     <div className="p-4 sm:p-8 max-w-2xl relative">
       <button onClick={() => setView('list')} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
-        <ChevronLeft className="h-4 w-4" /> Volver a la lista
+        <ChevronLeft className="h-4 w-4" /> {i18n.t('livequiz.back_to_list')}
       </button>
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
@@ -590,9 +590,9 @@ export default function LiveQuizAdmin() {
         <div className="rounded-2xl p-4 sm:p-5 mb-4 bg-subtle border border-line">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] text-text-muted uppercase tracking-wider">
-              Pregunta {activeQuiz.current_question + 1} de {activeQuiz.questions.length}
+              {i18n.t('livequiz.question_of', { n: activeQuiz.current_question + 1, total: activeQuiz.questions.length })}
             </span>
-            <span className="text-[12px] text-text-subtle">{totalAnswers} respuesta{totalAnswers !== 1 ? 's' : ''}</span>
+            <span className="text-[12px] text-text-subtle">{i18n.t('livequiz.answers_count', { count: totalAnswers })}</span>
           </div>
           <p className="text-[16px] text-text font-medium mb-5">{q.text}</p>
 
@@ -636,7 +636,7 @@ export default function LiveQuizAdmin() {
             style={{ background: '#00C228' }}
           >
             {advancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-            {isLast ? 'Finalizar quiz' : 'Siguiente pregunta'}
+            {isLast ? i18n.t('livequiz.finish_quiz') : i18n.t('livequiz.next_question')}
           </button>
           <button
             onClick={() => { void loadLeaderboard(activeQuiz.id); setShowLeaderboard(true) }}

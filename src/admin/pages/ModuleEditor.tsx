@@ -282,6 +282,7 @@ function GameSortEditorWrapper({
   language: string
   onBlockChange: (updated: GameSortBlock) => void
 }) {
+  const { t } = useTranslation()
   const getInitialBlock = (): GameSortBlock => {
     if (section.blocks_data && Array.isArray(section.blocks_data)) {
       const first = section.blocks_data[0] as any
@@ -310,7 +311,7 @@ function GameSortEditorWrapper({
 
   return (
     <div className="space-y-4">
-      <GroupDivider label="Juego de Ordenar Procesos" />
+      <GroupDivider label={t('admin.modules.ed_group_game_sort')} />
       <SortGameEditor
         block={localBlock}
         lang={language as any} // Pasa el parámetro de idioma correcto
@@ -536,11 +537,11 @@ function SectionEditorPanel({
       onSaved(updatedSection)
       onDirty(false)
       setSaveOk(true)
-      toast.success('Sección guardada')
+      toast.success(t('admin.modules.toast_section_saved'))
       setTimeout(() => setSaveOk(false), 2000)
     } catch {
       setError(t('admin.modules.error_save_section'))
-      toast.error('Error al guardar la sección')
+      toast.error(t('admin.modules.toast_section_save_error'))
     } finally {
       setSaving(false)
     }
@@ -602,7 +603,7 @@ function SectionEditorPanel({
         />
 
         <div>
-          <FieldLabel>Título de la sección ({lang.toUpperCase()})</FieldLabel>
+          <FieldLabel>{t('admin.modules.ed_section_title', { lang: lang.toUpperCase() })}</FieldLabel>
           <GlassInput
             value={heading[lang]}
             onChange={(v) => setHeading((prev) => ({ ...prev, [lang]: v }))}
@@ -746,7 +747,7 @@ function SectionEditorPanel({
       {/* ── MEDIA ── */}
       <div className="space-y-5">
         <GroupDivider
-          label="Media"
+          label={t('admin.modules.ed_group_media')}
           enabled={hasMedia}
           onToggle={(v) => { setHasMedia(v); if (!v) { setMediaType(null); setMediaUrl(null) } }}
         />
@@ -811,7 +812,7 @@ function SectionEditorPanel({
                   </div>
                 </div>
               )}
-              <GlassToggle checked={mediaShadow} onChange={setMediaShadow} label="Sombra" />
+              <GlassToggle checked={mediaShadow} onChange={setMediaShadow} label={t('admin.modules.ed_media_shadow')} />
             </GlassCard>
             <div>
               <FieldLabel>{t('admin.modules.media_caption')}</FieldLabel>
@@ -827,7 +828,7 @@ function SectionEditorPanel({
 
       {/* ── CALLOUT ── */}
       <div className="space-y-5">
-        <GroupDivider label="Callout" enabled={hasCallout} onToggle={setHasCallout} />
+        <GroupDivider label={t('admin.modules.ed_group_callout')} enabled={hasCallout} onToggle={setHasCallout} />
         {hasCallout && (
           <>
             <div>
@@ -846,7 +847,7 @@ function SectionEditorPanel({
               />
             </div>
             <div>
-              <FieldLabel>Texto del callout ({lang.toUpperCase()})</FieldLabel>
+              <FieldLabel>{t('admin.modules.ed_callout_text', { lang: lang.toUpperCase() })}</FieldLabel>
               <GlassTextarea
                 rows={3}
                 value={callout[lang]}
@@ -860,7 +861,7 @@ function SectionEditorPanel({
 
       {/* ── QUIZ ── */}
       <div className="space-y-5">
-        <GroupDivider label="Quiz" enabled={hasQuiz} onToggle={setHasQuiz} />
+        <GroupDivider label={t('admin.modules.ed_group_quiz')} enabled={hasQuiz} onToggle={setHasQuiz} />
         {hasQuiz && (
           <>
             <div>
@@ -915,7 +916,7 @@ function SectionEditorPanel({
       {/* ── BLOQUES (Renders normales) ── */}
       {sectionStyle !== 'game-sort' && sectionStyle !== 'game-classify' && (
         <div className="space-y-4">
-          <GroupDivider label="Bloques" />
+          <GroupDivider label={t('admin.modules.ed_group_blocks')} />
           <BlockEditor
             blocks={blocks}
             onChange={(next) => { setBlocks(next); onDirty(true) }}
@@ -1371,10 +1372,10 @@ export default function ModuleEditor() {
       const next = !mod.is_published
       await toggleModulePublished(mod.id, next)
       setMod((prev) => prev ? { ...prev, is_published: next } : prev)
-      toast.success(next ? 'Módulo publicado' : 'Módulo despublicado')
+      toast.success(next ? t('admin.modules.toast_published') : t('admin.modules.toast_unpublished'))
     } catch {
       setError(t('admin.modules.error_toggle'))
-      toast.error('Error al cambiar estado de publicación')
+      toast.error(t('admin.modules.toast_toggle_error'))
     } finally {
       setPublishingMod(false)
     }
@@ -1429,7 +1430,7 @@ export default function ModuleEditor() {
           return (
             <div className="space-y-4">
               <p className="text-[10px] text-text-subtle uppercase tracking-widest font-medium">
-                {s.heading_es || 'Sin título'}
+                {s.heading_es || t('common.untitled')}
               </p>
               {s.body_es?.map((p: string, i: number) => (
                 <p key={i} className="text-[14px] leading-relaxed text-text-muted">{p}</p>
@@ -1558,7 +1559,7 @@ export default function ModuleEditor() {
                         'flex-1 text-[12px] font-medium truncate',
                         selectedSectionId === section.id ? 'text-text' : '',
                       )}>
-                        {section.heading_es || 'Sin título'}
+                        {section.heading_es || t('common.untitled')}
                       </span>
                       <div className="flex items-center gap-1 shrink-0 opacity-100 md:opacity-50 md:group-hover:opacity-100 transition-opacity">
                         {section.media_type && <Image className="h-2.5 w-2.5 text-text-subtle" />}

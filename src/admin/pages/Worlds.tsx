@@ -40,11 +40,11 @@ interface WorldForm {
 
 const BG_TYPES: BgType[] = ['airline', 'bank', 'health', 'corporate', 'tech']
 const BG_LABELS: Record<BgType, string> = {
-  airline: 'Aerolínea',
-  bank: 'Banco',
-  health: 'Salud',
-  corporate: 'Corporativo',
-  tech: 'Tecnología',
+  airline: 'admin.arena.theme_airline',
+  bank: 'admin.arena.theme_bank',
+  health: 'admin.arena.theme_health',
+  corporate: 'admin.arena.theme_corporate',
+  tech: 'admin.arena.theme_tech',
 }
 
 const emptyForm = (): WorldForm => ({
@@ -164,7 +164,7 @@ export default function Worlds() {
     // worlds.campaign_id es NOT NULL: el mundo siempre pertenece a una campaña.
     const campaign = form.campaign_id || (scopedToCampaign ? (campaignId ?? '') : '')
     if (!campaign) {
-      toast.error('Elegí una campaña para el mundo')
+      toast.error(i18n.t('admin.worlds.toast_choose_campaign'))
       return null
     }
     setSavingWorld(true)
@@ -309,7 +309,7 @@ export default function Worlds() {
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
-            options={[{ value: '', label: 'Todas las campañas' }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
+            options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
             className="mb-5 max-w-xs"
           />
         )}
@@ -381,13 +381,13 @@ export default function Worlds() {
                       )}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${w.color}15`, color: w.color }}>
-                          {BG_LABELS[w.bg_type] ?? w.bg_type}
+                          {BG_LABELS[w.bg_type] ? i18n.t(BG_LABELS[w.bg_type]) : w.bg_type}
                         </span>
                         <span className="inline-flex items-center gap-1 text-[11px] text-text-muted">
                           <Map className="h-3 w-3" />
                           {nRegions === 0
-                            ? 'Sin regiones'
-                            : `${nRegions} regi${nRegions !== 1 ? 'ones' : 'ón'}`}
+                            ? i18n.t('admin.worlds.no_regions')
+                            : i18n.t('admin.worlds.regions_count', { count: nRegions })}
                         </span>
                       </div>
                     </div>
@@ -395,7 +395,7 @@ export default function Worlds() {
                   <div className="flex items-center gap-1.5 sm:shrink-0 flex-wrap">
                     <button
                       onClick={() => openWizardEdit(w)}
-                      title="Editar datos del mundo"
+                      title={i18n.t('admin.worlds.ed_title')}
                       className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted transition-colors"
                       style={{ border: '1px solid rgb(var(--glass-border) / 0.08)' }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgb(var(--glass-border) / 0.06)' }}
@@ -468,11 +468,11 @@ export default function Worlds() {
                   <div className="h-14 w-14 rounded-2xl mx-auto mb-3 flex items-center justify-center text-[28px]" style={{ background: 'rgba(0,194,40,0.12)' }}>
                     {form.icon || '🌍'}
                   </div>
-                  <h3 className="text-[18px] font-bold text-text mb-1">¿Cómo se llamará tu mundo?</h3>
+                  <h3 className="text-[18px] font-bold text-text mb-1">{i18n.t('admin.worlds.wiz_name_q')}</h3>
                   <p className="text-[12.5px] text-text-muted max-w-[42ch] mx-auto">
                     {wizardMode === 'new'
-                      ? 'Después de crearlo vas a armar sus regiones y niveles. Podés cambiar todo esto luego.'
-                      : 'Es el nombre que verán tus aprendices. Podés cambiarlo cuando quieras.'}
+                      ? i18n.t('admin.worlds.wiz_hint_new')
+                      : i18n.t('admin.worlds.wiz_hint_edit')}
                   </p>
                 </div>
                 <input
@@ -506,7 +506,7 @@ export default function Worlds() {
                     <Select
                       value={form.bg_type}
                       onChange={v => setForm(f => ({ ...f, bg_type: v }))}
-                      options={BG_TYPES.map(bt => ({ value: bt, label: BG_LABELS[bt] }))}
+                      options={BG_TYPES.map(bt => ({ value: bt, label: i18n.t(BG_LABELS[bt]) }))}
                     />
                   </div>
                 </div>
@@ -516,16 +516,16 @@ export default function Worlds() {
                     <Select
                       value={form.campaign_id}
                       onChange={v => setForm(f => ({ ...f, campaign_id: v }))}
-                      placeholder="Elegí una campaña…"
+                      placeholder={i18n.t('admin.worlds.ph_campaign')}
                       options={[
-                        { value: '', label: 'Elegí una campaña…' },
+                        { value: '', label: i18n.t('admin.worlds.ph_campaign') },
                         ...campaigns.map(c => ({ value: c.id, label: c.name })),
                       ]}
                     />
                   </div>
                 )}
                 <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')} <span className="text-text-subtle font-normal">(opcional)</span></label>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')} <span className="text-text-subtle font-normal">{i18n.t('common.optional_paren')}</span></label>
                   <textarea
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
@@ -541,7 +541,7 @@ export default function Worlds() {
             <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <div className="flex-1" />
               <button onClick={closeWizard} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors border border-line">
-                Cancelar
+                {i18n.t('common.cancel')}
               </button>
               <button
                 onClick={submitWizard}
@@ -550,10 +550,10 @@ export default function Worlds() {
                 style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.28)' }}
               >
                 {savingWorld
-                  ? 'Guardando…'
+                  ? i18n.t('common.saving')
                   : wizardMode === 'new'
-                    ? <>Crear y armar regiones <Map className="h-4 w-4" /></>
-                    : 'Guardar cambios'}
+                    ? <>{i18n.t('admin.worlds.wiz_create_build')} <Map className="h-4 w-4" /></>
+                    : i18n.t('common.save_changes')}
               </button>
             </div>
           </div>

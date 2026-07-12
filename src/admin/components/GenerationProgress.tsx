@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Sparkles } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/cn'
+import i18n from '@/i18n'
 
 export interface GenerationStep {
   label: string
@@ -101,7 +102,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
             'text-[13px] font-medium transition-colors',
             phase === 'done' ? 'text-brand-green' : 'text-text',
           )}>
-            {phase === 'done' ? '¡Listo!' : title}
+            {phase === 'done' ? i18n.t('admin.gen.done') : title}
           </span>
           {phase === 'running' && (
             <span className="ml-auto text-[11px] text-text-subtle tabular-nums">
@@ -153,7 +154,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
                   isActive && 'text-text font-medium',
                   isPending && 'text-text-subtle',
                 )}>
-                  {step.label}
+                  {i18n.t(step.label)}
                   {isActive && <PulsingDots />}
                 </span>
               </motion.div>
@@ -183,26 +184,26 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
 // ─── Configuraciones predefinidas de pasos ────────────────────
 
 export const MODULE_GENERATION_STEPS: GenerationStep[] = [
-  { label: 'Analizando la descripción',         durationMs: 2500  },
-  { label: 'Construyendo el prompt',             durationMs: 3000  },
-  { label: 'Enviando instrucciones a Claude',    durationMs: 2000  },
-  { label: 'Estructurando el módulo',            durationMs: 12000 },
-  { label: 'Generando contenido en 3 idiomas',   durationMs: 15000 },
-  { label: 'Revisando coherencia pedagógica',    durationMs: 8000  },
-  { label: 'Finalizando respuesta',              durationMs: 99999 },
+  { label: 'admin.gen.analyzing_desc',      durationMs: 2500  },
+  { label: 'admin.gen.building_prompt',     durationMs: 3000  },
+  { label: 'admin.gen.sending_claude',      durationMs: 2000  },
+  { label: 'admin.gen.structuring',         durationMs: 12000 },
+  { label: 'admin.gen.generating_3langs',   durationMs: 15000 },
+  { label: 'admin.gen.reviewing_pedagogy',  durationMs: 8000  },
+  { label: 'admin.gen.finalizing',          durationMs: 99999 },
 ]
 
 export const ASSIST_STEPS: GenerationStep[] = [
-  { label: 'Analizando el contenido',   durationMs: 1500  },
-  { label: 'Procesando con Claude',     durationMs: 5000  },
-  { label: 'Finalizando respuesta',     durationMs: 99999 },
+  { label: 'admin.gen.analyzing_content',   durationMs: 1500  },
+  { label: 'admin.gen.processing_claude',   durationMs: 5000  },
+  { label: 'admin.gen.finalizing',          durationMs: 99999 },
 ]
 
 export const SIMULATION_GENERATION_STEPS: GenerationStep[] = [
-  { label: 'Analizando la descripción',          durationMs: 2000  },
-  { label: 'Construyendo el prompt',             durationMs: 2500  },
-  { label: 'Enviando instrucciones a Claude',    durationMs: 1500  },
-  { label: 'Diseñando el flujo de conversación', durationMs: 10000 },
-  { label: 'Generando diálogos en 3 idiomas',    durationMs: 8000  },
-  { label: 'Finalizando el escenario',           durationMs: 99999 },
+  { label: 'admin.gen.analyzing_desc',        durationMs: 2000  },
+  { label: 'admin.gen.building_prompt',       durationMs: 2500  },
+  { label: 'admin.gen.sending_claude',        durationMs: 1500  },
+  { label: 'admin.gen.designing_flow',        durationMs: 10000 },
+  { label: 'admin.gen.generating_dialogues',  durationMs: 8000  },
+  { label: 'admin.gen.finalizing_scenario',   durationMs: 99999 },
 ]

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
+import i18n from '@/i18n'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -40,7 +41,7 @@ let imperativeConfirm: ConfirmFn | null = null
 export function confirmDialog(opts?: ConfirmOptions): Promise<boolean> {
   if (imperativeConfirm) return imperativeConfirm(opts)
   // Fallback por si el provider aún no montó (no debería ocurrir en runtime).
-  return Promise.resolve(window.confirm(typeof opts?.description === 'string' ? opts.description : '¿Estás seguro?'))
+  return Promise.resolve(window.confirm(typeof opts?.description === 'string' ? opts.description : i18n.t('common.are_you_sure')))
 }
 
 /**

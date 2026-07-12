@@ -265,7 +265,7 @@ export function MediaUploader({
             accept={IMAGE_ACCEPT}
             hint={t('admin.modules.media_drag_hint')}
             browse={t('admin.modules.media_browse')}
-            sizeHint="JPG, PNG, WebP, GIF · máx 10 MB"
+            sizeHint={t('admin.modules.media_size_hint')}
             disabled={!isSectionSaved}
             disabledMsg={t('admin.modules.media_save_section_first')}
             uploading={uploading}
@@ -319,7 +319,7 @@ export function MediaUploader({
                 <div className="relative w-full rounded-xl overflow-hidden border border-line bg-black" style={{ paddingTop: '56.25%' }}>
                   <iframe
                     src={`https://www.youtube.com/embed/${previewVideoId}?rel=0&modestbranding=1`}
-                    title="YouTube preview"
+                    title={t('admin.modules.media_youtube_preview')}
                     allowFullScreen
                     className="absolute inset-0 w-full h-full border-0"
                   />

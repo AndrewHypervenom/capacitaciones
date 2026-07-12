@@ -413,7 +413,7 @@ export default function FeedbackPanel() {
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
-            options={[{ value: '', label: 'Todas las campañas' }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
+            options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
             className="max-w-xs"
           />
           <FilterDropdown

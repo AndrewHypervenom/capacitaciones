@@ -104,11 +104,11 @@ export default function CampaignList() {
         },
       )
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error al eliminar la campaña')
+      if (!res.ok) throw new Error(json.error ?? t('admin.campaigns.delete_error'))
       setCampaigns((prev) => prev.filter((c) => c.id !== id))
       if (expanded === id) setExpanded(null)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al eliminar la campaña')
+      alert(err instanceof Error ? err.message : t('admin.campaigns.delete_error'))
     } finally {
       setDeletingId(null)
     }
@@ -243,7 +243,7 @@ export default function CampaignList() {
                         </button>
                         <button
                           onClick={() => handleToggleActive(c)}
-                          title={c.is_active ? 'Desactivar campaña' : 'Activar campaña'}
+                          title={c.is_active ? t('admin.campaigns.toggle_deactivate') : t('admin.campaigns.toggle_activate')}
                           className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
                         >
                           {c.is_active ? (

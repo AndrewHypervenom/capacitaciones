@@ -216,7 +216,7 @@ export default function NewModulePage() {
       })
       await handleCreated(id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear el módulo')
+      setError(err instanceof Error ? err.message : t('admin.modules.new.toast_create_error'))
       setSaving(false)
     }
   }
@@ -325,15 +325,15 @@ export default function NewModulePage() {
                   onChange={(v) => setTitle((prev) => ({ ...prev, [titleLang]: v }))}
                   placeholder={
                     titleLang === 'es'
-                      ? 'Ej: Introducción a Ventas Consultivas'
-                      : `Título en ${LANG_NAMES[titleLang]} (opcional)`
+                      ? t('admin.modules.new.ph_title_example')
+                      : t('admin.modules.new.title_in_lang', { lang: LANG_NAMES[titleLang] })
                   }
                   required={titleLang === 'es'}
                   maxLength={120}
                 />
                 {titleLang !== 'es' && (
                   <p className="text-[11px] text-text-subtle mt-1.5">
-                    Si lo dejas vacío, se mostrará el título en español.
+                    {t('admin.modules.new.title_empty_hint')}
                   </p>
                 )}
               </div>
@@ -351,8 +351,8 @@ export default function NewModulePage() {
                   onChange={(v) => setSubtitle((prev) => ({ ...prev, [subtitleLang]: v }))}
                   placeholder={
                     subtitleLang === 'es'
-                      ? 'Ej: Aprende a conectar con el cliente desde la empatía'
-                      : `Subtítulo en ${LANG_NAMES[subtitleLang]}`
+                      ? t('admin.modules.new.ph_subtitle_example')
+                      : t('admin.modules.new.subtitle_in_lang', { lang: LANG_NAMES[subtitleLang] })
                   }
                   maxLength={200}
                 />

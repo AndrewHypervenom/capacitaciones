@@ -640,7 +640,7 @@ export default function ModulePage() {
                 onClick={() => setIsModalOpen(true)}
               >
                 <Target className="h-4 w-4 text-neon-green animate-pulse" />
-                Ver Feedback y Progreso
+                {t('module.view_feedback_progress')}
               </button>
               {!completed && (
                 <Button variant="neon" size="md" onClick={handleComplete} disabled={!moduleGate.canComplete}>

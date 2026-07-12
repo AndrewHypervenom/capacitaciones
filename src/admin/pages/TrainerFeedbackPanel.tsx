@@ -138,10 +138,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
   const formatGameType = (type: string) => {
     switch (type) {
-      case 'CLASSIFY_CASES': return 'Clasificación de Casos';
-      case 'SORT_PROCESS': return 'Secuenciación de Procesos';
-      case 'KNOWLEDGE_CHECK': return 'Evaluación de Comprensión';
-      case 'VIDEO_QUIZ': return 'Quiz de Video';
+      case 'CLASSIFY_CASES': return t('admin.trainer_panel.type_classify');
+      case 'SORT_PROCESS': return t('admin.trainer_panel.type_sort');
+      case 'KNOWLEDGE_CHECK': return t('admin.trainer_panel.type_knowledge');
+      case 'VIDEO_QUIZ': return t('admin.trainer_panel.type_video');
       default: return type.toUpperCase();
     }
   };

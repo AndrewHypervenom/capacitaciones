@@ -33,17 +33,17 @@ export function AddSectionMenu({ disabled, onSelect }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const templates = useMemo<TemplateOption[]>(() => [
-    { key: 'text',         icon: FileText,       label: 'Solo texto',                                  description: 'Encabezado + párrafos' },
-    { key: 'text-callout', icon: Lightbulb,      label: 'Texto + Callout',                             description: 'Con caja de aviso' },
-    { key: 'text-media',   icon: Image,          label: 'Texto + Media',                               description: 'Con imagen o video' },
-    { key: 'text-quiz',    icon: HelpCircle,     label: 'Texto + Quiz',                                description: 'Con verificación' },
-    { key: 'full',         icon: LayoutTemplate, label: 'Completo',                                    description: 'Todo incluido' },
-    { key: 'hero',              icon: ZoomIn,        label: t('admin.modules.template_hero'),              description: 'Imagen de fondo full' },
-    { key: 'spotlight',         icon: Star,          label: t('admin.modules.template_spotlight'),         description: 'Sección oscura premium' },
-    { key: 'feature',           icon: Layers,        label: t('admin.modules.template_feature'),           description: 'Centrado, estilo Apple' },
-    { key: 'video-interactive', icon: Clapperboard,  label: t('admin.modules.template_video_interactive'), description: 'Video + capítulos + quizzes' },
-    { key: 'game-sort',         icon: Layers,        label: 'Juego: Ordenar Procesos',                    description: 'Arrastrar pasos en orden' }, // <-- Se creo el primer juego 
-    { key: 'game-classify',     icon: Layers,        label: 'Juego: Clasificar',                          description: 'Asignar elementos a categorías' }, // <-- Se creo el segundo juego 
+    { key: 'text',         icon: FileText,       label: t('admin.modules.asm_text_label'),             description: t('admin.modules.asm_text_desc') },
+    { key: 'text-callout', icon: Lightbulb,      label: t('admin.modules.asm_callout_label'),          description: t('admin.modules.asm_callout_desc') },
+    { key: 'text-media',   icon: Image,          label: t('admin.modules.asm_media_label'),            description: t('admin.modules.asm_media_desc') },
+    { key: 'text-quiz',    icon: HelpCircle,     label: t('admin.modules.asm_quiz_label'),             description: t('admin.modules.asm_quiz_desc') },
+    { key: 'full',         icon: LayoutTemplate, label: t('admin.modules.asm_full_label'),             description: t('admin.modules.asm_full_desc') },
+    { key: 'hero',              icon: ZoomIn,        label: t('admin.modules.template_hero'),              description: t('admin.modules.asm_hero_desc') },
+    { key: 'spotlight',         icon: Star,          label: t('admin.modules.template_spotlight'),         description: t('admin.modules.asm_spotlight_desc') },
+    { key: 'feature',           icon: Layers,        label: t('admin.modules.template_feature'),           description: t('admin.modules.asm_feature_desc') },
+    { key: 'video-interactive', icon: Clapperboard,  label: t('admin.modules.template_video_interactive'), description: t('admin.modules.asm_video_desc') },
+    { key: 'game-sort',         icon: Layers,        label: t('admin.modules.asm_game_sort_label'),        description: t('admin.modules.asm_game_sort_desc') },
+    { key: 'game-classify',     icon: Layers,        label: t('admin.modules.asm_game_classify_label'),    description: t('admin.modules.asm_game_classify_desc') },
   ], [t]);
   const ref = useRef<HTMLDivElement>(null);
 

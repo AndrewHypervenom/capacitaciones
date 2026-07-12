@@ -537,7 +537,7 @@ export default function LearnerDashboard() {
                         Mapa
                       </p>
                       <h4 className="text-[15px] font-semibold text-text truncate">
-                        Mi Mundo
+                        {t('dashboard.my_world')}
                       </h4>
                       <p className="text-[13px] text-text-muted truncate">
                         Explora tu mapa de capacitación y completa niveles
@@ -591,9 +591,12 @@ export default function LearnerDashboard() {
                 </div>
                 {xpLevel.level < 4 && (
                   <p className="text-[11px] tabular-nums text-text-subtle">
-                    {xp} / {xpLevel.maxXP} XP para {
-                      ['', 'Aprendiz', 'Experto', 'Maestro'][xpLevel.level] ?? 'Maestro'
-                    }
+                    {t('dashboard.xp_to_next', { xp, max: xpLevel.maxXP, rank: [
+                      '',
+                      t('dashboard.rank_apprentice'),
+                      t('dashboard.rank_expert'),
+                      t('dashboard.rank_master'),
+                    ][xpLevel.level] ?? t('dashboard.rank_master') })}
                   </p>
                 )}
               </div>

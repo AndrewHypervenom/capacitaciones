@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import {
@@ -9,12 +11,12 @@ import {
 // ─── Presets de rango de fechas ──────────────────────────────────────
 type Preset = 'today' | '7d' | '30d' | 'month' | 'all'
 
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: 'today', label: 'Hoy' },
-  { key: '7d', label: '7 días' },
-  { key: '30d', label: '30 días' },
-  { key: 'month', label: 'Este mes' },
-  { key: 'all', label: 'Todo' },
+const PRESETS: { key: Preset; labelKey: string }[] = [
+  { key: 'today', labelKey: 'admin.ai_usage.preset_today' },
+  { key: '7d', labelKey: 'admin.ai_usage.preset_7d' },
+  { key: '30d', labelKey: 'admin.ai_usage.preset_30d' },
+  { key: 'month', labelKey: 'admin.ai_usage.preset_month' },
+  { key: 'all', labelKey: 'admin.ai_usage.preset_all' },
 ]
 
 function rangeFor(preset: Preset): { from?: string } {
@@ -30,9 +32,9 @@ function rangeFor(preset: Preset): { from?: string } {
 }
 
 const MODEL_OPTIONS = [
-  { value: 'all', label: 'Todos los modelos' },
-  { value: 'claude-sonnet-4-6', label: 'Sonnet (calidad)' },
-  { value: 'claude-haiku-4-5', label: 'Haiku (económico)' },
+  { value: 'all', labelKey: 'admin.ai_usage.model_all' },
+  { value: 'claude-sonnet-4-6', labelKey: 'admin.ai_usage.model_sonnet' },
+  { value: 'claude-haiku-4-5', labelKey: 'admin.ai_usage.model_haiku' },
 ]
 
 // ─── Formateo ────────────────────────────────────────────────────────
@@ -40,7 +42,7 @@ function fmtUsd(n: number): string {
   if (n === 0) return '$0'
   if (n < 0.01) return `$${n.toFixed(4)}`
   if (n < 1) return `$${n.toFixed(3)}`
-  return `$${n.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `$${n.toLocaleString(i18n.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -48,17 +50,18 @@ function fmtTokens(n: number): string {
   return String(n)
 }
 function fmtInt(n: number): string {
-  return n.toLocaleString('es')
+  return n.toLocaleString(i18n.language)
 }
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleString(i18n.language, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 function fmtDayLabel(day: string) {
   const [y, m, d] = day.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('es', { day: '2-digit', month: 'short' })
+  return new Date(y, m - 1, d).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short' })
 }
 
 export default function AiUsage() {
+  const { t } = useTranslation()
   const [preset, setPreset] = useState<Preset>('30d')
   const [functionName, setFunctionName] = useState<string>('all')
   const [model, setModel] = useState<string>('all')
@@ -89,16 +92,16 @@ export default function AiUsage() {
   }, [preset, functionName, model, userId, search])
 
   const maxCost = useMemo(
-    () => Math.max(1e-9, ...(data?.timeseries.map((t) => t.costUsd) ?? [0])),
+    () => Math.max(1e-9, ...(data?.timeseries.map((ts) => ts.costUsd) ?? [0])),
     [data],
   )
 
   return (
     <div className="p-4 sm:p-8">
       <div className="mb-6">
-        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Uso de IA y costos</h1>
+        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{t('admin.ai_usage.title')}</h1>
         <p className="text-[13px] text-text-muted">
-          Todo lo generado con IA: quién, qué, cuándo y cuánto costó. Los registros son de solo lectura.
+          {t('admin.ai_usage.subtitle')}
         </p>
       </div>
 
@@ -118,7 +121,7 @@ export default function AiUsage() {
                     : 'border-line text-text-muted hover:text-text hover:border-glass-border/30'
                 }`}
               >
-                {p.label}
+                {t(p.labelKey)}
               </button>
             )
           })}
@@ -131,7 +134,7 @@ export default function AiUsage() {
             value={functionName}
             onChange={setFunctionName}
             options={[
-              { value: 'all', label: 'Todos los tipos' },
+              { value: 'all', label: t('admin.ai_usage.filter_all_types') },
               ...Object.entries(FUNCTION_META).map(([key, m]) => ({
                 value: key,
                 label: `${m.icon} ${m.label}`,
@@ -143,7 +146,7 @@ export default function AiUsage() {
             className="sm:w-auto sm:min-w-[160px]"
             value={model}
             onChange={setModel}
-            options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+            options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: t(m.labelKey) }))}
           />
 
           <Select
@@ -151,7 +154,7 @@ export default function AiUsage() {
             value={userId}
             onChange={setUserId}
             options={[
-              { value: 'all', label: 'Todos los usuarios' },
+              { value: 'all', label: t('admin.ai_usage.filter_all_users') },
               ...users.map((u) => ({ value: u.id, label: u.name })),
             ]}
           />
@@ -165,7 +168,7 @@ export default function AiUsage() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Buscar por título, operación…"
+              placeholder={t('admin.ai_usage.search_ph')}
               className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2 text-[13px] text-text placeholder:text-text-muted/60 outline-none focus:border-[rgb(var(--brand-green))]/40 transition-colors"
             />
           </form>
@@ -180,31 +183,31 @@ export default function AiUsage() {
         <>
           {/* ── KPIs ── */}
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
-            <KpiCard icon={Bot} label="Llamadas de IA" value={fmtInt(data.kpis.calls)} color="#8b5cf6" />
-            <KpiCard icon={Coins} label="Costo estimado" value={fmtUsd(data.kpis.costUsd)} color="#22c55e" />
-            <KpiCard icon={Cpu} label="Tokens" value={fmtTokens(data.kpis.tokens)} color="#06b6d4" />
-            <KpiCard icon={Users} label="Usuarios activos" value={fmtInt(data.kpis.activeUsers)} color="#f59e0b" />
+            <KpiCard icon={Bot} label={t('admin.ai_usage.kpi_calls')} value={fmtInt(data.kpis.calls)} color="#8b5cf6" />
+            <KpiCard icon={Coins} label={t('admin.ai_usage.kpi_cost')} value={fmtUsd(data.kpis.costUsd)} color="#22c55e" />
+            <KpiCard icon={Cpu} label={t('admin.ai_usage.kpi_tokens')} value={fmtTokens(data.kpis.tokens)} color="#06b6d4" />
+            <KpiCard icon={Users} label={t('admin.ai_usage.kpi_active_users')} value={fmtInt(data.kpis.activeUsers)} color="#f59e0b" />
           </section>
 
           {/* ── Gráfico de costo por día ── */}
           <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[11px] uppercase tracking-wider text-text-muted">Costo por día (USD)</h3>
-              <span className="text-[12px] text-text-muted">Total: <span className="text-text font-semibold tabular-nums">{fmtUsd(data.kpis.costUsd)}</span></span>
+              <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.ai_usage.chart_title')}</h3>
+              <span className="text-[12px] text-text-muted">{t('admin.ai_usage.total_label')} <span className="text-text font-semibold tabular-nums">{fmtUsd(data.kpis.costUsd)}</span></span>
             </div>
             {data.timeseries.length === 0 ? (
-              <div className="text-[13px] text-text-muted py-6 text-center">Sin datos en este rango.</div>
+              <div className="text-[13px] text-text-muted py-6 text-center">{t('admin.ai_usage.no_data_range')}</div>
             ) : (
               <div className="flex items-end gap-1 h-40 overflow-x-auto">
-                {data.timeseries.map((t) => (
-                  <div key={t.day} className="flex-1 min-w-[10px] flex flex-col items-center justify-end group relative">
+                {data.timeseries.map((ts) => (
+                  <div key={ts.day} className="flex-1 min-w-[10px] flex flex-col items-center justify-end group relative">
                     <div
                       className="w-full rounded-t bg-[rgb(var(--brand-green))]/70 group-hover:bg-[rgb(var(--brand-green))] transition-colors"
-                      style={{ height: `${Math.max(2, (t.costUsd / maxCost) * 100)}%` }}
+                      style={{ height: `${Math.max(2, (ts.costUsd / maxCost) * 100)}%` }}
                     />
                     <div className="pointer-events-none absolute bottom-full mb-1 hidden group-hover:block whitespace-nowrap rounded-lg bg-bg border border-line px-2 py-1 text-[11px] text-text shadow-lg z-10">
-                      <div className="font-medium">{fmtDayLabel(t.day)}</div>
-                      <div className="text-text-muted">{fmtUsd(t.costUsd)} · {t.calls} llamadas</div>
+                      <div className="font-medium">{fmtDayLabel(ts.day)}</div>
+                      <div className="text-text-muted">{fmtUsd(ts.costUsd)} · {ts.calls} {t('admin.ai_usage.calls_suffix')}</div>
                     </div>
                   </div>
                 ))}
@@ -220,20 +223,20 @@ export default function AiUsage() {
 
           {/* ── Desgloses ── */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-            <BreakdownCard title="Por tipo de IA" rows={data.byFunction} totalCost={data.kpis.costUsd} />
-            <BreakdownCard title="Por modelo" rows={data.byModel} totalCost={data.kpis.costUsd} />
+            <BreakdownCard title={t('admin.ai_usage.breakdown_by_type')} rows={data.byFunction} totalCost={data.kpis.costUsd} />
+            <BreakdownCard title={t('admin.ai_usage.breakdown_by_model')} rows={data.byModel} totalCost={data.kpis.costUsd} />
           </section>
 
           {/* ── Feed ── */}
           {data.rows.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line p-6 sm:p-12 text-center">
               <Bot className="h-7 w-7 text-text-subtle mx-auto mb-3" />
-              <div className="text-[15px] font-medium text-text mb-1">Sin registros</div>
-              <div className="text-[13px] text-text-muted">No hay actividad de IA con estos filtros.</div>
+              <div className="text-[15px] font-medium text-text mb-1">{t('admin.ai_usage.empty_title')}</div>
+              <div className="text-[13px] text-text-muted">{t('admin.ai_usage.empty_desc')}</div>
             </div>
           ) : (
             <>
-              <h3 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">Detalle ({fmtInt(data.rows.length)})</h3>
+              <h3 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">{t('admin.ai_usage.detail_count', { n: fmtInt(data.rows.length) })}</h3>
               <div className="rounded-2xl border border-line overflow-hidden divide-y divide-line">
                 {data.rows.map((r) => (
                   <FeedItem key={r.id} row={r} open={expanded === r.id} onToggle={() => setExpanded(expanded === r.id ? null : r.id)} />
@@ -241,7 +244,7 @@ export default function AiUsage() {
               </div>
               {data.truncated && (
                 <p className="text-center text-[11.5px] text-text-subtle mt-3">
-                  Mostrando los primeros registros del rango. Acota con filtros o un rango de fechas más corto.
+                  {t('admin.ai_usage.truncated')}
                 </p>
               )}
             </>
@@ -278,7 +281,7 @@ function BreakdownCard({ title, rows, totalCost }: {
     <div className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
       <h3 className="text-[11px] uppercase tracking-wider text-text-muted mb-4">{title}</h3>
       {rows.length === 0 ? (
-        <div className="text-[13px] text-text-muted py-2">Sin datos.</div>
+        <div className="text-[13px] text-text-muted py-2">{i18n.t('admin.ai_usage.no_data')}</div>
       ) : (
         <div className="space-y-3">
           {rows.map((r) => {
@@ -307,6 +310,7 @@ function BreakdownCard({ title, rows, totalCost }: {
 }
 
 function FeedItem({ row, open, onToggle }: { row: AiUsageRow; open: boolean; onToggle: () => void }) {
+  const { t } = useTranslation()
   const color = functionColor(row.function_name)
   const meta = FUNCTION_META[row.function_name]
   const title = String(row.metadata?.title ?? '') || row.operation || '—'
@@ -326,7 +330,7 @@ function FeedItem({ row, open, onToggle }: { row: AiUsageRow; open: boolean; onT
         <div className="min-w-0">
           <div className="text-[13px] text-text truncate">{title}</div>
           <div className="text-[11px] text-text-muted truncate">
-            {row.display_name ?? 'Usuario'}{row.operation ? ` · ${row.operation}` : ''} · {fmtDate(row.created_at)}
+            {row.display_name ?? t('admin.ai_usage.user_fallback')}{row.operation ? ` · ${row.operation}` : ''} · {fmtDate(row.created_at)}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -337,14 +341,14 @@ function FeedItem({ row, open, onToggle }: { row: AiUsageRow; open: boolean; onT
       {open && (
         <div className="px-4 pb-4 pt-1 bg-subtle/40 border-t border-line">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 text-[12px]">
-            <Field label="Modelo" value={row.model || '—'} />
-            <Field label="Tokens" value={fmtInt(tokens)} />
-            <Field label="Entrada / salida" value={`${fmtInt(row.input_tokens)} / ${fmtInt(row.output_tokens)}`} />
-            <Field label="Caché (write/read)" value={`${fmtInt(row.cache_creation_input_tokens)} / ${fmtInt(row.cache_read_input_tokens)}`} />
+            <Field label={t('admin.ai_usage.field_model')} value={row.model || '—'} />
+            <Field label={t('admin.ai_usage.field_tokens')} value={fmtInt(tokens)} />
+            <Field label={t('admin.ai_usage.field_in_out')} value={`${fmtInt(row.input_tokens)} / ${fmtInt(row.output_tokens)}`} />
+            <Field label={t('admin.ai_usage.field_cache')} value={`${fmtInt(row.cache_creation_input_tokens)} / ${fmtInt(row.cache_read_input_tokens)}`} />
           </div>
           {row.metadata && Object.keys(row.metadata).length > 0 && (
             <div className="mt-3">
-              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Contexto</div>
+              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t('admin.ai_usage.context')}</div>
               <pre className="text-[11.5px] text-text whitespace-pre-wrap break-words leading-relaxed">{JSON.stringify(row.metadata, null, 2)}</pre>
             </div>
           )}

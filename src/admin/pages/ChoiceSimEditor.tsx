@@ -99,11 +99,11 @@ export default function ChoiceSimEditor() {
   }, [id, isNew])
 
   const handleSave = async () => {
-    if (!campaignId) return toast.error('Sin campaña asignada')
-    if (!meta.title_es.trim()) return toast.error('El título en español es requerido')
+    if (!campaignId) return toast.error(t('admin.simulations.toast_no_campaign'))
+    if (!meta.title_es.trim()) return toast.error(t('admin.simulations.toast_title_required'))
     const finalSlug = meta.slug.trim() || slugify(meta.title_es)
-    if (!finalSlug) return toast.error('Agrega un título para generar el identificador')
-    if (!nodes[meta.start_node_id]) return toast.error('El paso inicial no existe')
+    if (!finalSlug) return toast.error(t('admin.simulations.toast_slug_needs_title'))
+    if (!nodes[meta.start_node_id]) return toast.error(t('admin.simulations.toast_start_missing'))
 
     setSaving(true)
     try {
@@ -188,7 +188,7 @@ export default function ChoiceSimEditor() {
         </button>
         <div className="flex-1 min-w-0">
           <GradientHeading as="h1" className="text-lg md:text-xl truncate">
-            {isNew ? 'Nueva simulación de opciones' : meta.title_es || 'Editor de opción múltiple'}
+            {isNew ? t('admin.simulations.new_choice_sim') : meta.title_es || t('admin.simulations.choice_editor')}
           </GradientHeading>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
@@ -225,7 +225,7 @@ export default function ChoiceSimEditor() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 p-1 rounded-xl glass w-fit border border-glass-border/10">
-        {([['meta', 'General'], ['nodes', 'Conversación']] as const).map(([key, label]) => (
+        {([['meta', t('admin.simulations.tab_general')], ['nodes', t('admin.simulations.tab_conversation')]] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('px-4 py-2.5 md:py-2 rounded-lg text-sm transition-all min-h-[44px] md:min-h-0',
               tab === key ? 'bg-glass-border/10 text-text font-medium' : 'text-text-muted hover:text-text')}>
@@ -246,9 +246,9 @@ export default function ChoiceSimEditor() {
                 value={meta.level}
                 onChange={(v) => setMeta((m) => ({ ...m, level: v as MetaState['level'] }))}
                 options={[
-                  { value: 'basico', label: 'Básico' },
-                  { value: 'medio', label: 'Medio' },
-                  { value: 'avanzado', label: 'Avanzado' },
+                  { value: 'basico', label: t('admin.simulations.level_basic') },
+                  { value: 'medio', label: t('admin.simulations.level_medium') },
+                  { value: 'avanzado', label: t('admin.simulations.level_advanced') },
                 ]}
               />
             </div>
@@ -335,7 +335,7 @@ export default function ChoiceSimEditor() {
           )}>
             <div className="flex items-center justify-between mb-2">
               <div>
-                <span className="text-xs font-medium text-text">Pasos ({nodeIds.length})</span>
+                <span className="text-xs font-medium text-text">{t('common.steps_count', { n: nodeIds.length })}</span>
                 <p className="text-[11px] text-text-subtle mt-0.5">{t('admin.simulations.scenario_moments')}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -363,7 +363,7 @@ export default function ChoiceSimEditor() {
                         isStart ? 'bg-brand-green' : node?.isEnd ? 'bg-brand-magenta' : 'bg-glass-border/40')} />
                       <span className="font-mono font-medium truncate">{nid}</span>
                       {isStart && <span className="text-[9px] text-brand-green shrink-0">{t('admin.simulations.start')}</span>}
-                      {node?.isEnd && <span className="text-[9px] text-brand-magenta shrink-0">FIN</span>}
+                      {node?.isEnd && <span className="text-[9px] text-brand-magenta shrink-0">{t('admin.simulations.end')}</span>}
                     </div>
                     {linePreview
                       ? <div className="text-[10px] text-text-subtle truncate mt-1 ml-3 italic">"{linePreview}{(node.message.es?.length ?? 0) > 48 ? '…' : ''}"</div>

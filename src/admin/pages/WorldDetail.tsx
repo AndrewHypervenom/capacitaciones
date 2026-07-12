@@ -23,9 +23,9 @@ interface Region { id: string; name: string; description: string; icon: string; 
 interface Level  { id: string; name: string; description: string; icon: string; order_index: number; region_id: string; world_id: string; quiz_id: string | null; min_score_pct: number | null }
 interface Quiz   { id: string; title: string }
 
-const BG_LABELS: Record<string,string> = { airline:'Aerolínea', bank:'Banco', health:'Salud', corporate:'Corporativo', tech:'Tecnología' }
-const SOUND_LABELS: Record<string,string> = { airport:'Aeropuerto', bank:'Banco', nature:'Naturaleza', tech:'Tecnología', neutral:'Neutral' }
-const TRANS_LABELS: Record<string,string> = { clouds:'Nubes ☁️', cards:'Cartas 💳', pulse:'Pulso ❤️', rocket:'Cohete 🚀', terminal:'Terminal 💻', confetti:'Confeti 🎉', scan:'Escaneo 🔍', warp:'Hipersalto 💫' }
+const BG_LABELS: Record<string,string> = { airline:'admin.arena.theme_airline', bank:'admin.arena.theme_bank', health:'admin.arena.theme_health', corporate:'admin.arena.theme_corporate', tech:'admin.arena.theme_tech' }
+const SOUND_LABELS: Record<string,string> = { airport:'admin.worlds.sound_airport', bank:'admin.arena.theme_bank', nature:'admin.worlds.sound_nature', tech:'admin.arena.theme_tech', neutral:'admin.worlds.sound_neutral' }
+const TRANS_LABELS: Record<string,string> = { clouds:'admin.worlds.trans_clouds', cards:'admin.worlds.trans_cards', pulse:'admin.worlds.trans_pulse', rocket:'admin.worlds.trans_rocket', terminal:'admin.worlds.trans_terminal', confetti:'admin.worlds.trans_confetti', scan:'admin.worlds.trans_scan', warp:'admin.worlds.trans_warp' }
 
 // Cada sección (P1, P2… en el recorrido del aprendiz) agrupa esta cantidad de
 // preguntas. Coincide con SECTION_SIZE en ArenaPlayer para que las paradas del
@@ -377,7 +377,7 @@ export default function WorldDetail() {
       <div className="p-4 sm:p-8">
         <button onClick={() => navigate('/admin/worlds')}
           className="flex items-center gap-2 text-text-muted hover:text-text transition-colors mb-5 sm:mb-6 text-[13px] min-h-[44px]">
-          <ArrowLeft className="h-4 w-4" /> Volver a Mundos
+          <ArrowLeft className="h-4 w-4" /> {i18n.t('admin.worlds.back_to_worlds')}
         </button>
         <div
           className="rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
@@ -406,7 +406,7 @@ export default function WorldDetail() {
         {/* ── Back ── */}
         <button onClick={() => navigate('/admin/worlds')}
           className="flex items-center gap-2 text-text-muted hover:text-text transition-colors mb-5 sm:mb-6 text-[13px] min-h-[44px]">
-          <ArrowLeft className="h-4 w-4" /> Volver a Mundos
+          <ArrowLeft className="h-4 w-4" /> {i18n.t('admin.worlds.back_to_worlds')}
         </button>
 
         {/* ── World header ── */}
@@ -418,7 +418,7 @@ export default function WorldDetail() {
             <h1 className="text-[18px] sm:text-[20px] font-bold text-text leading-none mb-1">{world.name}</h1>
             {world.description && <p className="text-[13px] text-text-muted leading-relaxed">{world.description}</p>}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background:`${tc}15`, color:tc }}>{BG_LABELS[world.bg_type] ?? world.bg_type}</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background:`${tc}15`, color:tc }}>{BG_LABELS[world.bg_type] ? i18n.t(BG_LABELS[world.bg_type]) : world.bg_type}</span>
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${world.status==='published' ? 'text-[#00C228]' : 'text-text-muted'}`} style={{ background: world.status==='published' ? 'rgba(0,194,40,0.1)' : 'rgb(var(--glass-border) / 0.06)' }}>
                 {world.status === 'published' ? 'Publicado' : 'Borrador'}
               </span>
@@ -465,12 +465,12 @@ export default function WorldDetail() {
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.sound')}</label>
               <Select value={world.sound_theme||'neutral'} onChange={v => handleTheme('sound_theme',v)}
-                options={Object.entries(SOUND_LABELS).map(([k,v]) => ({ value: k, label: v }))} />
+                options={Object.entries(SOUND_LABELS).map(([k,v]) => ({ value: k, label: i18n.t(v) }))} />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.transition')}</label>
               <Select value={world.transition_type||'clouds'} onChange={v => handleTheme('transition_type',v)}
-                options={Object.entries(TRANS_LABELS).map(([k,v]) => ({ value: k, label: v }))} />
+                options={Object.entries(TRANS_LABELS).map(([k,v]) => ({ value: k, label: i18n.t(v) }))} />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.character')}</label>
@@ -611,7 +611,7 @@ export default function WorldDetail() {
             <div className="text-[14px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_regions')}</div>
             <div className="text-[12px] text-text-muted mb-4">{i18n.t('admin.worlds.no_regions_hint')}</div>
             <button onClick={openNewRegion} className="flex items-center justify-center min-h-[44px] text-[13px] font-medium px-4 py-2 rounded-xl" style={{ background:'rgba(0,194,40,0.12)', color:'#00C228', border:'1px solid rgba(0,194,40,0.25)' }}>
-              + Nueva región
+              + {i18n.t('admin.worlds.new_region')}
             </button>
           </div>
         ) : (
@@ -642,7 +642,7 @@ export default function WorldDetail() {
                         style={{ background:'rgba(139,92,246,0.12)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.25)' }}
                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.20)'}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.12)'}>
-                        <Sparkles className="h-3.5 w-3.5"/> <span className="hidden sm:inline">IA</span>
+                        <Sparkles className="h-3.5 w-3.5"/> <span className="hidden sm:inline">{t('admin.worlds.ai_badge')}</span>
                       </button>
                       <button onClick={e => { e.stopPropagation(); openEditRegion(region) }}
                         className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle">
@@ -671,7 +671,7 @@ export default function WorldDetail() {
                             <button onClick={() => openNewLevel(region.id)}
                               className="flex items-center justify-center min-h-[44px] text-[12px] font-medium px-3 py-1.5 rounded-lg"
                               style={{ background:`${tc}12`, color:tc, border:`1px solid ${tc}25` }}>
-                              + Agregar nivel
+                              + {i18n.t('admin.worlds.add_level')}
                             </button>
                           </div>
                         </div>
@@ -732,7 +732,7 @@ export default function WorldDetail() {
                               style={{ color:tc }}
                               onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity='.7'}
                               onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity='1'}>
-                              <Plus className="h-3.5 w-3.5"/> Agregar nivel
+                              <Plus className="h-3.5 w-3.5"/> {i18n.t('admin.worlds.add_level')}
                             </button>
                           </div>
                         </div>
@@ -752,7 +752,7 @@ export default function WorldDetail() {
           onClick={e => { if (e.target === e.currentTarget) setRegionModal(false) }}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
-              <h2 className="text-[15px] font-semibold text-text">{editingRegion ? 'Editar región' : 'Nueva región'}</h2>
+              <h2 className="text-[15px] font-semibold text-text">{editingRegion ? i18n.t('admin.worlds.edit_region') : i18n.t('admin.worlds.new_region')}</h2>
               <button onClick={() => setRegionModal(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
@@ -804,7 +804,7 @@ export default function WorldDetail() {
               <button onClick={() => setRegionModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
               <button onClick={saveRegion} disabled={savingRegion} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
                 style={{ background:'rgba(0,194,40,0.14)', color:'#00C228', border:'1px solid rgba(0,194,40,0.28)' }}>
-                {savingRegion ? 'Guardando…' : editingRegion ? 'Guardar' : 'Crear región'}
+                {savingRegion ? i18n.t('common.saving') : editingRegion ? i18n.t('common.save') : i18n.t('admin.worlds.create_region')}
               </button>
             </div>
           </div>
@@ -817,7 +817,7 @@ export default function WorldDetail() {
           onClick={e => { if (e.target === e.currentTarget) setLevelModal(false) }}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
-              <h2 className="text-[15px] font-semibold text-text">{editingLevel ? 'Editar nivel' : 'Nuevo nivel'}</h2>
+              <h2 className="text-[15px] font-semibold text-text">{editingLevel ? i18n.t('admin.worlds.edit_level') : i18n.t('admin.worlds.new_level')}</h2>
               <button onClick={() => setLevelModal(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
@@ -893,7 +893,7 @@ export default function WorldDetail() {
               <button onClick={() => setLevelModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
               <button onClick={saveLevel} disabled={savingLevel} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
                 style={{ background:'rgba(0,194,40,0.14)', color:'#00C228', border:'1px solid rgba(0,194,40,0.28)' }}>
-                {savingLevel ? 'Guardando…' : editingLevel ? 'Guardar' : 'Crear nivel'}
+                {savingLevel ? i18n.t('common.saving') : editingLevel ? i18n.t('common.save') : i18n.t('admin.worlds.create_level')}
               </button>
             </div>
           </div>
@@ -973,7 +973,7 @@ export default function WorldDetail() {
           worldId={world.id}
           scopedToCampaign
           campaigns={[]}
-          crumb={`Mundos › ${world.name}`}
+          crumb={i18n.t('admin.worlds.crumb_worlds', { name: world.name })}
           onClose={() => setQuizEditorOpen(false)}
           onSaved={onQuizCreated}
         />
@@ -1048,7 +1048,7 @@ export default function WorldDetail() {
             <div className="flex items-center gap-3 px-4 sm:px-6 pb-6">
               <button onClick={() => setShowResetConfirm(false)}
                 className="flex-1 flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">
-                Cancelar
+                {i18n.t('confirm.cancel')}
               </button>
               <button onClick={resetProgress} disabled={resetting}
                 className="flex-1 flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
@@ -1064,7 +1064,7 @@ export default function WorldDetail() {
       {resetToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-[13px] font-medium"
           style={{ background:'rgba(0,194,40,0.15)', color:'#00C228', border:'1px solid rgba(0,194,40,0.30)', boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
-          ✓ Progreso reiniciado correctamente
+          {i18n.t('admin.worlds.toast_reset_ok')}
         </div>
       )}
       {resetError && (
