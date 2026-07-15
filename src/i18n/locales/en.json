@@ -819,11 +819,30 @@
         "status_inactive": "Inactive",
         "err_slug": "The slug is already in use. Change the name or edit the slug manually.",
         "err_unexpected": "Unexpected error retrieving the newly created campaign.",
-        "err_create": "Error creating the campaign: {{msg}}"
+        "err_create": "Error creating the campaign: {{msg}}",
+        "invite_badge": "Campaign created",
+        "invite_title": "Invite your team",
+        "invite_hint": "Add trainers as collaborators: they'll be able to view and edit this campaign's courses and modules. You can also do this later from \"Share campaign\".",
+        "invite_done": "Finish"
       },
       "delete_error": "Error deleting the campaign",
       "toggle_deactivate": "Deactivate campaign",
-      "toggle_activate": "Activate campaign"
+      "toggle_activate": "Activate campaign",
+      "share": {
+        "card_title": "Share campaign",
+        "card_desc": "Invite other trainers to co-manage the content",
+        "title": "Share campaign",
+        "subtitle": "Collaborators of \"{{name}}\"",
+        "search_ph": "Search trainer by name or email...",
+        "no_results": "No trainers found.",
+        "add": "Add",
+        "collaborating": "Collaborating",
+        "count": "{{n}} collaborator(s)",
+        "added": "{{name}} now collaborates on the campaign",
+        "removed": "{{name}} no longer collaborates on the campaign",
+        "save_error": "Could not update the collaborator",
+        "load_error": "Could not load trainers"
+      }
     },
     "users": {
       "title": "Users",

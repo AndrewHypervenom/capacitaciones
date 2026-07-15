@@ -4,6 +4,7 @@ import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, X, Pencil, Trash2, Globe, Map } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -81,9 +82,12 @@ export default function Worlds() {
   const [loading, setLoading] = useState(true)
   const [filterCampaign, setFilterCampaign] = useState<string>('all')
 
-  const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
-  // El capacitador solo ve/gestiona los mundos de su propia campaña; el superadmin ve todos.
+  const { isSuperAdmin, campaignId, user, loading: authLoading } = useAuth()
+  // El capacitador ve/gestiona los mundos de sus campañas (casa + colaboraciones);
+  // el superadmin ve todos.
   const scopedToCampaign = !isSuperAdmin
+  // Mostrar filtro/selector de campaña cuando el usuario abarca más de una.
+  const multiCampaign = campaigns.length > 1
 
   // ── Modal de creación / edición del mundo (una sola pantalla) ──
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -93,22 +97,26 @@ export default function Worlds() {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   async function load() {
-    if (scopedToCampaign && !campaignId) {
+    // Campañas accesibles (superadmin: todas; capacitador: casa + colaboraciones).
+    const camps = await getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: campaignId,
+      userId: user?.id ?? null,
+    }).catch(() => [] as Campaign[])
+    setCampaigns(camps)
+    const ids = camps.map((c) => c.id)
+
+    if (scopedToCampaign && ids.length === 0) {
+      setWorlds([])
       setLoading(false)
       return
     }
-
-    const { data: campData } = await supabase
-      .from('campaigns')
-      .select('id, name')
-      .order('created_at')
-    setCampaigns(campData ?? [])
 
     let worldQuery = supabase
       .from('worlds')
       .select('*')
       .order('created_at', { ascending: false })
-    if (scopedToCampaign && campaignId) worldQuery = worldQuery.eq('campaign_id', campaignId)
+    if (scopedToCampaign) worldQuery = worldQuery.in('campaign_id', ids)
 
     const { data, error } = await worldQuery
     if (error && error.code !== '42P01') console.error('Error loading worlds:', error)
@@ -129,7 +137,7 @@ export default function Worlds() {
     if (authLoading) return
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, scopedToCampaign, campaignId])
+  }, [authLoading, scopedToCampaign, campaignId, user?.id])
 
   // ── Abrir / cerrar modal ──
   const openWizardNew = () => {
@@ -262,7 +270,7 @@ export default function Worlds() {
 
   const filtered = worlds.filter(w => filterCampaign === 'all' || w.campaign_id === filterCampaign)
 
-  if (!authLoading && scopedToCampaign && !campaignId) {
+  if (!authLoading && !loading && scopedToCampaign && campaigns.length === 0) {
     return (
       <div className="p-4 sm:p-8">
         <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{i18n.t('admin.worlds.title')}</h1>
@@ -305,8 +313,8 @@ export default function Worlds() {
           Creá mundos temáticos con sus regiones y niveles. Todo lo gamificado de tu campaña vive acá.
         </p>
 
-        {/* Campaign filter — solo para superadmin */}
-        {!loading && campaigns.length > 0 && !scopedToCampaign && (
+        {/* Filtro de campaña (cuando el usuario abarca más de una) */}
+        {!loading && multiCampaign && (
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
@@ -511,7 +519,7 @@ export default function Worlds() {
                     />
                   </div>
                 </div>
-                {!scopedToCampaign && (
+                {multiCampaign && (
                   <div>
                     <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')} <span className="text-danger">*</span></label>
                     <Select
@@ -546,7 +554,7 @@ export default function Worlds() {
               </button>
               <button
                 onClick={submitWizard}
-                disabled={savingWorld || !form.name.trim() || (!scopedToCampaign && !form.campaign_id)}
+                disabled={savingWorld || !form.name.trim() || (multiCampaign && !form.campaign_id)}
                 className="flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
                 style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.28)' }}
               >

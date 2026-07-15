@@ -5,7 +5,7 @@ import {
   ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Plus, Save, Trash2, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import {
   getScenarioAdmin, createScenario, updateScenario, type ScenarioRow,
 } from '@/services/scenarios.admin.service'
@@ -134,7 +134,7 @@ export default function SimulationEditor() {
   const nav = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
   const [searchParams] = useSearchParams()
   const isNew = id === 'new' || !id
   const isManualMode = searchParams.get('mode') === 'manual'
@@ -171,14 +171,20 @@ export default function SimulationEditor() {
     if (authCampaignId) setCampaignId((prev) => prev || authCampaignId)
   }, [authCampaignId])
 
-  // Superadmin sin campaña propia: puede elegirla aquí mismo
+  // Campañas donde puede crear: superadmin todas; capacitador su campaña casa +
+  // aquellas donde colabora (equipos).
   useEffect(() => {
-    if (!isSuperAdmin) return
-    supabase.from('campaigns').select('id, name').order('name').then(({ data }) => {
-      setCampaigns(data ?? [])
-      if (data?.[0]) setCampaignId((prev) => prev || data[0].id)
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: authCampaignId,
+      userId: user?.id ?? null,
     })
-  }, [isSuperAdmin])
+      .then((data) => {
+        setCampaigns(data)
+        if (data[0]) setCampaignId((prev) => prev || data[0].id)
+      })
+      .catch(() => {})
+  }, [isSuperAdmin, authCampaignId, user?.id])
 
   // Cursos de la campaña activa: permiten asignar el simulador a un curso desde aquí.
   useEffect(() => {
@@ -408,7 +414,7 @@ export default function SimulationEditor() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <GlassCard className="p-5 space-y-4">
             <h3 className="text-sm font-semibold text-text mb-3">{t('admin.simulations.config_title')}</h3>
-            {isSuperAdmin && campaigns.length > 0 && (
+            {campaigns.length > 1 && (
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
                 <FilterDropdown

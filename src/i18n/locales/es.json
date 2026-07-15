@@ -819,11 +819,30 @@
         "status_inactive": "Inactiva",
         "err_slug": "El slug ya está en uso. Cambia el nombre o edita el slug manualmente.",
         "err_unexpected": "Error inesperado al obtener la campaña recién creada.",
-        "err_create": "Error al crear la campaña: {{msg}}"
+        "err_create": "Error al crear la campaña: {{msg}}",
+        "invite_badge": "Campaña creada",
+        "invite_title": "Invita a tu equipo",
+        "invite_hint": "Agrega capacitadores como colaboradores: podrán ver y editar los cursos y módulos de esta campaña. Puedes hacerlo también después desde «Compartir campaña».",
+        "invite_done": "Finalizar"
       },
       "delete_error": "Error al eliminar la campaña",
       "toggle_deactivate": "Desactivar campaña",
-      "toggle_activate": "Activar campaña"
+      "toggle_activate": "Activar campaña",
+      "share": {
+        "card_title": "Compartir campaña",
+        "card_desc": "Invita a otros capacitadores a co-gestionar el contenido",
+        "title": "Compartir campaña",
+        "subtitle": "Colaboradores de «{{name}}»",
+        "search_ph": "Buscar capacitador por nombre o correo...",
+        "no_results": "No se encontraron capacitadores.",
+        "add": "Agregar",
+        "collaborating": "Colabora",
+        "count": "{{n}} colaborador(es)",
+        "added": "{{name}} ahora colabora en la campaña",
+        "removed": "{{name}} ya no colabora en la campaña",
+        "save_error": "No se pudo actualizar el colaborador",
+        "load_error": "No se pudieron cargar los capacitadores"
+      }
     },
     "users": {
       "title": "Usuarios",

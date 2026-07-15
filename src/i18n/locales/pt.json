@@ -819,11 +819,30 @@
         "status_inactive": "Inativa",
         "err_slug": "O slug já está em uso. Altere o nome ou edite o slug manualmente.",
         "err_unexpected": "Erro inesperado ao obter a campanha recém-criada.",
-        "err_create": "Erro ao criar a campanha: {{msg}}"
+        "err_create": "Erro ao criar a campanha: {{msg}}",
+        "invite_badge": "Campanha criada",
+        "invite_title": "Convide sua equipe",
+        "invite_hint": "Adicione instrutores como colaboradores: poderão ver e editar os cursos e módulos desta campanha. Você também pode fazer isso depois em «Compartilhar campanha».",
+        "invite_done": "Concluir"
       },
       "delete_error": "Erro ao excluir a campanha",
       "toggle_deactivate": "Desativar campanha",
-      "toggle_activate": "Ativar campanha"
+      "toggle_activate": "Ativar campanha",
+      "share": {
+        "card_title": "Compartilhar campanha",
+        "card_desc": "Convide outros instrutores para co-gerenciar o conteúdo",
+        "title": "Compartilhar campanha",
+        "subtitle": "Colaboradores de «{{name}}»",
+        "search_ph": "Buscar instrutor por nome ou e-mail...",
+        "no_results": "Nenhum instrutor encontrado.",
+        "add": "Adicionar",
+        "collaborating": "Colaborando",
+        "count": "{{n}} colaborador(es)",
+        "added": "{{name}} agora colabora na campanha",
+        "removed": "{{name}} não colabora mais na campanha",
+        "save_error": "Não foi possível atualizar o colaborador",
+        "load_error": "Não foi possível carregar os instrutores"
+      }
     },
     "users": {
       "title": "Usuários",

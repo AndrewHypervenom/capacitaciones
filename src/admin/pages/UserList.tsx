@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { recompressAllAvatars, type RecompressProgress } from '@/services/avatarMaintenance'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { Avatar } from '@/components/ui/Avatar'
 import { Select } from '@/components/ui/Select'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
@@ -38,7 +39,7 @@ function mapCreds(rows: { user_id: string; email: string; temp_password: string 
 }
 
 export default function UserList() {
-  const { isSuperAdmin, campaignId } = useAuth()
+  const { isSuperAdmin, campaignId, user: authUser } = useAuth()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -88,26 +89,34 @@ export default function UserList() {
   }, [users, search, campaignFilter])
 
   useEffect(() => {
-    // El capacitador solo ve las personas de su propia campaña y NUNCA a los
-    // superadmin; el superadmin ve a todos.
-    let profilesQuery = supabase.from('profiles').select('*').order('created_at')
-    if (!isSuperAdmin) {
-      profilesQuery = profilesQuery
-        .eq('campaign_id', campaignId ?? '')
-        .neq('role', 'superadmin')
-    }
-    Promise.all([
-      profilesQuery,
-      supabase.from('campaigns').select('*').order('name'),
-      // Solo el superadmin recibe filas (RLS); para el resto vuelve vacío.
-      supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
-    ]).then(([profiles, camps, creds]) => {
+    async function load() {
+      // El capacitador ve las personas de sus campañas (casa + colaboraciones) y
+      // NUNCA a los superadmin; el superadmin ve a todos.
+      const camps = await getAccessibleCampaigns({
+        isSuperAdmin,
+        homeCampaignId: campaignId,
+        userId: authUser?.id ?? null,
+      }).catch(() => [] as Campaign[])
+      setCampaigns(camps)
+
+      let profilesQuery = supabase.from('profiles').select('*').order('created_at')
+      if (!isSuperAdmin) {
+        const ids = camps.map((c) => c.id)
+        profilesQuery = profilesQuery
+          .in('campaign_id', ids.length ? ids : [''])
+          .neq('role', 'superadmin')
+      }
+      const [profiles, creds] = await Promise.all([
+        profilesQuery,
+        // Solo el superadmin recibe filas (RLS); para el resto vuelve vacío.
+        supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
+      ])
       setUsers(profiles.data ?? [])
-      setCampaigns(camps.data ?? [])
       setTempCreds(mapCreds(creds.data))
       setLoading(false)
-    })
-  }, [isSuperAdmin, campaignId])
+    }
+    load()
+  }, [isSuperAdmin, campaignId, authUser?.id])
 
   const refreshData = async () => {
     const [{ data: updated }, { data: creds }] = await Promise.all([
@@ -433,7 +442,7 @@ export default function UserList() {
               className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2.5 text-[14px] text-text outline-none focus:border-primary min-h-[44px]"
             />
           </div>
-          {isSuperAdmin && (
+          {(isSuperAdmin || campaigns.length > 1) && (
             <Select
               className="sm:w-56"
               value={campaignFilter}

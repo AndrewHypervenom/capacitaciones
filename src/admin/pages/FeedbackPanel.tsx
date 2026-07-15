@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import i18n from '@/i18n'
 import { ChevronDown, ChevronRight, Download, Loader2, Star, Search } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
@@ -68,8 +69,8 @@ function computeStatus(completed: number, total: number, avgScore: number): Lear
 }
 
 export default function FeedbackPanel() {
-  const { isSuperAdmin, isCapacitador, campaignId, loading: authLoading } = useAuth()
-  // El capacitador solo ve el progreso de su propia campaña; el superadmin ve todas.
+  const { isSuperAdmin, isCapacitador, campaignId, user, loading: authLoading } = useAuth()
+  // El capacitador ve el progreso de sus campañas (casa + colaboraciones); el superadmin todas.
   const scopedToCampaign = !isSuperAdmin
 
   const [loading, setLoading] = useState(true)
@@ -90,25 +91,34 @@ export default function FeedbackPanel() {
 
   useEffect(() => {
     if (authLoading) return
-    if (scopedToCampaign && !campaignId) { setLoading(false); return }
 
     async function load() {
+      // Campañas accesibles (superadmin: todas; capacitador: casa + colaboraciones).
+      const accessible = await getAccessibleCampaigns({
+        isSuperAdmin,
+        homeCampaignId: campaignId,
+        userId: user?.id ?? null,
+      }).catch(() => [] as Campaign[])
+      const ids = accessible.map((c) => c.id)
+      if (scopedToCampaign && ids.length === 0) { setCampaigns([]); setRows([]); setLoading(false); return }
+      const scope = ids.length ? ids : ['']
+
       const [campRes, worldRes, levelRes, profileRes, progressRes] = await Promise.all([
-        supabase.from('campaigns').select('id,name').order('name'),
+        Promise.resolve({ data: accessible }),
         (() => {
           let q = supabase.from('worlds').select('id,name,icon,campaign_id')
-          if (scopedToCampaign && campaignId) q = q.eq('campaign_id', campaignId)
+          if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
         supabase.from('world_levels').select('id,name,world_id,order_index,min_score_pct').order('order_index'),
         (() => {
           let q = supabase.from('profiles').select('id,display_name,campaign_id').eq('role', 'learner')
-          if (scopedToCampaign && campaignId) q = q.eq('campaign_id', campaignId)
+          if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
         (() => {
           let q = supabase.from('world_progress').select('user_id,level_id,world_id,score').eq('completed', true)
-          if (scopedToCampaign && campaignId) q = q.eq('campaign_id', campaignId)
+          if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
       ])
@@ -196,7 +206,8 @@ export default function FeedbackPanel() {
       setLoading(false)
     }
     load()
-  }, [authLoading, scopedToCampaign, campaignId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, scopedToCampaign, campaignId, user?.id])
 
   // Ámbito: filtros de campaña/mundo (los superadmin). Alimenta KPIs, dona y conteos de chips.
   const scoped = useMemo(() => rows.filter(r => {
@@ -368,7 +379,7 @@ export default function FeedbackPanel() {
       : { key, dir: 'desc' })
   }
 
-  if (!authLoading && scopedToCampaign && !campaignId) {
+  if (!authLoading && !loading && scopedToCampaign && campaigns.length === 0) {
     return (
       <div className="p-4 sm:p-8">
         <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{i18n.t('admin.feedback_panel.title')}</h1>
@@ -385,6 +396,8 @@ export default function FeedbackPanel() {
 
   const levelMap = new Map(levels.map(l => [l.id, l]))
   const statusChips: Array<LearnerStatus | 'all'> = ['all', ...STATUS_ORDER]
+  // Mostrar filtro/columna de campaña cuando el usuario abarca más de una.
+  const multiCampaign = campaigns.length > 1
 
   return (
     <div className="p-4 sm:p-8">
@@ -407,15 +420,17 @@ export default function FeedbackPanel() {
         )}
       </div>
 
-      {/* Filters — superadmin only */}
-      {isSuperAdmin && (
+      {/* Filtros: el de campaña aparece si el usuario abarca varias; el de mundo, siempre que haya datos */}
+      {(isSuperAdmin || multiCampaign) && (
         <div className="flex flex-wrap gap-3 mb-5">
+          {(isSuperAdmin || multiCampaign) && (
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
             options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
             className="max-w-xs"
           />
+          )}
           <FilterDropdown
             value={filterWorld === 'all' ? '' : filterWorld}
             onChange={v => setFilterWorld(v || 'all')}
@@ -529,10 +544,10 @@ export default function FeedbackPanel() {
                 {/* Header */}
                 <div
                   className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
-                  style={{ gridTemplateColumns: isSuperAdmin ? '1.4fr 1fr auto 1.2fr auto auto auto' : '1.4fr auto 1.2fr auto auto auto' }}
+                  style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto 1.2fr auto auto auto' : '1.4fr auto 1.2fr auto auto auto' }}
                 >
                   <SortTh label={i18n.t('admin.feedback_panel.col_learner')} col="name" sort={sort} onSort={setSortKey} />
-                  {isSuperAdmin && <span>{i18n.t('admin.worlds.campaign')}</span>}
+                  {multiCampaign && <span>{i18n.t('admin.worlds.campaign')}</span>}
                   <SortTh label={i18n.t('admin.feedback_panel.col_status', 'Estado')} col="estado" sort={sort} onSort={setSortKey} />
                   <SortTh label={i18n.t('admin.feedback_panel.col_progress', 'Avance')} col="avance" sort={sort} onSort={setSortKey} />
                   <SortTh label={i18n.t('admin.feedback_panel.col_performance', 'Desempeño')} col="desempeno" sort={sort} onSort={setSortKey} />
@@ -548,7 +563,7 @@ export default function FeedbackPanel() {
                       <div key={row.userId} style={atRisk ? { boxShadow: 'inset 3px 0 0 #ef4444' } : undefined}>
                         <div
                           className="grid gap-4 px-5 py-3.5 items-center cursor-pointer hover:bg-subtle/50 transition-colors"
-                          style={{ gridTemplateColumns: isSuperAdmin ? '1.4fr 1fr auto 1.2fr auto auto auto' : '1.4fr auto 1.2fr auto auto auto' }}
+                          style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto 1.2fr auto auto auto' : '1.4fr auto 1.2fr auto auto auto' }}
                           onClick={() => toggleUser(row.userId)}
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -557,7 +572,7 @@ export default function FeedbackPanel() {
                             </div>
                             <div className="text-[13px] text-text truncate">{row.displayName}</div>
                           </div>
-                          {isSuperAdmin && (
+                          {multiCampaign && (
                             <div className="text-[12px] text-text-muted truncate">{row.campaignName}</div>
                           )}
                           <StatusBadge status={row.status} />
@@ -613,7 +628,7 @@ export default function FeedbackPanel() {
                         </div>
                         <div className="min-w-0">
                           <div className="text-[14px] font-medium text-text truncate">{row.displayName}</div>
-                          {isSuperAdmin && (
+                          {multiCampaign && (
                             <div className="text-[11px] text-text-muted truncate">{row.campaignName}</div>
                           )}
                         </div>

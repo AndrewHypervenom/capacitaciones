@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { createModule } from '@/services/modules.service'
 import ImportContent from '@/admin/pages/ImportContent'
 import {
@@ -120,7 +120,7 @@ export default function NewModulePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
 
   // Modo inicial: ?mode=ai abre directo en "Generar con IA" (p. ej. desde el curso).
   const [mode, setMode] = useState<Mode>(searchParams.get('mode') === 'ai' ? 'ai' : 'manual')
@@ -137,13 +137,19 @@ export default function NewModulePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
-    if (!isSuperAdmin) return
-    supabase.from('campaigns').select('*').order('name').then(({ data }) => {
-      setCampaigns(data ?? [])
-      if (!campaignId && data?.[0]) setCampaignId(data[0].id)
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: authCampaignId,
+      userId: user?.id ?? null,
     })
-  }, [isSuperAdmin, campaignId])
+      .then((data) => {
+        setCampaigns(data)
+        setCampaignId((prev) => prev || data[0]?.id || '')
+      })
+      .catch(() => {})
+  }, [isSuperAdmin, authCampaignId, user?.id])
 
   // Si llegamos desde el editor de un curso (?courseId=), fijar ese curso y su campaña.
   useEffect(() => {
@@ -407,7 +413,7 @@ export default function NewModulePage() {
                 </div>
               </div>
 
-              {isSuperAdmin && campaigns.length > 0 && (
+              {campaigns.length > 1 && (
                 <div>
                   <label className="text-[12px] font-medium text-text-muted block mb-2">{t('admin.modules.new.campaign')}</label>
                   <FilterDropdown
@@ -418,7 +424,7 @@ export default function NewModulePage() {
                 </div>
               )}
 
-              <div className={cn(isSuperAdmin && campaigns.length > 0 && 'mt-5')}>
+              <div className={cn(campaigns.length > 1 && 'mt-5')}>
                 <label className="text-[12px] font-medium text-text-muted block mb-2">
                   Curso destino
                 </label>

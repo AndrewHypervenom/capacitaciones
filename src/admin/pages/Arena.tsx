@@ -4,6 +4,7 @@ import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, X, Pencil, Trash2, Trophy } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import type { Json } from '@/types/database'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
@@ -132,29 +133,34 @@ export default function Arena() {
   const [filterCampaign, setFilterCampaign] = useState<string>('all')
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
-  // El capacitador solo ve/gestiona su propia campaña; el superadmin ve todas.
+  const { isSuperAdmin, campaignId, user, loading: authLoading } = useAuth()
+  // El capacitador ve/gestiona sus campañas (casa + colaboraciones); el superadmin todas.
   const scopedToCampaign = !isSuperAdmin
+  // Mostrar filtro/selector de campaña cuando el usuario abarca más de una.
+  const multiCampaign = campaigns.length > 1
 
   useEffect(() => {
     if (authLoading) return
     async function load() {
-      if (scopedToCampaign && !campaignId) {
+      const camps = await getAccessibleCampaigns({
+        isSuperAdmin,
+        homeCampaignId: campaignId,
+        userId: user?.id ?? null,
+      }).catch(() => [] as Campaign[])
+      setCampaigns(camps)
+      const ids = camps.map((c) => c.id)
+
+      if (scopedToCampaign && ids.length === 0) {
+        setQuizzes([])
         setLoading(false)
         return
       }
-
-      const { data: campData } = await supabase
-        .from('campaigns')
-        .select('id, name')
-        .order('created_at')
-      setCampaigns(campData ?? [])
 
       let quizQuery = supabase
         .from('arena_quizzes')
         .select('*')
         .order('created_at', { ascending: false })
-      if (scopedToCampaign && campaignId) quizQuery = quizQuery.eq('campaign_id', campaignId)
+      if (scopedToCampaign) quizQuery = quizQuery.in('campaign_id', ids)
 
       const { data, error } = await quizQuery
 
@@ -165,7 +171,7 @@ export default function Arena() {
       setLoading(false)
     }
     load()
-  }, [authLoading, scopedToCampaign, campaignId])
+  }, [authLoading, scopedToCampaign, campaignId, user?.id])
 
   const openModal = () => {
     setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
@@ -324,7 +330,7 @@ export default function Arena() {
     q => filterCampaign === 'all' || q.campaign_id === filterCampaign,
   )
 
-  if (!authLoading && scopedToCampaign && !campaignId) {
+  if (!authLoading && !loading && scopedToCampaign && campaigns.length === 0) {
     return (
       <div className="p-4 sm:p-8">
         <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">Arena</h1>
@@ -368,8 +374,8 @@ export default function Arena() {
           Creá quizzes gamificados con preguntas, opciones y XP por respuesta correcta
         </p>
 
-        {/* Campaign filter — solo para superadmin */}
-        {!loading && campaigns.length > 0 && !scopedToCampaign && (
+        {/* Filtro de campaña (cuando el usuario abarca más de una) */}
+        {!loading && multiCampaign && (
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
             onChange={v => setFilterCampaign(v || 'all')}
@@ -566,8 +572,8 @@ export default function Arena() {
                 </div>
 
                 {/* Campaña + Theme type */}
-                <div className={scopedToCampaign ? '' : 'grid grid-cols-2 gap-3'}>
-                  {!scopedToCampaign && (
+                <div className={multiCampaign ? 'grid grid-cols-2 gap-3' : ''}>
+                  {multiCampaign && (
                   <div>
                     <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
                     <Select

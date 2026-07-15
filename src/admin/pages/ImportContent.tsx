@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import {
   extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
   type ExtractedDocument, type ExtractStage,
@@ -32,7 +32,7 @@ import type { Campaign } from '@/types/database'
 export default function ImportContent({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -53,14 +53,20 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
   const [manualMode, setManualMode] = useState(false)
   const lastFileRef = useRef<File | null>(null)
 
+  // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
-    if (!isSuperAdmin) return
-    supabase.from('campaigns').select('*').order('name').then(({ data }) => {
-      setCampaigns(data ?? [])
-      if (!campaignId && data?.[0]) setCampaignId(data[0].id)
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: authCampaignId,
+      userId: user?.id ?? null,
     })
+      .then((data) => {
+        setCampaigns(data)
+        setCampaignId((prev) => prev || data[0]?.id || '')
+      })
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperAdmin])
+  }, [isSuperAdmin, authCampaignId, user?.id])
 
   // Si venimos de un curso, fijamos su campaña y lo recordamos para adjuntar/volver.
   useEffect(() => {
@@ -155,7 +161,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
       {/* ── Configuración (campaña + archivo + instrucciones) ── */}
       <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 mb-4">
         {/* Campaña destino */}
-        {isSuperAdmin && campaigns.length > 0 && (
+        {campaigns.length > 1 && (
           <div className="mb-5">
             <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
               {i18n.t('admin.import.campaign_target')}

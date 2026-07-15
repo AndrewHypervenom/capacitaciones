@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 
 interface Stats {
@@ -13,38 +14,47 @@ interface Stats {
 }
 
 export default function AdminDashboard() {
-  const { isSuperAdmin, campaignId } = useAuth()
+  const { isSuperAdmin, campaignId, user } = useAuth()
   const { t } = useTranslation()
   const [stats, setStats] = useState<Stats>({ campaigns: 0, modules: 0, scenarios: 0, users: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      const [camps, mods, scens, users] = await Promise.all([
-        isSuperAdmin
-          ? supabase.from('campaigns').select('id', { count: 'exact', head: true })
-          : supabase.from('campaigns').select('id', { count: 'exact', head: true }).eq('id', campaignId ?? ''),
+      // El capacitador cuenta sobre TODAS sus campañas (casa + colaboraciones).
+      const camps = await getAccessibleCampaigns({
+        isSuperAdmin,
+        homeCampaignId: campaignId,
+        userId: user?.id ?? null,
+      }).catch(() => [] as { id: string }[])
+      const ids = camps.map((c) => c.id)
+      // Sin campañas accesibles: nada que contar (evita filtros vacíos).
+      const scope = ids.length ? ids : ['']
+
+      const [modsCount, scensCount, usersCount] = await Promise.all([
         isSuperAdmin
           ? supabase.from('modules').select('id', { count: 'exact', head: true })
-          : supabase.from('modules').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? ''),
+          : supabase.from('modules').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
         isSuperAdmin
           ? supabase.from('scenarios').select('id', { count: 'exact', head: true })
-          : supabase.from('scenarios').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? ''),
-        // El capacitador solo cuenta las personas de su campaña y nunca a superadmins.
+          : supabase.from('scenarios').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
+        // El capacitador solo cuenta las personas de sus campañas y nunca a superadmins.
         isSuperAdmin
           ? supabase.from('profiles').select('id', { count: 'exact', head: true })
-          : supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId ?? '').neq('role', 'superadmin'),
+          : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope).neq('role', 'superadmin'),
       ])
       setStats({
-        campaigns: camps.count ?? 0,
-        modules: mods.count ?? 0,
-        scenarios: scens.count ?? 0,
-        users: users.count ?? 0,
+        campaigns: isSuperAdmin
+          ? (await supabase.from('campaigns').select('id', { count: 'exact', head: true })).count ?? 0
+          : ids.length,
+        modules: modsCount.count ?? 0,
+        scenarios: scensCount.count ?? 0,
+        users: usersCount.count ?? 0,
       })
       setLoading(false)
     }
     load()
-  }, [isSuperAdmin, campaignId])
+  }, [isSuperAdmin, campaignId, user?.id])
 
   const statCards = [
     { label: t('admin.dashboard.stat_campaigns'), value: stats.campaigns, icon: FolderOpen, to: '/admin/campaigns', color: '#10D451' },

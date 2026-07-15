@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 import type { Campaign } from '@/types/database'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
+import { addCollaborator } from '@/services/campaigns.service'
+import { CollaboratorPicker } from '@/admin/components/CollaboratorPicker'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { Button } from '@/components/ui/Button'
@@ -135,6 +137,8 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
   const isActive = true
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Campaña ya creada: al fijarse, el asistente pasa al paso de invitar colaboradores.
+  const [createdCampaign, setCreatedCampaign] = useState<(Campaign & { moduleCount: number }) | null>(null)
 
   const handleNameChange = (v: string) => {
     setName(v)
@@ -184,10 +188,10 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     await finalize(created)
   }
 
-  // Cierra el asistente notificando la campaña creada. Si un capacitador crea su
-  // primera campaña (aún no tenía ninguna asignada), se la asignamos a su perfil
-  // para que aparezca en el listado de campañas al recargar.
+  // Notifica la campaña creada y pasa al paso de invitar colaboradores.
   const finalize = async (campaign: Campaign) => {
+    // Si un capacitador crea su PRIMERA campaña (no tenía ninguna asignada), se
+    // la asignamos como campaña casa para que aparezca al recargar.
     if (isCapacitador && !campaignId && profile) {
       await supabase
         .from('profiles')
@@ -195,8 +199,19 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
         .eq('id', profile.id)
       setProfile({ ...profile, campaign_id: campaign.id })
     }
-    onCreated({ ...campaign, moduleCount: 0 })
-    handleClose()
+    // El creador capacitador queda como colaborador de la campaña para poder
+    // gestionarla como propia aunque no sea su campaña casa (permite tener
+    // varias campañas propias). No-fatal si la tabla aún no existe.
+    if (isCapacitador && profile) {
+      try {
+        await addCollaborator(campaign.id, profile.id, profile.id)
+      } catch {
+        /* SQL de colaboradores sin correr: se ignora */
+      }
+    }
+    const withCount = { ...campaign, moduleCount: 0 }
+    onCreated(withCount)
+    setCreatedCampaign(withCount) // no cerramos: mostramos invitar colaboradores
   }
 
   const handleClose = () => {
@@ -206,6 +221,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     setDescription('')
     setLogoUrl('')
     setError('')
+    setCreatedCampaign(null)
     onClose()
   }
 
@@ -243,10 +259,12 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                 <div className="flex items-start justify-between mb-6">
                   <div>
                     <NeonBadge color="green" dot className="mb-2">
-                      Paso {step} de 3
+                      {createdCampaign ? i18n.t('admin.campaigns.wizard.invite_badge') : `Paso ${step} de 3`}
                     </NeonBadge>
                     <GradientHeading as="h2" variant="white" size="headline">
-                      {i18n.t('admin.campaigns.wizard_title')}
+                      {createdCampaign
+                        ? i18n.t('admin.campaigns.wizard.invite_title')
+                        : i18n.t('admin.campaigns.wizard_title')}
                     </GradientHeading>
                   </div>
                   <button
@@ -257,9 +275,10 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                   </button>
                 </div>
 
-                <StepIndicator current={step} total={3} />
+                {!createdCampaign && <StepIndicator current={step} total={3} />}
 
                 {/* Contenido de cada paso */}
+                {!createdCampaign && (
                 <AnimatePresence mode="wait">
                   {step === 1 && (
                     <motion.div
@@ -381,8 +400,28 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                     </motion.div>
                   )}
                 </AnimatePresence>
+                )}
+
+                {/* Paso final: invitar colaboradores a la campaña recién creada */}
+                {createdCampaign && (
+                  <div className="mt-2">
+                    <p className="text-[13px] text-text-muted mb-4">
+                      {i18n.t('admin.campaigns.wizard.invite_hint')}
+                    </p>
+                    <div className="max-h-[46vh] overflow-y-auto -mx-1 px-1">
+                      <CollaboratorPicker campaignId={createdCampaign.id} />
+                    </div>
+                    <div className="flex items-center justify-end mt-6 pt-5 border-t border-glass-border/8">
+                      <Button variant="neon" size="sm" onClick={handleClose}>
+                        <Check className="h-4 w-4" />
+                        {i18n.t('admin.campaigns.wizard.invite_done')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Navegación */}
+                {!createdCampaign && (
                 <div className="flex items-center justify-between mt-8 pt-5 border-t border-glass-border/8">
                   <button
                     onClick={() => step > 1 && setStep((s) => (s - 1) as WizardStep)}
@@ -424,6 +463,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                     </Button>
                   )}
                 </div>
+                )}
               </div>
             </div>
           </motion.div>

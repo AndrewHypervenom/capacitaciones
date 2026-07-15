@@ -13,6 +13,7 @@ import {
   FolderOpen,
   Trash2,
   Loader2,
+  Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
@@ -25,6 +26,8 @@ import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { CampaignWizard } from '@/admin/components/CampaignWizard'
+import { ShareCampaignModal } from '@/admin/components/ShareCampaignModal'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/cn'
 
@@ -33,7 +36,7 @@ interface CampaignWithModules extends Campaign {
 }
 
 export default function CampaignList() {
-  const { isAdminOrCapacitador, isSuperAdmin, campaignId } = useAuth()
+  const { isAdminOrCapacitador, isSuperAdmin, campaignId, user } = useAuth()
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [campaigns, setCampaigns] = useState<CampaignWithModules[]>([])
@@ -43,13 +46,16 @@ export default function CampaignList() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [sharing, setSharing] = useState<CampaignWithModules | null>(null)
 
   useEffect(() => {
     async function load() {
-      // El capacitador solo ve su propia campaña; el superadmin, todas.
-      let query = supabase.from('campaigns').select('*').order('created_at')
-      if (!isSuperAdmin) query = query.eq('id', campaignId ?? '')
-      const { data } = await query
+      // Superadmin: todas. Capacitador: su campaña casa + donde colabora.
+      const data = await getAccessibleCampaigns({
+        isSuperAdmin,
+        homeCampaignId: campaignId,
+        userId: user?.id ?? null,
+      }).catch(() => null)
       if (!data) { setLoading(false); return }
 
       const withCounts = await Promise.all(
@@ -66,7 +72,7 @@ export default function CampaignList() {
       if (withCounts.length === 1) setExpanded(withCounts[0].id)
     }
     load()
-  }, [isSuperAdmin, campaignId])
+  }, [isSuperAdmin, campaignId, user?.id])
 
   const handleToggleActive = async (c: CampaignWithModules) => {
     await supabase.from('campaigns').update({ is_active: !c.is_active }).eq('id', c.id)
@@ -232,7 +238,9 @@ export default function CampaignList() {
                   </div>
 
                   <div className="flex items-center gap-1 sm:shrink-0 flex-wrap">
-                    {isSuperAdmin && editingId !== c.id && (
+                    {/* Renombrar/activar: cualquier miembro (dueño o colaborador). El
+                        RLS campaigns_collab_update lo permite. Borrar sigue en superadmin. */}
+                    {isAdminOrCapacitador && editingId !== c.id && (
                       <>
                         <button
                           onClick={() => { setEditingId(c.id); setEditName(c.name) }}
@@ -314,23 +322,23 @@ export default function CampaignList() {
                             </div>
                           </Link>
 
-                          <Link
-                            to={`/admin/import?campaign=${c.id}`}
+                          <button
+                            onClick={() => setSharing(c)}
                             className={cn(
-                              'flex items-center gap-3 p-4 rounded-xl transition-all duration-200',
+                              'flex items-center gap-3 p-4 rounded-xl transition-all duration-200 text-left w-full',
                               'glass hover:border-neon-green/25 hover:bg-glass/6',
                             )}
                           >
                             <div className="h-9 w-9 rounded-lg bg-neon-green/10 flex items-center justify-center shrink-0 ring-1 ring-neon-green/15">
-                              <Plus className="h-4 w-4 text-neon-green" />
+                              <Users className="h-4 w-4 text-neon-green" />
                             </div>
                             <div>
-                              <div className="text-[14px] font-medium text-text">{i18n.t('admin.campaigns.import_content')}</div>
+                              <div className="text-[14px] font-medium text-text">{t('admin.campaigns.share.card_title')}</div>
                               <div className="text-[12px] text-text-muted">
-                                Subir un archivo Word, Excel o PDF
+                                {t('admin.campaigns.share.card_desc')}
                               </div>
                             </div>
-                          </Link>
+                          </button>
                         </div>
                       </div>
                     </motion.div>
@@ -351,6 +359,14 @@ export default function CampaignList() {
           setExpanded(campaign.id)
         }}
       />
+
+      {/* Compartir campaña con colaboradores */}
+      {sharing && (
+        <ShareCampaignModal
+          campaign={{ id: sharing.id, name: sharing.name }}
+          onClose={() => setSharing(null)}
+        />
+      )}
     </div>
   )
 }

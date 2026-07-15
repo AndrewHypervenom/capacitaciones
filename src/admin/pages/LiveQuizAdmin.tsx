@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
@@ -69,7 +70,7 @@ type View = 'list' | 'create' | 'session'
 type AnswerCount = { option: number; count: number; is_correct: boolean }[]
 
 export default function LiveQuizAdmin() {
-  const { profile, campaignId, isSuperAdmin } = useAuth()
+  const { profile, campaignId, isSuperAdmin, user } = useAuth()
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [view, setView] = useState<View>('list')
@@ -109,24 +110,39 @@ export default function LiveQuizAdmin() {
     return () => clearInterval(id)
   }, [view])
 
+  // Campañas accesibles (superadmin: todas; capacitador: casa + colaboraciones).
+  const accessibleIds = campaigns.map((c) => c.id)
+  const accessibleKey = accessibleIds.join(',')
+
   // ── Cargar lista ──────────────────────────────────────────────────────────────
   const loadQuizzes = useCallback(async () => {
     setLoadingList(true)
     const query = supabase.from('live_quizzes').select('*').order('created_at', { ascending: false })
-    if (!isSuperAdmin && campaignId) query.eq('campaign_id', campaignId)
+    // El capacitador ve los quizzes de todas sus campañas (casa + colaboraciones).
+    if (!isSuperAdmin) {
+      const ids = accessibleKey ? accessibleKey.split(',') : (campaignId ? [campaignId] : [])
+      if (ids.length === 0) { setQuizzes([]); setLoadingList(false); return }
+      query.in('campaign_id', ids)
+    }
     const { data } = await query
     setQuizzes((data ?? []) as unknown as LiveQuiz[])
     setLoadingList(false)
-  }, [campaignId, isSuperAdmin])
+  }, [isSuperAdmin, accessibleKey, campaignId])
+
+  // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
+  useEffect(() => {
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: campaignId,
+      userId: user?.id ?? null,
+    })
+      .then(setCampaigns)
+      .catch(() => {})
+  }, [isSuperAdmin, campaignId, user?.id])
 
   useEffect(() => {
     void loadQuizzes()
-    if (isSuperAdmin) {
-      supabase.from('campaigns').select('*').order('name').then(({ data }) => {
-        setCampaigns(data ?? [])
-      })
-    }
-  }, [loadQuizzes, isSuperAdmin])
+  }, [loadQuizzes])
 
   // ── Conteo de respuestas + tiempo real para sesión activa ────────────────────
   const fetchAnswerCounts = useCallback(async (quiz: LiveQuiz) => {
@@ -424,6 +440,10 @@ export default function LiveQuizAdmin() {
     ? quizzes
     : quizzes.filter((q) => q.campaign_id === filterCampaign)
 
+  // Mostrar filtro/columna de campaña cuando el usuario abarca más de una
+  // (superadmin, o capacitador con campañas compartidas).
+  const showCampaignCol = campaigns.length > 1
+
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
@@ -446,8 +466,8 @@ export default function LiveQuizAdmin() {
         </button>
       </div>
 
-      {/* Filtro de campaña — solo superadmin */}
-      {isSuperAdmin && campaigns.length > 1 && (
+      {/* Filtro de campaña (cuando el usuario abarca más de una) */}
+      {showCampaignCol && (
         <div className="flex gap-2 flex-wrap mb-5">
           <button
             onClick={() => setFilterCampaign('all')}
@@ -478,9 +498,9 @@ export default function LiveQuizAdmin() {
       ) : (
         <div className="rounded-2xl border border-line overflow-x-auto">
         <div className="min-w-[720px]">
-          <div className={`grid ${isSuperAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
+          <div className={`grid ${showCampaignCol ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
             <span>{i18n.t('admin.livequiz.col_title')}</span>
-            {isSuperAdmin && <span>{i18n.t('admin.worlds.campaign')}</span>}
+            {showCampaignCol && <span>{i18n.t('admin.worlds.campaign')}</span>}
             <span>PIN</span>
             <span>{i18n.t('admin.livequiz.col_status')}</span>
             <span />
@@ -490,13 +510,13 @@ export default function LiveQuizAdmin() {
             return (
               <div
                 key={q.id}
-                className={`grid ${isSuperAdmin ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-4 items-center border-t border-line`}
+                className={`grid ${showCampaignCol ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-4 items-center border-t border-line`}
               >
                 <div>
                   <div className="text-[13px] text-text">{q.title}</div>
                   <div className="text-[11px] text-text-subtle">{q.questions.length} pregunta{q.questions.length !== 1 ? 's' : ''}</div>
                 </div>
-                {isSuperAdmin && (
+                {showCampaignCol && (
                   <span className="text-[11px] text-text-muted truncate max-w-[120px]">{campName ?? '—'}</span>
                 )}
                 <span className="font-mono text-[13px] text-text-muted">{q.pin}</span>
@@ -562,7 +582,7 @@ export default function LiveQuizAdmin() {
           onChange={(e) => setFormTitle(e.target.value)}
           className="w-full rounded-xl px-4 py-2.5 min-h-[44px] text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#10D451] transition-colors"
         />
-        {isSuperAdmin && campaigns.length > 0 && (
+        {campaigns.length > 1 && (
           <FilterDropdown
             value={formCampaign}
             onChange={setFormCampaign}

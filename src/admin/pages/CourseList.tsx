@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import { BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
 import {
   getCoursesForCampaign,
   getAllCourses,
@@ -16,6 +15,7 @@ import {
   type AdminCourse,
   type ShareableCourse,
 } from '@/services/courses.service'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
 import { runCourseAiGeneration, COURSE_AI_CREATED_EVENT } from '@/services/courseAi.service'
 import {
@@ -137,16 +137,18 @@ export default function CourseList() {
   }
 
   useEffect(() => {
-    if (!isSuperAdmin) return
-    supabase
-      .from('campaigns')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        setCampaigns(data ?? [])
-        if (!selectedCampaignId && data?.[0]) setSelectedCampaignId(data[0].id)
+    // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: authCampaignId,
+      userId: user?.id ?? null,
+    })
+      .then((data) => {
+        setCampaigns(data)
+        setSelectedCampaignId((prev) => prev || data[0]?.id || '')
       })
-  }, [isSuperAdmin, selectedCampaignId])
+      .catch(() => {})
+  }, [isSuperAdmin, authCampaignId, user?.id])
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -324,8 +326,9 @@ export default function CourseList() {
         </div>
       </div>
 
-      {/* Selector de campaña (superadmin) */}
-      {isSuperAdmin && campaigns.length > 1 && (
+      {/* Selector de campaña. Superadmin: todas + "Todas". Capacitador: su campaña
+          casa + aquellas donde colabora (solo se muestra si hay más de una). */}
+      {campaigns.length > 1 && (
         <div className="mb-6">
           <FilterDropdown
             value={selectedCampaignId}
@@ -335,7 +338,9 @@ export default function CourseList() {
               setSelectedCampaignId(v)
             }}
             options={[
-              { value: ALL_CAMPAIGNS, label: t('admin.courses.filter_all_campaigns') },
+              ...(isSuperAdmin
+                ? [{ value: ALL_CAMPAIGNS, label: t('admin.courses.filter_all_campaigns') }]
+                : []),
               ...campaigns.map((c) => ({ value: c.id, label: c.name })),
             ]}
             className="max-w-xs"

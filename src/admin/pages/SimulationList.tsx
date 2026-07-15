@@ -5,7 +5,7 @@ import {
   Loader2, Flame, AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import {
   getAllScenariosAdmin, deleteScenario, toggleScenarioPublished,
   type ScenarioRow,
@@ -35,7 +35,7 @@ export default function SimulationList() {
   const nav = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState(authCampaignId ?? '')
@@ -46,13 +46,19 @@ export default function SimulationList() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
-    if (!isSuperAdmin) return
-    supabase.from('campaigns').select('*').order('name').then(({ data }) => {
-      setCampaigns(data ?? [])
-      if (!selectedCampaignId && data?.[0]) setSelectedCampaignId(data[0].id)
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: authCampaignId,
+      userId: user?.id ?? null,
     })
-  }, [isSuperAdmin, selectedCampaignId])
+      .then((data) => {
+        setCampaigns(data)
+        setSelectedCampaignId((prev) => prev || data[0]?.id || '')
+      })
+      .catch(() => {})
+  }, [isSuperAdmin, authCampaignId, user?.id])
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -136,7 +142,7 @@ export default function SimulationList() {
         />
       )}
 
-      {isSuperAdmin && campaigns.length > 0 && (
+      {campaigns.length > 1 && (
         <div className="mb-6">
           <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
           <FilterDropdown

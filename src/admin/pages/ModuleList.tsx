@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
 import {
   getModulesRaw,
   toggleModulePublished,
@@ -11,6 +10,7 @@ import {
   type DbModuleRow,
 } from '@/services/modules.service'
 import { getCoursesForCampaign, type CourseWithModules } from '@/services/courses.service'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -23,7 +23,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 export default function ModuleList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
@@ -33,32 +33,24 @@ export default function ModuleList() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
-    if (!isSuperAdmin) return
-    supabase
-      .from('campaigns')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        setCampaigns(data ?? [])
-        if (!selectedCampaignId && data?.[0]) {
-          setSelectedCampaignId(data[0].id)
-          setSelectedCampaignName(data[0].name)
-        }
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: authCampaignId,
+      userId: user?.id ?? null,
+    })
+      .then((data) => {
+        setCampaigns(data)
+        setSelectedCampaignId((prev) => prev || data[0]?.id || '')
       })
-  }, [isSuperAdmin, selectedCampaignId])
+      .catch(() => {})
+  }, [isSuperAdmin, authCampaignId, user?.id])
 
+  // Mantiene el nombre de la campaña seleccionada en sincronía.
   useEffect(() => {
-    if (isSuperAdmin || !authCampaignId) return
-    supabase
-      .from('campaigns')
-      .select('name')
-      .eq('id', authCampaignId)
-      .single()
-      .then(({ data }) => {
-        if (data) setSelectedCampaignName(data.name)
-      })
-  }, [isSuperAdmin, authCampaignId])
+    setSelectedCampaignName(campaigns.find((c) => c.id === selectedCampaignId)?.name ?? '')
+  }, [campaigns, selectedCampaignId])
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -246,8 +238,8 @@ export default function ModuleList() {
         </div>
       </div>
 
-      {/* Campaign selector (superadmin) */}
-      {isSuperAdmin && campaigns.length > 1 && (
+      {/* Selector de campaña (superadmin, o capacitador con varias campañas) */}
+      {campaigns.length > 1 && (
         <div className="mb-6">
           <FilterDropdown
             value={selectedCampaignId}

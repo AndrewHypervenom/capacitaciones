@@ -1503,6 +1503,32 @@ export const DEFAULT_CERT_CONDITIONS: CertConditions = {
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type UserProgress = Database['public']['Tables']['user_progress']['Row']
 
+/**
+ * Colaborador de una campaña (equipo de capacitadores). Relación muchos-a-muchos
+ * entre campañas y capacitadores; complementa a `profiles.campaign_id` (campaña
+ * "casa") permitiendo que varios capacitadores co-gestionen una misma campaña.
+ * Tabla definida en supabase/sql/2026-07-15_campaign_collaborators.sql.
+ */
+export interface CampaignCollaborator {
+  campaign_id: string
+  user_id: string
+  added_by: string | null
+  created_at: string
+}
+
+/** Capacitador con datos mínimos para el selector de colaboradores. */
+export interface CollaboratorProfile {
+  id: string
+  display_name: string | null
+  email: string | null
+  job_title: string | null
+  avatar_url: string | null
+  /** Ya es colaborador de la campaña en cuestión. */
+  is_collaborator?: boolean
+  /** Es el dueño (campaña casa) — no se puede quitar. */
+  is_owner?: boolean
+}
+
 export type UserRole = Profile['role']
 
 export interface QuizQuestion {
