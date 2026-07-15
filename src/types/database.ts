@@ -165,6 +165,24 @@ export interface Database {
         }
         Relationships: []
       }
+      campaign_collaborators: {
+        Row: {
+          campaign_id: string
+          user_id: string
+          added_by: string | null
+          created_at: string
+        }
+        Insert: {
+          campaign_id: string
+          user_id: string
+          added_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          added_by?: string | null
+        }
+        Relationships: []
+      }
       course_campaigns: {
         Row: {
           course_id: string
