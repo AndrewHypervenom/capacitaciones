@@ -126,7 +126,7 @@ function StepIndicator({ current, total }: { current: WizardStep; total: number 
 }
 
 export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps) {
-  const { isCapacitador, campaignId, profile } = useAuth()
+  const { isCapacitador, isSuperAdmin, campaignId, profile } = useAuth()
   const setProfile = useAuthStore((s) => s.setProfile)
   const [step, setStep] = useState<WizardStep>(1)
   const [name, setName] = useState('')
@@ -190,19 +190,20 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
 
   // Notifica la campaña creada y pasa al paso de invitar colaboradores.
   const finalize = async (campaign: Campaign) => {
-    // Si un capacitador crea su PRIMERA campaña (no tenía ninguna asignada), se
-    // la asignamos como campaña casa para que aparezca al recargar.
-    if (isCapacitador && !campaignId && profile) {
+    // Si un capacitador o superadmin crea una campaña sin tener ninguna asignada
+    // (cuenta creada sin campaña casa), se la asignamos como campaña casa para que
+    // no le quede oculta y aparezca de una vez al recargar.
+    if ((isCapacitador || isSuperAdmin) && !campaignId && profile) {
       await supabase
         .from('profiles')
         .update({ campaign_id: campaign.id })
         .eq('id', profile.id)
       setProfile({ ...profile, campaign_id: campaign.id })
     }
-    // El creador capacitador queda como colaborador de la campaña para poder
-    // gestionarla como propia aunque no sea su campaña casa (permite tener
-    // varias campañas propias). No-fatal si la tabla aún no existe.
-    if (isCapacitador && profile) {
+    // El creador queda como colaborador de la campaña para poder gestionarla como
+    // propia aunque no sea su campaña casa (permite tener varias campañas propias).
+    // No-fatal si la tabla aún no existe.
+    if ((isCapacitador || isSuperAdmin) && profile) {
       try {
         await addCollaborator(campaign.id, profile.id, profile.id)
       } catch {

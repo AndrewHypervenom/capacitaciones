@@ -47,7 +47,10 @@ export default function CourseList() {
   const [previewingId, setPreviewingId] = useState<string | null>(null)
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
+  // El superadmin arranca viendo TODOS los cursos (no una campaña suelta como filtro).
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>(
+    isSuperAdmin ? ALL_CAMPAIGNS : (authCampaignId ?? ''),
+  )
   const [courses, setCourses] = useState<AdminCourse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -145,7 +148,10 @@ export default function CourseList() {
     })
       .then((data) => {
         setCampaigns(data)
-        setSelectedCampaignId((prev) => prev || data[0]?.id || '')
+        // Superadmin conserva "Todas"; el resto cae en su primera campaña disponible.
+        setSelectedCampaignId((prev) =>
+          prev || (isSuperAdmin ? ALL_CAMPAIGNS : data[0]?.id || ''),
+        )
       })
       .catch(() => {})
   }, [isSuperAdmin, authCampaignId, user?.id])
