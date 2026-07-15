@@ -69,6 +69,21 @@ type Lang = 'es' | 'en' | 'pt'
 
 const COLOR_PRESETS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#14B8A6']
 
+/**
+ * Extrae un mensaje legible de un error de Supabase/PostgREST para mostrarlo en el
+ * toast (además de loguearlo). Sin esto, un fallo de RLS/columna/trigger queda oculto
+ * tras un mensaje genérico y es imposible diagnosticar por qué "no guarda".
+ */
+function errMsg(e: unknown): string {
+  if (e && typeof e === 'object') {
+    const o = e as { message?: string; details?: string; hint?: string; code?: string }
+    const parts = [o.message, o.details, o.hint].filter(Boolean)
+    const base = parts.join(' — ') || String(e)
+    return o.code ? `[${o.code}] ${base}` : base
+  }
+  return String(e)
+}
+
 /** Interruptor on/off accesible y consistente (track + perilla). */
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label?: string }) {
   return (
@@ -381,8 +396,9 @@ export default function CourseEditor() {
       toast.success(t('admin.courses.saved_ok'))
       invalidateModulesCache()
       await reload()
-    } catch {
-      toast.error(t('admin.courses.error_save'))
+    } catch (e) {
+      console.error('[CourseEditor] handleSaveInfo', e)
+      toast.error(t('admin.courses.error_save'), errMsg(e))
     } finally {
       setSaving(false)
     }
@@ -516,8 +532,9 @@ export default function CourseEditor() {
       await updateCourse(course.id, { cover_url: url })
       setCourse({ ...course, cover_url: url })
       toast.success(t('admin.courses.cover_ok'))
-    } catch {
-      toast.error(t('admin.courses.error_save'))
+    } catch (e) {
+      console.error('[CourseEditor] handleCoverUpload', e)
+      toast.error(t('admin.courses.error_save'), errMsg(e))
     } finally {
       setUploadingCover(false)
     }

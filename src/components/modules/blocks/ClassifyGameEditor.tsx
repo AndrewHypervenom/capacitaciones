@@ -164,25 +164,29 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
                   updateBlock({ ...block, categories: nextCats })
                 }}
                 placeholder={i18n.t('admin.modules.be.ge_ph_category')}
-                className="flex-1 bg-transparent px-3 py-1.5 border border-glass-border/10 rounded-lg text-[13px] text-text focus:border-neon-green/30 outline-none"
+                className="flex-1 min-w-0 bg-transparent px-3 py-1.5 border border-glass-border/10 rounded-lg text-[13px] text-text focus:border-neon-green/30 outline-none"
               />
 
-              <Select
-                compact
-                tinted
-                className="w-auto shrink-0"
-                value={cat.color || 'purple'}
-                onChange={(v) => {
-                  const nextCats = [...block.categories]
-                  nextCats[idx].color = v
-                  updateBlock({ ...block, categories: nextCats })
-                }}
-                options={AVAILABLE_COLORS.map(color => ({
-                  value: color,
-                  label: color.toUpperCase(),
-                  color: COLOR_HEX[color],
-                }))}
-              />
+              {/* Ancho acotado: el Select trae w-full interno y cn() no hace
+                  tailwind-merge, así que lo contenemos aquí para que no se estire
+                  ni empuje el chevron/papelera fuera de la tarjeta. */}
+              <div className="w-full sm:w-40 shrink-0">
+                <Select
+                  compact
+                  tinted
+                  value={cat.color || 'purple'}
+                  onChange={(v) => {
+                    const nextCats = [...block.categories]
+                    nextCats[idx].color = v
+                    updateBlock({ ...block, categories: nextCats })
+                  }}
+                  options={AVAILABLE_COLORS.map(color => ({
+                    value: color,
+                    label: color.toUpperCase(),
+                    color: COLOR_HEX[color],
+                  }))}
+                />
+              </div>
 
               <button
                 type="button"
