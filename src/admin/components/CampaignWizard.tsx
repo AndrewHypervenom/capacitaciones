@@ -20,7 +20,7 @@ interface CampaignWizardProps {
   onCreated: (campaign: Campaign & { moduleCount: number }) => void
 }
 
-type WizardStep = 1 | 2 | 3
+type WizardStep = 1 | 2
 
 function slugify(text: string) {
   return text
@@ -92,11 +92,11 @@ function GlassTextarea({
   )
 }
 
-function StepIndicator({ current, total }: { current: WizardStep; total: number }) {
+function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center justify-center gap-3 mb-8">
       {Array.from({ length: total }, (_, i) => {
-        const stepNum = (i + 1) as WizardStep
+        const stepNum = i + 1
         const isCompleted = stepNum < current
         const isActive = stepNum === current
         return (
@@ -132,7 +132,6 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
-  const [logoUrl, setLogoUrl] = useState('')
   // Las campañas siempre se crean activas (sin opción de elegir).
   const isActive = true
   const [submitting, setSubmitting] = useState(false)
@@ -154,7 +153,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
       p_name:        name.trim(),
       p_slug:        slug.trim(),
       p_description: description.trim() || null,
-      p_logo_url:    logoUrl.trim() || null,
+      p_logo_url:    null,
       p_is_active:   isActive,
     })
 
@@ -220,7 +219,6 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     setName('')
     setSlug('')
     setDescription('')
-    setLogoUrl('')
     setError('')
     setCreatedCampaign(null)
     onClose()
@@ -260,7 +258,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                 <div className="flex items-start justify-between mb-6">
                   <div>
                     <NeonBadge color="green" dot className="mb-2">
-                      {createdCampaign ? i18n.t('admin.campaigns.wizard.invite_badge') : `Paso ${step} de 3`}
+                      {`Paso ${createdCampaign ? 3 : step} de 3`}
                     </NeonBadge>
                     <GradientHeading as="h2" variant="white" size="headline">
                       {createdCampaign
@@ -276,7 +274,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                   </button>
                 </div>
 
-                {!createdCampaign && <StepIndicator current={step} total={3} />}
+                <StepIndicator current={createdCampaign ? 3 : step} total={3} />
 
                 {/* Contenido de cada paso */}
                 {!createdCampaign && (
@@ -332,42 +330,6 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
                       transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                      className="space-y-5"
-                    >
-                      <div>
-                        <label className="text-[12px] font-medium text-text-muted uppercase tracking-wider mb-2 block">
-                          {i18n.t('admin.campaigns.wizard.logo_label')}
-                        </label>
-                        <GlassInput
-                          placeholder="https://empresa.com/logo.png"
-                          value={logoUrl}
-                          onChange={setLogoUrl}
-                          type="url"
-                        />
-                      </div>
-                      <div className="flex items-center gap-3 rounded-xl bg-neon-green/5 border border-neon-green/15 px-4 py-3">
-                        <div className="relative h-6 w-11 rounded-full bg-neon-green shadow-neon-green flex-shrink-0">
-                          <span className="absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm" style={{ left: 22 }} />
-                        </div>
-                        <div>
-                          <div className="text-[14px] font-medium text-text">
-                            {i18n.t('admin.campaigns.wizard.activate_now')}
-                          </div>
-                          <div className="text-[12px] text-text-subtle">
-                            {i18n.t('admin.campaigns.wizard.activate_hint')}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {step === 3 && (
-                    <motion.div
-                      key="step3"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
                       className="space-y-3"
                     >
                       <p className="text-[14px] text-text-muted mb-4">
@@ -378,7 +340,6 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           { label: i18n.t('admin.campaigns.wizard.review_name'), value: name },
                           { label: 'Slug', value: slug, mono: true },
                           description && { label: i18n.t('admin.campaigns.wizard.review_description'), value: description },
-                          logoUrl && { label: i18n.t('admin.campaigns.wizard.review_logo'), value: logoUrl },
                           { label: i18n.t('admin.campaigns.wizard.review_status'), value: isActive ? i18n.t('admin.campaigns.wizard.status_active') : i18n.t('admin.campaigns.wizard.status_inactive'), colored: true },
                         ].filter(Boolean).map((row: any) => (
                           <div key={row.label} className="flex items-start gap-4 px-4 py-3">
@@ -433,7 +394,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                     {i18n.t('common.previous')}
                   </button>
 
-                  {step < 3 ? (
+                  {step < 2 ? (
                     <Button
                       variant="neon"
                       size="sm"
