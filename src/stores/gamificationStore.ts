@@ -140,7 +140,7 @@ export const DEFAULT_BADGE_DEFS: BadgeDef[] = [
 
 export const DEFAULT_XP_LEVELS: XPLevel[] = [
   { level: 1, label: 'Novato',   label_en: 'Novice',     label_pt: 'Novato',       minXP: 0,    maxXP: 300,  color: '#888' },
-  { level: 2, label: 'Aprendiz', label_en: 'Apprentice', label_pt: 'Aprendiz',     minXP: 300,  maxXP: 800,  color: '#00c228' },
+  { level: 2, label: 'Aprendiz', label_en: 'Apprentice', label_pt: 'Aprendiz',     minXP: 300,  maxXP: 800,  color: '#10D451' },
   { level: 3, label: 'Experto',  label_en: 'Expert',     label_pt: 'Especialista', minXP: 800,  maxXP: 1500, color: '#7c3aed' },
   { level: 4, label: 'Maestro',  label_en: 'Master',     label_pt: 'Mestre',       minXP: 1500, maxXP: 9999, color: '#f59e0b' },
 ];

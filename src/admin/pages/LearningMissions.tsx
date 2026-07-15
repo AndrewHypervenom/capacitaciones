@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, Target, X, BookOpen, Video, FileText, Zap, Pencil, Trash2 } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
@@ -57,10 +58,10 @@ const STEP_ICONS: Record<StepType, React.ComponentType<{ className?: string; sty
 }
 
 const STEP_COLORS: Record<StepType, string> = {
-  intro: '#00C228',
+  intro: '#10D451',
   video: '#3b82f6',
   pdf: '#f59e0b',
-  quiz: '#E11D74',
+  quiz: '#B33D9E',
 }
 
 const CATEGORIES = ['Onboarding', 'Compliance', 'Producto', 'Habilidades', 'Seguridad', 'Otro']
@@ -273,9 +274,9 @@ export default function LearningMissions() {
           <button
             onClick={openModal}
             className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-medium transition-colors"
-            style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
+            style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.12)' }}
           >
             <Plus className="h-4 w-4" />
             Nueva misión
@@ -306,9 +307,9 @@ export default function LearningMissions() {
           /* Empty state */
           <div
             className="rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
-            style={{ background: 'rgba(0,194,40,0.04)', border: '1px dashed rgba(0,194,40,0.20)' }}
+            style={{ background: 'rgba(16,212,81,0.04)', border: '1px dashed rgba(16,212,81,0.20)' }}
           >
-            <Target className="h-10 w-10 mb-4" style={{ color: '#00C228', opacity: 0.5 }} />
+            <Target className="h-10 w-10 mb-4" style={{ color: '#10D451', opacity: 0.5 }} />
             <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_missions')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
               Creá tu primera misión para organizar el aprendizaje en pasos claros y medibles
@@ -316,9 +317,9 @@ export default function LearningMissions() {
             <button
               onClick={openModal}
               className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-medium transition-colors"
-              style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
+              style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.12)' }}
             >
               <Plus className="h-4 w-4" />
               Nueva misión
@@ -337,9 +338,9 @@ export default function LearningMissions() {
                   <div className="flex items-start gap-4 flex-1 min-w-0">
                   <div
                     className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: 'rgba(0,194,40,0.10)' }}
+                    style={{ background: 'rgba(16,212,81,0.10)' }}
                   >
-                    <Target className="h-5 w-5" style={{ color: '#00C228' }} />
+                    <Target className="h-5 w-5" style={{ color: '#10D451' }} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5 flex-wrap">
@@ -347,7 +348,7 @@ export default function LearningMissions() {
                       {m.category && (
                         <span
                           className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full"
-                          style={{ background: 'rgba(0,194,40,0.10)', color: '#00C228' }}
+                          style={{ background: 'rgba(16,212,81,0.10)', color: '#10D451' }}
                         >
                           {m.category}
                         </span>
@@ -404,9 +405,9 @@ export default function LearningMissions() {
                     <button
                       onClick={() => navigate(`/mission/${m.id}`)}
                       className="flex items-center justify-center px-3 py-1.5 min-h-[36px] rounded-xl text-[12px] font-medium transition-colors"
-                      style={{ background: 'rgba(0,194,40,0.10)', color: '#00C228', border: '1px solid rgba(0,194,40,0.22)' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.10)' }}
+                      style={{ background: 'rgba(16,212,81,0.10)', color: '#10D451', border: '1px solid rgba(16,212,81,0.22)' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.10)' }}
                     >
                       Iniciar
                     </button>
@@ -423,7 +424,7 @@ export default function LearningMissions() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) closeModal() }}
+          {...backdropDismiss(closeModal)}
         >
           <div
             className="mission-modal w-full max-w-lg rounded-2xl bg-surface border border-line flex flex-col overflow-hidden"
@@ -452,7 +453,7 @@ export default function LearningMissions() {
                     value={form.title}
                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                     placeholder={i18n.t('admin.worlds.ph_mission_title')}
-                    className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors"
+                    className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors"
                   />
                 </div>
 
@@ -464,7 +465,7 @@ export default function LearningMissions() {
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     placeholder={i18n.t('admin.worlds.ph_mission_desc')}
                     rows={2}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors resize-none"
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors resize-none"
                   />
                 </div>
 
@@ -506,7 +507,7 @@ export default function LearningMissions() {
                       type="button"
                       onClick={addStep}
                       className="inline-flex items-center min-h-[36px] text-[11px] font-medium transition-opacity hover:opacity-70"
-                      style={{ color: '#00C228' }}
+                      style={{ color: '#10D451' }}
                     >
                       + Agregar paso
                     </button>
@@ -570,9 +571,9 @@ export default function LearningMissions() {
                   type="submit"
                   disabled={saving}
                   className="flex items-center justify-center px-4 py-2 min-h-[36px] rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
-                  style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.28)' }}
-                  onMouseEnter={e => { if (!saving) (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.24)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.14)' }}
+                  style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.28)' }}
+                  onMouseEnter={e => { if (!saving) (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.24)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.14)' }}
                 >
                   {saving ? t('common.saving') : editingId ? t('common.save_changes') : t('admin.worlds.lm_create_mission')}
                 </button>

@@ -79,8 +79,8 @@ export function AdminNav() {
         ...(isSuperAdmin ? [{ to: '/admin/overview', label: t('admin.nav.overview', 'Vista global'), end: false }] : []),
         // Gamificación (logros + niveles XP): solo superadmin.
         ...(isSuperAdmin ? [{ to: '/admin/gamification', label: t('admin.nav.gamification', 'Gamificación'), end: false }] : []),
-        { to: '/admin/feedback', label: t('admin.nav.feedback', 'Progreso unificado'), end: false },
-        { to: '/admin/evaluaciones', label: t('admin.nav.evaluaciones', 'Evaluaciones'), end: false }
+        // Progreso unificado: Mundos y Módulos viven en una sola vista con selector.
+        { to: '/admin/progress', label: t('admin.nav.progress', 'Progreso'), end: false }
       ]
     },
     {

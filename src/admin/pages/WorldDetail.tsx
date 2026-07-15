@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, GripVertical, Sparkles, BookOpen, AlertTriangle } from 'lucide-react'
+import { backdropDismiss } from '@/lib/backdropDismiss'
+import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, Sparkles, BookOpen, AlertTriangle } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { generateLevelsForRegion, generateBulkModuleRegions, WORLD_LEVELS_EVENT } from '@/services/worlds.service'
 import type { WorldRow } from '@/services/worlds.service'
-import { ArenaEditorModal, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
+import { ArenaEditorModal, normalizeArenaRow, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -37,7 +39,7 @@ export default function WorldDetail() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { user, isSuperAdmin, campaignId, loading: authLoading, profile } = useAuth()
+  const { user, isSuperAdmin, campaignId, loading: authLoading } = useAuth()
   // El capacitador solo puede ver/editar los mundos de su propia campaña; el superadmin todos.
   const scopedToCampaign = !isSuperAdmin
 
@@ -62,8 +64,11 @@ export default function WorldDetail() {
   // Level modal
   const [levelModal, setLevelModal] = useState(false)
   const [editingLevel, setEditingLevel] = useState<Level | null>(null)
-  // Crear un quiz nuevo inline (sin salir del modal de nivel).
+  // Crear/editar un quiz inline (sin salir del modal de nivel).
   const [quizEditorOpen, setQuizEditorOpen] = useState(false)
+  // Quiz completo a editar (null = crear uno nuevo).
+  const [editingQuizFull, setEditingQuizFull] = useState<ArenaQuiz | null>(null)
+  const [loadingQuizEdit, setLoadingQuizEdit] = useState(false)
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null)
   const [levelForm, setLevelForm] = useState({ name:'', description:'', icon:'⭐', order_index:0, quiz_id:'', min_score_pct: null as number | null })
   const [savingLevel, setSavingLevel] = useState(false)
@@ -225,7 +230,6 @@ export default function WorldDetail() {
   const openNewLevel = (regionId: string) => {
     setEditingLevel(null)
     setActiveRegionId(regionId)
-    const regionLevels = levels.filter(l => l.region_id === regionId)
     setLevelForm({ name:'', description:'', icon:'⭐', order_index: levels.length, quiz_id:'', min_score_pct: null })
     setLevelModal(true)
   }
@@ -293,11 +297,31 @@ export default function WorldDetail() {
     }
   }
 
-  // Quiz recién creado inline → lo sumo a la lista y lo dejo seleccionado en el nivel.
-  const onQuizCreated = (q: ArenaQuiz) => {
-    setQuizzes(prev => (prev.some(x => x.id === q.id) ? prev : [...prev, { id: q.id, title: q.title }]))
+  // Abre el editor de quiz: sin id crea uno nuevo; con id carga el quiz completo
+  // para editar sus preguntas sin salir del modal de nivel.
+  const openQuizEditor = async (quizId: string | null) => {
+    if (!quizId) { setEditingQuizFull(null); setQuizEditorOpen(true); return }
+    setLoadingQuizEdit(true)
+    const { data, error } = await supabase.from('arena_quizzes').select('*').eq('id', quizId).single()
+    setLoadingQuizEdit(false)
+    if (error || !data) {
+      toast.error(t('admin.worlds.quiz_load_error', { defaultValue: 'No se pudo cargar el quiz' }))
+      return
+    }
+    setEditingQuizFull(normalizeArenaRow(data as Record<string, unknown>))
+    setQuizEditorOpen(true)
+  }
+
+  const closeQuizEditor = () => { setQuizEditorOpen(false); setEditingQuizFull(null) }
+
+  // Quiz creado o editado inline → actualizo su título en la lista (o lo sumo) y
+  // lo dejo seleccionado en el nivel.
+  const onQuizSaved = (q: ArenaQuiz) => {
+    setQuizzes(prev => prev.some(x => x.id === q.id)
+      ? prev.map(x => (x.id === q.id ? { id: q.id, title: q.title } : x))
+      : [...prev, { id: q.id, title: q.title }])
     setLevelForm(f => ({ ...f, quiz_id: q.id }))
-    setQuizEditorOpen(false)
+    closeQuizEditor()
   }
 
   /* ── Generar niveles con IA (por región) ── */
@@ -419,7 +443,7 @@ export default function WorldDetail() {
             {world.description && <p className="text-[13px] text-text-muted leading-relaxed">{world.description}</p>}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background:`${tc}15`, color:tc }}>{BG_LABELS[world.bg_type] ? i18n.t(BG_LABELS[world.bg_type]) : world.bg_type}</span>
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${world.status==='published' ? 'text-[#00C228]' : 'text-text-muted'}`} style={{ background: world.status==='published' ? 'rgba(0,194,40,0.1)' : 'rgb(var(--glass-border) / 0.06)' }}>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${world.status==='published' ? 'text-[#10D451]' : 'text-text-muted'}`} style={{ background: world.status==='published' ? 'rgba(16,212,81,0.1)' : 'rgb(var(--glass-border) / 0.06)' }}>
                 {world.status === 'published' ? 'Publicado' : 'Borrador'}
               </span>
               {/* Vínculo con el curso: la fuente de conocimiento del mundo. */}
@@ -474,9 +498,8 @@ export default function WorldDetail() {
             </div>
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.character')}</label>
-              <input value={world.character_emoji||'🧑'} onChange={e => handleTheme('character_emoji',e.target.value)}
-                className="w-full px-3 py-2 rounded-xl text-[20px] bg-bg border border-line text-text focus:outline-none text-center"
-                placeholder="🧑" maxLength={2}/>
+              <EmojiPicker value={world.character_emoji || '🧑'} onSelect={v => handleTheme('character_emoji', v)}
+                aria-label={i18n.t('admin.worlds.character')} />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.color_emoji')}</label>
@@ -597,9 +620,9 @@ export default function WorldDetail() {
             )}
             <button onClick={openNewRegion}
               className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors min-h-[44px]"
-              style={{ background:'rgba(0,194,40,0.12)', color:'#00C228', border:'1px solid rgba(0,194,40,0.25)' }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.20)'}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(0,194,40,0.12)'}>
+              style={{ background:'rgba(16,212,81,0.12)', color:'#10D451', border:'1px solid rgba(16,212,81,0.25)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(16,212,81,0.20)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(16,212,81,0.12)'}>
               <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4"/> <span className="hidden xs:inline">{i18n.t('admin.worlds.new_f')}</span> región
             </button>
           </div>
@@ -610,7 +633,7 @@ export default function WorldDetail() {
             <div className="text-3xl mb-3">🗺️</div>
             <div className="text-[14px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_regions')}</div>
             <div className="text-[12px] text-text-muted mb-4">{i18n.t('admin.worlds.no_regions_hint')}</div>
-            <button onClick={openNewRegion} className="flex items-center justify-center min-h-[44px] text-[13px] font-medium px-4 py-2 rounded-xl" style={{ background:'rgba(0,194,40,0.12)', color:'#00C228', border:'1px solid rgba(0,194,40,0.25)' }}>
+            <button onClick={openNewRegion} className="flex items-center justify-center min-h-[44px] text-[13px] font-medium px-4 py-2 rounded-xl" style={{ background:'rgba(16,212,81,0.12)', color:'#10D451', border:'1px solid rgba(16,212,81,0.25)' }}>
               + {i18n.t('admin.worlds.new_region')}
             </button>
           </div>
@@ -749,7 +772,7 @@ export default function WorldDetail() {
       {/* ── Region Modal ── */}
       {regionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) setRegionModal(false) }}>
+          {...backdropDismiss(() => setRegionModal(false))}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text">{editingRegion ? i18n.t('admin.worlds.edit_region') : i18n.t('admin.worlds.new_region')}</h2>
@@ -803,7 +826,7 @@ export default function WorldDetail() {
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => setRegionModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
               <button onClick={saveRegion} disabled={savingRegion} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
-                style={{ background:'rgba(0,194,40,0.14)', color:'#00C228', border:'1px solid rgba(0,194,40,0.28)' }}>
+                style={{ background:'rgba(16,212,81,0.14)', color:'#10D451', border:'1px solid rgba(16,212,81,0.28)' }}>
                 {savingRegion ? i18n.t('common.saving') : editingRegion ? i18n.t('common.save') : i18n.t('admin.worlds.create_region')}
               </button>
             </div>
@@ -814,7 +837,7 @@ export default function WorldDetail() {
       {/* ── Level Modal ── */}
       {levelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) setLevelModal(false) }}>
+          {...backdropDismiss(() => setLevelModal(false))}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text">{editingLevel ? i18n.t('admin.worlds.edit_level') : i18n.t('admin.worlds.new_level')}</h2>
@@ -830,28 +853,39 @@ export default function WorldDetail() {
                   className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
               </div>
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <label className="block text-[12px] font-medium text-text-muted">{i18n.t('admin.worlds.arena_quiz')}</label>
-                  <button type="button" onClick={() => setQuizEditorOpen(true)}
-                    className="flex items-center gap-1 text-[11px] font-medium transition-opacity hover:opacity-70"
-                    style={{ color:'#00C228' }}>
-                    <Plus className="h-3 w-3" /> {i18n.t('admin.worlds.quiz_new', { defaultValue: 'Crear quiz nuevo' })}
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Editar el quiz seleccionado (sus preguntas) sin salir del nivel */}
+                    {levelForm.quiz_id && (
+                      <button type="button" onClick={() => openQuizEditor(levelForm.quiz_id)} disabled={loadingQuizEdit}
+                        className="flex items-center gap-1 text-[11px] font-medium transition-opacity hover:opacity-70 disabled:opacity-50"
+                        style={{ color:'#8B5CF6' }}>
+                        <Pencil className="h-3 w-3" /> {loadingQuizEdit ? i18n.t('common.loading', { defaultValue: 'Cargando…' }) : i18n.t('admin.worlds.quiz_edit', { defaultValue: 'Editar quiz' })}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => openQuizEditor(null)}
+                      className="flex items-center gap-1 text-[11px] font-medium transition-opacity hover:opacity-70"
+                      style={{ color:'#10D451' }}>
+                      <Plus className="h-3 w-3" /> {i18n.t('admin.worlds.quiz_new', { defaultValue: 'Crear quiz nuevo' })}
+                    </button>
+                  </div>
                 </div>
-                {/* Solo quizzes SIN USAR de este mundo (más el ya asignado a este
-                    nivel al editar). Los que ya están en otro nivel no se listan
-                    para no ensuciar el picker: lo normal es "Crear quiz nuevo". */}
+                {/* Todos los quizzes de este mundo. Los que ya usa otro nivel se
+                    marcan "· en uso" pero se pueden reutilizar (mismo banco de
+                    preguntas en varios niveles). */}
                 <Select value={levelForm.quiz_id} onChange={v => setLevelForm(f => ({...f,quiz_id:v}))}
                   options={[
                     { value: '', label: i18n.t('admin.worlds.no_quiz_assigned') },
-                    ...quizzes
-                      .filter(q => q.id === levelForm.quiz_id || !levels.some(l => l.quiz_id === q.id))
-                      .map(q => ({ value: q.id, label: q.title })),
+                    ...quizzes.map(q => {
+                      const usedElsewhere = levels.some(l => l.quiz_id === q.id && l.id !== editingLevel?.id)
+                      return { value: q.id, label: usedElsewhere ? `${q.title} · ${i18n.t('admin.worlds.quiz_in_use', { defaultValue: 'en uso' })}` : q.title }
+                    }),
                   ]} />
                 <p className="text-[11px] text-text-muted mt-1">
-                  {quizzes.filter(q => q.id === levelForm.quiz_id || !levels.some(l => l.quiz_id === q.id)).length === 0
-                    ? i18n.t('admin.worlds.quiz_none_yet', { defaultValue: 'Todavía no hay quizzes sin usar. Creá uno con “Crear quiz nuevo”.' })
-                    : i18n.t('admin.worlds.quiz_pick_or_create', { defaultValue: 'Reutilizá un quiz sin usar de este mundo, o creá uno nuevo.' })}
+                  {quizzes.length === 0
+                    ? i18n.t('admin.worlds.quiz_none_yet', { defaultValue: 'Todavía no hay quizzes. Creá uno con “Crear quiz nuevo”.' })
+                    : i18n.t('admin.worlds.quiz_pick_edit_create', { defaultValue: 'Elegí un quiz (podés reutilizar el mismo en varios niveles), editá el seleccionado o creá uno nuevo.' })}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -892,7 +926,7 @@ export default function WorldDetail() {
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => setLevelModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
               <button onClick={saveLevel} disabled={savingLevel} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
-                style={{ background:'rgba(0,194,40,0.14)', color:'#00C228', border:'1px solid rgba(0,194,40,0.28)' }}>
+                style={{ background:'rgba(16,212,81,0.14)', color:'#10D451', border:'1px solid rgba(16,212,81,0.28)' }}>
                 {savingLevel ? i18n.t('common.saving') : editingLevel ? i18n.t('common.save') : i18n.t('admin.worlds.create_level')}
               </button>
             </div>
@@ -903,7 +937,7 @@ export default function WorldDetail() {
       {/* ── Generar niveles con IA (modal) ── */}
       {aiRegion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) setAiRegion(null) }}>
+          {...backdropDismiss(() => setAiRegion(null))}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
@@ -968,21 +1002,21 @@ export default function WorldDetail() {
       {/* ── Crear quiz nuevo inline (desde el modal de nivel) ── */}
       {quizEditorOpen && world && (
         <ArenaEditorModal
-          editing={null}
+          editing={editingQuizFull}
           defaultCampaignId={world.campaign_id}
           worldId={world.id}
           scopedToCampaign
           campaigns={[]}
           crumb={i18n.t('admin.worlds.crumb_worlds', { name: world.name })}
-          onClose={() => setQuizEditorOpen(false)}
-          onSaved={onQuizCreated}
+          onClose={closeQuizEditor}
+          onSaved={onQuizSaved}
         />
       )}
 
       {/* ── Generar regiones desde el curso (modal en bloque) ── */}
       {bulkOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) setBulkOpen(false) }}>
+          {...backdropDismiss(() => setBulkOpen(false))}>
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
@@ -1036,7 +1070,7 @@ export default function WorldDetail() {
       {showResetConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) setShowResetConfirm(false) }}>
+          {...backdropDismiss(() => setShowResetConfirm(false))}>
           <div className="wd-modal w-full max-w-sm rounded-2xl bg-surface border border-line overflow-hidden">
             <div className="px-4 sm:px-6 pt-6 pb-4 text-center">
               <div className="text-[2rem] mb-3">⚠️</div>
@@ -1063,7 +1097,7 @@ export default function WorldDetail() {
       {/* ── Toast ── */}
       {resetToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-[13px] font-medium"
-          style={{ background:'rgba(0,194,40,0.15)', color:'#00C228', border:'1px solid rgba(0,194,40,0.30)', boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
+          style={{ background:'rgba(16,212,81,0.15)', color:'#10D451', border:'1px solid rgba(16,212,81,0.30)', boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
           {i18n.t('admin.worlds.toast_reset_ok')}
         </div>
       )}

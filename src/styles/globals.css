@@ -53,30 +53,32 @@
 }
 
 @layer base {
+  /* Paleta corporativa: verde #10D451, magenta #B33D9E, cinza claro #E0EBE7, cinza medio #A1ADAD */
   :root {
-    --bg: 251 251 253;
+    --bg: 249 251 250;
     --surface: 255 255 255;
-    --subtle: 242 242 244;
-    --line: 210 210 215;
-    --text: 29 29 31;
-    --text-muted: 110 110 115;
-    --text-subtle: 134 134 139;
-    --brand-green: 0 184 85;
-    --brand-green-soft: 0 184 85;
-    --brand-magenta: 194 24 91;
-    --success: 0 184 85;
+    --subtle: 224 235 231;
+    --line: 161 173 173;
+    --text: 29 31 30;
+    --text-muted: 104 114 113;
+    --text-subtle: 128 139 138;
+    --brand-green: 16 212 81;
+    --brand-green-soft: 16 212 81;
+    --brand-magenta: 179 61 158;
+    --success: 13 175 67;
     --danger: 215 0 21;
-    /* Verde primario del panel del aprendiz (diseño "panel/") */
-    --primary: 0 110 47;
+    /* Verde primario del panel del aprendiz — verde corporativo oscurecido para contraste sobre blanco */
+    --primary: 10 133 51;
     --on-primary: 255 255 255;
     /* Tokens de glassmorphism — modo claro */
     --glass-bg: 0 0 0;
     --glass-border: 0 0 0;
-    --neon-green: 0 170 36;
-    --neon-violet: 185 16 82;
-    --neon-cyan: 0 150 55;
-    --neon-magenta: 218 20 108;
-    --gradient-section-glow: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(0,170,36,0.06) 0%, transparent 70%);
+    /* Acentos: variantes oscurecidas del verde corporativo para texto legible sobre blanco */
+    --neon-green: 12 162 62;
+    --neon-violet: 179 61 158;
+    --neon-cyan: 13 175 67;
+    --neon-magenta: 179 61 158;
+    --gradient-section-glow: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(16,212,81,0.06) 0%, transparent 70%);
     color-scheme: light;
   }
 
@@ -86,24 +88,24 @@
     --subtle: 18 18 28;
     --line: 42 42 50;
     --text: 248 248 255;
-    --text-muted: 161 161 166;
-    --text-subtle: 100 100 110;
-    --brand-green: 0 194 40;
-    --brand-green-soft: 0 194 40;
-    --brand-magenta: 225 29 116;
-    --success: 0 194 40;
+    --text-muted: 161 173 173;
+    --text-subtle: 106 116 115;
+    --brand-green: 16 212 81;
+    --brand-green-soft: 16 212 81;
+    --brand-magenta: 179 61 158;
+    --success: 16 212 81;
     --danger: 255 69 58;
-    /* Verde primario del panel del aprendiz — más brillante en oscuro */
-    --primary: 0 194 40;
+    /* Verde primario del panel del aprendiz — verde corporativo pleno en oscuro */
+    --primary: 16 212 81;
     --on-primary: 0 0 0;
-    /* Tokens de glassmorphism — modo oscuro (marca LearningAI: verde + magenta) */
+    /* Tokens de glassmorphism — modo oscuro (marca: verde + magenta corporativos) */
     --glass-bg: 255 255 255;
     --glass-border: 255 255 255;
-    --neon-green: 0 194 40;
-    --neon-violet: 225 29 116;
-    --neon-cyan: 0 230 90;
-    --neon-magenta: 240 68 140;
-    --gradient-section-glow: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(0,194,40,0.08) 0%, transparent 70%);
+    --neon-green: 16 212 81;
+    --neon-violet: 201 95 180;
+    --neon-cyan: 61 224 118;
+    --neon-magenta: 201 95 180;
+    --gradient-section-glow: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(16,212,81,0.08) 0%, transparent 70%);
     color-scheme: dark;
   }
 

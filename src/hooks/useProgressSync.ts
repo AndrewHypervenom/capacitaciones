@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useProgressStore } from '@/stores/progressStore'
 import { upsertProgress } from '@/services/progress.service'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 
 /**
  * Sincroniza el progreso local (localStorage) hacia `user_progress` en Supabase.
@@ -12,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
  * fuente de verdad de la UI; la BD es el espejo auditable.
  */
 export function useProgressSync() {
-  const { user, campaignId } = useAuth()
+  const { user, campaignId: profileCampaignId, isSuperAdmin } = useAuth()
   const completedModules = useProgressStore((s) => s.completedModules)
   const xp = useProgressStore((s) => s.xp)
   const streak = useProgressStore((s) => s.streak)
@@ -21,6 +22,23 @@ export function useProgressSync() {
   const checkAnswers = useProgressStore((s) => s.checkAnswers)
   const attempts = useProgressStore((s) => s.attempts)
   const quizCorrectCount = useProgressStore((s) => s.quizCorrectCount)
+
+  // Staff sin campaña propia (superadmin): espeja contra la primera campaña
+  // activa para que la certificación server-side también le funcione al probar.
+  const [fallbackCampaignId, setFallbackCampaignId] = useState<string | null>(null)
+  useEffect(() => {
+    if (profileCampaignId || !isSuperAdmin) return
+    supabase
+      .from('campaigns')
+      .select('id')
+      .eq('is_active', true)
+      .order('created_at')
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setFallbackCampaignId(data?.id ?? null))
+  }, [profileCampaignId, isSuperAdmin])
+
+  const campaignId = profileCampaignId ?? fallbackCampaignId
 
   const lastPayload = useRef<string>('')
 

@@ -316,7 +316,7 @@ export default function UserList() {
             <button
               onClick={() => setInviting(true)}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]"
-              style={{ background: '#00C228' }}
+              style={{ background: '#10D451' }}
             >
               <UserPlus className="h-4 w-4" />
               {t('admin.users.create_user')}
@@ -330,7 +330,7 @@ export default function UserList() {
           <div className="text-[14px] font-medium text-text mb-4">{i18n.t('admin.users.create_user')}</div>
 
           {inviteSuccess ? (
-            <div className="rounded-xl p-4" style={{ background: 'rgba(0,194,40,0.08)', border: '1px solid rgba(0,194,40,0.2)' }}>
+            <div className="rounded-xl p-4" style={{ background: 'rgba(16,212,81,0.08)', border: '1px solid rgba(16,212,81,0.2)' }}>
               <div className="text-green-500 text-[13px] font-medium mb-3">{i18n.t('admin.users.created_share')}</div>
               <div className="space-y-2">
                 {[
@@ -350,7 +350,7 @@ export default function UserList() {
                 <button
                   onClick={() => copyCreds('__new__', createdEmail, createdPassword)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-medium text-black min-h-[40px]"
-                  style={{ background: '#00C228' }}
+                  style={{ background: '#10D451' }}
                 >
                   {copiedId === '__new__' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   {i18n.t('admin.users.copy_creds')}
@@ -405,7 +405,7 @@ export default function UserList() {
                   onClick={handleInvite}
                   disabled={inviteLoading || !inviteEmail}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
-                  style={{ background: '#00C228' }}
+                  style={{ background: '#10D451' }}
                 >
                   {inviteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   {i18n.t('admin.users.create_submit')}
@@ -611,7 +611,7 @@ export default function UserList() {
                     <span className="hidden sm:inline">{t('admin.users.assign_courses')}</span>
                   </button>
                   <button
-                    onClick={() => navigate(`/admin/feedback?user=${user.id}`)}
+                    onClick={() => navigate(`/admin/progress?view=worlds&user=${user.id}`)}
                     className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
                     title={t('admin.users.view_progress')}
                   >

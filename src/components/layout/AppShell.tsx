@@ -6,6 +6,7 @@ import { HelpWidget } from '@/components/help/HelpWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useProgressSync } from '@/hooks/useProgressSync';
+import { useResetNotifications } from '@/hooks/useResetNotifications';
 import { Onboarding } from '@/pages/Onboarding';
 
 // Al cambiar de ruta, volver arriba antes del primer pintado de la vista nueva.
@@ -22,6 +23,7 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const { isAuthenticated, loading, profile } = useAuth();
   const reducedMotion = useReducedMotion();
   useProgressSync();
+  useResetNotifications();
 
   // El panel del aprendiz trae su propio shell (sidebar con idioma, tema y
   // cierre de sesión), así que ahí el Navbar global sobra. También aplica cuando

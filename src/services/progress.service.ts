@@ -51,17 +51,52 @@ export async function upsertProgress(
   // candado del módulo se quedaba en "0 hechas". El localStorage es la fuente de
   // verdad de la UI y nadie lee de vuelta estas columnas (getProgress no se usa),
   // así que solo espejamos lo agregado (módulos completados, xp, racha, insignias).
-  const { error } = await supabase
+  //
+  // NO usar .upsert({ onConflict: 'user_id,campaign_id' }): la tabla no tiene
+  // índice único sobre (user_id, campaign_id) — pueden existir filas duplicadas —
+  // y el upsert falla siempre con "no unique constraint matching ON CONFLICT",
+  // dejando completed_modules vacío en BD (la certificación veía 0 módulos).
+  // Igual que saveActivityAttempt: select → update por id de la fila más
+  // reciente, o insert si no existe.
+  const { data: rows, error: fetchError } = await supabase
     .from('user_progress')
-    .upsert({
-      user_id: userId,
-      campaign_id: campaignId,
-      completed_modules: progress.completedModules,
-      xp_total: progress.xp,
-      streak_days: progress.streak,
-      last_activity: progress.lastActivityDate,
-      badges: progress.badges,
-    }, { onConflict: 'user_id,campaign_id' })
+    .select('id, completed_modules, badges')
+    .eq('user_id', userId)
+    .eq('campaign_id', campaignId)
+    .order('updated_at', { ascending: false })
+  if (fetchError) throw fetchError
 
-  if (error) throw error
+  const current = rows && rows.length > 0 ? rows[0] : null
+
+  if (current) {
+    // Unión con lo ya guardado: si el aprendiz limpió localStorage o cambió de
+    // equipo, el espejo nunca debe BORRAR módulos ya acreditados en BD.
+    const completed = [...new Set([...(current.completed_modules ?? []), ...progress.completedModules])]
+    const badges = [...new Set([...(current.badges ?? []), ...progress.badges])]
+    const { error } = await supabase
+      .from('user_progress')
+      .update({
+        completed_modules: completed,
+        xp_total: progress.xp,
+        streak_days: progress.streak,
+        last_activity: progress.lastActivityDate,
+        badges,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', current.id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase
+      .from('user_progress')
+      .insert({
+        user_id: userId,
+        campaign_id: campaignId,
+        completed_modules: progress.completedModules,
+        xp_total: progress.xp,
+        streak_days: progress.streak,
+        last_activity: progress.lastActivityDate,
+        badges: progress.badges,
+      })
+    if (error) throw error
+  }
 }

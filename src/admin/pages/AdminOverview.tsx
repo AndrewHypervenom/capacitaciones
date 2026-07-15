@@ -469,7 +469,7 @@ export default function AdminOverview() {
                             </span>
                             <div className="min-w-0">
                               <Link
-                                to={`/admin/feedback?user=${u.id}`}
+                                to={`/admin/progress?view=worlds&user=${u.id}`}
                                 className="flex items-center gap-1.5 text-[13px] text-text truncate hover:text-primary"
                               >
                                 {u.role === 'superadmin' && (
@@ -513,7 +513,7 @@ export default function AdminOverview() {
                                 </Link>
                               ) : cell.score != null ? (
                                 <Link
-                                  to={`/admin/feedback?user=${u.id}`}
+                                  to={`/admin/progress?view=worlds&user=${u.id}`}
                                   className="mx-auto flex h-6 min-w-[26px] items-center justify-center rounded-md px-1 text-[11px] font-bold tabular-nums hover:opacity-80 transition-opacity"
                                   style={{ color: scoreColor(cell.score), background: `${scoreColor(cell.score)}1a` }}
                                   title={`${courseLabel(c)} · ${cell.score}%`}
@@ -521,7 +521,7 @@ export default function AdminOverview() {
                                   {cell.score}
                                 </Link>
                               ) : (
-                                <Link to={`/admin/feedback?user=${u.id}`} className="text-text-subtle hover:text-text" title={t('admin.overview.enrolled_no_score')}>
+                                <Link to={`/admin/progress?view=worlds&user=${u.id}`} className="text-text-subtle hover:text-text" title={t('admin.overview.enrolled_no_score')}>
                                   ·
                                 </Link>
                               )}

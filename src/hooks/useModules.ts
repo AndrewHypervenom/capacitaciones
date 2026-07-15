@@ -1,61 +1,45 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { LearningModule } from '@/data/modules'
-import { getVisibleModules } from '@/services/modules.service'
+import { getVisibleModules, getAllPublishedModules } from '@/services/modules.service'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
 
 const cache = new Map<string, LearningModule[]>()
 
+// Clave de caché para superadmin: ve todos los módulos publicados, sin campaña
+const ALL_KEY = '__all__'
+
 export function useModules() {
-  const { campaignId: profileCampaignId, isSuperAdmin } = useAuth()
-  const [resolvedCampaignId, setResolvedCampaignId] = useState<string | null>(profileCampaignId)
+  const { campaignId: profileCampaignId, isSuperAdmin, loading: authLoading } = useAuth()
+
+  // Superadmin no depende de campaña: carga todo lo publicado
+  const cacheKey = authLoading ? null : isSuperAdmin ? ALL_KEY : profileCampaignId
+
   const [modules, setModules] = useState<LearningModule[]>(() =>
-    profileCampaignId ? (cache.get(profileCampaignId) ?? []) : [],
+    cacheKey ? (cache.get(cacheKey) ?? []) : [],
   )
-  // Start as not-loading when we already have cached data for this campaign
-  const [loading, setLoading] = useState(
-    () => !profileCampaignId || !cache.has(profileCampaignId),
-  )
+  const [loading, setLoading] = useState(() => !cacheKey || !cache.has(cacheKey))
   const [error, setError] = useState<Error | null>(null)
 
-  // Superadmin sin campaña asignada: usar la primera campaña activa
   useEffect(() => {
-    if (profileCampaignId) {
-      setResolvedCampaignId(profileCampaignId)
+    // Mientras el perfil carga no sabemos rol ni campaña — seguimos en loading
+    if (authLoading) return
+    if (!cacheKey) {
+      setModules([])
+      setLoading(false)
       return
     }
-    if (isSuperAdmin) {
-      supabase
-        .from('campaigns')
-        .select('id')
-        .eq('is_active', true)
-        .order('created_at')
-        .limit(1)
-        .maybeSingle() // 0 campañas activas ⇒ null (evita el 406 de .single())
-        .then(({ data }) => {
-          if (data?.id) setResolvedCampaignId(data.id)
-          else setLoading(false)
-        })
-    } else {
-      setLoading(false)
-    }
-  }, [profileCampaignId, isSuperAdmin])
 
-  useEffect(() => {
-    if (!resolvedCampaignId) return
-
-    // Use the module-level cache regardless of component lifecycle —
-    // fetchedRef was instance-local and caused cache misses on every remount.
-    if (cache.has(resolvedCampaignId)) {
-      setModules(cache.get(resolvedCampaignId)!)
+    if (cache.has(cacheKey)) {
+      setModules(cache.get(cacheKey)!)
       setLoading(false)
       return
     }
 
     setLoading(true)
-    getVisibleModules(resolvedCampaignId)
+    const fetcher = cacheKey === ALL_KEY ? getAllPublishedModules() : getVisibleModules(cacheKey)
+    fetcher
       .then((data) => {
-        cache.set(resolvedCampaignId, data)
+        cache.set(cacheKey, data)
         setModules(data)
         setError(null)
       })
@@ -64,7 +48,7 @@ export function useModules() {
         setModules([])
       })
       .finally(() => setLoading(false))
-  }, [resolvedCampaignId])
+  }, [cacheKey, authLoading])
 
   // Módulos del Plan de Formación general (sin curso). Los módulos que
   // pertenecen a un curso se muestran/cuentan dentro de su curso.
@@ -76,6 +60,7 @@ export function useModules() {
 export function invalidateModulesCache(campaignId?: string) {
   if (campaignId) {
     cache.delete(campaignId)
+    cache.delete(ALL_KEY)
   } else {
     cache.clear()
   }

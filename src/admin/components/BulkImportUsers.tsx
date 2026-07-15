@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X, Upload, FileSpreadsheet, Download, Loader2, Check, AlertCircle } from 'lucide-react'
@@ -167,7 +168,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
         role="dialog"
         aria-modal="true"
       >
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" {...backdropDismiss(onClose)} />
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 10 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -205,7 +206,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
                       <button
                         onClick={downloadCredentials}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-medium text-black min-h-[40px]"
-                        style={{ background: '#00C228' }}
+                        style={{ background: '#10D451' }}
                       >
                         <Download className="h-3.5 w-3.5" />
                         {t('admin.users.bulk_download_creds')}
@@ -293,7 +294,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
                   onClick={process}
                   disabled={processing || rows.length === 0}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
-                  style={{ background: '#00C228' }}
+                  style={{ background: '#10D451' }}
                 >
                   {processing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   {processing ? t('admin.users.bulk_processing') : t('admin.users.bulk_process')}

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, Loader2, Menu, Plus, Save, Trash2, X } from 'lucide-react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { backdropDismiss } from '@/lib/backdropDismiss'
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Plus, Save, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import {
   getChoiceScenarioAdmin, createChoiceScenario, updateChoiceScenario, type ChoiceScenarioRow,
 } from '@/services/choiceScenarios.admin.service'
@@ -62,15 +64,20 @@ function rowToState(row: ChoiceScenarioRow): { meta: MetaState; nodes: NodesMap 
   }
 }
 
-const inputClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
+const inputClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none focus:border-neon-green/40 placeholder:text-text-subtle'
 
 export default function ChoiceSimEditor() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const [searchParams] = useSearchParams()
   const isNew = id === 'new' || !id
+  const isManualMode = searchParams.get('mode') === 'manual'
+
+  const [campaignId, setCampaignId] = useState(() => searchParams.get('campaign') || authCampaignId || '')
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
 
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -82,9 +89,30 @@ export default function ChoiceSimEditor() {
   const [aiBanner, setAiBanner] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false)
+  const [manualGuide, setManualGuide] = useState(isNew && isManualMode)
 
   const slugManualRef = useRef(!isNew)
   const nodeIds = Object.keys(nodes)
+
+  const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
+  const nodeOptions = nodeIds.map((nid) => {
+    const preview = nodes[nid]?.message?.es?.slice(0, 32)
+    return { value: nid, label: preview ? `${stepLabel(nid)} — ${preview}` : stepLabel(nid) }
+  })
+
+  // La campaña del perfil puede llegar después del primer render
+  useEffect(() => {
+    if (authCampaignId) setCampaignId((prev) => prev || authCampaignId)
+  }, [authCampaignId])
+
+  // Superadmin sin campaña propia: puede elegirla aquí mismo
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    supabase.from('campaigns').select('id, name').order('name').then(({ data }) => {
+      setCampaigns(data ?? [])
+      if (data?.[0]) setCampaignId((prev) => prev || data[0].id)
+    })
+  }, [isSuperAdmin])
 
   useEffect(() => {
     if (isNew) return
@@ -92,6 +120,7 @@ export default function ChoiceSimEditor() {
       .then((row) => {
         const { meta: m, nodes: n } = rowToState(row)
         setMeta(m); setNodes(n)
+        setCampaignId(row.campaign_id)
         setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
       })
       .catch(() => toast.error('Error cargando escenario'))
@@ -159,9 +188,17 @@ export default function ChoiceSimEditor() {
   }, [])
 
   const addNode = () => {
-    const nid = `node_${Date.now()}`
+    const nid = `paso_${Date.now()}`
     setNodes((prev) => ({ ...prev, [nid]: { message: { es: '', en: '', pt: '' }, speaker: 'client', options: [] } }))
     setSelectedNodeId(nid)
+    return nid
+  }
+
+  // Crea un paso sin robar el foco del editor actual (para "+ Crear paso nuevo" en opciones)
+  const createLinkedNode = () => {
+    const nid = `paso_${Date.now()}`
+    setNodes((prev) => ({ ...prev, [nid]: { message: { es: '', en: '', pt: '' }, speaker: 'client', options: [] } }))
+    return nid
   }
 
   const removeNode = async (nid: string) => {
@@ -206,8 +243,22 @@ export default function ChoiceSimEditor() {
         </div>
       </div>
 
-      {/* AI Generator — abierto por defecto en nuevas simulaciones */}
-      <AIGeneratorPanel type="choice" onApply={handleApplyGenerated} defaultOpen={isNew} />
+      {/* AI Generator — abierto por defecto salvo en modo manual */}
+      <AIGeneratorPanel type="choice" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} />
+
+      {/* Guía rápida para creación manual */}
+      {manualGuide && (
+        <div className="flex items-start gap-3 mb-5 p-3.5 rounded-xl bg-neon-green/6 border border-neon-green/20">
+          <ListChecks className="h-4 w-4 text-neon-green shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm text-text-muted">
+            <span className="text-text font-medium">{t('admin.simulations.manual_guide_title')} </span>
+            {t('admin.simulations.manual_guide_choice')}
+          </div>
+          <button onClick={() => setManualGuide(false)} className="text-text-subtle hover:text-text transition-colors shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Banner post-IA */}
       {aiBanner && (
@@ -228,7 +279,7 @@ export default function ChoiceSimEditor() {
         {([['meta', t('admin.simulations.tab_general')], ['nodes', t('admin.simulations.tab_conversation')]] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('px-4 py-2.5 md:py-2 rounded-lg text-sm transition-all min-h-[44px] md:min-h-0',
-              tab === key ? 'bg-glass-border/10 text-text font-medium' : 'text-text-muted hover:text-text')}>
+              tab === key ? 'bg-neon-green/10 text-neon-green font-medium' : 'text-text-muted hover:text-text')}>
             {label}
             {key === 'nodes' && <span className="ml-1 text-xs text-text-subtle">{nodeIds.length}</span>}
           </button>
@@ -240,6 +291,16 @@ export default function ChoiceSimEditor() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <GlassCard className="p-5 space-y-4">
             <h3 className="text-sm font-semibold text-text">{t('admin.simulations.config_title')}</h3>
+            {isSuperAdmin && campaigns.length > 0 && (
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
+                <FilterDropdown
+                  value={campaignId}
+                  onChange={setCampaignId}
+                  options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+                />
+              </div>
+            )}
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.difficulty_level')}</label>
               <FilterDropdown
@@ -280,7 +341,7 @@ export default function ChoiceSimEditor() {
                   <FilterDropdown
                     value={meta.start_node_id}
                     onChange={(v) => setMeta((m) => ({ ...m, start_node_id: v }))}
-                    options={nodeIds.map((nid) => ({ value: nid, label: nid }))}
+                    options={nodeOptions}
                   />
                 </div>
               </div>
@@ -326,7 +387,7 @@ export default function ChoiceSimEditor() {
         <div className="flex gap-5">
           {/* Node list — mobile: drawer */}
           {nodeDrawerOpen && (
-            <div className="md:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setNodeDrawerOpen(false)} />
+            <div className="md:hidden fixed inset-0 bg-black/50 z-40" {...backdropDismiss(() => setNodeDrawerOpen(false))} />
           )}
           <div className={cn(
             'fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-bg border-r border-glass-border/8 transition-transform duration-300 ease-in-out p-4',
@@ -339,7 +400,7 @@ export default function ChoiceSimEditor() {
                 <p className="text-[11px] text-text-subtle mt-0.5">{t('admin.simulations.scenario_moments')}</p>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={addNode} className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors" title={t('admin.simulations.add_step')}>
+                <button onClick={addNode} className="flex items-center gap-1 text-xs text-neon-green hover:text-neon-green/80 transition-colors" title={t('admin.simulations.add_step')}>
                   <Plus className="h-3.5 w-3.5" /> Agregar
                 </button>
                 <button onClick={() => setNodeDrawerOpen(false)} className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
@@ -356,12 +417,12 @@ export default function ChoiceSimEditor() {
                   <button key={nid} onClick={() => { setSelectedNodeId(nid); setNodeDrawerOpen(false) }}
                     className={cn('w-full text-left px-3 py-2.5 rounded-xl text-xs transition-all border',
                       selectedNodeId === nid
-                        ? 'bg-glass-border/12 border-glass-border/20 text-text'
+                        ? 'bg-neon-green/10 border-neon-green/40 text-text'
                         : 'border-transparent text-text-muted hover:text-text hover:bg-glass/4')}>
                     <div className="flex items-center gap-1.5">
                       <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
                         isStart ? 'bg-brand-green' : node?.isEnd ? 'bg-brand-magenta' : 'bg-glass-border/40')} />
-                      <span className="font-mono font-medium truncate">{nid}</span>
+                      <span className="font-medium truncate">{stepLabel(nid)}</span>
                       {isStart && <span className="text-[9px] text-brand-green shrink-0">{t('admin.simulations.start')}</span>}
                       {node?.isEnd && <span className="text-[9px] text-brand-magenta shrink-0">{t('admin.simulations.end')}</span>}
                     </div>
@@ -387,8 +448,7 @@ export default function ChoiceSimEditor() {
               <GlassCard className="p-4 md:p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-muted">{t('admin.simulations.step_label')}</span>
-                    <span className="font-mono text-sm text-text">{selectedNodeId}</span>
+                    <span className="text-sm font-medium text-text">{stepLabel(selectedNodeId)}</span>
                     {selectedNodeId === meta.start_node_id && (
                       <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">{t('admin.simulations.start')}</span>
                     )}
@@ -400,7 +460,8 @@ export default function ChoiceSimEditor() {
                 <ChoiceNodeForm
                   nodeId={selectedNodeId}
                   data={nodes[selectedNodeId]}
-                  allNodeIds={nodeIds}
+                  nodeOptions={nodeOptions}
+                  onCreateNode={createLinkedNode}
                   onChange={(nid, data) => setNodes((prev) => ({ ...prev, [nid]: data }))}
                 />
               </GlassCard>

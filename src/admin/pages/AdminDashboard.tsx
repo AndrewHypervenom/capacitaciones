@@ -47,17 +47,17 @@ export default function AdminDashboard() {
   }, [isSuperAdmin, campaignId])
 
   const statCards = [
-    { label: t('admin.dashboard.stat_campaigns'), value: stats.campaigns, icon: FolderOpen, to: '/admin/campaigns', color: '#00C228' },
-    { label: t('admin.dashboard.stat_modules'), value: stats.modules, icon: BookOpen, to: '/admin/modules', color: '#00C228' },
-    { label: t('admin.dashboard.stat_users'), value: stats.users, icon: Users, to: '/admin/users', color: '#E11D74' },
+    { label: t('admin.dashboard.stat_campaigns'), value: stats.campaigns, icon: FolderOpen, to: '/admin/campaigns', color: '#10D451' },
+    { label: t('admin.dashboard.stat_modules'), value: stats.modules, icon: BookOpen, to: '/admin/modules', color: '#10D451' },
+    { label: t('admin.dashboard.stat_users'), value: stats.users, icon: Users, to: '/admin/users', color: '#B33D9E' },
   ]
 
   const quickActions = [
     {
       to: '/admin/modules',
       icon: BookOpen,
-      iconColor: '#00C228',
-      iconBg: 'rgba(0,194,40,0.10)',
+      iconColor: '#10D451',
+      iconBg: 'rgba(16,212,81,0.10)',
       title: t('admin.dashboard.mod_title'),
       desc: t('admin.dashboard.mod_desc'),
       cta: t('admin.dashboard.mod_cta'),
@@ -65,8 +65,8 @@ export default function AdminDashboard() {
     {
       to: '/admin/import',
       icon: Upload,
-      iconColor: '#00C228',
-      iconBg: 'rgba(0,194,40,0.08)',
+      iconColor: '#10D451',
+      iconBg: 'rgba(16,212,81,0.08)',
       title: t('admin.dashboard.import_title'),
       desc: t('admin.dashboard.import_desc'),
       cta: t('admin.dashboard.import_cta'),
@@ -83,8 +83,8 @@ export default function AdminDashboard() {
     {
       to: '/admin/users',
       icon: Users,
-      iconColor: '#E11D74',
-      iconBg: 'rgba(225,29,116,0.10)',
+      iconColor: '#B33D9E',
+      iconBg: 'rgba(179,61,158,0.10)',
       title: t('admin.dashboard.users_title'),
       desc: t('admin.dashboard.users_desc'),
       cta: t('admin.dashboard.users_cta'),
@@ -92,8 +92,8 @@ export default function AdminDashboard() {
     {
       to: '/admin/missions',
       icon: Target,
-      iconColor: '#00C228',
-      iconBg: 'rgba(0,194,40,0.10)',
+      iconColor: '#10D451',
+      iconBg: 'rgba(16,212,81,0.10)',
       title: t('admin.dashboard.missions_title'),
       desc: t('admin.dashboard.missions_desc'),
       cta: t('admin.dashboard.missions_cta'),
@@ -101,8 +101,8 @@ export default function AdminDashboard() {
     {
       to: '/admin/worlds',
       icon: Trophy,
-      iconColor: '#00C228',
-      iconBg: 'rgba(0,194,40,0.10)',
+      iconColor: '#10D451',
+      iconBg: 'rgba(16,212,81,0.10)',
       title: t('admin.dashboard.worlds_title'),
       desc: t('admin.dashboard.worlds_desc'),
       cta: t('admin.dashboard.worlds_cta'),
@@ -145,10 +145,10 @@ export default function AdminDashboard() {
       {stats.modules > 0 && (
         <div
           className="rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-          style={{ background: 'rgba(0,194,40,0.06)', border: '1px solid rgba(0,194,40,0.15)' }}
+          style={{ background: 'rgba(16,212,81,0.06)', border: '1px solid rgba(16,212,81,0.15)' }}
         >
           <div className="flex items-center gap-3">
-            <Eye className="h-5 w-5 shrink-0" style={{ color: '#00C228' }} />
+            <Eye className="h-5 w-5 shrink-0" style={{ color: '#10D451' }} />
             <div className="min-w-0">
               <div className="text-[14px] font-medium text-text">
                 {stats.modules} módulo{stats.modules !== 1 ? 's' : ''} cargado{stats.modules !== 1 ? 's' : ''}
@@ -161,8 +161,8 @@ export default function AdminDashboard() {
           <Link
             to="/admin/modules"
             className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors self-start sm:shrink-0 min-h-[44px]"
-            style={{ color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.08)'; }}
+            style={{ color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.08)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
             Ver módulos <ArrowRight className="h-3.5 w-3.5" />

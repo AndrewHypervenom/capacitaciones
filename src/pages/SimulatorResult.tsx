@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Award, Check, Clock, HeartHandshake, ShieldCheck } from 'lucide-react';
-import { getScenario } from '@/data/scenarios';
+import { getScenario, type Scenario } from '@/data/scenarios';
+import { getScenarioBySlug } from '@/services/scenarios.service';
 import { useScenarios } from '@/hooks/useScenarios';
 import { useSimStore } from '@/stores/simStore';
 import { useProgressStore } from '@/stores/progressStore';
@@ -29,10 +30,28 @@ export default function SimulatorResult() {
   const recordedRef = useRef(false);
   const [certStatus, setCertStatus] = useState<CourseCertStatus | null>(null);
 
+  // Respaldo por slug: el staff sin campaña o el aprendiz cross-campaña no
+  // encuentran el escenario en useScenarios; sin esto se perdía el intento.
+  const [fetchedScenario, setFetchedScenario] = useState<Scenario | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
   const scenario = useMemo(() => {
     if (!id) return undefined;
-    return dbScenarios.find((s) => s.id === id) ?? getScenario(id);
-  }, [id, dbScenarios]);
+    return dbScenarios.find((s) => s.id === id) ?? getScenario(id) ?? fetchedScenario ?? undefined;
+  }, [id, dbScenarios, fetchedScenario]);
+
+  useEffect(() => {
+    if (!id || scenario) return;
+    let alive = true;
+    getScenarioBySlug(id)
+      .then((s) => {
+        if (!alive) return;
+        if (s) setFetchedScenario(s);
+        else setNotFound(true);
+      })
+      .catch(() => { if (alive) setNotFound(true); });
+    return () => { alive = false; };
+  }, [id, scenario]);
 
   const valid = !!scenario && !!lastResult && lastResult.scenarioId === scenario.id;
 
@@ -42,10 +61,11 @@ export default function SimulatorResult() {
   }, [valid, scenario, lastResult]);
 
   useEffect(() => {
-    if (!valid) {
-      nav('/simulator', { replace: true });
-    }
-  }, [valid, nav]);
+    if (valid) return;
+    // No redirigir mientras el respaldo por slug sigue en vuelo.
+    if (!scenario && !notFound) return;
+    nav('/simulator', { replace: true });
+  }, [valid, scenario, notFound, nav]);
 
   useEffect(() => {
     if (!valid || !scenario || !lastResult || !computed || recordedRef.current) return;

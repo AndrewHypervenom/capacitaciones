@@ -17,11 +17,10 @@ import ModulePreview from './pages/ModulePreview'
 import SimulationList from './pages/SimulationList'
 import SimulationEditor from './pages/SimulationEditor'
 import ChoiceSimEditor from './pages/ChoiceSimEditor'
-import { TrainerFeedbackPanel } from '@/admin/pages/TrainerFeedbackPanel';
+import ProgressHub from './pages/ProgressHub'
 import LearningMissions from './pages/LearningMissions'
 import Worlds from './pages/Worlds'
 import WorldDetail from './pages/WorldDetail'
-import FeedbackPanel from './pages/FeedbackPanel'
 import ChatLogs from './pages/ChatLogs'
 import AiUsage from './pages/AiUsage'
 import Gamification from './pages/Gamification'
@@ -61,7 +60,8 @@ export default function AdminRouter() {
           <Route path="chat" element={isSuperAdmin ? <ChatLogs /> : <Navigate to="/admin" replace />} />
           {/* Panel de uso de IA y costos: solo superadmin */}
           <Route path="ai-usage" element={isSuperAdmin ? <AiUsage /> : <Navigate to="/admin" replace />} />
-          <Route path="evaluaciones" element={<TrainerFeedbackPanel />} />
+          {/* Vista unificada de progreso (Mundos + Módulos); las rutas viejas redirigen. */}
+          <Route path="evaluaciones" element={<Navigate to="/admin/progress?view=modules" replace />} />
           <Route path="simulations" element={<SimulationList />} />
           <Route path="simulations/new" element={<SimulationEditor />} />
           <Route path="simulations/:id" element={<SimulationEditor />} />
@@ -72,7 +72,8 @@ export default function AdminRouter() {
           <Route path="arena" element={<Navigate to="/admin/worlds" replace />} />
           <Route path="worlds" element={<Worlds />} />
           <Route path="worlds/:id" element={<WorldDetail />} />
-          <Route path="feedback" element={<FeedbackPanel />} />
+          <Route path="feedback" element={<Navigate to="/admin/progress?view=worlds" replace />} />
+          <Route path="progress" element={<ProgressHub />} />
         </Routes>
       </div>
       <HelpWidget />

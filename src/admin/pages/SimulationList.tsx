@@ -2,18 +2,19 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Eye, EyeOff, MessageSquare, PhoneCall, Plus, Trash2, Pencil,
-  Download, Loader2, Flame, AlertTriangle,
+  Loader2, Flame, AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
   getAllScenariosAdmin, deleteScenario, toggleScenarioPublished,
-  seedHardcodedScenarios, type ScenarioRow,
+  type ScenarioRow,
 } from '@/services/scenarios.admin.service'
 import {
   getAllChoiceScenariosAdmin, deleteChoiceScenario, toggleChoiceScenarioPublished,
-  seedHardcodedChoiceScenarios, type ChoiceScenarioRow,
+  type ChoiceScenarioRow,
 } from '@/services/choiceScenarios.admin.service'
+import { NewSimulationModal } from '@/admin/components/simulation/NewSimulationModal'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -42,7 +43,7 @@ export default function SimulationList() {
   const [dialogueRows, setDialogueRows] = useState<ScenarioRow[]>([])
   const [choiceRows, setChoiceRows] = useState<ChoiceScenarioRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [seeding, setSeeding] = useState(false)
+  const [showNewModal, setShowNewModal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -108,27 +109,10 @@ export default function SimulationList() {
     } catch { toast.error(t('admin.simulations.list_toast_delete_error')) }
   }
 
-  const handleSeed = async () => {
-    if (!selectedCampaignId) return
-    if (!window.confirm(t('admin.simulations.seed_confirm'))) return
-    setSeeding(true)
-    try {
-      const [d, c] = await Promise.all([
-        seedHardcodedScenarios(selectedCampaignId),
-        seedHardcodedChoiceScenarios(selectedCampaignId),
-      ])
-      toast.success(`${d + c} simulaciones importadas`)
-      const [dRows, cRows] = await Promise.all([
-        getAllScenariosAdmin(selectedCampaignId),
-        getAllChoiceScenariosAdmin(selectedCampaignId),
-      ])
-      setDialogueRows(dRows)
-      setChoiceRows(cRows)
-    } catch (e) {
-      toast.error(`Error: ${(e as Error).message}`)
-    } finally {
-      setSeeding(false)
-    }
+  const handleCreate = (type: 'dialogue' | 'choice', method: 'ai' | 'manual') => {
+    setShowNewModal(false)
+    const base = type === 'dialogue' ? '/admin/simulations/new' : '/admin/simulations/choice/new'
+    nav(`${base}?mode=${method}${selectedCampaignId ? `&campaign=${selectedCampaignId}` : ''}`)
   }
 
   return (
@@ -138,25 +122,19 @@ export default function SimulationList() {
           <GradientHeading as="h1" className="text-2xl mb-1">{t('admin.simulations.list.title')}</GradientHeading>
           <p className="text-sm text-text-muted">{t('admin.simulations.list.subtitle')}</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            variant="ghost"
-            onClick={handleSeed}
-            disabled={!selectedCampaignId || seeding}
-            title={t('admin.simulations.list.import_title')}
-            className="w-full sm:w-auto"
-          >
-            {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Importar muestra
-          </Button>
-          <Button
-            onClick={() => nav(tab === 'dialogue' ? '/admin/simulations/new' : '/admin/simulations/choice/new')}
-            className="w-full sm:w-auto"
-          >
-            <Plus className="h-4 w-4" /> Nueva simulación
-          </Button>
-        </div>
+        <Button onClick={() => setShowNewModal(true)} className="w-full sm:w-auto">
+          <Plus className="h-4 w-4" /> {t('admin.simulations.list.create_new')}
+        </Button>
       </div>
+
+      {showNewModal && (
+        <NewSimulationModal
+          open
+          defaultType={tab}
+          onClose={() => setShowNewModal(false)}
+          onCreate={handleCreate}
+        />
+      )}
 
       {isSuperAdmin && campaigns.length > 0 && (
         <div className="mb-6">
@@ -180,7 +158,7 @@ export default function SimulationList() {
               className={cn(
                 'flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-lg text-sm transition-all',
                 tab === key
-                  ? 'bg-glass-border/10 text-text font-medium'
+                  ? 'bg-neon-green/10 text-neon-green font-medium'
                   : 'text-text-muted hover:text-text',
               )}
             >
@@ -209,7 +187,7 @@ export default function SimulationList() {
         <div className="space-y-2">
           {tab === 'dialogue' && (
             dialogueRows.length === 0
-              ? <EmptyState onNew={() => nav('/admin/simulations/new')} onSeed={handleSeed} />
+              ? <EmptyState onNew={() => setShowNewModal(true)} />
               : dialogueRows.map((row) => (
                 <GlassCard key={row.id} className="p-4 flex items-center gap-4">
                   <div className="flex-1 min-w-0">
@@ -258,7 +236,7 @@ export default function SimulationList() {
 
           {tab === 'choice' && (
             choiceRows.length === 0
-              ? <EmptyState onNew={() => nav('/admin/simulations/choice/new')} onSeed={handleSeed} />
+              ? <EmptyState onNew={() => setShowNewModal(true)} />
               : choiceRows.map((row) => (
                 <GlassCard key={row.id} className="p-4 flex items-center gap-4">
                   <div className="flex-1 min-w-0">
@@ -305,15 +283,12 @@ export default function SimulationList() {
   )
 }
 
-function EmptyState({ onNew, onSeed }: { onNew: () => void; onSeed: () => void }) {
+function EmptyState({ onNew }: { onNew: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="text-center py-16">
       <p className="text-text-muted text-sm mb-4">{t('admin.simulations.list.no_sims')}</p>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <Button onClick={onNew}><Plus className="h-4 w-4" /> {t('admin.simulations.list.create_new')}</Button>
-        <Button variant="ghost" onClick={onSeed}><Download className="h-4 w-4" /> {t('admin.simulations.list.import_sample')}</Button>
-      </div>
+      <Button onClick={onNew}><Plus className="h-4 w-4" /> {t('admin.simulations.list.create_new')}</Button>
     </div>
   )
 }

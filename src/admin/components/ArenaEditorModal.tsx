@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
@@ -63,6 +64,12 @@ const THEME_LABELS: Record<ThemeType, string> = {
   tech: 'admin.arena.theme_tech',
 }
 
+// Igual que SECTION_SIZE en ArenaPlayer: el recorrido del aprendiz agrupa las
+// preguntas en secciones de 3 (P1, P2…). El editor las muestra agrupadas igual
+// para que crear a mano coincida con lo que genera la IA y con lo que se ve en
+// el mapa.
+const SECTION_SIZE = 3
+
 const newOption = (): QuizOption => ({
   id: crypto.randomUUID(),
   text: '',
@@ -82,7 +89,7 @@ const emptyForm = (): QuizForm => ({
   description: '',
   campaign_id: '',
   theme_icon: '⚔️',
-  theme_color: '#00C228',
+  theme_color: '#10D451',
   theme_type: 'corporate',
   xp_per_question: 10,
   steps: [newStep()],
@@ -97,7 +104,7 @@ export function normalizeArenaRow(row: Record<string, unknown>): ArenaQuiz {
     campaign_id: (row.campaign_id as string | null) ?? null,
     world_id: (row.world_id as string | null) ?? null,
     theme_icon: (row.theme_icon as string) ?? '⚔️',
-    theme_color: (row.theme_color as string) ?? '#00C228',
+    theme_color: (row.theme_color as string) ?? '#10D451',
     theme_type: (row.theme_type as ThemeType) ?? 'corporate',
     xp_per_question: (row.xp_per_question as number) ?? 10,
     status: (row.status as QuizStatus) ?? 'draft',
@@ -171,6 +178,11 @@ export function ArenaEditorModal({
   }, [editing, defaultCampaignId])
 
   const addStep = () => setForm(f => ({ ...f, steps: [...f.steps, newStep()] }))
+
+  // Agrega una sección completa (SECTION_SIZE preguntas), como una parada nueva
+  // del recorrido. Espeja lo que hace la IA (preguntas por nivel = secciones × 3).
+  const addSection = () =>
+    setForm(f => ({ ...f, steps: [...f.steps, ...Array.from({ length: SECTION_SIZE }, newStep)] }))
 
   const removeStep = async (stepId: string) => {
     if (!(await confirm({ title: t('confirm.delete_question_title'), description: t('confirm.delete_question_desc'), confirmLabel: t('confirm.remove') }))) return
@@ -264,7 +276,7 @@ export function ArenaEditorModal({
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      {...backdropDismiss(onClose)}
     >
       <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div
@@ -301,7 +313,7 @@ export function ArenaEditorModal({
                 value={form.title}
                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                 placeholder={i18n.t('admin.arena.ph_quiz_title')}
-                className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors min-h-[44px]"
+                className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors min-h-[44px]"
               />
             </div>
 
@@ -313,7 +325,7 @@ export function ArenaEditorModal({
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 placeholder={i18n.t('admin.arena.ph_quiz_desc')}
                 rows={2}
-                className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors resize-none"
+                className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors resize-none"
               />
             </div>
 
@@ -350,7 +362,7 @@ export function ArenaEditorModal({
                   value={form.theme_icon}
                   onChange={e => setForm(f => ({ ...f, theme_icon: e.target.value }))}
                   placeholder="⚔️"
-                  className="w-full px-3 py-2.5 rounded-xl text-[18px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors text-center min-h-[44px]"
+                  className="w-full px-3 py-2.5 rounded-xl text-[18px] bg-bg border border-line text-text focus:outline-none focus:border-[#10D451]/50 transition-colors text-center min-h-[44px]"
                 />
               </div>
               <div>
@@ -370,30 +382,70 @@ export function ArenaEditorModal({
                   max={1000}
                   value={form.xp_per_question}
                   onChange={e => setForm(f => ({ ...f, xp_per_question: Number(e.target.value) }))}
-                  className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors min-h-[44px]"
+                  className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#10D451]/50 transition-colors min-h-[44px]"
                 />
               </div>
             </div>
 
             {/* Preguntas */}
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between gap-2 mb-2">
                 <label className="text-[12px] font-medium text-text-muted">
-                  Preguntas <span className="text-text-subtle font-normal">({form.steps.length})</span>
+                  {i18n.t('admin.arena.questions_label', { defaultValue: 'Preguntas' })}{' '}
+                  <span className="text-text-subtle font-normal">
+                    ({form.steps.length} · {Math.ceil(form.steps.length / SECTION_SIZE)} {Math.ceil(form.steps.length / SECTION_SIZE) === 1
+                      ? i18n.t('admin.arena.section_one', { defaultValue: 'sección' })
+                      : i18n.t('admin.arena.section_many', { defaultValue: 'secciones' })})
+                  </span>
                 </label>
-                <button
-                  type="button"
-                  onClick={addStep}
-                  className="text-[11px] font-medium transition-opacity hover:opacity-70"
-                  style={{ color: '#00C228' }}
-                >
-                  + {i18n.t('common.add_question')}
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button type="button" onClick={addStep}
+                    className="text-[11px] font-medium transition-opacity hover:opacity-70" style={{ color: '#10D451' }}>
+                    + {i18n.t('common.add_question')}
+                  </button>
+                  <button type="button" onClick={addSection}
+                    className="text-[11px] font-medium transition-opacity hover:opacity-70" style={{ color: form.theme_color }}>
+                    + {i18n.t('admin.arena.add_section', { defaultValue: 'Sección' })}
+                  </button>
+                </div>
+              </div>
+
+              {/* Explicación + mini-mapa: deja claro que las preguntas se agrupan
+                  en secciones (P1, P2…), como en el recorrido del aprendiz. */}
+              <div className="mb-3 rounded-xl border border-line bg-bg/50 px-3 py-2.5">
+                <p className="text-[11px] text-text-muted leading-relaxed mb-2">
+                  {i18n.t('admin.arena.sections_hint', { size: SECTION_SIZE, defaultValue: `Las preguntas se agrupan de a ${SECTION_SIZE} en secciones (P1, P2…). Cada sección es una parada en el mapa del aprendiz.` })}
+                </p>
+                <div className="flex items-center gap-1 overflow-x-auto">
+                  {Array.from({ length: Math.max(1, Math.ceil(form.steps.length / SECTION_SIZE)) }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-1 shrink-0">
+                      {i > 0 && <span className="h-px w-4" style={{ background:`${form.theme_color}40` }} />}
+                      <span className="h-6 min-w-[28px] px-1.5 rounded-full text-[10.5px] font-bold flex items-center justify-center"
+                        style={{ background:`${form.theme_color}18`, color:form.theme_color, border:`1px solid ${form.theme_color}33` }}>
+                        P{i + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-3">
                 {form.steps.map((step, si) => (
-                  <div key={step.id} className="rounded-xl border border-line bg-bg p-4 space-y-3">
+                  <div key={step.id}>
+                    {/* Encabezado de sección antes de la 1ª pregunta de cada grupo. */}
+                    {si % SECTION_SIZE === 0 && (
+                      <div className={`flex items-center gap-2 mb-2 ${si > 0 ? 'mt-4 pt-4 border-t border-line/60' : ''}`}>
+                        <span className="h-6 min-w-[28px] px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center"
+                          style={{ background:`${form.theme_color}18`, color:form.theme_color, border:`1px solid ${form.theme_color}33` }}>
+                          P{Math.floor(si / SECTION_SIZE) + 1}
+                        </span>
+                        <span className="text-[12px] font-semibold text-text">
+                          {i18n.t('admin.arena.section_n', { n: Math.floor(si / SECTION_SIZE) + 1, defaultValue: `Sección ${Math.floor(si / SECTION_SIZE) + 1}` })}
+                        </span>
+                        <span className="text-[11px] text-text-muted">· {i18n.t('admin.arena.section_stop', { defaultValue: 'una parada del recorrido' })}</span>
+                      </div>
+                    )}
+                    <div className="rounded-xl border border-line bg-bg p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wide">
                         {i18n.t('common.question_n', { n: si + 1 })}
@@ -413,14 +465,14 @@ export function ArenaEditorModal({
                       onChange={e => updateStep(step.id, { question: e.target.value })}
                       placeholder={i18n.t('admin.arena.ph_question')}
                       rows={2}
-                      className="w-full px-3 py-2 rounded-lg text-[13px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/40 transition-colors resize-none"
+                      className="w-full px-3 py-2 rounded-lg text-[13px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/40 transition-colors resize-none"
                     />
 
                     <input
                       value={step.context}
                       onChange={e => updateStep(step.id, { context: e.target.value })}
                       placeholder={i18n.t('admin.arena.ph_hint')}
-                      className="w-full px-3 py-2 rounded-lg text-[12px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/40 transition-colors"
+                      className="w-full px-3 py-2 rounded-lg text-[12px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/40 transition-colors"
                     />
 
                     <div>
@@ -433,7 +485,7 @@ export function ArenaEditorModal({
                             type="button"
                             onClick={() => addOption(step.id)}
                             className="text-[10px] font-medium hover:opacity-70 transition-opacity"
-                            style={{ color: '#00C228' }}
+                            style={{ color: '#10D451' }}
                           >
                             + {i18n.t('common.add_option')}
                           </button>
@@ -450,7 +502,7 @@ export function ArenaEditorModal({
                                 className="h-4 w-4 rounded-full border-2 shrink-0 transition-all"
                                 style={
                                   opt.correct
-                                    ? { background: '#00C228', borderColor: '#00C228' }
+                                    ? { background: '#10D451', borderColor: '#10D451' }
                                     : { background: 'transparent', borderColor: 'rgb(var(--glass-border) / 0.22)' }
                                 }
                               />
@@ -461,7 +513,7 @@ export function ArenaEditorModal({
                                 className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12px] bg-surface text-text placeholder-text-subtle focus:outline-none transition-colors"
                                 style={
                                   opt.correct
-                                    ? { border: '1px solid rgba(0,194,40,0.35)' }
+                                    ? { border: '1px solid rgba(16,212,81,0.35)' }
                                     : { border: '1px solid rgb(var(--glass-border) / 0.08)' }
                                 }
                               />
@@ -478,12 +530,13 @@ export function ArenaEditorModal({
                               value={opt.explanation}
                               onChange={e => updateOption(step.id, opt.id, { explanation: e.target.value })}
                               placeholder={i18n.t('admin.arena.ph_explanation')}
-                              className="w-full pl-6 pr-2.5 py-1 rounded-lg text-[11px] bg-surface border border-line text-text-muted placeholder-text-subtle focus:outline-none focus:border-[#00C228]/30 transition-colors"
+                              className="w-full pl-6 pr-2.5 py-1 rounded-lg text-[11px] bg-surface border border-line text-text-muted placeholder-text-subtle focus:outline-none focus:border-[#10D451]/30 transition-colors"
                             />
                           </div>
                         ))}
                       </div>
                     </div>
+                  </div>
                   </div>
                 ))}
               </div>
@@ -503,7 +556,7 @@ export function ArenaEditorModal({
               type="submit"
               disabled={saving}
               className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
-              style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.28)' }}
+              style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.28)' }}
             >
               {saving ? i18n.t('common.saving') : editing ? i18n.t('common.save_changes') : i18n.t('common.create_quiz')}
             </button>

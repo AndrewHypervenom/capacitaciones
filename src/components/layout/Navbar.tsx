@@ -11,6 +11,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { ViewSwitcher } from './ViewSwitcher';
 import { Avatar } from '@/components/ui/Avatar';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { cn } from '@/lib/cn';
 
 export function Navbar() {
@@ -81,6 +82,7 @@ export function Navbar() {
             <Avatar src={avatarUrl} name={name} size={24} />
             <span className="text-[12px] text-text-muted max-w-[100px] truncate">{name}</span>
           </Link>
+          <NotificationBell />
           <LanguageSwitcher />
           <ThemeToggle />
           <button

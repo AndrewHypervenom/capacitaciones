@@ -40,6 +40,35 @@ export async function getChoiceScenariosForCampaign(campaignId: string): Promise
   return (data ?? []).map(dbRowToChoiceScenario)
 }
 
+/** Escenarios de opción múltiple publicados y ligados a un curso (con su umbral de aprobación). */
+export async function getChoiceScenariosForCourse(
+  courseId: string,
+): Promise<Array<ChoiceScenario & { passScore: number }>> {
+  const { data, error } = await supabase
+    .from('choice_scenarios')
+    .select('*')
+    .eq('course_id', courseId)
+    .eq('is_published', true)
+    .order('created_at')
+
+  if (error) throw error
+  return (data ?? []).map((row) => ({ ...dbRowToChoiceScenario(row), passScore: row.pass_score }))
+}
+
+/** Un escenario de opción múltiple publicado por slug (para el runner cuando no es estático). */
+export async function getChoiceScenarioBySlug(slug: string): Promise<ChoiceScenario | null> {
+  const { data, error } = await supabase
+    .from('choice_scenarios')
+    .select('*')
+    .eq('slug', slug)
+    .eq('is_published', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (error) throw error
+  return data?.[0] ? dbRowToChoiceScenario(data[0]) : null
+}
+
 export async function getAllChoiceScenariosForCampaign(campaignId: string) {
   const { data, error } = await supabase
     .from('choice_scenarios')

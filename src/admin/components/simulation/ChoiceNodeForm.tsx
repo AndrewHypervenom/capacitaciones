@@ -26,9 +26,12 @@ export interface ChoiceNodeData {
 interface Props {
   nodeId: string
   data: ChoiceNodeData
-  allNodeIds: string[]
+  nodeOptions: { value: string; label: string }[]
+  onCreateNode?: () => string
   onChange: (nodeId: string, data: ChoiceNodeData) => void
 }
+
+const NEW_NODE = '__new__'
 
 function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => void }) {
   return (
@@ -39,7 +42,7 @@ function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => v
           onClick={() => onChange(l)}
           className={cn(
             'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors uppercase tracking-wide',
-            active === l ? 'bg-glass-border/15 text-text' : 'text-text-subtle hover:text-text-muted',
+            active === l ? 'bg-neon-green/12 text-neon-green' : 'text-text-subtle hover:text-text-muted',
           )}
         >
           {l}
@@ -49,15 +52,15 @@ function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => v
   )
 }
 
-const textareaClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2.5 text-sm text-text bg-transparent resize-none focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
-const inputClass = 'glass border border-glass-border/20 rounded-lg px-2.5 py-1.5 text-sm text-text bg-transparent focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
+const textareaClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2.5 text-sm text-text bg-transparent resize-none focus:outline-none focus:border-neon-green/40 placeholder:text-text-subtle'
+const inputClass = 'glass border border-glass-border/20 rounded-lg px-2.5 py-1.5 text-sm text-text bg-transparent focus:outline-none focus:border-neon-green/40 placeholder:text-text-subtle'
 const END_TYPE_ACTIVE_CLASSES: Record<string, string> = {
   'brand-green': 'border-brand-green/40 bg-brand-green/8 text-brand-green',
   'neon-cyan': 'border-neon-cyan/40 bg-neon-cyan/8 text-neon-cyan',
   'brand-magenta': 'border-brand-magenta/40 bg-brand-magenta/8 text-brand-magenta',
 }
 
-export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
+export function ChoiceNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChange }: Props) {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [lang, setLang] = useState<Lang>('es')
@@ -112,7 +115,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
               className={cn(
                 'px-3 py-1.5 rounded-lg text-sm border transition-all',
                 data.speaker === s
-                  ? 'border-brand-violet/40 bg-brand-violet/8 text-brand-violet'
+                  ? 'border-neon-green/40 bg-neon-green/8 text-neon-green'
                   : 'border-glass-border/15 text-text-muted hover:text-text',
               )}
             >
@@ -200,7 +203,7 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
             </label>
             <button
               onClick={addOption}
-              className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors"
+              className="flex items-center gap-1 text-xs text-neon-green hover:text-neon-green/80 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" /> {t('common.add_option_full')}
             </button>
@@ -233,10 +236,17 @@ export function ChoiceNodeForm({ nodeId, data, allNodeIds, onChange }: Props) {
                     <div className="text-[10px] text-text-subtle mb-1">{t('admin.simulations.choice.next_node')}</div>
                     <FilterDropdown
                       value={opt.nextId}
-                      onChange={(v) => updateOption(idx, { nextId: v })}
+                      onChange={(v) => {
+                        if (v === NEW_NODE && onCreateNode) {
+                          updateOption(idx, { nextId: onCreateNode() })
+                        } else {
+                          updateOption(idx, { nextId: v })
+                        }
+                      }}
                       options={[
                         { value: '', label: t('common.select_dash') },
-                        ...allNodeIds.map((nid) => ({ value: nid, label: nid })),
+                        ...nodeOptions,
+                        ...(onCreateNode ? [{ value: NEW_NODE, label: t('admin.simulations.new_step_option') }] : []),
                       ]}
                       compact
                     />

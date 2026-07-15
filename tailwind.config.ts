@@ -45,8 +45,8 @@ export default {
           magenta: 'rgb(var(--neon-magenta) / <alpha-value>)',
         },
         // Paleta estática para hero / landing (marca LearningAI)
-        'positivo-green': '#00C228',
-        'positivo-magenta': '#E11D74',
+        'positivo-green': '#10D451',
+        'positivo-magenta': '#B33D9E',
         'apple-gray': '#86868b',
       },
       fontSize: {

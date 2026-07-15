@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, X, Pencil, Trash2, Trophy } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
@@ -84,7 +85,7 @@ const emptyForm = (): QuizForm => ({
   description: '',
   campaign_id: '',
   theme_icon: '⚔️',
-  theme_color: '#00C228',
+  theme_color: '#10D451',
   theme_type: 'corporate',
   xp_per_question: 10,
   steps: [newStep()],
@@ -98,7 +99,7 @@ function normalizeRow(row: Record<string, unknown>): ArenaQuiz {
     description: (row.description as string) ?? '',
     campaign_id: (row.campaign_id as string | null) ?? null,
     theme_icon: (row.theme_icon as string) ?? '⚔️',
-    theme_color: (row.theme_color as string) ?? '#00C228',
+    theme_color: (row.theme_color as string) ?? '#10D451',
     theme_type: (row.theme_type as ThemeType) ?? 'corporate',
     xp_per_question: (row.xp_per_question as number) ?? 10,
     status: (row.status as QuizStatus) ?? 'draft',
@@ -355,9 +356,9 @@ export default function Arena() {
           <button
             onClick={openModal}
             className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
-            style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
+            style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.12)' }}
           >
             <Plus className="h-4 w-4" />
             {i18n.t('common.new_quiz')}
@@ -387,9 +388,9 @@ export default function Arena() {
         ) : filtered.length === 0 ? (
           <div
             className="rounded-2xl p-10 flex flex-col items-center justify-center text-center"
-            style={{ background: 'rgba(0,194,40,0.04)', border: '1px dashed rgba(0,194,40,0.20)' }}
+            style={{ background: 'rgba(16,212,81,0.04)', border: '1px dashed rgba(16,212,81,0.20)' }}
           >
-            <Trophy className="h-10 w-10 mb-4" style={{ color: '#00C228', opacity: 0.5 }} />
+            <Trophy className="h-10 w-10 mb-4" style={{ color: '#10D451', opacity: 0.5 }} />
             <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.arena.no_quizzes')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
               Creá tu primer quiz para poner a prueba el conocimiento de los participantes
@@ -397,9 +398,9 @@ export default function Arena() {
             <button
               onClick={openModal}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
-              style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
+              style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.12)' }}
             >
               <Plus className="h-4 w-4" />
               {i18n.t('common.new_quiz')}
@@ -429,7 +430,7 @@ export default function Arena() {
                           className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full"
                           style={
                             isPublished
-                              ? { background: 'rgba(0,194,40,0.10)', color: '#00C228' }
+                              ? { background: 'rgba(16,212,81,0.10)', color: '#10D451' }
                               : { background: 'rgb(var(--glass-border) / 0.07)', color: 'rgb(var(--text-muted))' }
                           }
                         >
@@ -488,7 +489,7 @@ export default function Arena() {
                       style={
                         isPublished
                           ? { background: 'rgb(var(--glass-border) / 0.06)', color: 'rgb(var(--text-muted))', border: '1px solid rgb(var(--glass-border) / 0.10)' }
-                          : { background: 'rgba(0,194,40,0.10)', color: '#00C228', border: '1px solid rgba(0,194,40,0.22)' }
+                          : { background: 'rgba(16,212,81,0.10)', color: '#10D451', border: '1px solid rgba(16,212,81,0.22)' }
                       }
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.70' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
@@ -498,9 +499,9 @@ export default function Arena() {
                     <button
                       onClick={() => navigate(`/arena/${q.id}`, { state: { from: 'admin' } })}
                       className="flex items-center justify-center min-h-[44px] px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors"
-                      style={{ background: 'rgba(0,194,40,0.10)', color: '#00C228', border: '1px solid rgba(0,194,40,0.22)' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.10)' }}
+                      style={{ background: 'rgba(16,212,81,0.10)', color: '#10D451', border: '1px solid rgba(16,212,81,0.22)' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.10)' }}
                     >
                       Iniciar
                     </button>
@@ -517,7 +518,7 @@ export default function Arena() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) closeModal() }}
+          {...backdropDismiss(closeModal)}
         >
           <div
             className="arena-modal w-full max-w-2xl rounded-2xl bg-surface border border-line flex flex-col overflow-hidden"
@@ -548,7 +549,7 @@ export default function Arena() {
                     value={form.title}
                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                     placeholder={i18n.t('admin.arena.ph_quiz_title')}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors min-h-[44px]"
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors min-h-[44px]"
                   />
                 </div>
 
@@ -560,7 +561,7 @@ export default function Arena() {
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     placeholder={i18n.t('admin.arena.ph_quiz_desc')}
                     rows={2}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors resize-none"
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors resize-none"
                   />
                 </div>
 
@@ -597,7 +598,7 @@ export default function Arena() {
                       value={form.theme_icon}
                       onChange={e => setForm(f => ({ ...f, theme_icon: e.target.value }))}
                       placeholder="⚔️"
-                      className="w-full px-3 py-2.5 rounded-xl text-[18px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors text-center min-h-[44px]"
+                      className="w-full px-3 py-2.5 rounded-xl text-[18px] bg-bg border border-line text-text focus:outline-none focus:border-[#10D451]/50 transition-colors text-center min-h-[44px]"
                     />
                   </div>
                   <div>
@@ -617,7 +618,7 @@ export default function Arena() {
                       max={1000}
                       value={form.xp_per_question}
                       onChange={e => setForm(f => ({ ...f, xp_per_question: Number(e.target.value) }))}
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors min-h-[44px]"
+                      className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none focus:border-[#10D451]/50 transition-colors min-h-[44px]"
                     />
                   </div>
                 </div>
@@ -633,7 +634,7 @@ export default function Arena() {
                       type="button"
                       onClick={addStep}
                       className="text-[11px] font-medium transition-opacity hover:opacity-70"
-                      style={{ color: '#00C228' }}
+                      style={{ color: '#10D451' }}
                     >
                       + {i18n.t('common.add_question')}
                     </button>
@@ -666,7 +667,7 @@ export default function Arena() {
                           onChange={e => updateStep(step.id, { question: e.target.value })}
                           placeholder={i18n.t('admin.arena.ph_question')}
                           rows={2}
-                          className="w-full px-3 py-2 rounded-lg text-[13px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/40 transition-colors resize-none"
+                          className="w-full px-3 py-2 rounded-lg text-[13px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/40 transition-colors resize-none"
                         />
 
                         {/* Context */}
@@ -674,7 +675,7 @@ export default function Arena() {
                           value={step.context}
                           onChange={e => updateStep(step.id, { context: e.target.value })}
                           placeholder={i18n.t('admin.arena.ph_hint')}
-                          className="w-full px-3 py-2 rounded-lg text-[12px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/40 transition-colors"
+                          className="w-full px-3 py-2 rounded-lg text-[12px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/40 transition-colors"
                         />
 
                         {/* Options */}
@@ -689,7 +690,7 @@ export default function Arena() {
                                 type="button"
                                 onClick={() => addOption(step.id)}
                                 className="text-[10px] font-medium hover:opacity-70 transition-opacity"
-                                style={{ color: '#00C228' }}
+                                style={{ color: '#10D451' }}
                               >
                                 + {i18n.t('common.add_option')}
                               </button>
@@ -707,7 +708,7 @@ export default function Arena() {
                                     className="h-4 w-4 rounded-full border-2 shrink-0 transition-all"
                                     style={
                                       opt.correct
-                                        ? { background: '#00C228', borderColor: '#00C228' }
+                                        ? { background: '#10D451', borderColor: '#10D451' }
                                         : { background: 'transparent', borderColor: 'rgb(var(--glass-border) / 0.22)' }
                                     }
                                   />
@@ -718,7 +719,7 @@ export default function Arena() {
                                     className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12px] bg-surface text-text placeholder-text-subtle focus:outline-none transition-colors"
                                     style={
                                       opt.correct
-                                        ? { border: '1px solid rgba(0,194,40,0.35)' }
+                                        ? { border: '1px solid rgba(16,212,81,0.35)' }
                                         : { border: '1px solid rgb(var(--glass-border) / 0.08)' }
                                     }
                                   />
@@ -736,7 +737,7 @@ export default function Arena() {
                                   value={opt.explanation}
                                   onChange={e => updateOption(step.id, opt.id, { explanation: e.target.value })}
                                   placeholder={i18n.t('admin.arena.ph_explanation')}
-                                  className="w-full pl-6 pr-2.5 py-1 rounded-lg text-[11px] bg-surface border border-line text-text-muted placeholder-text-subtle focus:outline-none focus:border-[#00C228]/30 transition-colors"
+                                  className="w-full pl-6 pr-2.5 py-1 rounded-lg text-[11px] bg-surface border border-line text-text-muted placeholder-text-subtle focus:outline-none focus:border-[#10D451]/30 transition-colors"
                                 />
                               </div>
                             ))}
@@ -761,9 +762,9 @@ export default function Arena() {
                   type="submit"
                   disabled={saving}
                   className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
-                  style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.28)' }}
-                  onMouseEnter={e => { if (!saving) (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.24)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.14)' }}
+                  style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.28)' }}
+                  onMouseEnter={e => { if (!saving) (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.24)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.14)' }}
                 >
                   {saving ? i18n.t('common.saving') : editingId ? i18n.t('common.save_changes') : i18n.t('common.create_quiz')}
                 </button>

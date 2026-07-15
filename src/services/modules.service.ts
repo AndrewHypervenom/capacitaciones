@@ -350,6 +350,25 @@ export async function getVisibleModules(campaignId: string): Promise<LearningMod
   return (data ?? []).map((row: any) => dbRowToLearningModule(row))
 }
 
+/** Todos los módulos publicados de todas las campañas (superadmin ve todo). */
+export async function getAllPublishedModules(): Promise<LearningModule[]> {
+  const { data, error } = await supabase
+    .from('modules')
+    .select(`
+      *,
+      module_sections (
+        *,
+        section_quizzes (*)
+      )
+    `)
+    .eq('is_published', true)
+    .order('sort_order')
+
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => dbRowToLearningModule(row))
+}
+
 export async function getAllModulesForCampaign(campaignId: string): Promise<LearningModule[]> {
   const { data, error } = await supabase
     .from('modules')

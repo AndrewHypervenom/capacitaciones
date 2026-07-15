@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from './Button'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 
 export interface ConfirmOptions {
   /** Título del diálogo. Por defecto: confirm.title */
@@ -157,7 +158,7 @@ export function ConfirmDialog({
         >
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={onClose}
+            {...backdropDismiss(onClose)}
           />
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 10 }}

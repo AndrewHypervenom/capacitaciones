@@ -2,6 +2,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { backdropDismiss } from '@/lib/backdropDismiss';
 import {
   X, Target, Clock, CheckCircle2, XCircle,
   MessageSquare, AlertCircle, HelpCircle, Info, BookOpen
@@ -148,7 +149,7 @@ export function FeedbackModal({ isOpen, onClose, attempts, computedMetrics }: Fe
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            {...backdropDismiss(onClose)}
             className="absolute inset-0 bg-black/40 dark:bg-black/70 backdrop-blur-sm"
           />
 

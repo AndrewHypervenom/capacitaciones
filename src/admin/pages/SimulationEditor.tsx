@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import {
-  ArrowLeft, CheckCircle2, Eye, EyeOff, Loader2, Menu, Plus, Save, Trash2, X,
+  ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Plus, Save, Trash2, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import {
   getScenarioAdmin, createScenario, updateScenario, type ScenarioRow,
 } from '@/services/scenarios.admin.service'
+import { getCoursesForCampaign } from '@/services/courses.service'
 import { type GeneratedDialogue } from '@/services/ai.service'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
 import {
@@ -35,6 +38,7 @@ interface MetaState {
   empathy_keywords: string[]
   start_node_id: string
   is_published: boolean
+  course_id: string | null; pass_score: number
 }
 
 type ChecklistItem = { id: string; label: Record<Lang, string>; keywords: string[] }
@@ -62,6 +66,8 @@ const defaultMeta = (): MetaState => ({
   empathy_keywords: ['entiendo', 'comprendo', 'lamento', 'disculpa', 'sorry', 'understand', 'entendo'],
   start_node_id: 'start',
   is_published: false,
+  course_id: null,
+  pass_score: 70,
 })
 
 const defaultNodes = (): NodesMap => ({
@@ -99,13 +105,15 @@ function rowToState(row: ScenarioRow): { meta: MetaState; nodes: NodesMap; check
       empathy_keywords: row.empathy_keywords ?? [],
       start_node_id: row.start_node_id,
       is_published: row.is_published,
+      course_id: row.course_id ?? null,
+      pass_score: row.pass_score ?? 70,
     },
     nodes: row.nodes as unknown as NodesMap,
     checklist: (row.checklist_items as unknown as ChecklistItem[]) ?? defaultChecklist(),
   }
 }
 
-const inputClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none focus:border-brand-violet/40 placeholder:text-text-subtle'
+const inputClass = 'w-full glass border border-glass-border/20 rounded-xl px-3 py-2 text-sm text-text bg-transparent focus:outline-none focus:border-neon-green/40 placeholder:text-text-subtle'
 
 function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => void }) {
   return (
@@ -113,7 +121,7 @@ function LangTabs({ active, onChange }: { active: Lang; onChange: (l: Lang) => v
       {(['es', 'en', 'pt'] as Lang[]).map((l) => (
         <button key={l} onClick={() => onChange(l)}
           className={cn('px-3 py-2 md:px-2.5 md:py-1 rounded-md text-[11px] font-medium transition-colors uppercase tracking-wide min-h-[44px] md:min-h-0',
-            active === l ? 'bg-glass-border/15 text-text' : 'text-text-subtle hover:text-text-muted')}>
+            active === l ? 'bg-neon-green/12 text-neon-green' : 'text-text-subtle hover:text-text-muted')}>
           {l}
         </button>
       ))}
@@ -126,8 +134,14 @@ export default function SimulationEditor() {
   const nav = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId } = useAuth()
+  const { campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const [searchParams] = useSearchParams()
   const isNew = id === 'new' || !id
+  const isManualMode = searchParams.get('mode') === 'manual'
+
+  const [campaignId, setCampaignId] = useState(() => searchParams.get('campaign') || authCampaignId || '')
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
+  const [courses, setCourses] = useState<{ id: string; title_es: string }[]>([])
 
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -141,9 +155,40 @@ export default function SimulationEditor() {
   const [aiBanner, setAiBanner] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false)
+  const [manualGuide, setManualGuide] = useState(isNew && isManualMode)
 
   const slugManualRef = useRef(!isNew)
   const nodeIds = Object.keys(nodes)
+
+  const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
+  const nodeOptions = nodeIds.map((nid) => {
+    const preview = nodes[nid]?.customerLine?.es?.slice(0, 32)
+    return { value: nid, label: preview ? `${stepLabel(nid)} — ${preview}` : stepLabel(nid) }
+  })
+
+  // La campaña del perfil puede llegar después del primer render
+  useEffect(() => {
+    if (authCampaignId) setCampaignId((prev) => prev || authCampaignId)
+  }, [authCampaignId])
+
+  // Superadmin sin campaña propia: puede elegirla aquí mismo
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    supabase.from('campaigns').select('id, name').order('name').then(({ data }) => {
+      setCampaigns(data ?? [])
+      if (data?.[0]) setCampaignId((prev) => prev || data[0].id)
+    })
+  }, [isSuperAdmin])
+
+  // Cursos de la campaña activa: permiten asignar el simulador a un curso desde aquí.
+  useEffect(() => {
+    if (!campaignId) { setCourses([]); return }
+    let alive = true
+    getCoursesForCampaign(campaignId)
+      .then((rows) => { if (alive) setCourses(rows.map((c) => ({ id: c.id, title_es: c.title_es }))) })
+      .catch(() => { if (alive) setCourses([]) })
+    return () => { alive = false }
+  }, [campaignId])
 
   useEffect(() => {
     if (isNew) return
@@ -151,6 +196,7 @@ export default function SimulationEditor() {
       .then((row) => {
         const { meta: m, nodes: n, checklist: c } = rowToState(row)
         setMeta(m); setNodes(n); setChecklist(c)
+        setCampaignId(row.campaign_id)
         setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
       })
       .catch(() => toast.error('Error cargando escenario'))
@@ -186,6 +232,8 @@ export default function SimulationEditor() {
         max_turns: meta.max_turns,
         empathy_keywords: meta.empathy_keywords,
         start_node_id: meta.start_node_id,
+        course_id: meta.course_id,
+        pass_score: meta.pass_score,
         checklist_items: checklist as unknown as import('@/types/database').Json,
         nodes: nodes as unknown as import('@/types/database').Json,
         is_published: meta.is_published,
@@ -234,9 +282,17 @@ export default function SimulationEditor() {
   }, [])
 
   const addNode = () => {
-    const nid = `node_${Date.now()}`
+    const nid = `paso_${Date.now()}`
     setNodes((prev) => ({ ...prev, [nid]: { customerLine: { es: '', en: '', pt: '' }, branches: [] } }))
     setSelectedNodeId(nid)
+    return nid
+  }
+
+  // Crea un paso sin robar el foco del editor actual (para "+ Crear paso nuevo" en rutas)
+  const createLinkedNode = () => {
+    const nid = `paso_${Date.now()}`
+    setNodes((prev) => ({ ...prev, [nid]: { customerLine: { es: '', en: '', pt: '' }, branches: [] } }))
+    return nid
   }
 
   const removeNode = async (nid: string) => {
@@ -300,8 +356,22 @@ export default function SimulationEditor() {
         </div>
       </div>
 
-      {/* AI Generator — abierto por defecto en nuevas simulaciones */}
-      <AIGeneratorPanel type="dialogue" onApply={handleApplyGenerated} defaultOpen={isNew} />
+      {/* AI Generator — abierto por defecto salvo en modo manual */}
+      <AIGeneratorPanel type="dialogue" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} />
+
+      {/* Guía rápida para creación manual */}
+      {manualGuide && (
+        <div className="flex items-start gap-3 mb-5 p-3.5 rounded-xl bg-neon-green/6 border border-neon-green/20">
+          <ListChecks className="h-4 w-4 text-neon-green shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm text-text-muted">
+            <span className="text-text font-medium">{t('admin.simulations.manual_guide_title')} </span>
+            {t('admin.simulations.manual_guide_dialogue')}
+          </div>
+          <button onClick={() => setManualGuide(false)} className="text-text-subtle hover:text-text transition-colors shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Banner post-IA */}
       {aiBanner && (
@@ -326,7 +396,7 @@ export default function SimulationEditor() {
         ] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('px-4 py-2.5 md:py-2 rounded-lg text-sm transition-all min-h-[44px] md:min-h-0',
-              tab === key ? 'bg-glass-border/10 text-text font-medium' : 'text-text-muted hover:text-text')}>
+              tab === key ? 'bg-neon-green/10 text-neon-green font-medium' : 'text-text-muted hover:text-text')}>
             {label}
             {key === 'nodes' && <span className="ml-1 text-xs text-text-subtle">{nodeIds.length}</span>}
           </button>
@@ -338,6 +408,16 @@ export default function SimulationEditor() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <GlassCard className="p-5 space-y-4">
             <h3 className="text-sm font-semibold text-text mb-3">{t('admin.simulations.config_title')}</h3>
+            {isSuperAdmin && campaigns.length > 0 && (
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
+                <FilterDropdown
+                  value={campaignId}
+                  onChange={setCampaignId}
+                  options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.country')}</label>
@@ -370,6 +450,38 @@ export default function SimulationEditor() {
               <p className="text-[11px] text-text-subtle mt-1">{t('admin.simulations.max_turns_hint')}</p>
             </div>
 
+            {/* Asignación a curso: liga este simulador a un curso de la campaña.
+                Si hay curso, el aprendiz debe superar `pass_score` para que cuente en la certificación. */}
+            <div className="pt-1 border-t border-glass-border/10">
+              <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.course')}</label>
+              <FilterDropdown
+                value={meta.course_id ?? ''}
+                onChange={(v) => setMeta((m) => ({ ...m, course_id: v || null }))}
+                options={[
+                  { value: '', label: t('admin.simulations.course_none') },
+                  ...courses.map((c) => ({ value: c.id, label: c.title_es })),
+                ]}
+              />
+              <p className="text-[11px] text-text-subtle mt-1">{t('admin.simulations.course_hint')}</p>
+              {meta.course_id && (
+                <div className="mt-3">
+                  <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.pass_score')}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={meta.pass_score}
+                      onChange={(e) => setMeta((m) => ({ ...m, pass_score: Math.max(0, Math.min(100, Number(e.target.value))) }))}
+                      className={cn(inputClass, 'w-24')}
+                    />
+                    <span className="text-xs text-text-subtle">%</span>
+                  </div>
+                  <p className="text-[11px] text-text-subtle mt-1">{t('admin.simulations.pass_score_hint')}</p>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setShowAdvanced((v) => !v)}
               className="text-xs text-text-subtle hover:text-text-muted transition-colors flex items-center gap-1"
@@ -397,7 +509,7 @@ export default function SimulationEditor() {
                   <FilterDropdown
                     value={meta.start_node_id}
                     onChange={(v) => setMeta((m) => ({ ...m, start_node_id: v }))}
-                    options={nodeIds.map((nid) => ({ value: nid, label: nid }))}
+                    options={nodeOptions}
                   />
                 </div>
               </div>
@@ -427,20 +539,20 @@ export default function SimulationEditor() {
                 </div>
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary')}</label>
-                  <textarea rows={2} value={meta.summary_es} onChange={(e) => setMeta((m) => ({ ...m, summary_es: e.target.value }))} className={cn(inputClass, 'resize-none')} placeholder={t('admin.simulations.ph_summary')} />
+                  <textarea rows={4} value={meta.summary_es} onChange={(e) => setMeta((m) => ({ ...m, summary_es: e.target.value }))} className={cn(inputClass, 'resize-y min-h-[96px] leading-relaxed')} placeholder={t('admin.simulations.ph_summary')} />
                 </div>
               </>
             )}
             {metaLang === 'en' && (
               <>
                 <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_en')}</label><input value={meta.title_en} onChange={(e) => setMeta((m) => ({ ...m, title_en: e.target.value }))} className={inputClass} /></div>
-                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_en')}</label><textarea rows={2} value={meta.summary_en} onChange={(e) => setMeta((m) => ({ ...m, summary_en: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_en')}</label><textarea rows={4} value={meta.summary_en} onChange={(e) => setMeta((m) => ({ ...m, summary_en: e.target.value }))} className={cn(inputClass, 'resize-y min-h-[96px] leading-relaxed')} /></div>
               </>
             )}
             {metaLang === 'pt' && (
               <>
                 <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_pt')}</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
-                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_pt')}</label><textarea rows={2} value={meta.summary_pt} onChange={(e) => setMeta((m) => ({ ...m, summary_pt: e.target.value }))} className={cn(inputClass, 'resize-none')} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_pt')}</label><textarea rows={4} value={meta.summary_pt} onChange={(e) => setMeta((m) => ({ ...m, summary_pt: e.target.value }))} className={cn(inputClass, 'resize-y min-h-[96px] leading-relaxed')} /></div>
               </>
             )}
           </GlassCard>
@@ -488,7 +600,7 @@ export default function SimulationEditor() {
         <div className="flex gap-5">
           {/* Node list — mobile: drawer */}
           {nodeDrawerOpen && (
-            <div className="md:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setNodeDrawerOpen(false)} />
+            <div className="md:hidden fixed inset-0 bg-black/50 z-40" {...backdropDismiss(() => setNodeDrawerOpen(false))} />
           )}
           <div className={cn(
             'fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-bg border-r border-glass-border/8 transition-transform duration-300 ease-in-out p-4',
@@ -503,7 +615,7 @@ export default function SimulationEditor() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={addNode}
-                  className="flex items-center gap-1 text-xs text-brand-violet hover:text-brand-violet/80 transition-colors"
+                  className="flex items-center gap-1 text-xs text-neon-green hover:text-neon-green/80 transition-colors"
                   title={t('admin.simulations.add_step')}
                 >
                   <Plus className="h-3.5 w-3.5" /> Agregar
@@ -526,14 +638,14 @@ export default function SimulationEditor() {
                     className={cn(
                       'w-full text-left px-3 py-2.5 rounded-xl text-xs transition-all border',
                       selectedNodeId === nid
-                        ? 'bg-glass-border/12 border-glass-border/20 text-text'
+                        ? 'bg-neon-green/10 border-neon-green/40 text-text'
                         : 'border-transparent text-text-muted hover:text-text hover:bg-glass/4',
                     )}
                   >
                     <div className="flex items-center gap-1.5">
                       <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
                         isStart ? 'bg-brand-green' : isTerminal ? 'bg-brand-magenta' : 'bg-glass-border/40')} />
-                      <span className="font-mono font-medium truncate">{nid}</span>
+                      <span className="font-medium truncate">{stepLabel(nid)}</span>
                       {isStart && <span className="text-[9px] text-brand-green shrink-0">{t('admin.simulations.start')}</span>}
                       {isTerminal && <span className="text-[9px] text-brand-magenta shrink-0">{node.terminal === 'resolved' ? 'FIN ✓' : 'FIN ✗'}</span>}
                     </div>
@@ -559,8 +671,7 @@ export default function SimulationEditor() {
               <GlassCard className="p-4 md:p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-muted">{t('admin.simulations.step_label')}</span>
-                    <span className="font-mono text-sm text-text">{selectedNodeId}</span>
+                    <span className="text-sm font-medium text-text">{stepLabel(selectedNodeId)}</span>
                     {selectedNodeId === meta.start_node_id && (
                       <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">{t('admin.simulations.start')}</span>
                     )}
@@ -576,7 +687,8 @@ export default function SimulationEditor() {
                 <DialogueNodeForm
                   nodeId={selectedNodeId}
                   data={nodes[selectedNodeId]}
-                  allNodeIds={nodeIds}
+                  nodeOptions={nodeOptions}
+                  onCreateNode={createLinkedNode}
                   onChange={handleNodeChange}
                 />
               </GlassCard>

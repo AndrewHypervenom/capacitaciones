@@ -74,7 +74,6 @@ export function ModuleTOC({ sections, language, sectionPrefix = 'section' }: Pro
         <nav className="overflow-y-auto">
           <ul className="space-y-0.5">
             {sections.map((s, i) => {
-              if (s.style === 'video-interactive') return null;
               return (
                 <li key={i}>
                   <button

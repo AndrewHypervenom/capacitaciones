@@ -364,6 +364,7 @@ function pageLabel(pathname: string): string {
     [/^\/admin\/users/, 'Gestión de usuarios (/admin/users)'],
     [/^\/admin\/simulations/, 'Editor de simulaciones (/admin/simulations)'],
     [/^\/admin\/evaluaciones/, 'Panel de evaluaciones (/admin/evaluaciones)'],
+    [/^\/admin\/progress/, 'Progreso unificado: Mundos y Módulos (/admin/progress)'],
     [/^\/admin\/import/, 'Importar contenido (/admin/import)'],
     [/^\/admin/, 'Panel de gestión (/admin)'],
     [/^\/arena/, 'Arena (/arena)'],

@@ -79,6 +79,24 @@ export async function getAllScenariosForCampaign(campaignId: string) {
   return data ?? []
 }
 
+/**
+ * Un escenario publicado por su slug, sin depender de la campaña del usuario.
+ * Lo usa SimulatorRun como respaldo: el staff sin campaña (superadmin) y los
+ * aprendices cross-campaña no encuentran el escenario en useScenarios (que
+ * solo trae los de SU campaña) y quedaban en "Cargando…" infinito.
+ */
+export async function getScenarioBySlug(slug: string): Promise<Scenario | null> {
+  const { data, error } = await supabase
+    .from('scenarios')
+    .select('*')
+    .eq('slug', slug)
+    .eq('is_published', true)
+    .order('created_at')
+    .limit(1)
+  if (error) throw error
+  return data && data.length > 0 ? dbRowToScenario(data[0]) : null
+}
+
 /** Escenarios publicados que pertenecen a un curso (para el bloque del aprendiz). */
 export async function getScenariosForCourse(courseId: string): Promise<Scenario[]> {
   const { data, error } = await supabase

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Loader2, MessageSquare, Clock, ChevronRight, GraduationCap, Inbox } from 'lucide-react';
+import { Loader2, MessageSquare, Clock, ChevronRight, GraduationCap, Inbox, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
 import { getMyTrainerFeedback, type StudentFeedbackItem } from '@/services/activity.service';
@@ -14,6 +14,7 @@ function scoreHex(score: number): string {
 
 export default function MyFeedback() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const language = useUserStore((s) => s.language);
   const [loading, setLoading] = useState(true);
@@ -63,6 +64,13 @@ export default function MyFeedback() {
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 py-6 sm:py-10">
       <header className="mb-6">
+        <button
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/dashboard'))}
+          className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-text-muted transition-colors hover:text-text"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('common.back', 'Volver')}
+        </button>
         <div className="flex items-center gap-3">
           <div className="h-11 w-11 rounded-2xl bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
             <MessageSquare className="h-5 w-5 text-neon-green" />

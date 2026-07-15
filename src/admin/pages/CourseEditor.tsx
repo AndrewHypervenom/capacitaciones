@@ -15,6 +15,7 @@ import {
   GraduationCap,
   ImagePlus,
   Info,
+  ListChecks,
   Lock,
   PhoneCall,
   Plus,
@@ -50,6 +51,7 @@ import {
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, type WorldRow } from '@/services/worlds.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
+import { getAllChoiceScenariosAdmin, updateChoiceScenario, type ChoiceScenarioRow } from '@/services/choiceScenarios.admin.service'
 import { getCourseEvaluationResults } from '@/services/certification.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import type { Campaign, CertConditions, Profile, CourseEvaluationResult } from '@/types/database'
@@ -144,12 +146,15 @@ export default function CourseEditor() {
   const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
   const [savingEval, setSavingEval] = useState(false)
   const [campaignScenarios, setCampaignScenarios] = useState<ScenarioRow[]>([])
+  const [campaignChoiceScenarios, setCampaignChoiceScenarios] = useState<ChoiceScenarioRow[]>([])
   // Resultados por aprendiz (para ver/descargar sus certificados).
   const [results, setResults] = useState<CourseEvaluationResult[]>([])
   const [resultsLoading, setResultsLoading] = useState(false)
   // El simulador es opcional y poco frecuente: la sección va plegada por defecto
   // y se auto-expande solo si el curso ya lo usa (escenarios ligados o requerido).
   const [simOpen, setSimOpen] = useState(false)
+  // Escenario que se está publicando desde el curso (para el estado del botón).
+  const [publishingScenarioId, setPublishingScenarioId] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     if (!courseId) return
@@ -286,10 +291,20 @@ export default function CourseEditor() {
 
   // Escenarios de la campaña (para ligarlos al curso) + resultados de evaluación.
   // Estos hooks van ANTES de cualquier return temprano (Reglas de Hooks).
+  // Los escenarios se cargan al montar (no solo en la pestaña Evaluación) para que
+  // la barra de "Publicación" pueda reflejar el estado del simulador en todo momento.
+  const loadScenarios = useCallback(async () => {
+    if (!course?.campaign_id) return
+    getAllScenariosAdmin(course.campaign_id).then(setCampaignScenarios).catch(() => {})
+    getAllChoiceScenariosAdmin(course.campaign_id).then(setCampaignChoiceScenarios).catch(() => {})
+  }, [course?.campaign_id])
+
+  useEffect(() => {
+    void loadScenarios()
+  }, [loadScenarios])
+
   const loadEvalData = useCallback(async () => {
-    if (course?.campaign_id) {
-      getAllScenariosAdmin(course.campaign_id).then(setCampaignScenarios).catch(() => {})
-    }
+    await loadScenarios()
     if (courseId) {
       setResultsLoading(true)
       getCourseEvaluationResults(courseId)
@@ -297,7 +312,7 @@ export default function CourseEditor() {
         .catch(() => setResults([]))
         .finally(() => setResultsLoading(false))
     }
-  }, [course?.campaign_id, courseId])
+  }, [loadScenarios, courseId])
 
   useEffect(() => {
     if (tab === 'evaluation') void loadEvalData()
@@ -311,15 +326,29 @@ export default function CourseEditor() {
     () => campaignScenarios.filter((s) => s.course_id !== courseId),
     [campaignScenarios, courseId],
   )
+  const courseChoiceScenarios = useMemo(
+    () => campaignChoiceScenarios.filter((s) => s.course_id === courseId),
+    [campaignChoiceScenarios, courseId],
+  )
+  const otherChoiceScenarios = useMemo(
+    () => campaignChoiceScenarios.filter((s) => s.course_id !== courseId),
+    [campaignChoiceScenarios, courseId],
+  )
+  const courseScenarioCount = courseScenarios.length + courseChoiceScenarios.length
+  // Escenarios ligados al curso pero en borrador: el aprendiz filtra por
+  // is_published=true, así que estos NO aparecen en su vista del curso.
+  const unpublishedLinkedCount =
+    courseScenarios.filter((s) => !s.is_published).length +
+    courseChoiceScenarios.filter((s) => !s.is_published).length
 
   // Requiere el simulador para certificar, pero no hay escenarios ligados:
   // ningún aprendiz podría certificarse. Se resalta como configuración incompleta.
-  const simRequiredButEmpty = cond.require_simulator && courseScenarios.length === 0
+  const simRequiredButEmpty = cond.require_simulator && courseScenarioCount === 0
 
   // Auto-expandir la sección del simulador cuando el curso sí lo usa.
   useEffect(() => {
-    if (courseScenarios.length > 0 || cond.require_simulator) setSimOpen(true)
-  }, [courseScenarios.length, cond.require_simulator])
+    if (courseScenarioCount > 0 || cond.require_simulator) setSimOpen(true)
+  }, [courseScenarioCount, cond.require_simulator])
 
   if (loading || !course) {
     return (
@@ -400,6 +429,26 @@ export default function CourseEditor() {
       toast.success(t('admin.courses.published_all_ok'))
     } catch {
       toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  // Publica de una vez todos los escenarios ligados que estén en borrador, para que
+  // el aprendiz pueda verlos en el simulador del curso.
+  const handlePublishAllScenarios = async () => {
+    setPublishingScenarioId('__all__')
+    try {
+      for (const s of courseScenarios.filter((x) => !x.is_published)) {
+        await updateScenario(s.id, { is_published: true })
+      }
+      for (const s of courseChoiceScenarios.filter((x) => !x.is_published)) {
+        await updateChoiceScenario(s.id, { is_published: true })
+      }
+      await loadScenarios()
+      toast.success(t('admin.courses.sim_published_ok'))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setPublishingScenarioId(null)
     }
   }
 
@@ -628,6 +677,51 @@ export default function CourseEditor() {
     }
   }
 
+  const handleToggleChoiceScenarioCourse = async (s: ChoiceScenarioRow, attach: boolean) => {
+    try {
+      await updateChoiceScenario(s.id, { course_id: attach ? (courseId ?? null) : null })
+      await loadEvalData()
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  const handleChoiceScenarioPassScore = async (s: ChoiceScenarioRow, pass_score: number) => {
+    try {
+      await updateChoiceScenario(s.id, { pass_score })
+      setCampaignChoiceScenarios((prev) => prev.map((x) => (x.id === s.id ? { ...x, pass_score } : x)))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  // Publicar un escenario ligado directamente desde el curso, sin ir a su editor,
+  // para que el aprendiz pueda verlo en el simulador del curso.
+  const handlePublishScenario = async (s: ScenarioRow) => {
+    setPublishingScenarioId(s.id)
+    try {
+      await updateScenario(s.id, { is_published: true })
+      setCampaignScenarios((prev) => prev.map((x) => (x.id === s.id ? { ...x, is_published: true } : x)))
+      toast.success(t('admin.courses.sim_published_ok'))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setPublishingScenarioId(null)
+    }
+  }
+  const handlePublishChoiceScenario = async (s: ChoiceScenarioRow) => {
+    setPublishingScenarioId(s.id)
+    try {
+      await updateChoiceScenario(s.id, { is_published: true })
+      setCampaignChoiceScenarios((prev) => prev.map((x) => (x.id === s.id ? { ...x, is_published: true } : x)))
+      toast.success(t('admin.courses.sim_published_ok'))
+    } catch {
+      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setPublishingScenarioId(null)
+    }
+  }
+
   const tabs: Array<{ id: Tab; label: string; icon: typeof Info }> = [
     { id: 'info', label: t('admin.courses.tab_info'), icon: Info },
     { id: 'modules', label: t('admin.courses.tab_modules'), icon: BookOpen },
@@ -691,7 +785,9 @@ export default function CourseEditor() {
         const total = course.modules.length
         const pubModules = course.modules.filter((m) => m.is_published).length
         const modulesAllPublished = total === 0 || pubModules === total
-        const everythingPublished = course.is_published && modulesAllPublished
+        // El simulador es opcional: solo cuenta si hay escenarios ligados al curso.
+        const simAllPublished = unpublishedLinkedCount === 0
+        const everythingPublished = course.is_published && modulesAllPublished && simAllPublished
         return (
           <div className="rounded-2xl border border-line bg-surface px-4 py-3 mb-6">
             <div className="flex flex-wrap items-center gap-2">
@@ -733,7 +829,7 @@ export default function CourseEditor() {
                     <button
                       onClick={handlePublishAllModules}
                       className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors"
-                      style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                      style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
                     >
                       <Eye className="h-3 w-3" /> {t('admin.courses.publish_all_modules')}
                     </button>
@@ -771,13 +867,40 @@ export default function CourseEditor() {
                       onClick={handleToggleWorldPublished}
                       disabled={publishingWorld}
                       className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50"
-                      style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                      style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
                     >
                       <Eye className="h-3 w-3" /> {t('admin.courses.world_publish')}
                     </button>
                   </>
                 )}
               </div>
+
+              {/* Chip: Simulador — opcional. Solo aparece si hay escenarios ligados al curso. */}
+              {courseScenarioCount > 0 && (
+                <div className="flex items-center gap-2 rounded-xl border border-line px-3 py-1.5">
+                  <PhoneCall className="h-4 w-4 text-text-muted shrink-0" />
+                  <span className="text-[13px] font-medium text-text">{t('admin.courses.sim_chip_label')}</span>
+                  {simAllPublished ? (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      {t('admin.courses.published')}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-500">
+                        {t('admin.courses.sim_unpublished_count', { n: unpublishedLinkedCount, total: courseScenarioCount })}
+                      </span>
+                      <button
+                        onClick={handlePublishAllScenarios}
+                        disabled={publishingScenarioId === '__all__'}
+                        className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50"
+                        style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+                      >
+                        <Eye className="h-3 w-3" /> {t('admin.courses.sim_publish_all')}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Acción principal / estado global (curso + módulos; el mundo va aparte) */}
               <div className="ml-auto flex items-center gap-2">
@@ -804,6 +927,14 @@ export default function CourseEditor() {
               <p className="flex items-start gap-1.5 mt-2 text-[11px] text-amber-500">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
                 {t('admin.courses.missing_world')}
+              </p>
+            )}
+            {course.is_published && !simAllPublished && (
+              <p className="flex items-start gap-1.5 mt-2 text-[11px] text-amber-500">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                {unpublishedLinkedCount === 1
+                  ? t('admin.courses.sim_unpublished_warn_one')
+                  : t('admin.courses.sim_unpublished_warn_many', { n: unpublishedLinkedCount })}
               </p>
             )}
           </div>
@@ -1119,7 +1250,7 @@ export default function CourseEditor() {
                           <button
                             onClick={() => handleToggleModulePublished(mod.id, true)}
                             className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12px] font-medium transition-colors"
-                            style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
+                            style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
                           >
                             <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish')}
                           </button>
@@ -1224,7 +1355,7 @@ export default function CourseEditor() {
               <button
                 onClick={handleTogglePublished}
                 className="shrink-0 flex items-center justify-center gap-1.5 min-h-[40px] px-4 rounded-xl text-[13px] font-medium transition-colors"
-                style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.30)' }}
+                style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.30)' }}
               >
                 <Eye className="h-4 w-4" /> {t('admin.courses.publish')}
               </button>
@@ -1582,8 +1713,8 @@ export default function CourseEditor() {
                   )}
                 </div>
                 <p className="text-[12px] text-text-muted mt-0.5">
-                  {courseScenarios.length > 0
-                    ? t('admin.courses.sim_summary_count', { n: courseScenarios.length })
+                  {courseScenarioCount > 0
+                    ? t('admin.courses.sim_summary_count', { n: courseScenarioCount })
                     : t('admin.courses.sim_summary_none')}
                 </p>
               </div>
@@ -1631,7 +1762,7 @@ export default function CourseEditor() {
                 {/* Escenarios ligados al curso */}
                 <div>
                   <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_in_course')}</div>
-                  {courseScenarios.length === 0 ? (
+                  {courseScenarioCount === 0 ? (
                     <div className={cn(
                       'flex items-start gap-2.5 rounded-xl px-3.5 py-3 border',
                       cond.require_simulator ? 'border-amber-500/30 bg-amber-500/8' : 'border-dashed border-line',
@@ -1645,10 +1776,48 @@ export default function CourseEditor() {
                     </div>
                   ) : (
                     <div className="space-y-2">
+                      {unpublishedLinkedCount > 0 && (
+                        <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 border border-amber-500/30 bg-amber-500/8">
+                          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                          <p className="text-[12px] text-text-muted">
+                            {unpublishedLinkedCount === 1
+                              ? t('admin.courses.sim_unpublished_warn_one')
+                              : t('admin.courses.sim_unpublished_warn_many', { n: unpublishedLinkedCount })}
+                          </p>
+                        </div>
+                      )}
                       {courseScenarios.map((s) => (
-                        <div key={s.id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                        <div
+                          key={s.id}
+                          className={cn(
+                            'flex items-center gap-3 rounded-xl border px-3.5 py-2.5',
+                            s.is_published ? 'border-line' : 'border-amber-500/40 bg-amber-500/5',
+                          )}
+                        >
                           <PhoneCall className="h-4 w-4 text-primary shrink-0" />
-                          <span className="flex-1 min-w-0 text-[13px] text-text truncate">{s.title_es}</span>
+                          <span className="flex-1 min-w-0 text-[13px] text-text truncate">
+                            {s.title_es}
+                            {!s.is_published && (
+                              <span
+                                title={t('admin.courses.sim_unpublished_hint')}
+                                className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                              >
+                                {t('admin.courses.sim_unpublished_badge')}
+                              </span>
+                            )}
+                          </span>
+                          {!s.is_published && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handlePublishScenario(s)}
+                              disabled={publishingScenarioId === s.id}
+                              className="flex items-center gap-1.5 shrink-0"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              {publishingScenarioId === s.id ? t('admin.courses.sim_publishing') : t('admin.courses.sim_publish')}
+                            </Button>
+                          )}
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className="text-[11px] text-text-muted">{t('admin.courses.sim_pass')}</span>
                             <input
@@ -1666,12 +1835,64 @@ export default function CourseEditor() {
                           </button>
                         </div>
                       ))}
+                      {courseChoiceScenarios.map((s) => (
+                        <div
+                          key={s.id}
+                          className={cn(
+                            'flex items-center gap-3 rounded-xl border px-3.5 py-2.5',
+                            s.is_published ? 'border-line' : 'border-amber-500/40 bg-amber-500/5',
+                          )}
+                        >
+                          <ListChecks className="h-4 w-4 text-primary shrink-0" />
+                          <span className="flex-1 min-w-0 text-[13px] text-text truncate">
+                            {s.title_es}
+                            <span className="ml-2 rounded-full bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-text-muted">
+                              {t('admin.courses.sim_type_choice')}
+                            </span>
+                            {!s.is_published && (
+                              <span
+                                title={t('admin.courses.sim_unpublished_hint')}
+                                className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                              >
+                                {t('admin.courses.sim_unpublished_badge')}
+                              </span>
+                            )}
+                          </span>
+                          {!s.is_published && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handlePublishChoiceScenario(s)}
+                              disabled={publishingScenarioId === s.id}
+                              className="flex items-center gap-1.5 shrink-0"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              {publishingScenarioId === s.id ? t('admin.courses.sim_publishing') : t('admin.courses.sim_publish')}
+                            </Button>
+                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[11px] text-text-muted">{t('admin.courses.sim_pass')}</span>
+                            <input
+                              type="number" min={0} max={100} defaultValue={s.pass_score}
+                              onBlur={(e) => handleChoiceScenarioPassScore(s, Math.max(0, Math.min(100, +e.target.value)))}
+                              className="w-14 rounded-lg border border-line bg-surface px-2 py-1 text-[12px] text-text"
+                            />
+                          </div>
+                          <button
+                            onClick={() => handleToggleChoiceScenarioCourse(s, false)}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
+                            title={t('admin.courses.remove_from_course')}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
 
                 {/* Escenarios disponibles para agregar */}
-                {otherScenarios.length > 0 && (
+                {(otherScenarios.length > 0 || otherChoiceScenarios.length > 0) && (
                   <div>
                     <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_available')}</div>
                     <div className="space-y-2">
@@ -1683,6 +1904,21 @@ export default function CourseEditor() {
                             {s.course_id && <span className="ml-2 text-[10px] text-text-subtle">{t('admin.courses.sim_in_other_course')}</span>}
                           </span>
                           <Button variant="glass" size="sm" onClick={() => handleToggleScenarioCourse(s, true)} className="flex items-center gap-1 shrink-0">
+                            <Plus className="h-3.5 w-3.5" /> {t('admin.courses.add')}
+                          </Button>
+                        </div>
+                      ))}
+                      {otherChoiceScenarios.map((s) => (
+                        <div key={s.id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+                          <ListChecks className="h-4 w-4 text-text-subtle shrink-0" />
+                          <span className="flex-1 min-w-0 text-[13px] text-text truncate">
+                            {s.title_es}
+                            <span className="ml-2 rounded-full bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-text-muted">
+                              {t('admin.courses.sim_type_choice')}
+                            </span>
+                            {s.course_id && <span className="ml-2 text-[10px] text-text-subtle">{t('admin.courses.sim_in_other_course')}</span>}
+                          </span>
+                          <Button variant="glass" size="sm" onClick={() => handleToggleChoiceScenarioCourse(s, true)} className="flex items-center gap-1 shrink-0">
                             <Plus className="h-3.5 w-3.5" /> {t('admin.courses.add')}
                           </Button>
                         </div>

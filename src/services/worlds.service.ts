@@ -462,7 +462,7 @@ export async function ensureCourseWorld(course: CourseLike): Promise<WorldRow> {
       course_id: course.id,
       name: course.title_es,
       description: course.description_es,
-      color: course.color || '#00C228',
+      color: course.color || '#10D451',
       icon: '🌍',
       bg_type: 'corporate',
       status: 'draft',
@@ -673,7 +673,7 @@ async function insertStandaloneWorld(opts: {
       name: opts.name,
       description: opts.description ?? null,
       icon: opts.icon || '🌍',
-      color: '#00C228',
+      color: '#10D451',
       bg_type: normBg(opts.bgType),
       status: 'draft',
     })

@@ -9,8 +9,8 @@ import { supabase } from '@/lib/supabase';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
 
-const GREEN = '#00C228';
-const MAGENTA = '#C2185B';
+const GREEN = '#10D451';
+const MAGENTA = '#B33D9E';
 const ease = [0.16, 1, 0.3, 1] as const;
 
 /* ── Helpers de estilo para inputs ──────────────────────────────────── */
@@ -383,7 +383,7 @@ export default function Welcome() {
                     boxShadow: [
                       'inset 0 1px 0 rgb(var(--line) / 0.5)',
                       '0 0 0 0.5px rgb(var(--line) / 0.25)',
-                      `0 0 140px rgba(0,194,40,0.1)`,
+                      `0 0 140px rgba(16,212,81,0.1)`,
                       '0 40px 100px rgba(0,0,0,0.25)',
                     ].join(', '),
                   }}
@@ -456,7 +456,7 @@ export default function Welcome() {
                           className="placeholder:text-text-subtle"
                           onFocus={(e) => {
                             e.currentTarget.style.borderColor = `${GREEN}65`;
-                            e.currentTarget.style.background = 'rgba(0,194,40,0.04)';
+                            e.currentTarget.style.background = 'rgba(16,212,81,0.04)';
                           }}
                           onBlur={(e) => {
                             e.currentTarget.style.borderColor = 'rgb(var(--line))';
@@ -485,7 +485,7 @@ export default function Welcome() {
                             className="placeholder:text-text-subtle"
                             onFocus={(e) => {
                               e.currentTarget.style.borderColor = `${GREEN}65`;
-                              e.currentTarget.style.background = 'rgba(0,194,40,0.04)';
+                              e.currentTarget.style.background = 'rgba(16,212,81,0.04)';
                             }}
                             onBlur={(e) => {
                               e.currentTarget.style.borderColor = 'rgb(var(--line))';

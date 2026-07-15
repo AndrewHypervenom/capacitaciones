@@ -56,7 +56,7 @@ class QuizAudio {
 const sfx = new QuizAudio()
 
 // ─── Confeti ─────────────────────────────────────────────────────────────────
-const CC = ['#00C228', '#3b82f6', '#fde68a', '#ef4444', '#a855f7', '#f97316', '#06b6d4']
+const CC = ['#10D451', '#3b82f6', '#fde68a', '#ef4444', '#a855f7', '#f97316', '#06b6d4']
 
 function Confetti({ active }: { active: boolean }) {
   const ps = useMemo(() => Array.from({ length: 30 }, (_, i) => ({
@@ -130,10 +130,12 @@ export default function LiveQuizPlay() {
   const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null)
   const lbTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confettiTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const shownAtRef    = useRef<number>(0)  // marca de tiempo (ms) de cuándo apareció la pregunta
 
   // ── Temporizador ──────────────────────────────────────────────────────────────
   const startTimer = useCallback((secs: number) => {
     if (timerRef.current) clearInterval(timerRef.current)
+    shownAtRef.current = Date.now()
     setTimeLeft(secs)
     timerRef.current = setInterval(() => {
       setTimeLeft((t) => {
@@ -221,6 +223,12 @@ export default function LiveQuizPlay() {
       setJoining(false); return
     }
 
+    // El código caducó: no se permite (re)unirse.
+    if (data.pin_expires_at && new Date(data.pin_expires_at).getTime() < Date.now()) {
+      setJoinError(t('livequiz.pin_expired'))
+      setJoining(false); return
+    }
+
     const joined = { ...data, questions: data.questions as unknown as QuizQuestion[] } as LiveQuiz
     sfx.join()
 
@@ -247,7 +255,12 @@ export default function LiveQuizPlay() {
         },
       )
       .subscribe(async (s) => {
-        if (s === 'SUBSCRIBED' && profile?.id) await channel.track({ user_id: profile.id })
+        if (s === 'SUBSCRIBED' && profile?.id) {
+          await channel.track({
+            user_id: profile.id,
+            name: profile.display_name ?? profile.id.slice(0, 8),
+          })
+        }
       })
 
     channelRef.current = channel
@@ -268,7 +281,11 @@ export default function LiveQuizPlay() {
     if (!quiz || !currentQ || !profile || myAnswer !== null || submitting) return
     setSubmitting(true)
     const correct = optionIdx === currentQ.correctIndex
-    const earned = correct ? Math.round(500 + 500 * (timeLeft / currentQ.timeLimitSec)) : 0
+    // Puntaje por velocidad con resolución de milisegundos (no el contador entero de segundos):
+    // responder al instante ≈ 1000 pts, agotar el tiempo ≈ 500 pts.
+    const elapsedSec = (Date.now() - (shownAtRef.current || Date.now())) / 1000
+    const remainingFrac = Math.max(0, Math.min(1, 1 - elapsedSec / currentQ.timeLimitSec))
+    const earned = correct ? Math.round(500 + 500 * remainingFrac) : 0
 
     setMyAnswer(optionIdx); setIsCorrect(correct); setQuestionScore(earned)
     if (correct) { setMyScore((s) => s + earned); sfx.correct() } else sfx.wrong()
@@ -309,7 +326,7 @@ export default function LiveQuizPlay() {
   const myName   = profile?.display_name ?? profile?.id?.slice(0, 8) ?? ''
   const total    = quiz?.questions.length ?? 1
   const timerPct = currentQ ? timeLeft / currentQ.timeLimitSec : 0
-  const timerColor = timeLeft > 10 ? '#00C228' : timeLeft > 5 ? '#fbbf24' : '#ef4444'
+  const timerColor = timeLeft > 10 ? '#10D451' : timeLeft > 5 ? '#fbbf24' : '#ef4444'
 
   // ══════════════════════════════════════════════════════════════════════════
   // UNIRSE
@@ -318,7 +335,7 @@ export default function LiveQuizPlay() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg relative overflow-hidden">
       {/* Resplandor radial de fondo */}
       <div className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 100%, rgba(0,194,40,0.07) 0%, transparent 70%)' }} />
+        style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 100%, rgba(16,212,81,0.07) 0%, transparent 70%)' }} />
 
       <button onClick={() => navigate('/dashboard')}
         className="absolute top-5 left-5 flex items-center gap-1.5 text-[13px] text-text-subtle hover:text-text transition-colors">
@@ -346,15 +363,15 @@ export default function LiveQuizPlay() {
             maxLength={6}
             className="w-full text-center font-mono text-[34px] font-black rounded-2xl px-6 py-5 text-text tracking-[0.4em] outline-none bg-subtle border-2 transition-all duration-200"
             style={{
-              borderColor: pin.length === 6 ? '#00C228' : 'rgb(var(--line))',
-              boxShadow: pin.length === 6 ? '0 0 24px rgba(0,194,40,0.2)' : undefined,
+              borderColor: pin.length === 6 ? '#10D451' : 'rgb(var(--line))',
+              boxShadow: pin.length === 6 ? '0 0 24px rgba(16,212,81,0.2)' : undefined,
             }}
           />
           {pin.length > 0 && pin.length < 6 && (
             <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
               {Array.from({ length: 6 }, (_, i) => (
                 <div key={i} className="h-0.5 w-5 rounded-full transition-all duration-150"
-                  style={{ background: i < pin.length ? '#00C228' : 'rgb(var(--line))' }} />
+                  style={{ background: i < pin.length ? '#10D451' : 'rgb(var(--line))' }} />
               ))}
             </div>
           )}
@@ -376,7 +393,7 @@ export default function LiveQuizPlay() {
           disabled={joining || pin.length !== 6}
           whileTap={{ scale: 0.97 }}
           className="w-full py-4 rounded-2xl text-[15px] font-black text-black disabled:opacity-40 flex items-center justify-center gap-2 transition-opacity shadow-lg"
-          style={{ background: 'linear-gradient(135deg, #00C228 0%, #00a821 100%)' }}
+          style={{ background: 'linear-gradient(135deg, #10D451 0%, #00a821 100%)' }}
         >
           {joining ? <Loader2 className="h-5 w-5 animate-spin" /> : t('livequiz.join')}
         </motion.button>
@@ -390,7 +407,7 @@ export default function LiveQuizPlay() {
   if (phase === 'lobby') return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg px-4 relative overflow-hidden">
       <div className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 60%, rgba(0,194,40,0.06) 0%, transparent 70%)' }} />
+        style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 60%, rgba(16,212,81,0.06) 0%, transparent 70%)' }} />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -406,8 +423,8 @@ export default function LiveQuizPlay() {
         )}
         <h2 className="text-[24px] font-black text-text mb-1 tracking-tight">{quiz?.title}</h2>
         <div className="flex items-center justify-center gap-2 mb-8">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#00C228] animate-pulse" />
-          <span className="text-[13px] font-semibold" style={{ color: '#00C228' }}>{t('livequiz.you_are_in')}</span>
+          <span className="h-1.5 w-1.5 rounded-full bg-[#10D451] animate-pulse" />
+          <span className="text-[13px] font-semibold" style={{ color: '#10D451' }}>{t('livequiz.you_are_in')}</span>
         </div>
 
         {/* Anillo pulsante de participantes */}
@@ -415,22 +432,22 @@ export default function LiveQuizPlay() {
           {[1, 2].map((ring) => (
             <motion.div key={ring}
               className="absolute inset-0 rounded-full border"
-              style={{ borderColor: 'rgba(0,194,40,0.3)' }}
+              style={{ borderColor: 'rgba(16,212,81,0.3)' }}
               animate={{ scale: [1, 1.6 + ring * 0.3], opacity: [0.4, 0] }}
               transition={{ duration: 2, delay: ring * 0.6, repeat: Infinity, ease: 'easeOut' }}
             />
           ))}
           <div className="relative w-20 h-20 rounded-full flex flex-col items-center justify-center"
-            style={{ background: 'rgba(0,194,40,0.1)', border: '2px solid rgba(0,194,40,0.3)' }}>
+            style={{ background: 'rgba(16,212,81,0.1)', border: '2px solid rgba(16,212,81,0.3)' }}>
             {participantCount > 0 ? (
               <>
-                <span className="text-[26px] font-black" style={{ color: '#00C228' }}>{participantCount}</span>
+                <span className="text-[26px] font-black" style={{ color: '#10D451' }}>{participantCount}</span>
                 <span className="text-[9px] text-text-subtle uppercase tracking-wide">
                   {t('livequiz.player', { count: participantCount })}
                 </span>
               </>
             ) : (
-              <Loader2 className="h-7 w-7 animate-spin" style={{ color: '#00C228' }} />
+              <Loader2 className="h-7 w-7 animate-spin" style={{ color: '#10D451' }} />
             )}
           </div>
         </div>
@@ -459,7 +476,7 @@ export default function LiveQuizPlay() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-bg px-4 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 80%, rgba(0,194,40,0.05) 0%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 80%, rgba(16,212,81,0.05) 0%, transparent 70%)' }} />
 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-sm text-center">
           <div className="text-[11px] uppercase tracking-[0.18em] text-text-subtle mb-1">{t('livequiz.ranking')}</div>
@@ -479,7 +496,7 @@ export default function LiveQuizPlay() {
                     transition={{ delay: rank * 0.14, type: 'spring', stiffness: 280, damping: 22 }}
                     className="flex flex-col items-center gap-1.5"
                   >
-                    <div className={`text-[12px] font-semibold text-text truncate max-w-[70px] ${isMe ? 'text-[#00C228]' : ''}`}>
+                    <div className={`text-[12px] font-semibold text-text truncate max-w-[70px] ${isMe ? 'text-[#10D451]' : ''}`}>
                       {entry.display_name}
                     </div>
                     <div className="text-[11px] font-bold tabular-nums" style={{ color: MEDALS[rank] }}>
@@ -538,7 +555,7 @@ export default function LiveQuizPlay() {
               initial={{ opacity: 0.75 }}
               animate={{ opacity: 0 }}
               transition={{ duration: 0.65, ease: 'easeOut' }}
-              style={{ background: isCorrect ? '#00C228' : '#ef4444' }}
+              style={{ background: isCorrect ? '#10D451' : '#ef4444' }}
             />
           )}
         </AnimatePresence>
@@ -563,7 +580,7 @@ export default function LiveQuizPlay() {
             {myScore > 0 && (
               <motion.div
                 key={myScore}
-                initial={{ scale: 1.3, color: '#00C228' }}
+                initial={{ scale: 1.3, color: '#10D451' }}
                 animate={{ scale: 1, color: 'rgb(var(--text-muted))' }}
                 transition={{ duration: 0.4 }}
                 className="flex items-center gap-1 text-[13px] font-bold tabular-nums text-text-muted"
@@ -612,8 +629,8 @@ export default function LiveQuizPlay() {
                 transition={{ duration: 0.25 }}
                 className="rounded-2xl px-4 py-4 flex flex-col items-center gap-1.5"
                 style={{
-                  background: isCorrect ? 'rgba(0,194,40,0.1)' : 'rgba(239,68,68,0.08)',
-                  border: `1px solid ${isCorrect ? 'rgba(0,194,40,0.35)' : 'rgba(239,68,68,0.3)'}`,
+                  background: isCorrect ? 'rgba(16,212,81,0.1)' : 'rgba(239,68,68,0.08)',
+                  border: `1px solid ${isCorrect ? 'rgba(16,212,81,0.35)' : 'rgba(239,68,68,0.3)'}`,
                 }}
               >
                 <div className="flex items-center gap-2.5">
@@ -623,11 +640,11 @@ export default function LiveQuizPlay() {
                     transition={{ type: 'spring', stiffness: 500, damping: 18 }}
                   >
                     {isCorrect
-                      ? <Check className="h-6 w-6" style={{ color: '#00C228' }} />
+                      ? <Check className="h-6 w-6" style={{ color: '#10D451' }} />
                       : <X className="h-6 w-6 text-red-400" />
                     }
                   </motion.div>
-                  <span className="text-[17px] font-black" style={{ color: isCorrect ? '#00C228' : '#ef4444' }}>
+                  <span className="text-[17px] font-black" style={{ color: isCorrect ? '#10D451' : '#ef4444' }}>
                     {isCorrect ? t('livequiz.correct') : t('livequiz.incorrect')}
                   </span>
                   {questionScore != null && questionScore > 0 && (
@@ -683,7 +700,7 @@ export default function LiveQuizPlay() {
 
             if (inAnswered) {
               if (isSelected && isCorrect) {
-                bg = '#00C228'; shadow = `0 0 32px rgba(0,194,40,0.6), inset 0 0 16px rgba(255,255,255,0.08)`; scale = 1.01
+                bg = '#10D451'; shadow = `0 0 32px rgba(16,212,81,0.6), inset 0 0 16px rgba(255,255,255,0.08)`; scale = 1.01
               } else if (isSelected && !isCorrect) {
                 bg = '#ef4444'; opacity = 0.9; scale = 0.98
               } else if (isCorrectOpt) {
@@ -761,7 +778,7 @@ export default function LiveQuizPlay() {
         {inTop3 && <Confetti active />}
 
         <div className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 90%, rgba(0,194,40,0.06) 0%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 90%, rgba(16,212,81,0.06) 0%, transparent 70%)' }} />
 
         <button onClick={() => navigate('/dashboard')}
           className="absolute top-5 left-5 flex items-center gap-1.5 text-[13px] text-text-subtle hover:text-text transition-colors">
@@ -784,7 +801,7 @@ export default function LiveQuizPlay() {
                 {t('livequiz.your_position')}{' '}
                 <span className="font-black text-text">#{myPos + 1}</span>
                 {'  ·  '}
-                <span className="font-bold" style={{ color: '#00C228' }}>{t('livequiz.points_suffix', { points: myScore.toLocaleString() })}</span>
+                <span className="font-bold" style={{ color: '#10D451' }}>{t('livequiz.points_suffix', { points: myScore.toLocaleString() })}</span>
               </p>
             )}
           </div>
@@ -801,7 +818,7 @@ export default function LiveQuizPlay() {
                   className="flex items-center gap-3 px-4 py-3"
                   style={{
                     background: isMe
-                      ? 'rgba(0,194,40,0.07)'
+                      ? 'rgba(16,212,81,0.07)'
                       : i % 2 === 0 ? 'rgb(var(--subtle))' : 'transparent',
                     borderTop: i > 0 ? '1px solid rgb(var(--line))' : undefined,
                   }}
@@ -814,7 +831,7 @@ export default function LiveQuizPlay() {
                     {entry.display_name}
                     {isMe && <span className="text-[11px] text-text-subtle ml-1">{t('livequiz.you')}</span>}
                   </span>
-                  <span className="text-[13px] font-bold tabular-nums" style={{ color: '#00C228' }}>
+                  <span className="text-[13px] font-bold tabular-nums" style={{ color: '#10D451' }}>
                     {entry.score.toLocaleString()}
                   </span>
                   <span className="text-[11px] text-text-subtle tabular-nums">

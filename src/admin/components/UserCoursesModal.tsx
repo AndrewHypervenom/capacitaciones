@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X, Save, Loader2, Search, BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -120,7 +121,7 @@ export function UserCoursesModal({ user, onClose }: UserCoursesModalProps) {
         role="dialog"
         aria-modal="true"
       >
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" {...backdropDismiss(onClose)} />
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 10 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}

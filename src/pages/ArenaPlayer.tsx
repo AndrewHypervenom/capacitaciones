@@ -31,7 +31,7 @@ function normalizeQuiz(raw: Record<string, unknown>): ArenaQuiz {
     description: (raw.description as string) ?? '',
     campaign_id: (raw.campaign_id as string | null) ?? null,
     theme_icon: (raw.theme_icon as string) ?? '⚔️',
-    theme_color: (raw.theme_color as string) ?? '#00C228',
+    theme_color: (raw.theme_color as string) ?? '#10D451',
     theme_type: (raw.theme_type as string) ?? 'corporate',
     xp_per_question: (raw.xp_per_question as number) ?? 10,
     min_score_pct: (raw.min_score_pct as number | null) ?? null,
@@ -345,13 +345,13 @@ export default function ArenaPlayer() {
 
         .ap-opt { display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:1px solid rgb(var(--line));border-radius:0.75rem;cursor:pointer;transition:all .2s;font-family:inherit;font-size:.875rem;color:rgb(var(--text));text-align:left;width:100%; }
         .ap-opt:hover:not(:disabled) { border-color:${tc}; background:${tc}0a; transform:translateX(3px); }
-        .ap-opt.opt-correct  { border-color:#00C228; background:rgba(0,194,40,0.1); color:#00C228; pointer-events:none; }
+        .ap-opt.opt-correct  { border-color:#10D451; background:rgba(16,212,81,0.1); color:#10D451; pointer-events:none; }
         .ap-opt.opt-wrong    { border-color:#ef4444; background:rgba(239,68,68,0.08); color:#ef4444; }
         .ap-opt.opt-disabled { opacity:.35; pointer-events:none; }
         .ap-opt:disabled     { cursor:default; }
 
         .ap-key { width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;background:${tc}15;border:1px solid ${tc}30;color:${tc};flex-shrink:0;transition:.2s; }
-        .ap-opt.opt-correct .ap-key { background:rgba(0,194,40,0.2);border-color:#00C228;color:#00C228; }
+        .ap-opt.opt-correct .ap-key { background:rgba(16,212,81,0.2);border-color:#10D451;color:#10D451; }
         .ap-opt.opt-wrong   .ap-key { background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444; }
 
         @media (max-width: 768px) {
@@ -527,7 +527,7 @@ export default function ArenaPlayer() {
                   style={{
                     height:'auto',width:'100%',
                     background:'rgb(var(--surface))',
-                    border:`1px solid ${isActive?`${tc}50`:isDone?'rgba(0,194,40,0.2)':'rgb(var(--line))'}`,
+                    border:`1px solid ${isActive?`${tc}50`:isDone?'rgba(16,212,81,0.2)':'rgb(var(--line))'}`,
                     borderRadius:'1rem',
                     overflow:'hidden',
                     opacity:isLocked?.4:1,
@@ -603,9 +603,9 @@ export default function ArenaPlayer() {
                       <div style={{
                         marginTop:14,padding:'12px 16px',borderRadius:'0.75rem',
                         fontSize:'.8rem',lineHeight:1.55,
-                        background:sCorrect?'rgba(0,194,40,0.08)':'rgba(239,68,68,0.07)',
-                        border:`1px solid ${sCorrect?'rgba(0,194,40,0.25)':'rgba(239,68,68,0.22)'}`,
-                        color:sCorrect?'#00C228':'#ef4444',
+                        background:sCorrect?'rgba(16,212,81,0.08)':'rgba(239,68,68,0.07)',
+                        border:`1px solid ${sCorrect?'rgba(16,212,81,0.25)':'rgba(239,68,68,0.22)'}`,
+                        color:sCorrect?'#10D451':'#ef4444',
                         animation:'fadeUp .3s ease both',
                       }}>
                         {sCorrect?'✅':'❌'} {sSelOpt.explanation}

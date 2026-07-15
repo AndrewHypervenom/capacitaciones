@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { X, FileText, Lightbulb, Image, HelpCircle, LayoutTemplate, ZoomIn, Star, Layers, Clapperboard } from 'lucide-react'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -325,7 +326,7 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          <motion.div className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm" onClick={onClose} />
+          <motion.div className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm" {...backdropDismiss(onClose)} />
 
           <motion.div
             className="relative z-10 w-full max-w-2xl"

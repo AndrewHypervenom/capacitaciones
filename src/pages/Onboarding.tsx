@@ -55,7 +55,7 @@ export function Onboarding() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg">
       <div className="w-full max-w-sm mx-4 rounded-3xl p-8 bg-surface border border-line shadow-2xl">
         <div className="flex items-center justify-center w-12 h-12 rounded-2xl mb-6 mx-auto"
-          style={{ background: 'rgba(0,194,40,0.12)', border: '1px solid rgba(0,194,40,0.2)' }}
+          style={{ background: 'rgba(16,212,81,0.12)', border: '1px solid rgba(16,212,81,0.2)' }}
         >
           <KeyRound className="h-5 w-5 text-green-500" />
         </div>
@@ -103,7 +103,7 @@ export function Onboarding() {
             onClick={handleSubmit}
             disabled={!isValid || loading}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold text-black disabled:opacity-40 transition-opacity mt-2"
-            style={{ background: '#00C228' }}
+            style={{ background: '#10D451' }}
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             {t('onboarding.submit')}

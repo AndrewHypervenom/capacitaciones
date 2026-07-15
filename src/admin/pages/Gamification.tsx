@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import type { TFunction } from 'i18next'
 import {
   Trophy, Plus, Pencil, Trash2, Eye, EyeOff, Star, RotateCcw, Loader2, X, Save, Gauge,
@@ -331,7 +332,7 @@ function BadgeModal({
   const labelCls = 'block text-[11px] font-semibold uppercase tracking-wider text-text-subtle mb-1'
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" {...backdropDismiss(onClose)}>
       <div
         className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-line bg-bg p-5 sm:p-6"
         onClick={(e) => e.stopPropagation()}

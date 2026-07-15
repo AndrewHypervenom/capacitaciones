@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getPendingAttempts, saveTrainerFeedback, FeedbackPayload } from '@/services/activity.service';
+import { notifyLearnerFeedback } from '@/services/notifications.service';
 import { getModuleTimesForUsers, type ModuleTimeRow } from '@/services/moduleTime.service';
 import { formatElapsed } from '@/hooks/useModuleTimer';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,7 +11,7 @@ import {
   Code, LayoutTemplate, CheckCircle2, XCircle, Info, MessageSquare, Search,
   SlidersHorizontal, ChevronDown, ArrowDownUp, Clock, Send, Sparkles,
   ClipboardCheck, Award, ChevronRight, GraduationCap, Gamepad2, Video, HelpCircle,
-  ArrowLeft,
+  ArrowLeft, Building2, BookOpen, Layers, Users, ChevronLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
@@ -30,11 +31,21 @@ interface SubmittedAnswers {
 interface PendingAttempt {
   id: string;
   user_id: string;
+  section_id?: string | null;
   module_id?: string | null;
+  // Jerarquía Campaña → Curso → Módulo → Aprendiz.
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  course_id?: string | null;
+  course_title?: string | null;
+  course_slug?: string | null;
   game_type: string;
   score: number;
   submitted_answers: SubmittedAnswers | null;
   started_at: string;
+  trainer_comment?: string | null;
+  feedback_date?: string | null;
+  is_evaluated?: boolean;
   student?: { id: string; name: string; email: string | null; } | null;
   campaign?: { title_es: string; } | null;
   module?: { title_es: string; } | null;
@@ -42,6 +53,29 @@ interface PendingAttempt {
 }
 
 type SortKey = 'recent' | 'score_desc' | 'score_asc' | 'name';
+
+/** Segmentos activos de la navegación jerárquica del panel. */
+interface NavPath {
+  campaign?: { id: string; name: string };
+  course?: { id: string; title: string };
+  module?: { id: string; title: string };
+  learner?: { id: string; name: string };
+}
+
+/** Clave centinela para agrupar intentos sin campaña/curso/módulo asignado. */
+const NONE_KEY = '__none__';
+
+type NavLevel = 'campaign' | 'course' | 'module' | 'learner' | 'attempt';
+
+/** Un nodo de un nivel intermedio de la jerarquía (campaña/curso/módulo/aprendiz). */
+interface HierNode {
+  key: string;
+  name: string;
+  pending: number;
+  total: number;
+  learners: Set<string>;
+  lastAt: number;
+}
 
 /** Clases de color de texto según la nota (verde / ámbar / rojo). */
 const scoreTextTone = (score: number) => {
@@ -76,11 +110,22 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const [viewMode, setViewMode] = useState<'graphic' | 'json'>('graphic');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [scoreFilter, setScoreFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('pending');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('recent');
-  const [isScoreOpen, setIsScoreOpen] = useState<boolean>(false);
-  const [isSortOpen, setIsSortOpen] = useState<boolean>(false);
-  const scoreRef = useRef<HTMLDivElement>(null);
-  const sortRef = useRef<HTMLDivElement>(null);
+  // Navegación jerárquica: Campaña → Curso → Módulo → Aprendiz. El nivel actual se
+  // deduce de qué segmentos están puestos (ver `level`), pensado para no volcar
+  // miles de entregas planas: se baja por niveles con contadores de pendientes.
+  const [path, setPath] = useState<NavPath>({});
+  // Un único menú abierto a la vez (status/score/type/sort).
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
+
+  const statusOptions = [
+    { value: 'pending', label: t('admin.trainer_panel.filter_status_pending') },
+    { value: 'evaluated', label: t('admin.trainer_panel.filter_status_evaluated') },
+    { value: 'all', label: t('admin.trainer_panel.filter_status_all') },
+  ];
 
   const scoreOptions = [
     { value: 'all', label: t('admin.trainer_panel.filter_all') },
@@ -95,6 +140,16 @@ export const TrainerFeedbackPanel: React.FC = () => {
     { value: 'score_asc', label: t('admin.trainer_panel.sort_score_asc') },
     { value: 'name', label: t('admin.trainer_panel.sort_name') },
   ];
+
+  // Opción de tipo derivada de las entregas realmente presentes.
+  const typeOptions = useMemo(() => {
+    const types = [...new Set(attempts.map((a) => a.game_type).filter(Boolean))];
+    return [
+      { value: 'all', label: t('admin.trainer_panel.filter_type_all') },
+      ...types.map((type) => ({ value: type, label: formatGameType(type) })),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempts, i18n.language]);
 
   const feedbackTemplates = [
     t('admin.trainer_panel.tpl_excellent'),
@@ -122,21 +177,23 @@ export const TrainerFeedbackPanel: React.FC = () => {
   }, [isSuperAdmin, t]);
 
   useEffect(() => {
-    setComment('');
+    // En una entrega ya evaluada precargamos el comentario existente para poder
+    // revisarlo o corregirlo; en las pendientes empezamos en blanco.
+    setComment(selectedAttempt?.is_evaluated ? selectedAttempt.trainer_comment ?? '' : '');
     setViewMode('graphic');
   }, [selectedAttempt]);
 
-  // Cerrar los menús desplegables al hacer clic fuera de ellos
+  // Cerrar el menú desplegable abierto al hacer clic fuera del bloque de filtros.
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (scoreRef.current && !scoreRef.current.contains(event.target as Node)) setIsScoreOpen(false);
-      if (sortRef.current && !sortRef.current.contains(event.target as Node)) setIsSortOpen(false);
+      if (filtersRef.current && !filtersRef.current.contains(event.target as Node)) setOpenMenu(null);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const formatGameType = (type: string) => {
+  // Función declarada (hoisted) para poder usarla en los useMemo de arriba.
+  function formatGameType(type: string) {
     switch (type) {
       case 'CLASSIFY_CASES': return t('admin.trainer_panel.type_classify');
       case 'SORT_PROCESS': return t('admin.trainer_panel.type_sort');
@@ -144,7 +201,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
       case 'VIDEO_QUIZ': return t('admin.trainer_panel.type_video');
       default: return type.toUpperCase();
     }
-  };
+  }
 
   /** Categoría de alto nivel de la actividad: ícono + etiqueta para el badge. */
   const activityMeta = (type: string): { label: string; Icon: typeof Gamepad2 } => {
@@ -200,62 +257,159 @@ export const TrainerFeedbackPanel: React.FC = () => {
     if (submitError) {
       toast.error(t('admin.trainer_panel.save_err_title'), t('admin.trainer_panel.save_err_desc'));
     } else {
-      // Auto-avance: seleccionamos la siguiente entrega pendiente para no perder el flujo.
-      const remaining = visibleAttempts.filter((item) => item.id !== selectedAttempt.id);
-      const currentIdx = visibleAttempts.findIndex((item) => item.id === selectedAttempt.id);
-      const next = remaining[currentIdx] ?? remaining[currentIdx - 1] ?? null;
+      // Avisamos al aprendiz (campana in-app). No bloqueamos el flujo si falla.
+      notifyLearnerFeedback({
+        userId: selectedAttempt.user_id,
+        moduleTitle: selectedAttempt.module?.title_es ?? null,
+        sectionHeading: selectedAttempt.section?.heading_es ?? null,
+      }).catch((err) => console.error('No se pudo notificar la retroalimentación:', err));
 
-      setAttempts((prev) => prev.filter((item) => item.id !== selectedAttempt.id));
-      setSelectedAttempt(next);
+      // Auto-avance: pasamos a la SIGUIENTE entrega pendiente visible para no perder
+      // el flujo. La entrega evaluada NO se borra: queda marcada como evaluada y
+      // sigue disponible en los filtros «Evaluadas»/«Todas».
+      const nextPending = leafAttempts.find(
+        (item) => item.id !== selectedAttempt.id && !item.is_evaluated,
+      ) ?? null;
+
+      setAttempts((prev) =>
+        prev.map((item) =>
+          item.id === selectedAttempt.id
+            ? { ...item, trainer_comment: payload.trainer_comment, feedback_date: payload.feedback_date, is_evaluated: true }
+            : item,
+        ),
+      );
+      setSelectedAttempt(nextPending);
       setComment('');
       toast.success(t('admin.trainer_panel.saved_ok_title'), t('admin.trainer_panel.saved_ok_desc'));
     }
     setSubmitting(false);
   };
 
-  // Filtrado + orden dinámico
-  const visibleAttempts = useMemo(() => {
-    const search = searchTerm.toLowerCase();
-    const filtered = attempts.filter((attempt) => {
-      const studentName = (attempt.student?.name || t('admin.trainer_panel.student_fallback')).toLowerCase();
-      const gameLabel = formatGameType(attempt.game_type).toLowerCase();
-      const matchesSearch = studentName.includes(search) || gameLabel.includes(search);
-
+  // Pozo base: filtra por nota y tipo (afecta contadores de toda la jerarquía).
+  const pool = useMemo(() => {
+    return attempts.filter((a) => {
       let matchesScore = true;
-      if (scoreFilter === 'perfect') matchesScore = attempt.score === 100;
-      else if (scoreFilter === 'passed') matchesScore = attempt.score >= 70 && attempt.score < 100;
-      else if (scoreFilter === 'failed') matchesScore = attempt.score < 70;
-
-      return matchesSearch && matchesScore;
+      if (scoreFilter === 'perfect') matchesScore = a.score === 100;
+      else if (scoreFilter === 'passed') matchesScore = a.score >= 70 && a.score < 100;
+      else if (scoreFilter === 'failed') matchesScore = a.score < 70;
+      const matchesType = typeFilter === 'all' || a.game_type === typeFilter;
+      return matchesScore && matchesType;
     });
+  }, [attempts, scoreFilter, typeFilter]);
 
+  // Nivel actual de la navegación según los segmentos puestos.
+  const level: NavLevel = !path.campaign
+    ? 'campaign'
+    : !path.course
+      ? 'course'
+      : !path.module
+        ? 'module'
+        : !path.learner
+          ? 'learner'
+          : 'attempt';
+
+  // ¿El intento cae dentro del prefijo de navegación actual?
+  const inPrefix = (a: PendingAttempt) =>
+    (!path.campaign || (a.campaign_id ?? NONE_KEY) === path.campaign.id) &&
+    (!path.course || (a.course_id ?? NONE_KEY) === path.course.id) &&
+    (!path.module || (a.module_id ?? NONE_KEY) === path.module.id) &&
+    (!path.learner || a.user_id === path.learner.id);
+
+  // Nodos del nivel intermedio actual (campaña/curso/módulo/aprendiz) con contadores.
+  const nodes = useMemo<HierNode[]>(() => {
+    if (level === 'attempt') return [];
+    const scoped = pool.filter(inPrefix);
+    const map = new Map<string, HierNode>();
+    for (const a of scoped) {
+      let key: string;
+      let name: string;
+      if (level === 'campaign') { key = a.campaign_id ?? NONE_KEY; name = a.campaign_name || t('admin.trainer_panel.no_campaign'); }
+      else if (level === 'course') { key = a.course_id ?? NONE_KEY; name = a.course_title || t('admin.trainer_panel.no_course'); }
+      else if (level === 'module') { key = a.module_id ?? NONE_KEY; name = a.module?.title_es || t('admin.trainer_panel.module_fallback'); }
+      else { key = a.user_id; name = a.student?.name || t('admin.trainer_panel.student_fallback'); }
+      let node = map.get(key);
+      if (!node) { node = { key, name, pending: 0, total: 0, learners: new Set(), lastAt: 0 }; map.set(key, node); }
+      node.total++;
+      if (!a.is_evaluated) node.pending++;
+      node.learners.add(a.user_id);
+      const at = new Date(a.started_at).getTime();
+      if (at > node.lastAt) node.lastAt = at;
+    }
+    let arr = [...map.values()];
+    const s = searchTerm.trim().toLowerCase();
+    if (s) arr = arr.filter((n) => n.name.toLowerCase().includes(s));
+    // Prioriza lo que tiene pendientes; luego lo más reciente; luego alfabético.
+    arr.sort((a, b) => b.pending - a.pending || b.lastAt - a.lastAt || a.name.localeCompare(b.name));
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pool, path, level, searchTerm, i18n.language]);
+
+  // Entregas del nivel hoja (aprendiz seleccionado): estado + búsqueda + orden.
+  const leafAttempts = useMemo(() => {
+    if (level !== 'attempt') return [] as PendingAttempt[];
+    const s = searchTerm.trim().toLowerCase();
+    const filtered = pool.filter((a) => {
+      if (!inPrefix(a)) return false;
+      let matchesStatus = true;
+      if (statusFilter === 'pending') matchesStatus = !a.is_evaluated;
+      else if (statusFilter === 'evaluated') matchesStatus = !!a.is_evaluated;
+      if (!matchesStatus) return false;
+      if (!s) return true;
+      return (
+        formatGameType(a.game_type).toLowerCase().includes(s) ||
+        (a.section?.heading_es || '').toLowerCase().includes(s)
+      );
+    });
     const sorted = [...filtered];
     sorted.sort((a, b) => {
       switch (sortKey) {
         case 'score_desc': return b.score - a.score;
         case 'score_asc': return a.score - b.score;
-        case 'name':
-          return (a.student?.name || '').localeCompare(b.student?.name || '');
+        case 'name': return (a.section?.heading_es || '').localeCompare(b.section?.heading_es || '');
         case 'recent':
-        default:
-          return new Date(b.started_at).getTime() - new Date(a.started_at).getTime();
+        default: return new Date(b.started_at).getTime() - new Date(a.started_at).getTime();
       }
     });
     return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempts, searchTerm, scoreFilter, sortKey, i18n.language]);
+  }, [pool, path, level, statusFilter, searchTerm, sortKey, i18n.language]);
 
-  // Estadísticas globales (sobre TODAS las pendientes, no las filtradas)
+  // Estadísticas globales sobre las entregas PENDIENTES del pozo filtrado.
   const stats = useMemo(() => {
-    const total = attempts.length;
-    const avg = total === 0 ? 0 : Math.round(attempts.reduce((s, a) => s + a.score, 0) / total);
-    const perfect = attempts.filter((a) => a.score === 100).length;
-    const passed = attempts.filter((a) => a.score >= 70 && a.score < 100).length;
-    const failed = attempts.filter((a) => a.score < 70).length;
+    const pending = pool.filter((a) => !a.is_evaluated);
+    const total = pending.length;
+    const avg = total === 0 ? 0 : Math.round(pending.reduce((s, a) => s + a.score, 0) / total);
+    const perfect = pending.filter((a) => a.score === 100).length;
+    const passed = pending.filter((a) => a.score >= 70 && a.score < 100).length;
+    const failed = pending.filter((a) => a.score < 70).length;
     return { total, avg, perfect, passed, failed };
-  }, [attempts]);
+  }, [pool]);
 
+  // ── Navegación por la jerarquía ──
+  const enterNode = (node: HierNode) => {
+    if (level === 'campaign') setPath((p) => ({ ...p, campaign: { id: node.key, name: node.name } }));
+    else if (level === 'course') setPath((p) => ({ ...p, course: { id: node.key, title: node.name } }));
+    else if (level === 'module') setPath((p) => ({ ...p, module: { id: node.key, title: node.name } }));
+    else if (level === 'learner') setPath((p) => ({ ...p, learner: { id: node.key, name: node.name } }));
+    setSelectedAttempt(null);
+    setSearchTerm('');
+  };
+
+  // Retrocede a una profundidad del breadcrumb (0=raíz, 1=campaña … 4=aprendiz).
+  const goToDepth = (depth: number) => {
+    setPath((p) => ({
+      campaign: depth >= 1 ? p.campaign : undefined,
+      course: depth >= 2 ? p.course : undefined,
+      module: depth >= 3 ? p.module : undefined,
+      learner: depth >= 4 ? p.learner : undefined,
+    }));
+    setSelectedAttempt(null);
+    setSearchTerm('');
+  };
+
+  const selectedStatusLabel = statusOptions.find((opt) => opt.value === statusFilter)?.label || '';
   const selectedScoreLabel = scoreOptions.find((opt) => opt.value === scoreFilter)?.label || '';
+  const selectedTypeLabel = typeOptions.find((opt) => opt.value === typeFilter)?.label || '';
   const selectedSortLabel = sortOptions.find((opt) => opt.value === sortKey)?.label || '';
 
   // Vista analítica (dona + tarjetas detalladas)
@@ -379,14 +533,14 @@ export const TrainerFeedbackPanel: React.FC = () => {
     );
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-bg text-text font-medium text-sm">{t('admin.trainer_panel.loading')}</div>;
-  if (error) return <div className="flex h-screen items-center justify-center bg-bg text-red-500 font-medium text-sm">{error}</div>;
+  if (loading) return <div className="flex h-full min-h-[60vh] items-center justify-center bg-bg text-text font-medium text-sm">{t('admin.trainer_panel.loading')}</div>;
+  if (error) return <div className="flex h-full min-h-[60vh] items-center justify-center bg-bg text-red-500 font-medium text-sm">{error}</div>;
 
   const remaining = comment.trim().length;
   const canSubmit = remaining >= MIN_FEEDBACK_CHARS && !submitting;
 
   return (
-    <div className="flex flex-col h-screen bg-bg text-text overflow-hidden font-sans">
+    <div className="flex flex-col h-full bg-bg text-text overflow-hidden font-sans">
 
       {/* ===== Barra superior con resumen global ===== */}
       <header className="shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sm:gap-4">
@@ -412,68 +566,200 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
       <div className="flex flex-1 overflow-hidden">
 
-        {/* ===== Columna Izquierda: bandeja de entregas ===== */}
+        {/* ===== Columna Izquierda: navegador jerárquico ===== */}
         <aside className={cn(
           'w-full md:w-[360px] xl:w-[400px] md:shrink-0 border-r border-line flex-col h-full bg-bg',
           selectedAttempt ? 'hidden md:flex' : 'flex',
         )}>
-          <div className="p-4 border-b border-line shrink-0 space-y-2">
+          <div className="p-4 border-b border-line shrink-0 space-y-2" ref={filtersRef}>
+            {/* Migas de pan: Campañas › Campaña › Curso › Módulo › Aprendiz */}
+            <div className="flex items-center gap-1 flex-wrap text-[11px]">
+              {(() => {
+                const crumbs: { label: string; depth: number }[] = [
+                  { label: t('admin.trainer_panel.crumb_root'), depth: 0 },
+                ];
+                if (path.campaign) crumbs.push({ label: path.campaign.name, depth: 1 });
+                if (path.course) crumbs.push({ label: path.course.title, depth: 2 });
+                if (path.module) crumbs.push({ label: path.module.title, depth: 3 });
+                if (path.learner) crumbs.push({ label: path.learner.name, depth: 4 });
+                return crumbs.map((c, idx) => {
+                  const isLast = idx === crumbs.length - 1;
+                  return (
+                    <span key={c.depth} className="flex items-center gap-1 min-w-0">
+                      {idx > 0 && <ChevronRight className="w-3 h-3 text-text-muted/40 shrink-0" />}
+                      <button
+                        type="button"
+                        disabled={isLast}
+                        onClick={() => goToDepth(c.depth)}
+                        className={cn(
+                          'truncate max-w-[120px] rounded px-1 py-0.5 transition-colors',
+                          isLast
+                            ? 'font-semibold text-text cursor-default'
+                            : 'text-text-muted hover:text-green-600 dark:hover:text-green-400 hover:bg-green-500/5',
+                        )}
+                        title={c.label}
+                      >
+                        {c.label}
+                      </button>
+                    </span>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Botón "subir un nivel" cuando no estamos en la raíz */}
+            {level !== 'campaign' && (
+              <button
+                type="button"
+                onClick={() => goToDepth(
+                  level === 'attempt' ? 3 : level === 'learner' ? 2 : level === 'module' ? 1 : 0,
+                )}
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-text-muted hover:text-text transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                {t('admin.trainer_panel.go_up')}
+              </button>
+            )}
+
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted/60" />
               <input
                 type="text"
-                placeholder={t('admin.trainer_panel.ph_search')}
+                placeholder={
+                  level === 'campaign' ? t('admin.trainer_panel.ph_search_campaign')
+                    : level === 'course' ? t('admin.trainer_panel.ph_search_course')
+                    : level === 'module' ? t('admin.trainer_panel.ph_search_module')
+                    : level === 'learner' ? t('admin.trainer_panel.ph_search_learner')
+                    : t('admin.trainer_panel.ph_search_activity')
+                }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-line rounded-xl pl-9 pr-4 py-2 text-xs text-text placeholder:text-text-muted/50 outline-none focus:border-green-500/40 transition-colors"
               />
             </div>
 
-            <div className="flex gap-2">
-              {/* Filtro por nota */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Estado y orden solo importan en el nivel hoja (lista de intentos) */}
+              {level === 'attempt' && (
+                <Dropdown
+                  open={openMenu === 'status'}
+                  onToggle={() => setOpenMenu(openMenu === 'status' ? null : 'status')}
+                  icon={<ClipboardCheck className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                  label={selectedStatusLabel}
+                  options={statusOptions}
+                  selected={statusFilter}
+                  onSelect={(v) => { setStatusFilter(v); setOpenMenu(null); }}
+                />
+              )}
+              {/* Filtro por nota (afecta contadores de toda la jerarquía) */}
               <Dropdown
-                innerRef={scoreRef}
-                open={isScoreOpen}
-                onToggle={() => { setIsScoreOpen(!isScoreOpen); setIsSortOpen(false); }}
+                open={openMenu === 'score'}
+                onToggle={() => setOpenMenu(openMenu === 'score' ? null : 'score')}
                 icon={<SlidersHorizontal className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
                 label={selectedScoreLabel}
                 options={scoreOptions}
                 selected={scoreFilter}
-                onSelect={(v) => { setScoreFilter(v); setIsScoreOpen(false); }}
+                onSelect={(v) => { setScoreFilter(v); setOpenMenu(null); }}
               />
-              {/* Orden */}
+              {/* Filtro por tipo de actividad */}
               <Dropdown
-                innerRef={sortRef}
-                open={isSortOpen}
-                onToggle={() => { setIsSortOpen(!isSortOpen); setIsScoreOpen(false); }}
-                icon={<ArrowDownUp className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
-                label={selectedSortLabel}
-                options={sortOptions}
-                selected={sortKey}
-                onSelect={(v) => { setSortKey(v as SortKey); setIsSortOpen(false); }}
+                open={openMenu === 'type'}
+                onToggle={() => setOpenMenu(openMenu === 'type' ? null : 'type')}
+                icon={<Gamepad2 className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                label={selectedTypeLabel}
+                options={typeOptions}
+                selected={typeFilter}
+                onSelect={(v) => { setTypeFilter(v); setOpenMenu(null); }}
               />
+              {level === 'attempt' && (
+                <div className="col-span-2">
+                  <Dropdown
+                    open={openMenu === 'sort'}
+                    onToggle={() => setOpenMenu(openMenu === 'sort' ? null : 'sort')}
+                    icon={<ArrowDownUp className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                    label={selectedSortLabel}
+                    options={sortOptions}
+                    selected={sortKey}
+                    onSelect={(v) => { setSortKey(v as SortKey); setOpenMenu(null); }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Lista */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
-            {visibleAttempts.length === 0 ? (
-              attempts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-text-muted space-y-3 text-center px-6">
-                  <div className="w-14 h-14 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-green-500" />
-                  </div>
-                  <p className="text-sm font-semibold text-text">{t('admin.trainer_panel.all_caught_up')}</p>
-                  <p className="text-xs text-text-muted/70">{t('admin.trainer_panel.all_caught_up_desc')}</p>
-                </div>
+          {/* Encabezado del nivel actual */}
+          <div className="px-4 py-2 shrink-0 flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+              {level === 'campaign' ? t('admin.trainer_panel.lvl_campaigns')
+                : level === 'course' ? t('admin.trainer_panel.lvl_courses')
+                : level === 'module' ? t('admin.trainer_panel.lvl_modules')
+                : level === 'learner' ? t('admin.trainer_panel.lvl_learners')
+                : t('admin.trainer_panel.lvl_activities')}
+            </span>
+            <span className="text-[10px] font-mono text-text-muted/70">
+              {level === 'attempt' ? leafAttempts.length : nodes.length}
+            </span>
+          </div>
+
+          {/* Lista (nodos intermedios o entregas hoja) */}
+          <div className="flex-1 overflow-y-auto p-3 pt-0 space-y-2 custom-scrollbar">
+            {level !== 'attempt' ? (
+              nodes.length === 0 ? (
+                <EmptyState attemptsEmpty={attempts.length === 0} t={t} />
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-text-muted space-y-2">
-                  <p className="text-sm text-center">{t('admin.trainer_panel.no_submissions')}</p>
-                  <p className="text-xs text-text-muted/60">{t('admin.trainer_panel.try_other_search')}</p>
-                </div>
+                nodes.map((node) => {
+                  const LevelIcon = level === 'campaign' ? Building2 : level === 'course' ? BookOpen : level === 'module' ? Layers : null;
+                  return (
+                    <button
+                      key={node.key}
+                      onClick={() => enterNode(node)}
+                      className="group w-full text-left p-3 rounded-2xl cursor-pointer border border-line bg-zinc-50/60 dark:bg-zinc-900/40 hover:border-green-500/40 transition-all duration-200 select-none flex items-center gap-3"
+                    >
+                      {LevelIcon ? (
+                        <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center border bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400">
+                          <LevelIcon className="w-5 h-5" />
+                        </div>
+                      ) : (
+                        <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-bold border bg-zinc-200/50 dark:bg-zinc-800 border-line text-text-muted">
+                          {initials(node.name)}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] font-semibold text-text truncate">{node.name}</span>
+                          {node.pending > 0 ? (
+                            <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
+                              {node.pending}
+                            </span>
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4 shrink-0 text-green-500" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted/80">
+                          {level === 'learner' ? (
+                            <span className="inline-flex items-center gap-1">
+                              <ClipboardCheck className="w-3 h-3" />
+                              {t('admin.trainer_panel.sub_activities', { count: node.total })}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              <Users className="w-3 h-3" />
+                              {t('admin.trainer_panel.sub_learners', { count: node.learners.size })}
+                            </span>
+                          )}
+                          <span className="text-text-muted/50">·</span>
+                          <span>{t('admin.trainer_panel.sub_pending', { count: node.pending })}</span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 shrink-0 text-text-muted/30 group-hover:text-green-500 transition-colors" />
+                    </button>
+                  );
+                })
               )
+            ) : leafAttempts.length === 0 ? (
+              <EmptyState attemptsEmpty={attempts.length === 0} t={t} />
             ) : (
-              visibleAttempts.map((attempt) => {
+              leafAttempts.map((attempt) => {
                 const isActive = selectedAttempt?.id === attempt.id;
                 const studentName = attempt.student?.name || t('admin.trainer_panel.student_fallback');
                 const meta = activityMeta(attempt.game_type);
@@ -501,7 +787,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold text-text truncate">{studentName}</span>
+                        <span className="text-[13px] font-semibold text-text truncate">
+                          {attempt.section?.heading_es || studentName}
+                        </span>
                         <span className={cn('text-xs font-mono font-bold shrink-0', scoreTextTone(attempt.score))}>{attempt.score}%</span>
                       </div>
                       <p className="text-[11px] text-text-muted truncate mt-0.5">{formatGameType(attempt.game_type)}</p>
@@ -510,6 +798,12 @@ export const TrainerFeedbackPanel: React.FC = () => {
                           <meta.Icon className="w-3 h-3" />
                           {meta.label}
                         </span>
+                        {attempt.is_evaluated && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-green-500/10 border border-green-500/20 text-[9px] font-bold uppercase tracking-wide text-green-600 dark:text-green-400">
+                            <CheckCircle2 className="w-3 h-3" />
+                            {t('admin.trainer_panel.evaluated_badge')}
+                          </span>
+                        )}
                         <span className="flex items-center gap-1 text-[10px] text-text-muted/70">
                           <Clock className="w-3 h-3" />
                           {relativeTime(attempt.started_at)}
@@ -732,6 +1026,23 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
 /* ---------- Subcomponentes de presentación ---------- */
 
+/** Estado vacío de la lista: "todo al día" si no hay entregas, o "sin resultados". */
+const EmptyState: React.FC<{ attemptsEmpty: boolean; t: (k: string) => string }> = ({ attemptsEmpty, t }) =>
+  attemptsEmpty ? (
+    <div className="flex flex-col items-center justify-center py-16 text-text-muted space-y-3 text-center px-6">
+      <div className="w-14 h-14 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+        <Sparkles className="w-6 h-6 text-green-500" />
+      </div>
+      <p className="text-sm font-semibold text-text">{t('admin.trainer_panel.all_caught_up')}</p>
+      <p className="text-xs text-text-muted/70">{t('admin.trainer_panel.all_caught_up_desc')}</p>
+    </div>
+  ) : (
+    <div className="flex flex-col items-center justify-center py-12 text-text-muted space-y-2">
+      <p className="text-sm text-center">{t('admin.trainer_panel.no_submissions')}</p>
+      <p className="text-xs text-text-muted/60">{t('admin.trainer_panel.try_other_search')}</p>
+    </div>
+  );
+
 const StatChip: React.FC<{ icon: React.ReactNode; label: string; value: string; valueClass?: string }> = ({ icon, label, value, valueClass }) => (
   <div className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-900/60 border border-line rounded-xl px-3 py-1.5">
     <span className="text-text-muted/70">{icon}</span>
@@ -750,7 +1061,7 @@ const Dot: React.FC<{ color: string; n: number; title: string }> = ({ color, n, 
 );
 
 interface DropdownProps {
-  innerRef: React.RefObject<HTMLDivElement>;
+  innerRef?: React.RefObject<HTMLDivElement>;
   open: boolean;
   onToggle: () => void;
   icon: React.ReactNode;

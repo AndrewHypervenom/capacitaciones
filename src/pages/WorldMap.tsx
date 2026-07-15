@@ -49,9 +49,9 @@ const THEMES: Record<string, {
     label: 'Salud',
   },
   corporate: {
-    tint: 'rgba(0,194,40,0.07)',
-    pathColor: '#00C228',
-    regionGlow: 'rgba(0,194,40,0.08)',
+    tint: 'rgba(16,212,81,0.07)',
+    pathColor: '#10D451',
+    regionGlow: 'rgba(16,212,81,0.08)',
     ambientEmojis: ['🚀','⭐','💫','🌟','🎯','📈','🏆','✨'],
     label: 'Corporativo',
   },
@@ -402,7 +402,7 @@ export default function WorldMap() {
   })), [])
 
   const theme = THEMES[world?.bg_type ?? 'corporate'] ?? THEMES.corporate
-  const tc    = world?.color ?? '#00C228'
+  const tc    = world?.color ?? '#10D451'
 
   const completedCount = completedIds.size
   const totalCount     = levels.length

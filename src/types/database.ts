@@ -614,6 +614,32 @@ export interface Database {
         }
         Relationships: []
       }
+      user_notifications: {
+        Row: {
+          id: string
+          user_id: string
+          kind: string
+          scope: 'course' | 'module' | 'section' | 'world' | 'simulator'
+          course_id: string | null
+          payload: Json
+          created_at: string
+          read_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          kind?: string
+          scope: 'course' | 'module' | 'section' | 'world' | 'simulator'
+          course_id?: string | null
+          payload?: Json
+          created_at?: string
+          read_at?: string | null
+        }
+        Update: {
+          read_at?: string | null
+        }
+        Relationships: []
+      }
       choice_scenarios: {
         Row: {
           id: string
@@ -630,6 +656,8 @@ export interface Database {
           start_node_id: string
           nodes: Json
           is_published: boolean
+          course_id: string | null
+          pass_score: number
           created_at: string
         }
         Insert: {
@@ -647,6 +675,8 @@ export interface Database {
           start_node_id?: string
           nodes?: Json
           is_published?: boolean
+          course_id?: string | null
+          pass_score?: number
           created_at?: string
         }
         Update: {
@@ -664,6 +694,8 @@ export interface Database {
           start_node_id?: string
           nodes?: Json
           is_published?: boolean
+          course_id?: string | null
+          pass_score?: number
         }
         Relationships: []
       }
@@ -819,6 +851,7 @@ export interface Database {
           questions: Json
           created_at: string
           question_started_at: string | null
+          pin_expires_at: string | null
         }
         Insert: {
           id?: string
@@ -831,13 +864,17 @@ export interface Database {
           questions?: Json
           created_at?: string
           question_started_at?: string | null
+          pin_expires_at?: string | null
         }
         Update: {
+          title?: string
+          campaign_id?: string
           status?: 'lobby' | 'active' | 'ended'
           current_question?: number
           questions?: Json
           pin?: string
           question_started_at?: string | null
+          pin_expires_at?: string | null
         }
         Relationships: []
       }
@@ -1384,6 +1421,26 @@ export interface Database {
       reset_user_course_admin: {
         Args: { p_user_id: string; p_course_id: string }
         Returns: undefined
+      }
+      reset_user_module_admin: {
+        Args: { p_user_id: string; p_module_id: string }
+        Returns: undefined
+      }
+      reset_user_section_admin: {
+        Args: { p_user_id: string; p_section_id: string }
+        Returns: undefined
+      }
+      reset_user_world_admin: {
+        Args: { p_user_id: string; p_course_id: string }
+        Returns: undefined
+      }
+      reset_user_simulator_admin: {
+        Args: { p_user_id: string; p_course_id: string }
+        Returns: undefined
+      }
+      get_user_course_detail_admin: {
+        Args: { p_user_id: string; p_course_id: string }
+        Returns: Json
       }
       get_all_courses_progress_admin: {
         Args: Record<string, never>

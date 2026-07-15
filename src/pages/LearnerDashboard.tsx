@@ -35,6 +35,7 @@ import { supabase } from '@/lib/supabase';
 import { signOut } from '@/services/auth.service';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Avatar } from '@/components/ui/Avatar';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
@@ -253,7 +254,8 @@ export default function LearnerDashboard() {
           <img src="/logo.jpg" alt={t('brand')} className="h-7 w-7 rounded-md" width={28} height={28} />
           <span className="text-[14px] font-semibold tracking-tight text-text">{t('brand')}</span>
         </a>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <NotificationBell />
           {/* Solo staff: alternar gestión ⇄ aprendiz sin abrir el drawer */}
           <ViewSwitcher variant="inline" onSwitch={closeMenu} />
         </div>
@@ -282,13 +284,17 @@ export default function LearnerDashboard() {
             <img src="/logo.jpg" alt={t('brand')} className="h-8 w-8 rounded-lg" width={32} height={32} />
             <span className="text-[16px] font-bold tracking-tight text-text">{t('brand')}</span>
           </a>
-          <button
-            onClick={closeMenu}
-            aria-label={t('nav.close_menu', 'Cerrar menú')}
-            className="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle hover:text-text"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* En desktop la campana vive en el sidebar; en móvil ya está en el header */}
+            <NotificationBell className="hidden lg:inline-flex" />
+            <button
+              onClick={closeMenu}
+              aria-label={t('nav.close_menu', 'Cerrar menú')}
+              className="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle hover:text-text"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Cambio de vista (solo staff): arriba, para volver a gestión al instante */}

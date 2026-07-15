@@ -100,6 +100,20 @@ interface ProgressState {
   recordWorldProgress: (levelsCompleted: number, worldsCompleted?: number) => string[];
   recheckBadges: (modules: { id: string; courseId?: string | null }[]) => string[];
   reset: () => void;
+  /**
+   * Aplica un restablecimiento hecho por el superadmin sobre la caché local, para
+   * que la UI deje de mostrar 100%. Limpia solo lo que indique el payload.
+   */
+  applyReset: (payload: ResetLocalPayload) => void;
+}
+
+/** Datos mínimos del payload de notificación que afectan al store local. */
+export interface ResetLocalPayload {
+  module_slugs?: string[];
+  check_answer_keys?: string[];
+  scenario_slugs?: string[];
+  clear_world?: boolean;
+  course_id?: string | null;
 }
 
 function todayISO(): string {
@@ -309,6 +323,38 @@ export const useProgressStore = create<ProgressState>()(
           worldLevelsCompleted: 0,
           worldsCompleted: 0,
         }),
+
+      applyReset: (payload) => {
+        const s = get();
+        const patch: Partial<ProgressState> = {};
+
+        // Módulos completados (guardados por SLUG).
+        if (payload.module_slugs?.length) {
+          const remove = new Set(payload.module_slugs);
+          patch.completedModules = s.completedModules.filter((m) => !remove.has(m));
+        }
+
+        // Respuestas de knowledge-check (objeto keyed por UUID de módulo).
+        if (payload.check_answer_keys?.length) {
+          const next = { ...s.checkAnswers };
+          for (const k of payload.check_answer_keys) delete next[k];
+          patch.checkAnswers = next;
+        }
+
+        // Intentos del simulador (guardan scenarioId = slug del escenario).
+        if (payload.scenario_slugs?.length) {
+          const remove = new Set(payload.scenario_slugs);
+          patch.attempts = s.attempts.filter((a) => !remove.has(a.scenarioId));
+        }
+
+        // Reset de curso completo: también quita la certificación local y los
+        // contadores de mundo (máximos para logros), para no dejar rastros del 100%.
+        if (payload.clear_world && payload.course_id != null) {
+          patch.certifiedCourseIds = s.certifiedCourseIds.filter((id) => id !== payload.course_id);
+        }
+
+        if (Object.keys(patch).length > 0) set(patch);
+      },
     }),
     {
       name: 'learningai.progress',

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, X, Pencil, Trash2, Globe, Map } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
@@ -52,7 +53,7 @@ const emptyForm = (): WorldForm => ({
   description: '',
   campaign_id: '',
   icon: '🌍',
-  color: '#00C228',
+  color: '#10D451',
   bg_type: 'corporate',
 })
 
@@ -63,7 +64,7 @@ function normalizeRow(row: Record<string, unknown>): World {
     description: (row.description as string) ?? '',
     campaign_id: (row.campaign_id as string | null) ?? null,
     icon: (row.icon as string) ?? '🌍',
-    color: (row.color as string) ?? '#00C228',
+    color: (row.color as string) ?? '#10D451',
     bg_type: (row.bg_type as BgType) ?? 'corporate',
     status: (row.status as WorldStatus) ?? 'draft',
   }
@@ -291,9 +292,9 @@ export default function Worlds() {
             <button
               onClick={openWizardNew}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
-              style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
+              style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.12)' }}
             >
               <Plus className="h-4 w-4" />
               Nuevo mundo
@@ -324,9 +325,9 @@ export default function Worlds() {
         ) : filtered.length === 0 ? (
           <div
             className="rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
-            style={{ background: 'rgba(0,194,40,0.04)', border: '1px dashed rgba(0,194,40,0.20)' }}
+            style={{ background: 'rgba(16,212,81,0.04)', border: '1px dashed rgba(16,212,81,0.20)' }}
           >
-            <Globe className="h-10 w-10 mb-4" style={{ color: '#00C228', opacity: 0.5 }} />
+            <Globe className="h-10 w-10 mb-4" style={{ color: '#10D451', opacity: 0.5 }} />
             <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_worlds')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
               Creá tu primer mundo y armá sus regiones y niveles.
@@ -334,9 +335,9 @@ export default function Worlds() {
             <button
               onClick={openWizardNew}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors min-h-[44px]"
-              style={{ background: 'rgba(0,194,40,0.12)', color: '#00C228', border: '1px solid rgba(0,194,40,0.25)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.12)' }}
+              style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.12)' }}
             >
               <Plus className="h-4 w-4" />
               Nuevo mundo
@@ -364,7 +365,7 @@ export default function Worlds() {
                           className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full"
                           style={
                             isPublished
-                              ? { background: 'rgba(0,194,40,0.10)', color: '#00C228' }
+                              ? { background: 'rgba(16,212,81,0.10)', color: '#10D451' }
                               : { background: 'rgb(var(--glass-border) / 0.07)', color: 'rgb(var(--text-muted))' }
                           }
                         >
@@ -418,7 +419,7 @@ export default function Worlds() {
                       style={
                         isPublished
                           ? { background: 'rgb(var(--glass-border) / 0.06)', color: 'rgb(var(--text-muted))', border: '1px solid rgb(var(--glass-border) / 0.10)' }
-                          : { background: 'rgba(0,194,40,0.10)', color: '#00C228', border: '1px solid rgba(0,194,40,0.22)' }
+                          : { background: 'rgba(16,212,81,0.10)', color: '#10D451', border: '1px solid rgba(16,212,81,0.22)' }
                       }
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.70' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
@@ -428,9 +429,9 @@ export default function Worlds() {
                     <button
                       onClick={() => navigate(`/admin/worlds/${w.id}`)}
                       className="flex items-center justify-center min-h-[44px] gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors"
-                      style={{ background: 'rgba(0,194,40,0.10)', color: '#00C228', border: '1px solid rgba(0,194,40,0.22)' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.20)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,194,40,0.10)' }}
+                      style={{ background: 'rgba(16,212,81,0.10)', color: '#10D451', border: '1px solid rgba(16,212,81,0.22)' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.20)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,212,81,0.10)' }}
                     >
                       <Map className="h-3.5 w-3.5" />
                       Regiones y niveles
@@ -448,7 +449,7 @@ export default function Worlds() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)' }}
-          onClick={e => { if (e.target === e.currentTarget) closeWizard() }}
+          {...backdropDismiss(closeWizard)}
         >
           <div className="worlds-modal w-full max-w-lg rounded-2xl bg-surface border border-line flex flex-col overflow-hidden" style={{ maxHeight: '90vh' }}>
             {/* Header */}
@@ -465,7 +466,7 @@ export default function Worlds() {
             <div className="px-4 sm:px-6 py-5 overflow-y-auto flex-1">
               <div className="space-y-4">
                 <div className="text-center pt-1 pb-1">
-                  <div className="h-14 w-14 rounded-2xl mx-auto mb-3 flex items-center justify-center text-[28px]" style={{ background: 'rgba(0,194,40,0.12)' }}>
+                  <div className="h-14 w-14 rounded-2xl mx-auto mb-3 flex items-center justify-center text-[28px]" style={{ background: 'rgba(16,212,81,0.12)' }}>
                     {form.icon || '🌍'}
                   </div>
                   <h3 className="text-[18px] font-bold text-text mb-1">{i18n.t('admin.worlds.wiz_name_q')}</h3>
@@ -480,7 +481,7 @@ export default function Worlds() {
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder={i18n.t('admin.worlds.ph_world_name')}
-                  className="w-full px-4 py-3 rounded-xl text-[16px] font-semibold text-center bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/60 transition-colors"
+                  className="w-full px-4 py-3 rounded-xl text-[16px] font-semibold text-center bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/60 transition-colors"
                 />
                 <div className="grid grid-cols-3 gap-3">
                   <div>
@@ -489,7 +490,7 @@ export default function Worlds() {
                       value={form.icon}
                       onChange={e => setForm(f => ({ ...f, icon: e.target.value }))}
                       placeholder="🌍"
-                      className="w-full px-3 py-2.5 rounded-xl text-[18px] bg-bg border border-line text-text focus:outline-none focus:border-[#00C228]/50 transition-colors text-center min-h-[44px]"
+                      className="w-full px-3 py-2.5 rounded-xl text-[18px] bg-bg border border-line text-text focus:outline-none focus:border-[#10D451]/50 transition-colors text-center min-h-[44px]"
                     />
                   </div>
                   <div>
@@ -531,7 +532,7 @@ export default function Worlds() {
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     placeholder={i18n.t('admin.worlds.ph_world_desc')}
                     rows={2}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#00C228]/50 transition-colors resize-none"
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors resize-none"
                   />
                 </div>
               </div>
@@ -547,7 +548,7 @@ export default function Worlds() {
                 onClick={submitWizard}
                 disabled={savingWorld || !form.name.trim() || (!scopedToCampaign && !form.campaign_id)}
                 className="flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
-                style={{ background: 'rgba(0,194,40,0.14)', color: '#00C228', border: '1px solid rgba(0,194,40,0.28)' }}
+                style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.28)' }}
               >
                 {savingWorld
                   ? i18n.t('common.saving')

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import i18n from '@/i18n'
+import { backdropDismiss } from '@/lib/backdropDismiss'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -205,7 +206,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
           {/* Fondo oscuro */}
           <motion.div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={handleClose}
+            {...backdropDismiss(handleClose)}
           />
 
           {/* Modal */}

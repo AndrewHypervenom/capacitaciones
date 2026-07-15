@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Phone, PhoneOff, Star } from 'lucide-react';
 import { type ChoiceNode, type ChoiceOption, type ChoiceScenario, calcMaxPoints, getChoiceScenario } from '@/data/choiceScenarios';
+import { getChoiceScenarioBySlug } from '@/services/choiceScenarios.service';
+import { saveSimulatorAttempt } from '@/services/certification.service';
+import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
 import type { Language } from '@/stores/userStore';
 
@@ -100,8 +103,18 @@ function ResultStars({ endType }: { endType: 'excellent' | 'good' | 'poor' }) {
 export default function ChoiceSimulatorRun() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const language = useUserStore((s) => s.language);
+  const { user } = useAuth();
+
+  // Contexto de curso (si se llegó desde la página del curso): liga el intento
+  // al curso para certificación y permite volver a él al salir.
+  const simContext = (location.state ?? {}) as {
+    courseId?: string;
+    campaignId?: string;
+    returnTo?: string;
+  };
 
   const [scenario, setScenario] = useState<ChoiceScenario | null>(null);
   const [phase, setPhase] = useState<Phase>('intro');
@@ -118,9 +131,22 @@ export default function ChoiceSimulatorRun() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const attemptSavedRef = useRef(false);
 
   useEffect(() => {
-    if (id) setScenario(getChoiceScenario(id) ?? null);
+    if (!id) return;
+    // Primero los escenarios estáticos; si no está, se busca en la base
+    // (escenarios creados por el capacitador en Simulaciones).
+    const local = getChoiceScenario(id);
+    if (local) {
+      setScenario(local);
+      return;
+    }
+    let active = true;
+    getChoiceScenarioBySlug(id)
+      .then((s) => { if (active) setScenario(s); })
+      .catch(() => { if (active) setScenario(null); });
+    return () => { active = false; };
   }, [id]);
 
   useEffect(() => {
@@ -144,6 +170,23 @@ export default function ChoiceSimulatorRun() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typing]);
+
+  // Persistir el intento en BD (auditable + cuenta para la certificación del curso).
+  useEffect(() => {
+    if (phase !== 'result' || attemptSavedRef.current || !user?.id || !scenario) return;
+    attemptSavedRef.current = true;
+    const pct = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
+    saveSimulatorAttempt(user.id, {
+      courseId: simContext.courseId ?? null,
+      campaignId: simContext.campaignId ?? null,
+      scenarioSlug: scenario.id,
+      score: pct,
+      checklistPct: pct / 100,
+      empathyPct: pct / 100,
+      resolved: !earlyEnd && endType !== 'poor',
+      durationSec: callSeconds,
+    }).catch(() => {});
+  }, [phase, user?.id, scenario, maxPoints, totalPoints, earlyEnd, endType, callSeconds, simContext.courseId, simContext.campaignId]);
 
   const endCall = useCallback((node: ChoiceNode) => {
     setEndType(node.endType ?? 'poor');
@@ -216,6 +259,7 @@ export default function ChoiceSimulatorRun() {
 
   const handleRetry = useCallback(() => {
     clearAllTimeouts();
+    attemptSavedRef.current = false;
     setPhase('intro');
     setMessages([]);
     setTotalPoints(0);
@@ -268,7 +312,7 @@ export default function ChoiceSimulatorRun() {
             className="min-h-screen flex flex-col items-center justify-center px-4 py-16 relative"
           >
             <button
-              onClick={() => nav('/simulator')}
+              onClick={() => nav(simContext.returnTo ?? '/simulator')}
               className="absolute top-6 left-6 flex items-center gap-2 text-[14px] text-text-muted hover:text-text transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -816,7 +860,7 @@ export default function ChoiceSimulatorRun() {
                   {t('simulator.choice.retry')}
                 </button>
                 <button
-                  onClick={() => nav('/dashboard')}
+                  onClick={() => nav(simContext.returnTo ?? '/dashboard')}
                   className="text-text-muted text-sm cursor-pointer hover:text-text transition-colors bg-transparent border-none py-1"
                 >
                   {t('simulator.back_dashboard')}

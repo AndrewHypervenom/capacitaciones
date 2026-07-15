@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Award, BookOpen, Check, Clock, Flame, GraduationCap, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus } from 'lucide-react';
+import { ArrowLeft, Award, BookOpen, Check, Clock, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import type { Scenario } from '@/data/scenarios';
@@ -10,6 +10,8 @@ import { useProgressStore } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { selfEnroll, unenrollSelf } from '@/services/courses.service';
 import { getScenariosForCourse } from '@/services/scenarios.service';
+import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
+import type { ChoiceScenario } from '@/data/choiceScenarios';
 import { getCourseCertStatus } from '@/services/certification.service';
 import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
@@ -46,22 +48,56 @@ export default function CoursePage() {
 
   // Simulador y certificación del curso (capa de evaluación).
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [certStatus, setCertStatus] = useState<CourseCertStatus | null>(null);
+  const [choiceScenarios, setChoiceScenarios] = useState<ChoiceScenario[]>([]);
+  const [rawCertStatus, setRawCertStatus] = useState<CourseCertStatus | null>(null);
   useEffect(() => {
     if (!course?.id) {
       setScenarios([]);
-      setCertStatus(null);
+      setChoiceScenarios([]);
+      setRawCertStatus(null);
       return;
     }
     let active = true;
     getScenariosForCourse(course.id)
       .then((s) => { if (active) setScenarios(s); })
       .catch(() => { if (active) setScenarios([]); });
+    getChoiceScenariosForCourse(course.id)
+      .then((s) => { if (active) setChoiceScenarios(s); })
+      .catch(() => { if (active) setChoiceScenarios([]); });
     getCourseCertStatus(course.id)
-      .then((st) => { if (active) setCertStatus(st); })
-      .catch(() => { if (active) setCertStatus(null); });
+      .then((st) => { if (active) setRawCertStatus(st); })
+      .catch(() => { if (active) setRawCertStatus(null); });
     return () => { active = false; };
   }, [course?.id, completedSlugs]);
+
+  // El progreso local (localStorage) es la fuente de verdad de la UI. El RPC de
+  // certificación puede ir por detrás porque el espejo a BD (useProgressSync)
+  // tiene rebote de ~1.2 s: al terminar un módulo, el RPC alcanza a leer la BD
+  // antes de que se escriba y devuelve "0/1". Derivamos aquí el requisito de
+  // módulos desde el estado local para que "X/Y módulos" y el candado del
+  // certificado se actualicen al instante en todos los roles (superadmin,
+  // capacitador y aprendiz), sin esperar al espejo.
+  const certStatus = useMemo<CourseCertStatus | null>(() => {
+    if (!rawCertStatus) return null;
+    const localTotal = course?.modules.length ?? 0;
+    const localDone = course
+      ? course.modules.filter((m) => completedSlugs.includes(m.slug)).length
+      : 0;
+    const modulesTotal = rawCertStatus.modules_total || localTotal;
+    const modulesDone = Math.max(rawCertStatus.modules_done, localDone);
+    const modulesOk = rawCertStatus.require_all_modules
+      ? modulesTotal > 0 && modulesDone >= modulesTotal
+      : true;
+    const allMet =
+      modulesOk && (!rawCertStatus.require_simulator || rawCertStatus.simulator_ok);
+    return {
+      ...rawCertStatus,
+      modules_total: modulesTotal,
+      modules_done: modulesDone,
+      modules_ok: modulesOk,
+      all_met: rawCertStatus.all_met || allMet,
+    };
+  }, [rawCertStatus, course, completedSlugs]);
 
   // Mundo (juego) publicado de este curso, si existe, para el botón "Jugar el mundo".
   const [worldId, setWorldId] = useState<string | null>(null);
@@ -159,6 +195,36 @@ export default function CoursePage() {
   const nextItem = items.find((i) => i.status === 'available');
   const completed = total > 0 && done === total;
 
+  // Desbloqueo del simulador (compartido por la sección Practicar y los botones de acceso directo)
+  const simUnlockModule = course.sim_unlock_module_id
+    ? course.modules.find((m) => m.id === course.sim_unlock_module_id)
+    : null;
+  const simUnlocked =
+    course.sim_unlock_rule === 'from_start' ||
+    (course.sim_unlock_rule === 'after_modules' && completed) ||
+    (course.sim_unlock_rule === 'after_module' && !!simUnlockModule && completedSlugs.includes(simUnlockModule.slug)) ||
+    (course.sim_unlock_rule === 'after_module' && !simUnlockModule && completed);
+
+  // Acceso directo a la simulación: si hay una sola y está desbloqueada, entra de una;
+  // si hay varias o está bloqueada, baja a la sección Practicar para elegir/ver el motivo.
+  const totalScenarios = scenarios.length + choiceScenarios.length;
+  const startSimulation = () => {
+    const simState = {
+      courseId: course.id,
+      campaignId: course.campaign_id,
+      returnTo: `/courses/${course.slug}`,
+    };
+    if (totalScenarios === 1 && simUnlocked) {
+      if (scenarios.length === 1) {
+        navigate(`/simulator/run/${scenarios[0].id}`, { state: simState });
+      } else {
+        navigate(`/simulator/choice/${choiceScenarios[0].id}`, { state: simState });
+      }
+    } else {
+      document.getElementById('practice-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <>
     <div className="mx-auto max-w-4xl px-4 sm:px-8 pt-8 sm:pt-12 pb-24">
@@ -250,12 +316,32 @@ export default function CoursePage() {
                 {completed && (
                   <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-5 py-2.5 text-[13px] font-semibold text-primary">
                     <Check className="h-4 w-4" strokeWidth={3} />
-                    {t('courses.completed_banner')}
+                    {certStatus?.require_simulator && !certStatus.simulator_ok
+                      ? t('courses.modules_done_banner')
+                      : t('courses.completed_banner')}
                   </div>
                 )}
 
                 {/* Auto-inscripción en cursos del catálogo */}
                 <div className="mt-5 flex flex-wrap items-center gap-3">
+                  {certStatus && (certStatus.all_met || certStatus.certified) && (
+                    <Link
+                      to={`/certificate/${course.id}`}
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md"
+                    >
+                      <Award className="h-4 w-4" />
+                      {t('course_cert.view')}
+                    </Link>
+                  )}
+                  {certStatus?.require_simulator && !certStatus.simulator_ok && totalScenarios > 0 && (
+                    <button
+                      onClick={startSimulation}
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md"
+                    >
+                      <PhoneCall className="h-4 w-4" />
+                      {t('course_practice.do_simulation')}
+                    </button>
+                  )}
                   {worldId && (
                     <Link
                       to="/world"
@@ -386,19 +472,12 @@ export default function CoursePage() {
       </div>
 
       {/* ── Practicar: simulador de llamadas del curso ── */}
-      {scenarios.length > 0 && (() => {
+      {totalScenarios > 0 && (() => {
         const rule = course.sim_unlock_rule;
-        const unlockModule = course.sim_unlock_module_id
-          ? course.modules.find((m) => m.id === course.sim_unlock_module_id)
-          : null;
-        const simUnlocked =
-          rule === 'from_start' ||
-          (rule === 'after_modules' && completed) ||
-          (rule === 'after_module' && !!unlockModule && completedSlugs.includes(unlockModule.slug)) ||
-          (rule === 'after_module' && !unlockModule && completed);
+        const unlockModule = simUnlockModule;
 
         return (
-          <Reveal className="mt-12">
+          <Reveal id="practice-section" className="mt-12 scroll-mt-24">
             <div className="mb-5 flex items-end justify-between gap-4">
               <div>
                 <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-text mb-1">
@@ -471,6 +550,42 @@ export default function CoursePage() {
                     </span>
                   </button>
                 ))}
+                {choiceScenarios.map((scn) => (
+                  <button
+                    key={scn.id}
+                    onClick={() =>
+                      navigate(`/simulator/choice/${scn.id}`, {
+                        state: {
+                          courseId: course.id,
+                          campaignId: course.campaign_id,
+                          returnTo: `/courses/${course.slug}`,
+                        },
+                      })
+                    }
+                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all hover:border-primary hover:shadow-card-hover"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ListChecks className="h-4 w-4 text-primary" />
+                        <span className="text-[12px] text-text-muted">
+                          {t('simulator.choice_section_title')}
+                        </span>
+                      </div>
+                      <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                        {t(`simulator.choice.level_${scn.level === 'basico' ? 'basic' : scn.level === 'medio' ? 'medium' : 'advanced'}`)}
+                      </span>
+                    </div>
+                    <h3 className="text-[15px] font-semibold tracking-tight text-text mb-1.5">
+                      {scn.title[language]}
+                    </h3>
+                    <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
+                      {scn.description[language]}
+                    </p>
+                    <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
+                      {t('simulator.take_call')} →
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </Reveal>
@@ -491,7 +606,7 @@ export default function CoursePage() {
           certStatus.min_score > 0 ? Math.min(1, certStatus.best_score / certStatus.min_score) : 0;
 
         return (
-          <Reveal className="mt-12">
+          <Reveal id="cert-section" className="mt-12 scroll-mt-24">
             <div className="mb-5 flex items-end justify-between gap-4">
               <div>
                 <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-text mb-1">
@@ -578,6 +693,20 @@ export default function CoursePage() {
                           transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
                         />
                       </div>
+                      {!certStatus.simulator_ok && totalScenarios > 0 && (
+                        <button
+                          onClick={startSimulation}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90"
+                        >
+                          <PhoneCall className="h-3.5 w-3.5" />
+                          {t('course_practice.do_simulation')}
+                        </button>
+                      )}
+                      {!certStatus.simulator_ok && totalScenarios === 0 && (
+                        <p className="mt-2 text-[12px] text-text-muted">
+                          {t('course_cert.no_sim_available')}
+                        </p>
+                      )}
                     </div>
                     <span className={cn(
                       'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums',

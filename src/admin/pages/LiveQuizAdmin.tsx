@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import type { CSSProperties } from 'react'
 import {
   Plus, Trash2, ChevronLeft, ChevronRight, Square, Play, Copy, Check,
-  Loader2, Zap, X, BarChart2, RefreshCw,
+  Loader2, Zap, X, BarChart2, RefreshCw, Pencil, Users, Clock,
 } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -22,8 +23,46 @@ function generatePin(): string {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
+// Vigencia del código (minutos). 0 = sin límite.
+const DEFAULT_PIN_TTL_MIN = 120
+const PIN_TTL_OPTIONS = [30, 60, 120, 240, 480, 0]
+
+// Fecha ISO de expiración a partir de una vigencia en minutos (null = sin límite).
+function expiryFromTtl(min: number): string | null {
+  return min > 0 ? new Date(Date.now() + min * 60_000).toISOString() : null
+}
+
+// Formatea milisegundos restantes como "1h 05m" o "04:32".
+function formatRemaining(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
 function emptyQuestion(): QuizQuestion {
   return { text: '', options: ['', '', '', ''], correctIndex: 0, timeLimitSec: 20 }
+}
+
+// Iniciales para el avatar del ranking
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+// Número que cuenta hasta su valor con animación suave
+function CountUp({ value, className, style }: { value: number; className?: string; style?: CSSProperties }) {
+  const mv = useMotionValue(value)
+  const text = useTransform(mv, (v) => Math.round(v).toLocaleString())
+  useEffect(() => {
+    const controls = animate(mv, value, { duration: 0.7, ease: [0.16, 1, 0.3, 1] })
+    return controls.stop
+  }, [value, mv])
+  return <motion.span className={className} style={style}>{text}</motion.span>
 }
 
 type View = 'list' | 'create' | 'session'
@@ -39,21 +78,36 @@ export default function LiveQuizAdmin() {
   const [loadingList, setLoadingList] = useState(true)
   const [filterCampaign, setFilterCampaign] = useState<string>('all')
 
-  // Formulario de creación
+  // Formulario de creación / edición
   const [formTitle, setFormTitle] = useState('')
   const [formCampaign, setFormCampaign] = useState(campaignId ?? '')
   const [formQuestions, setFormQuestions] = useState<QuizQuestion[]>([emptyQuestion()])
   const [creating, setCreating] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [formTtlMin, setFormTtlMin] = useState(DEFAULT_PIN_TTL_MIN)  // vigencia del código, en minutos (0 = sin límite)
 
   // Sesión
   const [activeQuiz, setActiveQuiz] = useState<LiveQuiz | null>(null)
   const [answerCounts, setAnswerCounts] = useState<AnswerCount>([])
   const [totalAnswers, setTotalAnswers] = useState(0)
   const [participantCount, setParticipantCount] = useState(0)
+  const [participants, setParticipants] = useState<string[]>([])
+  const [answeredNames, setAnsweredNames] = useState<string[]>([])
   const [pinCopied, setPinCopied] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [leaderboard, setLeaderboard] = useState<QuizLeaderboardEntry[]>([])
+  const showLeaderboardRef = useRef(false)
+  useEffect(() => { showLeaderboardRef.current = showLeaderboard }, [showLeaderboard])
+  const autoRevealedQ = useRef(-1)
+
+  // Reloj para la cuenta regresiva de vigencia del código
+  const [nowTs, setNowTs] = useState(() => Date.now())
+  useEffect(() => {
+    if (view !== 'session') return
+    const id = setInterval(() => setNowTs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [view])
 
   // ── Cargar lista ──────────────────────────────────────────────────────────────
   const loadQuizzes = useCallback(async () => {
@@ -79,7 +133,7 @@ export default function LiveQuizAdmin() {
     if (quiz.current_question < 0) return
     const { data } = await supabase
       .from('live_quiz_answers')
-      .select('selected_option, is_correct')
+      .select('selected_option, is_correct, display_name')
       .eq('quiz_id', quiz.id)
       .eq('question_idx', quiz.current_question)
 
@@ -91,6 +145,7 @@ export default function LiveQuizAdmin() {
     }))
     setAnswerCounts(counts)
     setTotalAnswers(data.length)
+    setAnsweredNames([...new Set(data.map((r) => r.display_name))])
   }, [])
 
   const loadLeaderboard = useCallback(async (quizId: string) => {
@@ -129,19 +184,33 @@ export default function LiveQuizAdmin() {
           setActiveQuiz((prev) => ({ ...prev!, ...updated, questions: prev!.questions }))
           setAnswerCounts([])
           setTotalAnswers(0)
+          setAnsweredNames([])
+          setShowLeaderboard(false)  // ocultar ranking al cambiar de pregunta
         },
       )
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'live_quiz_answers', filter: `quiz_id=eq.${activeQuiz.id}` },
-        () => { void fetchAnswerCounts(activeQuiz) },
+        () => {
+          void fetchAnswerCounts(activeQuiz)
+          if (showLeaderboardRef.current) void loadLeaderboard(activeQuiz.id)
+        },
       )
       .subscribe()
 
+    const syncParticipants = () => {
+      const state = presenceChannel.presenceState() as Record<string, { user_id?: string; name?: string }[]>
+      const seen = new Map<string, string>()
+      Object.values(state).flat().forEach((m) => {
+        if (m?.user_id) seen.set(m.user_id, m.name ?? 'Participante')
+      })
+      const names = [...seen.values()].sort((a, b) => a.localeCompare(b))
+      setParticipants(names)
+      setParticipantCount(names.length)
+    }
+
     presenceChannel = supabase
       .channel(`quiz-player-${activeQuiz.id}`)
-      .on('presence', { event: 'sync' }, () => {
-        setParticipantCount(Object.keys(presenceChannel.presenceState()).length)
-      })
+      .on('presence', { event: 'sync' }, syncParticipants)
       .subscribe()
 
     void fetchAnswerCounts(activeQuiz)
@@ -152,8 +221,50 @@ export default function LiveQuizAdmin() {
     }
   }, [activeQuiz?.id, activeQuiz?.current_question, fetchAnswerCounts]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Revelar el ranking automáticamente cuando todos respondieron ────────────
+  useEffect(() => {
+    if (activeQuiz?.status !== 'active' || activeQuiz.current_question < 0) return
+    if (participantCount > 0 &&
+        answeredNames.length >= participantCount &&
+        autoRevealedQ.current !== activeQuiz.current_question) {
+      autoRevealedQ.current = activeQuiz.current_question
+      void loadLeaderboard(activeQuiz.id)
+      setShowLeaderboard(true)
+    }
+  }, [answeredNames.length, participantCount, activeQuiz?.status, activeQuiz?.current_question, activeQuiz?.id, loadLeaderboard])
+
+  // ── Abrir formulario en modo edición ───────────────────────────────────────
+  const startEdit = (quiz: LiveQuiz) => {
+    if (quiz.status === 'active') return  // no se edita un quiz en curso
+    setEditingId(quiz.id)
+    setFormTitle(quiz.title)
+    setFormCampaign(quiz.campaign_id)
+    setFormQuestions(quiz.questions.length ? quiz.questions : [emptyQuestion()])
+    setView('create')
+  }
+
+  // ── Guardar cambios de un quiz existente ────────────────────────────────────
+  const handleUpdate = async () => {
+    if (!editingId || !formTitle.trim() || formQuestions.some((q) => !q.text.trim())) return
+    setCreating(true)
+    const { error } = await supabase
+      .from('live_quizzes')
+      .update({
+        title: formTitle.trim(),
+        campaign_id: formCampaign || campaignId || undefined,
+        questions: formQuestions as unknown as never,
+      })
+      .eq('id', editingId)
+    setCreating(false)
+    if (error) return
+    setEditingId(null)
+    setView('list')
+    void loadQuizzes()
+  }
+
   // ── Crear ─────────────────────────────────────────────────────────────────
   const handleCreate = async () => {
+    if (editingId) return handleUpdate()
     if (!formTitle.trim() || formQuestions.some((q) => !q.text.trim())) return
     const targetCampaign = formCampaign || campaignId
     if (!targetCampaign || !profile?.id) return
@@ -167,6 +278,7 @@ export default function LiveQuizAdmin() {
         campaign_id: targetCampaign,
         created_by: profile.id,
         pin,
+        pin_expires_at: expiryFromTtl(formTtlMin),
         questions: formQuestions as unknown as never,
       })
       .select()
@@ -262,7 +374,7 @@ export default function LiveQuizAdmin() {
     await supabase.from('live_quiz_answers').delete().eq('quiz_id', activeQuiz.id)
     const { data } = await supabase
       .from('live_quizzes')
-      .update({ status: 'lobby', current_question: -1, pin: newPin, question_started_at: null })
+      .update({ status: 'lobby', current_question: -1, pin: newPin, question_started_at: null, pin_expires_at: expiryFromTtl(DEFAULT_PIN_TTL_MIN) })
       .eq('id', activeQuiz.id)
       .select().single()
     if (data) {
@@ -271,7 +383,22 @@ export default function LiveQuizAdmin() {
       setTotalAnswers(0)
       setLeaderboard([])
       setShowLeaderboard(false)
+      autoRevealedQ.current = -1
     }
+    setAdvancing(false)
+  }
+
+  // ── Renovar código: nuevo PIN + nueva vigencia, sin borrar respuestas ────────
+  const renewPin = async () => {
+    if (!activeQuiz) return
+    setAdvancing(true)
+    const newPin = generatePin()
+    const { data } = await supabase
+      .from('live_quizzes')
+      .update({ pin: newPin, pin_expires_at: expiryFromTtl(DEFAULT_PIN_TTL_MIN) })
+      .eq('id', activeQuiz.id)
+      .select().single()
+    if (data) setActiveQuiz((prev) => ({ ...prev!, ...(data as unknown as LiveQuiz) }))
     setAdvancing(false)
   }
 
@@ -310,9 +437,9 @@ export default function LiveQuizAdmin() {
           <p className="text-text-muted text-[13px] mt-1">{i18n.t('admin.livequiz.subtitle')}</p>
         </div>
         <button
-          onClick={() => { setFormTitle(''); setFormCampaign(campaignId ?? ''); setFormQuestions([emptyQuestion()]); setView('create') }}
+          onClick={() => { setEditingId(null); setFormTitle(''); setFormCampaign(campaignId ?? ''); setFormQuestions([emptyQuestion()]); setFormTtlMin(DEFAULT_PIN_TTL_MIN); setView('create') }}
           className="flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-medium text-black shrink-0"
-          style={{ background: '#00C228' }}
+          style={{ background: '#10D451' }}
         >
           <Zap className="h-4 w-4" />
           {i18n.t('admin.livequiz.create_quiz')}
@@ -324,8 +451,8 @@ export default function LiveQuizAdmin() {
         <div className="flex gap-2 flex-wrap mb-5">
           <button
             onClick={() => setFilterCampaign('all')}
-            className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === 'all' ? 'text-[#00C228]' : 'bg-subtle text-text-muted hover:text-text'}`}
-            style={filterCampaign === 'all' ? { background: 'rgba(0,194,40,0.12)', border: '1px solid rgba(0,194,40,0.3)' } : {}}
+            className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === 'all' ? 'text-[#10D451]' : 'bg-subtle text-text-muted hover:text-text'}`}
+            style={filterCampaign === 'all' ? { background: 'rgba(16,212,81,0.12)', border: '1px solid rgba(16,212,81,0.3)' } : {}}
           >
             {i18n.t('livequiz.filter_all')}
           </button>
@@ -333,8 +460,8 @@ export default function LiveQuizAdmin() {
             <button
               key={c.id}
               onClick={() => setFilterCampaign(c.id)}
-              className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === c.id ? 'text-[#00C228]' : 'bg-subtle text-text-muted hover:text-text'}`}
-              style={filterCampaign === c.id ? { background: 'rgba(0,194,40,0.12)', border: '1px solid rgba(0,194,40,0.3)' } : {}}
+              className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === c.id ? 'text-[#10D451]' : 'bg-subtle text-text-muted hover:text-text'}`}
+              style={filterCampaign === c.id ? { background: 'rgba(16,212,81,0.12)', border: '1px solid rgba(16,212,81,0.3)' } : {}}
             >
               {c.name}
             </button>
@@ -385,7 +512,15 @@ export default function LiveQuizAdmin() {
                     onClick={() => { setActiveQuiz(q); setView('session') }}
                     className="inline-flex items-center min-h-[36px] text-[12px] text-text-muted hover:text-text px-3 py-1 rounded-lg hover:bg-subtle transition-colors whitespace-nowrap"
                   >
-                    Gestionar →
+                    {i18n.t('admin.livequiz.manage')} →
+                  </button>
+                  <button
+                    onClick={() => startEdit(q)}
+                    disabled={q.status === 'active'}
+                    title={q.status === 'active' ? i18n.t('admin.livequiz.edit_locked') : i18n.t('common.edit')}
+                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle enabled:hover:text-text enabled:hover:bg-subtle transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => handleDuplicate(q)}
@@ -414,10 +549,10 @@ export default function LiveQuizAdmin() {
   // ── Vista de creación ────────────────────────────────────────────────────────
   if (view === 'create') return (
     <div className="p-4 sm:p-8 max-w-2xl">
-      <button onClick={() => setView('list')} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
+      <button onClick={() => { setEditingId(null); setView('list') }} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
         <ChevronLeft className="h-4 w-4" /> {i18n.t('common.back')}
       </button>
-      <h1 className="text-[22px] font-bold text-text mb-6">{i18n.t('admin.livequiz.create_quiz')}</h1>
+      <h1 className="text-[22px] font-bold text-text mb-6">{editingId ? i18n.t('common.edit_quiz') : i18n.t('admin.livequiz.create_quiz')}</h1>
 
       <div className="space-y-4 mb-6">
         <input
@@ -425,7 +560,7 @@ export default function LiveQuizAdmin() {
           placeholder={i18n.t('admin.livequiz.ph_quiz_title')}
           value={formTitle}
           onChange={(e) => setFormTitle(e.target.value)}
-          className="w-full rounded-xl px-4 py-2.5 min-h-[44px] text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#00C228] transition-colors"
+          className="w-full rounded-xl px-4 py-2.5 min-h-[44px] text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#10D451] transition-colors"
         />
         {isSuperAdmin && campaigns.length > 0 && (
           <FilterDropdown
@@ -436,6 +571,32 @@ export default function LiveQuizAdmin() {
               ...campaigns.map((c) => ({ value: c.id, label: c.name })),
             ]}
           />
+        )}
+
+        {/* Vigencia del código — solo al crear */}
+        {!editingId && (
+          <div className="rounded-xl px-4 py-3 bg-subtle border border-line">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Clock className="h-3.5 w-3.5 text-text-subtle" />
+              <span className="text-[12px] font-medium text-text">{i18n.t('admin.livequiz.code_validity')}</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {PIN_TTL_OPTIONS.map((min) => (
+                <button
+                  key={min}
+                  onClick={() => setFormTtlMin(min)}
+                  className="flex items-center justify-center min-h-[36px] px-3 py-1 rounded-lg text-[12px] transition-colors"
+                  style={{
+                    background: formTtlMin === min ? 'rgba(16,212,81,0.15)' : 'rgb(var(--line))',
+                    color: formTtlMin === min ? '#10D451' : 'rgb(var(--text-muted))',
+                  }}
+                >
+                  {min === 0 ? i18n.t('admin.livequiz.ttl_none') : i18n.t('admin.livequiz.ttl_value', { label: min < 60 ? `${min} min` : `${min / 60} h` })}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-text-subtle mt-2">{i18n.t('admin.livequiz.code_validity_hint')}</p>
+          </div>
         )}
       </div>
 
@@ -459,7 +620,7 @@ export default function LiveQuizAdmin() {
               placeholder={i18n.t('admin.livequiz.ph_question')}
               value={q.text}
               onChange={(e) => updateQuestion(qi, { text: e.target.value })}
-              className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-surface border border-line outline-none focus:border-[#00C228] transition-colors mb-3"
+              className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-surface border border-line outline-none focus:border-[#10D451] transition-colors mb-3"
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
               {q.options.map((opt, oi) => (
@@ -497,8 +658,8 @@ export default function LiveQuizAdmin() {
                   onClick={() => updateQuestion(qi, { timeLimitSec: t })}
                   className="flex items-center justify-center min-h-[36px] px-2.5 py-1 rounded-lg text-[11px] transition-colors"
                   style={{
-                    background: q.timeLimitSec === t ? 'rgba(0,194,40,0.15)' : 'rgb(var(--line))',
-                    color: q.timeLimitSec === t ? '#00C228' : 'rgb(var(--text-muted))',
+                    background: q.timeLimitSec === t ? 'rgba(16,212,81,0.15)' : 'rgb(var(--line))',
+                    color: q.timeLimitSec === t ? '#10D451' : 'rgb(var(--text-muted))',
                   }}
                 >
                   {t}s
@@ -519,10 +680,10 @@ export default function LiveQuizAdmin() {
         onClick={handleCreate}
         disabled={creating || !formTitle.trim() || formQuestions.some((q) => !q.text.trim())}
         className="flex items-center gap-2 px-6 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black disabled:opacity-50"
-        style={{ background: '#00C228' }}
+        style={{ background: '#10D451' }}
       >
         {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-        {i18n.t('livequiz.create_open')}
+        {editingId ? i18n.t('common.save_changes') : i18n.t('livequiz.create_open')}
       </button>
     </div>
   )
@@ -531,6 +692,9 @@ export default function LiveQuizAdmin() {
   if (!activeQuiz) return null
   const q = activeQuiz.current_question >= 0 ? activeQuiz.questions[activeQuiz.current_question] : null
   const isLast = activeQuiz.current_question >= activeQuiz.questions.length - 1
+  const pinRemainingMs = activeQuiz.pin_expires_at ? new Date(activeQuiz.pin_expires_at).getTime() - nowTs : null
+  const pinExpired = pinRemainingMs !== null && pinRemainingMs <= 0
+  const pinUrgent = pinRemainingMs !== null && pinRemainingMs > 0 && pinRemainingMs < 5 * 60_000
 
   return (
     <div className="p-4 sm:p-8 max-w-2xl relative">
@@ -566,21 +730,86 @@ export default function LiveQuizAdmin() {
           <div className="text-[11px] text-text-subtle mt-1 break-all">
             {window.location.origin}/quiz
           </div>
+
+          {/* Vigencia del código */}
+          <div className="flex items-center gap-2 sm:justify-end mt-2">
+            {pinRemainingMs === null ? (
+              <span className="inline-flex items-center gap-1 text-[11px] text-text-subtle">
+                <Clock className="h-3 w-3" /> {i18n.t('admin.livequiz.ttl_none')}
+              </span>
+            ) : pinExpired ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-400">
+                <Clock className="h-3 w-3" /> {i18n.t('admin.livequiz.code_expired')}
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-medium tabular-nums"
+                style={{ color: pinUrgent ? '#ef4444' : 'rgb(var(--text-subtle))' }}
+              >
+                <Clock className="h-3 w-3" />
+                {i18n.t('admin.livequiz.code_expires_in', { time: formatRemaining(pinRemainingMs) })}
+              </span>
+            )}
+            <button
+              onClick={renewPin}
+              disabled={advancing}
+              title={i18n.t('admin.livequiz.renew_code')}
+              className="inline-flex items-center gap-1 text-[11px] text-text-muted hover:text-text px-2 py-1 rounded-lg hover:bg-subtle transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${advancing ? 'animate-spin' : ''}`} />
+              {i18n.t('admin.livequiz.renew_code')}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Estado de lobby */}
       {activeQuiz.status === 'lobby' && (
-        <div className="rounded-2xl p-4 sm:p-8 text-center mb-6 bg-subtle border border-line">
-          <div className="text-text-muted text-[14px] mb-4">{i18n.t('admin.livequiz.share_pin')}</div>
+        <div className="rounded-2xl p-4 sm:p-8 mb-6 bg-subtle border border-line">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <Users className="h-4 w-4" style={{ color: '#10D451' }} />
+            <span className="text-[15px] font-bold text-text tabular-nums">{participantCount}</span>
+            <span className="text-[13px] text-text-muted">
+              {i18n.t('admin.livequiz.in_room', { count: participantCount })}
+            </span>
+          </div>
+          <div className="text-text-subtle text-[12px] text-center mb-5">{i18n.t('admin.livequiz.share_pin')}</div>
+
+          {/* Rejilla de participantes que van entrando */}
+          {participants.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-text-subtle text-[13px] gap-3">
+              <Loader2 className="h-6 w-6 animate-spin" style={{ color: '#10D451' }} />
+              {i18n.t('admin.livequiz.waiting_players')}
+            </div>
+          ) : (
+            <div className="flex flex-wrap justify-center gap-2 mb-6">
+              <AnimatePresence>
+                {participants.map((name) => (
+                  <motion.span
+                    key={name}
+                    layout
+                    initial={{ opacity: 0, scale: 0.5, y: 8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.5 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 24 }}
+                    className="px-3 py-1.5 rounded-full text-[13px] font-semibold text-text max-w-[160px] truncate"
+                    style={{ background: 'rgba(16,212,81,0.12)', border: '1px solid rgba(16,212,81,0.3)' }}
+                  >
+                    {name}
+                  </motion.span>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+
           <button
             onClick={startQuiz}
             disabled={advancing}
             className="flex items-center gap-2 px-8 py-3 rounded-xl text-[14px] font-medium text-black mx-auto"
-            style={{ background: '#00C228' }}
+            style={{ background: '#10D451' }}
           >
             {advancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            Iniciar quiz
+            {i18n.t('admin.livequiz.start_quiz')}
           </button>
         </div>
       )}
@@ -596,33 +825,111 @@ export default function LiveQuizAdmin() {
           </div>
           <p className="text-[16px] text-text font-medium mb-5">{q.text}</p>
 
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {q.options.map((opt, oi) => {
               const entry = answerCounts.find((a) => a.option === oi)
               const count = entry?.count ?? 0
               const pct = totalAnswers > 0 ? (count / totalAnswers) * 100 : 0
               const isCorrect = oi === q.correctIndex
               return (
-                <div key={oi}>
-                  <div className="flex items-center gap-3 mb-0.5">
-                    <span className="text-[11px] font-bold w-5 shrink-0" style={{ color: OPTION_COLORS[oi] }}>{OPTION_LABELS[oi]}</span>
-                    <span className="text-[12px] text-text-muted flex-1 min-w-0">{opt}</span>
-                    {isCorrect && <span className="text-[11px] text-green-400">{i18n.t('admin.livequiz.correct_mark')}</span>}
-                    <span className="text-[12px] text-text-muted tabular-nums">{count}</span>
+                <motion.div
+                  key={oi}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: oi * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <div className="flex items-center gap-3 mb-1">
+                    <span
+                      className="h-5 w-5 rounded-md flex items-center justify-center text-[10px] font-black text-white shrink-0"
+                      style={{ background: OPTION_COLORS[oi] }}
+                    >
+                      {OPTION_LABELS[oi]}
+                    </span>
+                    <span className="text-[12px] text-text-muted flex-1 min-w-0 truncate">{opt}</span>
+                    {isCorrect && (
+                      <motion.span
+                        initial={{ scale: 0 }} animate={{ scale: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 18, delay: 0.2 }}
+                        className="text-[11px] font-semibold text-green-400"
+                      >
+                        {i18n.t('admin.livequiz.correct_mark')}
+                      </motion.span>
+                    )}
+                    <CountUp value={count} className="text-[12px] font-semibold text-text-muted tabular-nums w-6 text-right" />
                   </div>
-                  <div className="relative h-2 rounded-full bg-line overflow-hidden ml-8">
+                  <div className="relative h-2.5 rounded-full bg-line overflow-hidden ml-8">
                     <motion.div
                       className="absolute left-0 top-0 h-full rounded-full"
                       initial={{ width: '0%' }}
                       animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                      style={{ background: isCorrect ? '#22c55e' : OPTION_COLORS[oi] + '80' }}
+                      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                      style={{
+                        background: isCorrect ? '#22c55e' : OPTION_COLORS[oi] + '99',
+                        boxShadow: isCorrect && pct > 0 ? '0 0 10px rgba(34,197,94,0.5)' : undefined,
+                      }}
                     />
                   </div>
-                </div>
+                </motion.div>
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Quién está respondiendo — en vivo */}
+      {activeQuiz.status === 'active' && q && (
+        <div className="rounded-2xl p-4 sm:p-5 mb-4 bg-subtle border border-line">
+          <div className="flex items-center justify-between mb-3">
+            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-text">
+              <Users className="h-3.5 w-3.5" style={{ color: '#10D451' }} />
+              {i18n.t('admin.livequiz.who_answered')}
+            </span>
+            <span className="text-[12px] font-bold tabular-nums" style={{ color: '#10D451' }}>
+              {answeredNames.length}<span className="text-text-subtle font-normal"> / {participantCount || answeredNames.length}</span>
+            </span>
+          </div>
+          {participants.length === 0 && answeredNames.length === 0 ? (
+            <div className="text-center py-4 text-text-subtle text-[12px]">{i18n.t('admin.livequiz.no_one_yet')}</div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {/* Participantes en sala: verde si ya respondieron (van al frente), gris pulsante si no */}
+              {[...(participants.length > 0 ? participants : answeredNames)]
+                .sort((a, b) =>
+                  (answeredNames.includes(b) ? 1 : 0) - (answeredNames.includes(a) ? 1 : 0) ||
+                  a.localeCompare(b))
+                .map((name) => {
+                const done = answeredNames.includes(name)
+                return (
+                  <motion.span
+                    key={name}
+                    layout
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] font-medium max-w-[150px] truncate transition-colors"
+                    style={done
+                      ? { background: 'rgba(16,212,81,0.14)', border: '1px solid rgba(16,212,81,0.4)', color: '#10D451' }
+                      : { background: 'rgb(var(--line))', color: 'rgb(var(--text-subtle))' }}
+                  >
+                    {done
+                      ? <Check className="h-3 w-3 flex-shrink-0" />
+                      : <motion.span className="h-1.5 w-1.5 rounded-full bg-text-subtle flex-shrink-0"
+                          animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity }} />}
+                    <span className="truncate">{name}</span>
+                  </motion.span>
+                )
+              })}
+              {/* Nombres que respondieron pero no aparecen en presencia (p. ej. reconexión) */}
+              {answeredNames.filter((n) => !participants.includes(n) && participants.length > 0).map((name) => (
+                <span key={`extra-${name}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] font-medium max-w-[150px] truncate"
+                  style={{ background: 'rgba(16,212,81,0.14)', border: '1px solid rgba(16,212,81,0.4)', color: '#10D451' }}>
+                  <Check className="h-3 w-3 flex-shrink-0" />
+                  <span className="truncate">{name}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -633,7 +940,7 @@ export default function LiveQuizAdmin() {
             onClick={nextQuestion}
             disabled={advancing}
             className="flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black"
-            style={{ background: '#00C228' }}
+            style={{ background: '#10D451' }}
           >
             {advancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
             {isLast ? i18n.t('livequiz.finish_quiz') : i18n.t('livequiz.next_question')}
@@ -665,7 +972,7 @@ export default function LiveQuizAdmin() {
             <button
               onClick={() => { void loadLeaderboard(activeQuiz.id); setShowLeaderboard(true) }}
               className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black"
-              style={{ background: '#00C228' }}
+              style={{ background: '#10D451' }}
             >
               <BarChart2 className="h-4 w-4" />
               Ver clasificacion final
@@ -697,43 +1004,82 @@ export default function LiveQuizAdmin() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="fixed right-0 top-0 h-full w-80 bg-bg border-l border-line z-30 flex flex-col"
+              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+              className="fixed right-0 top-0 h-full w-[88vw] max-w-sm bg-bg border-l border-line z-30 flex flex-col shadow-2xl"
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0">
-                <span className="text-[14px] font-semibold text-text">{i18n.t('livequiz.ranking')}</span>
-                <button onClick={() => setShowLeaderboard(false)} className="h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0"
+                style={{ background: 'linear-gradient(180deg, rgba(16,212,81,0.08), transparent)' }}>
+                <div>
+                  <span className="text-[15px] font-bold text-text">{i18n.t('livequiz.ranking')}</span>
+                  {leaderboard.length > 0 && (
+                    <div className="text-[11px] text-text-subtle">
+                      {i18n.t('livequiz.player', { count: leaderboard.length })}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => setShowLeaderboard(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 overflow-auto p-2">
                 {leaderboard.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-text-subtle text-[13px]">
-                    Sin respuestas aun
+                  <div className="flex flex-col items-center justify-center h-full text-text-subtle text-[13px] gap-3">
+                    <BarChart2 className="h-8 w-8 opacity-40" />
+                    {i18n.t('livequiz.no_answers_yet')}
                   </div>
-                ) : leaderboard.map((entry, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                    className="flex items-center gap-3 px-5 py-3 border-b border-line"
-                  >
-                    <span
-                      className="text-[13px] font-black w-5 text-right flex-shrink-0"
-                      style={{ color: i < 3 ? MEDAL_COLORS[i] : 'rgb(var(--text-subtle))' }}
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="flex-1 text-[13px] text-text truncate">{entry.display_name}</span>
-                    <span className="text-[12px] font-semibold tabular-nums" style={{ color: '#00C228' }}>
-                      {entry.score}
-                    </span>
-                    <span className="text-[11px] text-text-subtle tabular-nums">
-                      {entry.correct}/{activeQuiz.questions.length}
-                    </span>
-                  </motion.div>
-                ))}
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {leaderboard.map((entry, i) => {
+                      const medal = i < 3 ? MEDAL_COLORS[i] : null
+                      return (
+                        <motion.div
+                          key={entry.display_name}
+                          layout
+                          initial={{ opacity: 0, x: 24, scale: 0.96 }}
+                          animate={{ opacity: 1, x: 0, scale: 1 }}
+                          transition={{ layout: { type: 'spring', stiffness: 500, damping: 34 }, delay: Math.min(i, 8) * 0.035, ease: [0.16, 1, 0.3, 1] }}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                          style={{
+                            background: medal ? `${medal}14` : 'rgb(var(--subtle))',
+                            border: `1px solid ${medal ? medal + '55' : 'transparent'}`,
+                          }}
+                        >
+                          {/* Posición */}
+                          <span
+                            className="text-[15px] font-black w-6 text-center flex-shrink-0 tabular-nums"
+                            style={{ color: medal ?? 'rgb(var(--text-subtle))' }}
+                          >
+                            {i + 1}
+                          </span>
+                          {/* Avatar con iniciales */}
+                          <div
+                            className="h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0"
+                            style={{
+                              background: medal ? `${medal}22` : 'rgb(var(--line))',
+                              color: medal ?? 'rgb(var(--text-muted))',
+                              border: medal ? `1.5px solid ${medal}` : '1.5px solid transparent',
+                            }}
+                          >
+                            {initials(entry.display_name)}
+                          </div>
+                          {/* Nombre + aciertos */}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] font-semibold text-text truncate">{entry.display_name}</div>
+                            <div className="text-[11px] text-text-subtle tabular-nums">
+                              {i18n.t('admin.livequiz.correct_of', { correct: entry.correct, total: activeQuiz.questions.length })}
+                            </div>
+                          </div>
+                          {/* Puntaje con conteo animado */}
+                          <CountUp
+                            value={entry.score}
+                            className="text-[14px] font-black tabular-nums flex-shrink-0"
+                            style={{ color: '#10D451' }}
+                          />
+                        </motion.div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </motion.div>
           </>

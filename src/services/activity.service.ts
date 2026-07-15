@@ -155,18 +155,30 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
     // Traemos perfiles relacionales
     const { data: profiles } = await supabase
       .from('profiles')
-      .select('id, display_name, role')
-      .in('id', userIds);
+      .select('id, display_name, role');
 
     // Traemos las secciones (para nombre real + estilo del desafío)
     const { data: sections } = await supabase
       .from('module_sections')
       .select('id, module_id, heading_es, section_style');
 
-    // Traemos los módulos reales para no hardcodear el nombre del módulo/curso
+    // Módulos con su curso, para armar la jerarquía Campaña→Curso→Módulo.
     const { data: modules } = await supabase
       .from('modules')
-      .select('id, title_es');
+      .select('id, title_es, course_id');
+
+    // Cursos y campañas: para agrupar las evaluaciones por contexto y escalar a
+    // muchos aprendices sin volcar todo en una lista plana.
+    const { data: courses } = await supabase
+      .from('courses')
+      .select('id, title_es, slug, campaign_id');
+
+    const { data: campaigns } = await supabase
+      .from('campaigns')
+      .select('id, name');
+
+    const courseById = new Map((courses ?? []).map((c) => [c.id, c]));
+    const campaignById = new Map((campaigns ?? []).map((c) => [c.id, c]));
 
     const allFormattedAttempts: any[] = [];
 
@@ -184,43 +196,87 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
 
       console.log(`DEBUG: Usuario ${row.user_id} tiene ${rawAttempts.length} intentos en su JSON.`);
 
+      // Campaña de INSCRIPCIÓN del aprendiz (contexto en el que hizo el curso).
+      const campaignId = row.campaign_id || null;
+      const campaignName = campaignId ? campaignById.get(campaignId)?.name || 'Campaña' : null;
+
       rawAttempts.forEach((attempt: any) => {
         const sectionData = sections?.find(s => s.id === attempt.section_id) || null;
         // El módulo real: primero por el module_id del intento, si no por el de la sección
         const moduleId = attempt.module_id || sectionData?.module_id || null;
         const moduleData = moduleId ? modules?.find(m => m.id === moduleId) || null : null;
-        const isPending = !attempt.trainer_comment || attempt.status !== 'evaluated';
+        // Curso al que pertenece el módulo (para la jerarquía).
+        const courseId = moduleData?.course_id || null;
+        const courseData = courseId ? courseById.get(courseId) || null : null;
+        const gameType = attempt.game_type || (sectionData?.section_style === 'game-classify' ? 'CLASSIFY_CASES' : 'SORT_PROCESS');
+        const isEvaluated = !!attempt.trainer_comment && attempt.status === 'evaluated';
 
-        if (isPending) {
-          allFormattedAttempts.push({
-            id: attempt.id || crypto.randomUUID(),
-            user_id: row.user_id,
-            // UUID real del módulo (module.dbId); lo usa el panel para leer el
-            // tiempo activo del aprendiz en ese módulo desde module_time.
-            module_id: moduleId,
-            game_type: attempt.game_type || (sectionData?.section_style === 'game-classify' ? 'CLASSIFY_CASES' : 'SORT_PROCESS'),
-            score: attempt.score ?? 100,
-            started_at: attempt.started_at || row.updated_at || new Date().toISOString(),
-            submitted_answers: attempt.submitted_answers || {},
-            trainer_comment: attempt.trainer_comment || null,
+        // Traemos TODOS los intentos (pendientes y ya evaluados); el panel decide
+        // qué mostrar con su filtro de estado. Además marcamos la actividad a la que
+        // pertenece cada intento para poder quedarnos solo con el más reciente por
+        // actividad (ver agrupación más abajo): un intento fallido que luego el
+        // aprendiz rehízo bien no debe seguir apareciendo para retroalimentar.
+        allFormattedAttempts.push({
+          id: attempt.id || crypto.randomUUID(),
+          user_id: row.user_id,
+          section_id: attempt.section_id || null,
+          // Jerarquía para el panel: Campaña → Curso → Módulo → Aprendiz.
+          campaign_id: campaignId,
+          campaign_name: campaignName,
+          course_id: courseId,
+          course_title: courseData?.title_es || null,
+          course_slug: courseData?.slug || null,
+          // UUID real del módulo (module.dbId); lo usa el panel para leer el
+          // tiempo activo del aprendiz en ese módulo desde module_time.
+          module_id: moduleId,
+          game_type: gameType,
+          score: attempt.score ?? 100,
+          started_at: attempt.started_at || row.updated_at || new Date().toISOString(),
+          submitted_answers: attempt.submitted_answers || {},
+          trainer_comment: attempt.trainer_comment || null,
+          feedback_date: attempt.feedback_date || null,
+          is_evaluated: isEvaluated,
 
-            student: {
-              id: row.user_id,
-              name: studentProfile?.display_name || 'Aprendiz en Evaluación',
-              // El email no vive en profiles (está en auth.users), no lo fabricamos.
-              email: null,
-            },
-            section: {
-              heading_es: sectionData?.heading_es || (sectionData?.section_style === 'game-classify' ? 'Clasificación de Casos' : 'Secuenciación de Pasos')
-            },
-            module: { title_es: moduleData?.title_es || 'Módulo' }
-          });
-        }
+          student: {
+            id: row.user_id,
+            name: studentProfile?.display_name || 'Aprendiz en Evaluación',
+            // El email no vive en profiles (está en auth.users), no lo fabricamos.
+            email: null,
+          },
+          section: {
+            heading_es: sectionData?.heading_es || (sectionData?.section_style === 'game-classify' ? 'Clasificación de Casos' : 'Secuenciación de Pasos')
+          },
+          module: { title_es: moduleData?.title_es || 'Módulo' },
+          // Clave de la ACTIVIDAD concreta por aprendiz, para quedarnos solo con el
+          // último intento de cada una. Un quiz guarda un intento por pregunta, así
+          // que dentro de una sección diferenciamos por quiz_key (o el texto de la
+          // pregunta): distintas preguntas siguen separadas, pero los reintentos de
+          // LA MISMA pregunta colapsan al más reciente. Los juegos (clasificar/
+          // ordenar) no llevan pregunta → se agrupan por sección.
+          _activityKey: (() => {
+            const sa = attempt.submitted_answers || {};
+            const questionKey = sa.quiz_key ?? sa.pregunta ?? '';
+            const base = attempt.section_id || `${gameType}:${moduleId}`;
+            return `${row.user_id}::${base}::${gameType}::${questionKey}`;
+          })(),
+        });
       });
     });
 
-    console.log('DEBUG: Total de intentos formateados listos para pintar:', allFormattedAttempts.length, allFormattedAttempts);
-    return { data: allFormattedAttempts, error: null };
+    // Nos quedamos solo con el intento MÁS RECIENTE de cada actividad por aprendiz.
+    // Así, si el primer intento salió mal y el segundo bien, solo el segundo queda
+    // disponible para retroalimentar (el fallido superado ya no aparece).
+    const latestByActivity = new Map<string, any>();
+    for (const att of allFormattedAttempts) {
+      const prev = latestByActivity.get(att._activityKey);
+      if (!prev || new Date(att.started_at).getTime() > new Date(prev.started_at).getTime()) {
+        latestByActivity.set(att._activityKey, att);
+      }
+    }
+    const latestAttempts = [...latestByActivity.values()].map(({ _activityKey, ...rest }) => rest);
+
+    console.log('DEBUG: Total de intentos (último por actividad) listos para pintar:', latestAttempts.length);
+    return { data: latestAttempts, error: null };
 
   } catch (error) {
     console.error("Error crítico recolectando intentos desde user_progress:", error);

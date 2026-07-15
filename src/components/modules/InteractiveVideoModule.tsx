@@ -14,6 +14,7 @@ import {
   ChevronDown,
   RotateCcw,
   LayoutList,
+  Lock,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -46,6 +47,18 @@ function formatTime(s: number): string {
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 const SAVE_INTERVAL = 5
+
+// Animación de entrada escalonada de la lista de capítulos.
+const listContainerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.045 } },
+}
+const listItemVariants = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.16, 1, 0.3, 1] as const } },
+}
+// Sacudida horizontal cuando se intenta abrir un ítem bloqueado.
+const SHAKE_KEYFRAMES = [0, -6, 6, -5, 5, -3, 3, 0]
 
 function getProgressKey(sectionId?: string) {
   return `video_progress_${sectionId ?? 'default'}`
@@ -85,6 +98,10 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const [savedTime, setSavedTime] = useState(0)
   const [showFsChapters, setShowFsChapters] = useState(false)
   const [hoveredMarker, setHoveredMarker] = useState<string | null>(null)
+  // Ítem que "tiembla" al intentar abrirlo estando bloqueado, y pulso reforzado
+  // sobre la verificación requerida para dirigir la atención a lo que falta.
+  const [shakeMarkerId, setShakeMarkerId] = useState<string | null>(null)
+  const [pulseGate, setPulseGate] = useState(false)
   const controlsTimeout = useRef<ReturnType<typeof setTimeout>>()
   const lang = language as 'es' | 'en' | 'pt'
 
@@ -251,9 +268,11 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     if (!v) return
     let target = Math.max(0, Math.min(secs, duration))
     // Compuerta de avance: si hay un quiz pendiente por delante, no se puede saltar
-    // más allá de él. Se ubica justo antes para que la reproducción lo cruce y dispare.
+    // hasta él ni más allá. Usamos `>=` a propósito: aterrizar EXACTAMENTE sobre el
+    // marcador rompería la detección por cruce (prev < t && cur >= t) y el quiz se
+    // saltaría; por eso lo dejamos justo antes para que la reproducción lo dispare.
     const gate = firstPendingQuizTime()
-    if (gate != null && target > gate) {
+    if (gate != null && target >= gate) {
       target = Math.max(0, gate - 0.4)
     }
     v.currentTime = target
@@ -418,7 +437,26 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     setShowResumeToast(false)
   }
 
+  // Se intentó abrir un ítem bloqueado (posterior a un quiz no realizado). No se
+  // navega —igual que la barra de progreso—: se sacude el ítem, se refuerza el
+  // pulso de la verificación requerida y se la trae a la vista dentro de la lista.
+  const handleLockedClick = (markerId: string) => {
+    setShakeMarkerId(markerId)
+    setPulseGate(true)
+    window.setTimeout(() => setShakeMarkerId((c) => (c === markerId ? null : c)), 550)
+    window.setTimeout(() => setPulseGate(false), 1300)
+    const gate = firstPendingQuizTime()
+    if (gate != null && chapterListRef.current) {
+      const idx = sortedMarkers.findIndex((mm) => mm.type === 'quiz' && mm.timeSeconds === gate)
+      const el = idx >= 0 ? (chapterListRef.current.children[idx] as HTMLElement | undefined) : undefined
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }
+
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0
+  // Tope actual: tiempo del primer quiz pendiente. Todo marcador posterior está
+  // bloqueado hasta que se realice esa verificación.
+  const gateTime = firstPendingQuizTime()
 
   if (!videoUrl) {
     return (
@@ -429,8 +467,11 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   }
 
   const chapterList = (
-    <div
+    <motion.div
       ref={chapterListRef}
+      variants={listContainerVariants}
+      initial="hidden"
+      animate="show"
       className={cn('overflow-y-auto py-1', !fullscreen && 'grid sm:grid-cols-2')}
       style={{ maxHeight: fullscreen ? undefined : '224px' }}
     >
@@ -439,84 +480,122 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
         const markerLang = m.title[lang] || m.title.es
         const quizResult = m.type === 'quiz' ? completedQuizzes[m.id] : undefined
         const isPassing = quizResult && quizResult.score / quizResult.total >= 0.75
+        // Bloqueado: hay un quiz pendiente antes de este marcador en la línea de tiempo.
+        const isLocked = gateTime != null && m.timeSeconds > gateTime
+        // Requerido: es justamente el quiz pendiente que abre la compuerta.
+        const isRequired = gateTime != null && m.type === 'quiz' && !quizResult && m.timeSeconds === gateTime
 
         return (
-          <div key={m.id} className="group relative">
-            <button
-              type="button"
-              onClick={() => {
-                seekTo(m.timeSeconds)
-                videoRef.current?.play()
-                setPlaying(true)
-                if (fullscreen) setShowFsChapters(false)
-              }}
-              className={cn(
-                'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors',
-                isActive
-                  ? 'bg-zinc-100 dark:bg-zinc-800'
-                  : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50',
-              )}
+          <motion.div key={m.id} variants={listItemVariants} className="group relative">
+            <motion.div
+              animate={{ x: shakeMarkerId === m.id ? SHAKE_KEYFRAMES : 0 }}
+              transition={{ duration: 0.5, ease: 'easeInOut' }}
             >
-              {/* Ícono */}
-              <div className={cn(
-                'mt-0.5 h-6 w-6 rounded-lg flex items-center justify-center shrink-0',
-                m.type === 'chapter'
-                  ? isActive
-                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
-                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'
-                  : quizResult
-                    ? isPassing
-                      ? 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400'
-                      : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+              <button
+                type="button"
+                aria-disabled={isLocked}
+                onClick={() => {
+                  if (isLocked) { handleLockedClick(m.id); return }
+                  seekTo(m.timeSeconds)
+                  videoRef.current?.play()
+                  setPlaying(true)
+                  if (fullscreen) setShowFsChapters(false)
+                }}
+                className={cn(
+                  'relative w-full flex items-start gap-3 px-4 py-3 text-left transition-all duration-200',
+                  isLocked
+                    ? 'cursor-not-allowed opacity-55'
                     : isActive
-                      ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400',
-              )}>
-                {m.type === 'chapter'
-                  ? <BookOpen className="h-3.5 w-3.5" />
-                  : <ClipboardList className="h-3.5 w-3.5" />
-                }
-              </div>
-
-              {/* Contenido */}
-              <div className="flex-1 min-w-0">
-                <p className={cn(
-                  'text-[13px] font-medium leading-snug',
-                  isActive
-                    ? 'text-zinc-900 dark:text-zinc-50'
-                    : 'text-zinc-700 dark:text-zinc-300',
+                      ? 'bg-zinc-100 dark:bg-zinc-800'
+                      : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50',
+                  isRequired && 'rounded-xl bg-amber-50/70 dark:bg-amber-900/10',
+                )}
+              >
+                {/* Ícono */}
+                <div className={cn(
+                  'mt-0.5 h-6 w-6 rounded-lg flex items-center justify-center shrink-0 transition-colors',
+                  isLocked
+                    ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
+                    : m.type === 'chapter'
+                      ? isActive
+                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'
+                      : quizResult
+                        ? isPassing
+                          ? 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400'
+                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                        : 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400',
                 )}>
-                  {markerLang || t('video.section_n', { n: i + 1 })}
-                </p>
-                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">
-                    {formatTime(m.timeSeconds)}
-                  </span>
-                  {m.type === 'quiz' && !quizResult && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">
-                      Quiz · {(m as VideoQuizMarker).questions.length}P
-                    </span>
-                  )}
-                  {quizResult && (
-                    <span className={cn(
-                      'text-[10px] px-1.5 py-0.5 rounded-md font-semibold',
-                      isPassing
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                        : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-                    )}>
-                      {quizResult.score}/{quizResult.total} {isPassing ? '✓' : '·'}
-                    </span>
-                  )}
+                  {isLocked
+                    ? <Lock className="h-3.5 w-3.5" />
+                    : m.type === 'chapter'
+                      ? <BookOpen className="h-3.5 w-3.5" />
+                      : <ClipboardList className="h-3.5 w-3.5" />
+                  }
                 </div>
-              </div>
 
-              {isActive && !quizResult && (
-                <div className="mt-2 h-2 w-2 rounded-full bg-neon-green shrink-0 animate-pulse" />
-              )}
-            </button>
+                {/* Contenido */}
+                <div className="flex-1 min-w-0">
+                  <p className={cn(
+                    'text-[13px] font-medium leading-snug',
+                    isLocked
+                      ? 'text-zinc-500 dark:text-zinc-500'
+                      : isActive
+                        ? 'text-zinc-900 dark:text-zinc-50'
+                        : 'text-zinc-700 dark:text-zinc-300',
+                  )}>
+                    {markerLang || t('video.section_n', { n: i + 1 })}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">
+                      {formatTime(m.timeSeconds)}
+                    </span>
+                    {isRequired && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500 text-white font-semibold">
+                        {t('video.required_badge')}
+                      </span>
+                    )}
+                    {m.type === 'quiz' && !quizResult && !isRequired && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">
+                        Quiz · {(m as VideoQuizMarker).questions.length}P
+                      </span>
+                    )}
+                    {quizResult && (
+                      <span className={cn(
+                        'text-[10px] px-1.5 py-0.5 rounded-md font-semibold',
+                        isPassing
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+                      )}>
+                        {quizResult.score}/{quizResult.total} {isPassing ? '✓' : '·'}
+                      </span>
+                    )}
+                    {isLocked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
+                        <Lock className="h-2.5 w-2.5" /> {t('video.locked_badge')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {isActive && !quizResult && !isLocked && (
+                  <div className="mt-2 h-2 w-2 rounded-full bg-neon-green shrink-0 animate-pulse" />
+                )}
+              </button>
+            </motion.div>
+
+            {/* Anillo pulsante sobre la verificación requerida (dirige la atención). */}
+            {isRequired && (
+              <motion.span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-amber-400/60"
+                animate={{ opacity: pulseGate ? [0.25, 0.95, 0.25] : [0.15, 0.55, 0.15] }}
+                transition={{ duration: pulseGate ? 0.6 : 2.2, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
 
             {/* Botón de reintentar para quizzes completados */}
-            {m.type === 'quiz' && quizResult && (
+            {m.type === 'quiz' && quizResult && !isLocked && (
               <button
                 type="button"
                 title={t('video.retry_quiz')}
@@ -526,10 +605,10 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                 <RotateCcw className="h-3 w-3" />
               </button>
             )}
-          </div>
+          </motion.div>
         )
       })}
-    </div>
+    </motion.div>
   )
 
   return (
@@ -639,51 +718,75 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
               exit={{ x: '100%' }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                  {t('video.content_header', { count: sortedMarkers.length })}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowFsChapters(false)}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+              <div className="px-4 py-3 border-b border-white/10 shrink-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                    {t('video.content_header', { count: sortedMarkers.length })}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowFsChapters(false)}
+                    className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {gateTime != null && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-amber-400">
+                    <Lock className="h-3 w-3 shrink-0" /> {t('video.locked_hint')}
+                  </p>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto">
                 {sortedMarkers.map((m, i) => {
                   const isActive = i === activeChapterIdx
                   const quizResult = m.type === 'quiz' ? completedQuizzes[m.id] : undefined
+                  const isLocked = gateTime != null && m.timeSeconds > gateTime
+                  const isRequired = gateTime != null && m.type === 'quiz' && !quizResult && m.timeSeconds === gateTime
                   return (
-                    <button
+                    <motion.button
                       key={m.id}
                       type="button"
-                      onClick={() => { seekTo(m.timeSeconds); videoRef.current?.play(); setPlaying(true); setShowFsChapters(false) }}
+                      aria-disabled={isLocked}
+                      animate={{ x: shakeMarkerId === m.id ? SHAKE_KEYFRAMES : 0 }}
+                      transition={{ duration: 0.5, ease: 'easeInOut' }}
+                      onClick={() => {
+                        if (isLocked) { handleLockedClick(m.id); return }
+                        seekTo(m.timeSeconds); videoRef.current?.play(); setPlaying(true); setShowFsChapters(false)
+                      }}
                       className={cn(
                         'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors',
-                        isActive ? 'bg-white/10' : 'hover:bg-white/5',
+                        isLocked ? 'cursor-not-allowed opacity-55' : isActive ? 'bg-white/10' : 'hover:bg-white/5',
+                        isRequired && 'bg-amber-500/10 ring-1 ring-inset ring-amber-400/40',
                       )}
                     >
                       <div className={cn(
                         'mt-0.5 h-6 w-6 rounded-lg flex items-center justify-center shrink-0 text-zinc-400',
-                        isActive && 'text-white',
-                        m.type === 'chapter' ? 'text-blue-400' : 'text-amber-400',
+                        isActive && !isLocked && 'text-white',
+                        isLocked ? 'text-zinc-500' : m.type === 'chapter' ? 'text-blue-400' : 'text-amber-400',
                       )}>
-                        {m.type === 'chapter' ? <BookOpen className="h-3.5 w-3.5" /> : <ClipboardList className="h-3.5 w-3.5" />}
+                        {isLocked ? <Lock className="h-3.5 w-3.5" /> : m.type === 'chapter' ? <BookOpen className="h-3.5 w-3.5" /> : <ClipboardList className="h-3.5 w-3.5" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={cn('text-[12px] font-medium leading-snug', isActive ? 'text-white' : 'text-zinc-300')}>
+                        <p className={cn('text-[12px] font-medium leading-snug', isLocked ? 'text-zinc-500' : isActive ? 'text-white' : 'text-zinc-300')}>
                           {m.title[lang] || m.title.es}
                         </p>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className="text-[10px] text-zinc-500 font-mono">{formatTime(m.timeSeconds)}</span>
+                          {isRequired && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500 text-white font-semibold">{t('video.required_badge')}</span>
+                          )}
                           {quizResult && (
                             <span className="text-[10px] text-green-400 font-semibold">{quizResult.score}/{quizResult.total} ✓</span>
                           )}
+                          {isLocked && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500 font-medium">
+                              <Lock className="h-2.5 w-2.5" /> {t('video.locked_badge')}
+                            </span>
+                          )}
                         </div>
                       </div>
-                    </button>
+                    </motion.button>
                   )
                 })}
               </div>
@@ -876,6 +979,18 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
             <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               {t('video.content_header', { count: sortedMarkers.length })}
             </p>
+            <AnimatePresence>
+              {gateTime != null && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-1.5 flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 overflow-hidden"
+                >
+                  <Lock className="h-3 w-3 shrink-0" /> {t('video.locked_hint')}
+                </motion.p>
+              )}
+            </AnimatePresence>
           </div>
           {chapterList}
         </div>
