@@ -70,12 +70,14 @@ function CourseCard({
           className="relative h-28 w-full shrink-0"
           style={{
             background: course.cover_url
-              ? undefined
+              ? course.cover_fit === 'contain'
+                ? `linear-gradient(120deg, ${course.color}26, ${course.color}0A)`
+                : undefined
               : `linear-gradient(120deg, ${course.color}40, ${course.color}0D)`,
           }}
         >
           {course.cover_url && (
-            <img src={course.cover_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+            <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" aria-hidden />
           <div

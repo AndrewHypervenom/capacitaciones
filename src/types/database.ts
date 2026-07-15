@@ -91,6 +91,7 @@ export interface Database {
           description_en: string | null
           description_pt: string | null
           cover_url: string | null
+          cover_fit: 'cover' | 'contain'
           icon: string
           color: string
           category: string | null
@@ -119,6 +120,7 @@ export interface Database {
           description_en?: string | null
           description_pt?: string | null
           cover_url?: string | null
+          cover_fit?: 'cover' | 'contain'
           icon?: string
           color?: string
           category?: string | null
@@ -146,6 +148,7 @@ export interface Database {
           description_en?: string | null
           description_pt?: string | null
           cover_url?: string | null
+          cover_fit?: 'cover' | 'contain'
           icon?: string
           color?: string
           category?: string | null

@@ -245,12 +245,14 @@ export default function CoursePage() {
             className="h-32 sm:h-40 w-full"
             style={{
               background: course.cover_url
-                ? undefined
+                ? course.cover_fit === 'contain'
+                  ? `linear-gradient(120deg, ${course.color}26, ${course.color}0A)`
+                  : undefined
                 : `linear-gradient(120deg, ${course.color}4D, ${course.color}14)`,
             }}
           >
             {course.cover_url && (
-              <img src={course.cover_url} alt="" className="h-full w-full object-cover" />
+              <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
             )}
           </div>
           <div className="px-6 sm:px-8 pb-6 sm:pb-8">

@@ -411,9 +411,9 @@ export default function CourseList() {
                 <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden">
                   <div
                     className="h-20 w-full relative"
-                    style={{ background: course.cover_url ? undefined : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
+                    style={{ background: course.cover_url ? (course.cover_fit === 'contain' ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)` : undefined) : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
                   >
-                    {course.cover_url && <img src={course.cover_url} alt="" className="h-full w-full object-cover" />}
+                    {course.cover_url && <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />}
                     <div className="absolute -bottom-5 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md" style={{ background: course.color }}>
                       <GraduationCap className="h-5 w-5" />
                     </div>
@@ -499,12 +499,14 @@ export default function CourseList() {
                 className="h-20 w-full relative"
                 style={{
                   background: course.cover_url
-                    ? undefined
+                    ? course.cover_fit === 'contain'
+                      ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)`
+                      : undefined
                     : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)`,
                 }}
               >
                 {course.cover_url && (
-                  <img src={course.cover_url} alt="" className="h-full w-full object-cover" />
+                  <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
                 )}
                 <div
                   className="absolute -bottom-5 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md"

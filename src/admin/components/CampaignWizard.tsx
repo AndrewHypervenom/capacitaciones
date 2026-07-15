@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Campaign } from '@/types/database'
+import { useAuth } from '@/hooks/useAuth'
+import { useAuthStore } from '@/stores/authStore'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { Button } from '@/components/ui/Button'
@@ -122,12 +124,15 @@ function StepIndicator({ current, total }: { current: WizardStep; total: number 
 }
 
 export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps) {
+  const { isCapacitador, campaignId, profile } = useAuth()
+  const setProfile = useAuthStore((s) => s.setProfile)
   const [step, setStep] = useState<WizardStep>(1)
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
-  const [isActive, setIsActive] = useState(false)
+  // Las campañas siempre se crean activas (sin opción de elegir).
+  const isActive = true
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -172,12 +177,25 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
         setError(i18n.t('admin.campaigns.wizard.err_unexpected'))
         return
       }
-      onCreated({ ...fetched, moduleCount: 0 })
-      handleClose()
+      await finalize(fetched)
       return
     }
 
-    onCreated({ ...created, moduleCount: 0 })
+    await finalize(created)
+  }
+
+  // Cierra el asistente notificando la campaña creada. Si un capacitador crea su
+  // primera campaña (aún no tenía ninguna asignada), se la asignamos a su perfil
+  // para que aparezca en el listado de campañas al recargar.
+  const finalize = async (campaign: Campaign) => {
+    if (isCapacitador && !campaignId && profile) {
+      await supabase
+        .from('profiles')
+        .update({ campaign_id: campaign.id })
+        .eq('id', profile.id)
+      setProfile({ ...profile, campaign_id: campaign.id })
+    }
+    onCreated({ ...campaign, moduleCount: 0 })
     handleClose()
   }
 
@@ -187,7 +205,6 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     setSlug('')
     setDescription('')
     setLogoUrl('')
-    setIsActive(false)
     setError('')
     onClose()
   }
@@ -308,30 +325,18 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           type="url"
                         />
                       </div>
-                      <div>
-                        <label className="flex items-center gap-3 cursor-pointer group">
-                          <div
-                            onClick={() => setIsActive(!isActive)}
-                            className={cn(
-                              'relative h-6 w-11 rounded-full transition-all duration-300 flex-shrink-0',
-                              isActive ? 'bg-neon-green shadow-neon-green' : 'glass border-glass-border/15',
-                            )}
-                          >
-                            <motion.span
-                              animate={{ x: isActive ? 20 : 2 }}
-                              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                              className="absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm"
-                            />
+                      <div className="flex items-center gap-3 rounded-xl bg-neon-green/5 border border-neon-green/15 px-4 py-3">
+                        <div className="relative h-6 w-11 rounded-full bg-neon-green shadow-neon-green flex-shrink-0">
+                          <span className="absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm" style={{ left: 22 }} />
+                        </div>
+                        <div>
+                          <div className="text-[14px] font-medium text-text">
+                            {i18n.t('admin.campaigns.wizard.activate_now')}
                           </div>
-                          <div>
-                            <div className="text-[14px] font-medium text-text">
-                              {i18n.t('admin.campaigns.wizard.activate_now')}
-                            </div>
-                            <div className="text-[12px] text-text-subtle">
-                              {i18n.t('admin.campaigns.wizard.activate_hint')}
-                            </div>
+                          <div className="text-[12px] text-text-subtle">
+                            {i18n.t('admin.campaigns.wizard.activate_hint')}
                           </div>
-                        </label>
+                        </div>
                       </div>
                     </motion.div>
                   )}

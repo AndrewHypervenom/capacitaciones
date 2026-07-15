@@ -133,6 +133,7 @@ export default function CourseEditor() {
     category: '',
     visibility: 'assigned' as 'assigned' | 'catalog',
     is_shareable: false,
+    cover_fit: 'cover' as 'cover' | 'contain',
   })
   const coverInputRef = useRef<HTMLInputElement>(null)
   const [uploadingCover, setUploadingCover] = useState(false)
@@ -191,6 +192,7 @@ export default function CourseEditor() {
       category: c.category ?? '',
       visibility: c.visibility,
       is_shareable: c.is_shareable ?? false,
+      cover_fit: c.cover_fit ?? 'cover',
     })
     setCond({ ...DEFAULT_CERT_CONDITIONS, ...(c.cert_conditions ?? {}) })
     setSimRule(c.sim_unlock_rule ?? 'after_modules')
@@ -392,6 +394,7 @@ export default function CourseEditor() {
         category: form.category.trim() || null,
         visibility: form.visibility,
         is_shareable: form.is_shareable,
+        cover_fit: form.cover_fit,
       })
       toast.success(t('admin.courses.saved_ok'))
       invalidateModulesCache()
@@ -1006,22 +1009,32 @@ export default function CourseEditor() {
       {/* ── Información ── */}
       {tab === 'info' && (
         <div className="space-y-5">
-          {/* Portada */}
-          <GlassCard intensity="subtle" rounded="2xl" className="p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div
-                className="h-24 flex-1 rounded-xl overflow-hidden border border-line"
-                style={{
-                  background: course.cover_url
-                    ? undefined
-                    : `linear-gradient(120deg, ${form.color}33, ${form.color}0D)`,
-                }}
-              >
-                {course.cover_url && (
-                  <img src={course.cover_url} alt="" className="h-full w-full object-cover" />
-                )}
+          {/* Portada + vista previa (cómo se verá en la tarjeta, antes de publicar) */}
+          <GlassCard intensity="subtle" rounded="2xl" className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <h3 className="text-[13px] font-semibold text-text">{t('admin.courses.cover_title')}</h3>
+                <p className="text-[11px] text-text-muted mt-0.5">{t('admin.courses.cover_preview_hint')}</p>
               </div>
-              <div className="shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Ajuste: Rellenar (recorta) vs Ajustar (muestra completa, sin deformar) */}
+                {course.cover_url && (
+                  <div className="flex rounded-lg border border-line p-0.5">
+                    {(['cover', 'contain'] as const).map((fit) => (
+                      <button
+                        key={fit}
+                        type="button"
+                        onClick={() => setForm({ ...form, cover_fit: fit })}
+                        className={cn(
+                          'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
+                          form.cover_fit === fit ? 'bg-primary/10 text-primary' : 'text-text-muted hover:text-text',
+                        )}
+                      >
+                        {t(`admin.courses.cover_fit_${fit}`)}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <input
                   ref={coverInputRef}
                   type="file"
@@ -1045,6 +1058,35 @@ export default function CourseEditor() {
                 </Button>
               </div>
             </div>
+
+            {/* Simulación de la tarjeta real: mismo alto/proporción + insignia */}
+            <div className="relative w-full max-w-sm">
+              <div
+                className="h-28 w-full rounded-xl overflow-hidden border border-line"
+                style={{
+                  background: course.cover_url
+                    ? form.cover_fit === 'contain'
+                      ? `linear-gradient(120deg, ${form.color}22, ${form.color}0A)`
+                      : undefined
+                    : `linear-gradient(120deg, ${form.color}33, ${form.color}0D)`,
+                }}
+              >
+                {course.cover_url && (
+                  <img
+                    src={course.cover_url}
+                    alt=""
+                    className={cn('h-full w-full', form.cover_fit === 'contain' ? 'object-contain' : 'object-cover')}
+                  />
+                )}
+              </div>
+              <div
+                className="absolute -bottom-4 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md"
+                style={{ background: form.color }}
+              >
+                <GraduationCap className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="h-3" aria-hidden />
           </GlassCard>
 
           <GlassCard intensity="subtle" rounded="2xl" className="p-4 sm:p-5 space-y-4">
