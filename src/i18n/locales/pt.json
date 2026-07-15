@@ -1876,7 +1876,9 @@
         "ph_step_n": "Passo {{n}}...",
         "ph_label": "Rótulo ({{lang}})...",
         "point_n": "Ponto {{n}}",
-        "ph_image_caption": "Legenda da imagem ({{lang}}, opcional)..."
+        "ph_image_caption": "Legenda da imagem ({{lang}}, opcional)...",
+        "video_caption_ph": "Legenda do vídeo (opcional)",
+        "video_interactive_hint": "Quer perguntas ou capítulos dentro do vídeo? Crie uma seção de \"Vídeo Interativo\" em vez deste bloco."
       },
       "title": "Módulos",
       "subtitle": "Conteúdo de aprendizagem organizado por módulo.",

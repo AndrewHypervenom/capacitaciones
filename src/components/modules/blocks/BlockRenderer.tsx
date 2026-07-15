@@ -14,6 +14,10 @@ import { ClassifyGameBlockRenderer } from './ClassifyGameBlock';
 import { CardsBlockRenderer } from './CardsBlock';
 import { StatBlockRenderer } from './StatBlock';
 import { HotspotImageBlockRenderer } from './HotspotImageBlock';
+import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
+import { mapVideoMarkersFromDb } from '@/services/modules.service';
+import type { ModuleSection } from '@/data/modules';
+import { extractYouTubeId } from '@/lib/youtube';
 import { cn } from '@/lib/cn';
 
 
@@ -98,12 +102,60 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
         </figure>
       );
 
-    case 'video':
-      if (block.kind === 'youtube') {
+    case 'video': {
+      const isYT = block.kind === 'youtube';
+      // Defensivo: contenido antiguo pudo guardar la URL completa en vez del id de
+      // 11 chars; el embed/reproductor necesita solo el id.
+      const youtubeId = extractYouTubeId(block.url) ?? block.url;
+
+      // Video interactivo inline: si el capacitador agregó capítulos/quiz, se
+      // reproduce con el mismo motor que la sección "Video interactivo" (compuertas
+      // de quiz, capítulos, guardado de intentos). Reutiliza sectionId/userId para
+      // que los intentos crucen con los ya guardados y cuenten en la compuerta.
+      if (block.markers && block.markers.length > 0) {
+        const section = {
+          id: sectionId,
+          // Clave única de progreso por bloque (evita colisiones entre 2 videos
+          // en la misma sección); InteractiveVideoModule solo la usa para eso.
+          heading: { es: `vb:${sectionId ?? ''}:${blockIndex ?? 0}`, en: '', pt: '' },
+          body: { es: [], en: [], pt: [] },
+          style: 'video-interactive',
+          media: { type: isYT ? 'youtube' : 'video', url: isYT ? youtubeId : block.url },
+          videoMarkers: mapVideoMarkersFromDb(block.markers),
+        } as ModuleSection;
+
+        // Restaurar quizzes ya hechos (markerId → {score,total}) desde los intentos.
+        const savedQuizResults: Record<string, { score: number; total: number }> = {};
+        if (savedAttempts && sectionId) {
+          for (const m of block.markers) {
+            if (m.type !== 'quiz') continue;
+            const at = savedAttempts.get(`${sectionId}__VIDEO_QUIZ__${m.id}`);
+            const sa = at?.submitted_answers;
+            if (sa) {
+              const total = typeof sa.total === 'number' ? sa.total : (m.questions?.length ?? 0);
+              const score = typeof sa.aciertos === 'number' ? sa.aciertos : 0;
+              savedQuizResults[m.id] = { score, total };
+            }
+          }
+        }
+
+        return (
+          <InteractiveVideoModule
+            section={section}
+            language={language}
+            userId={userId || undefined}
+            campaignId={campaignId}
+            moduleId={moduleId}
+            savedQuizResults={savedQuizResults}
+          />
+        );
+      }
+
+      if (isYT) {
         return (
           <div className="rounded-2xl overflow-hidden border border-line relative bg-black" style={{ paddingTop: '56.25%' }}>
             <iframe
-              src={`https://www.youtube.com/embed/${block.url}?rel=0&modestbranding=1`}
+              src={`https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1`}
               title={block.caption?.[language] || 'Video'}
               loading="lazy"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -122,6 +174,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           className="w-full rounded-2xl border border-line block bg-black"
         />
       );
+    }
 
     case 'callout':
       return <Callout kind={block.kind} text={block.text[language] || block.text.es} />;

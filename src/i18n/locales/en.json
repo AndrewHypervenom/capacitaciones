@@ -1876,7 +1876,9 @@
         "ph_step_n": "Step {{n}}...",
         "ph_label": "Label ({{lang}})...",
         "point_n": "Point {{n}}",
-        "ph_image_caption": "Image caption ({{lang}}, optional)..."
+        "ph_image_caption": "Image caption ({{lang}}, optional)...",
+        "video_caption_ph": "Video caption (optional)",
+        "video_interactive_hint": "Want questions or chapters inside the video? Create a \"Interactive Video\" section instead of this block."
       },
       "title": "Modules",
       "subtitle": "Learning content organized by module.",

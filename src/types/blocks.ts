@@ -58,11 +58,43 @@ export interface ImageBlock {
   shadow?: boolean;
 }
 
+// Marcadores de video interactivo (capítulos / quiz). Se guardan en forma "raw"
+// (campos por idioma planos) igual que en la BD; el runtime los mapea a la forma
+// anidada con `mapVideoMarkersFromDb`. Viven aquí (types) para poder embeberlos en
+// el bloque de video sin acoplar con la capa de servicios; `modules.service` los
+// re-exporta para conservar sus imports existentes.
+export interface VideoQuestionRaw {
+  id: string;
+  question_es: string;
+  question_en: string;
+  question_pt: string;
+  options_es: string[];
+  options_en: string[];
+  options_pt: string[];
+  correct: number;
+  explanation_es: string;
+  explanation_en: string;
+  explanation_pt: string;
+}
+
+export interface VideoMarkerRaw {
+  id: string;
+  timeSeconds: number;
+  type: 'chapter' | 'quiz';
+  title_es: string;
+  title_en: string;
+  title_pt: string;
+  questions?: VideoQuestionRaw[];
+}
+
 export interface VideoBlock {
   type: 'video';
   kind: 'youtube' | 'upload' | 'interactive';
   url: string;
   caption?: ML;
+  /** Capítulos/quiz opcionales DENTRO del video (video interactivo inline). Si
+   *  hay al menos uno, el aprendiz ve el reproductor interactivo con compuertas. */
+  markers?: VideoMarkerRaw[];
 }
 
 export interface CalloutBlock {

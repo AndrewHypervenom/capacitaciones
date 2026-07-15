@@ -42,6 +42,8 @@ export interface LearnerCourse extends CourseWithModules {
   isMandatory: boolean
   /** Se auto-inscribió él mismo (puede salir del curso). */
   selfEnrolled: boolean
+  /** Nombre de la campaña dueña del curso (para mostrarlo sutilmente). */
+  campaign_name: string | null
 }
 
 // Desambiguamos la relación courses<->modules nombrando la FK modules.course_id.
@@ -71,7 +73,8 @@ export async function getLearnerCourses(
   const [coursesRes, ccRes, caRes] = await Promise.all([
     supabase
       .from('courses')
-      .select(`*, ${COURSE_MODULES_SELECT}`)
+      // Embed del nombre de la campaña dueña (FK directa courses.campaign_id).
+      .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
       .eq('is_published', true)
       .order('sort_order'),
     campaignId
@@ -94,7 +97,9 @@ export async function getLearnerCourses(
     ((caRes.data ?? []) as CourseAssignmentRow[]).map((r) => [r.course_id, r]),
   )
 
-  return ((coursesRes.data ?? []) as unknown as CourseWithModules[])
+  return ((coursesRes.data ?? []) as unknown as (CourseWithModules & {
+    campaigns: { name: string } | null
+  })[])
     .map(sortCourseModules)
     .map((c) => {
       const cc = byCampaign.get(c.id)
@@ -106,6 +111,7 @@ export async function getLearnerCourses(
         isMandatory: (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false),
         // Auto-inscrito: existe asignación directa creada por él mismo.
         selfEnrolled: !!ca && ca.assigned_by === userId,
+        campaign_name: c.campaigns?.name ?? null,
       }
     })
 }

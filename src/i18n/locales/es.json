@@ -1876,7 +1876,9 @@
         "ph_step_n": "Paso {{n}}...",
         "ph_label": "Etiqueta ({{lang}})...",
         "point_n": "Punto {{n}}",
-        "ph_image_caption": "Pie de imagen ({{lang}}, opcional)..."
+        "ph_image_caption": "Pie de imagen ({{lang}}, opcional)...",
+        "video_caption_ph": "Epígrafe del video (opcional)",
+        "video_interactive_hint": "¿Quieres preguntas o capítulos dentro del video? Crea una sección de \"Video Interactivo\" en lugar de este bloque."
       },
       "title": "Módulos",
       "subtitle": "Contenido de aprendizaje organizado por módulo.",

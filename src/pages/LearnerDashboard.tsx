@@ -467,6 +467,11 @@ export default function LearnerDashboard() {
                                 </span>
                               )}
                             </div>
+                            {course.campaign_name && (
+                              <p className="mb-1 truncate text-[11px] font-medium uppercase tracking-wide text-text-subtle">
+                                {course.campaign_name}
+                              </p>
+                            )}
                             <h3 className="text-[17px] font-semibold tracking-tight text-text mb-1">
                               {courseTitle}
                             </h3>

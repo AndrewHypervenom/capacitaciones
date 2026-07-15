@@ -19,6 +19,9 @@ import {
 } from '@/types/blocks';
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
+import { VideoMarkerEditor } from './VideoMarkerEditor';
+import { extractYouTubeId } from '@/lib/youtube';
+import type { VideoMarkerRaw } from '@/types/blocks';
 import { FilterDropdown } from './FilterDropdown';
 import { Select } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
@@ -244,55 +247,75 @@ function ImageEditor({
   );
 }
 
+// Bloque de video: fuente (YouTube o archivo) + capítulos y quiz OPCIONALES
+// DENTRO del video, todo inline. Reusa el mismo editor del video interactivo
+// (VideoMarkerEditor): elegir fuente, vista previa, línea de tiempo y agregar
+// capítulos/quiz. Si el capacitador agrega marcadores, el aprendiz ve el
+// reproductor interactivo con compuertas; si no, es un video normal. YouTube se
+// guarda como id de 11 chars (consistencia kind↔url). Sin mediaContext (vista
+// previa de importación) cae a una entrada de URL simple.
 function VideoEditor({
-  block, onChange, mediaContext,
+  block, onChange, lang, mediaContext,
 }: {
   block: ContentBlock & { type: 'video' };
   onChange: (b: ContentBlock) => void;
+  lang: Lang;
   mediaContext?: MediaContext;
 }) {
-  if (block.kind !== 'youtube' && mediaContext) {
+  const captionField = (
+    <input
+      type="text"
+      value={block.caption?.[lang] ?? ''}
+      onChange={(e) => onChange({ ...block, caption: { ...(block.caption ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
+      placeholder={i18n.t('admin.modules.be.video_caption_ph', { lang })}
+      className="w-full bg-transparent text-[12.5px] text-text-subtle placeholder:text-text-subtle outline-none italic"
+    />
+  );
+
+  // Sin contexto de medios (p. ej. vista previa de importación): URL directa.
+  // Extrae el id si pegan una URL de YouTube para no romper el embed del aprendiz.
+  if (!mediaContext) {
     return (
       <div className="space-y-3">
-        <div className="flex gap-1.5">
-          <button onClick={() => onChange({ ...block, kind: 'youtube' })}
-            className="glass px-3 py-1 rounded-full text-[11px] font-medium text-text-muted hover:text-text transition-colors">
-            YouTube
-          </button>
-          <span className="px-3 py-1 rounded-full text-[11px] font-medium bg-neon-green/15 text-neon-green border border-neon-green/20">
-            {i18n.t('admin.modules.be.file')}
-          </span>
-        </div>
-        <MediaUploader
-          moduleId={mediaContext.moduleId}
-          sectionId={mediaContext.sectionId}
-          campaignId={mediaContext.campaignId}
-          currentType={block.url ? 'video' : null}
-          currentUrl={block.url || null}
-          onSaved={(_type, url) => onChange({ ...block, url })}
-          onCleared={() => onChange({ ...block, url: '' })}
+        <input
+          type="url"
+          value={block.url}
+          onChange={(e) => {
+            const id = extractYouTubeId(e.target.value);
+            onChange({ ...block, kind: id ? 'youtube' : 'upload', url: id || e.target.value });
+          }}
+          placeholder={i18n.t('admin.modules.be.ph_youtube')}
+          className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
         />
+        {captionField}
       </div>
     );
   }
+
   return (
     <div className="space-y-3">
-      <div className="flex gap-1.5">
-        {(['youtube', 'upload'] as const).map((k) => (
-          <button key={k} onClick={() => onChange({ ...block, kind: k })}
-            className={cn('px-3 py-1 rounded-full text-[11px] font-medium transition-colors',
-              block.kind === k ? 'bg-neon-green/15 text-neon-green border border-neon-green/20' : 'glass text-text-muted hover:text-text')}>
-            {k === 'youtube' ? 'YouTube' : i18n.t('admin.modules.be.file')}
-          </button>
-        ))}
-      </div>
-      <input
-        type="url"
-        value={block.url}
-        onChange={(e) => onChange({ ...block, url: e.target.value })}
-        placeholder={i18n.t('admin.modules.be.ph_youtube')}
-        className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
+      <VideoMarkerEditor
+        sectionId={mediaContext.sectionId}
+        campaignId={mediaContext.campaignId}
+        moduleId={mediaContext.moduleId}
+        videoUrl={block.url || null}
+        videoType={block.kind === 'youtube' ? 'youtube' : block.url ? 'video' : null}
+        markers={block.markers ?? []}
+        lang={lang}
+        onVideoChange={(url, type) =>
+          onChange({
+            ...block,
+            url: url ?? '',
+            kind: type === 'youtube' ? 'youtube' : 'upload',
+            // Quitar el video también descarta sus marcadores (quedarían huérfanos).
+            markers: url ? block.markers : [],
+          })
+        }
+        onMarkersChange={(next) =>
+          onChange({ ...block, kind: block.kind === 'youtube' ? 'youtube' : 'upload', markers: next as VideoMarkerRaw[] })
+        }
       />
+      {captionField}
     </div>
   );
 }
@@ -1282,7 +1305,7 @@ function BlockRow({
       case 'list':        return <ListEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'callout':     return <CalloutEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'image':       return <ImageEditor block={b} onChange={onUpdate} mediaContext={mediaContext} />;
-      case 'video':       return <VideoEditor block={b} onChange={onUpdate} mediaContext={mediaContext} />;
+      case 'video':       return <VideoEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'quiz':        return <QuizEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'flashcard':   return <FlashcardEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'accordion':   return <AccordionEditor block={b} onChange={onUpdate} lang={lang} />;

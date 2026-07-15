@@ -4,30 +4,10 @@ import type { ContentBlock } from '@/types/blocks'
 import type { GeneratedModule } from '@/services/ai.service'
 
 // ─── Raw DB types for video markers ──────────────────────────
-
-export interface VideoQuestionRaw {
-  id: string
-  question_es: string
-  question_en: string
-  question_pt: string
-  options_es: string[]
-  options_en: string[]
-  options_pt: string[]
-  correct: number
-  explanation_es: string
-  explanation_en: string
-  explanation_pt: string
-}
-
-export interface VideoMarkerRaw {
-  id: string
-  timeSeconds: number
-  type: 'chapter' | 'quiz'
-  title_es: string
-  title_en: string
-  title_pt: string
-  questions?: VideoQuestionRaw[]
-}
+// Definidos en @/types/blocks (para poder embeberlos en el bloque de video sin
+// acoplar con servicios); se re-exportan aquí para conservar los imports actuales.
+export type { VideoMarkerRaw, VideoQuestionRaw } from '@/types/blocks'
+import type { VideoMarkerRaw } from '@/types/blocks'
 
 export function mapVideoMarkersFromDb(raw: unknown): VideoMarker[] {
   if (!raw || !Array.isArray(raw)) return []
