@@ -531,7 +531,7 @@ export default function CourseEditor() {
   const handleCoverUpload = async (file: File) => {
     setUploadingCover(true)
     try {
-      const url = await uploadCourseCover(file, course.id)
+      const url = await uploadCourseCover(file, course.id, course.campaign_id)
       await updateCourse(course.id, { cover_url: url })
       setCourse({ ...course, cover_url: url })
       toast.success(t('admin.courses.cover_ok'))

@@ -541,9 +541,18 @@ export async function resetUserCourseAdmin(userId: string, courseId: string): Pr
 
 // ─── Portada del curso ───────────────────────────────────────────
 
-export async function uploadCourseCover(file: File, courseId: string): Promise<string> {
+export async function uploadCourseCover(
+  file: File,
+  courseId: string,
+  campaignId: string,
+): Promise<string> {
   const ext = file.name.split('.').pop() ?? 'jpg'
-  const path = `courses/${courseId}/cover-${Date.now()}.${ext}`
+  // La ruta DEBE empezar con el UUID de la campaña: la política RLS del bucket
+  // module-media autoriza la escritura según que el primer segmento de la ruta
+  // sea una campaña del usuario (o de la que es miembro). Antes empezaba con el
+  // literal "courses/", por eso los capacitadores recibían error al subir la
+  // portada mientras que sí podían subir media de sección.
+  const path = `${campaignId}/covers/${courseId}/cover-${Date.now()}.${ext}`
   const { error } = await supabase.storage
     .from('module-media')
     .upload(path, file, { contentType: file.type })
