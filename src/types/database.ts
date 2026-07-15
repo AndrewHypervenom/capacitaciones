@@ -1446,6 +1446,10 @@ export interface Database {
         Args: Record<string, never>
         Returns: Json
       }
+      notify_learner_feedback: {
+        Args: { p_user_id: string; p_course_id: string | null; p_payload: Json }
+        Returns: undefined
+      }
     }
     Enums: Record<string, never>
   }
