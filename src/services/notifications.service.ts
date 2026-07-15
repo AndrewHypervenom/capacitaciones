@@ -35,9 +35,18 @@ export interface AppNotification {
 
 /** Notificaciones del usuario, de la más reciente a la más antigua. */
 export async function getMyNotifications(limit = 30): Promise<AppNotification[]> {
+  // Filtro EXPLÍCITO por el usuario actual: no confiamos solo en RLS. El staff
+  // (superadmin/capacitador) tiene políticas "read-all" sobre muchas tablas, así
+  // que sin este filtro un capacitador vería las notificaciones (p. ej. avisos de
+  // retroalimentación) de TODOS los aprendices. La campana es estrictamente
+  // personal → siempre acotamos a auth.uid().
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth.user?.id
+  if (!uid) return []
   const { data, error } = await supabase
     .from('user_notifications')
     .select('id, scope, kind, course_id, payload, created_at, read_at')
+    .eq('user_id', uid)
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw error
