@@ -120,6 +120,12 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     scroll-behavior: smooth;
+    /* Reserva siempre el ancho del scrollbar para que el layout no cambie de
+       ancho cuando aparece/desaparece la barra vertical. Sin esto, las barras
+       fijas (header sticky, sidebar) "bailan" de lado al alternar entre páginas
+       cortas y largas. Solo se nota con scrollbars clásicos (no overlay), por
+       eso le pasaba a un usuario y no a otros. */
+    scrollbar-gutter: stable;
   }
 
   body {
