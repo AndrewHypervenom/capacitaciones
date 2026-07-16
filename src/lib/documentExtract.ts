@@ -12,7 +12,7 @@ export interface ExtractedImage {
 export interface ExtractedDocument {
   text: string
   fileName: string
-  kind: 'word' | 'excel' | 'pdf' | 'text'
+  kind: 'word' | 'excel' | 'pdf' | 'text' | 'powerpoint'
   /** Figuras reales del documento (diagramas, fotos): se pueden insertar en las secciones. */
   images: ExtractedImage[]
   /** Imágenes solo para que la IA "lea" el documento (páginas escaneadas): NO se insertan. */
@@ -31,10 +31,13 @@ export type ExtractProgressFn = (p: ExtractProgress) => void
 const WORD_EXT = ['.docx']
 const EXCEL_EXT = ['.xlsx', '.xls', '.csv']
 const PDF_EXT = ['.pdf']
+const POWERPOINT_EXT = ['.pptx']
 const TEXT_EXT = ['.txt', '.md']
 
 /** Extensiones aceptadas por el importador (para el atributo `accept` del input). */
-export const ACCEPTED_DOC_EXTENSIONS = [...WORD_EXT, ...EXCEL_EXT, ...PDF_EXT, ...TEXT_EXT].join(',')
+export const ACCEPTED_DOC_EXTENSIONS = [
+  ...WORD_EXT, ...EXCEL_EXT, ...PDF_EXT, ...POWERPOINT_EXT, ...TEXT_EXT,
+].join(',')
 
 // Límites para controlar tamaño de la petición y costo de la visión.
 const MAX_IMAGES = 20
@@ -406,6 +409,374 @@ async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]>
   return images
 }
 
+// ─── PowerPoint (.pptx) ───────────────────────────────────────
+
+/**
+ * Normaliza una imagen embebida (Blob) a JPEG base64: descarta íconos/viñetas
+ * diminutas (bajo `MIN_FIGURE_DIM`) y reduce la resolución al techo de figuras.
+ * Devuelve null si la imagen no se puede decodificar o es demasiado pequeña.
+ */
+async function normalizeImageBlob(blob: Blob): Promise<string | null> {
+  const url = URL.createObjectURL(blob)
+  try {
+    const img = await loadImageEl(url).catch(() => null)
+    if (!img) return null
+    const W = img.naturalWidth, H = img.naturalHeight
+    if (!W || !H || Math.max(W, H) < MIN_FIGURE_DIM) return null
+
+    const scale = Math.min(1, FIGURE_MAX_DIM / Math.max(W, H))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(W * scale)
+    canvas.height = Math.round(H * scale)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    // Fondo blanco para PNG/GIF con transparencia (capturas con canal alfa).
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    const base64 = canvas.toDataURL('image/jpeg', FIGURE_JPEG_QUALITY).split(',')[1] ?? null
+    canvas.width = 0
+    canvas.height = 0
+    return base64
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/**
+ * Extrae el texto de una diapositiva (o nota) de OOXML conservando su estructura:
+ * cada párrafo `<a:p>` (título, viñeta) es una línea, y dentro de él los runs `<a:t>`
+ * se concatenan en orden de lectura. DOMParser decodifica entidades por sí solo.
+ */
+function pptxXmlToText(xml: string): string {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  if (doc.getElementsByTagName('parsererror').length) return ''
+  const paras = Array.from(doc.getElementsByTagName('a:p'))
+  const lines = paras
+    // Los runs de un mismo párrafo son texto contiguo → se unen sin espacio.
+    .map((p) => Array.from(p.getElementsByTagName('a:t')).map((t) => t.textContent ?? '').join('').trim())
+    .filter(Boolean)
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/** Número al final del nombre de un XML (`slide12.xml` → 12) para ordenar por posición. */
+function trailingNumber(name: string): number {
+  const m = name.match(/(\d+)\.xml$/)
+  return m ? parseInt(m[1], 10) : 0
+}
+
+// ─── Rasterización de diapositivas ────────────────────────────
+// PowerPoint mide todo en EMU (English Metric Units): 914400 EMU = 1 pulgada,
+// 12700 EMU = 1 punto tipográfico. Reconstruimos cada diapositiva en un <canvas>
+// respetando la posición (a:off) y tamaño (a:ext) de cada figura y cuadro de texto,
+// para que la IA vea el LAYOUT real (no una lista plana de texto e imágenes sueltas).
+
+const EMU_PER_POINT = 12700
+const DEFAULT_SLIDE_CX = 12192000 // 13.333" (16:9)
+const DEFAULT_SLIDE_CY = 6858000 // 7.5"
+const PPTX_SLIDE_RASTER_CAP = MAX_IMAGES // tope de diapositivas rasterizadas (control de costo)
+
+/** Transformación acumulada: `absEMU = t + local * s` (compone grupos anidados). */
+interface SlideXform { tx: number; ty: number; sx: number; sy: number }
+const IDENTITY_XFORM: SlideXform = { tx: 0, ty: 0, sx: 1, sy: 1 }
+
+function firstChildByTag(el: Element, tag: string): Element | null {
+  return el.getElementsByTagName(tag)[0] ?? null
+}
+
+function readOffExt(xfrm: Element | null, offTag: string, extTag: string): { x: number; y: number; cx: number; cy: number } | null {
+  if (!xfrm) return null
+  const off = firstChildByTag(xfrm, offTag)
+  const ext = firstChildByTag(xfrm, extTag)
+  if (!off || !ext) return null
+  return {
+    x: Number(off.getAttribute('x') ?? 0),
+    y: Number(off.getAttribute('y') ?? 0),
+    cx: Number(ext.getAttribute('cx') ?? 0),
+    cy: Number(ext.getAttribute('cy') ?? 0),
+  }
+}
+
+/** Compone la transformación de un grupo (`p:grpSp`) sobre la del padre. */
+function composeGroupXform(parent: SlideXform, xfrm: Element | null): SlideXform {
+  const rect = readOffExt(xfrm, 'a:off', 'a:ext')
+  const child = readOffExt(xfrm, 'a:chOff', 'a:chExt')
+  if (!rect || !child || !child.cx || !child.cy) return parent
+  const gsx = rect.cx / child.cx
+  const gsy = rect.cy / child.cy
+  return {
+    tx: parent.tx + (rect.x - child.x * gsx) * parent.sx,
+    ty: parent.ty + (rect.y - child.y * gsy) * parent.sy,
+    sx: gsx * parent.sx,
+    sy: gsy * parent.sy,
+  }
+}
+
+/** Rectángulo de una figura, ya mapeado a píxeles del canvas. */
+function shapeRectPx(xf: SlideXform, off: { x: number; y: number; cx: number; cy: number }, scale: number) {
+  return {
+    x: (xf.tx + off.x * xf.sx) * scale,
+    y: (xf.ty + off.y * xf.sy) * scale,
+    w: off.cx * xf.sx * scale,
+    h: off.cy * xf.sy * scale,
+  }
+}
+
+/** Color `a:srgbClr`/`a:schemeClr` más cercano dentro de un elemento (aprox.). */
+function firstSolidColor(el: Element, fallback: string): string {
+  const srgb = firstChildByTag(el, 'a:srgbClr')
+  if (srgb) {
+    const v = srgb.getAttribute('val')
+    if (v && /^[0-9a-fA-F]{6}$/.test(v)) return `#${v}`
+  }
+  return fallback
+}
+
+/** Dibuja el texto de un `<p:txBody>` dentro del rectángulo de la figura (aprox.). */
+function drawShapeText(ctx: CanvasRenderingContext2D, sp: Element, rectPx: { x: number; y: number; w: number; h: number }, scale: number, sy: number) {
+  const txBody = firstChildByTag(sp, 'p:txBody')
+  if (!txBody) return
+  const padX = 6, padY = 4
+  let cursorY = rectPx.y + padY
+  const maxW = Math.max(20, rectPx.w - padX * 2)
+
+  for (const p of Array.from(txBody.getElementsByTagName('a:p'))) {
+    const runs = Array.from(p.getElementsByTagName('a:r'))
+    const text = runs.map((r) => firstChildByTag(r, 'a:t')?.textContent ?? '').join('').trim()
+    if (!text) { cursorY += 6; continue }
+
+    const firstRpr = runs.length ? firstChildByTag(runs[0], 'a:rPr') : null
+    const szAttr = firstRpr?.getAttribute('sz')
+    const pts = szAttr ? Number(szAttr) / 100 : 18
+    // pt → px: 1 punto = EMU_PER_POINT EMU, y `scale` es px por EMU (× escala del grupo).
+    const fontPx = Math.max(8, pts * EMU_PER_POINT * scale * sy)
+    const bold = firstRpr?.getAttribute('b') === '1'
+    const color = firstRpr ? firstSolidColor(firstRpr, '#1a1a1a') : '#1a1a1a'
+    const algn = firstChildByTag(p, 'a:pPr')?.getAttribute('algn') ?? 'l'
+
+    ctx.font = `${bold ? '600 ' : ''}${fontPx}px Inter, Arial, sans-serif`
+    ctx.fillStyle = color
+    ctx.textBaseline = 'top'
+
+    // Ajuste de línea por palabras dentro del ancho de la figura.
+    const words = text.split(/\s+/)
+    let line = ''
+    const lineH = fontPx * 1.25
+    const flush = (s: string) => {
+      if (cursorY > rectPx.y + rectPx.h + lineH) return
+      let x = rectPx.x + padX
+      if (algn === 'ctr') { ctx.textAlign = 'center'; x = rectPx.x + rectPx.w / 2 }
+      else if (algn === 'r') { ctx.textAlign = 'right'; x = rectPx.x + rectPx.w - padX }
+      else ctx.textAlign = 'left'
+      ctx.fillText(s, x, cursorY)
+      cursorY += lineH
+    }
+    for (const w of words) {
+      const test = line ? `${line} ${w}` : w
+      if (ctx.measureText(test).width > maxW && line) { flush(line); line = w }
+      else line = test
+    }
+    if (line) flush(line)
+  }
+  ctx.textAlign = 'left'
+}
+
+/**
+ * Dibuja recursivamente el árbol de figuras de una diapositiva (o de un grupo).
+ * Recorre en orden del documento para respetar el z-order (lo de atrás se pinta
+ * primero). Resuelve las imágenes por su relación (`r:embed`) con `loadMedia`.
+ */
+async function drawShapeTree(
+  ctx: CanvasRenderingContext2D,
+  tree: Element,
+  xf: SlideXform,
+  scale: number,
+  rels: Map<string, string>,
+  loadMedia: (path: string) => Promise<HTMLImageElement | null>,
+): Promise<void> {
+  for (const node of Array.from(tree.children)) {
+    const tag = node.tagName
+    if (tag === 'p:grpSp') {
+      const grpXfrm = firstChildByTag(node, 'a:xfrm')
+      await drawShapeTree(ctx, node, composeGroupXform(xf, grpXfrm), scale, rels, loadMedia)
+    } else if (tag === 'p:pic') {
+      const off = readOffExt(firstChildByTag(node, 'a:xfrm'), 'a:off', 'a:ext')
+      const embed = firstChildByTag(node, 'a:blip')?.getAttribute('r:embed')
+      const path = embed ? rels.get(embed) : null
+      if (!off || !path) continue
+      try {
+        const img = await loadMedia(path)
+        if (!img) continue
+        const r = shapeRectPx(xf, off, scale)
+        if (r.w > 1 && r.h > 1) ctx.drawImage(img, r.x, r.y, r.w, r.h)
+      } catch { /* medio no decodificable (emf/wmf): se omite */ }
+    } else if (tag === 'p:sp') {
+      const off = readOffExt(firstChildByTag(node, 'a:xfrm'), 'a:off', 'a:ext')
+      // Sin xfrm propio (placeholder que hereda del layout) no sabemos su posición:
+      // el texto ya se capturó aparte, así que solo omitimos su dibujo.
+      if (off) drawShapeText(ctx, node, shapeRectPx(xf, off, scale), scale, xf.sy)
+    }
+    // p:graphicFrame (tablas/gráficos/SmartArt) y p:cxnSp (conectores) se omiten.
+  }
+}
+
+/** Normaliza un Target de relaciones (`../media/x.png`) a ruta del paquete. */
+function resolveRelTarget(baseDir: string, target: string): string {
+  if (target.startsWith('/')) return target.slice(1)
+  const stack = baseDir.split('/').filter(Boolean)
+  for (const seg of target.split('/')) {
+    if (seg === '..') stack.pop()
+    else if (seg && seg !== '.') stack.push(seg)
+  }
+  return stack.join('/')
+}
+
+/** Número al final del nombre de un medio (`ppt/media/image12.png` → 12). */
+function mediaNumber(path: string): number {
+  const m = path.match(/(\d+)\.[a-z]+$/i)
+  return m ? parseInt(m[1], 10) : 0
+}
+
+/** Lee el tamaño de diapositiva (`<p:sldSz>`) de `presentation.xml`, en EMU. */
+async function readSlideSize(presentationXml: string | undefined): Promise<{ cx: number; cy: number }> {
+  if (!presentationXml) return { cx: DEFAULT_SLIDE_CX, cy: DEFAULT_SLIDE_CY }
+  const doc = new DOMParser().parseFromString(presentationXml, 'application/xml')
+  const sz = doc.getElementsByTagName('p:sldSz')[0]
+  const cx = Number(sz?.getAttribute('cx')) || DEFAULT_SLIDE_CX
+  const cy = Number(sz?.getAttribute('cy')) || DEFAULT_SLIDE_CY
+  return { cx, cy }
+}
+
+/**
+ * Procesa un PowerPoint (.pptx). Devuelve:
+ *  - `text`: texto de cada diapositiva (títulos, viñetas) + notas del presentador.
+ *  - `figures`: imágenes embebidas (capturas, gráficos, fotos) como figuras INSERTABLES.
+ *  - `slideImages`: cada diapositiva RASTERIZADA completa (fondo + imágenes en su
+ *    posición + texto), como contexto visual para que la IA lea el layout real.
+ */
+async function parsePptx(
+  buffer: ArrayBuffer,
+  onProgress?: ExtractProgressFn,
+): Promise<{ text: string; figures: ExtractedImage[]; slideImages: ExtractedImage[] }> {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(buffer)
+  onProgress?.({ stage: 'extracting', ratio: 0.15 })
+
+  const slidePaths = Object.keys(zip.files)
+    .filter((p) => /^ppt\/slides\/slide\d+\.xml$/.test(p))
+    .sort((a, b) => trailingNumber(a) - trailingNumber(b))
+
+  // Cargador de medios con caché (decodifica cada imagen una sola vez para el raster).
+  const mediaElCache = new Map<string, Promise<HTMLImageElement | null>>()
+  const objectUrls: string[] = []
+  const loadMedia = (path: string): Promise<HTMLImageElement | null> => {
+    let p = mediaElCache.get(path)
+    if (!p) {
+      p = (async () => {
+        const file = zip.files[path]
+        if (!file) return null
+        const blob = await file.async('blob')
+        const url = URL.createObjectURL(blob)
+        objectUrls.push(url)
+        return loadImageEl(url).catch(() => null)
+      })()
+      mediaElCache.set(path, p)
+    }
+    return p
+  }
+
+  // 1) Texto de las diapositivas y notas, en orden de presentación.
+  const parts: string[] = []
+  for (let i = 0; i < slidePaths.length; i++) {
+    const slideXml = await zip.files[slidePaths[i]].async('string')
+    const slideText = pptxXmlToText(slideXml)
+
+    const n = trailingNumber(slidePaths[i])
+    const notesFile = zip.files[`ppt/notesSlides/notesSlide${n}.xml`]
+    const notesText = notesFile ? pptxXmlToText(await notesFile.async('string')) : ''
+
+    const block = [`## Diapositiva ${i + 1}`, slideText || '(sin texto)']
+    if (notesText) block.push(`\n**Notas del presentador:** ${notesText}`)
+    parts.push(block.join('\n'))
+    onProgress?.({ stage: 'extracting', ratio: 0.15 + 0.35 * ((i + 1) / Math.max(1, slidePaths.length)) })
+  }
+  const text = parts.join('\n\n').trim()
+
+  // 2) Rasterización de cada diapositiva completa (layout real → contexto visual).
+  onProgress?.({ stage: 'images', ratio: 0.5 })
+  const { cx, cy } = await readSlideSize(await zip.files['ppt/presentation.xml']?.async('string'))
+  const scale = Math.min(2, PDF_RENDER_MAX_DIM / Math.max(cx, cy))
+  const rasterCount = Math.min(slidePaths.length, PPTX_SLIDE_RASTER_CAP)
+  const slideImages: ExtractedImage[] = []
+
+  for (let i = 0; i < rasterCount; i++) {
+    try {
+      const slideDoc = new DOMParser().parseFromString(await zip.files[slidePaths[i]].async('string'), 'application/xml')
+      const spTree = slideDoc.getElementsByTagName('p:spTree')[0]
+      if (!spTree) continue
+
+      // Relaciones de la diapositiva: r:embed → ruta del medio.
+      const n = trailingNumber(slidePaths[i])
+      const relsFile = zip.files[`ppt/slides/_rels/slide${n}.xml.rels`]
+      const rels = new Map<string, string>()
+      if (relsFile) {
+        const relsDoc = new DOMParser().parseFromString(await relsFile.async('string'), 'application/xml')
+        for (const rel of Array.from(relsDoc.getElementsByTagName('Relationship'))) {
+          const id = rel.getAttribute('Id')
+          const target = rel.getAttribute('Target')
+          if (id && target && rel.getAttribute('TargetMode') !== 'External') {
+            rels.set(id, resolveRelTarget('ppt/slides', target))
+          }
+        }
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.floor(cx * scale))
+      canvas.height = Math.max(1, Math.floor(cy * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) continue
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      await drawShapeTree(ctx, spTree, IDENTITY_XFORM, scale, rels, loadMedia)
+
+      const base64 = canvas.toDataURL('image/jpeg', PDF_JPEG_QUALITY).split(',')[1]
+      canvas.width = 0
+      canvas.height = 0
+      if (base64) slideImages.push({ mediaType: 'image/jpeg', dataBase64: base64, page: i + 1 })
+    } catch {
+      // diapositiva no rasterizable: se omite (el texto ya se capturó)
+    }
+    onProgress?.({ stage: 'images', ratio: 0.5 + 0.35 * ((i + 1) / Math.max(1, rasterCount)) })
+  }
+
+  // 3) Imágenes embebidas como figuras insertables/referenciables.
+  onProgress?.({ stage: 'images', ratio: 0.88 })
+  const mediaPaths = Object.keys(zip.files)
+    .filter((p) => /^ppt\/media\/[^/]+\.(png|jpe?g|gif|webp)$/i.test(p))
+    .sort((a, b) => mediaNumber(a) - mediaNumber(b))
+
+  const figures: ExtractedImage[] = []
+  const seen = new Set<string>()
+  for (const path of mediaPaths) {
+    if (figures.length >= MAX_IMAGES) break
+    try {
+      const blob = await zip.files[path].async('blob')
+      const base64 = await normalizeImageBlob(blob)
+      if (!base64) continue
+      const sig = `${base64.length}:${base64.slice(0, 48)}`
+      if (seen.has(sig)) continue // dedup (logos repetidos en varias slides)
+      seen.add(sig)
+      figures.push({ mediaType: 'image/jpeg', dataBase64: base64 })
+    } catch {
+      // imagen no decodificable (emf/wmf disfrazado, corrupta): se omite
+    }
+  }
+
+  objectUrls.forEach((u) => URL.revokeObjectURL(u))
+  return { text, figures, slideImages }
+}
+
 // ─── Recorte de capturas (modo manual, PDF escaneado) ─────────
 
 /** Recuadro de una captura dentro de una página, en porcentaje (0-100). */
@@ -528,13 +899,26 @@ export async function extractDocumentText(
     text = parsed.text
     images = parsed.figures
     contextImages = parsed.pageImages
+  } else if (POWERPOINT_EXT.includes(ext)) {
+    kind = 'powerpoint'
+    const buffer = await readAsArrayBuffer(file)
+    const parsed = await parsePptx(buffer, onProgress)
+    text = parsed.text
+    // Imágenes embebidas = figuras INSERTABLES/referenciables (image_index).
+    images = parsed.figures
+    // Cada diapositiva rasterizada completa = contexto visual (layout real) para
+    // que la IA "lea" el diseño de la slide; NO referenciable, igual que las páginas
+    // de un PDF escaneado.
+    contextImages = parsed.slideImages
   } else if (TEXT_EXT.includes(ext)) {
     kind = 'text'
     text = await readAsText(file)
   } else if (ext === '.doc') {
     throw new Error('El formato .doc (Word antiguo) no es compatible. Guarda el archivo como .docx e inténtalo de nuevo.')
+  } else if (ext === '.ppt') {
+    throw new Error('El formato .ppt (PowerPoint antiguo) no es compatible. Guarda el archivo como .pptx e inténtalo de nuevo.')
   } else {
-    throw new Error('Formato no soportado. Usa un archivo Word (.docx), Excel (.xlsx), PDF (.pdf) o texto (.txt, .md).')
+    throw new Error('Formato no soportado. Usa un archivo Word (.docx), Excel (.xlsx), PowerPoint (.pptx), PDF (.pdf) o texto (.txt, .md).')
   }
 
   text = text.trim()

@@ -1363,7 +1363,7 @@
       "stage_images": "Processando imagens…",
       "stage_done": "Pronto!",
       "upload": "Enviar arquivo",
-      "formats": "Word (.docx), Excel (.xlsx), PDF (.pdf) ou texto (.txt, .md)",
+      "formats": "Word (.docx), PowerPoint (.pptx), Excel (.xlsx), PDF (.pdf) ou texto (.txt, .md)",
       "optional": "(opcional)",
       "ph_prompt": "Ex: Crie um módulo para cada produto do catálogo. Foque em objeções e fechamento.",
       "analyzing": "Analisando documento…",

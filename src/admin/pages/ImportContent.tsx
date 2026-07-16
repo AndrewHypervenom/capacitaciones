@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import i18n from '@/i18n'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowLeft, Upload, FileText, FileSpreadsheet, Sparkles, Loader2, X,
+  ArrowLeft, Upload, FileText, FileSpreadsheet, Presentation, Sparkles, Loader2, X,
   AlertTriangle, ListChecks,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -186,6 +186,8 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
             <div className="flex items-center gap-3 px-4 py-3">
               {doc.kind === 'excel'
                 ? <FileSpreadsheet className="h-5 w-5 text-brand-green shrink-0" />
+                : doc.kind === 'powerpoint'
+                ? <Presentation className="h-5 w-5 text-[#D24726] shrink-0" />
                 : <FileText className="h-5 w-5 text-brand-violet shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] text-text font-medium truncate">{doc.fileName}</div>
