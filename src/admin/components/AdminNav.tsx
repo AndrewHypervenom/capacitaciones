@@ -53,15 +53,6 @@ export function AdminNav() {
         { to: '/admin', label: t('admin.nav.panel', 'Panel'), end: true },
       ]
     },
-    // Sección de Inteligencia Artificial (chat de ayuda + uso/costos): solo superadmin.
-    ...(isSuperAdmin ? [{
-      title: t('admin.nav.group_ai', 'Inteligencia Artificial'),
-      icon: Sparkles,
-      items: [
-        { to: '/admin/chat', label: t('admin.nav.chat', 'Chat de ayuda'), end: false },
-        { to: '/admin/ai-usage', label: t('admin.nav.ai_usage', 'Uso de IA'), end: false },
-      ]
-    }] : []),
     {
       title: t('admin.nav.group_content', 'Contenido'),
       icon: BookOpen,
@@ -71,15 +62,6 @@ export function AdminNav() {
         { to: '/admin/modules', label: t('admin.nav.modules', 'Módulos'), end: false }
       ]
     },
-    // Supervisión (bitácora de actividad + aprobación de eliminaciones): solo superadmin.
-    ...(isSuperAdmin ? [{
-      title: t('admin.nav.group_supervision', 'Supervisión'),
-      icon: ShieldCheck,
-      items: [
-        { to: '/admin/activity', label: t('admin.nav.activity', 'Actividad'), end: false },
-        { to: '/admin/approvals', label: t('admin.nav.approvals', 'Aprobaciones'), end: false },
-      ]
-    }] : []),
     {
       title: t('admin.nav.group_people', 'Personas'),
       icon: Users,
@@ -104,7 +86,28 @@ export function AdminNav() {
         { to: '/admin/quiz', label: t('admin.nav.quiz_live', 'Quizzes'), end: false },
         { to: '/admin/simulations', label: t('admin.nav.simulations', 'Simulaciones'), end: false }
       ]
-    }
+    },
+    // Secciones exclusivas de superadmin (no las ve el capacitador): van al final
+    // del menú para no interrumpir el flujo de trabajo diario. Supervisión queda
+    // de última.
+    // Inteligencia Artificial (chat de ayuda + uso/costos).
+    ...(isSuperAdmin ? [{
+      title: t('admin.nav.group_ai', 'Inteligencia Artificial'),
+      icon: Sparkles,
+      items: [
+        { to: '/admin/chat', label: t('admin.nav.chat', 'Chat de ayuda'), end: false },
+        { to: '/admin/ai-usage', label: t('admin.nav.ai_usage', 'Uso de IA'), end: false },
+      ]
+    }] : []),
+    // Supervisión (bitácora de actividad + aprobación de eliminaciones).
+    ...(isSuperAdmin ? [{
+      title: t('admin.nav.group_supervision', 'Supervisión'),
+      icon: ShieldCheck,
+      items: [
+        { to: '/admin/activity', label: t('admin.nav.activity', 'Actividad'), end: false },
+        { to: '/admin/approvals', label: t('admin.nav.approvals', 'Aprobaciones'), end: false },
+      ]
+    }] : []),
   ];
 
   const links = adminLinks

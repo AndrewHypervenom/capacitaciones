@@ -76,6 +76,8 @@ export async function getCampaignCollaborators(campaignId: string): Promise<Coll
 export async function searchCampaignCandidates(
   campaignId: string,
   query: string,
+  /** superadmin ve todos los usuarios; capacitador solo los corporativos. */
+  includeAll = false,
 ): Promise<CollaboratorProfile[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.rpc as any)('search_campaign_candidates', {
@@ -90,14 +92,27 @@ export async function searchCampaignCandidates(
     job_title: string | null
     avatar_url: string | null
     is_collaborator: boolean
-  }>).map((r) => ({
-    id: r.id,
-    display_name: r.display_name,
-    email: r.email,
-    job_title: r.job_title,
-    avatar_url: r.avatar_url,
-    is_collaborator: r.is_collaborator,
-  }))
+  }>)
+    // Para el capacitador solo se muestran usuarios corporativos
+    // (@positivosmais.com), así los usuarios de prueba no aparecen al compartir
+    // campañas. El superadmin (includeAll) ve a todos. Se mantienen los que ya
+    // son colaboradores aunque no tengan el dominio, para poder quitarlos.
+    .filter((r) => includeAll || r.is_collaborator || isCorporateEmail(r.email))
+    .map((r) => ({
+      id: r.id,
+      display_name: r.display_name,
+      email: r.email,
+      job_title: r.job_title,
+      avatar_url: r.avatar_url,
+      is_collaborator: r.is_collaborator,
+    }))
+}
+
+/** Dominio corporativo. Solo estos usuarios pueden ser colaboradores de campañas. */
+const CORPORATE_EMAIL_DOMAIN = '@positivosmais.com'
+
+function isCorporateEmail(email: string | null): boolean {
+  return !!email && email.trim().toLowerCase().endsWith(CORPORATE_EMAIL_DOMAIN)
 }
 
 /** Agrega un capacitador como colaborador de la campaña. */
