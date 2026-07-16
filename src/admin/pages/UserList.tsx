@@ -621,7 +621,7 @@ export default function UserList() {
                   </button>
                   <button
                     onClick={() => navigate(`/admin/progress?view=worlds&user=${user.id}`)}
-                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
                     title={t('admin.users.view_progress')}
                   >
                     <BarChart3 className="h-4 w-4" />
@@ -629,7 +629,7 @@ export default function UserList() {
                   {isSuperAdmin && (
                     <button
                       onClick={() => setResetUser(user)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
                       title={t('admin.users.manage_courses')}
                     >
                       <RotateCcw className="h-4 w-4" />
@@ -640,7 +640,7 @@ export default function UserList() {
                   <button
                     onClick={() => handleDelete(user)}
                     disabled={deletingId === user.id}
-                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
                     title={i18n.t('admin.users.delete_user')}
                   >
                     {deletingId === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}

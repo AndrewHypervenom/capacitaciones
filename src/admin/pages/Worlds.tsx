@@ -450,7 +450,7 @@ export default function Worlds() {
                     <button
                       onClick={() => openWizardEdit(w)}
                       title={i18n.t('admin.worlds.ed_title')}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted transition-colors"
                       style={{ border: '1px solid rgb(var(--glass-border) / 0.08)' }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgb(var(--glass-border) / 0.06)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
@@ -459,7 +459,9 @@ export default function Worlds() {
                     </button>
                     <button
                       onClick={() => handleDelete(w)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted transition-colors"
+                      title={i18n.t('confirm.delete')}
+                      aria-label={i18n.t('confirm.delete')}
+                      className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted transition-colors"
                       style={{ border: '1px solid rgb(var(--glass-border) / 0.08)' }}
                       onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = '#ef4444'; el.style.background = 'rgba(239,68,68,0.08)' }}
                       onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = ''; el.style.background = 'transparent' }}
@@ -510,7 +512,7 @@ export default function Worlds() {
               <h2 className="text-[16px] font-semibold text-text">
                 {wizardMode === 'new' ? 'Nuevo mundo' : 'Editar mundo'}
               </h2>
-              <button onClick={closeWizard} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
+              <button onClick={closeWizard} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </div>

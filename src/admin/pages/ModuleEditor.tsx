@@ -1506,7 +1506,7 @@ export default function ModuleEditor() {
         <div className="px-4 pt-4 pb-3 border-b border-glass-border/8 md:hidden">
           <button
             onClick={() => setSidebarOpen(false)}
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors shrink-0"
+            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
@@ -1731,7 +1731,7 @@ export default function ModuleEditor() {
               </span>
               <button
                 onClick={() => setSplitView(false)}
-                className="ml-auto h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+                className="ml-auto h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>

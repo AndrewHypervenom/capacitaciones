@@ -197,7 +197,7 @@ export function HelpWidget() {
                 <button
                   onClick={clear}
                   aria-label={t('help.clear', 'Limpiar conversación')}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-text-subtle hover:bg-subtle hover:text-text transition-colors"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-text-subtle hover:bg-subtle hover:text-text transition-colors"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -205,7 +205,7 @@ export function HelpWidget() {
               <button
                 onClick={close}
                 aria-label={t('help.close', 'Cerrar')}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-text-subtle hover:bg-subtle hover:text-text transition-colors sm:hidden"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-text-subtle hover:bg-subtle hover:text-text transition-colors sm:hidden"
               >
                 <X className="h-4 w-4" />
               </button>

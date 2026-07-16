@@ -147,9 +147,9 @@ export default function ActivityLog() {
         </div>
       ) : (
         <>
-          <h3 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
+          <h2 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
             {t('admin.activity.count', { n: grouped.length })}
-          </h3>
+          </h2>
           <div className="rounded-2xl border border-line overflow-hidden divide-y divide-line">
             {grouped.map((r) => (
               <LogItem

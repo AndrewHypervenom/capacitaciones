@@ -77,7 +77,7 @@ function CourseCard({
           }}
         >
           {course.cover_url && (
-            <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
+            <img src={course.cover_url} alt={pickText(course.title_es, course.title_en, course.title_pt, language)} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" aria-hidden />
           <div

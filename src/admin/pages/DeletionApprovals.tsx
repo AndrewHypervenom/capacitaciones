@@ -103,9 +103,9 @@ export default function DeletionApprovals() {
         </div>
       ) : (
         <>
-          <h3 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
+          <h2 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
             {t('admin.approvals.count', { n: rows.length })}
-          </h3>
+          </h2>
           <div className="rounded-2xl border border-line overflow-hidden divide-y divide-line">
             {rows.map((r) => {
               const color = ENTITY_COLORS[r.entity_type] ?? '#94a3b8'

@@ -223,7 +223,7 @@ export default function UserProfile() {
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading}
                   aria-label={t('profile.change_photo', 'Cambiar foto')}
-                  className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-surface bg-primary text-on-primary shadow-sm transition-transform hover:scale-105 disabled:opacity-60"
+                  className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full border-2 border-surface bg-primary text-on-primary shadow-sm transition-transform hover:scale-105 disabled:opacity-60"
                 >
                   {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                 </button>

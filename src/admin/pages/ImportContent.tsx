@@ -201,7 +201,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
               </div>
               <button
                 onClick={() => { setDoc(null); lastFileRef.current = null; setError(null) }}
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
                 title={i18n.t('admin.import.remove_file')}
               >
                 <X className="h-4 w-4" />

@@ -544,20 +544,20 @@ export default function LiveQuizAdmin() {
                     onClick={() => startEdit(q)}
                     disabled={q.status === 'active'}
                     title={q.status === 'active' ? i18n.t('admin.livequiz.edit_locked') : i18n.t('common.edit')}
-                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle enabled:hover:text-text enabled:hover:bg-subtle transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle enabled:hover:text-text enabled:hover:bg-subtle transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => handleDuplicate(q)}
                     title={i18n.t('admin.livequiz.duplicate')}
-                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
+                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors"
                   >
                     <Copy className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => handleDelete(q.id)}
-                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-400 hover:bg-red-400/10 transition-colors"
                     title={i18n.t('confirm.delete')}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -750,7 +750,7 @@ export default function LiveQuizAdmin() {
           <div className="text-[11px] text-text-subtle uppercase tracking-wider mb-1">{i18n.t('admin.livequiz.access_pin')}</div>
           <div className="flex items-center gap-2 sm:justify-end">
             <span className="font-mono text-[28px] font-bold text-text tracking-widest">{activeQuiz.pin}</span>
-            <button onClick={copyPin} className="h-9 w-9 flex items-center justify-center text-text-subtle hover:text-text transition-colors">
+            <button onClick={copyPin} className="h-10 w-10 flex items-center justify-center text-text-subtle hover:text-text transition-colors">
               {pinCopied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
             </button>
           </div>
@@ -1044,7 +1044,7 @@ export default function LiveQuizAdmin() {
                     </div>
                   )}
                 </div>
-                <button onClick={() => setShowLeaderboard(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors">
+                <button onClick={() => setShowLeaderboard(false)} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-subtle transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>

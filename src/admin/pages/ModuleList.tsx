@@ -163,7 +163,7 @@ export default function ModuleList() {
           <Link
             to={`/admin/modules/${mod.id}/preview`}
             title={t('admin.modules.preview')}
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
           >
             <ExternalLink className="h-4 w-4" />
           </Link>
@@ -171,7 +171,7 @@ export default function ModuleList() {
           <button
             onClick={() => handleTogglePublished(mod)}
             title={mod.is_published ? t('admin.modules.unpublish') : t('admin.modules.publish')}
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
           >
             {mod.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </button>
@@ -179,7 +179,7 @@ export default function ModuleList() {
           <button
             onClick={() => handleDelete(mod)}
             title={t('admin.modules.delete')}
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
+            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
           >
             <Trash2 className="h-4 w-4" />
           </button>

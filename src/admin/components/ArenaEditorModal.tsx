@@ -325,7 +325,7 @@ export function ArenaEditorModal({
           </h2>
           <button
             onClick={onClose}
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -459,7 +459,7 @@ export function ArenaEditorModal({
                     <button type="button" aria-label={i18n.t('common.decrease', { defaultValue: 'Disminuir' })}
                       onClick={() => setForm(f => ({ ...f, section_size: Math.max(MIN_SECTION_SIZE, (f.section_size || DEFAULT_SECTION_SIZE) - 1) }))}
                       disabled={sectionSize <= MIN_SECTION_SIZE}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg border border-line text-text-muted hover:text-text hover:bg-bg transition-colors disabled:opacity-30 disabled:pointer-events-none text-[16px] leading-none">−</button>
+                      className="h-10 w-10 flex items-center justify-center rounded-lg border border-line text-text-muted hover:text-text hover:bg-bg transition-colors disabled:opacity-30 disabled:pointer-events-none text-[16px] leading-none">−</button>
                     <input
                       type="number" min={MIN_SECTION_SIZE} max={MAX_SECTION_SIZE}
                       value={form.section_size}
@@ -472,7 +472,7 @@ export function ArenaEditorModal({
                     <button type="button" aria-label={i18n.t('common.increase', { defaultValue: 'Aumentar' })}
                       onClick={() => setForm(f => ({ ...f, section_size: Math.min(MAX_SECTION_SIZE, (f.section_size || DEFAULT_SECTION_SIZE) + 1) }))}
                       disabled={sectionSize >= MAX_SECTION_SIZE}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg border border-line text-text-muted hover:text-text hover:bg-bg transition-colors disabled:opacity-30 disabled:pointer-events-none text-[16px] leading-none">+</button>
+                      className="h-10 w-10 flex items-center justify-center rounded-lg border border-line text-text-muted hover:text-text hover:bg-bg transition-colors disabled:opacity-30 disabled:pointer-events-none text-[16px] leading-none">+</button>
                   </div>
                 </div>
                 {/* Mini-mapa de secciones. */}
@@ -526,7 +526,7 @@ export function ArenaEditorModal({
                         type="button"
                         onClick={e => { e.stopPropagation(); removeStep(step.id) }}
                         disabled={form.steps.length === 1}
-                        className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/6 transition-colors disabled:opacity-25 disabled:pointer-events-none shrink-0"
+                        className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/6 transition-colors disabled:opacity-25 disabled:pointer-events-none shrink-0"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

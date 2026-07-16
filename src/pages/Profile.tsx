@@ -79,6 +79,12 @@ export default function Profile() {
 
   const handleSave = async () => {
     if (!user) return;
+    // Teléfono: solo dígitos, espacios, +, -, ( ) y mínimo 7 dígitos si se llenó
+    const phone = form.phone.trim();
+    if (phone && (!/^[+()\-\s\d]+$/.test(phone) || (phone.match(/\d/g)?.length ?? 0) < 7)) {
+      toast.error(t('profile.phone_invalid', 'Teléfono inválido: usa solo números (mínimo 7 dígitos)'));
+      return;
+    }
     setSaving(true);
     try {
       const updated = await updateProfile(user.id, {
@@ -147,7 +153,7 @@ export default function Profile() {
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
             aria-label={t('profile.change_photo', 'Cambiar foto')}
-            className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface bg-primary text-on-primary shadow-sm transition-transform hover:scale-105 disabled:opacity-60"
+            className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full border-2 border-surface bg-primary text-on-primary shadow-sm transition-transform hover:scale-105 disabled:opacity-60"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
           </button>

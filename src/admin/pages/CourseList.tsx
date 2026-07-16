@@ -564,7 +564,7 @@ export default function CourseList() {
                   disabled={previewingId === course.id}
                   title={course.is_published ? t('admin.courses.view_as_learner') : t('admin.courses.view_as_learner_publish_first')}
                   className={cn(
-                    'h-9 w-9 flex items-center justify-center rounded-lg transition-colors hover:bg-glass/8',
+                    'h-10 w-10 flex items-center justify-center rounded-lg transition-colors hover:bg-glass/8',
                     course.is_published ? 'text-text-muted hover:text-primary' : 'text-text-subtle/50',
                   )}
                 >
@@ -577,14 +577,14 @@ export default function CourseList() {
                 <button
                   onClick={() => handleTogglePublished(course)}
                   title={course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}
-                  className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                  className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
                 >
                   {course.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                 </button>
                 <button
                   onClick={() => handleDelete(course)}
                   title={t('admin.courses.delete')}
-                  className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
+                  className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -616,7 +616,7 @@ export default function CourseList() {
               <h2 className="text-[17px] font-semibold text-text">{t('admin.courses.new_course')}</h2>
               <button
                 onClick={() => setShowCreate(false)}
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
                 aria-label={t('admin.nav.close_menu')}
               >
                 <X className="h-4 w-4" />
@@ -677,7 +677,7 @@ export default function CourseList() {
               </h2>
               <button
                 onClick={() => setShowAi(false)}
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
                 aria-label={t('admin.nav.close_menu')}
               >
                 <X className="h-4 w-4" />

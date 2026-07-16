@@ -211,13 +211,13 @@ export default function CampaignList() {
                           />
                           <button
                             onClick={() => handleSaveName(c.id)}
-                            className="h-9 w-9 flex items-center justify-center rounded-lg text-neon-green hover:bg-neon-green/10 transition-colors"
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-neon-green hover:bg-neon-green/10 transition-colors"
                           >
                             <Check className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
-                            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:bg-glass/8 transition-colors"
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:bg-glass/8 transition-colors"
                           >
                             <X className="h-4 w-4" />
                           </button>
@@ -245,14 +245,14 @@ export default function CampaignList() {
                         <button
                           onClick={() => { setEditingId(c.id); setEditName(c.name) }}
                           title={i18n.t('admin.campaigns.edit_name')}
-                          className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleToggleActive(c)}
                           title={c.is_active ? t('admin.campaigns.toggle_deactivate') : t('admin.campaigns.toggle_activate')}
-                          className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
                         >
                           {c.is_active ? (
                             <ToggleRight className="h-4 w-4 text-neon-green" />
@@ -267,7 +267,7 @@ export default function CampaignList() {
                         onClick={() => handleDelete(c)}
                         disabled={deletingId === c.id}
                         title={i18n.t('admin.campaigns.delete_campaign')}
-                        className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                        className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
                       >
                         {deletingId === c.id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />

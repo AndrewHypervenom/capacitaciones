@@ -272,6 +272,7 @@
     "job_title_ph": "Ex. Consultor comercial",
     "national_id": "CPF / Documento",
     "phone": "Telefone",
+    "phone_invalid": "Telefone inválido: use apenas números (mínimo 7 dígitos)",
     "country": "País",
     "bio": "Sobre mim",
     "bio_ph": "Conte algo sobre você (opcional)",

@@ -16,6 +16,9 @@ supabase
 
 .env
 
+# Bots de QA — nada de esto va al repositorio
+qa/
+
 /agents
 
 skills-lock.json

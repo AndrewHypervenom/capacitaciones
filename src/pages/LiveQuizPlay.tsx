@@ -221,7 +221,7 @@ export default function LiveQuizPlay() {
 
     const { data, error } = await supabase
       .from('live_quizzes').select('*')
-      .eq('pin', code).neq('status', 'ended').single()
+      .eq('pin', code).neq('status', 'ended').maybeSingle()
 
     if (error || !data) {
       setJoinError(t('livequiz.pin_invalid'))

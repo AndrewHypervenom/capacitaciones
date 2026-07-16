@@ -272,6 +272,7 @@
     "job_title_ph": "Ej. Asesor comercial",
     "national_id": "Cédula / Documento",
     "phone": "Teléfono",
+    "phone_invalid": "Teléfono inválido: usa solo números (mínimo 7 dígitos)",
     "country": "País",
     "bio": "Acerca de mí",
     "bio_ph": "Cuéntanos algo sobre ti (opcional)",

@@ -272,6 +272,7 @@
     "job_title_ph": "e.g. Sales rep",
     "national_id": "ID / Document",
     "phone": "Phone",
+    "phone_invalid": "Invalid phone: use numbers only (at least 7 digits)",
     "country": "Country",
     "bio": "About me",
     "bio_ph": "Tell us something about you (optional)",

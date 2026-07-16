@@ -175,7 +175,7 @@ export function AdminNav() {
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+              className="md:hidden h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
               aria-label={t('admin.nav.close_menu')}
             >
               <X className="h-4 w-4" />

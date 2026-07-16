@@ -426,7 +426,7 @@ export default function ChoiceSimEditor() {
                 <button onClick={addNode} className="flex items-center gap-1 text-xs text-neon-green hover:text-neon-green/80 transition-colors" title={t('admin.simulations.add_step')}>
                   <Plus className="h-3.5 w-3.5" /> Agregar
                 </button>
-                <button onClick={() => setNodeDrawerOpen(false)} className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
+                <button onClick={() => setNodeDrawerOpen(false)} className="md:hidden h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>

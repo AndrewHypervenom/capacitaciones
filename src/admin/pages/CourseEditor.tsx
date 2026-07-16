@@ -1081,7 +1081,7 @@ export default function CourseEditor() {
       {stats && stats.enrolled > 0 && (
         <div className="mb-6">
           <div className="flex items-baseline justify-between mb-2">
-            <h3 className="text-[13px] font-semibold text-text">{t('admin.courses.stats_your_learners')}</h3>
+            <h2 className="text-[13px] font-semibold text-text">{t('admin.courses.stats_your_learners')}</h2>
             {stats.is_owner && stats.global_enrolled > stats.enrolled && (
               <span className="text-[11px] text-text-subtle">
                 {t('admin.courses.stats_global_reach', { n: stats.global_enrolled })}
@@ -1129,7 +1129,7 @@ export default function CourseEditor() {
           <GlassCard intensity="subtle" rounded="2xl" className="p-4 space-y-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="min-w-0">
-                <h3 className="text-[13px] font-semibold text-text">{t('admin.courses.cover_title')}</h3>
+                <h2 className="text-[13px] font-semibold text-text">{t('admin.courses.cover_title')}</h2>
                 <p className="text-[11px] text-text-muted mt-0.5">{t('admin.courses.cover_preview_hint')}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -1376,9 +1376,9 @@ export default function CourseEditor() {
       {tab === 'modules' && (
         <div className="space-y-6">
           <div>
-            <h3 className="text-[14px] font-semibold text-text mb-1">
+            <h2 className="text-[14px] font-semibold text-text mb-1">
               {t('admin.courses.course_modules_title')}
-            </h3>
+            </h2>
             <p className="text-[12px] text-text-muted mb-3">
               {t('admin.courses.course_modules_hint')}
             </p>
@@ -1417,7 +1417,7 @@ export default function CourseEditor() {
                           <button
                             onClick={() => handleToggleModulePublished(mod.id, false)}
                             title={t('admin.modules.unpublish')}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
@@ -1433,7 +1433,7 @@ export default function CourseEditor() {
                         <button
                           onClick={() => handleMoveModule(idx, -1)}
                           disabled={idx === 0}
-                          className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
+                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
                           aria-label={t('admin.courses.move_up')}
                         >
                           <ArrowUp className="h-4 w-4" />
@@ -1441,7 +1441,7 @@ export default function CourseEditor() {
                         <button
                           onClick={() => handleMoveModule(idx, 1)}
                           disabled={idx === course.modules.length - 1}
-                          className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
+                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
                           aria-label={t('admin.courses.move_down')}
                         >
                           <ArrowDown className="h-4 w-4" />
@@ -1455,7 +1455,7 @@ export default function CourseEditor() {
                         <button
                           onClick={() => handleRemoveModule(mod.id)}
                           title={t('admin.courses.remove_from_course')}
-                          className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
+                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -1470,9 +1470,9 @@ export default function CourseEditor() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="text-[14px] font-semibold text-text mb-1">
+                <h2 className="text-[14px] font-semibold text-text mb-1">
                   {t('admin.courses.available_modules_title')}
-                </h3>
+                </h2>
                 <p className="text-[12px] text-text-muted">
                   {t('admin.courses.available_modules_hint')}
                 </p>
@@ -1539,10 +1539,10 @@ export default function CourseEditor() {
 
           {/* ¿Quién puede ver este curso? (alcance) */}
           <div>
-            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
               <Eye className="h-4 w-4 text-text-muted" />
               {t('admin.courses.audience_title')}
-            </h3>
+            </h2>
             <p className="text-[12px] text-text-muted mb-3">{t('admin.courses.audience_hint')}</p>
             <div className="grid sm:grid-cols-2 gap-3">
               {([
@@ -1576,10 +1576,10 @@ export default function CourseEditor() {
 
           {/* Campañas */}
           <div>
-            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
               <FolderOpen className="h-4 w-4 text-text-muted" />
               {t('admin.courses.assign_campaigns_title')}
-            </h3>
+            </h2>
             <p className="text-[12px] text-text-muted mb-3">
               {form.visibility === 'catalog'
                 ? t('admin.courses.assign_campaigns_hint_public')
@@ -1642,10 +1642,10 @@ export default function CourseEditor() {
 
           {/* Personas */}
           <div>
-            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
               <Users className="h-4 w-4 text-text-muted" />
               {t('admin.courses.assign_users_title')}
-            </h3>
+            </h2>
             <p className="text-[12px] text-text-muted mb-3">
               {form.visibility === 'catalog'
                 ? t('admin.courses.assign_users_hint_public')
@@ -1755,10 +1755,10 @@ export default function CourseEditor() {
         <div className="space-y-10">
           {/* 1. Condiciones del certificado */}
           <div>
-            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
               <Award className="h-4 w-4 text-text-muted" />
               {t('admin.courses.cert_conditions_title')}
-            </h3>
+            </h2>
             <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.cert_conditions_hint')}</p>
 
             <div className="space-y-3">
@@ -2003,7 +2003,7 @@ export default function CourseEditor() {
                           </div>
                           <button
                             onClick={() => handleToggleScenarioCourse(s, false)}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
                             title={t('admin.courses.remove_from_course')}
                           >
                             <X className="h-4 w-4" />
@@ -2055,7 +2055,7 @@ export default function CourseEditor() {
                           </div>
                           <button
                             onClick={() => handleToggleChoiceScenarioCourse(s, false)}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
                             title={t('admin.courses.remove_from_course')}
                           >
                             <X className="h-4 w-4" />
@@ -2107,10 +2107,10 @@ export default function CourseEditor() {
 
           {/* 3. Resultados por aprendiz — ver/descargar sus certificados */}
           <div>
-            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
               <GraduationCap className="h-4 w-4 text-text-muted" />
               {t('admin.courses.results_title')}
-            </h3>
+            </h2>
             <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.results_hint')}</p>
 
             {resultsLoading ? (

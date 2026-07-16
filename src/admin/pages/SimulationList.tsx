@@ -220,20 +220,20 @@ export default function SimulationList() {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleToggleDialogue(row)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                       title={row.is_published ? 'Despublicar' : 'Publicar'}
                     >
                       {row.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                     <button
                       onClick={() => nav(`/admin/simulations/${row.id}`)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteDialogue(row)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -266,19 +266,19 @@ export default function SimulationList() {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleToggleChoice(row)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                     >
                       {row.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                     <button
                       onClick={() => nav(`/admin/simulations/choice/${row.id}`)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-glass/10 text-text-muted hover:text-text transition-colors"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteChoice(row)}
-                      className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
+                      className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

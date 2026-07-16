@@ -688,11 +688,11 @@ export default function WorldDetail() {
                         <Sparkles className="h-3.5 w-3.5"/> <span className="hidden sm:inline">{t('admin.worlds.ai_badge')}</span>
                       </button>
                       <button onClick={e => { e.stopPropagation(); openEditRegion(region) }}
-                        className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle">
+                        className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle">
                         <Pencil className="h-4 w-4"/>
                       </button>
                       <button onClick={e => { e.stopPropagation(); deleteRegion(region) }}
-                        className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-400">
+                        className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-400">
                         <Trash2 className="h-4 w-4"/>
                       </button>
                       <ChevronRight className={`h-4 w-4 text-text-muted transition-transform ${isOpen ? 'rotate-90' : ''}`}/>
@@ -757,11 +757,11 @@ export default function WorldDetail() {
                                     Probar
                                   </button>
                                   <button onClick={() => openEditLevel(level)}
-                                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:bg-subtle">
+                                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:bg-subtle">
                                     <Pencil className="h-4 w-4"/>
                                   </button>
                                   <button onClick={() => deleteLevel(level)}
-                                    className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:bg-red-500/10 hover:text-red-400">
+                                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:bg-red-500/10 hover:text-red-400">
                                     <Trash2 className="h-4 w-4"/>
                                   </button>
                                 </div>
@@ -796,7 +796,7 @@ export default function WorldDetail() {
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text">{editingRegion ? i18n.t('admin.worlds.edit_region') : i18n.t('admin.worlds.new_region')}</h2>
-              <button onClick={() => setRegionModal(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+              <button onClick={() => setRegionModal(false)} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
             </div>
@@ -861,7 +861,7 @@ export default function WorldDetail() {
           <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text">{editingLevel ? i18n.t('admin.worlds.edit_level') : i18n.t('admin.worlds.new_level')}</h2>
-              <button onClick={() => setLevelModal(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+              <button onClick={() => setLevelModal(false)} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
             </div>
@@ -964,7 +964,7 @@ export default function WorldDetail() {
                 <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
                 {i18n.t('admin.worlds.ai_gen_title')}
               </h2>
-              <button onClick={() => setAiRegion(null)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+              <button onClick={() => setAiRegion(null)} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
             </div>
@@ -1049,7 +1049,7 @@ export default function WorldDetail() {
                 <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
                 {i18n.t('admin.worlds.bulk_modal_title', { defaultValue: 'Generar regiones desde el curso' })}
               </h2>
-              <button onClick={() => setBulkOpen(false)} className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
+              <button onClick={() => setBulkOpen(false)} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
                 <X className="h-4 w-4"/>
               </button>
             </div>

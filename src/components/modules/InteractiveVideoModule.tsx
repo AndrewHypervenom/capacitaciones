@@ -880,6 +880,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
               <button
                 type="button"
                 onClick={togglePlay}
+                aria-label={playing ? 'Pausar' : 'Reproducir'}
                 className="text-white/90 hover:text-white transition-colors shrink-0"
               >
                 {playing
@@ -893,6 +894,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                 <button
                   type="button"
                   onClick={toggleMute}
+                  aria-label={muted || volume === 0 ? 'Activar sonido' : 'Silenciar'}
                   className="text-white/70 hover:text-white transition-colors"
                 >
                   {muted || volume === 0
@@ -905,6 +907,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                   min={0}
                   max={1}
                   step={0.05}
+                  aria-label="Volumen"
                   value={muted ? 0 : volume}
                   onChange={handleVolumeChange}
                   className="w-16 h-1 accent-neon-green cursor-pointer"
@@ -975,6 +978,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
               <button
                 type="button"
                 onClick={handleFullscreen}
+                aria-label={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
                 className="text-white/70 hover:text-white transition-colors shrink-0"
               >
                 {fullscreen

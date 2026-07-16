@@ -92,7 +92,7 @@ export function NewSimulationModal({ open, defaultType = 'dialogue', onClose, on
           </div>
           <button
             onClick={onClose}
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors shrink-0"
+            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors shrink-0"
           >
             <X className="h-4 w-4" />
           </button>

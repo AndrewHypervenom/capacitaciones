@@ -271,7 +271,7 @@ function BadgeRow({
           onClick={onToggle}
           disabled={busy}
           title={disabled ? t('admin.gamification.enable', 'Activar') : t('admin.gamification.disable', 'Desactivar')}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-subtle hover:text-text transition-colors disabled:opacity-40"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-subtle hover:text-text transition-colors disabled:opacity-40"
         >
           {disabled ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
@@ -279,7 +279,7 @@ function BadgeRow({
           onClick={onEdit}
           disabled={busy}
           title={t('common.edit', 'Editar')}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-subtle hover:text-text transition-colors disabled:opacity-40"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-subtle hover:text-text transition-colors disabled:opacity-40"
         >
           <Pencil className="h-4 w-4" />
         </button>
@@ -287,7 +287,7 @@ function BadgeRow({
           onClick={onDelete}
           disabled={busy || badge.builtin}
           title={badge.builtin ? t('admin.gamification.builtin_no_delete', 'Los logros de sistema no se borran (puedes desactivarlos)') : t('common.delete', 'Eliminar')}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger transition-colors disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-text-muted"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger transition-colors disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-text-muted"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -345,7 +345,7 @@ function BadgeModal({
                 ? t('admin.gamification.edit_badge', 'Editar logro')
                 : t('admin.gamification.add_badge', 'Nuevo logro')}
           </h3>
-          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-subtle">
+          <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-subtle">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -354,37 +354,37 @@ function BadgeModal({
           <div className="flex gap-3">
             <div className="w-20">
               <label className={labelCls}>{t('admin.gamification.emoji', 'Emoji')}</label>
-              <input value={form.emoji} onChange={(e) => set('emoji', e.target.value)} maxLength={4} className={cn(field, 'text-center text-xl')} />
+              <input aria-label={t('admin.gamification.emoji', 'Emoji')} value={form.emoji} onChange={(e) => set('emoji', e.target.value)} maxLength={4} className={cn(field, 'text-center text-xl')} />
             </div>
             <div className="flex-1">
               <label className={labelCls}>{t('admin.gamification.name_es', 'Nombre (ES)')}</label>
-              <input value={form.label} onChange={(e) => set('label', e.target.value)} className={field} />
+              <input aria-label={t('admin.gamification.name_es', 'Nombre (ES)')} value={form.label} onChange={(e) => set('label', e.target.value)} className={field} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>{t('admin.gamification.name_en', 'Nombre (EN)')}</label>
-              <input value={form.label_en ?? ''} onChange={(e) => set('label_en', e.target.value)} className={field} />
+              <input aria-label={t('admin.gamification.name_en', 'Nombre (EN)')} value={form.label_en ?? ''} onChange={(e) => set('label_en', e.target.value)} className={field} />
             </div>
             <div>
               <label className={labelCls}>{t('admin.gamification.name_pt', 'Nombre (PT)')}</label>
-              <input value={form.label_pt ?? ''} onChange={(e) => set('label_pt', e.target.value)} className={field} />
+              <input aria-label={t('admin.gamification.name_pt', 'Nombre (PT)')} value={form.label_pt ?? ''} onChange={(e) => set('label_pt', e.target.value)} className={field} />
             </div>
           </div>
 
           <div>
             <label className={labelCls}>{t('admin.gamification.desc_es', 'Descripción (ES)')}</label>
-            <input value={form.description} onChange={(e) => set('description', e.target.value)} className={field} />
+            <input aria-label={t('admin.gamification.desc_es', 'Descripción (ES)')} value={form.description} onChange={(e) => set('description', e.target.value)} className={field} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>{t('admin.gamification.desc_en', 'Descripción (EN)')}</label>
-              <input value={form.description_en ?? ''} onChange={(e) => set('description_en', e.target.value)} className={field} />
+              <input aria-label={t('admin.gamification.desc_en', 'Descripción (EN)')} value={form.description_en ?? ''} onChange={(e) => set('description_en', e.target.value)} className={field} />
             </div>
             <div>
               <label className={labelCls}>{t('admin.gamification.desc_pt', 'Descripción (PT)')}</label>
-              <input value={form.description_pt ?? ''} onChange={(e) => set('description_pt', e.target.value)} className={field} />
+              <input aria-label={t('admin.gamification.desc_pt', 'Descripción (PT)')} value={form.description_pt ?? ''} onChange={(e) => set('description_pt', e.target.value)} className={field} />
             </div>
           </div>
 
@@ -442,6 +442,7 @@ function BadgeModal({
                   <input
                     type="number"
                     min={1}
+                    aria-label={t('admin.gamification.threshold', 'Umbral')}
                     value={form.threshold}
                     onChange={(e) => set('threshold', Math.max(1, Number(e.target.value) || 1))}
                     className={field}
@@ -590,19 +591,19 @@ function XPLevelsEditor({
                   </div>
                 </td>
                 <td className="px-3 py-2">
-                  <input type="number" value={r.minXP} onChange={(e) => update(idx, { minXP: Number(e.target.value) || 0 })} className={field} />
+                  <input type="number" aria-label="XP mín." value={r.minXP} onChange={(e) => update(idx, { minXP: Number(e.target.value) || 0 })} className={field} />
                 </td>
                 <td className="px-3 py-2">
-                  <input type="number" value={r.maxXP} onChange={(e) => update(idx, { maxXP: Number(e.target.value) || 0 })} className={field} />
+                  <input type="number" aria-label="XP máx." value={r.maxXP} onChange={(e) => update(idx, { maxXP: Number(e.target.value) || 0 })} className={field} />
                 </td>
                 <td className="px-3 py-2">
-                  <input type="color" value={r.color} onChange={(e) => update(idx, { color: e.target.value })} className="h-9 w-full cursor-pointer rounded-lg border border-line bg-surface" />
+                  <input type="color" aria-label="Color del nivel" value={r.color} onChange={(e) => update(idx, { color: e.target.value })} className="h-9 w-full cursor-pointer rounded-lg border border-line bg-surface" />
                 </td>
                 <td className="px-3 py-2">
                   <button
                     onClick={() => removeRow(idx)}
                     disabled={rows.length <= 1}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-25"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-25"
                     title={t('common.delete', 'Eliminar')}
                   >
                     <Trash2 className="h-4 w-4" />

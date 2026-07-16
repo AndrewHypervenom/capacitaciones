@@ -245,7 +245,7 @@ export default function LearnerDashboard() {
           onClick={() => setMobileMenuOpen(true)}
           aria-label={t('nav.menu', 'Menú')}
           aria-expanded={mobileMenuOpen}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-subtle hover:text-text"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-subtle hover:text-text"
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -289,7 +289,7 @@ export default function LearnerDashboard() {
             <button
               onClick={closeMenu}
               aria-label={t('nav.close_menu', 'Cerrar menú')}
-              className="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle hover:text-text"
+              className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-subtle hover:text-text"
             >
               <X className="h-4 w-4" />
             </button>
@@ -542,9 +542,9 @@ export default function LearnerDashboard() {
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
                       {t('dashboard.quiz_tag')}
                     </p>
-                    <h4 className="text-[15px] font-semibold text-text truncate">
+                    <h3 className="text-[15px] font-semibold text-text truncate">
                       {t('dashboard.quiz_title')}
-                    </h4>
+                    </h3>
                     <p className="text-[13px] text-text-muted truncate">
                       {t('dashboard.quiz_subtitle')}
                     </p>
