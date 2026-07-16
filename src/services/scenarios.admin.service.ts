@@ -9,11 +9,10 @@ type ScenarioUpdate = Database['public']['Tables']['scenarios']['Update']
 export type { ScenarioRow }
 
 export async function getAllScenariosAdmin(campaignId: string): Promise<ScenarioRow[]> {
-  const { data, error } = await supabase
-    .from('scenarios')
-    .select('*')
-    .eq('campaign_id', campaignId)
-    .order('created_at')
+  let query = supabase.from('scenarios').select('*').order('created_at')
+  // '' o '__all__' = todas las campañas (superadmin ve TODO; RLS decide).
+  if (campaignId && campaignId !== '__all__') query = query.eq('campaign_id', campaignId)
+  const { data, error } = await query
   if (error) throw error
   return data ?? []
 }

@@ -38,8 +38,13 @@ export default function SimulationList() {
   const confirm = useConfirm()
   const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
 
+  const ALL_CAMPAIGNS = '__all__'
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [selectedCampaignId, setSelectedCampaignId] = useState(authCampaignId ?? '')
+  // El superadmin arranca viendo TODAS las simulaciones (como en Cursos); el
+  // capacitador, su campaña casa.
+  const [selectedCampaignId, setSelectedCampaignId] = useState(
+    isSuperAdmin ? ALL_CAMPAIGNS : (authCampaignId ?? ''),
+  )
   const [tab, setTab] = useState<Tab>('dialogue')
   const [dialogueRows, setDialogueRows] = useState<ScenarioRow[]>([])
   const [choiceRows, setChoiceRows] = useState<ChoiceScenarioRow[]>([])
@@ -56,7 +61,8 @@ export default function SimulationList() {
     })
       .then((data) => {
         setCampaigns(data)
-        setSelectedCampaignId((prev) => prev || data[0]?.id || '')
+        setSelectedCampaignId((prev) =>
+          prev || (isSuperAdmin ? ALL_CAMPAIGNS : data[0]?.id || ''))
       })
       .catch(() => {})
   }, [isSuperAdmin, authCampaignId, user?.id])
@@ -119,7 +125,13 @@ export default function SimulationList() {
   const handleCreate = (type: 'dialogue' | 'choice', method: 'ai' | 'manual') => {
     setShowNewModal(false)
     const base = type === 'dialogue' ? '/admin/simulations/new' : '/admin/simulations/choice/new'
-    nav(`${base}?mode=${method}${selectedCampaignId ? `&campaign=${selectedCampaignId}` : ''}`)
+    // Con "Todas" seleccionado no hay campaña concreta: usamos la primera
+    // accesible (o casa) para no crear con un campaign inválido.
+    const targetCampaign =
+      selectedCampaignId && selectedCampaignId !== ALL_CAMPAIGNS
+        ? selectedCampaignId
+        : (authCampaignId || campaigns[0]?.id || '')
+    nav(`${base}?mode=${method}${targetCampaign ? `&campaign=${targetCampaign}` : ''}`)
   }
 
   return (
@@ -143,13 +155,16 @@ export default function SimulationList() {
         />
       )}
 
-      {campaigns.length > 1 && (
+      {(campaigns.length > 1 || isSuperAdmin) && (
         <div className="mb-6">
           <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
           <FilterDropdown
             value={selectedCampaignId}
             onChange={setSelectedCampaignId}
-            options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+            options={[
+              ...(isSuperAdmin ? [{ value: ALL_CAMPAIGNS, label: t('admin.courses.filter_all_campaigns', 'Todas las campañas') }] : []),
+              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+            ]}
             className="max-w-xs"
           />
         </div>
