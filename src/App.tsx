@@ -16,6 +16,7 @@ import SimulatorRun from '@/pages/SimulatorRun';
 import SimulatorResult from '@/pages/SimulatorResult';
 import ChoiceSimulatorRun from '@/pages/ChoiceSimulatorRun';
 import Certificate from '@/pages/Certificate';
+import PublicCertificate from '@/pages/PublicCertificate';
 import LiveQuizPlay from '@/pages/LiveQuizPlay';
 import MissionPlayer from '@/pages/MissionPlayer';
 import ArenaHub from '@/pages/ArenaHub';
@@ -108,6 +109,8 @@ export default function App() {
           <Route path="/certificate" element={<Certificate />} />
           <Route path="/quiz" element={<LiveQuizPlay />} />
         </Route>
+        {/* Verificación pública del certificado (LinkedIn) — sin login */}
+        <Route path="/verify/:certId" element={<PublicCertificate />} />
         <Route path="/mission/:id" element={<MissionPlayer />} />
         <Route path="/arena" element={<ArenaHub />} />
         <Route path="/arena/:id" element={<ArenaPlayer />} />

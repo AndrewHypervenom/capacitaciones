@@ -3,6 +3,7 @@ import type {
   CourseCertStatus,
   Certification,
   CourseEvaluationResult,
+  PublicCertificate,
   SimulatorAttemptRow,
 } from '@/types/database'
 
@@ -199,6 +200,22 @@ export async function getMyCertification(courseId: string): Promise<Certificatio
     .maybeSingle()
   if (error) throw error
   return data
+}
+
+// ─── Verificación pública (LinkedIn) ─────────────────────────────────────
+
+/**
+ * Lee un certificado por su `cert_id` SIN requerir sesión (RPC SECURITY
+ * DEFINER `get_public_certificate`). Es lo que consume la página pública
+ * /verify/:certId que se comparte en LinkedIn. Devuelve `null` si no existe.
+ */
+export async function getPublicCertificate(certId: string): Promise<PublicCertificate | null> {
+  const { data, error } = await supabase.rpc('get_public_certificate', { p_cert_id: certId })
+  if (error) throw error
+  if (data == null) return null
+  // El RPC puede devolver el objeto directamente o dentro de un array.
+  const row = Array.isArray(data) ? data[0] : data
+  return (row ?? null) as PublicCertificate | null
 }
 
 // ─── Panel del capacitador ───────────────────────────────────────────────

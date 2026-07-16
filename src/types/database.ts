@@ -1507,6 +1507,24 @@ export interface CourseCertStatus {
   cert_score: number | null
 }
 
+/**
+ * Certificado accesible públicamente por su `cert_id` (sin login), para
+ * compartir en LinkedIn / verificación por reclutadores. Lo devuelve el RPC
+ * `get_public_certificate` (SECURITY DEFINER).
+ */
+export interface PublicCertificate {
+  cert_id: string
+  score: number
+  issued_at: string
+  display_name: string
+  job_title: string | null
+  course_id: string
+  title_es: string
+  title_en: string | null
+  title_pt: string | null
+  modules_total: number
+}
+
 /** Constante por defecto de condiciones (coincide con el DEFAULT del SQL). */
 export const DEFAULT_CERT_CONDITIONS: CertConditions = {
   require_all_modules: true,
