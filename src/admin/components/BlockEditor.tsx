@@ -21,6 +21,7 @@ import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
 import { VideoMarkerEditor } from './VideoMarkerEditor';
 import { extractYouTubeId } from '@/lib/youtube';
+import { extractVimeoId } from '@/lib/vimeo';
 import type { VideoMarkerRaw } from '@/types/blocks';
 import { FilterDropdown } from './FilterDropdown';
 import { Select } from '@/components/ui/Select';
@@ -281,8 +282,13 @@ function VideoEditor({
           type="url"
           value={block.url}
           onChange={(e) => {
-            const id = extractYouTubeId(e.target.value);
-            onChange({ ...block, kind: id ? 'youtube' : 'upload', url: id || e.target.value });
+            const ytId = extractYouTubeId(e.target.value);
+            const vmId = ytId ? null : extractVimeoId(e.target.value);
+            onChange({
+              ...block,
+              kind: ytId ? 'youtube' : vmId ? 'vimeo' : 'upload',
+              url: ytId || vmId || e.target.value,
+            });
           }}
           placeholder={i18n.t('admin.modules.be.ph_youtube')}
           className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
@@ -299,20 +305,20 @@ function VideoEditor({
         campaignId={mediaContext.campaignId}
         moduleId={mediaContext.moduleId}
         videoUrl={block.url || null}
-        videoType={block.kind === 'youtube' ? 'youtube' : block.url ? 'video' : null}
+        videoType={block.kind === 'youtube' || block.kind === 'vimeo' ? block.kind : block.url ? 'video' : null}
         markers={block.markers ?? []}
         lang={lang}
         onVideoChange={(url, type) =>
           onChange({
             ...block,
             url: url ?? '',
-            kind: type === 'youtube' ? 'youtube' : 'upload',
+            kind: type === 'youtube' || type === 'vimeo' ? type : 'upload',
             // Quitar el video también descarta sus marcadores (quedarían huérfanos).
             markers: url ? block.markers : [],
           })
         }
         onMarkersChange={(next) =>
-          onChange({ ...block, kind: block.kind === 'youtube' ? 'youtube' : 'upload', markers: next as VideoMarkerRaw[] })
+          onChange({ ...block, kind: block.kind === 'youtube' || block.kind === 'vimeo' ? block.kind : 'upload', markers: next as VideoMarkerRaw[] })
         }
       />
       {captionField}

@@ -69,6 +69,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { QUIZ_SOUND_THEMES, playQuizSound } from '@/lib/sound'
+import { vimeoEmbedUrl } from '@/lib/vimeo'
 import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
@@ -85,7 +86,7 @@ import { toast } from '@/stores/toastStore'
 
 type Lang = 'es' | 'en' | 'pt'
 type SectionStyleOption = 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify'
-type MediaType = 'image' | 'youtube' | 'video'
+type MediaType = 'image' | 'youtube' | 'vimeo' | 'video'
 type MediaSize = 'sm' | 'md' | 'lg' | 'full' | 'bleed'
 type MediaAlign = 'left' | 'center' | 'right'
 type CalloutKind = 'tip' | 'important' | 'warning' | 'success' | 'quote' | 'note'
@@ -621,7 +622,7 @@ function SectionEditorPanel({
             campaignId={campaignId}
             moduleId={section.module_id}
             videoUrl={mediaUrl}
-            videoType={mediaType === 'youtube' ? 'youtube' : mediaType === 'video' ? 'video' : null}
+            videoType={mediaType === 'youtube' || mediaType === 'vimeo' || mediaType === 'video' ? mediaType : null}
             markers={videoMarkers}
             lang={lang}
             onVideoChange={(url, type) => {
@@ -1457,10 +1458,12 @@ export default function ModuleEditor() {
               {s.media_url && s.media_type === 'image' && (
                 <img src={s.media_url} alt="" className="w-full rounded-2xl border border-line" />
               )}
-              {s.media_url && s.media_type === 'youtube' && (
+              {s.media_url && (s.media_type === 'youtube' || s.media_type === 'vimeo') && (
                 <div className="relative rounded-2xl overflow-hidden" style={{ paddingTop: '56.25%' }}>
                   <iframe
-                    src={`https://www.youtube.com/embed/${s.media_url}?rel=0`}
+                    src={s.media_type === 'youtube'
+                      ? `https://www.youtube.com/embed/${s.media_url}?rel=0`
+                      : vimeoEmbedUrl(s.media_url)}
                     className="absolute inset-0 w-full h-full border-0"
                     allowFullScreen
                   />

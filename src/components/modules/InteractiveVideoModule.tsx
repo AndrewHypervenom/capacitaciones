@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/cn'
 import { VideoQuizOverlay } from './VideoQuizOverlay'
 import { YouTubePlayer } from './YouTubePlayer'
+import { VimeoPlayer } from './VimeoPlayer'
 import type { PlayerLike } from '@/lib/youtube'
 import { saveActivityAttempt } from '@/services/activity.service'
 import type { ModuleSection, VideoMarker, VideoQuizMarker } from '@/data/modules'
@@ -108,6 +109,9 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const markers = section.videoMarkers ?? []
   const videoUrl = section.media?.url ?? null
   const isYouTube = section.media?.type === 'youtube'
+  const isVimeo = section.media?.type === 'vimeo'
+  // Embeds por iframe (YouTube/Vimeo): sin PiP y con el mismo patrón de sondeo de tiempo.
+  const isEmbed = isYouTube || isVimeo
   const sortedMarkers = [...markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
 
   const activeChapterIdx = sortedMarkers.reduce((acc, m, i) => {
@@ -636,6 +640,17 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
             onEnded={() => setPlaying(false)}
             onTimeUpdate={handleTimeUpdate}
           />
+        ) : isVimeo && videoUrl ? (
+          <VimeoPlayer
+            videoId={videoUrl}
+            playerRef={videoRef}
+            className="absolute inset-0 w-full h-full [&_iframe]:pointer-events-auto"
+            onReady={handleLoadedMetadata}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => setPlaying(false)}
+            onTimeUpdate={handleTimeUpdate}
+          />
         ) : (
           <video
             ref={(el) => { videoRef.current = el }}
@@ -944,8 +959,8 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                 )}
               </div>
 
-              {/* Imagen en imagen (no disponible con YouTube) */}
-              {!isYouTube && typeof document !== 'undefined' && document.pictureInPictureEnabled && (
+              {/* Imagen en imagen (no disponible con YouTube/Vimeo) */}
+              {!isEmbed && typeof document !== 'undefined' && document.pictureInPictureEnabled && (
                 <button
                   type="button"
                   onClick={handlePiP}

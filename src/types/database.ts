@@ -385,7 +385,7 @@ export interface Database {
           callout_es: string | null
           callout_en: string | null
           callout_pt: string | null
-          media_type: 'image' | 'youtube' | 'video' | null
+          media_type: 'image' | 'youtube' | 'vimeo' | 'video' | null
           media_url: string | null
           media_caption_es: string | null
           media_caption_en: string | null
@@ -411,7 +411,7 @@ export interface Database {
           callout_es?: string | null
           callout_en?: string | null
           callout_pt?: string | null
-          media_type?: 'image' | 'youtube' | 'video' | null
+          media_type?: 'image' | 'youtube' | 'vimeo' | 'video' | null
           media_url?: string | null
           media_caption_es?: string | null
           media_caption_en?: string | null
@@ -437,7 +437,7 @@ export interface Database {
           callout_es?: string | null
           callout_en?: string | null
           callout_pt?: string | null
-          media_type?: 'image' | 'youtube' | 'video' | null
+          media_type?: 'image' | 'youtube' | 'vimeo' | 'video' | null
           media_url?: string | null
           media_caption_es?: string | null
           media_caption_en?: string | null

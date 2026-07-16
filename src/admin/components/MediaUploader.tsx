@@ -5,9 +5,21 @@ import i18n from '@/i18n'
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { extractYouTubeId } from '@/lib/youtube'
+import { extractVimeoId, vimeoEmbedUrl } from '@/lib/vimeo'
 
-type MediaType = 'image' | 'youtube' | 'video'
+type MediaType = 'image' | 'youtube' | 'vimeo' | 'video'
+// La pestaña 'youtube' acepta URLs de YouTube y de Vimeo (autodetección).
 type Tab = 'image' | 'video' | 'youtube'
+type EmbedPreview = { provider: 'youtube' | 'vimeo'; id: string }
+
+/** Detecta el proveedor a partir de la URL/ID pegado (YouTube primero, luego Vimeo). */
+function detectEmbed(input: string): EmbedPreview | null {
+  const yt = extractYouTubeId(input)
+  if (yt) return { provider: 'youtube', id: yt }
+  const vm = extractVimeoId(input)
+  if (vm) return { provider: 'vimeo', id: vm }
+  return null
+}
 
 interface MediaUploaderProps {
   moduleId: string
@@ -130,17 +142,18 @@ export function MediaUploader({
   const { t } = useTranslation()
   const confirm = useConfirm()
 
+  const isEmbedType = currentType === 'youtube' || currentType === 'vimeo'
   const [activeTab, setActiveTab] = useState<Tab>(
-    currentType === 'video' ? 'video' : currentType === 'youtube' ? 'youtube' : 'image',
+    currentType === 'video' ? 'video' : isEmbedType ? 'youtube' : 'image',
   )
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [youtubeInput, setYoutubeInput] = useState(
-    currentType === 'youtube' && currentUrl ? currentUrl : '',
+    isEmbedType && currentUrl ? currentUrl : '',
   )
-  const [previewVideoId, setPreviewVideoId] = useState<string | null>(
-    currentType === 'youtube' && currentUrl ? currentUrl : null,
+  const [previewEmbed, setPreviewEmbed] = useState<EmbedPreview | null>(
+    isEmbedType && currentUrl ? { provider: currentType as 'youtube' | 'vimeo', id: currentUrl } : null,
   )
   const [clearing, setClearing] = useState(false)
 
@@ -194,7 +207,7 @@ export function MediaUploader({
       }
       onCleared()
       setYoutubeInput('')
-      setPreviewVideoId(null)
+      setPreviewEmbed(null)
     } catch {
       setError(t('admin.modules.media_upload_error'))
     } finally {
@@ -291,7 +304,7 @@ export function MediaUploader({
           />
         )}
 
-        {/* Tab: YouTube */}
+        {/* Tab: YouTube / Vimeo */}
         {activeTab === 'youtube' && (
           <div className="space-y-3">
             <div>
@@ -303,22 +316,24 @@ export function MediaUploader({
                 onChange={(e) => {
                   const val = e.target.value
                   setYoutubeInput(val)
-                  setPreviewVideoId(extractYouTubeId(val))
+                  setPreviewEmbed(detectEmbed(val))
                   setError(null)
                 }}
                 placeholder={t('admin.modules.media_youtube_placeholder')}
                 className="w-full rounded-xl px-4 py-2.5 text-[13px] text-text bg-subtle border border-line outline-none focus:border-text-muted transition-colors"
               />
-              {youtubeInput && !previewVideoId && (
+              {youtubeInput && !previewEmbed && (
                 <p className="text-[11px] text-red-400 mt-1.5">{t('admin.modules.media_youtube_invalid')}</p>
               )}
             </div>
 
-            {previewVideoId && (
+            {previewEmbed && (
               <>
                 <div className="relative w-full rounded-xl overflow-hidden border border-line bg-black" style={{ paddingTop: '56.25%' }}>
                   <iframe
-                    src={`https://www.youtube.com/embed/${previewVideoId}?rel=0&modestbranding=1`}
+                    src={previewEmbed.provider === 'youtube'
+                      ? `https://www.youtube.com/embed/${previewEmbed.id}?rel=0&modestbranding=1`
+                      : vimeoEmbedUrl(previewEmbed.id)}
                     title={t('admin.modules.media_youtube_preview')}
                     allowFullScreen
                     className="absolute inset-0 w-full h-full border-0"
@@ -326,13 +341,13 @@ export function MediaUploader({
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onSaved('youtube', previewVideoId)}
+                    onClick={() => onSaved(previewEmbed.provider, previewEmbed.id)}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black bg-neon-green hover:bg-neon-green/90 transition-colors flex-1 justify-center"
                   >
                     <Youtube className="h-4 w-4" />
                     {t('admin.modules.media_save')}
                   </button>
-                  {currentType === 'youtube' && currentUrl && (
+                  {isEmbedType && currentUrl && (
                     <button
                       onClick={handleClear}
                       disabled={clearing}
@@ -345,8 +360,8 @@ export function MediaUploader({
               </>
             )}
 
-            {/* YouTube active — show clear without new input */}
-            {currentType === 'youtube' && currentUrl && !previewVideoId && (
+            {/* YouTube/Vimeo active — show clear without new input */}
+            {isEmbedType && currentUrl && !previewEmbed && (
               <div className="flex items-center gap-3 p-3 rounded-xl bg-subtle border border-line">
                 <Youtube className="h-4 w-4 text-text-muted shrink-0" />
                 <span className="text-[12px] text-text-muted flex-1 truncate">{currentUrl}</span>
@@ -365,7 +380,7 @@ export function MediaUploader({
         {/* If current media type is different from active tab — show switch notice */}
         {hasCurrentMedia && currentType !== activeTab && activeTab !== 'youtube' && (
           <p className="mt-3 text-[11px] text-text-subtle text-center">
-            Ya hay {currentType === 'image' ? 'una imagen' : currentType === 'video' ? 'un video' : 'un video de YouTube'} guardada.{' '}
+            Ya hay {currentType === 'image' ? 'una imagen' : currentType === 'video' ? 'un video' : currentType === 'vimeo' ? 'un video de Vimeo' : 'un video de YouTube'} guardada.{' '}
             <button onClick={handleClear} className="text-red-400 underline underline-offset-2">
               {t('admin.modules.media_clear')}
             </button>

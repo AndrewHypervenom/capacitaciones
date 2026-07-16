@@ -9,7 +9,7 @@ export interface SectionQuiz {
 }
 
 export interface SectionMedia {
-  type: 'image' | 'youtube' | 'video';
+  type: 'image' | 'youtube' | 'vimeo' | 'video';
   url: string;
   caption?: Record<Language, string>;
   size?: MediaSize;

@@ -23,10 +23,12 @@ import { moduleAiAssist } from '@/services/ai.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
 import { YouTubePlayer } from '@/components/modules/YouTubePlayer'
+import { VimeoPlayer } from '@/components/modules/VimeoPlayer'
 import { extractYouTubeId, type PlayerLike } from '@/lib/youtube'
+import { extractVimeoId } from '@/lib/vimeo'
 
 type Lang = 'es' | 'en' | 'pt'
-type VideoSource = 'video' | 'youtube'
+type VideoSource = 'video' | 'youtube' | 'vimeo'
 
 interface VideoMarkerEditorProps {
   sectionId: string
@@ -429,9 +431,13 @@ export function VideoMarkerEditor({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [videoDuration, setVideoDuration] = useState(0)
-  const [videoMode, setVideoMode] = useState<VideoSource>(videoType === 'youtube' ? 'youtube' : 'video')
+  // El modo 'youtube' cubre YouTube y Vimeo (autodetección al pegar la URL).
+  const [videoMode, setVideoMode] = useState<VideoSource>(
+    videoType === 'youtube' || videoType === 'vimeo' ? 'youtube' : 'video',
+  )
   const [ytInput, setYtInput] = useState('')
   const isYouTube = videoType === 'youtube'
+  const isVimeo = videoType === 'vimeo'
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addingType, setAddingType] = useState<'chapter' | 'quiz' | null>(null)
   const [translatingAll, setTranslatingAll] = useState(false)
@@ -513,14 +519,15 @@ export function VideoMarkerEditor({
   }
 
   const handleUseYouTube = () => {
-    const id = extractYouTubeId(ytInput)
-    if (!id) {
+    const ytId = extractYouTubeId(ytInput)
+    const vmId = ytId ? null : extractVimeoId(ytInput)
+    if (!ytId && !vmId) {
       setUploadError(t('admin.modules.media_youtube_invalid'))
       return
     }
     setUploadError(null)
     setVideoDuration(0)
-    onVideoChange(id, 'youtube')
+    onVideoChange(ytId ?? vmId!, ytId ? 'youtube' : 'vimeo')
     setYtInput('')
   }
 
@@ -582,6 +589,14 @@ export function VideoMarkerEditor({
                 className="w-full aspect-video block"
                 onReady={() => setVideoDuration(videoRef.current?.duration ?? 0)}
               />
+            ) : isVimeo ? (
+              <VimeoPlayer
+                videoId={videoUrl}
+                controls
+                playerRef={videoRef}
+                className="w-full aspect-video block"
+                onReady={() => setVideoDuration(videoRef.current?.duration ?? 0)}
+              />
             ) : (
               <video
                 ref={(el) => { videoRef.current = el }}
@@ -621,7 +636,7 @@ export function VideoMarkerEditor({
                 )}
               >
                 <Youtube className="h-3.5 w-3.5" />
-                YouTube
+                YouTube / Vimeo
               </button>
             </div>
 
@@ -699,7 +714,7 @@ export function VideoMarkerEditor({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-danger/70 hover:text-danger glass border border-glass-border/10 hover:bg-danger/6 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              {isYouTube ? t('admin.modules.vme.change_video') : t('admin.modules.vme.delete_video')}
+              {isYouTube || isVimeo ? t('admin.modules.vme.change_video') : t('admin.modules.vme.delete_video')}
             </button>
           </div>
         )}

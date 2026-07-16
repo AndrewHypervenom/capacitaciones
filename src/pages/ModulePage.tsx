@@ -30,6 +30,7 @@ import { ModuleTOC } from '@/components/modules/ModuleTOC';
 import { SectionLayout } from '@/components/modules/SectionLayout';
 import { cn } from '@/lib/cn';
 import { setQuizSoundTheme } from '@/lib/sound';
+import { vimeoEmbedUrl } from '@/lib/vimeo';
 import type { ContentBlock } from '@/types/blocks';
 import type { ModuleSection, SectionMedia } from '@/data/modules';
 import { ModulePageSkeleton } from '@/components/ui/Skeleton';
@@ -57,6 +58,11 @@ function MediaBlock({ media, language }: { media: SectionMedia; language: Langua
       {media.type === 'youtube' && (
         <div className="relative w-full bg-black" style={{ paddingTop: '56.25%' }}>
           <iframe src={`https://www.youtube.com/embed/${media.url}?rel=0&modestbranding=1`} title={media.caption?.[language] ?? 'Video'} loading="lazy" allowFullScreen className="absolute inset-0 w-full h-full border-0" />
+        </div>
+      )}
+      {media.type === 'vimeo' && (
+        <div className="relative w-full bg-black" style={{ paddingTop: '56.25%' }}>
+          <iframe src={vimeoEmbedUrl(media.url)} title={media.caption?.[language] ?? 'Video'} loading="lazy" allowFullScreen className="absolute inset-0 w-full h-full border-0" />
         </div>
       )}
       {media.caption?.[language] && <figcaption className="px-5 py-3 text-[12.5px] text-text-subtle border-t border-line bg-subtle">{media.caption[language]}</figcaption>}

@@ -89,7 +89,7 @@ export interface VideoMarkerRaw {
 
 export interface VideoBlock {
   type: 'video';
-  kind: 'youtube' | 'upload' | 'interactive';
+  kind: 'youtube' | 'vimeo' | 'upload' | 'interactive';
   url: string;
   caption?: ML;
   /** Capítulos/quiz opcionales DENTRO del video (video interactivo inline). Si

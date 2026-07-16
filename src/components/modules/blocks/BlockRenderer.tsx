@@ -18,6 +18,7 @@ import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoMod
 import { mapVideoMarkersFromDb } from '@/services/modules.service';
 import type { ModuleSection } from '@/data/modules';
 import { extractYouTubeId } from '@/lib/youtube';
+import { extractVimeoId, vimeoEmbedUrl } from '@/lib/vimeo';
 import { cn } from '@/lib/cn';
 
 
@@ -104,9 +105,12 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
 
     case 'video': {
       const isYT = block.kind === 'youtube';
-      // Defensivo: contenido antiguo pudo guardar la URL completa en vez del id de
-      // 11 chars; el embed/reproductor necesita solo el id.
+      const isVM = block.kind === 'vimeo';
+      // Defensivo: contenido antiguo pudo guardar la URL completa en vez del id;
+      // el embed/reproductor necesita solo el id.
       const youtubeId = extractYouTubeId(block.url) ?? block.url;
+      const vimeoId = extractVimeoId(block.url) ?? block.url;
+      const embedId = isYT ? youtubeId : isVM ? vimeoId : block.url;
 
       // Video interactivo inline: si el capacitador agregó capítulos/quiz, se
       // reproduce con el mismo motor que la sección "Video interactivo" (compuertas
@@ -120,7 +124,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           heading: { es: `vb:${sectionId ?? ''}:${blockIndex ?? 0}`, en: '', pt: '' },
           body: { es: [], en: [], pt: [] },
           style: 'video-interactive',
-          media: { type: isYT ? 'youtube' : 'video', url: isYT ? youtubeId : block.url },
+          media: { type: isYT ? 'youtube' : isVM ? 'vimeo' : 'video', url: embedId },
           videoMarkers: mapVideoMarkersFromDb(block.markers),
         } as ModuleSection;
 
@@ -151,11 +155,13 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
         );
       }
 
-      if (isYT) {
+      if (isYT || isVM) {
         return (
           <div className="rounded-2xl overflow-hidden border border-line relative bg-black" style={{ paddingTop: '56.25%' }}>
             <iframe
-              src={`https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1`}
+              src={isYT
+                ? `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1`
+                : vimeoEmbedUrl(vimeoId)}
               title={block.caption?.[language] || 'Video'}
               loading="lazy"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

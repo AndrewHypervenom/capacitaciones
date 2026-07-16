@@ -13,6 +13,7 @@ import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoMod
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer'
 import { cn } from '@/lib/cn'
 import { setQuizSoundTheme } from '@/lib/sound'
+import { vimeoEmbedUrl } from '@/lib/vimeo'
 import type { CalloutKind, ModuleSection, SectionStyle } from '@/data/modules'
 import type { ContentBlock } from '@/types/blocks'
 
@@ -214,7 +215,7 @@ export default function ModulePreview() {
                         body: { es: [], en: [], pt: [] },
                         style: 'video-interactive',
                         media: s.media_url
-                          ? { type: s.media_type === 'youtube' ? 'youtube' : 'video', url: s.media_url }
+                          ? { type: s.media_type === 'youtube' || s.media_type === 'vimeo' ? s.media_type : 'video', url: s.media_url }
                           : undefined,
                         videoMarkers: mapVideoMarkersFromDb(s.video_markers),
                       }
@@ -231,10 +232,12 @@ export default function ModulePreview() {
                             className="w-full max-h-[480px] object-cover block"
                           />
                         )}
-                        {s.media_type === 'youtube' && (
+                        {(s.media_type === 'youtube' || s.media_type === 'vimeo') && (
                           <div className="relative w-full bg-black" style={{ paddingTop: '56.25%' }}>
                             <iframe
-                              src={`https://www.youtube.com/embed/${s.media_url}?rel=0&modestbranding=1`}
+                              src={s.media_type === 'youtube'
+                                ? `https://www.youtube.com/embed/${s.media_url}?rel=0&modestbranding=1`
+                                : vimeoEmbedUrl(s.media_url!)}
                               title="Video"
                               loading="lazy"
                               allowFullScreen
