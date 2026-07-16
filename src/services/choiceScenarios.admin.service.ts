@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/types/database'
+import { requestDeletion } from '@/services/audit.service'
 
 type ChoiceScenarioRow = Database['public']['Tables']['choice_scenarios']['Row']
 type ChoiceScenarioInsert = Database['public']['Tables']['choice_scenarios']['Insert']
@@ -48,9 +49,8 @@ export async function updateChoiceScenario(id: string, updates: ChoiceScenarioUp
   return data
 }
 
-export async function deleteChoiceScenario(id: string): Promise<void> {
-  const { error } = await supabase.from('choice_scenarios').delete().eq('id', id)
-  if (error) throw error
+export async function deleteChoiceScenario(id: string): Promise<'deleted' | 'pending'> {
+  return requestDeletion('choice_scenarios', id)
 }
 
 export async function toggleChoiceScenarioPublished(id: string, is_published: boolean): Promise<void> {

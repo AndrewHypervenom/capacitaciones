@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import type { Scenario } from '@/data/scenarios';
 import { useUserStore } from '@/stores/userStore';
+import { useAuth } from '@/hooks/useAuth';
 import { useProgressStore } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { selfEnroll, unenrollSelf } from '@/services/courses.service';
@@ -40,6 +41,8 @@ export default function CoursePage() {
   const backTo = fromCourses ? '/courses' : '/dashboard';
   const backLabel = fromCourses ? t('courses.back_to_courses') : t('courses.back_to_home');
   const language = useUserStore((s) => s.language);
+  // El mundo es solo para staff (preview del CMS); el aprendiz ya no lo ve.
+  const { isAdminOrCapacitador } = useAuth();
   const completedSlugs = useProgressStore((s) => s.completedModules);
   const { courses, loading, reload } = useLearnerCourses();
   const [enrollBusy, setEnrollBusy] = useState(false);
@@ -344,7 +347,7 @@ export default function CoursePage() {
                       {t('course_practice.do_simulation')}
                     </button>
                   )}
-                  {worldId && (
+                  {worldId && isAdminOrCapacitador && (
                     <Link
                       to="/world"
                       state={{ worldId, from: 'course' }}

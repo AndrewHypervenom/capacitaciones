@@ -60,6 +60,10 @@
     "admin": "Admin",
     "manage": "Gestión"
   },
+  "deletion": {
+    "pending_generic": "Se envió para aprobación del superadmin y quedó oculto.",
+    "pending_toast": "\"{{name}}\" se ocultó y espera aprobación del superadmin."
+  },
   "view_switcher": {
     "learner": "Aprendiz",
     "caption": "Ver como",
@@ -688,13 +692,63 @@
       "progress": "Progreso",
       "overview": "Vista global",
       "gamification": "Gamificación",
+      "activity": "Actividad",
+      "approvals": "Aprobaciones",
       "generate_module": "Generar módulo IA",
       "open_menu": "Abrir menú",
       "close_menu": "Cerrar menú",
       "group_people": "Personas",
       "group_content": "Contenido",
       "group_challenges": "Retos y Simulaciones",
-      "group_ai": "Inteligencia Artificial"
+      "group_ai": "Inteligencia Artificial",
+      "group_supervision": "Supervisión"
+    },
+    "entity_types": {
+      "campaigns": "Campaña",
+      "courses": "Curso",
+      "modules": "Módulo",
+      "scenarios": "Simulador",
+      "choice_scenarios": "Simulador (opción)",
+      "live_quizzes": "Quiz en vivo",
+      "worlds": "Mundo",
+      "arena_quizzes": "Arena",
+      "guided_missions": "Misión"
+    },
+    "approvals": {
+      "title": "Aprobación de eliminaciones",
+      "subtitle": "Contenido que un capacitador ocultó y espera tu decisión. Aprobar lo elimina definitivamente; rechazar lo restaura.",
+      "count": "{{n}} pendiente(s)",
+      "requested_by": "Solicitado por",
+      "unknown_user": "Usuario desconocido",
+      "approve": "Eliminar definitivo",
+      "reject": "Restaurar",
+      "confirm_approve_title": "¿Eliminar definitivamente?",
+      "confirm_approve_desc": "Esta acción es irreversible: \"{{name}}\" se eliminará de forma permanente.",
+      "approved_toast": "Eliminado definitivamente.",
+      "rejected_toast": "Restaurado y visible de nuevo.",
+      "error": "No se pudo completar la acción.",
+      "empty_title": "Sin solicitudes pendientes",
+      "empty_desc": "Cuando un capacitador borre algo, aparecerá aquí para tu aprobación."
+    },
+    "activity": {
+      "title": "Actividad del equipo",
+      "subtitle": "Todo lo que hace cada capacitador: creaciones, cambios, borrados y restauraciones.",
+      "filter_all_actors": "Todos los usuarios",
+      "filter_all_types": "Todos los tipos",
+      "filter_all_actions": "Todas las acciones",
+      "count": "{{n}} eventos",
+      "changed_fields": "Campos modificados",
+      "field_from": "antes",
+      "field_to": "después",
+      "empty_title": "Sin actividad",
+      "empty_desc": "Aún no hay eventos registrados con estos filtros.",
+      "load_error": "No se pudo cargar la actividad.",
+      "action_insert": "Creó",
+      "action_update": "Modificó",
+      "action_soft_delete": "Ocultó",
+      "action_restore": "Restauró",
+      "action_delete": "Eliminó",
+      "action_approve_delete": "Aprobó eliminación"
     },
     "gamification": {
       "title": "Gamificación",

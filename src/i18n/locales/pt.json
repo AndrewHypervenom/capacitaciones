@@ -60,6 +60,10 @@
     "admin": "Admin",
     "manage": "Gestão"
   },
+  "deletion": {
+    "pending_generic": "Enviado para aprovação do superadmin e ocultado.",
+    "pending_toast": "\"{{name}}\" foi ocultado e aguarda aprovação do superadmin."
+  },
   "view_switcher": {
     "learner": "Aprendiz",
     "caption": "Ver como",
@@ -688,13 +692,63 @@
       "progress": "Progresso",
       "overview": "Visão global",
       "gamification": "Gamificação",
+      "activity": "Atividade",
+      "approvals": "Aprovações",
       "generate_module": "Gerar módulo IA",
       "open_menu": "Abrir menu",
       "close_menu": "Fechar menu",
       "group_people": "Pessoas",
       "group_content": "Conteúdo",
       "group_challenges": "Desafios e Simulações",
-      "group_ai": "Inteligência Artificial"
+      "group_ai": "Inteligência Artificial",
+      "group_supervision": "Supervisão"
+    },
+    "entity_types": {
+      "campaigns": "Campanha",
+      "courses": "Curso",
+      "modules": "Módulo",
+      "scenarios": "Simulador",
+      "choice_scenarios": "Simulador (escolha)",
+      "live_quizzes": "Quiz ao vivo",
+      "worlds": "Mundo",
+      "arena_quizzes": "Arena",
+      "guided_missions": "Missão"
+    },
+    "approvals": {
+      "title": "Aprovação de exclusões",
+      "subtitle": "Conteúdo que um instrutor ocultou, aguardando sua decisão. Aprovar exclui definitivamente; rejeitar restaura.",
+      "count": "{{n}} pendente(s)",
+      "requested_by": "Solicitado por",
+      "unknown_user": "Usuário desconhecido",
+      "approve": "Excluir definitivo",
+      "reject": "Restaurar",
+      "confirm_approve_title": "Excluir definitivamente?",
+      "confirm_approve_desc": "Esta ação é irreversível: \"{{name}}\" será excluído permanentemente.",
+      "approved_toast": "Excluído definitivamente.",
+      "rejected_toast": "Restaurado e visível novamente.",
+      "error": "Não foi possível concluir a ação.",
+      "empty_title": "Sem solicitações pendentes",
+      "empty_desc": "Quando um instrutor excluir algo, aparecerá aqui para sua aprovação."
+    },
+    "activity": {
+      "title": "Atividade da equipe",
+      "subtitle": "Tudo o que cada instrutor faz: criações, alterações, exclusões e restaurações.",
+      "filter_all_actors": "Todos os usuários",
+      "filter_all_types": "Todos os tipos",
+      "filter_all_actions": "Todas as ações",
+      "count": "{{n}} eventos",
+      "changed_fields": "Campos alterados",
+      "field_from": "antes",
+      "field_to": "depois",
+      "empty_title": "Sem atividade",
+      "empty_desc": "Ainda não há eventos registrados com estes filtros.",
+      "load_error": "Não foi possível carregar a atividade.",
+      "action_insert": "Criou",
+      "action_update": "Alterou",
+      "action_soft_delete": "Ocultou",
+      "action_restore": "Restaurou",
+      "action_delete": "Excluiu",
+      "action_approve_delete": "Aprovou exclusão"
     },
     "gamification": {
       "title": "Gamificação",

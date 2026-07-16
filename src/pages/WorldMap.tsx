@@ -291,7 +291,15 @@ export default function WorldMap() {
   const locState     = location.state as { from?: string; worldId?: string; forceReload?: boolean } | null
   const campaignId   = profile?.campaign_id ?? null
   const isSuperAdmin = ['superadmin','super_admin'].includes(profile?.role ?? '')
+  const isStaff      = ['superadmin','super_admin','capacitador'].includes(profile?.role ?? '')
   const backPath     = locState?.from === 'admin' ? '/admin/worlds' : '/'
+
+  // El mundo dejó de ser una sección para el aprendiz: la ruta /world queda
+  // reservada para staff (preview desde el CMS). Cualquier aprendiz que llegue
+  // aquí (link viejo, URL directa, back de una arena) vuelve al dashboard.
+  useEffect(() => {
+    if (profile && !isStaff) navigate('/', { replace: true })
+  }, [profile, isStaff, navigate])
 
   /* Load */
   useEffect(() => {

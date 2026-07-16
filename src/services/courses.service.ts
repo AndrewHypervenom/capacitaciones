@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
+import { requestDeletion } from '@/services/audit.service'
 
 // ─── Tipos ───────────────────────────────────────────────────────
 
@@ -350,10 +351,13 @@ export async function updateCourse(
   if (error) throw error
 }
 
-export async function deleteCourse(courseId: string): Promise<void> {
-  // Los módulos no se borran: quedan con course_id NULL (vuelven al plan general)
-  const { error } = await supabase.from('courses').delete().eq('id', courseId)
-  if (error) throw error
+/**
+ * "Borra" un curso. Superadmin -> elimina definitivo (los módulos quedan con
+ * course_id NULL). Capacitador -> lo oculta y deja una solicitud de eliminación
+ * para que el superadmin la apruebe. Devuelve 'deleted' | 'pending'.
+ */
+export async function deleteCourse(courseId: string): Promise<'deleted' | 'pending'> {
+  return requestDeletion('courses', courseId)
 }
 
 // ─── Módulos del curso ───────────────────────────────────────────

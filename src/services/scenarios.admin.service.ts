@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/types/database'
+import { requestDeletion } from '@/services/audit.service'
 
 type ScenarioRow = Database['public']['Tables']['scenarios']['Row']
 type ScenarioInsert = Database['public']['Tables']['scenarios']['Insert']
@@ -48,9 +49,8 @@ export async function updateScenario(id: string, updates: ScenarioUpdate): Promi
   return data
 }
 
-export async function deleteScenario(id: string): Promise<void> {
-  const { error } = await supabase.from('scenarios').delete().eq('id', id)
-  if (error) throw error
+export async function deleteScenario(id: string): Promise<'deleted' | 'pending'> {
+  return requestDeletion('scenarios', id)
 }
 
 export async function toggleScenarioPublished(id: string, is_published: boolean): Promise<void> {

@@ -17,12 +17,14 @@ import {
   Info,
   ListChecks,
   Lock,
+  Map as MapIcon,
   PhoneCall,
   Plus,
   Save,
   Search,
   Share2,
   Sparkles,
+  Unlink,
   Users,
   X,
 } from 'lucide-react'
@@ -52,7 +54,7 @@ import {
   type CourseStats,
 } from '@/services/courses.service'
 import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
-import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, type WorldRow } from '@/services/worlds.service'
+import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
 import { getAllChoiceScenariosAdmin, updateChoiceScenario, type ChoiceScenarioRow } from '@/services/choiceScenarios.admin.service'
 import { getCourseEvaluationResults } from '@/services/certification.service'
@@ -66,6 +68,7 @@ import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 type Tab = 'info' | 'modules' | 'assign' | 'evaluation'
 type Lang = 'es' | 'en' | 'pt'
@@ -115,6 +118,7 @@ export default function CourseEditor() {
   const { courseId } = useParams<{ courseId: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const { isSuperAdmin, campaignId: authCampaignId } = useAuth()
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
@@ -131,6 +135,9 @@ export default function CourseEditor() {
   // Estado del mundo del curso: undefined = cargando, null = no existe, objeto = existe (draft/published)
   const [world, setWorld] = useState<WorldRow | null | undefined>(undefined)
   const [publishingWorld, setPublishingWorld] = useState(false)
+  // Mundos sueltos de la campaña, candidatos a enlazar cuando el curso no tiene mundo.
+  const [linkableWorlds, setLinkableWorlds] = useState<WorldRow[]>([])
+  const [linkingWorld, setLinkingWorld] = useState(false)
 
   // Información editable
   const [form, setForm] = useState({
@@ -235,6 +242,17 @@ export default function CourseEditor() {
       .catch(() => { if (active) setWorld(null) })
     return () => { active = false }
   }, [courseId])
+
+  // Mundos sueltos de la campaña (candidatos a enlazar) — solo hacen falta cuando
+  // el curso todavía no tiene mundo.
+  useEffect(() => {
+    if (!course?.campaign_id || world) { setLinkableWorlds([]); return }
+    let active = true
+    getLinkableWorlds(course.campaign_id)
+      .then((ws) => { if (active) setLinkableWorlds(ws) })
+      .catch(() => { if (active) setLinkableWorlds([]) })
+    return () => { active = false }
+  }, [course?.campaign_id, world])
 
   // Datos de asignación
   useEffect(() => {
@@ -516,6 +534,41 @@ export default function CourseEditor() {
       toast.error(t('admin.courses.error_save'))
     } finally {
       setOpeningWorld(false)
+    }
+  }
+
+  // Enlaza un mundo suelto existente a este curso (sin tocar sus regiones).
+  const handleLinkWorld = async (worldId: string) => {
+    if (!worldId || !course) return
+    setLinkingWorld(true)
+    try {
+      const linked = await linkWorldToCourse(worldId, course.id)
+      setWorld(linked)
+      toast.success(t('admin.courses.world_linked', { defaultValue: 'Mundo enlazado al curso' }))
+    } catch (e) {
+      toast.error(t('admin.courses.error_save'), (e as Error)?.message)
+    } finally {
+      setLinkingWorld(false)
+    }
+  }
+
+  // Desenlaza el mundo del curso (sigue existiendo como mundo suelto en Mundos).
+  const handleUnlinkWorld = async () => {
+    if (!course || !world) return
+    const ok = await confirm({
+      title: t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' }),
+      description: t('admin.courses.world_unlink_desc', { name: world.name, defaultValue: `“${world.name}” dejará de estar ligado a este curso, pero no se borra: seguirá disponible en Mundos como mundo suelto.` }),
+    })
+    if (!ok) return
+    setLinkingWorld(true)
+    try {
+      await unlinkWorldFromCourse(course.id)
+      setWorld(null)
+      toast.success(t('admin.courses.world_unlinked', { defaultValue: 'Mundo desenlazado' }))
+    } catch (e) {
+      toast.error(t('admin.courses.error_save'), (e as Error)?.message)
+    } finally {
+      setLinkingWorld(false)
     }
   }
 
@@ -881,19 +934,51 @@ export default function CourseEditor() {
                 {world === undefined ? (
                   <span className="h-3 w-3 rounded-full bg-glass/20 animate-pulse" aria-hidden />
                 ) : world === null ? (
-                  <button
-                    onClick={handleViewWorld}
-                    disabled={openingWorld}
-                    className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium text-text-muted border border-line transition-colors hover:text-text disabled:opacity-50"
-                  >
-                    <Sparkles className="h-3 w-3" /> {t('admin.courses.world_create')}
-                  </button>
+                  <>
+                    <button
+                      onClick={handleViewWorld}
+                      disabled={openingWorld || linkingWorld}
+                      className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium text-text-muted border border-line transition-colors hover:text-text disabled:opacity-50"
+                    >
+                      <Sparkles className="h-3 w-3" /> {t('admin.courses.world_create')}
+                    </button>
+                    {/* Enlazar un mundo suelto ya existente de la campaña. */}
+                    {linkableWorlds.length > 0 && (
+                      <div className="min-w-[180px]">
+                        <Select
+                          value=""
+                          onChange={handleLinkWorld}
+                          disabled={linkingWorld}
+                          placeholder={t('admin.courses.world_link_existing', { defaultValue: 'Enlazar existente…' })}
+                          options={[
+                            { value: '', label: t('admin.courses.world_link_existing', { defaultValue: 'Enlazar existente…' }) },
+                            ...linkableWorlds.map((w) => ({ value: w.id, label: `${w.icon ?? '🌍'} ${w.name}` })),
+                          ]}
+                        />
+                      </div>
+                    )}
+                  </>
                 ) : world.status === 'published' ? (
                   <>
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                       {t('admin.courses.published')}
                     </span>
                     <Toggle on onClick={handleToggleWorldPublished} label={t('admin.courses.publish_world')} />
+                    <button
+                      onClick={() => navigate(`/admin/worlds/${world.id}`)}
+                      className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors"
+                      style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+                    >
+                      <MapIcon className="h-3 w-3" /> {t('admin.courses.world_open', { defaultValue: 'Abrir mundo' })}
+                    </button>
+                    <button
+                      onClick={handleUnlinkWorld}
+                      disabled={linkingWorld}
+                      title={t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' })}
+                      className="flex items-center justify-center h-6 w-6 rounded-lg text-text-muted border border-line transition-colors hover:text-danger hover:border-danger/40 disabled:opacity-50"
+                    >
+                      <Unlink className="h-3 w-3" />
+                    </button>
                   </>
                 ) : (
                   <>
@@ -901,12 +986,26 @@ export default function CourseEditor() {
                       {t('admin.courses.draft')}
                     </span>
                     <button
+                      onClick={() => navigate(`/admin/worlds/${world.id}`)}
+                      className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium text-text-muted border border-line transition-colors hover:text-text"
+                    >
+                      <MapIcon className="h-3 w-3" /> {t('admin.courses.world_open', { defaultValue: 'Abrir mundo' })}
+                    </button>
+                    <button
                       onClick={handleToggleWorldPublished}
                       disabled={publishingWorld}
                       className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50"
                       style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
                     >
                       <Eye className="h-3 w-3" /> {t('admin.courses.world_publish')}
+                    </button>
+                    <button
+                      onClick={handleUnlinkWorld}
+                      disabled={linkingWorld}
+                      title={t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' })}
+                      className="flex items-center justify-center h-6 w-6 rounded-lg text-text-muted border border-line transition-colors hover:text-danger hover:border-danger/40 disabled:opacity-50"
+                    >
+                      <Unlink className="h-3 w-3" />
                     </button>
                   </>
                 )}

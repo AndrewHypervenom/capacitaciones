@@ -12,7 +12,7 @@ interface QuizStep   { id: string; question: string; context: string; options: Q
 interface ArenaQuiz  {
   id: string; title: string; description: string; campaign_id: string | null
   theme_icon: string; theme_color: string; theme_type: string
-  xp_per_question: number; min_score_pct: number | null; status: string; steps: QuizStep[]
+  xp_per_question: number; min_score_pct: number | null; section_size: number; status: string; steps: QuizStep[]
 }
 
 /* ── Normalize ── */
@@ -35,6 +35,7 @@ function normalizeQuiz(raw: Record<string, unknown>): ArenaQuiz {
     theme_type: (raw.theme_type as string) ?? 'corporate',
     xp_per_question: (raw.xp_per_question as number) ?? 10,
     min_score_pct: (raw.min_score_pct as number | null) ?? null,
+    section_size: Math.max(1, (raw.section_size as number) ?? SECTION_SIZE),
     status: (raw.status as string) ?? 'draft',
     steps: steps.map((s: Record<string, unknown>) => {
       const stepId = typeof s.id === 'string' && s.id ? s.id : crypto.randomUUID()
@@ -106,8 +107,9 @@ function useSFX() {
 }
 
 const OPT_LABELS = ['A','B','C','D']
-// Tamaño de sección (preguntas por ronda). Por defecto los niveles tienen
-// 6 preguntas = 2 secciones de 3.
+// Tamaño de sección por defecto (preguntas por ronda) cuando el quiz no define
+// uno propio. Cada quiz puede configurar arena_quizzes.section_size (1-5); acá
+// solo es el fallback histórico para quizzes viejos.
 const SECTION_SIZE = 3
 
 export default function ArenaPlayer() {
@@ -269,7 +271,7 @@ export default function ArenaPlayer() {
   const handleNextGroup = useCallback(() => {
     if (!quiz) return
     play('click')
-    const nextStart = (groupIndex + 1) * SECTION_SIZE
+    const nextStart = (groupIndex + 1) * quiz.section_size
     setGroupIndex(g => g + 1)
     setCurrentQ(nextStart)
     setPlanePos(nextStart)
@@ -309,14 +311,14 @@ export default function ArenaPlayer() {
   const scorePct = Math.round((correctCount / quiz.steps.length) * 100)
   const passed   = (locationState?.minScorePct ?? quiz.min_score_pct) === null || scorePct >= (locationState?.minScorePct ?? quiz.min_score_pct)!
   const stars    = getStarsFromScore(scorePct, locationState?.minScorePct ?? quiz.min_score_pct)
-  // Cada "sección" (P1, P2…) agrupa SECTION_SIZE preguntas. El recorrido muestra
-  // una parada por sección, no por pregunta.
-  const sectionCount     = Math.ceil(quiz.steps.length / SECTION_SIZE)
-  const currentSection   = Math.floor(currentQ / SECTION_SIZE)
+  // Cada "sección" (P1, P2…) agrupa quiz.section_size preguntas. El recorrido
+  // muestra una parada por sección, no por pregunta.
+  const sectionCount     = Math.ceil(quiz.steps.length / quiz.section_size)
+  const currentSection   = Math.floor(currentQ / quiz.section_size)
   const planePct = sectionCount > 1 ? (currentSection/(sectionCount-1))*80+8 : 8
 
-  const groupStart       = groupIndex * SECTION_SIZE
-  const groupEnd         = Math.min(groupStart + SECTION_SIZE, quiz.steps.length)
+  const groupStart       = groupIndex * quiz.section_size
+  const groupEnd         = Math.min(groupStart + quiz.section_size, quiz.steps.length)
   const groupSteps       = quiz.steps.slice(groupStart, groupEnd)
   const isLastGroup      = groupEnd >= quiz.steps.length
   const allGroupAnswered = groupSteps.every((_,gi) => selected[groupStart + gi] !== undefined)
@@ -454,8 +456,8 @@ export default function ArenaPlayer() {
               {/* Checkpoints — la etiqueta va absoluta debajo para no descentrar el círculo */}
               <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
                 {Array.from({ length: sectionCount }).map((_, si) => {
-                  const secStart = si * SECTION_SIZE
-                  const secEnd   = Math.min(secStart + SECTION_SIZE, quiz.steps.length)
+                  const secStart = si * quiz.section_size
+                  const secEnd   = Math.min(secStart + quiz.section_size, quiz.steps.length)
                   const secTotal = secEnd - secStart
                   const done     = quiz.steps.slice(secStart, secEnd).every((_, k) => selected[secStart + k] !== undefined)
                   const active   = si === groupIndex

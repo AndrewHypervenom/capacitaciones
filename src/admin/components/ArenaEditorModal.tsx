@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { X, ChevronRight, Plus, Trash2, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
@@ -35,6 +35,7 @@ export interface ArenaQuiz {
   theme_color: string
   theme_type: ThemeType
   xp_per_question: number
+  section_size: number
   status: QuizStatus
   steps: QuizStep[]
 }
@@ -52,6 +53,7 @@ interface QuizForm {
   theme_color: string
   theme_type: string
   xp_per_question: number
+  section_size: number
   steps: QuizStep[]
 }
 
@@ -64,11 +66,12 @@ const THEME_LABELS: Record<ThemeType, string> = {
   tech: 'admin.arena.theme_tech',
 }
 
-// Igual que SECTION_SIZE en ArenaPlayer: el recorrido del aprendiz agrupa las
-// preguntas en secciones de 3 (P1, P2…). El editor las muestra agrupadas igual
-// para que crear a mano coincida con lo que genera la IA y con lo que se ve en
-// el mapa.
-const SECTION_SIZE = 3
+// El recorrido del aprendiz agrupa las preguntas en secciones (P1, P2…). Cuántas
+// preguntas por sección lo elige el capacitador por quiz (arena_quizzes.section_size);
+// el ArenaPlayer respeta el mismo valor. 3 es el default histórico.
+const DEFAULT_SECTION_SIZE = 3
+const MIN_SECTION_SIZE = 1
+const MAX_SECTION_SIZE = 5
 
 const newOption = (): QuizOption => ({
   id: crypto.randomUUID(),
@@ -92,6 +95,7 @@ const emptyForm = (): QuizForm => ({
   theme_color: '#10D451',
   theme_type: 'corporate',
   xp_per_question: 10,
+  section_size: DEFAULT_SECTION_SIZE,
   steps: [newStep()],
 })
 
@@ -107,6 +111,7 @@ export function normalizeArenaRow(row: Record<string, unknown>): ArenaQuiz {
     theme_color: (row.theme_color as string) ?? '#10D451',
     theme_type: (row.theme_type as ThemeType) ?? 'corporate',
     xp_per_question: (row.xp_per_question as number) ?? 10,
+    section_size: (row.section_size as number) ?? DEFAULT_SECTION_SIZE,
     status: (row.status as QuizStatus) ?? 'draft',
     steps: rawSteps.map((s: Record<string, unknown>) => ({
       id: (s.id as string) ?? crypto.randomUUID(),
@@ -159,9 +164,16 @@ export function ArenaEditorModal({
   const confirm = useConfirm()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<QuizForm>(emptyForm())
+  // Acordeón: qué preguntas están desplegadas (por id). Al editar un quiz existente
+  // arrancan colapsadas para manejar bancos largos; las nuevas se abren solas.
+  const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({})
+
+  // Tamaño de sección efectivo (nunca 0 para no dividir por cero al agrupar).
+  const sectionSize = Math.max(MIN_SECTION_SIZE, form.section_size || DEFAULT_SECTION_SIZE)
 
   useEffect(() => {
     if (editing) {
+      const steps = editing.steps.length > 0 ? editing.steps : [newStep()]
       setForm({
         title: editing.title,
         description: editing.description,
@@ -170,23 +182,45 @@ export function ArenaEditorModal({
         theme_color: editing.theme_color,
         theme_type: editing.theme_type,
         xp_per_question: editing.xp_per_question,
-        steps: editing.steps.length > 0 ? editing.steps : [newStep()],
+        section_size: editing.section_size || DEFAULT_SECTION_SIZE,
+        steps,
       })
+      // Quiz existente: todas colapsadas (excepto la 1ª) para no abrumar.
+      setOpenSteps(steps.length > 0 ? { [steps[0].id]: true } : {})
     } else {
-      setForm({ ...emptyForm(), campaign_id: defaultCampaignId ?? '' })
+      const fresh = { ...emptyForm(), campaign_id: defaultCampaignId ?? '' }
+      setForm(fresh)
+      // Quiz nuevo: la única pregunta arranca abierta.
+      setOpenSteps(fresh.steps.length > 0 ? { [fresh.steps[0].id]: true } : {})
     }
   }, [editing, defaultCampaignId])
 
-  const addStep = () => setForm(f => ({ ...f, steps: [...f.steps, newStep()] }))
+  const toggleStep = (stepId: string) =>
+    setOpenSteps(o => ({ ...o, [stepId]: !o[stepId] }))
 
-  // Agrega una sección completa (SECTION_SIZE preguntas), como una parada nueva
-  // del recorrido. Espeja lo que hace la IA (preguntas por nivel = secciones × 3).
-  const addSection = () =>
-    setForm(f => ({ ...f, steps: [...f.steps, ...Array.from({ length: SECTION_SIZE }, newStep)] }))
+  // ¿Están todas desplegadas? (para el botón "colapsar/expandir todo").
+  const allOpen = form.steps.length > 0 && form.steps.every(s => openSteps[s.id])
+  const setAllOpen = (open: boolean) =>
+    setOpenSteps(open ? Object.fromEntries(form.steps.map(s => [s.id, true])) : {})
+
+  const addStep = () => {
+    const s = newStep()
+    setForm(f => ({ ...f, steps: [...f.steps, s] }))
+    setOpenSteps(o => ({ ...o, [s.id]: true }))
+  }
+
+  // Agrega una sección completa (sectionSize preguntas), como una parada nueva
+  // del recorrido. Espeja lo que hace la IA (preguntas por nivel = secciones × tamaño).
+  const addSection = () => {
+    const nuevas = Array.from({ length: sectionSize }, newStep)
+    setForm(f => ({ ...f, steps: [...f.steps, ...nuevas] }))
+    setOpenSteps(o => ({ ...o, ...Object.fromEntries(nuevas.map(s => [s.id, true])) }))
+  }
 
   const removeStep = async (stepId: string) => {
     if (!(await confirm({ title: t('confirm.delete_question_title'), description: t('confirm.delete_question_desc'), confirmLabel: t('confirm.remove') }))) return
     setForm(f => ({ ...f, steps: f.steps.filter(s => s.id !== stepId) }))
+    setOpenSteps(o => { const { [stepId]: _drop, ...rest } = o; return rest })
   }
 
   const updateStep = (stepId: string, patch: Partial<Omit<QuizStep, 'options'>>) =>
@@ -240,6 +274,7 @@ export function ArenaEditorModal({
       theme_color: form.theme_color,
       theme_type: form.theme_type,
       xp_per_question: form.xp_per_question,
+      section_size: sectionSize,
       steps: form.steps.filter(s => s.question.trim()) as unknown as Json,
     }
 
@@ -389,35 +424,60 @@ export function ArenaEditorModal({
 
             {/* Preguntas */}
             <div>
-              <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                 <label className="text-[12px] font-medium text-text-muted">
                   {i18n.t('admin.arena.questions_label', { defaultValue: 'Preguntas' })}{' '}
                   <span className="text-text-subtle font-normal">
-                    ({form.steps.length} · {Math.ceil(form.steps.length / SECTION_SIZE)} {Math.ceil(form.steps.length / SECTION_SIZE) === 1
+                    ({form.steps.length} · {Math.ceil(form.steps.length / sectionSize)} {Math.ceil(form.steps.length / sectionSize) === 1
                       ? i18n.t('admin.arena.section_one', { defaultValue: 'sección' })
                       : i18n.t('admin.arena.section_many', { defaultValue: 'secciones' })})
                   </span>
                 </label>
-                <div className="flex items-center gap-3 shrink-0">
-                  <button type="button" onClick={addStep}
-                    className="text-[11px] font-medium transition-opacity hover:opacity-70" style={{ color: '#10D451' }}>
-                    + {i18n.t('common.add_question')}
+                {/* Colapsar / expandir todas las preguntas del banco. */}
+                {form.steps.length > 1 && (
+                  <button type="button" onClick={() => setAllOpen(!allOpen)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-text-muted hover:text-text transition-colors">
+                    {allOpen
+                      ? <><ChevronsDownUp className="h-3.5 w-3.5" /> {i18n.t('admin.arena.collapse_all', { defaultValue: 'Colapsar todas' })}</>
+                      : <><ChevronsUpDown className="h-3.5 w-3.5" /> {i18n.t('admin.arena.expand_all', { defaultValue: 'Expandir todas' })}</>}
                   </button>
-                  <button type="button" onClick={addSection}
-                    className="text-[11px] font-medium transition-opacity hover:opacity-70" style={{ color: form.theme_color }}>
-                    + {i18n.t('admin.arena.add_section', { defaultValue: 'Sección' })}
-                  </button>
-                </div>
+                )}
               </div>
 
-              {/* Explicación + mini-mapa: deja claro que las preguntas se agrupan
-                  en secciones (P1, P2…), como en el recorrido del aprendiz. */}
+              {/* Control: cuántas preguntas agrupa cada sección (parada del mapa). */}
               <div className="mb-3 rounded-xl border border-line bg-bg/50 px-3 py-2.5">
-                <p className="text-[11px] text-text-muted leading-relaxed mb-2">
-                  {i18n.t('admin.arena.sections_hint', { size: SECTION_SIZE, defaultValue: `Las preguntas se agrupan de a ${SECTION_SIZE} en secciones (P1, P2…). Cada sección es una parada en el mapa del aprendiz.` })}
-                </p>
-                <div className="flex items-center gap-1 overflow-x-auto">
-                  {Array.from({ length: Math.max(1, Math.ceil(form.steps.length / SECTION_SIZE)) }).map((_, i) => (
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-medium text-text">
+                      {i18n.t('admin.arena.section_size_label', { defaultValue: 'Preguntas por sección' })}
+                    </div>
+                    <p className="text-[11px] text-text-muted leading-relaxed mt-0.5">
+                      {i18n.t('admin.arena.section_size_hint', { size: sectionSize, defaultValue: `Cada sección (P1, P2…) es una parada en el mapa del aprendiz. Ahora agrupa ${sectionSize} pregunta(s).` })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button type="button" aria-label={i18n.t('common.decrease', { defaultValue: 'Disminuir' })}
+                      onClick={() => setForm(f => ({ ...f, section_size: Math.max(MIN_SECTION_SIZE, (f.section_size || DEFAULT_SECTION_SIZE) - 1) }))}
+                      disabled={sectionSize <= MIN_SECTION_SIZE}
+                      className="h-9 w-9 flex items-center justify-center rounded-lg border border-line text-text-muted hover:text-text hover:bg-bg transition-colors disabled:opacity-30 disabled:pointer-events-none text-[16px] leading-none">−</button>
+                    <input
+                      type="number" min={MIN_SECTION_SIZE} max={MAX_SECTION_SIZE}
+                      value={form.section_size}
+                      onChange={e => {
+                        const v = e.target.value === '' ? MIN_SECTION_SIZE : Number(e.target.value)
+                        setForm(f => ({ ...f, section_size: Math.max(MIN_SECTION_SIZE, Math.min(MAX_SECTION_SIZE, v)) }))
+                      }}
+                      className="w-12 h-9 px-2 rounded-lg text-[13px] text-center bg-bg border border-line text-text focus:outline-none focus:border-[#10D451]/50"
+                    />
+                    <button type="button" aria-label={i18n.t('common.increase', { defaultValue: 'Aumentar' })}
+                      onClick={() => setForm(f => ({ ...f, section_size: Math.min(MAX_SECTION_SIZE, (f.section_size || DEFAULT_SECTION_SIZE) + 1) }))}
+                      disabled={sectionSize >= MAX_SECTION_SIZE}
+                      className="h-9 w-9 flex items-center justify-center rounded-lg border border-line text-text-muted hover:text-text hover:bg-bg transition-colors disabled:opacity-30 disabled:pointer-events-none text-[16px] leading-none">+</button>
+                  </div>
+                </div>
+                {/* Mini-mapa de secciones. */}
+                <div className="flex items-center gap-1 overflow-x-auto mt-2.5">
+                  {Array.from({ length: Math.max(1, Math.ceil(form.steps.length / sectionSize)) }).map((_, i) => (
                     <div key={i} className="flex items-center gap-1 shrink-0">
                       {i > 0 && <span className="h-px w-4" style={{ background:`${form.theme_color}40` }} />}
                       <span className="h-6 min-w-[28px] px-1.5 rounded-full text-[10.5px] font-bold flex items-center justify-center"
@@ -430,36 +490,50 @@ export function ArenaEditorModal({
               </div>
 
               <div className="space-y-3">
-                {form.steps.map((step, si) => (
+                {form.steps.map((step, si) => {
+                  const isOpen = openSteps[step.id] ?? false
+                  const preview = step.question.trim()
+                  return (
                   <div key={step.id}>
                     {/* Encabezado de sección antes de la 1ª pregunta de cada grupo. */}
-                    {si % SECTION_SIZE === 0 && (
+                    {si % sectionSize === 0 && (
                       <div className={`flex items-center gap-2 mb-2 ${si > 0 ? 'mt-4 pt-4 border-t border-line/60' : ''}`}>
                         <span className="h-6 min-w-[28px] px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center"
                           style={{ background:`${form.theme_color}18`, color:form.theme_color, border:`1px solid ${form.theme_color}33` }}>
-                          P{Math.floor(si / SECTION_SIZE) + 1}
+                          P{Math.floor(si / sectionSize) + 1}
                         </span>
                         <span className="text-[12px] font-semibold text-text">
-                          {i18n.t('admin.arena.section_n', { n: Math.floor(si / SECTION_SIZE) + 1, defaultValue: `Sección ${Math.floor(si / SECTION_SIZE) + 1}` })}
+                          {i18n.t('admin.arena.section_n', { n: Math.floor(si / sectionSize) + 1, defaultValue: `Sección ${Math.floor(si / sectionSize) + 1}` })}
                         </span>
                         <span className="text-[11px] text-text-muted">· {i18n.t('admin.arena.section_stop', { defaultValue: 'una parada del recorrido' })}</span>
                       </div>
                     )}
-                    <div className="rounded-xl border border-line bg-bg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wide">
+                    <div className="rounded-xl border border-line bg-bg overflow-hidden">
+                    {/* Cabecera del acordeón: clic para plegar/desplegar. */}
+                    <div className="flex items-center gap-2 px-3 sm:px-4 py-3 cursor-pointer select-none hover:bg-surface/40 transition-colors"
+                      onClick={() => toggleStep(step.id)}>
+                      <ChevronRight className={`h-4 w-4 text-text-muted shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                      <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wide shrink-0">
                         {i18n.t('common.question_n', { n: si + 1 })}
                       </span>
+                      {!isOpen && (
+                        <span className={`text-[12px] truncate flex-1 min-w-0 ${preview ? 'text-text' : 'text-text-subtle italic'}`}>
+                          {preview || i18n.t('admin.arena.empty_question', { defaultValue: 'Sin enunciado…' })}
+                        </span>
+                      )}
+                      {isOpen && <span className="flex-1" />}
                       <button
                         type="button"
-                        onClick={() => removeStep(step.id)}
+                        onClick={e => { e.stopPropagation(); removeStep(step.id) }}
                         disabled={form.steps.length === 1}
-                        className="h-6 w-6 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/6 transition-colors disabled:opacity-25 disabled:pointer-events-none"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/6 transition-colors disabled:opacity-25 disabled:pointer-events-none shrink-0"
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
 
+                    {isOpen && (
+                    <div className="px-3 sm:px-4 pb-4 space-y-3 border-t border-line/50 pt-3">
                     <textarea
                       value={step.question}
                       onChange={e => updateStep(step.id, { question: e.target.value })}
@@ -536,9 +610,26 @@ export function ArenaEditorModal({
                         ))}
                       </div>
                     </div>
+                    </div>
+                    )}
                   </div>
                   </div>
-                ))}
+                  )
+                })}
+              </div>
+
+              {/* Agregar preguntas ABAJO (no arriba): agregar sin tener que subir. */}
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <button type="button" onClick={addStep}
+                  className="flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-xl text-[12px] font-medium transition-colors"
+                  style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}>
+                  <Plus className="h-3.5 w-3.5" /> {i18n.t('common.add_question')}
+                </button>
+                <button type="button" onClick={addSection}
+                  className="flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-xl text-[12px] font-medium transition-colors"
+                  style={{ background: `${form.theme_color}14`, color: form.theme_color, border: `1px solid ${form.theme_color}33` }}>
+                  <Plus className="h-3.5 w-3.5" /> {i18n.t('admin.arena.add_section_full', { size: sectionSize, defaultValue: `Sección (${sectionSize} preguntas)` })}
+                </button>
               </div>
             </div>
           </div>

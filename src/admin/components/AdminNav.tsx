@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, LogOut, BookOpen, Menu, X, ChevronDown, Trophy, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Users, LogOut, BookOpen, Menu, X, ChevronDown, Trophy, Sparkles, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
@@ -71,6 +71,15 @@ export function AdminNav() {
         { to: '/admin/modules', label: t('admin.nav.modules', 'Módulos'), end: false }
       ]
     },
+    // Supervisión (bitácora de actividad + aprobación de eliminaciones): solo superadmin.
+    ...(isSuperAdmin ? [{
+      title: t('admin.nav.group_supervision', 'Supervisión'),
+      icon: ShieldCheck,
+      items: [
+        { to: '/admin/activity', label: t('admin.nav.activity', 'Actividad'), end: false },
+        { to: '/admin/approvals', label: t('admin.nav.approvals', 'Aprobaciones'), end: false },
+      ]
+    }] : []),
     {
       title: t('admin.nav.group_people', 'Personas'),
       icon: Users,

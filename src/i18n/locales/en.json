@@ -60,6 +60,10 @@
     "admin": "Admin",
     "manage": "Manage"
   },
+  "deletion": {
+    "pending_generic": "Sent for superadmin approval and hidden.",
+    "pending_toast": "\"{{name}}\" was hidden and is awaiting superadmin approval."
+  },
   "view_switcher": {
     "learner": "Learner",
     "caption": "View as",
@@ -688,13 +692,63 @@
       "progress": "Progress",
       "overview": "Global view",
       "gamification": "Gamification",
+      "activity": "Activity",
+      "approvals": "Approvals",
       "generate_module": "Generate module AI",
       "open_menu": "Open menu",
       "close_menu": "Close menu",
       "group_people": "People",
       "group_content": "Content",
       "group_challenges": "Challenges & Simulations",
-      "group_ai": "Artificial Intelligence"
+      "group_ai": "Artificial Intelligence",
+      "group_supervision": "Supervision"
+    },
+    "entity_types": {
+      "campaigns": "Campaign",
+      "courses": "Course",
+      "modules": "Module",
+      "scenarios": "Simulator",
+      "choice_scenarios": "Simulator (choice)",
+      "live_quizzes": "Live quiz",
+      "worlds": "World",
+      "arena_quizzes": "Arena",
+      "guided_missions": "Mission"
+    },
+    "approvals": {
+      "title": "Deletion approvals",
+      "subtitle": "Content a trainer hid, awaiting your decision. Approving deletes it permanently; rejecting restores it.",
+      "count": "{{n}} pending",
+      "requested_by": "Requested by",
+      "unknown_user": "Unknown user",
+      "approve": "Delete permanently",
+      "reject": "Restore",
+      "confirm_approve_title": "Delete permanently?",
+      "confirm_approve_desc": "This is irreversible: \"{{name}}\" will be permanently deleted.",
+      "approved_toast": "Permanently deleted.",
+      "rejected_toast": "Restored and visible again.",
+      "error": "Could not complete the action.",
+      "empty_title": "No pending requests",
+      "empty_desc": "When a trainer deletes something, it will appear here for your approval."
+    },
+    "activity": {
+      "title": "Team activity",
+      "subtitle": "Everything each trainer does: creations, edits, deletions and restores.",
+      "filter_all_actors": "All users",
+      "filter_all_types": "All types",
+      "filter_all_actions": "All actions",
+      "count": "{{n}} events",
+      "changed_fields": "Changed fields",
+      "field_from": "before",
+      "field_to": "after",
+      "empty_title": "No activity",
+      "empty_desc": "No events recorded yet with these filters.",
+      "load_error": "Could not load activity.",
+      "action_insert": "Created",
+      "action_update": "Edited",
+      "action_soft_delete": "Hid",
+      "action_restore": "Restored",
+      "action_delete": "Deleted",
+      "action_approve_delete": "Approved deletion"
     },
     "gamification": {
       "title": "Gamification",

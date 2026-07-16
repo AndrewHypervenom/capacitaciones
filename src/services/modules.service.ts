@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import type { LearningModule, ModuleSection, SectionQuiz, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { ContentBlock } from '@/types/blocks'
 import type { GeneratedModule } from '@/services/ai.service'
+import { requestDeletion } from '@/services/audit.service'
 
 // ─── Raw DB types for video markers ──────────────────────────
 // Definidos en @/types/blocks (para poder embeberlos en el bloque de video sin
@@ -407,9 +408,12 @@ export async function toggleModulePublished(moduleId: string, isPublished: boole
   if (error) throw error
 }
 
-export async function deleteModule(moduleId: string) {
-  const { error } = await supabase.from('modules').delete().eq('id', moduleId)
-  if (error) throw error
+/**
+ * "Borra" un módulo. Superadmin -> elimina definitivo. Capacitador -> lo oculta
+ * y deja solicitud de eliminación para aprobación. Devuelve 'deleted' | 'pending'.
+ */
+export async function deleteModule(moduleId: string): Promise<'deleted' | 'pending'> {
+  return requestDeletion('modules', moduleId)
 }
 
 export async function createModule(

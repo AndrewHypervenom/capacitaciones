@@ -28,6 +28,73 @@ export interface CertConditions {
 export interface Database {
   public: {
     Tables: {
+      activity_log: {
+        Row: {
+          id: string
+          actor_id: string | null
+          actor_name: string | null
+          actor_role: string | null
+          action: string
+          entity_type: string
+          entity_id: string | null
+          entity_label: string | null
+          campaign_id: string | null
+          detail: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          actor_id?: string | null
+          actor_name?: string | null
+          actor_role?: string | null
+          action: string
+          entity_type: string
+          entity_id?: string | null
+          entity_label?: string | null
+          campaign_id?: string | null
+          detail?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          action?: string
+          entity_type?: string
+          detail?: Json | null
+        }
+        Relationships: []
+      }
+      deletion_requests: {
+        Row: {
+          id: string
+          entity_type: string
+          entity_id: string
+          entity_label: string | null
+          campaign_id: string | null
+          requested_by: string | null
+          requested_at: string
+          status: string
+          resolved_by: string | null
+          resolved_at: string | null
+        }
+        Insert: {
+          id?: string
+          entity_type: string
+          entity_id: string
+          entity_label?: string | null
+          campaign_id?: string | null
+          requested_by?: string | null
+          requested_at?: string
+          status?: string
+          resolved_by?: string | null
+          resolved_at?: string | null
+        }
+        Update: {
+          status?: string
+          resolved_by?: string | null
+          resolved_at?: string | null
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
           id: string
@@ -1182,6 +1249,7 @@ export interface Database {
           created_at: string
           updated_at: string
           min_score_pct: number | null
+          section_size: number
         }
         Insert: {
           id?: string
@@ -1199,6 +1267,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
           min_score_pct?: number | null
+          section_size?: number
         }
         Update: {
           id?: string
@@ -1216,6 +1285,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
           min_score_pct?: number | null
+          section_size?: number
         }
         Relationships: []
       }
@@ -1372,6 +1442,18 @@ export interface Database {
       auth_role: {
         Args: Record<string, never>
         Returns: string
+      }
+      request_deletion: {
+        Args: { p_entity_type: string; p_entity_id: string }
+        Returns: string
+      }
+      approve_deletion: {
+        Args: { p_request_id: string }
+        Returns: undefined
+      }
+      reject_deletion: {
+        Args: { p_request_id: string }
+        Returns: undefined
       }
       auth_campaign_id: {
         Args: Record<string, never>

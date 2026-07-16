@@ -4,6 +4,7 @@ import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, Target, X, BookOpen, Video, FileText, Zap, Pencil, Trash2 } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
+import { requestDeletion } from '@/services/audit.service'
 import type { Json } from '@/types/database'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
@@ -167,26 +168,12 @@ export default function LearningMissions() {
       description: t('confirm.delete_mission_desc'),
     })
     if (!ok) return
-    const { data, error } = await supabase
-      .from('guided_missions')
-      .delete()
-      .eq('id', m.id)
-      .select('id')
-    if (error) {
+    try {
+      await requestDeletion('guided_missions', m.id)
+      setMissions(prev => prev.filter(x => x.id !== m.id))
+    } catch (error) {
       console.error('Error deleting mission:', error)
-      return
     }
-    // Con RLS, un DELETE sin política permitida no da error pero borra 0 filas.
-    if (!data || data.length === 0) {
-      console.error('La misión no se borró (0 filas afectadas). Falta una política RLS DELETE en guided_missions.')
-      await confirm({
-        title: t('confirm.delete_mission_title'),
-        description: t('admin.worlds.lm_toast_delete_rls'),
-        confirmLabel: t('common.understood'),
-      })
-      return
-    }
-    setMissions(prev => prev.filter(x => x.id !== m.id))
   }
 
   const addStep = () =>

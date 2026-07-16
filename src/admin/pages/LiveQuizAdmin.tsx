@@ -8,6 +8,8 @@ import { motion, AnimatePresence, useMotionValue, useTransform, animate } from '
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { requestDeletion } from '@/services/audit.service'
+import { toast } from '@/stores/toastStore'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
@@ -316,8 +318,8 @@ export default function LiveQuizAdmin() {
       description: t('confirm.delete_quiz_desc'),
     })
     if (!ok) return
-    await supabase.from('live_quiz_answers').delete().eq('quiz_id', id)
-    await supabase.from('live_quizzes').delete().eq('id', id)
+    const result = await requestDeletion('live_quizzes', id)
+    if (result === 'pending') toast.success(t('deletion.pending_generic'))
     void loadQuizzes()
   }
 

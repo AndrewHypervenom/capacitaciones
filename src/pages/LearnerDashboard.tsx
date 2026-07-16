@@ -5,7 +5,6 @@ import {
   ArrowRight,
   BookOpen,
   Compass,
-  Globe,
   GraduationCap,
   Home,
   Lock,
@@ -555,34 +554,6 @@ export default function LearnerDashboard() {
                   </span>
                 </Link>
               </Reveal>
-
-              {hasWorld && (
-                <Reveal delay={60}>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/world')}
-                    className="flex w-full items-center gap-4 rounded-2xl border border-line bg-surface p-4 text-left transition-all hover:border-primary hover:shadow-card-hover"
-                  >
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-subtle text-text-muted">
-                      <Globe className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-                        Mapa
-                      </p>
-                      <h4 className="text-[15px] font-semibold text-text truncate">
-                        {t('dashboard.my_world')}
-                      </h4>
-                      <p className="text-[13px] text-text-muted truncate">
-                        Explora tu mapa de capacitación y completa niveles
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-[13px] font-medium text-text-muted">
-                      Explorar →
-                    </span>
-                  </button>
-                </Reveal>
-              )}
             </div>
           </section>
 

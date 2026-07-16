@@ -274,10 +274,10 @@ export default function CourseList() {
     })
     if (!ok) return
     try {
-      await deleteCourse(course.id)
+      const result = await deleteCourse(course.id)
       setCourses((prev) => prev.filter((c) => c.id !== course.id))
       invalidateModulesCache()
-      toast.success(t('admin.courses.deleted_ok'))
+      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('admin.courses.deleted_ok'))
     } catch {
       toast.error(t('admin.courses.error_delete'))
     }

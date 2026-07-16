@@ -32,10 +32,10 @@ const BG_LABELS: Record<string,string> = { airline:'admin.arena.theme_airline', 
 const SOUND_LABELS: Record<string,string> = { airport:'admin.worlds.sound_airport', bank:'admin.arena.theme_bank', nature:'admin.worlds.sound_nature', tech:'admin.arena.theme_tech', neutral:'admin.worlds.sound_neutral' }
 const TRANS_LABELS: Record<string,string> = { clouds:'admin.worlds.trans_clouds', cards:'admin.worlds.trans_cards', pulse:'admin.worlds.trans_pulse', rocket:'admin.worlds.trans_rocket', terminal:'admin.worlds.trans_terminal', confetti:'admin.worlds.trans_confetti', scan:'admin.worlds.trans_scan', warp:'admin.worlds.trans_warp' }
 
-// Cada sección (P1, P2… en el recorrido del aprendiz) agrupa esta cantidad de
-// preguntas. Coincide con SECTION_SIZE en ArenaPlayer para que las paradas del
-// mapa y las preguntas por sección estén alineadas.
-const QUESTIONS_PER_SECTION = 3
+// Preguntas por sección por defecto (P1, P2… en el recorrido del aprendiz).
+// El capacitador puede cambiarlo al generar; se guarda en cada quiz
+// (arena_quizzes.section_size) y el ArenaPlayer lo respeta.
+const DEFAULT_QUESTIONS_PER_SECTION = 3
 
 export default function WorldDetail() {
   const { id } = useParams<{ id: string }>()
@@ -87,12 +87,14 @@ export default function WorldDetail() {
   const [aiRegion, setAiRegion] = useState<Region | null>(null)
   const [aiLevels, setAiLevels] = useState<number | ''>('')
   const [aiSections, setAiSections] = useState<number | ''>(2)
+  const [aiPerSection, setAiPerSection] = useState<number | ''>(DEFAULT_QUESTIONS_PER_SECTION)
   const [aiMinScore, setAiMinScore] = useState<number | ''>(80)
 
   // Generar en bloque todas las regiones del curso (una por módulo) con sus niveles.
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLevels, setBulkLevels] = useState<number | ''>(3)
   const [bulkSections, setBulkSections] = useState<number | ''>(2)
+  const [bulkPerSection, setBulkPerSection] = useState<number | ''>(DEFAULT_QUESTIONS_PER_SECTION)
 
   // Reset progress
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -338,6 +340,7 @@ export default function WorldDetail() {
     setAiRegion(region)
     setAiLevels(3)
     setAiSections(2)
+    setAiPerSection(DEFAULT_QUESTIONS_PER_SECTION)
     setAiMinScore(80)
   }
   // Dispara la generación EN SEGUNDO PLANO (cancelable) y cierra el modal: el
@@ -345,6 +348,7 @@ export default function WorldDetail() {
   const runAiGen = () => {
     if (!world || !aiRegion) return
     const region = aiRegion
+    const perSection = aiPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(aiPerSection)
     generateLevelsForRegion({
       worldId: world.id,
       regionId: region.id,
@@ -352,7 +356,8 @@ export default function WorldDetail() {
       regionDescription: region.description,
       moduleId: region.module_id,
       levelCount: aiLevels === '' ? 3 : Number(aiLevels),
-      questionsPerLevel: (aiSections === '' ? 2 : Number(aiSections)) * QUESTIONS_PER_SECTION,
+      questionsPerLevel: (aiSections === '' ? 2 : Number(aiSections)) * perSection,
+      sectionSize: perSection,
       minScorePct: aiMinScore === '' ? 80 : Number(aiMinScore),
     })
     setExpanded(prev => ({ ...prev, [region.id]: true }))
@@ -371,12 +376,13 @@ export default function WorldDetail() {
   const runBulkGen = () => {
     if (!world || modulesWithoutRegion.length === 0) return
     const lvl = bulkLevels === '' ? 3 : Number(bulkLevels)
-    const qpl = (bulkSections === '' ? 2 : Number(bulkSections)) * QUESTIONS_PER_SECTION
+    const perSection = bulkPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(bulkPerSection)
+    const qpl = (bulkSections === '' ? 2 : Number(bulkSections)) * perSection
     generateBulkModuleRegions(
       world as unknown as WorldRow,
       modulesWithoutRegion.map(m => ({ id: m.id, title_es: m.title_es, icon: m.icon })),
       regions.length,
-      { levelCount: lvl, questionsPerLevel: qpl },
+      { levelCount: lvl, questionsPerLevel: qpl, sectionSize: perSection },
     )
     toast.success(i18n.t('admin.worlds.ai_gen_started'))
     setBulkOpen(false)
@@ -971,7 +977,7 @@ export default function WorldDetail() {
                 </div>
               </div>
               <p className="text-[12px] text-text-muted">{i18n.t('admin.worlds.ai_gen_desc')}</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
                   <input type="number" min={1} max={10} value={aiLevels}
@@ -985,8 +991,14 @@ export default function WorldDetail() {
                     onChange={e => setAiSections(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
                 </div>
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_per_section_label', { defaultValue: 'Preg./sección' })}</label>
+                  <input type="number" min={1} max={5} value={aiPerSection}
+                    onChange={e => setAiPerSection(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                </div>
               </div>
-              <p className="text-[11px] text-text-muted -mt-1">{i18n.t('admin.worlds.gen_sections_hint', { total: (aiSections === '' ? 2 : Number(aiSections)) * QUESTIONS_PER_SECTION })}</p>
+              <p className="text-[11px] text-text-muted -mt-1">{i18n.t('admin.worlds.gen_sections_hint', { total: (aiSections === '' ? 2 : Number(aiSections)) * (aiPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(aiPerSection)) })}</p>
               <div>
                 <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_min_score_label')}</label>
                 <div className="relative">
@@ -1048,7 +1060,7 @@ export default function WorldDetail() {
                   {i18n.t('admin.worlds.bulk_modal_desc', { count: modulesWithoutRegion.length, defaultValue: `Se crearán ${modulesWithoutRegion.length} regiones (una por módulo) y la IA generará sus niveles y preguntas desde el contenido de cada módulo.` })}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_levels_label')}</label>
                   <input type="number" min={1} max={10} value={bulkLevels}
@@ -1061,8 +1073,14 @@ export default function WorldDetail() {
                     onChange={e => setBulkSections(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
                     className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
                 </div>
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.gen_per_section_label', { defaultValue: 'Preg./sección' })}</label>
+                  <input type="number" min={1} max={5} value={bulkPerSection}
+                    onChange={e => setBulkPerSection(e.target.value === '' ? '' : Math.max(1, Math.min(5, Number(e.target.value))))}
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text focus:outline-none min-h-[44px]"/>
+                </div>
               </div>
-              <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_sections_hint', { total: (bulkSections === '' ? 2 : Number(bulkSections)) * QUESTIONS_PER_SECTION })}</p>
+              <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_sections_hint', { total: (bulkSections === '' ? 2 : Number(bulkSections)) * (bulkPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(bulkPerSection)) })}</p>
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => setBulkOpen(false)}

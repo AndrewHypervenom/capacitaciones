@@ -111,6 +111,7 @@ async function insertArenaQuiz(
   world: WorldRow,
   gen: GeneratedQuiz,
   minScorePct: number = DEFAULT_LEVEL_MIN_SCORE_PCT,
+  sectionSize: number = 3,
 ): Promise<string> {
   const { data, error } = await supabase
     .from('arena_quizzes')
@@ -125,6 +126,7 @@ async function insertArenaQuiz(
       status: 'published',
       steps: toArenaSteps(gen),
       min_score_pct: minScorePct,
+      section_size: sectionSize,
     })
     .select('id')
     .single()
@@ -153,6 +155,8 @@ export interface WorldGenOptions {
   questionsPerLevel?: number
   /** Puntaje mínimo (%) para aprobar cada nivel generado (0-100). Default 80. */
   minScorePct?: number
+  /** Preguntas por sección (parada del mapa) que se guarda en cada quiz. Default 3. */
+  sectionSize?: number
 }
 
 /** Mínimo de caracteres de contenido para generar sin que la IA invente. */
@@ -193,6 +197,9 @@ export async function generateRegionLevelsFlexible(
   // Puntaje mínimo para aprobar cada nivel (default 80). Sin umbral el nivel
   // dejaría pasar respondiendo todo mal.
   const minScorePct = clampInt(opts.minScorePct, 0, 100, DEFAULT_LEVEL_MIN_SCORE_PCT)
+  // Preguntas por sección (parada del mapa). Se guarda en el quiz para que el
+  // ArenaPlayer agrupe igual que lo pedido. Default 3.
+  const sectionSize = clampInt(opts.sectionSize, 1, 10, 3)
 
   // 1. Esqueleto de niveles (barato, una sola llamada).
   throwIfAborted(signal)
@@ -228,7 +235,7 @@ export async function generateRegionLevelsFlexible(
         focus: lv.focus ?? lv.description ?? '',
         questionCount: questionsPerLevel,
       }, signal)) as GeneratedQuiz
-      if ((quiz.steps?.length ?? 0) > 0) quizId = await insertArenaQuiz(world, quiz, minScorePct)
+      if ((quiz.steps?.length ?? 0) > 0) quizId = await insertArenaQuiz(world, quiz, minScorePct, sectionSize)
     } catch (e) {
       console.error('Fallo generando el quiz de un nivel; queda sin quiz:', e)
     }
@@ -342,12 +349,13 @@ export function generateLevelsForRegion(opts: {
   levelCount?: number
   questionsPerLevel?: number
   minScorePct?: number
+  sectionSize?: number
 }): void {
   const { id: taskId, signal } = bgTask.startCancelable(
     i18n.t('worldgen.world_title', { name: opts.regionName }),
     i18n.t('worldgen.outline'),
   )
-  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel, minScorePct: opts.minScorePct }
+  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel, minScorePct: opts.minScorePct, sectionSize: opts.sectionSize }
 
   void (async () => {
     const { data: w } = await supabase.from('worlds').select('*').eq('id', opts.worldId).single()
@@ -477,6 +485,45 @@ export async function ensureCourseWorld(course: CourseLike): Promise<WorldRow> {
   }
   if (error) throw error
   return data as WorldRow
+}
+
+/**
+ * Mundos "sueltos" (course_id null) de una campaña, candidatos a enlazarse a un
+ * curso desde su editor. No incluye los que ya pertenecen a otro curso.
+ */
+export async function getLinkableWorlds(campaignId: string): Promise<WorldRow[]> {
+  const { data } = await supabase
+    .from('worlds')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .is('course_id', null)
+    .order('created_at', { ascending: false })
+  return (data ?? []) as WorldRow[]
+}
+
+/**
+ * Enlaza un mundo existente a un curso (setea worlds.course_id). NO reconcilia
+ * regiones con los módulos (eso borraría regiones a medida): el mundo conserva su
+ * contenido tal cual. El índice único worlds_course_id_uidx garantiza 1 por curso.
+ */
+export async function linkWorldToCourse(worldId: string, courseId: string): Promise<WorldRow> {
+  const { data, error } = await supabase
+    .from('worlds')
+    .update({ course_id: courseId })
+    .eq('id', worldId)
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as WorldRow
+}
+
+/** Desenlaza el mundo de un curso (course_id → null). El mundo sigue existiendo como suelto. */
+export async function unlinkWorldFromCourse(courseId: string): Promise<void> {
+  const { error } = await supabase
+    .from('worlds')
+    .update({ course_id: null })
+    .eq('course_id', courseId)
+  if (error) throw error
 }
 
 /** Lee el mundo espejo de un curso sin crearlo. Null si todavía no existe. */

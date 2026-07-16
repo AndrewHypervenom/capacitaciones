@@ -89,9 +89,9 @@ export default function SimulationList() {
     })
     if (!ok) return
     try {
-      await deleteScenario(row.id)
+      const result = await deleteScenario(row.id)
       setDialogueRows((prev) => prev.filter((r) => r.id !== row.id))
-      toast.success(t('admin.simulations.list_toast_deleted'))
+      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('admin.simulations.list_toast_deleted'))
     } catch { toast.error(t('admin.simulations.list_toast_delete_error')) }
   }
 
@@ -110,9 +110,9 @@ export default function SimulationList() {
     })
     if (!ok) return
     try {
-      await deleteChoiceScenario(row.id)
+      const result = await deleteChoiceScenario(row.id)
       setChoiceRows((prev) => prev.filter((r) => r.id !== row.id))
-      toast.success(t('admin.simulations.list_toast_deleted'))
+      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('admin.simulations.list_toast_deleted'))
     } catch { toast.error(t('admin.simulations.list_toast_delete_error')) }
   }
 

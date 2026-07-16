@@ -11,6 +11,7 @@ import {
 } from '@/services/modules.service'
 import { getCoursesForCampaign, type CourseWithModules } from '@/services/courses.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -87,8 +88,9 @@ export default function ModuleList() {
     })
     if (!ok) return
     try {
-      await deleteModule(mod.id)
+      const result = await deleteModule(mod.id)
       setModules((prev) => prev.filter((m) => m.id !== mod.id))
+      if (result === 'pending') toast.success(t('deletion.pending_generic'))
     } catch {
       setError(t('admin.modules.error_delete'))
     }

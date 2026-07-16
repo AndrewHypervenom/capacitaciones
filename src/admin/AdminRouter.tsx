@@ -27,6 +27,8 @@ import WorldDetail from './pages/WorldDetail'
 import ChatLogs from './pages/ChatLogs'
 import AiUsage from './pages/AiUsage'
 import Gamification from './pages/Gamification'
+import ActivityLog from './pages/ActivityLog'
+import DeletionApprovals from './pages/DeletionApprovals'
 import { HelpWidget } from '@/components/help/HelpWidget'
 
 export default function AdminRouter() {
@@ -80,6 +82,10 @@ export default function AdminRouter() {
           <Route path="overview" element={isSuperAdmin ? <AdminOverview /> : <Navigate to="/admin" replace />} />
           {/* Gamificación: logros + niveles de XP (solo superadmin) */}
           <Route path="gamification" element={isSuperAdmin ? <Gamification /> : <Navigate to="/admin" replace />} />
+          {/* Bitácora de actividad del equipo: solo superadmin */}
+          <Route path="activity" element={isSuperAdmin ? <ActivityLog /> : <Navigate to="/admin" replace />} />
+          {/* Aprobación de eliminaciones (borrado suave de capacitadores): solo superadmin */}
+          <Route path="approvals" element={isSuperAdmin ? <DeletionApprovals /> : <Navigate to="/admin" replace />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
           {/* Historial del chat de ayuda: solo superadmin */}
           <Route path="chat" element={isSuperAdmin ? <ChatLogs /> : <Navigate to="/admin" replace />} />

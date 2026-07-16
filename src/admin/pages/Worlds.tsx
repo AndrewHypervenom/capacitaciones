@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { Plus, X, Pencil, Trash2, Globe, Map } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Globe, Map, BookOpen } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { requestDeletion } from '@/services/audit.service'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -21,6 +22,7 @@ interface World {
   name: string
   description: string
   campaign_id: string | null
+  course_id: string | null
   icon: string
   color: string
   bg_type: BgType
@@ -32,10 +34,17 @@ interface Campaign {
   name: string
 }
 
+interface Course {
+  id: string
+  title_es: string
+  campaign_id: string | null
+}
+
 interface WorldForm {
   name: string
   description: string
   campaign_id: string
+  course_id: string
   icon: string
   color: string
   bg_type: string
@@ -54,6 +63,7 @@ const emptyForm = (): WorldForm => ({
   name: '',
   description: '',
   campaign_id: '',
+  course_id: '',
   icon: '🌍',
   color: '#10D451',
   bg_type: 'corporate',
@@ -65,6 +75,7 @@ function normalizeRow(row: Record<string, unknown>): World {
     name: row.name as string,
     description: (row.description as string) ?? '',
     campaign_id: (row.campaign_id as string | null) ?? null,
+    course_id: (row.course_id as string | null) ?? null,
     icon: (row.icon as string) ?? '🌍',
     color: (row.color as string) ?? '#10D451',
     bg_type: (row.bg_type as BgType) ?? 'corporate',
@@ -78,6 +89,8 @@ export default function Worlds() {
   const confirm = useConfirm()
   const [worlds, setWorlds] = useState<World[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  // Cursos accesibles, para enlazar un mundo a su curso desde el modal.
+  const [courses, setCourses] = useState<Course[]>([])
   // Nº de regiones por mundo, para mostrar en la tarjeta cuánto contenido tiene.
   const [regionCounts, setRegionCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -123,6 +136,13 @@ export default function Worlds() {
     if (error && error.code !== '42P01') console.error('Error loading worlds:', error)
     setWorlds((data ?? []).map(normalizeRow))
 
+    // Cursos accesibles (para el selector "Curso" del modal). Superadmin: todos;
+    // capacitador: los de sus campañas.
+    let courseQuery = supabase.from('courses').select('id, title_es, campaign_id').order('title_es')
+    if (scopedToCampaign) courseQuery = courseQuery.in('campaign_id', ids)
+    const { data: courseRows } = await courseQuery
+    setCourses((courseRows ?? []) as Course[])
+
     // Conteo de regiones por mundo, para mostrarlo en cada tarjeta.
     const { data: regionRows } = await supabase.from('world_regions').select('world_id')
     const counts: Record<string, number> = {}
@@ -154,12 +174,24 @@ export default function Worlds() {
       name: w.name,
       description: w.description,
       campaign_id: w.campaign_id ?? '',
+      course_id: w.course_id ?? '',
       icon: w.icon,
       color: w.color,
       bg_type: w.bg_type,
     })
     setEditingId(w.id)
     setWizardOpen(true)
+  }
+
+  // Al elegir un curso, el mundo hereda su campaña (worlds.campaign_id es NOT NULL
+  // y el curso ya define a qué campaña pertenece).
+  const pickCourse = (courseId: string) => {
+    const c = courses.find(x => x.id === courseId)
+    setForm(f => ({
+      ...f,
+      course_id: courseId,
+      campaign_id: c?.campaign_id ? c.campaign_id : f.campaign_id,
+    }))
   }
 
   const closeWizard = () => {
@@ -182,14 +214,17 @@ export default function Worlds() {
       name: form.name.trim(),
       description: form.description.trim(),
       campaign_id: campaign,
+      course_id: form.course_id || null,
       icon: form.icon || '🌍',
       color: form.color,
       bg_type: form.bg_type,
     }
     try {
+      // Un curso solo puede tener un mundo (índice único worlds_course_id_uidx).
+      const courseTakenMsg = i18n.t('admin.worlds.toast_course_taken', { defaultValue: 'Ese curso ya tiene un mundo enlazado. Elegí otro curso o dejalo sin curso.' })
       if (editingId) {
         const { data, error } = await supabase.from('worlds').update(payload).eq('id', editingId).select().single()
-        if (error || !data) { console.error('Error updating world:', error); toast.error('No se pudo guardar el mundo', error?.message); return null }
+        if (error || !data) { console.error('Error updating world:', error); toast.error('No se pudo guardar el mundo', error?.code === '23505' ? courseTakenMsg : error?.message); return null }
         setWorlds(prev => prev.map(x => (x.id === editingId ? normalizeRow(data) : x)))
         return editingId
       } else {
@@ -198,7 +233,7 @@ export default function Worlds() {
           .insert({ ...payload, status: 'draft' as WorldStatus })
           .select()
           .single()
-        if (error || !data) { console.error('Error saving world:', error); toast.error('No se pudo crear el mundo', error?.message); return null }
+        if (error || !data) { console.error('Error saving world:', error); toast.error('No se pudo crear el mundo', error?.code === '23505' ? courseTakenMsg : error?.message); return null }
         const w = normalizeRow(data)
         setWorlds(prev => [w, ...prev])
         setEditingId(w.id)
@@ -252,13 +287,14 @@ export default function Worlds() {
     })
     if (!ok) return
 
-    const { error } = await supabase.from('worlds').delete().eq('id', w.id)
-    if (!error) {
+    try {
+      const result = await requestDeletion('worlds', w.id)
       setWorlds(prev => prev.filter(x => x.id !== w.id))
-      toast.success(t('confirm.delete_world_ok', { name: w.name }))
-    } else {
+      if (result === 'pending') toast.success(t('deletion.pending_toast', { name: w.name }))
+      else toast.success(t('confirm.delete_world_ok', { name: w.name }))
+    } catch (error) {
       console.error('Error deleting world:', error)
-      toast.error(t('confirm.delete_world_error'), error.message)
+      toast.error(t('confirm.delete_world_error'), (error as Error)?.message)
     }
   }
 
@@ -356,6 +392,7 @@ export default function Worlds() {
           <div className="grid md:grid-cols-2 gap-4">
             {filtered.map(w => {
               const campaignName = campaigns.find(c => c.id === w.campaign_id)?.name
+              const courseName = courses.find(c => c.id === w.course_id)?.title_es
               const isPublished = w.status === 'published'
               const nRegions = regionCounts[w.id] ?? 0
               return (
@@ -383,6 +420,12 @@ export default function Worlds() {
                         {campaignName && (
                           <span className="shrink-0 text-[10px] text-text-subtle px-2 py-0.5 rounded-full bg-subtle">
                             {campaignName}
+                          </span>
+                        )}
+                        {courseName && (
+                          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium"
+                            style={{ background: 'rgba(99,102,241,0.12)', color: '#6366F1' }}>
+                            <BookOpen className="h-2.5 w-2.5" /> {courseName}
                           </span>
                         )}
                         <ResourcePresence type="world" id={w.id} />
@@ -535,6 +578,35 @@ export default function Worlds() {
                     />
                   </div>
                 )}
+                {/* Enlace con un curso: la fuente de conocimiento del mundo. Opcional.
+                    Se ocultan los cursos que ya tienen otro mundo (1 mundo por curso). */}
+                <div>
+                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">
+                    {i18n.t('admin.worlds.linked_course', { defaultValue: 'Curso enlazado' })}{' '}
+                    <span className="text-text-subtle font-normal">{i18n.t('common.optional_paren')}</span>
+                  </label>
+                  <Select
+                    value={form.course_id}
+                    onChange={pickCourse}
+                    placeholder={i18n.t('admin.worlds.no_course', { defaultValue: 'Sin curso (mundo suelto)' })}
+                    options={[
+                      { value: '', label: i18n.t('admin.worlds.no_course', { defaultValue: 'Sin curso (mundo suelto)' }) },
+                      ...courses
+                        .filter(c =>
+                          // Solo cursos de la campaña elegida (si hay una) …
+                          (!form.campaign_id || c.campaign_id === form.campaign_id) &&
+                          // … y que no estén ya tomados por OTRO mundo.
+                          !worlds.some(w => w.course_id === c.id && w.id !== editingId),
+                        )
+                        .map(c => ({ value: c.id, label: c.title_es })),
+                    ]}
+                  />
+                  <p className="text-[11px] text-text-muted mt-1">
+                    {form.course_id
+                      ? i18n.t('admin.worlds.course_link_hint', { defaultValue: 'La IA de este mundo se basa en el contenido del curso.' })
+                      : i18n.t('admin.worlds.course_nolink_hint', { defaultValue: 'Sin curso, armás las regiones y preguntas a mano.' })}
+                  </p>
+                </div>
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')} <span className="text-text-subtle font-normal">{i18n.t('common.optional_paren')}</span></label>
                   <textarea
