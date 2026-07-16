@@ -41,6 +41,8 @@ export interface Peer {
   activity: PresenceActivity | null
   /** Ruta actual (p. ej. /admin/modules) para contexto. */
   route: string
+  /** Rol del usuario (superadmin | capacitador | learner) para la etiqueta. */
+  role?: string
   /** ISO timestamp de la última vez que se le vio activo. */
   online_at: string
 }
@@ -49,6 +51,7 @@ interface Me {
   user_id: string
   name: string
   avatar_url: string | null
+  role?: string
 }
 
 // Paleta de anillos: colores vivos y distinguibles, buenos en claro y oscuro.
@@ -107,6 +110,7 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
         color: colorForUser(me.user_id),
         activity,
         route,
+        role: me.role,
         online_at: new Date().toISOString(),
       })
     } catch {
@@ -197,6 +201,54 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
     },
   }
 })
+
+// ─── Ruta → nombre de vista legible ─────────────────────────────────────
+// Para mostrar "puntualmente en qué vista está cada persona" (evitar que dos
+// editen el mismo módulo sin saberlo). El primer patrón que calce gana.
+const VIEW_PATTERNS: Array<[RegExp, string]> = [
+  [/^\/admin\/courses\/[^/]+/, 'presence.views.course_editor'],
+  [/^\/admin\/courses/, 'presence.views.courses'],
+  [/^\/admin\/modules\/new/, 'presence.views.module_new'],
+  [/^\/admin\/modules\/[^/]+\/preview/, 'presence.views.module_preview'],
+  [/^\/admin\/modules\/[^/]+/, 'presence.views.module_editor'],
+  [/^\/admin\/modules/, 'presence.views.modules'],
+  [/^\/admin\/users\/[^/]+/, 'presence.views.user_profile'],
+  [/^\/admin\/users/, 'presence.views.users'],
+  [/^\/admin\/campaigns/, 'presence.views.campaigns'],
+  [/^\/admin\/worlds\/[^/]+/, 'presence.views.world_editor'],
+  [/^\/admin\/worlds/, 'presence.views.worlds'],
+  [/^\/admin\/progress/, 'presence.views.progress'],
+  [/^\/admin\/quiz/, 'presence.views.livequiz_admin'],
+  [/^\/admin\/simulations/, 'presence.views.simulations'],
+  [/^\/admin\/gamification/, 'presence.views.gamification'],
+  [/^\/admin\/activity/, 'presence.views.activity'],
+  [/^\/admin\/approvals/, 'presence.views.approvals'],
+  [/^\/admin\/overview/, 'presence.views.overview'],
+  [/^\/admin\/import/, 'presence.views.import'],
+  [/^\/admin\/ai-usage/, 'presence.views.ai_usage'],
+  [/^\/admin\/chat/, 'presence.views.chat'],
+  [/^\/admin/, 'presence.views.admin_home'],
+  [/^\/dashboard/, 'presence.views.dashboard'],
+  [/^\/courses\/[^/]+/, 'presence.views.course_view'],
+  [/^\/courses/, 'presence.views.catalog'],
+  [/^\/modules\/[^/]+/, 'presence.views.module_view'],
+  [/^\/profile/, 'presence.views.profile'],
+  [/^\/feedback/, 'presence.views.feedback'],
+  [/^\/simulator/, 'presence.views.simulator'],
+  [/^\/certificate/, 'presence.views.certificate'],
+  [/^\/quiz/, 'presence.views.livequiz'],
+  [/^\/world/, 'presence.views.world'],
+  [/^\/arena/, 'presence.views.arena'],
+  [/^\/mission/, 'presence.views.mission'],
+]
+
+/** Clave i18n de la vista donde está un compañero según su ruta. */
+export function viewKeyForRoute(route: string): string {
+  for (const [re, key] of VIEW_PATTERNS) {
+    if (re.test(route)) return key
+  }
+  return 'presence.views.somewhere'
+}
 
 /** Selector: compañeros que están en un recurso concreto (excluye al propio). */
 export function peersForResource(

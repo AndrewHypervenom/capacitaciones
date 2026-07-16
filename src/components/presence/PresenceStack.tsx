@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
-import type { Peer } from '@/stores/presenceStore'
+import { viewKeyForRoute, type Peer } from '@/stores/presenceStore'
 import { cn } from '@/lib/cn'
 
 interface PresenceStackProps {
@@ -17,10 +17,20 @@ interface PresenceStackProps {
 
 const initial = (name: string) => (name || '?').charAt(0).toUpperCase()
 
-/** Etiqueta legible del estado de un compañero para el tooltip. */
-function activityLabel(peer: Peer, t: (k: string) => string): string | null {
-  if (!peer.activity) return t('presence.browsing')
-  return peer.activity.dirty ? t('presence.editing_now') : t('presence.viewing')
+/**
+ * Etiqueta legible de DÓNDE está y QUÉ hace un compañero, p. ej.
+ * "Editando: Módulo de ventas" o "En: Catálogo de cursos".
+ */
+export function whereLabel(
+  peer: Peer,
+  t: (k: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (peer.activity?.title) {
+    return peer.activity.dirty
+      ? t('presence.editing_title', { title: peer.activity.title })
+      : t('presence.viewing_title', { title: peer.activity.title })
+  }
+  return t('presence.at', { view: t(viewKeyForRoute(peer.route ?? '')) })
 }
 
 /**
@@ -48,7 +58,7 @@ export function PresenceStack({
     <div className={cn('flex items-center', className)}>
       <AnimatePresence initial={false}>
         {visible.map((peer, idx) => {
-          const label = showActivity ? activityLabel(peer, t) : null
+          const label = showActivity ? whereLabel(peer, t) : null
           return (
             <motion.div
               key={peer.user_id}

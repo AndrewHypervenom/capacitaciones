@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { usePresenceStore } from '@/stores/presenceStore';
+import { useAuthStore } from '@/stores/authStore';
 import { setGlobalNavigate } from '@/lib/nav';
 import { useTranslation } from 'react-i18next';
 import { AppShell } from '@/components/layout/AppShell';
@@ -56,6 +58,37 @@ function GamificationInit() {
   return null;
 }
 
+/**
+ * Presencia global: TODO usuario autenticado (aprendiz, capacitador o
+ * superadmin) emite en qué vista está, desde cualquier parte del sitio.
+ * Así el panel "en línea" muestra puntualmente dónde está cada persona.
+ * Al cerrar sesión (profile → null) se desconecta y desaparece de la lista.
+ */
+function PresenceSync() {
+  const profile = useAuthStore((s) => s.profile);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!profile) {
+      usePresenceStore.getState().disconnect();
+      return;
+    }
+    usePresenceStore.getState().connect('global', {
+      user_id: profile.id,
+      name: profile.display_name ?? profile.id.slice(0, 8),
+      avatar_url: profile.avatar_url ?? null,
+      role: profile.role ?? undefined,
+    });
+    return () => usePresenceStore.getState().disconnect();
+  }, [profile?.id, profile?.display_name, profile?.avatar_url, profile?.role]);
+
+  useEffect(() => {
+    usePresenceStore.getState().setRoute(location.pathname);
+  }, [location.pathname]);
+
+  return null;
+}
+
 /** Publica el navigate del router para uso desde servicios/tareas en 2º plano. */
 function NavigationBridge() {
   const navigate = useNavigate();
@@ -87,6 +120,7 @@ export default function App() {
     <BrowserRouter>
       <AuthInit />
       <NavigationBridge />
+      <PresenceSync />
       <LanguageSync />
       <GamificationInit />
       <ConfirmProvider>

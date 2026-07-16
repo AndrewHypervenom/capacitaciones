@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
+
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
-import { usePresenceStore } from '@/stores/presenceStore'
+
 import { AdminNav } from './components/AdminNav'
 import AdminDashboard from './pages/AdminDashboard'
 import CampaignList from './pages/CampaignList'
@@ -36,26 +36,8 @@ export default function AdminRouter() {
   const location = useLocation()
   const profile = useAuthStore((s) => s.profile)
 
-  // Presencia colaborativa en vivo (estilo Google Docs / SharePoint): mientras
-  // un miembro del staff esté en el panel, emite su presencia a un canal común
-  // para que todos vean quién edita qué. Se desconecta al salir del panel.
-  const staff = (isSuperAdmin || isCapacitador) && !!profile
-  useEffect(() => {
-    if (!staff || !profile) return
-    const { connect, disconnect } = usePresenceStore.getState()
-    connect('global', {
-      user_id: profile.id,
-      name: profile.display_name ?? profile.id.slice(0, 8),
-      avatar_url: profile.avatar_url ?? null,
-    })
-    return () => disconnect()
-  }, [staff, profile?.id, profile?.display_name, profile?.avatar_url])
-
-  // Mantiene actualizada la "ruta actual" del usuario para el contexto.
-  const setRoute = usePresenceStore((s) => s.setRoute)
-  useEffect(() => {
-    setRoute(location.pathname)
-  }, [location.pathname, setRoute])
+  // La presencia colaborativa ahora es global (PresenceSync en App.tsx):
+  // todos los roles emiten su vista actual desde cualquier parte del sitio.
 
   if (loading) return null
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
