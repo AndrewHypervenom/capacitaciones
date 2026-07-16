@@ -98,6 +98,11 @@ interface PresenceState {
 }
 
 export const usePresenceStore = create<PresenceState>((set, get) => {
+  // Latido: re-emite la presencia periódicamente aunque el usuario no navegue,
+  // para que su "online_at" siempre esté fresco y los demás puedan distinguir
+  // sesiones vivas de fantasmas (pestañas muertas que aún no dispararon leave).
+  let heartbeat: ReturnType<typeof setInterval> | null = null
+
   // Reenvía mi estado actual al canal (presence.track).
   const push = async () => {
     const { channel, me, activity, route } = get()
@@ -173,11 +178,15 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
           if (status === 'SUBSCRIBED') void push()
         })
 
+      if (heartbeat) clearInterval(heartbeat)
+      heartbeat = setInterval(() => void push(), 25_000)
+
       set({ channel, campaignId, me, peers: [] })
     },
 
     disconnect: () => {
       const { channel } = get()
+      if (heartbeat) { clearInterval(heartbeat); heartbeat = null }
       if (channel) supabase.removeChannel(channel)
       set({ channel: null, campaignId: null, me: null, peers: [], activity: null })
     },
@@ -241,6 +250,15 @@ const VIEW_PATTERNS: Array<[RegExp, string]> = [
   [/^\/arena/, 'presence.views.arena'],
   [/^\/mission/, 'presence.views.mission'],
 ]
+
+/** Milisegundos sin latido a partir de los cuales un peer se considera dudoso. */
+export const STALE_AFTER_MS = 90_000
+
+/** Segundos desde la última señal de vida de un compañero. */
+export function secondsSinceSeen(peer: Peer, now = Date.now()): number {
+  const t = Date.parse(peer.online_at ?? '')
+  return Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 1000)) : 0
+}
 
 /** Clave i18n de la vista donde está un compañero según su ruta. */
 export function viewKeyForRoute(route: string): string {

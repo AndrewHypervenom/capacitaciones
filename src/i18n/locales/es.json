@@ -2847,6 +2847,10 @@
       "arena": "Arena",
       "mission": "Misión",
       "somewhere": "Navegando"
-    }
+    },
+    "now": "ahora",
+    "ago_s": "hace {{count}} s",
+    "ago_m": "hace {{count}} min",
+    "maybe_gone": "Sin señal reciente — puede haberse desconectado"
   }
 }

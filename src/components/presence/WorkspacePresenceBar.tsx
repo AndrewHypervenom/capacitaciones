@@ -1,11 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspacePeers } from '@/hooks/usePresence'
-import { colorForUser } from '@/stores/presenceStore'
+import { colorForUser, secondsSinceSeen, STALE_AFTER_MS } from '@/stores/presenceStore'
 import { PresenceStack, whereLabel } from './PresenceStack'
 import { cn } from '@/lib/cn'
+
+/** "ahora" / "hace 45 s" / "hace 3 min" */
+function agoLabel(seconds: number, t: (k: string, o?: Record<string, unknown>) => string): string {
+  if (seconds < 15) return t('presence.now', { defaultValue: 'ahora' })
+  if (seconds < 60) return t('presence.ago_s', { count: seconds, defaultValue: 'hace {{count}} s' })
+  return t('presence.ago_m', { count: Math.round(seconds / 60), defaultValue: 'hace {{count}} min' })
+}
 
 interface WorkspacePresenceBarProps {
   className?: string
@@ -23,6 +30,16 @@ export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
   const { t } = useTranslation()
   const peers = useWorkspacePeers()
   const [open, setOpen] = useState(false)
+
+  // Tic de re-render para que "hace X s" y el atenuado de fantasmas se
+  // actualicen aunque no lleguen eventos nuevos de presencia.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!open) return
+    const id = setInterval(() => setNow(Date.now()), 10_000)
+    return () => clearInterval(id)
+  }, [open])
+
   if (peers.length === 0) return null
 
   const roleLabel = (role?: string) =>
@@ -72,8 +89,14 @@ export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
           >
             {peers.map((peer) => {
               const role = roleLabel(peer.role)
+              const seconds = secondsSinceSeen(peer, now)
+              const stale = seconds * 1000 > STALE_AFTER_MS
               return (
-                <li key={peer.user_id} className="flex items-center gap-2.5 px-2.5 py-2">
+                <li
+                  key={peer.user_id}
+                  className={cn('flex items-center gap-2.5 px-2.5 py-2', stale && 'opacity-45')}
+                  title={stale ? t('presence.maybe_gone', 'Sin señal reciente — puede haberse desconectado') : undefined}
+                >
                   <div
                     className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full flex items-center justify-center text-[11px] font-bold text-white select-none"
                     style={{
@@ -107,9 +130,10 @@ export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
                     >
                       <span
                         className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
-                        style={{ background: peer.activity?.dirty ? '#F59E0B' : '#10D451' }}
+                        style={{ background: stale ? '#9CA3AF' : peer.activity?.dirty ? '#F59E0B' : '#10D451' }}
                       />
-                      {whereLabel(peer, t)}
+                      <span className="truncate">{whereLabel(peer, t)}</span>
+                      <span className="text-text-subtle shrink-0">· {agoLabel(seconds, t)}</span>
                     </p>
                   </div>
                 </li>

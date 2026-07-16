@@ -2847,6 +2847,10 @@
       "arena": "Arena",
       "mission": "Mission",
       "somewhere": "Browsing"
-    }
+    },
+    "now": "now",
+    "ago_s": "{{count}}s ago",
+    "ago_m": "{{count}} min ago",
+    "maybe_gone": "No recent signal — may have disconnected"
   }
 }
