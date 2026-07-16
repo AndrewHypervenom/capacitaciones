@@ -73,6 +73,10 @@ import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
 import { ClassifyGameEditor } from '@/components/modules/blocks/ClassifyGameEditor'
+import { useEditingPresence } from '@/hooks/usePresence'
+import { usePresenceStore } from '@/stores/presenceStore'
+import { PresenceStack } from '@/components/presence/PresenceStack'
+import { EditingBanner } from '@/components/presence/EditingBanner'
 import type { GameClassifyBlock } from '@/types/blocks' // Importamos el tipo del bloque nuevo
 import type { BlockWithId, ContentBlock, GameSortBlock } from '@/types/blocks'
 import { toast } from '@/stores/toastStore'
@@ -1234,6 +1238,16 @@ export default function ModuleEditor() {
 
   const saveFnRef = useRef<(() => void) | null>(null)
 
+  // Presencia colaborativa: anuncio que estoy en este módulo y obtengo la lista
+  // de coeditores que lo tienen abierto ahora mismo.
+  const coeditors = useEditingPresence(
+    moduleId ? { type: 'module', id: moduleId, title: mod?.title_es ?? '' } : null,
+  )
+  const setPresenceDirty = usePresenceStore((s) => s.setDirty)
+  useEffect(() => {
+    setPresenceDirty(isDirty)
+  }, [isDirty, setPresenceDirty])
+
   useEffect(() => {
     if (!moduleId) return
     setLoading(true)
@@ -1616,6 +1630,11 @@ export default function ModuleEditor() {
             )}
           </div>
           <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+            {coeditors.length > 0 && (
+              <div className="mr-1 pr-2 md:pr-3 border-r border-glass-border/10">
+                <PresenceStack peers={coeditors} size={30} />
+              </div>
+            )}
             <button
               onClick={() => setSplitView((v) => !v)}
               title={splitView ? 'Ocultar preview' : 'Ver preview en vivo'}
@@ -1650,6 +1669,8 @@ export default function ModuleEditor() {
             </Button>
           </div>
         </div>
+
+        <EditingBanner coeditors={coeditors} />
 
         {error && (
           <div className="mx-3 md:mx-5 mt-4 px-4 py-2.5 rounded-xl glass border border-danger/20 text-danger text-[13px] shrink-0">

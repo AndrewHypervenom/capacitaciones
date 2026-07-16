@@ -13,6 +13,9 @@ import type { WorldRow } from '@/services/worlds.service'
 import { ArenaEditorModal, normalizeArenaRow, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
+import { useEditingPresence } from '@/hooks/usePresence'
+import { PresenceStack } from '@/components/presence/PresenceStack'
+import { EditingBanner } from '@/components/presence/EditingBanner'
 
 interface World {
   id: string; name: string; description: string | null
@@ -44,6 +47,12 @@ export default function WorldDetail() {
   const scopedToCampaign = !isSuperAdmin
 
   const [world, setWorld]     = useState<World | null>(null)
+
+  // Presencia colaborativa: coeditores que tienen abierto este mundo.
+  const coeditors = useEditingPresence(
+    id ? { type: 'world', id, title: world?.name ?? '' } : null,
+  )
+
   const [regions, setRegions] = useState<Region[]>([])
   const [levels, setLevels]   = useState<Level[]>([])
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
@@ -433,13 +442,18 @@ export default function WorldDetail() {
           <ArrowLeft className="h-4 w-4" /> {i18n.t('admin.worlds.back_to_worlds')}
         </button>
 
+        <EditingBanner coeditors={coeditors} />
+
         {/* ── World header ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6 p-4 sm:p-5 rounded-2xl bg-surface border border-line">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6 mt-3 p-4 sm:p-5 rounded-2xl bg-surface border border-line">
           <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-[28px] flex-shrink-0" style={{ background:`${tc}18` }}>
             {world.icon}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[18px] sm:text-[20px] font-bold text-text leading-none mb-1">{world.name}</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-[18px] sm:text-[20px] font-bold text-text leading-none">{world.name}</h1>
+              {coeditors.length > 0 && <PresenceStack peers={coeditors} size={26} />}
+            </div>
             {world.description && <p className="text-[13px] text-text-muted leading-relaxed">{world.description}</p>}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background:`${tc}15`, color:tc }}>{BG_LABELS[world.bg_type] ? i18n.t(BG_LABELS[world.bg_type]) : world.bg_type}</span>

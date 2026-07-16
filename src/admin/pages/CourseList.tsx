@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { toast } from '@/stores/toastStore'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
@@ -524,6 +525,9 @@ export default function CourseList() {
                   style={{ background: course.color }}
                 >
                   <GraduationCap className="h-5 w-5" />
+                </div>
+                <div className="absolute top-2 right-2">
+                  <ResourcePresence type="course" id={course.id} />
                 </div>
               </div>
 

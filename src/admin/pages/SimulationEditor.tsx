@@ -24,6 +24,9 @@ import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import { useEditingPresence } from '@/hooks/usePresence'
+import { PresenceStack } from '@/components/presence/PresenceStack'
+import { EditingBanner } from '@/components/presence/EditingBanner'
 
 type Lang = 'es' | 'en' | 'pt'
 type Tab = 'meta' | 'nodes' | 'checklist'
@@ -159,6 +162,11 @@ export default function SimulationEditor() {
 
   const slugManualRef = useRef(!isNew)
   const nodeIds = Object.keys(nodes)
+
+  // Presencia colaborativa: coeditores de este simulador (una vez guardado).
+  const coeditors = useEditingPresence(
+    rowId ? { type: 'simulation', id: rowId, title: meta.title_es } : null,
+  )
 
   const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
   const nodeOptions = nodeIds.map((nid) => {
@@ -344,6 +352,11 @@ export default function SimulationEditor() {
           </GradientHeading>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+          {coeditors.length > 0 && (
+            <div className="pr-2 mr-1 border-r border-glass-border/10">
+              <PresenceStack peers={coeditors} size={28} />
+            </div>
+          )}
           <NeonBadge color={meta.is_published ? 'green' : 'neutral'} className="text-[9px] hidden sm:inline-flex">
             {meta.is_published ? 'Publicado' : 'Borrador'}
           </NeonBadge>
@@ -360,6 +373,10 @@ export default function SimulationEditor() {
             <span className="hidden sm:inline">{t('admin.simulations.save')}</span>
           </Button>
         </div>
+      </div>
+
+      <div className="mb-4 -mt-2">
+        <EditingBanner coeditors={coeditors} />
       </div>
 
       {/* AI Generator — abierto por defecto salvo en modo manual */}

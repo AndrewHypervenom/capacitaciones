@@ -1471,6 +1471,23 @@ export interface Database {
         Args: { p_user_id: string; p_course_id: string | null; p_payload: Json }
         Returns: undefined
       }
+      // Verificación pública de certificados (SECURITY DEFINER, accesible anon).
+      // Lo consume la página /verify/:certId compartible en LinkedIn.
+      get_public_certificate: {
+        Args: { p_cert_id: string }
+        Returns: {
+          cert_id: string
+          score: number
+          issued_at: string
+          display_name: string
+          job_title: string | null
+          course_id: string
+          title_es: string
+          title_en: string | null
+          title_pt: string | null
+          modules_total: number
+        }[]
+      }
     }
     Enums: Record<string, never>
   }

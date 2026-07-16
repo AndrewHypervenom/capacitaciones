@@ -9,6 +9,7 @@ import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher'
 import { Avatar } from '@/components/ui/Avatar'
+import { WorkspacePresenceBar } from '@/components/presence/WorkspacePresenceBar'
 import { cn } from '@/lib/cn'
 
 type NeonColor = 'green' | 'violet' | 'cyan' | 'magenta' | 'amber' | 'neutral'
@@ -186,6 +187,9 @@ export function AdminNav() {
 
           {/* "Ver como": alterna al instante entre gestión y vista de aprendiz. */}
           <ViewSwitcher variant="block" className="mt-3" onSwitch={() => setIsOpen(false)} />
+
+          {/* Presencia en vivo: quién más del staff está conectado ahora. */}
+          <WorkspacePresenceBar className="mt-3" />
         </div>
 
         {/* Navigation */} 

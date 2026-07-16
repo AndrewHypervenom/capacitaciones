@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { ResourcePresence } from '@/components/presence/ResourcePresence'
 
 export default function ModuleList() {
   const { t } = useTranslation()
@@ -146,6 +147,7 @@ export default function ModuleList() {
               <NeonBadge color={mod.is_published ? 'green' : 'neutral'} dot={mod.is_published}>
                 {mod.is_published ? t('admin.modules.published') : t('admin.modules.draft')}
               </NeonBadge>
+              <ResourcePresence type="module" id={mod.id} />
             </div>
             <div className="text-[12px] text-text-subtle mt-0.5">
               {mod.duration_min} min ·{' '}

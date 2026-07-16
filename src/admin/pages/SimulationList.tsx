@@ -25,6 +25,7 @@ import { toast } from '@/stores/toastStore'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import { ResourcePresence } from '@/components/presence/ResourcePresence'
 
 type Tab = 'dialogue' | 'choice'
 
@@ -202,6 +203,7 @@ export default function SimulationList() {
                       <NeonBadge color={row.is_published ? 'green' : 'neutral'} className="text-[9px] shrink-0">
                         {row.is_published ? 'Publicado' : 'Borrador'}
                       </NeonBadge>
+                      <ResourcePresence type="simulation" id={row.id} />
                     </div>
                     <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
                       <span className="font-mono">{row.slug}</span>
@@ -254,6 +256,7 @@ export default function SimulationList() {
                       <NeonBadge color={LEVEL_COLORS[row.level]} className="text-[9px] shrink-0">
                         {row.level}
                       </NeonBadge>
+                      <ResourcePresence type="choice" id={row.id} />
                     </div>
                     <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
                       <span className="font-mono">{row.slug}</span>

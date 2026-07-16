@@ -28,6 +28,9 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
+import { useEditingPresence } from '@/hooks/usePresence'
+import { PresenceStack } from '@/components/presence/PresenceStack'
+import { EditingBanner } from '@/components/presence/EditingBanner'
 import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
@@ -116,6 +119,11 @@ export default function CourseEditor() {
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Presencia colaborativa: coeditores que tienen abierto este curso.
+  const coeditors = useEditingPresence(
+    courseId ? { type: 'course', id: courseId, title: course?.title_es ?? '' } : null,
+  )
   const [tab, setTab] = useState<Tab>('info')
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
@@ -786,6 +794,11 @@ export default function CourseEditor() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {coeditors.length > 0 && (
+            <div className="pr-2 mr-1 border-r border-glass-border/10">
+              <PresenceStack peers={coeditors} size={30} />
+            </div>
+          )}
           <Button
             variant="glass"
             size="sm"
@@ -797,6 +810,10 @@ export default function CourseEditor() {
             {openingWorld ? t('admin.courses.opening_world') : t('admin.courses.view_world')}
           </Button>
         </div>
+      </div>
+
+      <div className="mb-6 -mt-2">
+        <EditingBanner coeditors={coeditors} />
       </div>
 
       {/* Barra compacta de publicación: estado del curso + módulos + acción única.

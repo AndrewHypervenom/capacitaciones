@@ -2742,5 +2742,16 @@
       "staff_ai_sim": "¿Cómo genero una simulación con IA?",
       "staff_evaluate": "¿Dónde veo las evaluaciones?"
     }
+  },
+  "presence": {
+    "browsing": "En el panel",
+    "viewing": "Viendo este contenido",
+    "editing_now": "Editando ahora",
+    "banner_here_one": "<b>{{name}}</b> también tiene esto abierto.",
+    "banner_here_multi": "<b>{{name}}</b> y {{count}} más tienen esto abierto.",
+    "banner_writing_one": "<b>{{name}}</b> está editando esto ahora mismo.",
+    "banner_writing_multi": "<b>{{name}}</b> y otros están editando esto ahora mismo.",
+    "banner_hint": "Coordinen para no sobrescribir los cambios del otro.",
+    "online_count": "{{count}} en línea"
   }
 }

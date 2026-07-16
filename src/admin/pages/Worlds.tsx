@@ -11,6 +11,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
+import { ResourcePresence } from '@/components/presence/ResourcePresence'
 
 type WorldStatus = 'draft' | 'published'
 type BgType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -384,6 +385,7 @@ export default function Worlds() {
                             {campaignName}
                           </span>
                         )}
+                        <ResourcePresence type="world" id={w.id} />
                       </div>
                       {w.description && (
                         <div className="text-[12px] text-text-muted leading-relaxed line-clamp-2 mb-2">{w.description}</div>
