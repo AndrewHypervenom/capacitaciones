@@ -347,7 +347,7 @@ export default function CoursePage() {
                       {t('course_practice.do_simulation')}
                     </button>
                   )}
-                  {worldId && isAdminOrCapacitador && (
+                  {worldId && (isAdminOrCapacitador || course.isAssigned) && (
                     <Link
                       to="/world"
                       state={{ worldId, from: 'course' }}

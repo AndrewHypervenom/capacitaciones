@@ -294,12 +294,15 @@ export default function WorldMap() {
   const isStaff      = ['superadmin','super_admin','capacitador'].includes(profile?.role ?? '')
   const backPath     = locState?.from === 'admin' ? '/admin/worlds' : '/'
 
-  // El mundo dejó de ser una sección para el aprendiz: la ruta /world queda
-  // reservada para staff (preview desde el CMS). Cualquier aprendiz que llegue
-  // aquí (link viejo, URL directa, back de una arena) vuelve al dashboard.
+  // El menú de Mundos sigue oculto para el aprendiz y /world queda reservada
+  // para staff (preview desde el CMS)… EXCEPTO cuando un aprendiz llega desde
+  // la página de SU curso: "Jugar el mundo" navega con from:'course' + worldId,
+  // y en ese caso puede jugar el mundo de ese curso. El acceso directo por URL
+  // o por un link viejo (sin ese estado) sigue devolviéndolo al dashboard.
+  const fromCourse = locState?.from === 'course' && !!locState?.worldId
   useEffect(() => {
-    if (profile && !isStaff) navigate('/', { replace: true })
-  }, [profile, isStaff, navigate])
+    if (profile && !isStaff && !fromCourse) navigate('/', { replace: true })
+  }, [profile, isStaff, navigate, fromCourse])
 
   /* Load */
   useEffect(() => {
