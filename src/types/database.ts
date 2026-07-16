@@ -1517,6 +1517,16 @@ export interface Database {
           issued_at: string | null
         }[]
       }
+      get_live_quiz_leaderboard: {
+        Args: { p_quiz_id: string }
+        Returns: {
+          user_id: string
+          display_name: string
+          score: number
+          correct: number
+          total: number
+        }[]
+      }
       get_user_courses_admin: {
         Args: { p_user_id: string }
         Returns: Json
@@ -1679,6 +1689,7 @@ export type LiveQuiz = Omit<Database['public']['Tables']['live_quizzes']['Row'],
 export type LiveQuizAnswer = Database['public']['Tables']['live_quiz_answers']['Row']
 
 export interface QuizLeaderboardEntry {
+  user_id?: string
   display_name: string
   score: number
   correct: number

@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
+import { toUtcMs } from '@/lib/datetime'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { requestDeletion } from '@/services/audit.service'
 import { toast } from '@/stores/toastStore'
@@ -167,24 +168,27 @@ export default function LiveQuizAdmin() {
   }, [])
 
   const loadLeaderboard = useCallback(async (quizId: string) => {
+    // Ranking agregado por usuario vía RPC (mismo cálculo para anfitrión y aprendiz).
+    const { data: rpc, error } = await supabase.rpc('get_live_quiz_leaderboard', { p_quiz_id: quizId })
+    if (!error && rpc) { setLeaderboard(rpc as QuizLeaderboardEntry[]); return }
+
+    // Respaldo si el RPC aún no está desplegado.
     const { data } = await supabase
       .from('live_quiz_answers')
-      .select('display_name, is_correct, question_idx, score')
+      .select('user_id, display_name, is_correct, score')
       .eq('quiz_id', quizId)
-
     if (!data) return
-    const map = new Map<string, { correct: number; total: number; score: number }>()
+    const map = new Map<string, QuizLeaderboardEntry>()
     for (const row of data) {
-      const entry = map.get(row.display_name) ?? { correct: 0, total: 0, score: 0 }
+      const key = row.user_id ?? row.display_name
+      const entry = map.get(key) ?? { user_id: row.user_id, display_name: row.display_name, correct: 0, total: 0, score: 0 }
       entry.total++
       if (row.is_correct) entry.correct++
       entry.score += (row as LiveQuizAnswer).score ?? 0
-      map.set(row.display_name, entry)
+      entry.display_name = row.display_name
+      map.set(key, entry)
     }
-    const board = [...map.entries()]
-      .map(([display_name, s]) => ({ display_name, ...s }))
-      .sort((a, b) => b.score - a.score || b.correct - a.correct)
-    setLeaderboard(board)
+    setLeaderboard([...map.values()].sort((a, b) => b.score - a.score || b.correct - a.correct))
   }, [])
 
   useEffect(() => {
@@ -714,7 +718,8 @@ export default function LiveQuizAdmin() {
   if (!activeQuiz) return null
   const q = activeQuiz.current_question >= 0 ? activeQuiz.questions[activeQuiz.current_question] : null
   const isLast = activeQuiz.current_question >= activeQuiz.questions.length - 1
-  const pinRemainingMs = activeQuiz.pin_expires_at ? new Date(activeQuiz.pin_expires_at).getTime() - nowTs : null
+  const pinExpiresMs = toUtcMs(activeQuiz.pin_expires_at)
+  const pinRemainingMs = pinExpiresMs !== null ? pinExpiresMs - nowTs : null
   const pinExpired = pinRemainingMs !== null && pinRemainingMs <= 0
   const pinUrgent = pinRemainingMs !== null && pinRemainingMs > 0 && pinRemainingMs < 5 * 60_000
 
@@ -1055,7 +1060,7 @@ export default function LiveQuizAdmin() {
                       const medal = i < 3 ? MEDAL_COLORS[i] : null
                       return (
                         <motion.div
-                          key={entry.display_name}
+                          key={entry.user_id ?? entry.display_name}
                           layout
                           initial={{ opacity: 0, x: 24, scale: 0.96 }}
                           animate={{ opacity: 1, x: 0, scale: 1 }}

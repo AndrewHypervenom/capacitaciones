@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import { toUtcMs } from '@/lib/datetime'
 import { useAuth } from '@/hooks/useAuth'
 import type { LiveQuiz, LiveQuizAnswer, QuizQuestion, QuizLeaderboardEntry } from '@/types/database'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -150,23 +151,27 @@ export default function LiveQuizPlay() {
 
   // ── Clasificación ───────────────────────────────────────────────────────────
   const loadLeaderboard = useCallback(async (quizId: string) => {
+    // Ruta principal: RPC SECURITY DEFINER que agrega POR USUARIO y devuelve el
+    // ranking completo a cualquier participante (no depende de la RLS del aprendiz).
+    const { data: rpc, error } = await supabase.rpc('get_live_quiz_leaderboard', { p_quiz_id: quizId })
+    if (!error && rpc) { setLeaderboard(rpc as QuizLeaderboardEntry[]); return }
+
+    // Respaldo por si el RPC aún no está desplegado: agregación en cliente por usuario.
     const { data } = await supabase
       .from('live_quiz_answers')
-      .select('display_name, is_correct, question_idx, score')
+      .select('user_id, display_name, is_correct, score')
       .eq('quiz_id', quizId)
     if (!data) return
-    const map = new Map<string, { correct: number; total: number; score: number }>()
+    const map = new Map<string, QuizLeaderboardEntry>()
     for (const row of data) {
-      const e = map.get(row.display_name) ?? { correct: 0, total: 0, score: 0 }
+      const key = row.user_id ?? row.display_name
+      const e = map.get(key) ?? { user_id: row.user_id, display_name: row.display_name, correct: 0, total: 0, score: 0 }
       e.total++; if (row.is_correct) e.correct++
       e.score += (row as LiveQuizAnswer).score ?? 0
-      map.set(row.display_name, e)
+      e.display_name = row.display_name
+      map.set(key, e)
     }
-    setLeaderboard(
-      [...map.entries()]
-        .map(([display_name, s]) => ({ display_name, ...s }))
-        .sort((a, b) => b.score - a.score || b.correct - a.correct),
-    )
+    setLeaderboard([...map.values()].sort((a, b) => b.score - a.score || b.correct - a.correct))
   }, [])
 
   // ── Máquina de estados ─────────────────────────────────────────────────────────
@@ -224,7 +229,10 @@ export default function LiveQuizPlay() {
     }
 
     // El código caducó: no se permite (re)unirse.
-    if (data.pin_expires_at && new Date(data.pin_expires_at).getTime() < Date.now()) {
+    // Comparación en UTC absoluto para que la caducidad sea el mismo instante
+    // en cualquier país (ver toUtcMs).
+    const expiresMs = toUtcMs(data.pin_expires_at)
+    if (expiresMs !== null && expiresMs < Date.now()) {
       setJoinError(t('livequiz.pin_expired'))
       setJoining(false); return
     }
@@ -314,6 +322,31 @@ export default function LiveQuizPlay() {
     setSubmitting(false)
   }
 
+  // ── Tiempo agotado sin responder ────────────────────────────────────────────
+  // Registra una respuesta nula (0 pts) para que el anfitrión cuente al jugador
+  // y el aprendiz vea el resultado, igual que Kahoot.
+  const handleTimeUp = useCallback(async () => {
+    if (!quiz || !currentQ || !profile || myAnswer !== null) return
+    setMyAnswer(-1); setIsCorrect(false); setQuestionScore(0)
+    sfx.wrong()
+    setShowFlash(true)
+    setTimeout(() => setShowFlash(false), 700)
+    setPhase('answered')
+    await supabase.from('live_quiz_answers').insert({
+      quiz_id: quiz.id, user_id: profile.id,
+      display_name: profile.display_name ?? profile.id.slice(0, 8),
+      question_idx: questionIdx, selected_option: -1,
+      is_correct: false, score: 0,
+    })
+  }, [quiz, currentQ, profile, myAnswer, questionIdx])
+
+  // Dispara handleTimeUp exactamente cuando el contador llega a 0 en una pregunta activa.
+  useEffect(() => {
+    if (phase === 'question' && currentQ && myAnswer === null && timeLeft === 0 && !submitting) {
+      void handleTimeUp()
+    }
+  }, [phase, currentQ, myAnswer, timeLeft, submitting, handleTimeUp])
+
   // ── Limpieza ───────────────────────────────────────────────────────────────
   useEffect(() => () => {
     if (channelRef.current) void supabase.removeChannel(channelRef.current)
@@ -324,6 +357,11 @@ export default function LiveQuizPlay() {
 
   // ── Valores derivados ───────────────────────────────────────────────────────────
   const myName   = profile?.display_name ?? profile?.id?.slice(0, 8) ?? ''
+  // Coincidencia robusta por user_id (con respaldo por nombre si el RPC no lo trae).
+  const isMe = useCallback(
+    (e: QuizLeaderboardEntry) => (e.user_id ? e.user_id === profile?.id : e.display_name === myName),
+    [profile?.id, myName],
+  )
   const total    = quiz?.questions.length ?? 1
   const timerPct = currentQ ? timeLeft / currentQ.timeLimitSec : 0
   const timerColor = timeLeft > 10 ? '#10D451' : timeLeft > 5 ? '#fbbf24' : '#ef4444'
@@ -487,7 +525,7 @@ export default function LiveQuizPlay() {
               {order.map((rank) => {
                 const entry = top3[rank]
                 if (!entry) return <div key={rank} className="w-20" />
-                const isMe = entry.display_name === myName
+                const mine = isMe(entry)
                 const h = podiumH[rank]
                 return (
                   <motion.div key={rank}
@@ -496,7 +534,7 @@ export default function LiveQuizPlay() {
                     transition={{ delay: rank * 0.14, type: 'spring', stiffness: 280, damping: 22 }}
                     className="flex flex-col items-center gap-1.5"
                   >
-                    <div className={`text-[12px] font-semibold text-text truncate max-w-[70px] ${isMe ? 'text-[#10D451]' : ''}`}>
+                    <div className={`text-[12px] font-semibold text-text truncate max-w-[70px] ${mine ? 'text-[#10D451]' : ''}`}>
                       {entry.display_name}
                     </div>
                     <div className="text-[11px] font-bold tabular-nums" style={{ color: MEDALS[rank] }}>
@@ -506,7 +544,7 @@ export default function LiveQuizPlay() {
                       className="w-20 rounded-t-xl flex items-end justify-center pb-2"
                       style={{
                         height: h,
-                        background: isMe
+                        background: mine
                           ? `linear-gradient(180deg, ${MEDALS[rank]}33, ${MEDALS[rank]}18)`
                           : `${MEDALS[rank]}18`,
                         border: `1.5px solid ${MEDALS[rank]}50`,
@@ -771,7 +809,9 @@ export default function LiveQuizPlay() {
   // TERMINADO
   // ══════════════════════════════════════════════════════════════════════════
   if (phase === 'ended') {
-    const myPos = leaderboard.findIndex((e) => e.display_name === myName)
+    const myPos = leaderboard.findIndex(isMe)
+    // Puntaje final autoritativo desde la BD (robusto ante recargas); respaldo al local.
+    const myFinalScore = myPos >= 0 ? leaderboard[myPos].score : myScore
     const inTop3 = myPos >= 0 && myPos < 3
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-bg px-4 py-10 relative overflow-hidden">
@@ -801,14 +841,14 @@ export default function LiveQuizPlay() {
                 {t('livequiz.your_position')}{' '}
                 <span className="font-black text-text">#{myPos + 1}</span>
                 {'  ·  '}
-                <span className="font-bold" style={{ color: '#10D451' }}>{t('livequiz.points_suffix', { points: myScore.toLocaleString() })}</span>
+                <span className="font-bold" style={{ color: '#10D451' }}>{t('livequiz.points_suffix', { points: myFinalScore.toLocaleString() })}</span>
               </p>
             )}
           </div>
 
           <div className="rounded-2xl overflow-hidden border border-line">
             {leaderboard.slice(0, 10).map((entry, i) => {
-              const isMe = entry.display_name === myName
+              const mine = isMe(entry)
               return (
                 <motion.div
                   key={i}
@@ -817,7 +857,7 @@ export default function LiveQuizPlay() {
                   transition={{ delay: i * 0.05, ease: [0.16, 1, 0.3, 1] }}
                   className="flex items-center gap-3 px-4 py-3"
                   style={{
-                    background: isMe
+                    background: mine
                       ? 'rgba(16,212,81,0.07)'
                       : i % 2 === 0 ? 'rgb(var(--subtle))' : 'transparent',
                     borderTop: i > 0 ? '1px solid rgb(var(--line))' : undefined,
@@ -827,9 +867,9 @@ export default function LiveQuizPlay() {
                     style={{ color: i < 3 ? MEDALS[i] : 'rgb(var(--text-subtle))' }}>
                     {i + 1}
                   </span>
-                  <span className={`flex-1 text-[13px] truncate ${isMe ? 'font-bold text-text' : 'text-text'}`}>
+                  <span className={`flex-1 text-[13px] truncate ${mine ? 'font-bold text-text' : 'text-text'}`}>
                     {entry.display_name}
-                    {isMe && <span className="text-[11px] text-text-subtle ml-1">{t('livequiz.you')}</span>}
+                    {mine && <span className="text-[11px] text-text-subtle ml-1">{t('livequiz.you')}</span>}
                   </span>
                   <span className="text-[13px] font-bold tabular-nums" style={{ color: '#10D451' }}>
                     {entry.score.toLocaleString()}
