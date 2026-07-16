@@ -102,6 +102,12 @@ export async function getLearnerCourses(
     campaigns: { name: string } | null
   })[])
     .map(sortCourseModules)
+    // El aprendiz solo ve: cursos asignados (a él o a su campaña) o cursos de
+    // catálogo abierto. Un curso publicado con visibility='assigned' de otra
+    // campaña NO debe aparecer: el RPC self_enroll_course lo rechazaría
+    // ("Curso no disponible para auto-inscripción") y el botón Inscribirme
+    // fallaría con 400.
+    .filter((c) => byCampaign.has(c.id) || byUser.has(c.id) || c.visibility === 'catalog')
     .map((c) => {
       const cc = byCampaign.get(c.id)
       const ca = byUser.get(c.id)
