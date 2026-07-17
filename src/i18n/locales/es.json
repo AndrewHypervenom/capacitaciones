@@ -1379,6 +1379,7 @@
       },
       "choice": {
         "speaker": "Speaker",
+        "start_speaker_locked": "El primer paso siempre lo habla el cliente: así el aprendiz tiene a qué responder al iniciar la llamada.",
         "message": "Mensaje",
         "ph_message": "Mensaje que aparece en la simulación...",
         "is_final": "¿Nodo final?",

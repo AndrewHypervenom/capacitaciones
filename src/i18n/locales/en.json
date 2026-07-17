@@ -1379,6 +1379,7 @@
       },
       "choice": {
         "speaker": "Speaker",
+        "start_speaker_locked": "The first step is always spoken by the customer, so the learner has something to respond to when the call starts.",
         "message": "Message",
         "ph_message": "Message that appears in the simulation...",
         "is_final": "Final node?",

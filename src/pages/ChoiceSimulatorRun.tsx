@@ -14,7 +14,6 @@ type Phase = 'intro' | 'call' | 'result';
 
 interface ChatMessage {
   id: string;
-  nodeId: string;
   speaker: 'client' | 'agent';
   message: string;
 }
@@ -124,6 +123,10 @@ export default function ChoiceSimulatorRun() {
   const [callSeconds, setCallSeconds] = useState(0);
   const [typing, setTyping] = useState(false);
   const [waitingForUser, setWaitingForUser] = useState(false);
+  // Paso activo. No se deduce del último mensaje del cliente: un paso hablado
+  // por el agente dejaba la llamada colgada esperando a un cliente que nunca
+  // hablaba.
+  const [activeNodeId, setActiveNodeId] = useState('');
   const [endType, setEndType] = useState<'excellent' | 'good' | 'poor'>('good');
   const [endMessage, setEndMessage] = useState<Record<Language, string> | null>(null);
   const [earlyEnd, setEarlyEnd] = useState(false);
@@ -206,11 +209,12 @@ export default function ChoiceSimulatorRun() {
         setTyping(false);
         setMessages((prev) => [
           ...prev,
-          { id: `${nodeId}_${Date.now()}`, nodeId, speaker: node.speaker, message: node.message[language] },
+          { id: `${nodeId}_${Date.now()}`, speaker: node.speaker, message: node.message[language] },
         ]);
         if (node.isEnd) {
           endCall(node);
         } else if (node.options?.length) {
+          setActiveNodeId(nodeId);
           setWaitingForUser(true);
         }
       }, delay);
@@ -227,6 +231,7 @@ export default function ChoiceSimulatorRun() {
     setCallSeconds(0);
     setMessages([]);
     setWaitingForUser(false);
+    setActiveNodeId('');
     setTyping(false);
     setPhase('call');
     const tid = setTimeout(() => showClientMessage(scenario.startId, scenario), 400);
@@ -236,9 +241,10 @@ export default function ChoiceSimulatorRun() {
   const handleOptionSelect = useCallback(
     (option: ChoiceOption, scn: ChoiceScenario) => {
       setWaitingForUser(false);
+      setActiveNodeId('');
       setMessages((prev) => [
         ...prev,
-        { id: `agent_${Date.now()}`, nodeId: '', speaker: 'agent', message: option.text[language] },
+        { id: `agent_${Date.now()}`, speaker: 'agent', message: option.text[language] },
       ]);
       setTotalPoints((prev) => prev + option.points);
       const tid = setTimeout(() => showClientMessage(option.nextId, scn), 600);
@@ -267,6 +273,7 @@ export default function ChoiceSimulatorRun() {
     setCallSeconds(0);
     setTyping(false);
     setWaitingForUser(false);
+    setActiveNodeId('');
     setEarlyEnd(false);
     setEndMessage(null);
   }, []);
@@ -282,10 +289,7 @@ export default function ChoiceSimulatorRun() {
     );
   }
 
-  const lastClientNodeId = waitingForUser
-    ? [...messages].reverse().find((m) => m.speaker === 'client')?.nodeId ?? ''
-    : '';
-  const currentOptions = scenario.nodes[lastClientNodeId]?.options ?? [];
+  const currentOptions = waitingForUser ? scenario.nodes[activeNodeId]?.options ?? [] : [];
   const scorePercent = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
   const levelColor = LEVEL_COLORS[scenario.level] ?? '#86868b';
   const resultColor = endType === 'excellent' ? '#34c759' : endType === 'good' ? '#0071e3' : '#ff3b30';

@@ -55,6 +55,14 @@ const defaultNodes = (): NodesMap => ({
   start: { message: { es: '', en: '', pt: '' }, speaker: 'client', options: [] },
 })
 
+// El paso inicial siempre lo habla el cliente. Si lo abriera el agente, el
+// aprendiz entraría a la llamada sin nada a lo que responder.
+const withClientStart = (nodes: NodesMap, startId: string): NodesMap => {
+  const start = nodes[startId]
+  if (!start || start.speaker === 'client') return nodes
+  return { ...nodes, [startId]: { ...start, speaker: 'client' } }
+}
+
 function rowToState(row: ChoiceScenarioRow): { meta: MetaState; nodes: NodesMap } {
   return {
     meta: {
@@ -64,7 +72,7 @@ function rowToState(row: ChoiceScenarioRow): { meta: MetaState; nodes: NodesMap 
       client_company: row.client_company ?? '', objective: row.objective ?? '',
       start_node_id: row.start_node_id, is_published: row.is_published,
     },
-    nodes: row.nodes as unknown as NodesMap,
+    nodes: withClientStart(row.nodes as unknown as NodesMap, row.start_node_id),
   }
 }
 
@@ -201,7 +209,7 @@ export default function ChoiceSimEditor() {
       start_node_id: g.start_node_id,
       slug: prev.slug || slugify(m.title_es),
     }))
-    setNodes(g.nodes as unknown as NodesMap)
+    setNodes(withClientStart(g.nodes as unknown as NodesMap, g.start_node_id))
     setSelectedNodeId(g.start_node_id)
     setTab('meta')
     setAiBanner(true)
@@ -370,7 +378,10 @@ export default function ChoiceSimEditor() {
                   <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.start_step')}</label>
                   <FilterDropdown
                     value={meta.start_node_id}
-                    onChange={(v) => setMeta((m) => ({ ...m, start_node_id: v }))}
+                    onChange={(v) => {
+                      setMeta((m) => ({ ...m, start_node_id: v }))
+                      setNodes((prev) => withClientStart(prev, v))
+                    }}
                     options={nodeOptions}
                   />
                 </div>
@@ -491,6 +502,7 @@ export default function ChoiceSimEditor() {
                   nodeId={selectedNodeId}
                   data={nodes[selectedNodeId]}
                   nodeOptions={nodeOptions}
+                  isStart={selectedNodeId === meta.start_node_id}
                   onCreateNode={createLinkedNode}
                   onChange={(nid, data) => setNodes((prev) => ({ ...prev, [nid]: data }))}
                 />

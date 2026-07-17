@@ -27,6 +27,9 @@ interface Props {
   nodeId: string
   data: ChoiceNodeData
   nodeOptions: { value: string; label: string }[]
+  /** El paso inicial siempre lo habla el cliente: si abriera el agente, la
+   *  llamada arrancaría sin nada a lo que responder. */
+  isStart?: boolean
   onCreateNode?: () => string
   onChange: (nodeId: string, data: ChoiceNodeData) => void
 }
@@ -60,7 +63,7 @@ const END_TYPE_ACTIVE_CLASSES: Record<string, string> = {
   'brand-magenta': 'border-brand-magenta/40 bg-brand-magenta/8 text-brand-magenta',
 }
 
-export function ChoiceNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChange }: Props) {
+export function ChoiceNodeForm({ nodeId, data, nodeOptions, isStart, onCreateNode, onChange }: Props) {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [lang, setLang] = useState<Lang>('es')
@@ -108,21 +111,32 @@ export function ChoiceNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChan
       <div>
         <label className="text-xs text-text-muted mb-1.5 block font-medium">{t('admin.simulations.choice.speaker')}</label>
         <div className="flex gap-2">
-          {(['client', 'agent'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => update({ speaker: s })}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-sm border transition-all',
-                data.speaker === s
-                  ? 'border-neon-green/40 bg-neon-green/8 text-neon-green'
-                  : 'border-glass-border/15 text-text-muted hover:text-text',
-              )}
-            >
-              {s === 'client' ? '👤 Cliente' : '🎧 Agente'}
-            </button>
-          ))}
+          {(['client', 'agent'] as const).map((s) => {
+            const locked = isStart && s === 'agent'
+            return (
+              <button
+                key={s}
+                disabled={locked}
+                title={locked ? t('admin.simulations.choice.start_speaker_locked') : undefined}
+                onClick={() => update({ speaker: s })}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-sm border transition-all',
+                  data.speaker === s
+                    ? 'border-neon-green/40 bg-neon-green/8 text-neon-green'
+                    : 'border-glass-border/15 text-text-muted hover:text-text',
+                  locked && 'opacity-40 cursor-not-allowed hover:text-text-muted',
+                )}
+              >
+                {s === 'client' ? '👤 Cliente' : '🎧 Agente'}
+              </button>
+            )
+          })}
         </div>
+        {isStart && (
+          <p className="text-[11px] text-text-subtle mt-1.5">
+            {t('admin.simulations.choice.start_speaker_locked')}
+          </p>
+        )}
       </div>
 
       {/* Message */}
