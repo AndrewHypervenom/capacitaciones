@@ -2841,8 +2841,6 @@
     "banner_hint": "Coordinate so you don't overwrite each other's changes.",
     "online_count": "{{count}} online",
     "at": "In: {{view}}",
-    "viewing_title": "Viewing: {{title}}",
-    "editing_title": "Editing: {{title}}",
     "views": {
       "course_editor": "Course editor",
       "courses": "Courses (management)",
@@ -2883,6 +2881,25 @@
     "now": "now",
     "ago_s": "{{count}}s ago",
     "ago_m": "{{count}} min ago",
-    "maybe_gone": "No recent signal — may have disconnected"
+    "maybe_gone": "No recent signal — may have disconnected",
+    "in_kind": "In {{kind}} «{{title}}»",
+    "open_kind": "Has {{kind}} «{{title}}» open",
+    "editing_kind": "Editing {{kind}} «{{title}}»",
+    "kinds": {
+      "module": "the module",
+      "course": "the course",
+      "world": "the world",
+      "simulation": "the simulator",
+      "choice": "the multiple-choice simulator"
+    },
+    "detail_section": "Section: {{name}}",
+    "detail_tab": "Tab: {{name}}",
+    "detail_new": "Creating new content",
+    "go_there": "Go to that part of the site",
+    "go_there_hint": "Without opening what they're working on",
+    "in_this_view_one": "{{name}} is also here",
+    "in_this_view_other": "{{count}} others are also here",
+    "here_in_view": "{{name}} is here, across the whole «{{view}}» view",
+    "detail_preview": "Preview"
   }
 }

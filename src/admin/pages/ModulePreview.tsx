@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { useViewingPresence } from '@/hooks/usePresence'
 import {
   ArrowLeft,
   Eye,
@@ -23,10 +25,27 @@ const LANG_LABELS: Record<Lang, string> = { es: 'Español', en: 'English', pt: '
 
 export default function ModulePreview() {
   const { moduleId } = useParams<{ moduleId: string }>()
+  const { t } = useTranslation()
   const [mod, setMod] = useState<DbModuleWithSections | null>(null)
   const [loading, setLoading] = useState(true)
   const [lang, setLang] = useState<Lang>('es')
   const [activeSection, setActiveSection] = useState(0)
+
+  // Presencia en modo 'view': la vista previa no guarda nada, así que no cuenta
+  // como coedición, pero sí debe decir QUÉ módulo se está mirando y de qué
+  // campaña (para que quien siga a esta persona aterrice en el sitio correcto).
+  useViewingPresence(
+    moduleId && mod
+      ? {
+          type: 'module',
+          id: moduleId,
+          title: mod.title_es,
+          detail: t('presence.detail_preview', 'Vista previa'),
+          campaignId: mod.campaign_id ?? undefined,
+          mode: 'view',
+        }
+      : null,
+  )
 
   useEffect(() => {
     if (!moduleId) return

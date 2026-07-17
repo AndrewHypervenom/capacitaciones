@@ -1239,10 +1239,29 @@ export default function ModuleEditor() {
 
   const saveFnRef = useRef<(() => void) | null>(null)
 
-  // Presencia colaborativa: anuncio que estoy en este módulo y obtengo la lista
-  // de coeditores que lo tienen abierto ahora mismo.
+  // Presencia colaborativa: anuncio en qué módulo Y en qué sección estoy, y
+  // obtengo la lista de coeditores que lo tienen abierto ahora mismo. La sección
+  // es el dato que de verdad evita choques: dos personas en el mismo módulo pero
+  // en secciones distintas no se pisan.
+  const presenceDetail = useMemo(() => {
+    if (!selectedSectionId) return undefined
+    const section = sections.find((s) => s.id === selectedSectionId)
+    if (!section) return undefined
+    return t('presence.detail_section', {
+      name: section.heading_es || t('common.untitled'),
+    })
+  }, [selectedSectionId, sections, t])
+
   const coeditors = useEditingPresence(
-    moduleId ? { type: 'module', id: moduleId, title: mod?.title_es ?? '' } : null,
+    moduleId
+      ? {
+          type: 'module',
+          id: moduleId,
+          title: mod?.title_es ?? '',
+          detail: presenceDetail,
+          campaignId: mod?.campaign_id ?? undefined,
+        }
+      : null,
   )
   const setPresenceDirty = usePresenceStore((s) => s.setDirty)
   useEffect(() => {

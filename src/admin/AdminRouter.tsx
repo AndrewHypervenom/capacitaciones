@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
 
 import { AdminNav } from './components/AdminNav'
+import { ViewPresenceChip } from '@/components/presence/ViewPresenceChip'
 import AdminDashboard from './pages/AdminDashboard'
 import CampaignList from './pages/CampaignList'
 import NewModulePage from './pages/NewModulePage'
@@ -89,6 +90,8 @@ export default function AdminRouter() {
           <Route path="progress" element={<ProgressHub />} />
         </Routes>
       </div>
+      {/* Vale para CUALQUIER vista del panel: avisa si alguien más está aquí. */}
+      <ViewPresenceChip />
       <HelpWidget />
     </div>
   )

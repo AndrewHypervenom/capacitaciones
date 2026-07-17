@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown } from 'lucide-react'
+import { ArrowUpRight, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspacePeers } from '@/hooks/usePresence'
-import { colorForUser, secondsSinceSeen, STALE_AFTER_MS } from '@/stores/presenceStore'
+import {
+  colorForUser,
+  focusForPeer,
+  safeDestinationForRoute,
+  secondsSinceSeen,
+  STALE_AFTER_MS,
+  usePresenceStore,
+  type Peer,
+} from '@/stores/presenceStore'
 import { PresenceStack, whereLabel } from './PresenceStack'
 import { cn } from '@/lib/cn'
 
@@ -22,6 +31,14 @@ interface WorkspacePresenceBarProps {
 const initial = (name: string) => (name || '?').charAt(0).toUpperCase()
 
 /**
+ * A dónde ir al pulsar a una persona. Lleva al ÁREA donde está (la lista), nunca
+ * adentro de lo que tiene abierto — ver `safeDestinationForRoute`.
+ */
+function destinationFor(peer: Peer): string | null {
+  return safeDestinationForRoute(peer.route ?? '')
+}
+
+/**
  * "Quién está en línea" del espacio de trabajo. Se muestra en el sidebar del
  * panel. Al hacer clic se expande y muestra PUNTUALMENTE en qué vista está
  * cada persona (p. ej. "Editando: Módulo de ventas") para evitar que dos
@@ -29,7 +46,9 @@ const initial = (name: string) => (name || '?').charAt(0).toUpperCase()
  */
 export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const peers = useWorkspacePeers()
+  const followPeer = usePresenceStore((s) => s.followPeer)
   const [open, setOpen] = useState(false)
   // Fila con el cursor encima + su posición en pantalla; el tooltip se pinta en
   // un portal sobre <body> para que ningún botón/sidebar lo tape.
@@ -102,15 +121,32 @@ export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
               const stale = seconds * 1000 > STALE_AFTER_MS
               const color = peer.color ?? colorForUser(peer.user_id)
               const where = whereLabel(peer, t)
+              const target = destinationFor(peer)
               return (
-                <li
-                  key={peer.user_id}
-                  className={cn('relative flex items-center gap-2 px-2 py-1.5', stale && 'opacity-45')}
+                <li key={peer.user_id}>
+                <button
+                  type="button"
+                  disabled={!target}
+                  onClick={() => {
+                    if (!target) return
+                    setHovered(null)
+                    setOpen(false)
+                    // El foco hace que la vista cambie de campaña y resalte el
+                    // recurso (o avise que la persona está en la vista entera);
+                    // sin él uno aterriza sin saber qué mirar.
+                    followPeer(focusForPeer(peer))
+                    navigate(target)
+                  }}
+                  title={target ? t('presence.go_there', 'Ir a esa parte del sitio') : undefined}
+                  className={cn(
+                    'relative w-full flex items-center gap-2 px-2 py-1.5 text-left',
+                    stale && 'opacity-45',
+                    target ? 'cursor-pointer hover:bg-glass/8 transition-colors' : 'cursor-default',
+                  )}
                   onMouseEnter={(e) => setHovered({ id: peer.user_id, rect: e.currentTarget.getBoundingClientRect() })}
                   onMouseLeave={() => setHovered((h) => (h?.id === peer.user_id ? null : h))}
                   onFocus={(e) => setHovered({ id: peer.user_id, rect: e.currentTarget.getBoundingClientRect() })}
                   onBlur={() => setHovered((h) => (h?.id === peer.user_id ? null : h))}
-                  tabIndex={0}
                 >
                   <div
                     className="relative h-5 w-5 shrink-0 overflow-hidden rounded-full flex items-center justify-center text-[9px] font-bold text-white select-none"
@@ -130,7 +166,7 @@ export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
                       initial(peer.name)
                     )}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-semibold text-text leading-tight truncate">
                       {peer.name}
                       {role && (
@@ -151,7 +187,10 @@ export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
                       <span className="text-text-subtle shrink-0">· {agoLabel(seconds, t)}</span>
                     </p>
                   </div>
-
+                  {target && (
+                    <ArrowUpRight className="h-3 w-3 shrink-0 text-text-subtle" aria-hidden />
+                  )}
+                </button>
                 </li>
               )
             })}
@@ -203,6 +242,17 @@ export function WorkspacePresenceBar({ className }: WorkspacePresenceBarProps) {
                     <> · {t('presence.maybe_gone', 'Sin señal reciente — puede haberse desconectado')}</>
                   )}
                 </p>
+                {destinationFor(peer) && (
+                  <p className="text-[9px] leading-snug mt-1 font-medium flex items-start gap-1 text-text-muted">
+                    <ArrowUpRight className="h-2.5 w-2.5 mt-0.5 shrink-0" aria-hidden />
+                    <span>
+                      {t('presence.go_there', 'Ir a esa parte del sitio')}
+                      <span className="block text-text-subtle font-normal">
+                        {t('presence.go_there_hint', 'Sin abrir lo que tiene entre manos')}
+                      </span>
+                    </span>
+                  </p>
+                )}
               </div>
             </motion.div>,
             document.body,

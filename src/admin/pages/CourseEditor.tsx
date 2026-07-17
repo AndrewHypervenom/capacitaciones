@@ -74,6 +74,14 @@ import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 type Tab = 'info' | 'modules' | 'assign' | 'evaluation'
+
+/** Rótulo i18n de cada pestaña; se reusa en las pestañas y en la presencia. */
+const TAB_LABEL_KEY: Record<Tab, string> = {
+  info: 'admin.courses.tab_info',
+  modules: 'admin.courses.tab_modules',
+  assign: 'admin.courses.tab_assign',
+  evaluation: 'admin.courses.tab_evaluation',
+}
 type Lang = 'es' | 'en' | 'pt'
 
 const COLOR_PRESETS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#14B8A6']
@@ -127,11 +135,21 @@ export default function CourseEditor() {
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Presencia colaborativa: coeditores que tienen abierto este curso.
-  const coeditors = useEditingPresence(
-    courseId ? { type: 'course', id: courseId, title: course?.title_es ?? '' } : null,
-  )
   const [tab, setTab] = useState<Tab>('info')
+
+  // Presencia colaborativa: coeditores que tienen abierto este curso. Publicamos
+  // también la pestaña abierta para que se vea el punto exacto donde están.
+  const coeditors = useEditingPresence(
+    courseId
+      ? {
+          type: 'course',
+          id: courseId,
+          title: course?.title_es ?? '',
+          detail: t('presence.detail_tab', { name: t(TAB_LABEL_KEY[tab]) }),
+          campaignId: course?.campaign_id ?? undefined,
+        }
+      : null,
+  )
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
   const [openingWorld, setOpeningWorld] = useState(false)
@@ -846,10 +864,10 @@ export default function CourseEditor() {
   }
 
   const tabs: Array<{ id: Tab; label: string; icon: typeof Info }> = [
-    { id: 'info', label: t('admin.courses.tab_info'), icon: Info },
-    { id: 'modules', label: t('admin.courses.tab_modules'), icon: BookOpen },
-    { id: 'assign', label: t('admin.courses.tab_assign'), icon: Users },
-    { id: 'evaluation', label: t('admin.courses.tab_evaluation'), icon: Award },
+    { id: 'info', label: t(TAB_LABEL_KEY.info), icon: Info },
+    { id: 'modules', label: t(TAB_LABEL_KEY.modules), icon: BookOpen },
+    { id: 'assign', label: t(TAB_LABEL_KEY.assign), icon: Users },
+    { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), icon: Award },
   ]
 
   const inputCls =

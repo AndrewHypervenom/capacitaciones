@@ -18,6 +18,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
+import { useViewingPresence } from '@/hooks/usePresence';
 import { useProgressStore } from '@/stores/progressStore';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
@@ -101,6 +102,22 @@ export default function ModulePage() {
   const { modules, loading } = useModules();
   const { courses } = useLearnerCourses();
   const module = useMemo(() => modules.find((m) => m.id === id), [id, modules]);
+
+  // Presencia: publico qué módulo estoy estudiando (modo 'view': aparezco en la
+  // lista de "en línea" y en la píldora del módulo, pero no disparo el aviso de
+  // coedición que es solo para quienes lo tienen abierto en el editor).
+  // Usamos dbId (UUID real) porque es el id con el que lo publica el editor.
+  useViewingPresence(
+    module
+      ? {
+          type: 'module',
+          id: module.dbId || module.id,
+          title: module.title[language],
+          campaignId: module.campaign_id ?? undefined,
+          mode: 'view',
+        }
+      : null,
+  );
 
   // Tema de sonido de los quizzes (elegido por el capacitador en el módulo).
   useEffect(() => {

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import {
   getModulesRaw,
+  getModuleCampaignId,
   toggleModulePublished,
   deleteModule,
   type DbModuleRow,
@@ -21,6 +22,8 @@ import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
+import { usePresenceFocus } from '@/hooks/usePresenceFocus'
+import { usePresenceStore } from '@/stores/presenceStore'
 
 export default function ModuleList() {
   const { t } = useTranslation()
@@ -35,6 +38,10 @@ export default function ModuleList() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Foco que manda la barra de presencia: la campaña y el módulo donde está la
+  // persona que se pulsó.
+  const { focusId, focusCampaignId, peerName } = usePresenceFocus('module')
+
   // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
     getAccessibleCampaigns({
@@ -48,6 +55,42 @@ export default function ModuleList() {
       })
       .catch(() => {})
   }, [isSuperAdmin, authCampaignId, user?.id])
+
+  // Si la presencia no trajo la campaña (hay vistas que no la publican), la
+  // resolvemos desde el módulo mismo. Sin esto la lista se queda en la campaña
+  // equivocada y el módulo señalado sencillamente "no aparece".
+  const [resolvedCampaignId, setResolvedCampaignId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusId || focusCampaignId) return
+    let alive = true
+    getModuleCampaignId(focusId)
+      .then((id) => { if (alive) setResolvedCampaignId(id) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [focusId, focusCampaignId])
+
+  // Venimos siguiendo a alguien: plantarse en SU campaña. Solo si es una a la
+  // que tengo acceso — un capacitador no puede saltar a la campaña de otro.
+  const targetCampaignId = focusCampaignId ?? resolvedCampaignId
+  useEffect(() => {
+    if (!targetCampaignId) return
+    if (campaigns.length > 0 && !campaigns.some((c) => c.id === targetCampaignId)) return
+    setSelectedCampaignId(targetCampaignId)
+  }, [targetCampaignId, campaigns])
+
+  // Publico qué campaña estoy mirando, para que quien me siga aterrice en ella.
+  const setViewCampaign = usePresenceStore((s) => s.setViewCampaign)
+  useEffect(() => {
+    setViewCampaign(selectedCampaignId || null)
+    return () => setViewCampaign(null)
+  }, [selectedCampaignId, setViewCampaign])
+
+  // Traer a la vista el módulo resaltado (la lista puede ser larga).
+  const focusRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!focusId || loading) return
+    focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusId, loading, modules])
 
   // Mantiene el nombre de la campaña seleccionada en sincronía.
   useEffect(() => {
@@ -128,9 +171,12 @@ export default function ModuleList() {
       key={mod.id}
       intensity="subtle"
       rounded="2xl"
+      ref={mod.id === focusId ? focusRef : undefined}
       className={cn(
         'group hover:border-glass-border/15 transition-all duration-200',
         mod.is_published && 'hover:border-glass-border/15',
+        // Resalte al venir siguiendo a alguien: señala la fila sin abrirla.
+        mod.id === focusId && 'ring-2 ring-primary/70 border-primary/40',
       )}
     >
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4">

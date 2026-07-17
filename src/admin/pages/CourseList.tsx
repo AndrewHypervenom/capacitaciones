@@ -24,6 +24,8 @@ import {
 } from '@/lib/documentExtract'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
+import { usePresenceFocus } from '@/hooks/usePresenceFocus'
+import { usePresenceStore } from '@/stores/presenceStore'
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -58,6 +60,10 @@ export default function CourseList() {
   // Se incrementa para forzar recarga de la lista (p. ej. cuando una creación con
   // IA en segundo plano termina mientras seguimos en esta pantalla).
   const [refreshKey, setRefreshKey] = useState(0)
+
+  // Foco que manda la barra de presencia al pulsar a una persona.
+  const { focusId, focusCampaignId } = usePresenceFocus('course')
+  const focusRef = useRef<HTMLDivElement | null>(null)
 
   // Catálogo compartido por otras campañas (matrícula viva)
   const [view, setView] = useState<'mine' | 'shared'>('mine')
@@ -156,6 +162,27 @@ export default function CourseList() {
       })
       .catch(() => {})
   }, [isSuperAdmin, authCampaignId, user?.id])
+
+  // Venimos siguiendo a alguien desde la barra de presencia: pararse en SU
+  // campaña y resaltar su curso, sin abrirlo.
+  useEffect(() => {
+    if (!focusCampaignId) return
+    if (campaigns.length > 0 && !campaigns.some((c) => c.id === focusCampaignId)) return
+    setSelectedCampaignId(focusCampaignId)
+  }, [focusCampaignId, campaigns])
+
+  useEffect(() => {
+    if (!focusId || loading) return
+    focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusId, loading, courses])
+
+  // Publico qué campaña estoy mirando, para que quien me siga aterrice en ella.
+  // "Todas" (superadmin) no es una campaña: no hay nada que seguir.
+  const setViewCampaign = usePresenceStore((s) => s.setViewCampaign)
+  useEffect(() => {
+    setViewCampaign(selectedCampaignId === ALL_CAMPAIGNS ? null : selectedCampaignId || null)
+    return () => setViewCampaign(null)
+  }, [selectedCampaignId, setViewCampaign])
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -503,7 +530,12 @@ export default function CourseList() {
               key={course.id}
               intensity="subtle"
               rounded="2xl"
-              className="group flex flex-col hover:border-glass-border/15 transition-all duration-200 overflow-hidden"
+              ref={course.id === focusId ? focusRef : undefined}
+              className={cn(
+                'group flex flex-col hover:border-glass-border/15 transition-all duration-200 overflow-hidden',
+                // Resalte al venir siguiendo a alguien: señala sin abrir.
+                course.id === focusId && 'ring-2 ring-primary/70 border-primary/40',
+              )}
               padding="none"
             >
               {/* Portada / franja de color */}

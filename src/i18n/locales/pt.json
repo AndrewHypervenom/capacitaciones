@@ -2841,8 +2841,6 @@
     "banner_hint": "Coordenem para não sobrescrever as alterações um do outro.",
     "online_count": "{{count}} on-line",
     "at": "Em: {{view}}",
-    "viewing_title": "Vendo: {{title}}",
-    "editing_title": "Editando: {{title}}",
     "views": {
       "course_editor": "Editor de curso",
       "courses": "Cursos (gestão)",
@@ -2883,6 +2881,25 @@
     "now": "agora",
     "ago_s": "há {{count}} s",
     "ago_m": "há {{count}} min",
-    "maybe_gone": "Sem sinal recente — pode ter se desconectado"
+    "maybe_gone": "Sem sinal recente — pode ter se desconectado",
+    "in_kind": "Em {{kind}} «{{title}}»",
+    "open_kind": "Tem {{kind}} «{{title}}» aberto",
+    "editing_kind": "Editando {{kind}} «{{title}}»",
+    "kinds": {
+      "module": "o módulo",
+      "course": "o curso",
+      "world": "o mundo",
+      "simulation": "o simulador",
+      "choice": "o simulador de múltipla escolha"
+    },
+    "detail_section": "Seção: {{name}}",
+    "detail_tab": "Aba: {{name}}",
+    "detail_new": "Criando conteúdo novo",
+    "go_there": "Ir para essa parte do site",
+    "go_there_hint": "Sem abrir o que está editando",
+    "in_this_view_one": "{{name}} também está aqui",
+    "in_this_view_other": "{{count}} pessoas também estão aqui",
+    "here_in_view": "{{name}} está aqui, em toda a vista «{{view}}»",
+    "detail_preview": "Pré-visualização"
   }
 }

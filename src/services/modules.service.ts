@@ -593,6 +593,21 @@ export async function cloneModule(
   return { id: newModuleId }
 }
 
+/**
+ * Campaña dueña de un módulo. La usa la lista al seguir a una persona cuya
+ * presencia no trajo la campaña (p. ej. viene de una vista que no la publica):
+ * sin esto, la lista se queda en la campaña equivocada y el módulo "no aparece".
+ * Devuelve null si no se puede leer (un capacitador no ve campañas ajenas).
+ */
+export async function getModuleCampaignId(moduleId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('modules')
+    .select('campaign_id')
+    .eq('id', moduleId)
+    .maybeSingle()
+  return (data?.campaign_id as string | undefined) ?? null
+}
+
 export async function getModulesRaw(campaignId: string): Promise<DbModuleRow[]> {
   const { data, error } = await supabase
     .from('modules')

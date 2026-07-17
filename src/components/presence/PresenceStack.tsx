@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
-import { viewKeyForRoute, type Peer } from '@/stores/presenceStore'
+import { kindKeyForType, viewKeyForRoute, type Peer } from '@/stores/presenceStore'
 import { cn } from '@/lib/cn'
 
 interface PresenceStackProps {
@@ -17,18 +18,34 @@ interface PresenceStackProps {
 
 const initial = (name: string) => (name || '?').charAt(0).toUpperCase()
 
+// Medidas del tooltip flotante: al ir en un portal con posición fija hay que
+// saberlas para centrarlo y para decidir si cabe debajo del avatar.
+const TOOLTIP_W = 240
+const TOOLTIP_H = 64
+
 /**
- * Etiqueta legible de DÓNDE está y QUÉ hace un compañero, p. ej.
- * "Editando: Módulo de ventas" o "En: Catálogo de cursos".
+ * Etiqueta legible de DÓNDE EXACTAMENTE está un compañero. Siempre nombra el
+ * tipo de recurso y su título para que nadie abra lo que otro ya tiene abierto:
+ *   "Editando el módulo «Ventas» · Sección: Introducción"
+ *   "Estudiando el curso «Inducción»"
+ * Si no está dentro de un recurso concreto, cae a la vista de la ruta:
+ *   "En: Catálogo de cursos"
  */
 export function whereLabel(
   peer: Peer,
   t: (k: string, opts?: Record<string, unknown>) => string,
 ): string {
-  if (peer.activity?.title) {
-    return peer.activity.dirty
-      ? t('presence.editing_title', { title: peer.activity.title })
-      : t('presence.viewing_title', { title: peer.activity.title })
+  const activity = peer.activity
+  if (activity?.title) {
+    const kind = t(kindKeyForType(activity.type))
+    const verb =
+      activity.mode === 'view'
+        ? 'presence.in_kind'
+        : activity.dirty
+          ? 'presence.editing_kind'
+          : 'presence.open_kind'
+    const base = t(verb, { kind, title: activity.title })
+    return activity.detail ? `${base} · ${activity.detail}` : base
   }
   return t('presence.at', { view: t(viewKeyForRoute(peer.route ?? '')) })
 }
@@ -46,19 +63,22 @@ export function PresenceStack({
   className,
 }: PresenceStackProps) {
   const { t } = useTranslation()
-  const [hovered, setHovered] = useState<string | null>(null)
+  // Guardamos la posición en pantalla del avatar señalado: el tooltip se pinta
+  // en un portal sobre <body> porque estos avatares viven dentro de tarjetas con
+  // overflow recortado (listas de módulos/cursos), que si no lo tapan a medias.
+  const [hovered, setHovered] = useState<{ id: string; rect: DOMRect } | null>(null)
 
   if (peers.length === 0) return null
 
   const visible = peers.slice(0, max)
   const overflow = peers.length - visible.length
   const overlap = Math.round(size * 0.35)
+  const hoveredPeer = hovered ? peers.find((p) => p.user_id === hovered.id) : null
 
   return (
     <div className={cn('flex items-center', className)}>
       <AnimatePresence initial={false}>
         {visible.map((peer, idx) => {
-          const label = showActivity ? whereLabel(peer, t) : null
           return (
             <motion.div
               key={peer.user_id}
@@ -70,10 +90,12 @@ export function PresenceStack({
               className="relative"
               style={{
                 marginLeft: idx === 0 ? 0 : -overlap,
-                zIndex: hovered === peer.user_id ? 50 : visible.length - idx,
+                zIndex: hovered?.id === peer.user_id ? 50 : visible.length - idx,
               }}
-              onMouseEnter={() => setHovered(peer.user_id)}
-              onMouseLeave={() => setHovered((h) => (h === peer.user_id ? null : h))}
+              onMouseEnter={(e) =>
+                setHovered({ id: peer.user_id, rect: e.currentTarget.getBoundingClientRect() })
+              }
+              onMouseLeave={() => setHovered((h) => (h?.id === peer.user_id ? null : h))}
             >
               <motion.div
                 whileHover={{ y: -3, scale: 1.08 }}
@@ -125,43 +147,52 @@ export function PresenceStack({
                 </span>
               </motion.div>
 
-              {/* Tooltip */}
-              <AnimatePresence>
-                {hovered === peer.user_id && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4, scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 4, scale: 0.9 }}
-                    transition={{ duration: 0.14 }}
-                    className="absolute left-1/2 -translate-x-1/2 z-[60] pointer-events-none"
-                    style={{ top: size + 8 }}
-                  >
-                    <div className="whitespace-nowrap rounded-lg glass-strong border border-glass-border/15 px-2.5 py-1.5 shadow-xl">
-                      <p className="text-[12px] font-semibold text-text leading-tight">
-                        {peer.name}
-                      </p>
-                      {label && (
-                        <p
-                          className="text-[10px] leading-tight mt-0.5 flex items-center gap-1"
-                          style={{ color: peer.color }}
-                        >
-                          <span
-                            className="inline-block h-1.5 w-1.5 rounded-full"
-                            style={{ background: peer.activity?.dirty ? '#F59E0B' : peer.color }}
-                          />
-                          {label}
-                        </p>
-                      )}
-                    </div>
-                    {/* Flecha */}
-                    <div className="absolute left-1/2 -top-1 -translate-x-1/2 h-2 w-2 rotate-45 glass-strong border-l border-t border-glass-border/15" />
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           )
         })}
       </AnimatePresence>
+
+      {/* Tooltip en portal sobre <body>: ninguna tarjeta con overflow lo recorta */}
+      {hoveredPeer &&
+        createPortal(
+          <motion.div
+            initial={{ opacity: 0, y: 4, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.14 }}
+            className="pointer-events-none fixed z-[9999]"
+            style={{
+              // Centrado bajo el avatar, pero sin salirse por los bordes de la
+              // ventana (los avatares suelen ir pegados al borde de la tarjeta).
+              left: Math.min(
+                Math.max(8, hovered!.rect.left + hovered!.rect.width / 2 - TOOLTIP_W / 2),
+                window.innerWidth - TOOLTIP_W - 8,
+              ),
+              width: TOOLTIP_W,
+              ...(hovered!.rect.bottom + TOOLTIP_H > window.innerHeight
+                ? { bottom: window.innerHeight - hovered!.rect.top + 8 }
+                : { top: hovered!.rect.bottom + 8 }),
+            }}
+          >
+            <div className="rounded-lg bg-surface border border-glass-border/20 px-2.5 py-1.5 shadow-xl">
+              <p className="text-[12px] font-semibold text-text leading-snug break-words">
+                {hoveredPeer.name}
+              </p>
+              {showActivity && (
+                <p
+                  className="text-[10px] leading-snug mt-0.5 flex items-start gap-1 break-words"
+                  style={{ color: hoveredPeer.color }}
+                >
+                  <span
+                    className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ background: hoveredPeer.activity?.dirty ? '#F59E0B' : hoveredPeer.color }}
+                  />
+                  {whereLabel(hoveredPeer, t)}
+                </p>
+              )}
+            </div>
+          </motion.div>,
+          document.body,
+        )}
 
       {overflow > 0 && (
         <motion.div

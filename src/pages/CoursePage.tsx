@@ -9,6 +9,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useProgressStore } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
+import { useViewingPresence } from '@/hooks/usePresence';
 import { selfEnroll, unenrollSelf } from '@/services/courses.service';
 import { getScenariosForCourse } from '@/services/scenarios.service';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
@@ -48,6 +49,18 @@ export default function CoursePage() {
   const [enrollBusy, setEnrollBusy] = useState(false);
 
   const course = useMemo(() => courses.find((c) => c.slug === slug), [courses, slug]);
+
+  // Presencia: publico en qué curso estoy (modo 'view', ver ModulePage).
+  useViewingPresence(
+    course
+      ? {
+          type: 'course',
+          id: course.id,
+          title: pickText(course.title_es, course.title_en, course.title_pt, language),
+          mode: 'view',
+        }
+      : null,
+  );
 
   // Simulador y certificación del curso (capa de evaluación).
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
