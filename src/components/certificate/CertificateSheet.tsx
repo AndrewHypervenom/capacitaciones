@@ -26,6 +26,12 @@ export interface CertificateSheetData {
   certId: string;
   /** URL pública verificable → se codifica en el QR. Si falta, no se muestra QR. */
   verifyUrl?: string;
+  /**
+   * Fuerza el idioma de la hoja ('es' | 'en' | 'pt'). Lo usa la página pública
+   * para respetar el `?lang=` del enlace compartido. Si se omite, se usa el
+   * idioma activo del sitio.
+   */
+  lang?: string;
 }
 
 /** Clean, modern verification badge (LearningAI mark + check ring). */
@@ -200,10 +206,13 @@ function MetaItem({ label, value, accent }: { label: string; value: string; acce
  */
 export const CertificateSheet = forwardRef<HTMLElement, CertificateSheetData>(
   function CertificateSheet(
-    { viewName, courseTitle, completedCount, totalModules, showScore, scoreValue, issuedOn, certId, verifyUrl },
+    { viewName, courseTitle, completedCount, totalModules, showScore, scoreValue, issuedOn, certId, verifyUrl, lang },
     ref,
   ) {
-    const { t } = useTranslation();
+    // `lng` devuelve un `t` fijo a ese idioma SIN cambiar el idioma global:
+    // el visitante que abre un certificado compartido en otro idioma no debe
+    // ver cómo se le cambia el sitio entero.
+    const { t } = useTranslation(undefined, lang ? { lng: lang } : undefined);
 
     return (
       <article

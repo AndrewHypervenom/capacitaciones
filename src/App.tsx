@@ -99,6 +99,7 @@ function LanguageSync() {
   const { profile } = useAuth();
   const syncFromProfile = useUserStore((s) => s.syncFromProfile);
   const language = useUserStore((s) => s.language);
+  const languageChosen = useUserStore((s) => s.languageChosen);
   const { i18n } = useTranslation();
 
   useEffect(() => {
@@ -106,10 +107,16 @@ function LanguageSync() {
   }, [profile, syncFromProfile]);
 
   useEffect(() => {
+    // Sin sesión y sin elección explícita en el switcher, `language` no es un
+    // idioma que nadie haya pedido: es el default del store ('es'). Aplicarlo
+    // pisaba la detección del navegador y dejaba a TODO visitante anónimo en
+    // español —un enlace compartido a alguien de Brasil se veía en español—.
+    // Callados aquí, manda i18next: localStorage → navegador.
+    if (!profile && !languageChosen) return;
     if (i18n.resolvedLanguage !== language) {
       void i18n.changeLanguage(language);
     }
-  }, [language, i18n]);
+  }, [language, languageChosen, profile, i18n]);
 
   return null;
 }

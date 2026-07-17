@@ -497,7 +497,7 @@
     "cert_label": "Otorga el presente",
     "title": "Certificado de Excelencia Profesional",
     "subtitle": "LearningAI · Certificación Profesional",
-    "presented_to": "a",
+    "presented_to": "se otorga por la presente a",
     "completion_text": "Por haber completado con distinción el siguiente programa de formación, demostrando dedicación, dominio de los contenidos y compromiso con su desarrollo profesional:",
     "program_label": "Programa completado",
     "issued_on": "Emitido el {{date}}",

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { useProgressStore } from '@/stores/progressStore';
 import { CertificateSheet } from '@/components/certificate/CertificateSheet';
+import { CertificateFrame, downloadCertificatePdf } from '@/components/certificate/CertificateFrame';
 
 function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
   if (lang === 'en') return en || es || '';
@@ -252,43 +253,20 @@ export default function Certificate() {
     if (!certRef.current || downloading) return;
     setDownloading(true);
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const { jsPDF } = await import('jspdf');
-
-      const el = certRef.current;
-      const cssW = el.offsetWidth;
-      const cssH = el.offsetHeight;
-
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        scrollX: 0,
-        scrollY: 0,
-        width: cssW,
-        height: cssH,
-      });
-
-      // 1 CSS px = 25.4/96 mm (standard 96 dpi)
-      const pxToMm = 25.4 / 96;
-      const pdfW = cssW * pxToMm;
-      const pdfH = cssH * pxToMm;
-
-      const pdf = new jsPDF({
-        orientation: pdfW > pdfH ? 'landscape' : 'portrait',
-        unit: 'mm',
-        format: [pdfW, pdfH],
-      });
-
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
-      pdf.save(`certificado-${viewName.replace(/\s+/g, '-')}.pdf`);
+      await downloadCertificatePdf(
+        certRef.current,
+        `certificado-${viewName.replace(/\s+/g, '-')}.pdf`,
+      );
     } finally {
       setDownloading(false);
     }
   };
 
   // Enlace público verificable (para LinkedIn). Solo si hay cert_id real emitido.
+  // Lleva el idioma en que se está viendo el certificado para que quien lo abra
+  // lo vea igual, sin importar el idioma de su navegador.
   const shareUrl = certIdSource
-    ? `${window.location.origin}/verify/${certIdSource}`
+    ? `${window.location.origin}/verify/${certIdSource}?lang=${lang}`
     : null;
   const linkedInShareUrl = () =>
     `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl ?? '')}`;
@@ -338,18 +316,20 @@ export default function Certificate() {
       </div>
 
       <Reveal>
-        <CertificateSheet
-          ref={certRef}
-          viewName={viewName}
-          courseTitle={courseTitle}
-          completedCount={completedCount}
-          totalModules={totalModules}
-          showScore={showScore}
-          scoreValue={scoreValue}
-          issuedOn={issuedOn}
-          certId={certId}
-          verifyUrl={shareUrl ?? undefined}
-        />
+        <CertificateFrame>
+          <CertificateSheet
+            ref={certRef}
+            viewName={viewName}
+            courseTitle={courseTitle}
+            completedCount={completedCount}
+            totalModules={totalModules}
+            showScore={showScore}
+            scoreValue={scoreValue}
+            issuedOn={issuedOn}
+            certId={certId}
+            verifyUrl={shareUrl ?? undefined}
+          />
+        </CertificateFrame>
       </Reveal>
     </div>
   );

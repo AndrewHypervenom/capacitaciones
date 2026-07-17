@@ -16,6 +16,10 @@ void i18n
     },
     fallbackLng: 'es',
     supportedLngs: ['es', 'en', 'pt'],
+    // Los navegadores reportan la región ('pt-BR', 'en-US', 'es-CO'), que no
+    // está en supportedLngs: sin esto un visitante de Brasil no resolvía a 'pt'
+    // sino al fallback 'es'.
+    load: 'languageOnly',
     interpolation: { escapeValue: false },
     detection: {
       order: ['localStorage', 'navigator'],

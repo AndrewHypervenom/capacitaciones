@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Download, Linkedin, Link2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { getPublicCertificate } from '@/services/certification.service';
 import type { PublicCertificate as PublicCert } from '@/types/database';
 import { Button } from '@/components/ui/Button';
 import { CertificateSheet } from '@/components/certificate/CertificateSheet';
+import { CertificateFrame, downloadCertificatePdf } from '@/components/certificate/CertificateFrame';
+
+const SUPPORTED_LANGS = ['es', 'en', 'pt'];
 
 function pickText(es: string, en: string | null, pt: string | null, lang: string): string {
   if (lang === 'en') return en || es;
@@ -31,15 +34,32 @@ function formatDate(d: Date, lang: string) {
  * `get_public_certificate` (SECURITY DEFINER, solo expone datos no sensibles).
  */
 export default function PublicCertificate() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const { certId } = useParams<{ certId: string }>();
-  const lang = i18n.resolvedLanguage ?? 'es';
+  const [params] = useSearchParams();
+  // El enlace compartido lleva el idioma en que se emitió (`?lang=`): un
+  // certificado en español debe verse en español aunque quien lo abra tenga el
+  // navegador en inglés. Sin `?lang=` (enlaces viejos) se usa el del visitante.
+  const linkLang = params.get('lang');
+  const lang = SUPPORTED_LANGS.includes(linkLang ?? '')
+    ? (linkLang as string)
+    : (i18n.resolvedLanguage ?? 'es');
+  // `getFixedT` traduce en ese idioma sin cambiar el del sitio para el visitante.
+  const t = i18n.getFixedT(lang);
   const [cert, setCert] = useState<PublicCert | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const certRef = useRef<HTMLElement>(null);
+
+  // La página se sirve con <html lang="es"> fijo; aquí el idioma lo manda el
+  // enlace, así que hay que declararlo (lectores de pantalla, rastreadores).
+  useEffect(() => {
+    const prev = document.documentElement.lang;
+    document.documentElement.lang = lang;
+    return () => { document.documentElement.lang = prev; };
+  }, [lang]);
 
   useEffect(() => {
     let active = true;
@@ -56,7 +76,11 @@ export default function PublicCertificate() {
     return () => { active = false; };
   }, [certId]);
 
-  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  // Al recompartir (o al escanear el QR) el idioma debe viajar con el enlace,
+  // incluso si llegamos por un enlace viejo que no traía `?lang=`.
+  const shareUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/verify/${certId}?lang=${lang}`
+    : '';
 
   const handleCopyLink = async () => {
     try {
@@ -70,18 +94,10 @@ export default function PublicCertificate() {
     if (!certRef.current || downloading) return;
     setDownloading(true);
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const { jsPDF } = await import('jspdf');
-      const el = certRef.current;
-      const cssW = el.offsetWidth;
-      const cssH = el.offsetHeight;
-      const canvas = await html2canvas(el, { scale: 2, useCORS: true, scrollX: 0, scrollY: 0, width: cssW, height: cssH });
-      const pxToMm = 25.4 / 96;
-      const pdfW = cssW * pxToMm;
-      const pdfH = cssH * pxToMm;
-      const pdf = new jsPDF({ orientation: pdfW > pdfH ? 'landscape' : 'portrait', unit: 'mm', format: [pdfW, pdfH] });
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
-      pdf.save(`certificado-${(cert?.display_name ?? 'positivos').replace(/\s+/g, '-')}.pdf`);
+      await downloadCertificatePdf(
+        certRef.current,
+        `certificado-${(cert?.display_name ?? 'positivos').replace(/\s+/g, '-')}.pdf`,
+      );
     } finally {
       setDownloading(false);
     }
@@ -166,18 +182,21 @@ export default function PublicCertificate() {
           </Button>
         </div>
 
-        <CertificateSheet
-          ref={certRef}
-          viewName={cert.display_name}
-          courseTitle={courseTitle}
-          completedCount={cert.modules_total}
-          totalModules={cert.modules_total}
-          showScore={showScore}
-          scoreValue={cert.score}
-          issuedOn={issuedOn}
-          certId={displayCertId}
-          verifyUrl={shareUrl}
-        />
+        <CertificateFrame>
+          <CertificateSheet
+            ref={certRef}
+            viewName={cert.display_name}
+            courseTitle={courseTitle}
+            completedCount={cert.modules_total}
+            totalModules={cert.modules_total}
+            showScore={showScore}
+            scoreValue={cert.score}
+            issuedOn={issuedOn}
+            certId={displayCertId}
+            verifyUrl={shareUrl}
+            lang={lang}
+          />
+        </CertificateFrame>
 
         {/* Franja de autenticidad */}
         <div className="surface-card mt-8 mx-auto max-w-2xl flex items-center gap-3 px-5 py-4">
