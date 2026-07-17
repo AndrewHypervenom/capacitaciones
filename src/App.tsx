@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { usePresenceStore } from '@/stores/presenceStore';
+import { presenceChannelsFor, usePresenceStore } from '@/stores/presenceStore';
+import { getAccessibleCampaigns } from '@/services/campaigns.service';
 import { useAuthStore } from '@/stores/authStore';
 import { setGlobalNavigate } from '@/lib/nav';
 import { useTranslation } from 'react-i18next';
@@ -60,8 +61,11 @@ function GamificationInit() {
 /**
  * Presencia global: TODO usuario autenticado (aprendiz, capacitador o
  * superadmin) emite en qué vista está, desde cualquier parte del sitio.
- * Así el panel "en línea" muestra puntualmente dónde está cada persona.
  * Al cerrar sesión (profile → null) se desconecta y desaparece de la lista.
+ *
+ * A qué canales se conecta cada quien lo decide `presenceChannelsFor` según su
+ * rol y sus campañas: es lo que hace que un capacitador solo coincida con
+ * capacitadores de sus campañas y que el superadmin vea a todos sin ser visto.
  */
 function PresenceSync() {
   const profile = useAuthStore((s) => s.profile);
@@ -72,14 +76,43 @@ function PresenceSync() {
       usePresenceStore.getState().disconnect();
       return;
     }
-    usePresenceStore.getState().connect('global', {
-      user_id: profile.id,
-      name: profile.display_name ?? profile.id.slice(0, 8),
-      avatar_url: profile.avatar_url ?? null,
-      role: profile.role ?? undefined,
-    });
-    return () => usePresenceStore.getState().disconnect();
-  }, [profile?.id, profile?.display_name, profile?.avatar_url, profile?.role]);
+    let alive = true;
+    void (async () => {
+      // Si las campañas no se pueden resolver, no conectamos a ciegas: sin
+      // canales correctos la única alternativa sería emitir donde no toca.
+      let campaignIds: string[] = [];
+      try {
+        const campaigns = await getAccessibleCampaigns({
+          isSuperAdmin: profile.role === 'superadmin',
+          homeCampaignId: profile.campaign_id ?? null,
+          userId: profile.id,
+        });
+        campaignIds = campaigns.map((c) => c.id);
+      } catch {
+        return;
+      }
+      if (!alive) return;
+      usePresenceStore.getState().connect(
+        presenceChannelsFor({ role: profile.role, campaignIds }),
+        {
+          user_id: profile.id,
+          name: profile.display_name ?? profile.id.slice(0, 8),
+          avatar_url: profile.avatar_url ?? null,
+          role: profile.role ?? undefined,
+        },
+      );
+    })();
+    return () => {
+      alive = false;
+      usePresenceStore.getState().disconnect();
+    };
+  }, [
+    profile?.id,
+    profile?.display_name,
+    profile?.avatar_url,
+    profile?.role,
+    profile?.campaign_id,
+  ]);
 
   useEffect(() => {
     usePresenceStore.getState().setRoute(location.pathname);

@@ -30,6 +30,9 @@ const TOOLTIP_H = 64
  *   "Estudiando el curso «Inducción»"
  * Si no está dentro de un recurso concreto, cae a la vista de la ruta:
  *   "En: Catálogo de cursos"
+ * Y si no publica ubicación (el superadmin ante un capacitador, salvo cuando
+ * edita algo de su campaña), lo honesto es no inventarse un lugar:
+ *   "En línea"
  */
 export function whereLabel(
   peer: Peer,
@@ -47,6 +50,7 @@ export function whereLabel(
     const base = t(verb, { kind, title: activity.title })
     return activity.detail ? `${base} · ${activity.detail}` : base
   }
+  if (!peer.route) return t('presence.online_only', { defaultValue: 'En línea' })
   return t('presence.at', { view: t(viewKeyForRoute(peer.route ?? '')) })
 }
 

@@ -2851,6 +2851,7 @@
     "banner_hint": "Coordinen para no sobrescribir los cambios del otro.",
     "online_count": "{{count}} en línea",
     "at": "En: {{view}}",
+    "online_only": "En línea",
     "views": {
       "course_editor": "Editor de curso",
       "courses": "Cursos (gestión)",

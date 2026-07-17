@@ -2851,6 +2851,7 @@
     "banner_hint": "Coordinate so you don't overwrite each other's changes.",
     "online_count": "{{count}} online",
     "at": "In: {{view}}",
+    "online_only": "Online",
     "views": {
       "course_editor": "Course editor",
       "courses": "Courses (management)",

@@ -3,16 +3,40 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
 // ─── Presencia colaborativa en tiempo real ─────────────────────────────
-// Estilo Google Docs / Excel de SharePoint: cada miembro del staff (capacitador
-// o superadmin) que está dentro del panel emite su "presencia" a un canal por
-// campaña usando Supabase Realtime Presence (efímero, en memoria — no requiere
-// tablas ni SQL). Así todos ven quién está viendo/editando qué en vivo.
+// Estilo Google Docs / Excel de SharePoint: cada usuario emite su "presencia" a
+// canales de Supabase Realtime Presence (efímero, en memoria — no requiere
+// tablas ni SQL). Sirve para que dos personas no editen el mismo recurso a la
+// vez y se pisen los guardados.
 //
 // El estado que emite cada persona incluye qué recurso está EDITANDO en este
 // momento (módulo/curso/mundo), lo que permite:
 //   1. Mostrar avatares apilados de coeditores dentro del editor.
 //   2. Marcar en las listas qué ítems tienen a alguien trabajando.
 //   3. Advertir el conflicto cuando dos personas abren el mismo módulo.
+//
+// ─── Quién ve a quién ───────────────────────────────────────────────────
+// La visibilidad se aplica en DOS capas, y ese es el punto importante:
+//
+//   1. Capa de red (`presenceChannelsFor`): a qué canales te suscribes y con qué
+//      detalle te anuncias en cada uno. Un capacitador solo se suscribe a los de
+//      SUS campañas, así que la presencia de un capacitador sin campañas en
+//      común nunca le llega. El superadmin escucha todos los canales de campaña
+//      pero no publica su ubicación en ellos.
+//   2. Capa de pantalla (`canSeePeer`): filtra lo que sí llega. El aprendiz
+//      emite (para que el superadmin lo vea) pero no ve a nadie.
+//
+// Reglas: superadmin ve a todos · capacitador ve capacitadores con campaña
+// compartida · aprendiz no ve a nadie.
+//
+// El superadmin es el caso fino: los capacitadores lo ven "en línea" pero sin
+// ubicación, porque su panel tiene vistas que no les corresponden. La excepción
+// es editar: mientras tiene abierto un recurso de una campaña de ellos, sí
+// publica ahí su ubicación exacta (`editingChannelFor`), que para eso existe
+// todo esto — que no editen lo mismo a la vez.
+//
+// Límite conocido: sin RLS de Realtime (canales privados), quien comparte canal
+// puede leerlo desde la consola del navegador. Por eso el reparto de canales de
+// arriba es lo que de verdad separa; el filtro de pantalla es la segunda capa.
 
 export type PresenceResourceType =
   | 'module'
@@ -123,11 +147,120 @@ export function colorForUser(userId: string): string {
   return RING_COLORS[Math.abs(hash) % RING_COLORS.length]
 }
 
+/**
+ * Reparto de canales de una persona. `emit` son los canales donde publico mi
+ * presencia completa (y por tanto también recibo la de quien esté ahí);
+ * `emitRedacted` son aquellos donde publico solo mi identidad, sin ubicación; y
+ * `listen` son canales donde solo escucho, sin anunciarme.
+ */
+export interface PresenceChannels {
+  emit: string[]
+  emitRedacted: string[]
+  listen: string[]
+}
+
+/** Canal donde se anuncian entre sí los superadmin (los capacitadores no entran). */
+const SUPERADMIN_CHANNEL = 'presence:superadmin'
+
+/**
+ * Canal por el que el superadmin se anuncia ante los capacitadores SIN decir
+ * dónde está. El panel del superadmin tiene vistas que un capacitador no debe
+ * conocer, así que aquí solo viaja su identidad ("Superadmin · en línea").
+ * Su ubicación exacta la publica aparte, en el canal de la campaña del recurso
+ * que esté editando — y solo mientras lo edita.
+ */
+const SUPERADMIN_LITE_CHANNEL = 'presence:superadmin-lite'
+
+/**
+ * Canal de los aprendices sin campaña. Sin él serían invisibles hasta para el
+ * superadmin, que debe ver a todo el mundo. Solo el superadmin lo escucha, y
+ * entre aprendices nadie se ve (`canSeePeer`), así que no filtra nada.
+ */
+const UNASSIGNED_CHANNEL = 'presence:unassigned'
+
+/** Canal de presencia de una campaña. */
+export function campaignChannel(campaignId: string): string {
+  return `presence:campaign:${campaignId}`
+}
+
+/**
+ * A qué canales se conecta cada rol. Es la capa que de verdad separa la
+ * información (ver la nota de arriba).
+ *
+ * - superadmin: escucha todas las campañas sin emitir en ellas, así ve a todo el
+ *   mundo. Se anuncia completo entre superadmins y redactado (sin ubicación)
+ *   ante los capacitadores. Su ubicación solo sale del canal de superadmins
+ *   cuando `editingChannelFor` lo publica en la campaña que está editando.
+ * - capacitador: emite y escucha en los canales de sus campañas. Si no comparte
+ *   campaña con nadie, no coincide con nadie ahí. Escucha además el canal
+ *   redactado del superadmin.
+ * - aprendiz: emite en el de su campaña para que el superadmin lo vea; lo que
+ *   reciba lo descarta `canSeePeer`.
+ *
+ * Un capacitador sin campañas no emite ni recibe presencia de nadie salvo el
+ * "en línea" del superadmin. Es coherente con que el panel le muestre "No tienes
+ * campañas asignadas": no puede editar nada, así que no hay coedición que avisar.
+ */
+export function presenceChannelsFor(opts: {
+  role: string | null | undefined
+  campaignIds: string[]
+}): PresenceChannels {
+  const { role, campaignIds } = opts
+  const channels = Array.from(new Set(campaignIds.filter(Boolean))).map(campaignChannel)
+  if (role === 'superadmin') {
+    return {
+      emit: [SUPERADMIN_CHANNEL],
+      emitRedacted: [SUPERADMIN_LITE_CHANNEL],
+      listen: [...channels, UNASSIGNED_CHANNEL],
+    }
+  }
+  if (role === 'capacitador') {
+    return { emit: channels, emitRedacted: [], listen: [SUPERADMIN_LITE_CHANNEL] }
+  }
+  return {
+    emit: channels.length > 0 ? channels : role === 'learner' ? [UNASSIGNED_CHANNEL] : [],
+    emitRedacted: [],
+    listen: [],
+  }
+}
+
+/**
+ * Canal donde publicar mi ubicación exacta ADEMÁS de los fijos, o null.
+ *
+ * Solo aplica al superadmin: mientras edita un recurso, se anuncia completo en
+ * el canal de la campaña de ESE recurso, para que sus capacitadores lo vean y no
+ * abran lo mismo. Fuera de eso no publica ubicación en ninguna campaña, así que
+ * sus vistas reservadas y lo que toque en otras campañas no se filtran.
+ *
+ * Requiere `mode: 'edit'`: mirar no pisa el trabajo de nadie, y anunciarse por
+ * mirar sí revelaría de más.
+ */
+export function editingChannelFor(
+  role: string | null | undefined,
+  activity: PresenceActivity | null,
+): string | null {
+  if (role !== 'superadmin') return null
+  if (!activity?.campaignId || (activity.mode ?? 'edit') !== 'edit') return null
+  return campaignChannel(activity.campaignId)
+}
+
+/**
+ * ¿Puedo ver a esta persona en pantalla? Segunda capa: lo que la capa de red no
+ * pudo evitar que llegue (mi propia campaña) se filtra aquí.
+ */
+export function canSeePeer(myRole: string | null | undefined, peerRole: string | null | undefined): boolean {
+  if (myRole === 'superadmin') return true
+  // El capacitador ve capacitadores (estar en el canal ya implica campaña
+  // compartida) y al superadmin, que llega sin ubicación salvo que esté editando
+  // algo de esta campaña. No ve aprendices.
+  if (myRole === 'capacitador') return peerRole === 'capacitador' || peerRole === 'superadmin'
+  return false
+}
+
 interface PresenceState {
   peers: Peer[]
   me: Me | null
-  campaignId: string | null
-  channel: RealtimeChannel | null
+  channels: PresenceChannels | null
   activity: PresenceActivity | null
   route: string
   viewCampaignId: string | null
@@ -135,8 +268,8 @@ interface PresenceState {
   /** Declara qué campaña estoy mirando (selector de las listas, o el recurso). */
   setViewCampaign: (campaignId: string | null) => void
 
-  /** Conecta al canal de la campaña y empieza a emitir presencia. Idempotente. */
-  connect: (campaignId: string, me: Me) => void
+  /** Conecta a los canales indicados y empieza a emitir presencia. Idempotente. */
+  connect: (channels: PresenceChannels, me: Me) => void
   /** Se desconecta y limpia el estado. */
   disconnect: () => void
   /** Declara qué recurso estoy editando (o null si dejo de editar). */
@@ -171,28 +304,92 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
   // Ver `followPeer`: apaga el foco pasado un rato.
   let focusTimer: ReturnType<typeof setTimeout> | null = null
 
-  // Reenvía mi estado actual al canal (presence.track).
-  const pushNow = async () => {
-    const { channel, me, activity, route, viewCampaignId } = get()
-    if (!channel || !me) return
+  // Canales vivos. `emitChannels` (completo) y `redactedChannels` (solo
+  // identidad) son subconjuntos de `allChannels`: en los de solo escucha
+  // (superadmin sobre las campañas) nunca se llama track.
+  let emitChannels: RealtimeChannel[] = []
+  let redactedChannels: RealtimeChannel[] = []
+  let allChannels: RealtimeChannel[] = []
+  const channelsByName = new Map<string, RealtimeChannel>()
+  // Canal de campaña donde el superadmin está publicando su ubicación por estar
+  // editando. Se recuerda para poder retirarse (untrack) al dejar de editar.
+  let editingChannelName: string | null = null
+
+  /** Anuncio completo: dónde estoy exactamente. */
+  const fullPayload = () => {
+    const { me, activity, route, viewCampaignId } = get()
+    if (!me) return null
+    return {
+      user_id: me.user_id,
+      name: me.name,
+      avatar_url: me.avatar_url,
+      color: colorForUser(me.user_id),
+      activity,
+      route,
+      campaign_id: activity?.campaignId ?? viewCampaignId,
+      role: me.role,
+      online_at: new Date().toISOString(),
+    }
+  }
+
+  /**
+   * Anuncio redactado: existo, pero no digo dónde. Sin `activity`, sin `route` y
+   * sin `campaign_id` — nada de aquí puede delatar una vista reservada.
+   */
+  const redactedPayload = () => {
+    const { me } = get()
+    if (!me) return null
+    return {
+      user_id: me.user_id,
+      name: me.name,
+      avatar_url: me.avatar_url,
+      color: colorForUser(me.user_id),
+      activity: null,
+      route: '',
+      campaign_id: null,
+      role: me.role,
+      online_at: new Date().toISOString(),
+    }
+  }
+
+  const trackOn = async (channel: RealtimeChannel, payload: object) => {
     try {
-      const status = await channel.track({
-        user_id: me.user_id,
-        name: me.name,
-        avatar_url: me.avatar_url,
-        color: colorForUser(me.user_id),
-        activity,
-        route,
-        campaign_id: activity?.campaignId ?? viewCampaignId,
-        role: me.role,
-        online_at: new Date().toISOString(),
-      })
+      const status = await channel.track(payload)
       // 'timed out' = el canal quedó mudo (típico tras saturarlo). No se
       // recupera solo: hay que rearmarlo o la persona desaparece de la lista
       // para todos los demás sin que nada falle a la vista.
       if (status !== 'ok') revive()
     } catch {
       /* canal aún no suscrito; se reintenta al SUBSCRIBED */
+    }
+  }
+
+  // Reenvía mi estado actual a los canales donde me anuncio (presence.track).
+  const pushNow = async () => {
+    const { me, activity } = get()
+    if (!me) return
+    const full = fullPayload()
+    const redacted = redactedPayload()
+    if (!full || !redacted) return
+
+    for (const channel of emitChannels) await trackOn(channel, full)
+    for (const channel of redactedChannels) await trackOn(channel, redacted)
+
+    // Ubicación exacta del superadmin en la campaña que edita: aparece al entrar
+    // al recurso y se retira en cuanto lo deja.
+    const next = editingChannelFor(me.role, activity)
+    if (editingChannelName && editingChannelName !== next) {
+      await channelsByName.get(editingChannelName)?.untrack().catch(() => {})
+      editingChannelName = null
+    }
+    if (next) {
+      const channel = channelsByName.get(next)
+      // Sin canal suscrito no hay a dónde publicar: pasa si al superadmin le
+      // llega un recurso de una campaña creada después de conectarse.
+      if (channel) {
+        await trackOn(channel, full)
+        editingChannelName = next
+      }
     }
   }
 
@@ -211,32 +408,80 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
     }, PUSH_COALESCE_MS)
   }
 
-  // Rearma el canal cuando se cae. Con espera creciente para no insistir en
+  /** ¿Los dos repartos de canales son el mismo? Evita reconectar de gratis. */
+  const sameChannels = (a: PresenceChannels | null, b: PresenceChannels): boolean => {
+    if (!a) return false
+    const key = (c: PresenceChannels) =>
+      [c.emit, c.emitRedacted, c.listen].map((l) => [...l].sort().join(',')).join('|')
+    return key(a) === key(b)
+  }
+
+  // Junta la presencia de TODOS los canales (el superadmin escucha varios) y
+  // deja fuera a quien no me toca ver. Al deduplicar por user_id, alguien que
+  // aparece en dos canales míos cuenta una sola vez.
+  const syncPeers = () => {
+    const { me } = get()
+    const myId = me?.user_id
+    const seen = new Map<string, Peer>()
+    for (const channel of allChannels) {
+      const raw = channel.presenceState<Peer>()
+      for (const key of Object.keys(raw)) {
+        // Cada key puede tener varias "metas" (varias pestañas). Tomamos la
+        // más reciente por online_at.
+        const metas = raw[key]
+        if (!metas?.length) continue
+        const latest = [...metas].sort((a, b) =>
+          (b.online_at ?? '').localeCompare(a.online_at ?? ''),
+        )[0]
+        if (!latest?.user_id || latest.user_id === myId) continue
+        if (!canSeePeer(me?.role, latest.role)) continue
+        const prev = seen.get(latest.user_id)
+        // La misma persona puede llegar por dos canales: el superadmin se
+        // anuncia redactado y, si edita algo de esta campaña, también completo.
+        // Gana siempre el anuncio que trae ubicación, sea o no el más reciente.
+        if (prev) {
+          if (prev.activity && !latest.activity) continue
+          if (!!prev.activity === !!latest.activity && (prev.online_at ?? '') >= (latest.online_at ?? '')) continue
+        }
+        seen.set(latest.user_id, latest)
+      }
+    }
+    set({ peers: Array.from(seen.values()) })
+  }
+
+  const teardown = () => {
+    for (const channel of allChannels) supabase.removeChannel(channel)
+    emitChannels = []
+    redactedChannels = []
+    allChannels = []
+    channelsByName.clear()
+    editingChannelName = null
+  }
+
+  // Rearma los canales cuando se caen. Con espera creciente para no insistir en
   // bucle si el problema es del servidor.
   let reviving = false
   let reviveDelay = 2_000
   const revive = () => {
-    const { campaignId, me } = get()
-    if (reviving || !campaignId || !me) return
+    const { channels, me } = get()
+    if (reviving || !channels || !me) return
     reviving = true
     setTimeout(() => {
       reviving = false
       reviveDelay = Math.min(reviveDelay * 2, 30_000)
-      const { campaignId: cid, me: m } = get()
-      if (!cid || !m) return
+      const { channels: c, me: m } = get()
+      if (!c || !m) return
       // Forzamos la reconexión saltándonos el atajo de "ya conectado".
-      const { channel } = get()
-      if (channel) supabase.removeChannel(channel)
-      set({ channel: null })
-      get().connect(cid, m)
+      teardown()
+      set({ channels: null })
+      get().connect(c, m)
     }, reviveDelay)
   }
 
   return {
     peers: [],
     me: null,
-    campaignId: null,
-    channel: null,
+    channels: null,
     activity: null,
     route: typeof window !== 'undefined' ? window.location.pathname : '',
     viewCampaignId: null,
@@ -247,72 +492,60 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
       push()
     },
 
-    connect: (campaignId, me) => {
+    connect: (channels, me) => {
       const state = get()
-      // Ya conectado a la misma campaña con el mismo usuario → no reconectar.
-      if (
-        state.channel &&
-        state.campaignId === campaignId &&
-        state.me?.user_id === me.user_id
-      ) {
+      // Mismos canales y mismo usuario → no reconectar.
+      if (sameChannels(state.channels, channels) && state.me?.user_id === me.user_id) {
         set({ me })
         push()
         return
       }
-      // Cambió la campaña o el usuario → limpiar canal previo.
-      if (state.channel) {
-        supabase.removeChannel(state.channel)
-      }
+      // Cambiaron los canales o el usuario → limpiar los previos.
+      teardown()
 
-      const channel = supabase.channel(`workspace-presence:${campaignId}`, {
-        config: { presence: { key: me.user_id } },
-      })
-
-      const syncPeers = () => {
-        const raw = channel.presenceState<Peer>()
-        const myId = get().me?.user_id
-        const seen = new Map<string, Peer>()
-        for (const key of Object.keys(raw)) {
-          // Cada key puede tener varias "metas" (varias pestañas). Tomamos la
-          // más reciente por online_at.
-          const metas = raw[key]
-          if (!metas?.length) continue
-          const latest = [...metas].sort((a, b) =>
-            (b.online_at ?? '').localeCompare(a.online_at ?? ''),
-          )[0]
-          if (!latest?.user_id || latest.user_id === myId) continue
-          seen.set(latest.user_id, latest)
-        }
-        set({ peers: Array.from(seen.values()) })
-      }
-
-      channel
-        .on('presence', { event: 'sync' }, syncPeers)
-        .on('presence', { event: 'join' }, syncPeers)
-        .on('presence', { event: 'leave' }, syncPeers)
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            reviveDelay = 2_000 // el canal está sano: se reinicia la espera
-            void pushNow()
-          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            revive()
-          }
+      const open = (name: string, kind: 'full' | 'redacted' | 'listen') => {
+        const channel = supabase.channel(name, {
+          config: { presence: { key: me.user_id } },
         })
+        channel
+          .on('presence', { event: 'sync' }, syncPeers)
+          .on('presence', { event: 'join' }, syncPeers)
+          .on('presence', { event: 'leave' }, syncPeers)
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              reviveDelay = 2_000 // el canal está sano: se reinicia la espera
+              if (kind !== 'listen') void pushNow()
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              revive()
+            }
+          })
+        allChannels.push(channel)
+        channelsByName.set(name, channel)
+        if (kind === 'full') emitChannels.push(channel)
+        if (kind === 'redacted') redactedChannels.push(channel)
+      }
+
+      for (const name of channels.emit) open(name, 'full')
+      // Identidad sin ubicación (el superadmin ante los capacitadores).
+      for (const name of channels.emitRedacted) open(name, 'redacted')
+      // Solo escucha: aquí NO se llama track por defecto, y por eso el superadmin
+      // no aparece en las campañas que vigila salvo que esté editando en ellas
+      // (ver `editingChannelFor` en pushNow).
+      for (const name of channels.listen) open(name, 'listen')
 
       if (heartbeat) clearInterval(heartbeat)
       // El latido va directo: no tiene sentido agruparlo y es el que detecta
       // (vía pushNow → revive) que el canal se quedó mudo.
       heartbeat = setInterval(() => void pushNow(), 25_000)
 
-      set({ channel, campaignId, me, peers: [] })
+      set({ channels, me, peers: [] })
     },
 
     disconnect: () => {
-      const { channel } = get()
       if (heartbeat) { clearInterval(heartbeat); heartbeat = null }
       if (pushTimer) { clearTimeout(pushTimer); pushTimer = null }
-      if (channel) supabase.removeChannel(channel)
-      set({ channel: null, campaignId: null, me: null, peers: [], activity: null })
+      teardown()
+      set({ channels: null, me: null, peers: [], activity: null })
     },
 
     setActivity: (activity) => {
