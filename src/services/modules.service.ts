@@ -61,6 +61,8 @@ export interface DbModuleRow {
   key_takeaways_pt: string[] | null
   sound_theme: string | null
   is_published: boolean
+  /** Módulo del que se clonó este (deep-copy). NULL = original. Ver cloneModule. */
+  copied_from?: string | null
   created_at: string
   updated_at: string
   module_sections?: Array<{ id: string; sort_order?: number }>
@@ -464,6 +466,133 @@ export async function createModule(
   return row as { id: string }
 }
 
+/**
+ * Copia en profundidad un módulo: `modules` -> `module_sections` -> `section_quizzes`.
+ *
+ * Existe porque `modules.course_id` es una FK directa: un módulo solo puede vivir
+ * en UN curso. Reutilizar contenido en otro curso obliga a duplicar las filas, y
+ * eso es justo lo que se quiere aquí — la copia es 100% independiente y se edita
+ * sin tocar el original.
+ *
+ * Los medios (`media_url`) se REUSAN por referencia, no se copian: el bucket
+ * `module-media` es compartido y duplicar archivos consumiría el cupo de Storage.
+ * `deleteSectionMedia` protege ese archivo mientras alguna sección lo referencie.
+ *
+ * La copia nace en borrador a propósito: se clona para personalizar, y publicarla
+ * antes de editarla expondría contenido a medias al aprendiz.
+ *
+ * @param onProgress Recibe (secciones copiadas, total) para poder mostrar avance.
+ */
+export async function cloneModule(
+  sourceModuleId: string,
+  opts: {
+    targetCourseId?: string | null
+    courseSortOrder?: number
+    /** Sufijo del título, p. ej. " (copia)". Vacío = mismo título que el original. */
+    titleSuffix?: string
+    onProgress?: (done: number, total: number) => void
+  } = {},
+): Promise<{ id: string }> {
+  const src = await getModuleWithSectionsRaw(sourceModuleId)
+  const suffix = opts.titleSuffix ?? ''
+  const withSuffix = (v: string | null) => (v ? `${v}${suffix}` : v)
+
+  const { data: maxRow } = await supabase
+    .from('modules')
+    .select('sort_order')
+    .eq('campaign_id', src.campaign_id)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const basePayload = {
+    campaign_id: src.campaign_id,
+    course_id: opts.targetCourseId ?? null,
+    course_sort_order: opts.courseSortOrder ?? 0,
+    icon: src.icon,
+    duration_min: src.duration_min,
+    sort_order: (maxRow?.sort_order ?? 0) + 1,
+    title_es: `${src.title_es}${suffix}`,
+    title_en: withSuffix(src.title_en),
+    title_pt: withSuffix(src.title_pt),
+    subtitle_es: src.subtitle_es,
+    subtitle_en: src.subtitle_en,
+    subtitle_pt: src.subtitle_pt,
+    objectives_es: src.objectives_es ?? [],
+    objectives_en: src.objectives_en,
+    objectives_pt: src.objectives_pt,
+    key_takeaways_es: src.key_takeaways_es ?? [],
+    key_takeaways_en: src.key_takeaways_en,
+    key_takeaways_pt: src.key_takeaways_pt,
+    sound_theme: src.sound_theme,
+    is_published: false,
+    copied_from: sourceModuleId,
+  }
+
+  // `slug` es único por campaña, así que el sufijo -copy choca en cuanto se clona
+  // dos veces: reintentamos con marca de tiempo (mismo patrón que createModule).
+  const { copied_from, ...withoutLineage } = basePayload
+  const tryInsert = async (slug: string, lineage: boolean) =>
+    supabase
+      .from('modules')
+      .insert({ ...withoutLineage, slug, ...(lineage ? { copied_from } : {}) })
+      .select('id')
+      .single()
+
+  const uniqueSlug = () => `${src.slug}-copy-${Date.now().toString(36)}`
+
+  let { data: row, error } = await tryInsert(`${src.slug}-copy`, true)
+
+  // `copied_from` es una columna nueva (SQL 2026-07-16). Mientras no se corra la
+  // migración, PostgREST responde PGRST204: clonamos sin linaje en vez de romper
+  // la acción entera.
+  if (error?.code === 'PGRST204') {
+    ;({ data: row, error } = await tryInsert(`${src.slug}-copy`, false))
+    if (error?.code === '23505') ({ data: row, error } = await tryInsert(uniqueSlug(), false))
+  } else if (error?.code === '23505') {
+    ;({ data: row, error } = await tryInsert(uniqueSlug(), true))
+  }
+
+  if (error) throw error
+  const newModuleId = (row as { id: string }).id
+
+  const sections = src.module_sections ?? []
+  opts.onProgress?.(0, sections.length)
+
+  // Secuencial y no en lote: necesitamos el id real de cada sección para colgarle
+  // su quiz, y así podemos reportar avance en un contenido que puede ser largo.
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i]
+    const { id: _sid, module_id: _mid, section_quizzes, video_markers, blocks_data, ...sectionFields } = s
+    const { data: newSection, error: sErr } = await supabase
+      .from('module_sections')
+      .insert({
+        ...sectionFields,
+        module_id: newModuleId,
+        // Los jsonb viajan tipados como su forma de dominio; la BD los ve como Json.
+        video_markers: video_markers as import('@/types/database').Json | null,
+        blocks_data: blocks_data as import('@/types/database').Json | null,
+      })
+      .select('id')
+      .single()
+    if (sErr) throw sErr
+
+    const quizzes = section_quizzes ?? []
+    if (quizzes.length) {
+      const { error: qErr } = await supabase.from('section_quizzes').insert(
+        quizzes.map((q) => {
+          const { id: _qid, section_id: _qsid, ...quizFields } = q
+          return { ...quizFields, section_id: (newSection as { id: string }).id }
+        }),
+      )
+      if (qErr) throw qErr
+    }
+    opts.onProgress?.(i + 1, sections.length)
+  }
+
+  return { id: newModuleId }
+}
+
 export async function getModulesRaw(campaignId: string): Promise<DbModuleRow[]> {
   const { data, error } = await supabase
     .from('modules')
@@ -735,10 +864,27 @@ export async function uploadSectionMedia(
   return supabase.storage.from('module-media').getPublicUrl(path).data.publicUrl
 }
 
+/**
+ * Quita el archivo del bucket, PERO solo si ninguna otra sección lo usa.
+ *
+ * `cloneModule` copia `media_url` por referencia (no duplica el archivo), así que
+ * el original y sus copias apuntan al mismo objeto de Storage. Sin esta comprobación,
+ * cambiar la imagen en una copia dejaría rota la sección del módulo original.
+ */
 export async function deleteSectionMedia(publicUrl: string): Promise<void> {
   const prefix = '/storage/v1/object/public/module-media/'
   const idx = publicUrl.indexOf(prefix)
   if (idx === -1) return
+
+  // La fila que se está limpiando todavía apunta a la URL, por eso el umbral es >1.
+  // Ante un error de conteo no borramos: perder cupo de Storage es preferible a
+  // dejar una sección ajena sin su medio.
+  const { count, error: countErr } = await supabase
+    .from('module_sections')
+    .select('id', { count: 'exact', head: true })
+    .eq('media_url', publicUrl)
+  if (countErr || (count ?? 0) > 1) return
+
   const path = decodeURIComponent(publicUrl.slice(idx + prefix.length))
   const { error } = await supabase.storage.from('module-media').remove([path])
   if (error) throw error

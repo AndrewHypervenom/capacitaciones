@@ -314,6 +314,8 @@ export interface Database {
           key_takeaways_pt: string[] | null
           sound_theme: string | null
           is_published: boolean
+          /** Módulo del que se clonó este (deep-copy). NULL = original. */
+          copied_from: string | null
           created_at: string
           updated_at: string
         }
@@ -340,6 +342,7 @@ export interface Database {
           key_takeaways_pt?: string[] | null
           sound_theme?: string | null
           is_published?: boolean
+          copied_from?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -366,6 +369,7 @@ export interface Database {
           key_takeaways_pt?: string[] | null
           sound_theme?: string | null
           is_published?: boolean
+          copied_from?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -9,13 +9,16 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  Copy,
   Eye,
   FolderOpen,
   Globe,
   GraduationCap,
   ImagePlus,
   Info,
+  Layers,
   ListChecks,
+  Loader2,
   Lock,
   Map as MapIcon,
   PhoneCall,
@@ -37,7 +40,6 @@ import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
   updateCourse,
-  addModuleToCourse,
   removeModuleFromCourse,
   reorderCourseModules,
   getCourseCampaigns,
@@ -53,7 +55,8 @@ import {
   type CourseAssignmentRow,
   type CourseStats,
 } from '@/services/courses.service'
-import { getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import { cloneModule, getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
 import { getAllChoiceScenariosAdmin, updateChoiceScenario, type ChoiceScenarioRow } from '@/services/choiceScenarios.admin.service'
@@ -219,11 +222,19 @@ export default function CourseEditor() {
     reload().finally(() => setLoading(false))
   }, [reload])
 
-  // Módulos de la campaña dueña (para poder agregarlos al curso)
-  useEffect(() => {
+  // Módulos de la campaña dueña (la biblioteca desde la que se puebla el curso)
+  const reloadModules = useCallback(async () => {
     if (!course?.campaign_id) return
-    getModulesRaw(course.campaign_id).then(setCampaignModules).catch(() => {})
-  }, [course?.campaign_id, course?.modules.length])
+    try {
+      setCampaignModules(await getModulesRaw(course.campaign_id))
+    } catch {
+      /* la biblioteca queda con lo último bueno */
+    }
+  }, [course?.campaign_id])
+
+  useEffect(() => {
+    void reloadModules()
+  }, [reloadModules, course?.modules.length])
 
   // Métricas agregadas del curso (el RPC autoriza solo al dueño/superadmin;
   // si no está autorizado o falla, simplemente no se muestra el panel).
@@ -290,10 +301,30 @@ export default function CourseEditor() {
     }
   }, [courseId, course?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const availableModules = useMemo(
-    () => campaignModules.filter((m) => !m.course_id),
-    [campaignModules],
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
+
+  // Cuántos módulos de la campaña se pueden traer a este curso. A diferencia del
+  // picker anterior (que solo listaba huérfanos), incluye los que ya están en OTRO
+  // curso: a esos la biblioteca los copia en vez de moverlos, porque modules.course_id
+  // es una FK directa y un módulo no puede estar en dos cursos a la vez.
+  const libraryCount = useMemo(
+    () => campaignModules.filter((m) => m.course_id !== courseId).length,
+    [campaignModules, courseId],
   )
+
+  // moduleId -> título del módulo del que se copió. Sale de campaignModules
+  // (getModulesRaw hace select *) y no del embed del curso, que lista columnas
+  // explícitas: pedir copied_from ahí rompería la vista del aprendiz mientras el
+  // SQL 2026-07-16 no esté corrido.
+  const lineage = useMemo(() => {
+    const byId = new Map(campaignModules.map((m) => [m.id, m]))
+    const out: Record<string, string> = {}
+    for (const m of campaignModules) {
+      if (m.copied_from) out[m.id] = byId.get(m.copied_from)?.title_es ?? ''
+    }
+    return out
+  }, [campaignModules])
 
   const visibleCampaigns = useMemo(
     () => (isSuperAdmin ? campaigns : campaigns.filter((c) => c.id === authCampaignId)),
@@ -604,14 +635,25 @@ export default function CourseEditor() {
     }
   }
 
-  const handleAddModule = async (mod: DbModuleRow) => {
+  // Duplica un módulo dentro de este mismo curso (variantes de un contenido).
+  // Copiar desde otro curso se hace en la biblioteca (ModuleLibraryModal).
+  const handleDuplicateModule = async (moduleId: string, title: string) => {
+    setDuplicatingId(moduleId)
     try {
       const maxOrder = Math.max(0, ...course.modules.map((m) => m.course_sort_order))
-      await addModuleToCourse(course.id, mod.id, maxOrder + 1)
+      await cloneModule(moduleId, {
+        targetCourseId: course.id,
+        courseSortOrder: maxOrder + 1,
+        titleSuffix: t('admin.courses.library.copy_suffix'),
+      })
+      toast.success(t('admin.courses.library.copied', { title }))
       invalidateModulesCache()
       await reload()
-    } catch {
-      toast.error(t('admin.courses.error_save'))
+    } catch (e) {
+      console.error('[CourseEditor] handleDuplicateModule', e)
+      toast.error(t('admin.courses.library.copy_error'), errMsg(e))
+    } finally {
+      setDuplicatingId(null)
     }
   }
 
@@ -1409,6 +1451,17 @@ export default function CourseEditor() {
                           {!mod.is_published && (
                             <NeonBadge color="neutral">{t('admin.courses.draft')}</NeonBadge>
                           )}
+                          {mod.id in lineage && (
+                            <span
+                              title={
+                                lineage[mod.id]
+                                  ? t('admin.courses.library.copy_of', { title: lineage[mod.id] })
+                                  : t('admin.courses.library.copy_of_deleted')
+                              }
+                            >
+                              <NeonBadge color="magenta">{t('admin.courses.library.copy_badge')}</NeonBadge>
+                            </span>
+                          )}
                         </div>
                         <span className="text-[11px] text-text-subtle">{mod.duration_min} min</span>
                       </div>
@@ -1446,6 +1499,19 @@ export default function CourseEditor() {
                         >
                           <ArrowDown className="h-4 w-4" />
                         </button>
+                        <button
+                          onClick={() => handleDuplicateModule(mod.id, mod.title_es)}
+                          disabled={duplicatingId !== null}
+                          title={t('admin.courses.library.duplicate_hint')}
+                          aria-label={t('admin.courses.library.duplicate')}
+                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
+                        >
+                          {duplicatingId === mod.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
                         <Link
                           to={`/admin/modules/${mod.id}`}
                           className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
@@ -1467,53 +1533,64 @@ export default function CourseEditor() {
             )}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-[14px] font-semibold text-text mb-1">
-                  {t('admin.courses.available_modules_title')}
-                </h2>
-                <p className="text-[12px] text-text-muted">
-                  {t('admin.courses.available_modules_hint')}
-                </p>
+          {/* Dos formas de sumar contenido: traerlo de la biblioteca de la campaña
+              (reutilizar/copiar) o crearlo de cero. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => setLibraryOpen(true)}
+              className="group relative overflow-hidden rounded-2xl border border-line bg-glass/[0.03] p-4 text-left transition-colors hover:border-brand-green/40 hover:bg-glass/[0.06]"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-brand-green/25 bg-brand-green/10 text-brand-green transition-transform group-hover:scale-105">
+                  <Layers className="h-4 w-4" />
+                </span>
+                <span className="text-[14px] font-semibold text-text">
+                  {t('admin.courses.library.open')}
+                </span>
+                {libraryCount > 0 && (
+                  <span className="ml-auto rounded-full border border-line px-2 py-0.5 text-[11px] text-text-subtle">
+                    {libraryCount}
+                  </span>
+                )}
               </div>
-              <Link to={`/admin/modules/new?courseId=${course.id}`}>
-                <Button variant="glass" size="sm" className="flex items-center gap-1.5 shrink-0">
-                  <Plus className="h-3.5 w-3.5" />
-                  {t('admin.courses.new_module')}
-                </Button>
-              </Link>
-            </div>
-            {availableModules.length === 0 ? (
-              <p className="text-[12px] text-text-subtle py-4 text-center">
-                {t('admin.courses.no_available_modules')}
+              <p className="text-[12px] leading-relaxed text-text-muted">
+                {t('admin.courses.library.open_hint')}
               </p>
-            ) : (
-              <div className="space-y-2">
-                {availableModules.map((mod) => (
-                  <GlassCard key={mod.id} intensity="subtle" rounded="2xl" padding="none">
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <BookOpen className="h-4 w-4 text-text-subtle shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-[14px] text-text truncate block">{mod.title_es}</span>
-                        <span className="text-[11px] text-text-subtle">{mod.duration_min} min</span>
-                      </div>
-                      <Button
-                        variant="glass"
-                        size="sm"
-                        onClick={() => handleAddModule(mod)}
-                        className="flex items-center gap-1 shrink-0"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        {t('admin.courses.add')}
-                      </Button>
-                    </div>
-                  </GlassCard>
-                ))}
+            </button>
+
+            <Link
+              to={`/admin/modules/new?courseId=${course.id}`}
+              className="group relative overflow-hidden rounded-2xl border border-line bg-glass/[0.03] p-4 transition-colors hover:border-brand-magenta/40 hover:bg-glass/[0.06]"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-brand-magenta/25 bg-brand-magenta/10 text-brand-magenta transition-transform group-hover:scale-105">
+                  <Plus className="h-4 w-4" />
+                </span>
+                <span className="text-[14px] font-semibold text-text">
+                  {t('admin.courses.new_module')}
+                </span>
               </div>
-            )}
+              <p className="text-[12px] leading-relaxed text-text-muted">
+                {t('admin.courses.library.new_module_hint')}
+              </p>
+            </Link>
           </div>
         </div>
+      )}
+
+      {libraryOpen && (
+        <ModuleLibraryModal
+          campaignId={course.campaign_id}
+          courseId={course.id}
+          courseTitle={course.title_es}
+          modules={campaignModules}
+          maxSortOrder={Math.max(0, ...course.modules.map((m) => m.course_sort_order))}
+          onClose={() => setLibraryOpen(false)}
+          onChanged={async () => {
+            invalidateModulesCache()
+            await Promise.all([reload(), reloadModules()])
+          }}
+        />
       )}
 
       {/* ── Asignación ── */}

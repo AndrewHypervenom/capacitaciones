@@ -52,6 +52,10 @@
   to   { opacity: 1; transform: scale(1); }
 }
 
+@keyframes module-lib-spin {
+  to { transform: rotate(1turn); }
+}
+
 @layer base {
   /* Paleta corporativa: verde #10D451, magenta #B33D9E, cinza claro #E0EBE7, cinza medio #A1ADAD */
   :root {
@@ -318,6 +322,41 @@
   .neon-underline:hover::after {
     width: 100%;
   }
+}
+
+/* Borde vivo de la fila que se está clonando en la biblioteca de módulos.
+   Un conic-gradient gira dentro del contenedor recortado y ::after vuelve a tapar
+   el centro, dejando ver solo el anillo de 1px: el borde "recorre" la tarjeta.
+   Usa los tokens de marca, así que funciona igual en claro y oscuro; el bloque
+   prefers-reduced-motion de abajo lo deja quieto. */
+.module-lib-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem; /* = rounded-2xl de la fila */
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.module-lib-border::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgb(var(--brand-green)) 60deg,
+    rgb(var(--brand-magenta)) 120deg,
+    transparent 200deg
+  );
+  animation: module-lib-spin 1.4s linear infinite;
+}
+
+.module-lib-border::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(1rem - 1px);
+  background: rgb(var(--surface));
 }
 
 @media (prefers-reduced-motion: reduce) {

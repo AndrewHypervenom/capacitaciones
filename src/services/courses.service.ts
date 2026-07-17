@@ -332,6 +332,21 @@ export async function getShareableCourses(ownCampaignId: string): Promise<Sharea
     }))
 }
 
+/**
+ * Solo id + título de los cursos de la campaña. Lo usa la biblioteca de módulos
+ * para etiquetar en qué curso vive cada módulo sin traerse los cursos completos.
+ */
+export async function getCourseTitlesForCampaign(
+  campaignId: string,
+): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('courses')
+    .select('id, title_es')
+    .eq('campaign_id', campaignId)
+  if (error) throw error
+  return Object.fromEntries(((data ?? []) as Array<{ id: string; title_es: string }>).map((c) => [c.id, c.title_es]))
+}
+
 /** Marca/desmarca un curso como compartible con otros capacitadores. */
 export async function setCourseShareable(courseId: string, value: boolean): Promise<void> {
   const { error } = await supabase.from('courses').update({ is_shareable: value }).eq('id', courseId)
