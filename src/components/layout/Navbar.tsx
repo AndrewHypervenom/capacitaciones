@@ -49,17 +49,10 @@ export function Navbar() {
           <span className="hidden min-[480px]:inline font-semibold tracking-tight text-[14px]">{t('brand')}</span>
         </Link>
 
-        {/* Staff: enlaces de gestión; aprendices: acceso directo al catálogo */}
-        {isAdminOrCapacitador ? (
-          <nav className="hidden md:flex items-center gap-1">
-            <NavLink to="/dashboard" className={linkClass} end>
-              {t('nav.dashboard')}
-            </NavLink>
-            <NavLink to="/simulator" className={linkClass}>
-              {t('nav.simulator')}
-            </NavLink>
-          </nav>
-        ) : (
+        {/* El staff navega por el sidebar de gestión; aquí solo el aprendiz necesita
+            enlaces. ("Panel | Simulador" era del diseño viejo: el simulador global
+            /simulator ya no existe, cada curso trae los suyos.) */}
+        {!isAdminOrCapacitador && (
           <nav className="flex items-center gap-1">
             <NavLink to="/dashboard" className={linkClass} end>
               {t('nav.dashboard')}

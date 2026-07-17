@@ -28,18 +28,6 @@ function dbRowToChoiceScenario(row: {
   }
 }
 
-export async function getChoiceScenariosForCampaign(campaignId: string): Promise<ChoiceScenario[]> {
-  const { data, error } = await supabase
-    .from('choice_scenarios')
-    .select('*')
-    .eq('campaign_id', campaignId)
-    .eq('is_published', true)
-    .order('created_at')
-
-  if (error) throw error
-  return (data ?? []).map(dbRowToChoiceScenario)
-}
-
 /** Escenarios de opción múltiple publicados y ligados a un curso (con su umbral de aprobación). */
 export async function getChoiceScenariosForCourse(
   courseId: string,

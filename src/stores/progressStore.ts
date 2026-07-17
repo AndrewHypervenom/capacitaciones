@@ -39,7 +39,6 @@ export interface SimulatorAttempt {
   resolved: boolean;
 }
 
-export const SIMULATOR_UNLOCK_THRESHOLD = 1;
 export const CERTIFICATION_MIN_SCORE = 70;
 
 // Umbrales legados: se conservan como referencia/compat. Los valores reales que
@@ -397,10 +396,6 @@ export const useProgressStore = create<ProgressState>()(
     },
   ),
 );
-
-export function selectSimulatorUnlocked(state: ProgressState): boolean {
-  return state.completedModules.length >= SIMULATOR_UNLOCK_THRESHOLD;
-}
 
 export function selectAllModulesCompleted(state: ProgressState, modules: { id: string }[]): boolean {
   const completed = state.completedModules.filter((id) => modules.some((m) => m.id === id));

@@ -52,7 +52,6 @@
   "nav": {
     "dashboard": "Dashboard",
     "modules": "Modules",
-    "simulator": "Simulator",
     "certificate": "Certificate",
     "explore": "Explore",
     "feedback": "Feedback",
@@ -243,7 +242,15 @@
     "locked_after_modules": "Complete the course modules to unlock the simulator.",
     "locked_after_module": "Complete the \"{{title}}\" module to unlock the simulator.",
     "best_score": "Best score: {{score}}",
-    "do_simulation": "Take the simulation"
+    "do_simulation": "Take the simulation",
+    "picker_title": "Which one first?",
+    "picker_subtitle": "This course has {{n}} simulations. Pick one; the rest stay available afterwards.",
+    "picker_locked_title": "Simulation locked",
+    "picker_recommended": "Start here",
+    "picker_type_call": "Call",
+    "picker_type_choice": "Multiple choice",
+    "picker_start": "Start",
+    "picker_hint": "Use ↑ ↓ to move and Enter to start"
   },
   "course_cert": {
     "title": "Course certificate",
@@ -396,8 +403,6 @@
     "view_feedback_progress": "View Feedback and Progress"
   },
   "simulator": {
-    "setup_title": "Pick your scenario",
-    "setup_subtitle": "Each scenario evaluates empathy, protocol adherence, and resolution time.",
     "difficulty": "Difficulty",
     "country": "Country",
     "take_call": "Take the call",
@@ -445,8 +450,6 @@
     "back_dashboard": "Back to dashboard",
     "back_to_course": "Back to course",
     "agent": "Agent",
-    "locked_title": "Simulator locked",
-    "locked_hint": "Complete {{remaining}} more module(s) to unlock it.",
     "view_certificate": "View certificate",
     "mic_start": "Start dictation",
     "mic_stop": "Stop dictation",

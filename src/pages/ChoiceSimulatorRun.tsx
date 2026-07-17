@@ -312,7 +312,7 @@ export default function ChoiceSimulatorRun() {
             className="min-h-screen flex flex-col items-center justify-center px-4 py-16 relative"
           >
             <button
-              onClick={() => nav(simContext.returnTo ?? '/simulator')}
+              onClick={() => nav(simContext.returnTo ?? '/dashboard')}
               className="absolute top-6 left-6 flex items-center gap-2 text-[14px] text-text-muted hover:text-text transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />

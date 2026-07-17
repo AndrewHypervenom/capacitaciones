@@ -85,7 +85,6 @@ src/
 │   ├── Onboarding.tsx      flujo inicial de configuración de perfil
 │   ├── SimulatorResult.tsx resultados y puntaje al terminar
 │   ├── SimulatorRun.tsx    simulador de llamada en vivo (voz)
-│   ├── SimulatorSetup.tsx  configuración antes de entrar al simulador
 │   └── Welcome.tsx         bienvenida tras el primer login
 │
 ├── services/           ← Toda la comunicación con Supabase (base de datos)

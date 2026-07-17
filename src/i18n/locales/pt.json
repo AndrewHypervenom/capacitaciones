@@ -52,7 +52,6 @@
   "nav": {
     "dashboard": "Painel",
     "modules": "Módulos",
-    "simulator": "Simulador",
     "certificate": "Certificado",
     "explore": "Explorar",
     "feedback": "Retorno",
@@ -243,7 +242,15 @@
     "locked_after_modules": "Conclua os módulos do curso para desbloquear o simulador.",
     "locked_after_module": "Conclua o módulo \"{{title}}\" para desbloquear o simulador.",
     "best_score": "Melhor pontuação: {{score}}",
-    "do_simulation": "Fazer a simulação"
+    "do_simulation": "Fazer a simulação",
+    "picker_title": "Por qual quer começar?",
+    "picker_subtitle": "Este curso tem {{n}} simulações. Escolha uma; as outras continuam disponíveis depois.",
+    "picker_locked_title": "Simulação bloqueada",
+    "picker_recommended": "Comece aqui",
+    "picker_type_call": "Chamada",
+    "picker_type_choice": "Múltipla escolha",
+    "picker_start": "Começar",
+    "picker_hint": "Use ↑ ↓ para mover e Enter para começar"
   },
   "course_cert": {
     "title": "Certificado do curso",
@@ -396,8 +403,6 @@
     "view_feedback_progress": "Ver Feedback e Progresso"
   },
   "simulator": {
-    "setup_title": "Escolha seu cenário",
-    "setup_subtitle": "Cada cenário avalia empatia, aderência ao protocolo e tempo de resolução.",
     "difficulty": "Dificuldade",
     "country": "País",
     "take_call": "Atender chamada",
@@ -445,8 +450,6 @@
     "back_dashboard": "Voltar ao painel",
     "back_to_course": "Voltar ao curso",
     "agent": "Agente",
-    "locked_title": "Simulador bloqueado",
-    "locked_hint": "Conclua mais {{remaining}} módulo(s) para desbloqueá-lo.",
     "view_certificate": "Ver certificado",
     "mic_start": "Iniciar ditado",
     "mic_stop": "Parar ditado",

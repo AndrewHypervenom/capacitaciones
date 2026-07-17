@@ -17,6 +17,7 @@ import type { ChoiceScenario } from '@/data/choiceScenarios';
 import { getCourseCertStatus } from '@/services/certification.service';
 import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
+import { SimulatorPickerModal, type SimPick } from '@/components/simulator/SimulatorPickerModal';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
@@ -66,6 +67,7 @@ export default function CoursePage() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [choiceScenarios, setChoiceScenarios] = useState<ChoiceScenario[]>([]);
   const [rawCertStatus, setRawCertStatus] = useState<CourseCertStatus | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   useEffect(() => {
     if (!course?.id) {
       setScenarios([]);
@@ -222,24 +224,40 @@ export default function CoursePage() {
     (course.sim_unlock_rule === 'after_module' && !simUnlockModule && completed);
 
   // Acceso directo a la simulación: si hay una sola y está desbloqueada, entra de una;
-  // si hay varias o está bloqueada, baja a la sección Practicar para elegir/ver el motivo.
+  // si hay varias o está bloqueada, el modal deja elegir / explica el motivo. Antes
+  // esto hacía scrollIntoView a la sección Practicar, invisible cuando la sección ya
+  // estaba en pantalla: el botón parecía no hacer nada.
   const totalScenarios = scenarios.length + choiceScenarios.length;
+  const simState = {
+    courseId: course.id,
+    campaignId: course.campaign_id,
+    returnTo: `/courses/${course.slug}`,
+  };
+  const goToSim = ({ kind, id }: SimPick) => {
+    navigate(kind === 'call' ? `/simulator/run/${id}` : `/simulator/choice/${id}`, { state: simState });
+  };
   const startSimulation = () => {
-    const simState = {
-      courseId: course.id,
-      campaignId: course.campaign_id,
-      returnTo: `/courses/${course.slug}`,
-    };
     if (totalScenarios === 1 && simUnlocked) {
-      if (scenarios.length === 1) {
-        navigate(`/simulator/run/${scenarios[0].id}`, { state: simState });
-      } else {
-        navigate(`/simulator/choice/${choiceScenarios[0].id}`, { state: simState });
-      }
+      goToSim(
+        scenarios.length === 1
+          ? { kind: 'call', id: scenarios[0].id }
+          : { kind: 'choice', id: choiceScenarios[0].id },
+      );
     } else {
-      document.getElementById('practice-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setPickerOpen(true);
     }
   };
+  const simLockedReason =
+    course.sim_unlock_rule === 'after_module' && simUnlockModule
+      ? t('course_practice.locked_after_module', {
+          title: pickText(
+            simUnlockModule.title_es,
+            simUnlockModule.title_en,
+            simUnlockModule.title_pt,
+            language,
+          ),
+        })
+      : t('course_practice.locked_after_modules');
 
   return (
     <>
@@ -763,6 +781,22 @@ export default function CoursePage() {
       )}
     </div>
     <ScrollToTopButton />
+    {pickerOpen && (
+      <SimulatorPickerModal
+        scenarios={scenarios}
+        choiceScenarios={choiceScenarios}
+        language={language}
+        accent={course.color}
+        unlocked={simUnlocked}
+        lockedReason={simLockedReason}
+        bestScore={certStatus?.best_score}
+        onPick={(pick) => {
+          setPickerOpen(false);
+          goToSim(pick);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
+    )}
     </>
   );
 }

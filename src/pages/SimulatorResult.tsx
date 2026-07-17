@@ -64,7 +64,7 @@ export default function SimulatorResult() {
     if (valid) return;
     // No redirigir mientras el respaldo por slug sigue en vuelo.
     if (!scenario && !notFound) return;
-    nav('/simulator', { replace: true });
+    nav('/dashboard', { replace: true });
   }, [valid, scenario, notFound, nav]);
 
   useEffect(() => {

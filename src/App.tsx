@@ -13,7 +13,6 @@ import CoursePage from '@/pages/CoursePage';
 import ModulePage from '@/pages/ModulePage';
 import MyFeedback from '@/pages/MyFeedback';
 import Profile from '@/pages/Profile';
-import SimulatorSetup from '@/pages/SimulatorSetup';
 import SimulatorRun from '@/pages/SimulatorRun';
 import SimulatorResult from '@/pages/SimulatorResult';
 import ChoiceSimulatorRun from '@/pages/ChoiceSimulatorRun';
@@ -134,7 +133,6 @@ export default function App() {
           <Route path="/courses/:slug" element={<CoursePage />} />
           <Route path="/modules/:id" element={<ModulePage />} />
           <Route path="/feedback" element={<MyFeedback />} />
-          <Route path="/simulator" element={<SimulatorSetup />} />
           <Route path="/simulator/run/:id" element={<SimulatorRun />} />
           <Route path="/simulator/result/:id" element={<SimulatorResult />} />
           <Route path="/simulator/choice/:id" element={<ChoiceSimulatorRun />} />
