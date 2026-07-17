@@ -9,9 +9,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { recompressAllAvatars, type RecompressProgress } from '@/services/avatarMaintenance'
-import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import {
+  getAccessibleCampaigns,
+  getCampaignIdsByUser,
+  setUserCampaigns as saveUserCampaigns,
+} from '@/services/campaigns.service'
 import { Avatar } from '@/components/ui/Avatar'
 import { Select } from '@/components/ui/Select'
+import { MultiSelect } from '@/components/ui/MultiSelect'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
@@ -50,6 +55,10 @@ export default function UserList() {
   const [search, setSearch] = useState('')
   const [campaignFilter, setCampaignFilter] = useState('')
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
+  // Campañas de cada usuario: casa + colaboraciones. El capacitador puede tener
+  // varias (equipos compartidos), así que no basta con profiles.campaign_id.
+  const [userCampaigns, setUserCampaigns] = useState<Record<string, string[]>>({})
+  const [savingCampaignsFor, setSavingCampaignsFor] = useState<string | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
   const [inviting, setInviting] = useState(false)
@@ -83,10 +92,14 @@ export default function UserList() {
         (u.display_name ?? '').toLowerCase().includes(q) ||
         (u.email ?? '').toLowerCase().includes(q) ||
         u.id.toLowerCase().includes(q)
-      const matchesCampaign = !campaignFilter || u.campaign_id === campaignFilter
+      // Filtra por pertenencia real (casa o colaboración), no solo por la casa:
+      // si no, un capacitador con campaña casa A no aparecería al filtrar por B
+      // aunque trabaje en B.
+      const matchesCampaign =
+        !campaignFilter || (userCampaigns[u.id] ?? []).includes(campaignFilter)
       return matchesQuery && matchesCampaign
     })
-  }, [users, search, campaignFilter])
+  }, [users, search, campaignFilter, userCampaigns])
 
   useEffect(() => {
     async function load() {
@@ -111,7 +124,9 @@ export default function UserList() {
         // Solo el superadmin recibe filas (RLS); para el resto vuelve vacío.
         supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
       ])
-      setUsers(profiles.data ?? [])
+      const rows = profiles.data ?? []
+      setUsers(rows)
+      setUserCampaigns(await getCampaignIdsByUser(rows))
       setTempCreds(mapCreds(creds.data))
       setLoading(false)
     }
@@ -123,7 +138,9 @@ export default function UserList() {
       supabase.from('profiles').select('*').order('created_at'),
       supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
     ])
-    setUsers(updated ?? [])
+    const rows = updated ?? []
+    setUsers(rows)
+    setUserCampaigns(await getCampaignIdsByUser(rows))
     setTempCreds(mapCreds(creds))
   }
 
@@ -226,14 +243,25 @@ export default function UserList() {
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, role: newRole } : u))
   }
 
-  const handleCampaignChange = async (userId: string, newCampaignId: string) => {
-    await supabase
-      .from('profiles')
-      .update({ campaign_id: newCampaignId || null })
-      .eq('id', userId)
-    setUsers((prev) =>
-      prev.map((u) => u.id === userId ? { ...u, campaign_id: newCampaignId || null } : u),
-    )
+  /**
+   * Guarda el conjunto EXACTO de campañas del usuario. Las que se quitan dejan
+   * de verse de inmediato (la RLS deriva el acceso de esta pertenencia), y sin
+   * ninguna el usuario queda sin campaña: no ve ni crea contenido.
+   */
+  const handleCampaignsChange = async (user: ProfileWithEmail, ids: string[]) => {
+    const previous = userCampaigns[user.id] ?? []
+    // Optimista: el select responde ya y revertimos si la BD rechaza.
+    setUserCampaigns((prev) => ({ ...prev, [user.id]: ids }))
+    setSavingCampaignsFor(user.id)
+    try {
+      const home = await saveUserCampaigns(user.id, ids, user.campaign_id ?? null)
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, campaign_id: home } : u)))
+    } catch (err) {
+      setUserCampaigns((prev) => ({ ...prev, [user.id]: previous }))
+      toast.error(t('admin.users.campaigns_save_error'), (err as Error).message)
+    } finally {
+      setSavingCampaignsFor(null)
+    }
   }
 
   const handleDelete = async (user: ProfileWithEmail) => {
@@ -583,13 +611,33 @@ export default function UserList() {
                   </span>
                 )}
                 {isSuperAdmin && (
-                  <Select
-                    compact
-                    className="w-auto shrink-0"
-                    value={user.campaign_id ?? ''}
-                    onChange={(v) => handleCampaignChange(user.id, v)}
-                    options={campaignOptions(i18n.t('admin.worlds.no_campaign'))}
-                  />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {user.role === 'learner' ? (
+                      // El aprendiz vive en UNA campaña: su progreso, inscripciones
+                      // y certificados cuelgan de ella.
+                      <Select
+                        compact
+                        className="w-auto shrink-0"
+                        value={user.campaign_id ?? ''}
+                        onChange={(v) => handleCampaignsChange(user, v ? [v] : [])}
+                        options={campaignOptions(i18n.t('admin.worlds.no_campaign'))}
+                      />
+                    ) : (
+                      <MultiSelect
+                        compact
+                        className="w-auto shrink-0 min-w-[140px]"
+                        values={userCampaigns[user.id] ?? []}
+                        onChange={(ids) => handleCampaignsChange(user, ids)}
+                        options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+                        placeholder={i18n.t('admin.worlds.no_campaign')}
+                        summary={(n) => t('admin.users.campaigns_count', { count: n })}
+                        aria-label={t('admin.users.col_campaign')}
+                      />
+                    )}
+                    {savingCampaignsFor === user.id && (
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-text-subtle" />
+                    )}
+                  </div>
                 )}
                 <div className="flex items-center gap-1">
                   <button

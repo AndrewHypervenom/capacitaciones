@@ -676,6 +676,10 @@
     "review_info": "Rewatch the video"
   },
   "admin": {
+    "no_campaigns": {
+      "title": "You have no campaigns assigned",
+      "desc": "A superadmin must assign you at least one campaign before you can view or create content."
+    },
     "nav": {
       "panel": "Dashboard",
       "ai_usage": "AI usage",
@@ -973,6 +977,8 @@
       "course_draft": "Draft (unpublished)",
       "search_ph": "Search by name or email…",
       "all_campaigns": "All campaigns",
+      "campaigns_count": "{{count}} campaigns",
+      "campaigns_save_error": "Could not save campaigns",
       "empty": "No users yet.",
       "no_results": "No user matches your search.",
       "create_user": "Create user",

@@ -676,6 +676,10 @@
     "review_info": "Rever o vídeo"
   },
   "admin": {
+    "no_campaigns": {
+      "title": "Você não tem campanhas atribuídas",
+      "desc": "Um superadministrador precisa atribuir pelo menos uma campanha para que você possa ver e criar conteúdo."
+    },
     "nav": {
       "panel": "Painel",
       "ai_usage": "Uso de IA",
@@ -973,6 +977,8 @@
       "course_draft": "Rascunho (não publicado)",
       "search_ph": "Buscar por nome ou e-mail…",
       "all_campaigns": "Todas as campanhas",
+      "campaigns_count": "{{count}} campanhas",
+      "campaigns_save_error": "Não foi possível salvar as campanhas",
       "empty": "Ainda não há usuários.",
       "no_results": "Nenhum usuário corresponde à busca.",
       "create_user": "Criar usuário",

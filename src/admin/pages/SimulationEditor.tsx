@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import {
   getScenarioAdmin, createScenario, updateScenario, type ScenarioRow,
 } from '@/services/scenarios.admin.service'
@@ -142,7 +143,10 @@ export default function SimulationEditor() {
   const isNew = id === 'new' || !id
   const isManualMode = searchParams.get('mode') === 'manual'
 
-  const [campaignId, setCampaignId] = useState(() => searchParams.get('campaign') || authCampaignId || '')
+  // Se resuelve al cargar las campañas accesibles (URL → panel → primera). NO se
+  // parte de la campaña "casa": creando desde la campaña B, el simulador se
+  // guardaba en la casa A.
+  const [campaignId, setCampaignId] = useState('')
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
   const [courses, setCourses] = useState<{ id: string; title_es: string }[]>([])
 
@@ -174,13 +178,9 @@ export default function SimulationEditor() {
     return { value: nid, label: preview ? `${stepLabel(nid)} — ${preview}` : stepLabel(nid) }
   })
 
-  // La campaña del perfil puede llegar después del primer render
-  useEffect(() => {
-    if (authCampaignId) setCampaignId((prev) => prev || authCampaignId)
-  }, [authCampaignId])
-
   // Campañas donde puede crear: superadmin todas; capacitador su campaña casa +
-  // aquellas donde colabora (equipos).
+  // aquellas donde colabora (equipos). Un simulador ya existente conserva la
+  // suya (la carga rowToState); esto solo resuelve el destino de uno nuevo.
   useEffect(() => {
     getAccessibleCampaigns({
       isSuperAdmin,
@@ -189,10 +189,17 @@ export default function SimulationEditor() {
     })
       .then((data) => {
         setCampaigns(data)
-        if (data[0]) setCampaignId((prev) => prev || data[0].id)
+        if (!isNew) return
+        const ids = data.map((c) => c.id)
+        setCampaignId((prev) =>
+          prev && ids.includes(prev)
+            ? prev
+            : resolveCreationCampaignId(searchParams.get('campaign'), ids),
+        )
       })
       .catch(() => {})
-  }, [isSuperAdmin, authCampaignId, user?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, authCampaignId, user?.id, isNew])
 
   // Cursos de la campaña activa: permiten asignar el simulador a un curso desde aquí.
   useEffect(() => {

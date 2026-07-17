@@ -4,6 +4,7 @@ import { backdropDismiss } from '@/lib/backdropDismiss'
 import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Plus, Save, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import {
   getChoiceScenarioAdmin, createChoiceScenario, updateChoiceScenario, type ChoiceScenarioRow,
 } from '@/services/choiceScenarios.admin.service'
@@ -79,7 +80,10 @@ export default function ChoiceSimEditor() {
   const isNew = id === 'new' || !id
   const isManualMode = searchParams.get('mode') === 'manual'
 
-  const [campaignId, setCampaignId] = useState(() => searchParams.get('campaign') || authCampaignId || '')
+  // Se resuelve al cargar las campañas accesibles (URL → panel → primera). NO se
+  // parte de la campaña "casa": creando desde la campaña B, el escenario se
+  // guardaba en la casa A.
+  const [campaignId, setCampaignId] = useState('')
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
 
   const [loading, setLoading] = useState(!isNew)
@@ -108,13 +112,9 @@ export default function ChoiceSimEditor() {
     return { value: nid, label: preview ? `${stepLabel(nid)} — ${preview}` : stepLabel(nid) }
   })
 
-  // La campaña del perfil puede llegar después del primer render
-  useEffect(() => {
-    if (authCampaignId) setCampaignId((prev) => prev || authCampaignId)
-  }, [authCampaignId])
-
   // Campañas donde puede crear: superadmin todas; capacitador su campaña casa +
-  // aquellas donde colabora (equipos).
+  // aquellas donde colabora (equipos). Un escenario ya existente conserva la
+  // suya; esto solo resuelve el destino de uno nuevo.
   useEffect(() => {
     getAccessibleCampaigns({
       isSuperAdmin,
@@ -123,10 +123,17 @@ export default function ChoiceSimEditor() {
     })
       .then((data) => {
         setCampaigns(data)
-        if (data[0]) setCampaignId((prev) => prev || data[0].id)
+        if (!isNew) return
+        const ids = data.map((c) => c.id)
+        setCampaignId((prev) =>
+          prev && ids.includes(prev)
+            ? prev
+            : resolveCreationCampaignId(searchParams.get('campaign'), ids),
+        )
       })
       .catch(() => {})
-  }, [isSuperAdmin, authCampaignId, user?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, authCampaignId, user?.id, isNew])
 
   useEffect(() => {
     if (isNew) return

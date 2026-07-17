@@ -84,10 +84,15 @@ async function fetchProfile(userId: string) {
 
   let profile = existing ?? null
 
-  // Si no tiene campaña asignada, auto-asignar la primera campaña activa
-  const needsCampaign = !profile?.campaign_id && profile?.role !== 'superadmin'
-
-  if (needsCampaign) {
+  // Un perfil SIN campaña se respeta tal cual: significa que el superadmin se la
+  // quitó, y quedarse sin campaña es el resultado esperado (panel vacío, sin
+  // crear contenido). Antes se auto-asignaba aquí la primera campaña activa, lo
+  // que devolvía el acceso en el siguiente inicio de sesión a quien acababa de
+  // perderlo — y encima a una campaña arbitraria.
+  //
+  // La auto-asignación sobrevive solo para el alta nueva (aún sin perfil), que
+  // necesita una campaña para aterrizar en algún lado.
+  if (!profile) {
     const { data: campaignRows } = await supabase
       .from('campaigns')
       .select('id')
@@ -98,27 +103,17 @@ async function fetchProfile(userId: string) {
     const activeCampaign = campaignRows?.[0] ?? null
 
     if (activeCampaign?.id) {
-      if (profile) {
-        // Perfil existe pero sin campaña → asignar
-        await supabase
-          .from('profiles')
-          .update({ campaign_id: activeCampaign.id })
-          .eq('id', userId)
-        profile = { ...profile, campaign_id: activeCampaign.id }
-      } else {
-        // No existe perfil → crear uno como learner con la campaña activa
-        const { data: newProfile } = await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            campaign_id: activeCampaign.id,
-            role: 'learner',
-            language: 'es',
-          })
-          .select('*')
-          .single()
-        profile = newProfile ?? null
-      }
+      const { data: newProfile } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          campaign_id: activeCampaign.id,
+          role: 'learner',
+          language: 'es',
+        })
+        .select('*')
+        .single()
+      profile = newProfile ?? null
     }
   }
 

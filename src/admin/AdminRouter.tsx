@@ -1,7 +1,10 @@
 
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { FolderX } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
+import { useHasNoCampaigns } from '@/hooks/useHasNoCampaigns'
 
 import { AdminNav } from './components/AdminNav'
 import { ViewPresenceChip } from '@/components/presence/ViewPresenceChip'
@@ -36,6 +39,8 @@ export default function AdminRouter() {
   const { loading, isAuthenticated, isCapacitador, isSuperAdmin } = useAuth()
   const location = useLocation()
   const profile = useAuthStore((s) => s.profile)
+  const { t } = useTranslation()
+  const noCampaigns = useHasNoCampaigns()
 
   // La presencia colaborativa ahora es global (PresenceSync en App.tsx):
   // todos los roles emiten su vista actual desde cualquier parte del sitio.
@@ -43,6 +48,21 @@ export default function AdminRouter() {
   if (loading) return null
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
   if (!isSuperAdmin && !isCapacitador) return <Navigate to="/dashboard" replace />
+
+  // Sin campañas no hay nada que gestionar: todas las vistas del panel filtran
+  // por campaña y quedarían vacías o, peor, invitando a crear contenido sin
+  // destino. Mejor decirlo de frente.
+  if (noCampaigns) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg p-6">
+        <div className="max-w-md rounded-2xl border border-line bg-surface p-8 text-center">
+          <FolderX className="mx-auto mb-4 h-10 w-10 text-text-subtle" />
+          <h1 className="text-[18px] font-bold text-text">{t('admin.no_campaigns.title')}</h1>
+          <p className="mt-2 text-[13px] text-text-muted">{t('admin.no_campaigns.desc')}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-bg">

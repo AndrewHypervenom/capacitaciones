@@ -26,6 +26,7 @@ import { invalidateModulesCache } from '@/hooks/useModules'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
+import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -50,9 +51,11 @@ export default function CourseList() {
   const [previewingId, setPreviewingId] = useState<string | null>(null)
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  // El superadmin arranca viendo TODOS los cursos (no una campaña suelta como filtro).
+  // El superadmin arranca viendo TODOS los cursos (no una campaña suelta como
+  // filtro). El resto arranca vacío y cae en su campaña al cargarlas: partir de
+  // la campaña "casa" la dejaba fija aunque ya no fuera accesible.
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(
-    isSuperAdmin ? ALL_CAMPAIGNS : (authCampaignId ?? ''),
+    isSuperAdmin ? ALL_CAMPAIGNS : '',
   )
   const [courses, setCourses] = useState<AdminCourse[]>([])
   const [loading, setLoading] = useState(false)
@@ -155,13 +158,24 @@ export default function CourseList() {
     })
       .then((data) => {
         setCampaigns(data)
-        // Superadmin conserva "Todas"; el resto cae en su primera campaña disponible.
-        setSelectedCampaignId((prev) =>
-          prev || (isSuperAdmin ? ALL_CAMPAIGNS : data[0]?.id || ''),
-        )
+        // Superadmin conserva "Todas"; el resto retoma la campaña donde venía
+        // trabajando, o su primera campaña accesible.
+        setSelectedCampaignId((prev) => {
+          if (prev) return prev
+          if (isSuperAdmin) return ALL_CAMPAIGNS
+          return resolveCreationCampaignId(null, data.map((c) => c.id))
+        })
       })
       .catch(() => {})
   }, [isSuperAdmin, authCampaignId, user?.id])
+
+  // La campaña que se está mirando es la que se usará al crear contenido.
+  // "Todas" no es una campaña: no fija contexto de creación.
+  const setActiveCampaignId = useCampaignScope((s) => s.setActiveCampaignId)
+  useEffect(() => {
+    if (!selectedCampaignId || selectedCampaignId === ALL_CAMPAIGNS) return
+    setActiveCampaignId(selectedCampaignId)
+  }, [selectedCampaignId, setActiveCampaignId])
 
   // Venimos siguiendo a alguien desde la barra de presencia: pararse en SU
   // campaña y resaltar su curso, sin abrirlo.

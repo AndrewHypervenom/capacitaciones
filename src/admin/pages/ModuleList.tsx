@@ -24,6 +24,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
+import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 
 export default function ModuleList() {
   const { t } = useTranslation()
@@ -31,7 +32,9 @@ export default function ModuleList() {
   const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>(authCampaignId ?? '')
+  // Arranca vacío y se resuelve al cargar las campañas accesibles: partir de la
+  // campaña "casa" la dejaba fija aunque el capacitador ya no la tuviera.
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('')
   const [selectedCampaignName, setSelectedCampaignName] = useState<string>('')
   const [modules, setModules] = useState<DbModuleRow[]>([])
   const [courses, setCourses] = useState<CourseWithModules[]>([])
@@ -51,10 +54,18 @@ export default function ModuleList() {
     })
       .then((data) => {
         setCampaigns(data)
-        setSelectedCampaignId((prev) => prev || data[0]?.id || '')
+        setSelectedCampaignId(
+          (prev) => prev || resolveCreationCampaignId(null, data.map((c) => c.id)),
+        )
       })
       .catch(() => {})
   }, [isSuperAdmin, authCampaignId, user?.id])
+
+  // La campaña que se está mirando es la que se usará al crear contenido.
+  const setActiveCampaignId = useCampaignScope((s) => s.setActiveCampaignId)
+  useEffect(() => {
+    if (selectedCampaignId) setActiveCampaignId(selectedCampaignId)
+  }, [selectedCampaignId, setActiveCampaignId])
 
   // Si la presencia no trajo la campaña (hay vistas que no la publican), la
   // resolvemos desde el módulo mismo. Sin esto la lista se queda en la campaña
@@ -278,7 +289,10 @@ export default function ModuleList() {
                 {t('admin.modules.import_ai')}
               </Button>
             </Link>
-            <Link to="/admin/modules/new" className="w-full sm:w-auto">
+            <Link
+              to={`/admin/modules/new${selectedCampaignId ? `?campaign=${selectedCampaignId}` : ''}`}
+              className="w-full sm:w-auto"
+            >
               <Button variant="neon" className="flex items-center gap-1.5 w-full sm:w-auto">
                 <Plus className="h-3.5 w-3.5" />
                 {t('admin.modules.new_module')}
@@ -325,7 +339,7 @@ export default function ModuleList() {
             <BookOpen className="h-10 w-10 text-text-muted mx-auto mb-3" />
             <p className="text-text-muted text-[14px] mb-2">{t('admin.modules.empty_title')}</p>
             <p className="text-text-subtle text-[12px] mb-6">{t('admin.modules.empty_hint')}</p>
-            <Link to="/admin/modules/new">
+            <Link to={`/admin/modules/new${selectedCampaignId ? `?campaign=${selectedCampaignId}` : ''}`}>
               <Button variant="neon" className="flex items-center gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
                 {t('admin.modules.create_first')}

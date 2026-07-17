@@ -9,6 +9,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
 import { toUtcMs } from '@/lib/datetime'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { requestDeletion } from '@/services/audit.service'
 import { toast } from '@/stores/toastStore'
 import { useAuth } from '@/hooks/useAuth'
@@ -84,7 +85,9 @@ export default function LiveQuizAdmin() {
 
   // Formulario de creación / edición
   const [formTitle, setFormTitle] = useState('')
-  const [formCampaign, setFormCampaign] = useState(campaignId ?? '')
+  // Se resuelve al cargar las campañas accesibles. NO se parte de la campaña
+  // "casa": creando desde la campaña B, el quiz se guardaba en la casa A.
+  const [formCampaign, setFormCampaign] = useState('')
   const [formQuestions, setFormQuestions] = useState<QuizQuestion[]>([emptyQuestion()])
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -139,7 +142,14 @@ export default function LiveQuizAdmin() {
       homeCampaignId: campaignId,
       userId: user?.id ?? null,
     })
-      .then(setCampaigns)
+      .then((data) => {
+        setCampaigns(data)
+        const ids = data.map((c) => c.id)
+        // Editando un quiz existente se respeta la suya (la fija startEdit).
+        setFormCampaign((prev) =>
+          prev && ids.includes(prev) ? prev : resolveCreationCampaignId(null, ids),
+        )
+      })
       .catch(() => {})
   }, [isSuperAdmin, campaignId, user?.id])
 
@@ -273,7 +283,7 @@ export default function LiveQuizAdmin() {
       .from('live_quizzes')
       .update({
         title: formTitle.trim(),
-        campaign_id: formCampaign || campaignId || undefined,
+        campaign_id: formCampaign || undefined,
         questions: formQuestions as unknown as never,
       })
       .eq('id', editingId)
@@ -288,7 +298,7 @@ export default function LiveQuizAdmin() {
   const handleCreate = async () => {
     if (editingId) return handleUpdate()
     if (!formTitle.trim() || formQuestions.some((q) => !q.text.trim())) return
-    const targetCampaign = formCampaign || campaignId
+    const targetCampaign = formCampaign
     if (!targetCampaign || !profile?.id) return
 
     setCreating(true)

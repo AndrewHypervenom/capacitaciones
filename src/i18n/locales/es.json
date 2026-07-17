@@ -676,6 +676,10 @@
     "review_info": "Repasar el video"
   },
   "admin": {
+    "no_campaigns": {
+      "title": "No tienes campañas asignadas",
+      "desc": "Un superadministrador debe asignarte al menos una campaña para que puedas ver y crear contenido."
+    },
     "nav": {
       "panel": "Panel",
       "ai_usage": "Uso de IA",
@@ -973,6 +977,8 @@
       "course_draft": "Borrador (no publicado)",
       "search_ph": "Buscar por nombre o correo…",
       "all_campaigns": "Todas las campañas",
+      "campaigns_count": "{{count}} campañas",
+      "campaigns_save_error": "No se pudieron guardar las campañas",
       "empty": "No hay usuarios aún.",
       "no_results": "Ningún usuario coincide con la búsqueda.",
       "create_user": "Crear usuario",

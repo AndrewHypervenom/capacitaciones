@@ -6,6 +6,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { createModule } from '@/services/modules.service'
 import ImportContent from '@/admin/pages/ImportContent'
 import {
@@ -130,7 +131,10 @@ export default function NewModulePage() {
   const [subtitleLang, setSubtitleLang] = useState<Lang>('es')
   const [subtitle, setSubtitle] = useState<Record<Lang, string>>({ es: '', en: '', pt: '' })
   const [duration, setDuration] = useState(30)
-  const [campaignId, setCampaignId] = useState(authCampaignId ?? '')
+  // Se resuelve al cargar las campañas accesibles (URL → panel → primera). NO se
+  // parte de la campaña "casa": creando desde la campaña B, el módulo se
+  // guardaba en la casa A.
+  const [campaignId, setCampaignId] = useState('')
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [courseId, setCourseId] = useState('')
   const [courses, setCourses] = useState<CourseWithModules[]>([])
@@ -146,9 +150,15 @@ export default function NewModulePage() {
     })
       .then((data) => {
         setCampaigns(data)
-        setCampaignId((prev) => prev || data[0]?.id || '')
+        const ids = data.map((c) => c.id)
+        setCampaignId((prev) =>
+          prev && ids.includes(prev)
+            ? prev
+            : resolveCreationCampaignId(searchParams.get('campaign'), ids),
+        )
       })
       .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin, authCampaignId, user?.id])
 
   // Si llegamos desde el editor de un curso (?courseId=), fijar ese curso y su campaña.
