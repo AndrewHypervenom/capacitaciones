@@ -1,9 +1,49 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { usePeersInMyView } from '@/hooks/usePresence'
-import { usePresenceStore } from '@/stores/presenceStore'
+import {
+  colorForUser,
+  secondsSinceSeen,
+  STALE_AFTER_MS,
+  usePresenceStore,
+  type Peer,
+} from '@/stores/presenceStore'
 import { PresenceStack, whereLabel } from './PresenceStack'
+import { cn } from '@/lib/cn'
+
+const initial = (name: string) => (name || '?').charAt(0).toUpperCase()
+
+/** "ahora" / "hace 45 s" / "hace 3 min" — compacto para la fila. */
+function agoLabel(seconds: number, t: (k: string, o?: Record<string, unknown>) => string): string {
+  if (seconds < 15) return t('presence.now', { defaultValue: 'ahora' })
+  if (seconds < 60) return t('presence.ago_s', { count: seconds, defaultValue: 'hace {{count}} s' })
+  return t('presence.ago_m', { count: Math.round(seconds / 60), defaultValue: 'hace {{count}} min' })
+}
+
+/** Avatar redondo con anillo del color estable de la persona (o inicial). */
+function Avatar({ peer, size = 26 }: { peer: Peer; size?: number }) {
+  const color = peer.color ?? colorForUser(peer.user_id)
+  return (
+    <div
+      className="relative shrink-0 overflow-hidden rounded-full flex items-center justify-center font-bold text-white select-none"
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.42,
+        background: peer.avatar_url ? undefined : color,
+        boxShadow: `0 0 0 1.5px rgb(var(--surface)), 0 0 0 3px ${color}`,
+      }}
+    >
+      {peer.avatar_url ? (
+        <img src={peer.avatar_url} alt={peer.name} className="h-full w-full object-cover" loading="lazy" />
+      ) : (
+        initial(peer.name)
+      )}
+    </div>
+  )
+}
 
 /**
  * Aviso de "no estás solo en esta pantalla". Aparece en CUALQUIER vista del
@@ -12,28 +52,70 @@ import { PresenceStack, whereLabel } from './PresenceStack'
  *
  * Es deliberadamente pasivo: no interrumpe, no roba el foco y no tapa la acción
  * (vive abajo a la izquierda, fuera del camino de los botones). Al pasar el
- * cursor detalla quién es cada quien y qué está tocando.
+ * cursor (o tocar, en móvil) detalla quién es cada quien y qué está tocando,
+ * con estilo de presencia tipo Figma/Linear: avatar, rol y estado en vivo.
+ *
+ * Pensado para escalar: con muchísima gente la píldora colapsada no crece (solo
+ * avatares + "+N") y la lista abierta tiene tope de alto con scroll y de ancho
+ * al viewport, para que nunca se coma la pantalla ni entorpezca en el celular.
  */
 export function ViewPresenceChip() {
   const { t } = useTranslation()
   const peers = usePeersInMyView()
-  const [hovered, setHovered] = useState(false)
+  // Un único estado abierto/cerrado, gobernado por el clic/tap. Antes el hover
+  // también expandía y peleaba con el clic: al hacer clic para cerrar, el puntero
+  // seguía encima y lo mantenía abierto ("no deja cerrar"). El clic manda y
+  // funciona igual en escritorio y en móvil.
+  const [open, setOpen] = useState(false)
   const focus = usePresenceStore((s) => s.focus)
 
   // Llegué siguiendo a alguien que está en la vista entera (no en un ítem):
-  // aquí no hay nada que resaltar, así que el aviso se abre solo y lo dice.
+  // aquí no hay nada que resaltar, así que el aviso se ABRE SOLO una vez… pero
+  // sin quedar clavado: el usuario puede colapsarlo con el chevron cuando quiera.
   const followingView = focus?.type === 'view'
-  const expanded = hovered || followingView
+  const expanded = open
+
+  // Tic para que "hace X" y el atenuado de fantasmas se refresquen aunque no
+  // lleguen eventos nuevos; solo corre mientras el detalle está a la vista.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!expanded) return
+    const id = setInterval(() => setNow(Date.now()), 10_000)
+    return () => clearInterval(id)
+  }, [expanded])
+
+  // Al llegar siguiendo a alguien, abrir el detalle una vez para que se lea el
+  // aviso. El efecto solo corre cuando `followingView` cambia a true, así que si
+  // luego lo colapsás, no se vuelve a abrir solo (respeta tu decisión).
+  useEffect(() => {
+    if (followingView) setOpen(true)
+  }, [followingView])
+
+  // Si la gente de la vista se vacía, no dejar el panel abierto en el aire.
+  useEffect(() => {
+    if (peers.length === 0 && open) setOpen(false)
+  }, [peers.length, open])
 
   if (peers.length === 0) return null
+
+  const count = peers.length
+
+  const roleLabel = (role?: string) =>
+    role === 'superadmin'
+      ? t('roles.superadmin', 'Superadmin')
+      : role === 'capacitador'
+        ? t('roles.capacitador', 'Capacitador')
+        : role === 'learner'
+          ? t('roles.learner', 'Aprendiz')
+          : null
 
   // En pantallas grandes el sidebar (w-56, z-[60]) ocupa esta esquina, así que
   // la tarjeta arranca justo a su derecha. En móvil el menú es un cajón que se
   // superpone y la esquina queda libre.
   return (
-    <div className="fixed bottom-4 left-4 md:left-[15rem] z-40 print:hidden">
+    <div className="fixed bottom-4 left-4 md:left-[15rem] z-40 print:hidden max-w-[calc(100vw-2rem)]">
       <motion.div
-        initial={{ opacity: 0, y: 8, scale: 0.95 }}
+        initial={{ opacity: 0, y: 8, scale: 0.96 }}
         animate={{
           opacity: 1,
           y: 0,
@@ -49,12 +131,16 @@ export function ViewPresenceChip() {
           damping: 30,
           boxShadow: { duration: 1.6, repeat: followingView ? 2 : 0 },
         }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        className="rounded-2xl glass-strong border border-glass-border/15 shadow-lg overflow-hidden"
+        className={cn(
+          // Superficie sólida (adapta claro/oscuro por token) en vez de glass
+          // translúcido, para que se lea limpio sobre cualquier contenido detrás.
+          'rounded-2xl bg-surface/95 backdrop-blur-xl border border-glass-border/12 overflow-hidden',
+          'ring-1 ring-black/[0.04] dark:ring-white/[0.06] shadow-xl',
+          'max-w-[min(20rem,calc(100vw-2rem))]',
+        )}
       >
-        {followingView && (
-          <p className="px-2.5 pt-2 text-[9px] font-semibold uppercase tracking-wide text-neon-green">
+        {followingView && expanded && (
+          <p className="px-3 pt-2.5 text-[9px] font-semibold uppercase tracking-wide text-neon-green">
             {t('presence.here_in_view', {
               name: focus?.peerName ?? '',
               view: t(focus?.viewKey ?? 'presence.views.somewhere'),
@@ -62,46 +148,106 @@ export function ViewPresenceChip() {
             })}
           </p>
         )}
-        <div className="flex items-center gap-2 px-2.5 py-2">
-          <span className="relative flex h-1.5 w-1.5 shrink-0">
+        {/* Fila principal: el botón que abre/cierra (clic o tap). */}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={expanded}
+          className="group w-full flex items-center gap-2.5 px-3 py-2.5 text-left cursor-pointer transition-colors hover:bg-glass/6"
+        >
+          <span className="relative flex h-2 w-2 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-neon-green opacity-60 animate-ping" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-neon-green shadow-[0_0_6px_rgba(16,212,81,0.7)]" />
           </span>
-          <PresenceStack peers={peers} size={22} max={4} showActivity={false} />
-          <span className="text-[10px] font-medium text-text-muted whitespace-nowrap">
-            {/* Con una sola persona se la nombra: "también está aquí" a secas no
-                dice nada si el avatar es de alguien que no reconocés. */}
-            {t('presence.in_this_view', { count: peers.length, name: peers[0]?.name })}
+          <PresenceStack peers={peers} size={24} max={4} showActivity={false} />
+          <span className="text-[11px] font-medium text-text-muted whitespace-nowrap truncate min-w-0">
+            {/* El plural i18next ya resuelve: con una persona la nombra; con
+                muchas cuenta a secas ("N personas más aquí"), sin alargar. */}
+            {t('presence.in_this_view', { count, name: peers[0]?.name })}
           </span>
-        </div>
+          {/* Apunta en el sentido de la acción: colapsado el panel crece hacia
+              arriba (↑ = abrir); expandido se contrae hacia abajo (↓ = cerrar). */}
+          <ChevronUp
+            className={cn(
+              'ml-auto h-3.5 w-3.5 shrink-0 text-text-subtle transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+              expanded && 'rotate-180',
+            )}
+          />
+        </button>
 
-        {/* Detalle al pasar el cursor: quién y qué está tocando */}
-        <AnimatePresence>
+        {/* Detalle al abrir: quién y qué está tocando cada quien.
+            Con tope de alto + scroll para que muchísima gente no reviente. */}
+        <AnimatePresence initial={false}>
           {expanded && (
-            <motion.ul
+            <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.16 }}
-              className="border-t border-glass-border/10 max-w-[280px]"
+              transition={{
+                // La altura frena suave (expo-out); la opacidad entra un pelín
+                // después al abrir y sale antes al cerrar, sin golpes.
+                height: { duration: 0.34, ease: [0.16, 1, 0.3, 1] },
+                opacity: { duration: 0.22, ease: 'easeOut' },
+              }}
+              className="border-t border-glass-border/10"
             >
-              {peers.map((peer) => (
-                <li key={peer.user_id} className="px-2.5 py-1.5 flex items-start gap-1.5">
-                  <span
-                    className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ background: peer.color }}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold text-text leading-tight truncate">
-                      {peer.name}
-                    </p>
-                    <p className="text-[9px] leading-tight text-text-muted break-words">
-                      {whereLabel(peer, t)}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </motion.ul>
+              {/* Cabecera del panel: solo el contador. El chevron de la fila de
+                  arriba es el único control para colapsar (sin X redundante). */}
+              <div className="px-3 py-2">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-text-subtle">
+                  {t('presence.online_count', { count })}
+                </span>
+              </div>
+              <ul className="max-h-[min(50vh,17rem)] overflow-y-auto overscroll-contain pb-1">
+                {peers.map((peer) => {
+                  const role = roleLabel(peer.role)
+                  const seconds = secondsSinceSeen(peer, now)
+                  const stale = seconds * 1000 > STALE_AFTER_MS
+                  const color = peer.color ?? colorForUser(peer.user_id)
+                  const statusColor = stale
+                    ? '#9CA3AF'
+                    : peer.activity?.dirty
+                      ? '#F59E0B'
+                      : '#10D451'
+                  return (
+                    <li
+                      key={peer.user_id}
+                      className={cn(
+                        'mx-1 rounded-lg px-2 py-1.5 flex items-center gap-2.5 transition-colors hover:bg-glass/8',
+                        stale && 'opacity-55',
+                      )}
+                    >
+                      <Avatar peer={peer} size={26} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="text-[11px] font-semibold text-text leading-tight truncate">
+                            {peer.name}
+                          </p>
+                          {role && (
+                            <span className="shrink-0 rounded-full bg-glass/10 px-1.5 py-px text-[8px] font-medium uppercase tracking-wide text-text-subtle">
+                              {role}
+                            </span>
+                          )}
+                        </div>
+                        <p
+                          className="text-[9px] leading-tight mt-0.5 flex items-center gap-1 min-w-0"
+                          style={{ color }}
+                        >
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
+                            style={{ background: statusColor }}
+                          />
+                          <span className="truncate">{whereLabel(peer, t)}</span>
+                          <span className="text-text-subtle shrink-0 whitespace-nowrap">
+                            · {agoLabel(seconds, t)}
+                          </span>
+                        </p>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
