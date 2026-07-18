@@ -1471,6 +1471,22 @@ export interface Database {
         Args: { source_course_id: string }
         Returns: string
       }
+      move_course_to_campaign: {
+        Args: { p_course_id: string; p_target_campaign_id: string }
+        Returns: undefined
+      }
+      move_module_to_campaign: {
+        Args: { p_module_id: string; p_target_campaign_id: string }
+        Returns: undefined
+      }
+      attach_module_to_course: {
+        Args: { p_module_id: string; p_course_id: string }
+        Returns: undefined
+      }
+      clone_module_to_course: {
+        Args: { p_module_id: string; p_course_id: string }
+        Returns: string
+      }
       self_enroll_course: {
         Args: { p_course_id: string }
         Returns: undefined

@@ -347,6 +347,23 @@ export async function getCourseTitlesForCampaign(
   return Object.fromEntries(((data ?? []) as Array<{ id: string; title_es: string }>).map((c) => [c.id, c.title_es]))
 }
 
+/**
+ * Títulos (id → title_es) de un conjunto de cursos por id, sin importar la
+ * campaña. Lo usa la Biblioteca de módulos para etiquetar "en el curso X" cuando
+ * los módulos vienen de varias campañas (superadmin / capacitador multi-campaña).
+ */
+export async function getCourseTitlesByIds(
+  courseIds: string[],
+): Promise<Record<string, string>> {
+  if (courseIds.length === 0) return {}
+  const { data, error } = await supabase
+    .from('courses')
+    .select('id, title_es')
+    .in('id', courseIds)
+  if (error) throw error
+  return Object.fromEntries(((data ?? []) as Array<{ id: string; title_es: string }>).map((c) => [c.id, c.title_es]))
+}
+
 /** Marca/desmarca un curso como compartible con otros capacitadores. */
 export async function setCourseShareable(courseId: string, value: boolean): Promise<void> {
   const { error } = await supabase.from('courses').update({ is_shareable: value }).eq('id', courseId)
@@ -362,6 +379,23 @@ export async function cloneCourse(sourceCourseId: string): Promise<string> {
   const { data, error } = await supabase.rpc('clone_course', { source_course_id: sourceCourseId })
   if (error) throw error
   return data as string
+}
+
+/**
+ * Mueve un curso (y TODO su contenido ligado: módulos, mundo(s) + arena y
+ * simuladores) a otra campaña. El RPC `move_course_to_campaign` corre con
+ * SECURITY DEFINER y valida la autorización server-side: superadmin puede mover
+ * a cualquier campaña; un capacitador solo entre campañas de las que es miembro.
+ */
+export async function moveCourseToCampaign(
+  courseId: string,
+  targetCampaignId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('move_course_to_campaign', {
+    p_course_id: courseId,
+    p_target_campaign_id: targetCampaignId,
+  })
+  if (error) throw error
 }
 
 export async function updateCourse(

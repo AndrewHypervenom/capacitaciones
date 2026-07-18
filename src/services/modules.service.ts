@@ -418,6 +418,23 @@ export async function deleteModule(moduleId: string): Promise<'deleted' | 'pendi
   return requestDeletion('modules', moduleId)
 }
 
+/**
+ * Mueve un módulo SUELTO (sin curso) a otra campaña. Los módulos que ya están en
+ * un curso se mueven con el curso (moveCourseToCampaign) y el RPC los rechaza. El
+ * RPC `move_module_to_campaign` valida la autorización server-side: superadmin a
+ * cualquier campaña; capacitador solo entre campañas de las que es miembro.
+ */
+export async function moveModuleToCampaign(
+  moduleId: string,
+  targetCampaignId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('move_module_to_campaign', {
+    p_module_id: moduleId,
+    p_target_campaign_id: targetCampaignId,
+  })
+  if (error) throw error
+}
+
 export async function createModule(
   campaignId: string,
   data: {
@@ -616,6 +633,53 @@ export async function getModulesRaw(campaignId: string): Promise<DbModuleRow[]> 
     .order('sort_order')
   if (error) throw error
   return (data ?? []) as unknown as DbModuleRow[]
+}
+
+/**
+ * Módulos disponibles para la Biblioteca de módulos: superadmin ve TODOS (para
+ * traer cualquier módulo a cualquier curso); el capacitador solo los de las
+ * campañas de las que es miembro (casa + colaboraciones). La RLS ya acota, pero
+ * acotamos también en el cliente para no traer de más.
+ */
+export async function getLibraryModules(opts: {
+  isSuperAdmin: boolean
+  campaignIds: string[]
+}): Promise<DbModuleRow[]> {
+  let query = supabase.from('modules').select('*, module_sections(id)').order('sort_order')
+  if (!opts.isSuperAdmin) {
+    if (opts.campaignIds.length === 0) return []
+    query = query.in('campaign_id', opts.campaignIds)
+  }
+  const { data, error } = await query
+  if (error) throw error
+  return (data ?? []) as unknown as DbModuleRow[]
+}
+
+/**
+ * Trae un módulo SUELTO a un curso (posiblemente de otra campaña): el mismo
+ * módulo cambia de curso y pasa a la campaña del curso destino. RPC SECURITY
+ * DEFINER: superadmin cualquier módulo/curso; capacitador solo entre sus campañas.
+ */
+export async function attachModuleToCourse(moduleId: string, courseId: string): Promise<void> {
+  const { error } = await supabase.rpc('attach_module_to_course', {
+    p_module_id: moduleId,
+    p_course_id: courseId,
+  })
+  if (error) throw error
+}
+
+/**
+ * Copia (deep-copy independiente) un módulo a un curso, creándolo en la campaña
+ * del curso destino. Devuelve el id del clon. RPC SECURITY DEFINER con la misma
+ * autorización que attachModuleToCourse.
+ */
+export async function cloneModuleToCourse(moduleId: string, courseId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('clone_module_to_course', {
+    p_module_id: moduleId,
+    p_course_id: courseId,
+  })
+  if (error) throw error
+  return data as string
 }
 
 export async function getModuleWithSectionsRaw(moduleId: string): Promise<DbModuleWithSections> {

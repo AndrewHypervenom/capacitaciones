@@ -5,6 +5,7 @@ import {
   Award,
   ArrowDown,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowUp,
   BookOpen,
   Check,
@@ -40,6 +41,7 @@ import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
   updateCourse,
+  moveCourseToCampaign,
   removeModuleFromCourse,
   reorderCourseModules,
   getCourseCampaigns,
@@ -55,9 +57,10 @@ import {
   type CourseAssignmentRow,
   type CourseStats,
 } from '@/services/courses.service'
-import { cloneModule, getModulesRaw, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
 import { getAllChoiceScenariosAdmin, updateChoiceScenario, type ChoiceScenarioRow } from '@/services/choiceScenarios.admin.service'
 import { getCourseEvaluationResults } from '@/services/certification.service'
@@ -130,7 +133,7 @@ export default function CourseEditor() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
-  const { isSuperAdmin, campaignId: authCampaignId } = useAuth()
+  const { isSuperAdmin, campaignId: authCampaignId, user } = useAuth()
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   const [loading, setLoading] = useState(true)
@@ -182,6 +185,11 @@ export default function CourseEditor() {
 
   // Asignaciones — `*Base` = lo que hay en BD; `draft*` = edición local pendiente de guardar
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  // Campañas a las que ESTE usuario puede mover el curso (casa + colaboraciones;
+  // superadmin: todas). A diferencia de `campaigns`, ya viene acotado a lo suyo.
+  const [accessibleCampaigns, setAccessibleCampaigns] = useState<Campaign[]>([])
+  const [moveTargetId, setMoveTargetId] = useState('')
+  const [movingCampaign, setMovingCampaign] = useState(false)
   const [courseCampaigns, setCourseCampaigns] = useState<CourseCampaignRow[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
@@ -240,19 +248,36 @@ export default function CourseEditor() {
     reload().finally(() => setLoading(false))
   }, [reload])
 
-  // Módulos de la campaña dueña (la biblioteca desde la que se puebla el curso)
+  // Módulos disponibles para la Biblioteca: superadmin ve TODOS (traer cualquier
+  // módulo a cualquier curso); el capacitador, los de sus campañas accesibles.
   const reloadModules = useCallback(async () => {
-    if (!course?.campaign_id) return
+    if (!isSuperAdmin && accessibleCampaigns.length === 0) return
     try {
-      setCampaignModules(await getModulesRaw(course.campaign_id))
+      setCampaignModules(
+        await getLibraryModules({
+          isSuperAdmin,
+          campaignIds: accessibleCampaigns.map((c) => c.id),
+        }),
+      )
     } catch {
       /* la biblioteca queda con lo último bueno */
     }
-  }, [course?.campaign_id])
+  }, [isSuperAdmin, accessibleCampaigns])
 
   useEffect(() => {
     void reloadModules()
   }, [reloadModules, course?.modules.length])
+
+  // Campañas a las que este usuario puede mover el curso.
+  useEffect(() => {
+    getAccessibleCampaigns({
+      isSuperAdmin,
+      homeCampaignId: authCampaignId,
+      userId: user?.id ?? null,
+    })
+      .then(setAccessibleCampaigns)
+      .catch(() => setAccessibleCampaigns([]))
+  }, [isSuperAdmin, authCampaignId, user?.id])
 
   // Métricas agregadas del curso (el RPC autoriza solo al dueño/superadmin;
   // si no está autorizado o falla, simplemente no se muestra el panel).
@@ -479,6 +504,32 @@ export default function CourseEditor() {
       toast.error(t('admin.courses.error_save'), errMsg(e))
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Mueve el curso (y todo su contenido: módulos, mundo, simuladores) a otra
+  // campaña. Resuelve el caso del capacitador que creó el curso en la campaña
+  // equivocada y no tenía cómo reubicarlo.
+  const handleMoveCampaign = async () => {
+    if (!moveTargetId || moveTargetId === course.campaign_id) return
+    const targetName = accessibleCampaigns.find((c) => c.id === moveTargetId)?.name ?? ''
+    const ok = await confirm({
+      title: t('admin.courses.move_campaign_title'),
+      description: t('admin.courses.move_campaign_confirm', { name: targetName }),
+    })
+    if (!ok) return
+    setMovingCampaign(true)
+    try {
+      await moveCourseToCampaign(course.id, moveTargetId)
+      invalidateModulesCache()
+      toast.success(t('admin.courses.move_campaign_ok', { name: targetName }))
+      setMoveTargetId('')
+      await reload()
+    } catch (e) {
+      console.error('[CourseEditor] handleMoveCampaign', e)
+      toast.error(t('admin.courses.move_campaign_error'), errMsg(e))
+    } finally {
+      setMovingCampaign(false)
     }
   }
 
@@ -1429,6 +1480,48 @@ export default function CourseEditor() {
               </Button>
             </div>
           </GlassCard>
+
+          {/* Mover el curso a otra campaña. Solo aparece si el usuario tiene más de
+              una campaña a la que moverlo (capacitador multi-campaña o superadmin). */}
+          {accessibleCampaigns.length > 1 && (
+            <GlassCard intensity="subtle" rounded="2xl" className="p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-glass/8 text-text-muted">
+                  <ArrowLeftRight className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-[13px] font-semibold text-text">{t('admin.courses.move_campaign_title')}</h2>
+                  <p className="text-[11px] text-text-muted mt-0.5">{t('admin.courses.move_campaign_hint')}</p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <Select
+                    value={moveTargetId}
+                    onChange={setMoveTargetId}
+                    disabled={movingCampaign}
+                    placeholder={t('admin.courses.move_campaign_placeholder')}
+                    options={[
+                      { value: '', label: t('admin.courses.move_campaign_placeholder') },
+                      ...accessibleCampaigns
+                        .filter((c) => c.id !== course.campaign_id)
+                        .map((c) => ({ value: c.id, label: c.name })),
+                    ]}
+                  />
+                </div>
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={handleMoveCampaign}
+                  disabled={movingCampaign || !moveTargetId || moveTargetId === course.campaign_id}
+                  className="flex items-center gap-1.5 shrink-0"
+                >
+                  {movingCampaign ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+                  {t('admin.courses.move_campaign_action')}
+                </Button>
+              </div>
+            </GlassCard>
+          )}
         </div>
       )}
 
@@ -1602,7 +1695,8 @@ export default function CourseEditor() {
           courseId={course.id}
           courseTitle={course.title_es}
           modules={campaignModules}
-          maxSortOrder={Math.max(0, ...course.modules.map((m) => m.course_sort_order))}
+          campaignNames={Object.fromEntries(accessibleCampaigns.map((c) => [c.id, c.name]))}
+          canMoveAny={isSuperAdmin}
           onClose={() => setLibraryOpen(false)}
           onChanged={async () => {
             invalidateModulesCache()

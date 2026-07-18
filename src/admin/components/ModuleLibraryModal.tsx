@@ -16,8 +16,8 @@ import { useTranslation } from 'react-i18next'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
-import { cloneModule, type DbModuleRow } from '@/services/modules.service'
-import { addModuleToCourse, getCourseTitlesForCampaign } from '@/services/courses.service'
+import { attachModuleToCourse, cloneModuleToCourse, type DbModuleRow } from '@/services/modules.service'
+import { getCourseTitlesByIds } from '@/services/courses.service'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 
 type Filter = 'all' | 'free' | 'used'
@@ -26,10 +26,16 @@ interface ModuleLibraryModalProps {
   campaignId: string
   courseId: string
   courseTitle: string
-  /** Módulos de la campaña, ya cargados por el editor del curso. */
+  /** Módulos disponibles (de las campañas accesibles), cargados por el editor. */
   modules: DbModuleRow[]
-  /** Orden más alto usado en el curso, para encolar los nuevos al final. */
-  maxSortOrder: number
+  /** Nombres de campaña (id → nombre) para etiquetar módulos de otras campañas. */
+  campaignNames?: Record<string, string>
+  /**
+   * Permite MOVER cualquier módulo (aunque esté en otro curso u otra campaña),
+   * relocalizándolo. Solo el superadmin: el capacitador únicamente mueve módulos
+   * sueltos de la misma campaña, para no vaciar campañas ajenas.
+   */
+  canMoveAny?: boolean
   onClose: () => void
   /** Recarga el curso tras mover/copiar. */
   onChanged: () => void | Promise<void>
@@ -49,7 +55,8 @@ export function ModuleLibraryModal({
   courseId,
   courseTitle,
   modules,
-  maxSortOrder,
+  campaignNames = {},
+  canMoveAny = false,
   onClose,
   onChanged,
 }: ModuleLibraryModalProps) {
@@ -67,11 +74,14 @@ export function ModuleLibraryModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, busyId])
 
+  // Títulos de los cursos donde ya viven los módulos listados — de cualquier
+  // campaña, para poder etiquetar "en el curso X" en la biblioteca cross-campaña.
   useEffect(() => {
-    getCourseTitlesForCampaign(campaignId)
+    const ids = [...new Set(modules.map((m) => m.course_id).filter(Boolean) as string[])]
+    getCourseTitlesByIds(ids)
       .then(setCourseTitles)
       .catch(() => setCourseTitles({}))
-  }, [campaignId])
+  }, [modules])
 
   const counts = useMemo(() => {
     let free = 0
@@ -110,12 +120,12 @@ export function ModuleLibraryModal({
   const handleMove = async (mod: DbModuleRow) => {
     setBusyId(mod.id)
     try {
-      await addModuleToCourse(courseId, mod.id, maxSortOrder + 1)
+      await attachModuleToCourse(mod.id, courseId)
       toast.success(t('admin.courses.library.moved', { title: mod.title_es }))
       await finish(mod.id)
     } catch (e) {
       console.error('[ModuleLibrary] move', e)
-      toast.error(t('admin.courses.error_save'))
+      toast.error(t('admin.courses.error_save'), e instanceof Error ? e.message : undefined)
     } finally {
       setBusyId(null)
     }
@@ -123,22 +133,18 @@ export function ModuleLibraryModal({
 
   const handleCopy = async (mod: DbModuleRow) => {
     setBusyId(mod.id)
-    setProgress({ done: 0, total: mod.module_sections?.length ?? 0 })
+    // El deep-copy corre server-side (RPC): no hay avance por sección; un spinner
+    // indeterminado basta.
+    setProgress(null)
     try {
-      await cloneModule(mod.id, {
-        targetCourseId: courseId,
-        courseSortOrder: maxSortOrder + 1,
-        titleSuffix: t('admin.courses.library.copy_suffix'),
-        onProgress: (done, total) => setProgress({ done, total }),
-      })
+      await cloneModuleToCourse(mod.id, courseId)
       toast.success(t('admin.courses.library.copied', { title: mod.title_es }))
       await finish(mod.id)
     } catch (e) {
       console.error('[ModuleLibrary] copy', e)
-      toast.error(t('admin.courses.library.copy_error'))
+      toast.error(t('admin.courses.library.copy_error'), e instanceof Error ? e.message : undefined)
     } finally {
       setBusyId(null)
-      setProgress(null)
     }
   }
 
@@ -244,6 +250,15 @@ export function ModuleLibraryModal({
                   <AnimatePresence initial={false} mode="popLayout">
                     {rows.map((mod, i) => {
                       const inOtherCourse = !!mod.course_id
+                      const sameCampaign = mod.campaign_id === campaignId
+                      // Mover reubica el módulo (lo saca de su curso/campaña actual).
+                      // El superadmin puede mover cualquiera; el capacitador solo un
+                      // módulo suelto de la misma campaña, para no vaciar campañas
+                      // ajenas ni arrancar módulos de otros cursos.
+                      const canMove = canMoveAny || (!inOtherCourse && sameCampaign)
+                      // Al mover uno que ya vive en otro curso/campaña, se le quita de
+                      // ahí: el texto lo advierte para que no sorprenda.
+                      const moveRelocates = inOtherCourse || !sameCampaign
                       const isBusy = busyId === mod.id
                       const isDone = justDone === mod.id
                       const disabled = !!busyId && !isBusy
@@ -303,6 +318,9 @@ export function ModuleLibraryModal({
                                 {!mod.is_published && (
                                   <NeonBadge color="neutral">{t('admin.courses.draft')}</NeonBadge>
                                 )}
+                                {mod.campaign_id !== campaignId && campaignNames[mod.campaign_id] && (
+                                  <NeonBadge color="cyan">{campaignNames[mod.campaign_id]}</NeonBadge>
+                                )}
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-subtle">
                                 <span>{t('admin.courses.library.meta', { min: mod.duration_min, count: sections })}</span>
@@ -335,13 +353,13 @@ export function ModuleLibraryModal({
                                 </span>
                               ) : (
                                 <>
-                                  {/* Mover solo tiene sentido si el módulo no está en otro
-                                      curso: mover uno usado lo arrancaría de su curso actual. */}
-                                  {!inOtherCourse && (
+                                  {/* Mover reubica el módulo (lo saca de su curso/campaña).
+                                      Visible según el rol (superadmin: cualquiera). */}
+                                  {canMove && (
                                     <button
                                       onClick={() => handleMove(mod)}
                                       disabled={disabled}
-                                      title={t('admin.courses.library.move_hint')}
+                                      title={t(moveRelocates ? 'admin.courses.library.move_hint_relocate' : 'admin.courses.library.move_hint')}
                                       className="flex h-9 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-medium text-text-muted transition-colors hover:border-line hover:bg-glass/8 hover:text-text disabled:opacity-40"
                                     >
                                       <ArrowRight className="h-3.5 w-3.5" />

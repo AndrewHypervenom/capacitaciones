@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Loader2, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -8,6 +8,7 @@ import {
   getModuleCampaignId,
   toggleModulePublished,
   deleteModule,
+  moveModuleToCampaign,
   type DbModuleRow,
 } from '@/services/modules.service'
 import { getCoursesForCampaign, type CourseWithModules } from '@/services/courses.service'
@@ -20,7 +21,9 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { Select } from '@/components/ui/Select'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
@@ -40,6 +43,12 @@ export default function ModuleList() {
   const [courses, setCourses] = useState<CourseWithModules[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Mover un módulo suelto a otra campaña (los módulos dentro de un curso se
+  // mueven con el curso). moveModule = módulo elegido; el resto es el diálogo.
+  const [moveModule, setMoveModule] = useState<DbModuleRow | null>(null)
+  const [moveTargetId, setMoveTargetId] = useState('')
+  const [movingModule, setMovingModule] = useState(false)
 
   // Foco que manda la barra de presencia: la campaña y el módulo donde está la
   // persona que se pulsó.
@@ -150,6 +159,28 @@ export default function ModuleList() {
     }
   }
 
+  const handleMoveModule = async () => {
+    if (!moveModule || !moveTargetId || moveTargetId === selectedCampaignId) return
+    setMovingModule(true)
+    try {
+      await moveModuleToCampaign(moveModule.id, moveTargetId)
+      setModules((prev) => prev.filter((m) => m.id !== moveModule.id))
+      const targetName = campaigns.find((c) => c.id === moveTargetId)?.name ?? ''
+      toast.success(t('admin.modules.move_ok', { name: targetName }))
+      setMoveModule(null)
+      setMoveTargetId('')
+    } catch (e) {
+      toast.error(
+        t('admin.modules.move_error'),
+        e instanceof Error ? e.message : undefined,
+      )
+    } finally {
+      setMovingModule(false)
+    }
+  }
+
+  const moveBackdrop = useBackdropDismiss(() => setMoveModule(null), !movingModule)
+
   // Agrupar módulos por curso para reflejar la jerarquía Campaña → Curso → Módulo.
   const { courseGroups, orphans } = useMemo(() => {
     const byCourse = new Map<string, DbModuleRow[]>()
@@ -177,7 +208,7 @@ export default function ModuleList() {
     return { courseGroups: groups, orphans: orphanList }
   }, [modules, courses])
 
-  const renderModule = (mod: DbModuleRow, idx: number) => (
+  const renderModule = (mod: DbModuleRow, idx: number, movable = false) => (
     <GlassCard
       key={mod.id}
       intensity="subtle"
@@ -232,6 +263,16 @@ export default function ModuleList() {
           >
             {mod.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </button>
+
+          {movable && campaigns.length > 1 && (
+            <button
+              onClick={() => { setMoveModule(mod); setMoveTargetId('') }}
+              title={t('admin.modules.move_title')}
+              className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+            </button>
+          )}
 
           <button
             onClick={() => handleDelete(mod)}
@@ -378,7 +419,7 @@ export default function ModuleList() {
                   <span className="text-[11px] text-text-subtle shrink-0">{orphans.length}</span>
                 </div>
                 <div className="space-y-3">
-                  {orphans.map((mod, idx) => renderModule(mod, idx))}
+                  {orphans.map((mod, idx) => renderModule(mod, idx, true))}
                 </div>
               </div>
             )}
@@ -390,6 +431,56 @@ export default function ModuleList() {
         <p className="text-[11px] text-text-subtle mt-4 text-center">
           Usa el ícono <ExternalLink className="h-3 w-3 inline" /> para previsualizar cómo verá el aprendiz cada módulo
         </p>
+      )}
+
+      {/* Mover un módulo suelto a otra campaña */}
+      {moveModule && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" {...moveBackdrop}>
+          <div className="w-full max-w-md rounded-2xl bg-bg border border-line p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-[17px] font-semibold text-text flex items-center gap-2">
+                <ArrowLeftRight className="h-4 w-4 text-text-muted" />
+                {t('admin.modules.move_title')}
+              </h2>
+              <button
+                onClick={() => setMoveModule(null)}
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-[12px] text-text-muted mb-4">
+              {t('admin.modules.move_hint', { title: moveModule.title_es })}
+            </p>
+            <Select
+              value={moveTargetId}
+              onChange={setMoveTargetId}
+              disabled={movingModule}
+              placeholder={t('admin.modules.move_placeholder')}
+              options={[
+                { value: '', label: t('admin.modules.move_placeholder') },
+                ...campaigns
+                  .filter((c) => c.id !== selectedCampaignId)
+                  .map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            />
+            <div className="flex justify-end gap-2 mt-5">
+              <Button variant="ghost" size="sm" onClick={() => setMoveModule(null)} disabled={movingModule}>
+                {t('admin.modules.move_cancel')}
+              </Button>
+              <Button
+                variant="neon"
+                size="sm"
+                onClick={handleMoveModule}
+                disabled={movingModule || !moveTargetId}
+                className="flex items-center gap-1.5"
+              >
+                {movingModule ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+                {t('admin.modules.move_action')}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
