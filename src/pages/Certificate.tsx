@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Download, Lock, Linkedin, Link2 } from 'lucide-react';
+import { ArrowLeft, Download, Lock, Linkedin, Link2, RefreshCw } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
 import { getCourseById, type CourseWithModules } from '@/services/courses.service';
 import {
   getCourseCertStatus, issueCertification,
-  getCourseActivitySummary, getCourseEvaluationResults,
+  getCourseActivitySummary, getCourseEvaluationResults, getCourseRecertStatus,
   type CourseActivitySummary,
 } from '@/services/certification.service';
-import type { CourseCertStatus, CourseEvaluationResult } from '@/types/database';
+import type { CourseCertStatus, CourseEvaluationResult, CourseRecertStatus } from '@/types/database';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { useProgressStore } from '@/stores/progressStore';
@@ -111,6 +111,9 @@ export default function Certificate() {
   const [course, setCourse] = useState<CourseWithModules | null>(null);
   const [status, setStatus] = useState<CourseCertStatus | null>(null);
   const [learner, setLearner] = useState<CourseEvaluationResult | null>(null);
+  // Estado de recertificación del aprendiz en vista de capacitador (en la vista
+  // propia ya viene dentro de `status`).
+  const [learnerRecert, setLearnerRecert] = useState<CourseRecertStatus | null>(null);
   const [activity, setActivity] = useState<CourseActivitySummary>({ score: null, completedAt: null });
   const [loading, setLoading] = useState(true);
   const certRef = useRef<HTMLElement>(null);
@@ -136,15 +139,17 @@ export default function Certificate() {
 
       if (viewUserId) {
         // ── Vista del capacitador ──
-        const [rows, act] = await Promise.all([
+        const [rows, act, recertRows] = await Promise.all([
           getCourseEvaluationResults(courseId).catch(() => [] as CourseEvaluationResult[]),
           getCourseActivitySummary(courseId, moduleIds, viewUserId).catch(
             () => ({ score: null, completedAt: null }) as CourseActivitySummary,
           ),
+          getCourseRecertStatus(courseId).catch(() => [] as CourseRecertStatus[]),
         ]);
         if (!active) return;
         setLearner(rows.find((r) => r.user_id === viewUserId) ?? null);
         setActivity(act);
+        setLearnerRecert(recertRows.find((r) => r.user_id === viewUserId) ?? null);
         return;
       }
 
@@ -226,8 +231,30 @@ export default function Certificate() {
 
   // ── Variables unificadas (aprendiz propio / vista del capacitador) ──
   const viewName = trainerMode ? (learner?.display_name || '—') : name;
-  const completedCount = trainerMode ? learner!.modules_done : status!.modules_done;
-  const totalModules = trainerMode ? learner!.modules_total : status!.modules_total;
+
+  // ── Recertificación (unificado aprendiz / capacitador) ──
+  const needsRecert = trainerMode
+    ? !!learnerRecert?.needs_recert
+    : !!status?.needs_recert;
+  const recertExpired = trainerMode ? !!learnerRecert?.expired : !!status?.expired;
+  const newModulesCount = trainerMode
+    ? (learnerRecert?.new_module_ids.length ?? 0)
+    : (status?.new_modules_count ?? 0);
+
+  // El certificado emitido muestra el curso COMO ERA al emitirse. Sin esto, el
+  // "N de M módulos" impreso cambiaba solo con que el capacitador publicara
+  // contenido nuevo. `modules_at_issue` viene congelado en certifications.
+  // `|| null` y no `??`: el RPC devuelve 0 cuando no hay snapshot (certificado
+  // anterior al SQL, o RPC sin desplegar). Un 0 imprimiría "0 de 0 módulos",
+  // así que en ese caso caemos al conteo en vivo.
+  const modulesAtIssue = trainerMode
+    ? (learnerRecert?.modules_at_issue || null)
+    : (status?.modules_at_issue || null);
+  const liveCompleted = trainerMode ? learner!.modules_done : status!.modules_done;
+  const liveTotal = trainerMode ? learner!.modules_total : status!.modules_total;
+  const totalModules = modulesAtIssue ?? liveTotal;
+  // Nunca sobrestimar: si siguió avanzando después, el certificado no lo refleja.
+  const completedCount = Math.min(liveCompleted, totalModules);
   const requireSim = trainerMode
     ? !!course?.cert_conditions?.require_simulator
     : !!status!.require_simulator;
@@ -314,6 +341,32 @@ export default function Certificate() {
           </Button>
         </div>
       </div>
+
+      {/* Aviso de recertificación. Nunca bloquea: el certificado se sigue
+          viendo, descargando y verificando. Solo avisa que quedó desfasado
+          respecto del curso actual. */}
+      {needsRecert && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-3.5">
+          <RefreshCw className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-[13px] text-text-muted">
+            <span className="block font-semibold text-text mb-0.5">
+              {recertExpired
+                ? t('certificate.recert_expired_title')
+                : t('certificate.recert_title')}
+            </span>
+            {trainerMode
+              ? t('certificate.recert_trainer_hint', { name: viewName })
+              : recertExpired
+                ? t('certificate.recert_expired_hint')
+                : t('certificate.recert_hint')}
+            {newModulesCount > 0 && (
+              <span className="block mt-1">
+                {t('certificate.recert_new_modules', { count: newModulesCount })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <Reveal>
         <CertificateFrame>

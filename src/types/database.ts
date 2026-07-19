@@ -1539,6 +1539,26 @@ export interface Database {
           issued_at: string | null
         }[]
       }
+      // Recertificación (2026-07-19_cert_snapshot_recert.sql). Un certificado
+      // emitido es inmutable; el contenido nuevo NO lo invalida solo.
+      get_course_recert_status: {
+        Args: { p_course_id: string }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          cert_id: string
+          issued_at: string
+          modules_at_issue: number
+          modules_now: number
+          new_module_ids: string[]
+          expired: boolean
+          needs_recert: boolean
+        }[]
+      }
+      request_course_recertification: {
+        Args: { p_course_id: string }
+        Returns: number
+      }
       get_live_quiz_leaderboard: {
         Args: { p_quiz_id: string }
         Returns: {
@@ -1620,6 +1640,7 @@ export type ChoiceScenario = Database['public']['Tables']['choice_scenarios']['R
 export type SimulatorAttemptRow = Database['public']['Tables']['simulator_attempts']['Row']
 export type Certification = Database['public']['Tables']['certifications']['Row']
 export type CourseEvaluationResult = Database['public']['Functions']['get_course_evaluation_results']['Returns'][number]
+export type CourseRecertStatus = Database['public']['Functions']['get_course_recert_status']['Returns'][number]
 
 /** Estado de certificación devuelto por get_course_certification_status. */
 export interface CourseCertStatus {
@@ -1636,6 +1657,17 @@ export interface CourseCertStatus {
   cert_id: string | null
   issued_at: string | null
   cert_score: number | null
+  /** Mínimo de módulos exigido cuando require_all_modules es false. */
+  min_modules_pct: number
+  // ── Recertificación (2026-07-19b). Solo con sentido si certified = true. ──
+  /** Módulos que tenía el curso cuando se emitió su certificado (congelado). */
+  modules_at_issue: number | null
+  /** Módulos publicados después de su certificado: contenido que nunca vio. */
+  new_modules_count: number
+  expires_at: string | null
+  expired: boolean
+  /** Venció, o el capacitador pidió recertificación después de su emisión. */
+  needs_recert: boolean
 }
 
 /**

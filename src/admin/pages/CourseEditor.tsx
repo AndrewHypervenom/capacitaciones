@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
+  RefreshCw,
   Award,
   ArrowDown,
   ArrowLeft,
@@ -63,9 +64,13 @@ import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkab
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
 import { getAllChoiceScenariosAdmin, updateChoiceScenario, type ChoiceScenarioRow } from '@/services/choiceScenarios.admin.service'
-import { getCourseEvaluationResults } from '@/services/certification.service'
+import {
+  getCourseEvaluationResults,
+  getCourseRecertStatus,
+  requestCourseRecertification,
+} from '@/services/certification.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
-import type { Campaign, CertConditions, Profile, CourseEvaluationResult } from '@/types/database'
+import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseRecertStatus } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -210,6 +215,9 @@ export default function CourseEditor() {
   // Resultados por aprendiz (para ver/descargar sus certificados).
   const [results, setResults] = useState<CourseEvaluationResult[]>([])
   const [resultsLoading, setResultsLoading] = useState(false)
+  // Recertificación: quién quedó con el certificado "viejo" tras publicar contenido.
+  const [recert, setRecert] = useState<CourseRecertStatus[]>([])
+  const [recertBusy, setRecertBusy] = useState(false)
   // El simulador es opcional y poco frecuente: la sección va plegada por defecto
   // y se auto-expande solo si el curso ya lo usa (escenarios ligados o requerido).
   const [simOpen, setSimOpen] = useState(false)
@@ -428,6 +436,10 @@ export default function CourseEditor() {
         .then(setResults)
         .catch(() => setResults([]))
         .finally(() => setResultsLoading(false))
+      // Independiente de los resultados: si el SQL no está corrido devuelve [].
+      getCourseRecertStatus(courseId)
+        .then(setRecert)
+        .catch(() => setRecert([]))
     }
   }, [loadScenarios, courseId])
 
@@ -848,6 +860,40 @@ export default function CourseEditor() {
       toast.error(t('admin.courses.error_save'))
     } finally {
       setSavingEval(false)
+    }
+  }
+
+  // Aprendices ya certificados a los que les falta ver contenido publicado
+  // después de su certificado. Informativo: no invalida nada por sí solo.
+  const outdatedCerts = useMemo(
+    () => recert.filter((r) => r.new_module_ids.length > 0),
+    [recert],
+  )
+  const pendingRecert = useMemo(() => recert.filter((r) => r.needs_recert), [recert])
+
+  /**
+   * Pide recertificación a TODO el curso. Es deliberadamente explícito y con
+   * confirmación: marca el corte y deja desactualizados los certificados
+   * anteriores. No los borra — siguen siendo verificables públicamente.
+   */
+  const handleRequestRecert = async () => {
+    if (!courseId) return
+    const ok = await confirm({
+      title: t('admin.courses.recert_confirm_title'),
+      description: t('admin.courses.recert_confirm_msg', { count: recert.length }),
+      confirmLabel: t('admin.courses.recert_confirm_cta'),
+      tone: 'default', // no es destructivo: los certificados viejos siguen válidos
+    })
+    if (!ok) return
+    setRecertBusy(true)
+    try {
+      const affected = await requestCourseRecertification(courseId)
+      toast.success(t('admin.courses.recert_done', { count: affected }))
+      setRecert(await getCourseRecertStatus(courseId))
+    } catch {
+      toast.error(t('admin.courses.recert_error'))
+    } finally {
+      setRecertBusy(false)
     }
   }
 
@@ -2302,6 +2348,46 @@ export default function CourseEditor() {
             </h2>
             <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.results_hint')}</p>
 
+            {/* ── Aviso de contenido nuevo posterior a certificados emitidos ──
+                Aparece SOLO si hay aprendices certificados que se perdieron
+                módulos publicados después. El certificado que ya ganaron sigue
+                siendo válido; recertificar es una decisión explícita. */}
+            {outdatedCerts.length > 0 && (
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3.5">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-text mb-0.5">
+                      {t('admin.courses.recert_new_content_title', { count: outdatedCerts.length })}
+                    </div>
+                    <p className="text-[12px] text-text-muted">
+                      {t('admin.courses.recert_new_content_hint')}
+                    </p>
+
+                    {pendingRecert.length > 0 && (
+                      <p className="text-[12px] text-amber-500 mt-1.5 font-medium">
+                        {t('admin.courses.recert_pending', { count: pendingRecert.length })}
+                      </p>
+                    )}
+
+                    <div className="mt-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRequestRecert}
+                        disabled={recertBusy}
+                      >
+                        <RefreshCw className={cn('h-3.5 w-3.5', recertBusy && 'animate-spin')} />
+                        {recertBusy
+                          ? t('admin.courses.recert_working')
+                          : t('admin.courses.recert_cta')}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {resultsLoading ? (
               <div className="text-[13px] text-text-muted">{t('admin.courses.results_loading')}</div>
             ) : results.length === 0 ? (
@@ -2312,6 +2398,8 @@ export default function CourseEditor() {
               <div className="space-y-2">
                 {results.map((r) => {
                   const pct = r.modules_total > 0 ? Math.round((r.modules_done / r.modules_total) * 100) : 0
+                  const rc = recert.find((x) => x.user_id === r.user_id)
+                  const missedModules = rc?.new_module_ids.length ?? 0
                   return (
                     <div key={r.user_id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
                       <div className="h-8 w-8 shrink-0 rounded-full bg-subtle border border-line flex items-center justify-center text-[12px] font-semibold text-text-muted">
@@ -2323,9 +2411,36 @@ export default function CourseEditor() {
                         </div>
                         <div className="text-[11px] text-text-muted">
                           {t('admin.courses.results_modules', { done: r.modules_done, total: r.modules_total })} · {pct}%
+                          {/* Contexto del certificado: cuántos módulos tenía el
+                              curso cuando se certificó vs. cuántos hay hoy. */}
+                          {rc && missedModules > 0 && (
+                            <>
+                              {' · '}
+                              <span className="text-amber-500">
+                                {t('admin.courses.recert_row_new', {
+                                  count: missedModules,
+                                  at: rc.modules_at_issue,
+                                })}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
-                      {r.certified ? (
+                      {r.certified && rc?.needs_recert ? (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-500 shrink-0"
+                          title={
+                            rc.expired
+                              ? t('admin.courses.recert_badge_expired_hint')
+                              : t('admin.courses.recert_badge_requested_hint')
+                          }
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          {rc.expired
+                            ? t('admin.courses.recert_badge_expired')
+                            : t('admin.courses.recert_badge')}
+                        </span>
+                      ) : r.certified ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-semibold text-primary shrink-0">
                           <Award className="h-3 w-3" /> {t('admin.courses.results_certified')}
                         </span>

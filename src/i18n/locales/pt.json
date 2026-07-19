@@ -303,7 +303,12 @@
     "best_score": "Melhor pontuação: {{score}}",
     "reqs_met": "{{done}}/{{total}} requisitos",
     "pending_hint": "Conclua as condições pendentes para desbloquear seu certificado.",
-    "no_sim_available": "Este curso ainda não tem uma simulação publicada. Peça ao seu treinador que vincule uma (ou desative este requisito)."
+    "no_sim_available": "Este curso ainda não tem uma simulação publicada. Peça ao seu treinador que vincule uma (ou desative este requisito).",
+    "recert_title": "Seu capacitador solicitou recertificação",
+    "recert_hint": "Seu certificado atual continua válido e você pode baixá-lo. Quando puder, percorra o curso de novo para se certificar no conteúdo atualizado.",
+    "recert_expired_title": "Seu certificado venceu",
+    "recert_expired_hint": "Ultrapassou seu período de validade. Você ainda pode baixá-lo como comprovante, mas vale a pena se certificar de novo.",
+    "recert_new_modules": "{{count}} módulo(s) foram adicionados depois que você se certificou."
   },
   "roles": {
     "superadmin": "Superadmin",
@@ -578,7 +583,13 @@
     "locked_title": "Certificado em andamento",
     "locked_hint": "Conclua todos os módulos e atinja ao menos {{score}} pontos no simulador para desbloquear seu certificado.",
     "signature": "LearningAI",
-    "sample_name": "Seu Nome Aqui"
+    "sample_name": "Seu Nome Aqui",
+    "recert_title": "Este certificado ficou desatualizado",
+    "recert_hint": "Continua válido e você pode baixá-lo ou compartilhá-lo. Seu capacitador solicitou recertificação: quando puder, percorra o curso de novo.",
+    "recert_expired_title": "Este certificado venceu",
+    "recert_expired_hint": "Ultrapassou seu período de validade. Você ainda pode baixá-lo como comprovante, mas vale a pena se certificar de novo.",
+    "recert_trainer_hint": "O certificado de {{name}} continua válido e verificável, mas reflete o curso como estava na emissão.",
+    "recert_new_modules": "{{count}} módulo(s) foram publicados depois da emissão."
   },
   "public_certificate": {
     "verified_badge": "Certificado verificado",
@@ -1353,7 +1364,22 @@
       "stats_completed": "Concluíram",
       "stats_avg_progress": "Progresso médio",
       "stats_your_learners": "Seus aprendizes",
-      "stats_global_reach": "{{n}} no total (todas as campanhas)"
+      "stats_global_reach": "{{n}} no total (todas as campanhas)",
+      "recert_new_content_title": "{{count}} aprendiz(es) certificados antes do conteúdo atual",
+      "recert_new_content_hint": "O certificado continua válido: reflete o curso como estava quando o conquistaram. Publicar módulos novos não o invalida. Se o conteúdo novo for relevante, solicite a recertificação.",
+      "recert_pending": "{{count}} com recertificação pendente.",
+      "recert_row_new": "{{count}} módulo(s) novo(s) desde o certificado (tinha {{at}})",
+      "recert_cta": "Solicitar recertificação",
+      "recert_working": "Solicitando…",
+      "recert_confirm_title": "Solicitar recertificação do curso",
+      "recert_confirm_msg": "Os {{count}} certificados já emitidos ficarão marcados como desatualizados e os aprendizes verão que precisam se certificar de novo. Nenhum certificado é apagado: os atuais continuam válidos e verificáveis.",
+      "recert_confirm_cta": "Solicitar",
+      "recert_done": "Recertificação solicitada a {{count}} aprendiz(es).",
+      "recert_error": "Não foi possível solicitar a recertificação.",
+      "recert_badge": "Recertificar",
+      "recert_badge_expired": "Vencido",
+      "recert_badge_requested_hint": "O capacitador solicitou recertificação depois que este certificado foi emitido.",
+      "recert_badge_expired_hint": "O certificado ultrapassou seu período de validade."
     },
     "simulations": {
       "save": "Salvar",

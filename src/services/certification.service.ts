@@ -3,6 +3,7 @@ import type {
   CourseCertStatus,
   Certification,
   CourseEvaluationResult,
+  CourseRecertStatus,
   PublicCertificate,
   SimulatorAttemptRow,
 } from '@/types/database'
@@ -238,4 +239,47 @@ export async function getCourseEvaluationResults(
   })
   if (error) throw error
   return (data ?? []) as CourseEvaluationResult[]
+}
+
+// ─── Recertificación ─────────────────────────────────────────────────────
+
+/**
+ * Estado de recertificación de los aprendices YA certificados de un curso.
+ *
+ * Cada certificado guarda un snapshot de los módulos que existían al emitirlo
+ * (`certifications.modules_snapshot`), así que `new_module_ids` es la diferencia
+ * real contra los módulos publicados hoy: contenido que ese aprendiz nunca vio.
+ *
+ * Publicar módulos NO invalida certificados por sí solo — esto es informativo.
+ * `needs_recert` solo se enciende si el certificado venció (`valid_months`) o si
+ * el capacitador pidió recertificación explícitamente.
+ *
+ * Devuelve [] si el SQL 2026-07-19_cert_snapshot_recert.sql aún no se corrió,
+ * para que el panel siga funcionando sin la función desplegada.
+ */
+export async function getCourseRecertStatus(courseId: string): Promise<CourseRecertStatus[]> {
+  const { data, error } = await supabase.rpc('get_course_recert_status', {
+    p_course_id: courseId,
+  })
+  if (error) {
+    // 42883 = función inexistente (SQL sin correr). Cualquier otro error sí importa.
+    if (error.code === '42883') return []
+    throw error
+  }
+  return (data ?? []) as CourseRecertStatus[]
+}
+
+/**
+ * Marca el corte de recertificación del curso: los certificados emitidos ANTES
+ * de este momento quedan marcados como desactualizados. No borra ni invalida
+ * nada — el certificado viejo sigue siendo verificable en /verify/:certId.
+ *
+ * Devuelve a cuántos aprendices afecta.
+ */
+export async function requestCourseRecertification(courseId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('request_course_recertification', {
+    p_course_id: courseId,
+  })
+  if (error) throw error
+  return (data as number) ?? 0
 }

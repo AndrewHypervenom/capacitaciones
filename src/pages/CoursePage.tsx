@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Award, BookOpen, Check, Clock, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus } from 'lucide-react';
+import { ArrowLeft, Award, BookOpen, Check, Clock, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import type { Scenario } from '@/data/scenarios';
@@ -88,32 +88,28 @@ export default function CoursePage() {
     return () => { active = false; };
   }, [course?.id, completedSlugs]);
 
-  // El progreso local (localStorage) es la fuente de verdad de la UI. El RPC de
-  // certificación puede ir por detrás porque el espejo a BD (useProgressSync)
-  // tiene rebote de ~1.2 s: al terminar un módulo, el RPC alcanza a leer la BD
-  // antes de que se escriba y devuelve "0/1". Derivamos aquí el requisito de
-  // módulos desde el estado local para que "X/Y módulos" y el candado del
-  // certificado se actualicen al instante en todos los roles (superadmin,
-  // capacitador y aprendiz), sin esperar al espejo.
+  // El progreso local (localStorage) va por delante del RPC: el espejo a BD
+  // (useProgressSync) tiene rebote de ~1.2 s, así que al terminar un módulo el
+  // RPC todavía lee "0/1". Mostramos el contador optimista para que "X/Y
+  // módulos" se sienta instantáneo.
+  //
+  // Pero el CANDADO del certificado sale SOLO del servidor. Antes esto hacía
+  // `all_met: rawCertStatus.all_met || allMet` con un Math.max del progreso
+  // local, y como localStorage lo edita el usuario, se podía desbloquear el
+  // botón del certificado a mano. Ahora lo local solo puede mostrar, nunca
+  // abrir: el RPC re-consulta al cambiar `completedSlugs`, así que el botón
+  // aparece igual en cuanto el espejo se escribe.
   const certStatus = useMemo<CourseCertStatus | null>(() => {
     if (!rawCertStatus) return null;
     const localTotal = course?.modules.length ?? 0;
     const localDone = course
       ? course.modules.filter((m) => completedSlugs.includes(m.slug)).length
       : 0;
-    const modulesTotal = rawCertStatus.modules_total || localTotal;
-    const modulesDone = Math.max(rawCertStatus.modules_done, localDone);
-    const modulesOk = rawCertStatus.require_all_modules
-      ? modulesTotal > 0 && modulesDone >= modulesTotal
-      : true;
-    const allMet =
-      modulesOk && (!rawCertStatus.require_simulator || rawCertStatus.simulator_ok);
     return {
       ...rawCertStatus,
-      modules_total: modulesTotal,
-      modules_done: modulesDone,
-      modules_ok: modulesOk,
-      all_met: rawCertStatus.all_met || allMet,
+      modules_total: rawCertStatus.modules_total || localTotal,
+      modules_done: Math.max(rawCertStatus.modules_done, localDone),
+      // modules_ok / all_met quedan tal cual los devolvió el servidor.
     };
   }, [rawCertStatus, course, completedSlugs]);
 
@@ -657,6 +653,31 @@ export default function CoursePage() {
                 </span>
               )}
             </div>
+
+            {/* Recertificación: su certificado sigue siendo válido y visible.
+                Esto informa, no bloquea — el aprendiz decide cuándo rehacerlo. */}
+            {certStatus.certified && certStatus.needs_recert && (
+              <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-3.5">
+                <RefreshCw className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="text-[13px] text-text-muted">
+                  <span className="block font-semibold text-text mb-0.5">
+                    {certStatus.expired
+                      ? t('course_cert.recert_expired_title')
+                      : t('course_cert.recert_title')}
+                  </span>
+                  {certStatus.expired
+                    ? t('course_cert.recert_expired_hint')
+                    : t('course_cert.recert_hint')}
+                  {certStatus.new_modules_count > 0 && (
+                    <span className="block mt-1">
+                      {t('course_cert.recert_new_modules', {
+                        count: certStatus.new_modules_count,
+                      })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {ready ? (
               <Link

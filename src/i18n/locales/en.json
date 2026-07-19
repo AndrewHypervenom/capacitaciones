@@ -303,7 +303,12 @@
     "best_score": "Best score: {{score}}",
     "reqs_met": "{{done}}/{{total}} requirements",
     "pending_hint": "Complete the pending conditions to unlock your certificate.",
-    "no_sim_available": "This course doesn't have a published simulation yet. Ask your trainer to link one (or disable this requirement)."
+    "no_sim_available": "This course doesn't have a published simulation yet. Ask your trainer to link one (or disable this requirement).",
+    "recert_title": "Your trainer requested recertification",
+    "recert_hint": "Your current certificate is still valid and you can download it. When you can, go through the course again to certify on the updated content.",
+    "recert_expired_title": "Your certificate expired",
+    "recert_expired_hint": "It passed its validity period. You can still download it as a record, but it is worth certifying again.",
+    "recert_new_modules": "{{count}} module(s) were added after you certified."
   },
   "roles": {
     "superadmin": "Superadmin",
@@ -578,7 +583,13 @@
     "locked_title": "Certificate in progress",
     "locked_hint": "Complete all modules and reach at least {{score}} points on the simulator to unlock your certificate.",
     "signature": "LearningAI",
-    "sample_name": "Your Name Here"
+    "sample_name": "Your Name Here",
+    "recert_title": "This certificate is outdated",
+    "recert_hint": "It is still valid and you can download or share it. Your trainer requested recertification: go through the course again when you can.",
+    "recert_expired_title": "This certificate expired",
+    "recert_expired_hint": "It passed its validity period. You can still download it as a record, but it is worth certifying again.",
+    "recert_trainer_hint": "{{name}}'s certificate is still valid and verifiable, but reflects the course as it was when issued.",
+    "recert_new_modules": "{{count}} module(s) were published after it was issued."
   },
   "public_certificate": {
     "verified_badge": "Verified certificate",
@@ -1353,7 +1364,22 @@
       "stats_completed": "Completed",
       "stats_avg_progress": "Avg. progress",
       "stats_your_learners": "Your learners",
-      "stats_global_reach": "{{n}} total (all campaigns)"
+      "stats_global_reach": "{{n}} total (all campaigns)",
+      "recert_new_content_title": "{{count}} learner(s) certified before the current content",
+      "recert_new_content_hint": "Their certificate is still valid: it reflects the course as it was when they earned it. Publishing new modules does not invalidate it. If the new content matters, request recertification.",
+      "recert_pending": "{{count}} pending recertification.",
+      "recert_row_new": "{{count}} new module(s) since their certificate (had {{at}})",
+      "recert_cta": "Request recertification",
+      "recert_working": "Requesting...",
+      "recert_confirm_title": "Request course recertification",
+      "recert_confirm_msg": "The {{count}} certificates already issued will be flagged as outdated and learners will see they need to certify again. No certificate is deleted: existing ones remain valid and verifiable.",
+      "recert_confirm_cta": "Request",
+      "recert_done": "Recertification requested for {{count}} learner(s).",
+      "recert_error": "Could not request recertification.",
+      "recert_badge": "Recertify",
+      "recert_badge_expired": "Expired",
+      "recert_badge_requested_hint": "The trainer requested recertification after this certificate was issued.",
+      "recert_badge_expired_hint": "The certificate passed its validity period."
     },
     "simulations": {
       "save": "Save",
