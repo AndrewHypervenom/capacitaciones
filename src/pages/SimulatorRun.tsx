@@ -8,7 +8,8 @@ import { getScenarioBySlug } from '@/services/scenarios.service';
 import { useScenarios } from '@/hooks/useScenarios';
 import { useUserStore } from '@/stores/userStore';
 import { useSimStore } from '@/stores/simStore';
-import { endSim, startSim, stepSim, type SimState } from '@/lib/simulator';
+import { applyTurn, endSim, startSim, stepSim, type SimState } from '@/lib/simulator';
+import { callTurn } from '@/services/simGroq.service';
 import { CallTimer } from '@/components/simulator/CallTimer';
 import { CustomerPanel } from '@/components/simulator/CustomerPanel';
 import { ChatTranscript } from '@/components/simulator/ChatTranscript';
@@ -123,33 +124,50 @@ export default function SimulatorRun() {
     return <div className="mx-auto max-w-3xl px-5 pt-20 text-text-muted">{t('common.loading')}</div>;
   }
 
-  const onSend = (text: string) => {
+  const onSend = async (text: string) => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
-    const nextState = stepSim(state, scenario, text, language);
+    // El mensaje del agente aparece de inmediato + indicador de "escribiendo…"
+    // mientras la IA (Groq) genera la respuesta del cliente.
+    const withAgent: SimState = {
+      ...state,
+      messages: [...state.messages, { id: `agent-${Date.now()}`, from: 'agent', text, at: Date.now() }],
+    };
+    setState(withAgent);
+    setActive(withAgent);
+    setIsCustomerTyping(true);
 
-    // Show agent message immediately, then reveal customer reply after typing indicator
-    const hasNewCustomerMsg = nextState.messages.length > state.messages.length + 1;
+    const commit = (next: SimState) => {
+      setIsCustomerTyping(false);
+      setState(next);
+      setActive(next);
+    };
 
-    if (hasNewCustomerMsg) {
-      const intermediateState: SimState = {
-        ...state,
-        messages: nextState.messages.slice(0, -1),
-        completedChecklist: nextState.completedChecklist,
-      };
-      setState(intermediateState);
-      setActive(intermediateState);
-      setIsCustomerTyping(true);
-
-      const delay = 800 + Math.random() * 400;
-      typingTimeoutRef.current = setTimeout(() => {
-        setIsCustomerTyping(false);
-        setState(nextState);
-        setActive(nextState);
-      }, delay);
-    } else {
-      setState(nextState);
-      setActive(nextState);
+    try {
+      const result = await callTurn({
+        language,
+        scenario: {
+          title: scenario.title[language],
+          summary: scenario.summary[language],
+          customerName: scenario.customer.name,
+          reason: scenario.customer.reason[language],
+          difficulty: scenario.difficulty,
+          country: scenario.country,
+          suggestedScript: Object.values(scenario.nodes).map((n) => n.customerLine[language]),
+          checklist: scenario.checklist.map((c) => ({ id: c.id, label: c.label[language] })),
+        },
+        history: state.messages
+          .filter((m) => m.from === 'agent' || m.from === 'customer')
+          .map((m) => ({ from: m.from === 'agent' ? 'agent' : 'customer', text: m.text }) as const),
+        agentText: text,
+        alreadySatisfied: [...state.completedChecklist],
+      });
+      const next = applyTurn(state, scenario, text, result);
+      // Pequeña pausa para que el indicador de escritura se sienta natural.
+      typingTimeoutRef.current = setTimeout(() => commit(next), 300);
+    } catch {
+      // Respaldo: si Groq falla o falta la key, se usa el motor guionado.
+      commit(stepSim(state, scenario, text, language));
     }
   };
 

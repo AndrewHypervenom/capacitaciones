@@ -9,6 +9,12 @@ import type {
 
 // ─── Intentos del simulador ──────────────────────────────────────────────
 
+export interface AiFeedback {
+  summary: string
+  strengths: string[]
+  improvements: string[]
+}
+
 export interface NewSimulatorAttempt {
   courseId: string | null
   campaignId: string | null
@@ -18,6 +24,8 @@ export interface NewSimulatorAttempt {
   empathyPct: number
   resolved: boolean
   durationSec: number
+  /** Retroalimentación personalizada generada por IA (Groq), si se obtuvo. */
+  aiFeedback?: AiFeedback | null
 }
 
 /** Persiste un intento del simulador en BD (auditable, visible al capacitador). */
@@ -32,6 +40,7 @@ export async function saveSimulatorAttempt(userId: string, a: NewSimulatorAttemp
     empathy_pct: Math.round(a.empathyPct * 100),
     resolved: a.resolved,
     duration_sec: Math.round(a.durationSec),
+    ai_feedback: a.aiFeedback ?? null,
   })
   if (error) throw error
 }

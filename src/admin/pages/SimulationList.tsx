@@ -45,7 +45,7 @@ export default function SimulationList() {
   const [selectedCampaignId, setSelectedCampaignId] = useState(
     isSuperAdmin ? ALL_CAMPAIGNS : (authCampaignId ?? ''),
   )
-  const [tab, setTab] = useState<Tab>('dialogue')
+  const [tab, setTab] = useState<Tab>('choice')
   const [dialogueRows, setDialogueRows] = useState<ScenarioRow[]>([])
   const [choiceRows, setChoiceRows] = useState<ChoiceScenarioRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -172,7 +172,7 @@ export default function SimulationList() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 p-1 rounded-xl glass w-fit border border-glass-border/10">
-        {([['dialogue', t('admin.simulations.tab_calls'), PhoneCall], ['choice', t('admin.simulations.tab_choice'), MessageSquare]] as const).map(
+        {([['choice', t('admin.simulations.tab_choice'), MessageSquare], ['dialogue', t('admin.simulations.tab_calls'), PhoneCall]] as const).map(
           ([key, label, Icon]) => (
             <button
               key={key}

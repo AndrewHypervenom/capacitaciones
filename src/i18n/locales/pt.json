@@ -439,6 +439,13 @@
     "send": "Enviar",
     "result_title": "Resumo da chamada",
     "result_subtitle": "Análise ao vivo do seu desempenho.",
+    "ai_feedback": {
+      "tag": "Feedback com IA",
+      "title": "Seu desempenho, analisado",
+      "loading": "Analisando sua conversa…",
+      "strengths": "O que você fez bem",
+      "improvements": "Para melhorar na próxima vez"
+    },
     "metric_score": "Pontuação geral",
     "metric_time": "Duração da chamada",
     "metric_checklist": "Protocolo cumprido",

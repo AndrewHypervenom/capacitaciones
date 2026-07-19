@@ -5,7 +5,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Phone, PhoneOff, Star } from 'lucide-react';
 import { type ChoiceNode, type ChoiceOption, type ChoiceScenario, calcMaxPoints, getChoiceScenario } from '@/data/choiceScenarios';
 import { getChoiceScenarioBySlug } from '@/services/choiceScenarios.service';
-import { saveSimulatorAttempt } from '@/services/certification.service';
+import { saveSimulatorAttempt, type AiFeedback } from '@/services/certification.service';
+import { choiceFeedback } from '@/services/simGroq.service';
+import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
 import type { Language } from '@/stores/userStore';
@@ -132,9 +134,14 @@ export default function ChoiceSimulatorRun() {
   const [earlyEnd, setEarlyEnd] = useState(false);
   const [clockTime, setClockTime] = useState(getClockTime);
 
+  const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
+  const [feedbackReady, setFeedbackReady] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
   const attemptSavedRef = useRef(false);
+  const feedbackReqRef = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -174,9 +181,40 @@ export default function ChoiceSimulatorRun() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typing]);
 
-  // Persistir el intento en BD (auditable + cuenta para la certificación del curso).
+  // Retroalimentación personalizada con IA (Groq) sobre las decisiones tomadas.
   useEffect(() => {
-    if (phase !== 'result' || attemptSavedRef.current || !user?.id || !scenario) return;
+    if (phase !== 'result' || feedbackReqRef.current || !scenario) return;
+    feedbackReqRef.current = true;
+    const transcript = messages.map(
+      (m) => ({ from: m.speaker === 'agent' ? 'agent' : 'customer', text: m.message }) as const,
+    );
+    if (transcript.length === 0) {
+      setFeedbackLoading(false);
+      setFeedbackReady(true);
+      return;
+    }
+    const pct = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
+    let alive = true;
+    choiceFeedback({
+      language,
+      scenario: {
+        title: scenario.title[language],
+        objective: scenario.objective[language],
+        customerName: scenario.clientName,
+      },
+      transcript,
+      metrics: { scorePct: pct },
+    })
+      .then((fb) => { if (alive) setAiFeedback(fb); })
+      .catch(() => { /* IA no disponible → intento sin feedback */ })
+      .finally(() => { if (alive) { setFeedbackLoading(false); setFeedbackReady(true); } });
+    return () => { alive = false; };
+  }, [phase, scenario, messages, maxPoints, totalPoints, language]);
+
+  // Persistir el intento en BD (auditable + cuenta para la certificación del curso).
+  // Espera a que la IA termine (o falle) para guardar el feedback junto al intento.
+  useEffect(() => {
+    if (phase !== 'result' || attemptSavedRef.current || !user?.id || !scenario || !feedbackReady) return;
     attemptSavedRef.current = true;
     const pct = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
     saveSimulatorAttempt(user.id, {
@@ -188,8 +226,9 @@ export default function ChoiceSimulatorRun() {
       empathyPct: pct / 100,
       resolved: !earlyEnd && endType !== 'poor',
       durationSec: callSeconds,
+      aiFeedback,
     }).catch(() => {});
-  }, [phase, user?.id, scenario, maxPoints, totalPoints, earlyEnd, endType, callSeconds, simContext.courseId, simContext.campaignId]);
+  }, [phase, user?.id, scenario, maxPoints, totalPoints, earlyEnd, endType, callSeconds, feedbackReady, aiFeedback, simContext.courseId, simContext.campaignId]);
 
   const endCall = useCallback((node: ChoiceNode) => {
     setEndType(node.endType ?? 'poor');
@@ -266,6 +305,10 @@ export default function ChoiceSimulatorRun() {
   const handleRetry = useCallback(() => {
     clearAllTimeouts();
     attemptSavedRef.current = false;
+    feedbackReqRef.current = false;
+    setAiFeedback(null);
+    setFeedbackLoading(true);
+    setFeedbackReady(false);
     setPhase('intro');
     setMessages([]);
     setTotalPoints(0);
@@ -855,6 +898,12 @@ export default function ChoiceSimulatorRun() {
                   ))}
                 </div>
               </div>
+
+              {(feedbackLoading || aiFeedback) && (
+                <div className="mb-7">
+                  <AiFeedbackCard feedback={aiFeedback} loading={feedbackLoading} />
+                </div>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
                 <button

@@ -239,9 +239,9 @@ export default function CoursePage() {
   const startSimulation = () => {
     if (totalScenarios === 1 && simUnlocked) {
       goToSim(
-        scenarios.length === 1
-          ? { kind: 'call', id: scenarios[0].id }
-          : { kind: 'choice', id: choiceScenarios[0].id },
+        choiceScenarios.length === 1
+          ? { kind: 'choice', id: choiceScenarios[0].id }
+          : { kind: 'call', id: scenarios[0].id },
       );
     } else {
       setPickerOpen(true);
@@ -544,6 +544,42 @@ export default function CoursePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {choiceScenarios.map((scn) => (
+                  <button
+                    key={scn.id}
+                    onClick={() =>
+                      navigate(`/simulator/choice/${scn.id}`, {
+                        state: {
+                          courseId: course.id,
+                          campaignId: course.campaign_id,
+                          returnTo: `/courses/${course.slug}`,
+                        },
+                      })
+                    }
+                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all hover:border-primary hover:shadow-card-hover"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ListChecks className="h-4 w-4 text-primary" />
+                        <span className="text-[12px] text-text-muted">
+                          {t('simulator.choice_section_title')}
+                        </span>
+                      </div>
+                      <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                        {t(`simulator.choice.level_${scn.level === 'basico' ? 'basic' : scn.level === 'medio' ? 'medium' : 'advanced'}`)}
+                      </span>
+                    </div>
+                    <h3 className="text-[15px] font-semibold tracking-tight text-text mb-1.5">
+                      {scn.title[language]}
+                    </h3>
+                    <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
+                      {scn.description[language]}
+                    </p>
+                    <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
+                      {t('simulator.take_call')} →
+                    </span>
+                  </button>
+                ))}
                 {scenarios.map((scn) => (
                   <button
                     key={scn.id}
@@ -580,42 +616,6 @@ export default function CoursePage() {
                     </h3>
                     <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
                       {scn.summary[language]}
-                    </p>
-                    <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
-                      {t('simulator.take_call')} →
-                    </span>
-                  </button>
-                ))}
-                {choiceScenarios.map((scn) => (
-                  <button
-                    key={scn.id}
-                    onClick={() =>
-                      navigate(`/simulator/choice/${scn.id}`, {
-                        state: {
-                          courseId: course.id,
-                          campaignId: course.campaign_id,
-                          returnTo: `/courses/${course.slug}`,
-                        },
-                      })
-                    }
-                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all hover:border-primary hover:shadow-card-hover"
-                  >
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ListChecks className="h-4 w-4 text-primary" />
-                        <span className="text-[12px] text-text-muted">
-                          {t('simulator.choice_section_title')}
-                        </span>
-                      </div>
-                      <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                        {t(`simulator.choice.level_${scn.level === 'basico' ? 'basic' : scn.level === 'medio' ? 'medium' : 'advanced'}`)}
-                      </span>
-                    </div>
-                    <h3 className="text-[15px] font-semibold tracking-tight text-text mb-1.5">
-                      {scn.title[language]}
-                    </h3>
-                    <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
-                      {scn.description[language]}
                     </p>
                     <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
                       {t('simulator.take_call')} →

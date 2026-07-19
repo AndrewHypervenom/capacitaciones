@@ -9,7 +9,9 @@ import { useSimStore } from '@/stores/simStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { useAuth } from '@/hooks/useAuth';
 import { scoreRun, formatDuration } from '@/lib/scoring';
-import { saveSimulatorAttempt, getCourseCertStatus } from '@/services/certification.service';
+import { saveSimulatorAttempt, getCourseCertStatus, type AiFeedback } from '@/services/certification.service';
+import { callFeedback } from '@/services/simGroq.service';
+import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import type { CourseCertStatus } from '@/types/database';
 import { useUserStore } from '@/stores/userStore';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
@@ -29,6 +31,10 @@ export default function SimulatorResult() {
   const { scenarios: dbScenarios } = useScenarios();
   const recordedRef = useRef(false);
   const [certStatus, setCertStatus] = useState<CourseCertStatus | null>(null);
+  const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
+  const [feedbackReady, setFeedbackReady] = useState(false);
+  const feedbackReqRef = useRef(false);
 
   // Respaldo por slug: el staff sin campaña o el aprendiz cross-campaña no
   // encuentran el escenario en useScenarios; sin esto se perdía el intento.
@@ -67,8 +73,44 @@ export default function SimulatorResult() {
     nav('/dashboard', { replace: true });
   }, [valid, scenario, notFound, nav]);
 
+  // Retroalimentación personalizada con IA (Groq) sobre la transcripción real.
+  useEffect(() => {
+    if (!valid || !scenario || !lastResult || !computed || feedbackReqRef.current) return;
+    feedbackReqRef.current = true;
+    const transcript = lastResult.messages
+      .filter((m) => m.from === 'agent' || m.from === 'customer')
+      .map((m) => ({ from: m.from === 'agent' ? 'agent' : 'customer', text: m.text }) as const);
+    if (transcript.length === 0) {
+      setFeedbackLoading(false);
+      setFeedbackReady(true);
+      return;
+    }
+    let alive = true;
+    callFeedback({
+      language,
+      scenario: {
+        title: scenario.title[language],
+        objective: scenario.summary[language],
+        customerName: scenario.customer.name,
+      },
+      transcript,
+      metrics: {
+        scorePct: computed.score,
+        checklistPct: Math.round(computed.checklistPct * 100),
+        empathyPct: Math.round(computed.empathyPct * 100),
+        resolved: computed.resolved,
+      },
+    })
+      .then((fb) => { if (alive) setAiFeedback(fb); })
+      .catch(() => { /* IA no disponible → se guarda el intento sin feedback */ })
+      .finally(() => { if (alive) { setFeedbackLoading(false); setFeedbackReady(true); } });
+    return () => { alive = false; };
+  }, [valid, scenario, lastResult, computed, language]);
+
   useEffect(() => {
     if (!valid || !scenario || !lastResult || !computed || recordedRef.current) return;
+    // Espera a que la IA termine (o falle) para persistir el feedback junto al intento.
+    if (!feedbackReady) return;
     recordedRef.current = true;
     // Progreso local (fuente de la UI del panel)
     addAttempt({
@@ -94,6 +136,7 @@ export default function SimulatorResult() {
         empathyPct: computed.empathyPct,
         resolved: computed.resolved,
         durationSec: computed.durationSec,
+        aiFeedback,
       })
         .then(() => {
           // Refrescar estado de certificación del curso, si venimos de un curso
@@ -105,7 +148,7 @@ export default function SimulatorResult() {
           /* no bloquear la UI */
         });
     }
-  }, [valid, scenario, lastResult, computed, addAttempt, user?.id, context]);
+  }, [valid, scenario, lastResult, computed, feedbackReady, aiFeedback, addAttempt, user?.id, context]);
 
   if (!valid || !scenario || !computed) return null;
 
@@ -191,6 +234,12 @@ export default function SimulatorResult() {
           </Reveal>
         ))}
       </div>
+
+      <Reveal delay={300}>
+        <div className="mb-8">
+          <AiFeedbackCard feedback={aiFeedback} loading={feedbackLoading} />
+        </div>
+      </Reveal>
 
       {certReady && context?.courseId && (
         <Reveal delay={320}>

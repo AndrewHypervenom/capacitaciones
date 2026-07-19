@@ -111,6 +111,51 @@ export function stepSim(
   };
 }
 
+/**
+ * Aplica al estado un turno resuelto por la IA (Groq): agrega el mensaje del
+ * agente y la respuesta libre del cliente, fusiona los checks satisfechos
+ * (evaluación semántica, no por palabras clave) y actualiza empatía/cierre.
+ */
+export function applyTurn(
+  state: SimState,
+  scenario: Scenario,
+  agentText: string,
+  result: {
+    reply: string
+    satisfied: string[]
+    empathyDelta: number
+    resolved: boolean
+    ended: boolean
+  },
+): SimState {
+  if (state.endedAt) return state;
+
+  const agentMsg: Message = { id: uid(), from: 'agent', text: agentText, at: Date.now() };
+  const customerMsg: Message = { id: uid(), from: 'customer', text: result.reply, at: Date.now() + 200 };
+
+  // Fusión monotónica: solo se agregan checks válidos del escenario.
+  const validIds = new Set(scenario.checklist.map((c) => c.id));
+  const completedChecklist = new Set(state.completedChecklist);
+  for (const id of result.satisfied ?? []) {
+    if (validIds.has(id)) completedChecklist.add(id);
+  }
+
+  const empathyHits = state.empathyHits + Math.max(0, Math.min(2, result.empathyDelta ?? 0));
+  const turns = state.turns + 1;
+  const outOfTurns = turns >= scenario.maxTurns;
+  const ended = result.ended || outOfTurns;
+
+  return {
+    ...state,
+    turns,
+    messages: [...state.messages, agentMsg, customerMsg],
+    completedChecklist,
+    empathyHits,
+    endedAt: ended ? Date.now() : undefined,
+    outcome: ended ? (result.resolved ? 'resolved' : 'unresolved') : undefined,
+  };
+}
+
 export function endSim(state: SimState): SimState {
   if (state.endedAt) return state;
   return {

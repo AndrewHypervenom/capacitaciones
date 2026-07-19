@@ -44,7 +44,7 @@ interface Props {
   onCreate: (type: SimType, method: Method) => void
 }
 
-export function NewSimulationModal({ open, defaultType = 'dialogue', onClose, onCreate }: Props) {
+export function NewSimulationModal({ open, defaultType = 'choice', onClose, onCreate }: Props) {
   const { t } = useTranslation()
   const [simType, setSimType] = useState<SimType>(defaultType)
   const [method, setMethod] = useState<Method>('ai')
@@ -53,16 +53,16 @@ export function NewSimulationModal({ open, defaultType = 'dialogue', onClose, on
 
   const typeCards: { value: SimType; icon: typeof PhoneCall; title: string; desc: string }[] = [
     {
-      value: 'dialogue',
-      icon: PhoneCall,
-      title: t('admin.simulations.new_modal.type_dialogue'),
-      desc: t('admin.simulations.new_modal.type_dialogue_desc'),
-    },
-    {
       value: 'choice',
       icon: MessageSquare,
       title: t('admin.simulations.new_modal.type_choice'),
       desc: t('admin.simulations.new_modal.type_choice_desc'),
+    },
+    {
+      value: 'dialogue',
+      icon: PhoneCall,
+      title: t('admin.simulations.new_modal.type_dialogue'),
+      desc: t('admin.simulations.new_modal.type_dialogue_desc'),
     },
   ]
 

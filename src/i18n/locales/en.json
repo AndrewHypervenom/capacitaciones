@@ -439,6 +439,13 @@
     "send": "Send",
     "result_title": "Call summary",
     "result_subtitle": "Live analysis of your performance.",
+    "ai_feedback": {
+      "tag": "AI feedback",
+      "title": "Your performance, analyzed",
+      "loading": "Analyzing your conversation…",
+      "strengths": "What you did well",
+      "improvements": "To improve next time"
+    },
     "metric_score": "Overall score",
     "metric_time": "Call duration",
     "metric_checklist": "Protocol completed",

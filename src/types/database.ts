@@ -659,6 +659,7 @@ export interface Database {
           resolved: boolean
           duration_sec: number
           created_at: string
+          ai_feedback: { summary: string; strengths: string[]; improvements: string[] } | null
         }
         Insert: {
           id?: string
@@ -672,6 +673,7 @@ export interface Database {
           resolved?: boolean
           duration_sec?: number
           created_at?: string
+          ai_feedback?: { summary: string; strengths: string[]; improvements: string[] } | null
         }
         Update: {
           score?: number

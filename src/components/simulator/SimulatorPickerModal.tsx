@@ -84,7 +84,11 @@ export function SimulatorPickerModal({
       difficulty: LEVEL_DIFFICULTY[s.level],
       level: s.level,
     }));
-    return [...calls, ...choices].sort((a, b) => a.difficulty - b.difficulty);
+    // Opción múltiple primero, luego llamadas; dentro de cada tipo, de más
+    // fácil a más difícil. La primera fila (una de opción múltiple) es la
+    // recomendada para empezar.
+    const byDifficulty = (a: Row, b: Row) => a.difficulty - b.difficulty;
+    return [...choices.sort(byDifficulty), ...calls.sort(byDifficulty)];
   }, [scenarios, choiceScenarios, language]);
 
   const [cursor, setCursor] = useState(0);
