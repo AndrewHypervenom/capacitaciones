@@ -97,7 +97,8 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
   const toggleModule = (moduleId: string) =>
     setOpenModules((s) => {
       const next = new Set(s)
-      next.has(moduleId) ? next.delete(moduleId) : next.add(moduleId)
+      if (next.has(moduleId)) next.delete(moduleId)
+      else next.add(moduleId)
       return next
     })
 

@@ -80,7 +80,7 @@ export function YouTubePlayer({
               get volume() { return (player.getVolume?.() ?? 100) / 100 },
               set volume(v: number) { player.setVolume(Math.round(v * 100)) },
               get muted() { return player.isMuted?.() ?? false },
-              set muted(v: boolean) { v ? player.mute() : player.unMute() },
+              set muted(v: boolean) { if (v) player.mute(); else player.unMute() },
               get playbackRate() { return player.getPlaybackRate?.() ?? 1 },
               set playbackRate(v: number) { player.setPlaybackRate(v) },
             }

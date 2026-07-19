@@ -73,27 +73,30 @@ export default function Welcome() {
     navigate(target, { replace: true });
   }, [isAuthenticated, authLoading, profile, isAdminOrCapacitador, navigate]);
 
-  const [stats, setStats] = useState([
-    { value: 0, label: t('welcome.stat_lessons') },
-    { value: 0, label: t('welcome.stat_questions') },
-    { value: 0, label: t('welcome.stat_scenarios') },
-  ]);
+  // Solo los NÚMEROS viven en el estado; la etiqueta se traduce al renderizar.
+  // Si se guardara el texto ya traducido, cambiar de idioma dejaría las
+  // etiquetas en el idioma anterior hasta que volviera a resolver el RPC.
+  const [counts, setCounts] = useState({ lessons: 0, questions: 0, scenarios: 0 });
 
   useEffect(() => {
     // Aggregate counts come from a SECURITY DEFINER function so the logged-out
     // (anon) landing page can read them despite RLS hiding the content tables.
     supabase.rpc('public_landing_stats').then(({ data }) => {
       const s = (data ?? {}) as { lessons?: number; questions?: number; scenarios?: number };
-      setStats([
-        { value: s.lessons ?? 0, label: t('welcome.stat_lessons') },
-        { value: s.questions ?? 0, label: t('welcome.stat_questions') },
-        { value: s.scenarios ?? 0, label: t('welcome.stat_scenarios') },
-      ]);
+      setCounts({ lessons: s.lessons ?? 0, questions: s.questions ?? 0, scenarios: s.scenarios ?? 0 });
     });
-  }, [t]);
+  }, []);
+
+  const stats = [
+    { id: 'lessons', value: counts.lessons, label: t('welcome.stat_lessons') },
+    { id: 'questions', value: counts.questions, label: t('welcome.stat_questions') },
+    { id: 'scenarios', value: counts.scenarios, label: t('welcome.stat_scenarios') },
+  ];
 
   /* ── Animación de máquina de escribir del titular ───────────────────── */
-  const [headline] = useState(() => t('welcome.title_lead') + '\n' + t('welcome.title_accent'));
+  // Se recalcula al cambiar de idioma (antes quedaba congelado en el idioma
+  // inicial y el titular seguía en español tras cambiar el switcher).
+  const headline = t('welcome.title_lead') + '\n' + t('welcome.title_accent');
   const [displayed, setDisplayed] = useState('');
   const [typingDone, setTypingDone] = useState(false);
   const [showSub, setShowSub] = useState(false);
@@ -182,19 +185,25 @@ export default function Welcome() {
     }
   };
 
+  // OJO con las `key`: NUNCA usar el texto traducido. Al cambiar de idioma la
+  // key cambia, React desmonta y vuelve a montar la tarjeta, y la nueva nace con
+  // la variante heredada `hidden` — el padre ya terminó su `whileInView` y no
+  // vuelve a propagar "show", así que la tarjeta queda invisible. Es el bug de
+  // "al cambiar de idioma se desaparecen las cosas". Con un `id` estable el
+  // nodo se reutiliza y solo cambia el texto.
   const features = [
-    { icon: BookOpen, title: t('welcome.land.f1_title'), desc: t('welcome.land.f1_desc'), color: GREEN },
-    { icon: Sparkles, title: t('welcome.land.f2_title'), desc: t('welcome.land.f2_desc'), color: MAGENTA },
-    { icon: Gamepad2, title: t('welcome.land.f3_title'), desc: t('welcome.land.f3_desc'), color: GREEN },
-    { icon: Radio, title: t('welcome.land.f4_title'), desc: t('welcome.land.f4_desc'), color: MAGENTA },
-    { icon: BarChart3, title: t('welcome.land.f5_title'), desc: t('welcome.land.f5_desc'), color: GREEN },
-    { icon: Globe, title: t('welcome.land.f6_title'), desc: t('welcome.land.f6_desc'), color: MAGENTA },
+    { id: 'f1', icon: BookOpen, title: t('welcome.land.f1_title'), desc: t('welcome.land.f1_desc'), color: GREEN },
+    { id: 'f2', icon: Sparkles, title: t('welcome.land.f2_title'), desc: t('welcome.land.f2_desc'), color: MAGENTA },
+    { id: 'f3', icon: Gamepad2, title: t('welcome.land.f3_title'), desc: t('welcome.land.f3_desc'), color: GREEN },
+    { id: 'f4', icon: Radio, title: t('welcome.land.f4_title'), desc: t('welcome.land.f4_desc'), color: MAGENTA },
+    { id: 'f5', icon: BarChart3, title: t('welcome.land.f5_title'), desc: t('welcome.land.f5_desc'), color: GREEN },
+    { id: 'f6', icon: Globe, title: t('welcome.land.f6_title'), desc: t('welcome.land.f6_desc'), color: MAGENTA },
   ];
 
   const steps = [
-    { icon: BookOpen, title: t('welcome.land.s1_title'), desc: t('welcome.land.s1_desc') },
-    { icon: Gamepad2, title: t('welcome.land.s2_title'), desc: t('welcome.land.s2_desc') },
-    { icon: Trophy, title: t('welcome.land.s3_title'), desc: t('welcome.land.s3_desc') },
+    { id: 's1', icon: BookOpen, title: t('welcome.land.s1_title'), desc: t('welcome.land.s1_desc') },
+    { id: 's2', icon: Gamepad2, title: t('welcome.land.s2_title'), desc: t('welcome.land.s2_desc') },
+    { id: 's3', icon: Trophy, title: t('welcome.land.s3_title'), desc: t('welcome.land.s3_desc') },
   ];
 
   const marquee = [
@@ -527,7 +536,7 @@ export default function Welcome() {
             className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5"
           >
             {features.map((f) => (
-              <SpotlightCard key={f.title} color={f.color} disabled={reduce}>
+              <SpotlightCard key={f.id} color={f.color} disabled={reduce}>
                 <div
                   className="relative inline-flex items-center justify-center h-12 w-12 rounded-2xl mb-5"
                   style={{ background: `${f.color}1a`, border: `1px solid ${f.color}33` }}
@@ -566,7 +575,7 @@ export default function Welcome() {
             className="grid md:grid-cols-3 gap-6 relative"
           >
             {steps.map((s, i) => (
-              <motion.div key={s.title} variants={reveal} className="relative text-center md:text-left">
+              <motion.div key={s.id} variants={reveal} className="relative text-center md:text-left">
                 <div className="flex items-center gap-3 justify-center md:justify-start mb-4">
                   <span className="inline-flex items-center justify-center h-11 w-11 rounded-2xl text-[15px] font-bold text-black" style={{ background: GREEN }}>
                     {i + 1}
@@ -604,7 +613,7 @@ export default function Welcome() {
           </div>
           <div className="relative flex flex-wrap items-center justify-center gap-y-8">
             {stats.map((s, i) => (
-              <div key={s.label} className="flex items-center">
+              <div key={s.id} className="flex items-center">
                 <div className="text-center px-8 md:px-14">
                   <div className="tabular-nums leading-none text-text" style={{ fontSize: 'clamp(38px, 6vw, 60px)', fontWeight: 700, letterSpacing: '-0.03em' }}>
                     <CountUp value={s.value} />

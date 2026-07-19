@@ -372,11 +372,11 @@ export default function UserList() {
               <div className="text-green-500 text-[13px] font-medium mb-3">{i18n.t('admin.users.created_share')}</div>
               <div className="space-y-2">
                 {[
-                  { label: i18n.t('admin.users.creds_site'), value: SITE_URL },
-                  { label: i18n.t('admin.users.creds_email'), value: createdEmail },
-                  { label: i18n.t('admin.users.creds_password'), value: createdPassword },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 bg-subtle">
+                  { id: 'site', label: i18n.t('admin.users.creds_site'), value: SITE_URL },
+                  { id: 'email', label: i18n.t('admin.users.creds_email'), value: createdEmail },
+                  { id: 'password', label: i18n.t('admin.users.creds_password'), value: createdPassword },
+                ].map(({ id, label, value }) => (
+                  <div key={id} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 bg-subtle">
                     <div className="min-w-0">
                       <span className="text-[10px] uppercase tracking-wider text-text-muted mr-2">{label}</span>
                       <span className="font-mono text-[12px] text-text break-all">{value}</span>

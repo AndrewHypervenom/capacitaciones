@@ -479,6 +479,17 @@ export default function CourseEditor() {
     if (courseScenarioCount > 0 || cond.require_simulator) setSimOpen(true)
   }, [courseScenarioCount, cond.require_simulator])
 
+  // Aprendices ya certificados a los que les falta ver contenido publicado
+  // después de su certificado. Informativo: no invalida nada por sí solo.
+  // OJO: van ANTES del early return de carga. Estaban después, así que el
+  // render de "cargando" ejecutaba 2 hooks menos que el render con datos y
+  // React reventaba con "rendered more hooks than during the previous render".
+  const outdatedCerts = useMemo(
+    () => recert.filter((r) => r.new_module_ids.length > 0),
+    [recert],
+  )
+  const pendingRecert = useMemo(() => recert.filter((r) => r.needs_recert), [recert])
+
   if (loading || !course) {
     return (
       <div className="p-4 sm:p-8 space-y-3">
@@ -863,14 +874,6 @@ export default function CourseEditor() {
     }
   }
 
-  // Aprendices ya certificados a los que les falta ver contenido publicado
-  // después de su certificado. Informativo: no invalida nada por sí solo.
-  const outdatedCerts = useMemo(
-    () => recert.filter((r) => r.new_module_ids.length > 0),
-    [recert],
-  )
-  const pendingRecert = useMemo(() => recert.filter((r) => r.needs_recert), [recert])
-
   /**
    * Pide recertificación a TODO el curso. Es deliberadamente explícito y con
    * confirmación: marca el corte y deja desactualizados los certificados
@@ -1247,11 +1250,11 @@ export default function CourseEditor() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: t('admin.courses.stats_enrolled'), value: stats.enrolled },
-              { label: t('admin.courses.stats_completed'), value: `${stats.completion_pct}%` },
-              { label: t('admin.courses.stats_avg_progress'), value: `${stats.avg_progress_pct}%` },
+              { id: 'enrolled', label: t('admin.courses.stats_enrolled'), value: stats.enrolled },
+              { id: 'completed', label: t('admin.courses.stats_completed'), value: `${stats.completion_pct}%` },
+              { id: 'avg', label: t('admin.courses.stats_avg_progress'), value: `${stats.avg_progress_pct}%` },
             ].map((s) => (
-              <GlassCard key={s.label} intensity="subtle" rounded="2xl" className="px-4 py-3">
+              <GlassCard key={s.id} intensity="subtle" rounded="2xl" className="px-4 py-3">
                 <div className="text-[22px] font-bold tabular-nums text-text leading-none">{s.value}</div>
                 <div className="text-[11px] text-text-muted mt-1.5">{s.label}</div>
               </GlassCard>

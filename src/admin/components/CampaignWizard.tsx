@@ -337,12 +337,12 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                       </p>
                       <div className="bg-subtle/60 border border-line rounded-2xl divide-y divide-line/50">
                         {[
-                          { label: i18n.t('admin.campaigns.wizard.review_name'), value: name },
-                          { label: 'Slug', value: slug, mono: true },
-                          description && { label: i18n.t('admin.campaigns.wizard.review_description'), value: description },
-                          { label: i18n.t('admin.campaigns.wizard.review_status'), value: isActive ? i18n.t('admin.campaigns.wizard.status_active') : i18n.t('admin.campaigns.wizard.status_inactive'), colored: true },
+                          { id: 'name', label: i18n.t('admin.campaigns.wizard.review_name'), value: name },
+                          { id: 'slug', label: 'Slug', value: slug, mono: true },
+                          description && { id: 'description', label: i18n.t('admin.campaigns.wizard.review_description'), value: description },
+                          { id: 'status', label: i18n.t('admin.campaigns.wizard.review_status'), value: isActive ? i18n.t('admin.campaigns.wizard.status_active') : i18n.t('admin.campaigns.wizard.status_inactive'), colored: true },
                         ].filter(Boolean).map((row: any) => (
-                          <div key={row.label} className="flex items-start gap-4 px-4 py-3">
+                          <div key={row.id} className="flex items-start gap-4 px-4 py-3">
                             <span className="text-[11px] uppercase tracking-wider text-text-subtle w-24 shrink-0 pt-0.5">
                               {row.label}
                             </span>

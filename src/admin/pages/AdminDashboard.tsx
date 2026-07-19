@@ -145,7 +145,7 @@ export default function AdminDashboard() {
         <FadeIn className="grid grid-cols-3 gap-2 sm:gap-4 mb-8 sm:mb-10" y={12}>
           {statCards.map((c) => (
             <MotionLink
-              key={c.label}
+              key={c.to}
               to={c.to}
               whileHover={reduce ? undefined : { y: -4 }}
               transition={{ type: 'spring', stiffness: 300, damping: 22 }}

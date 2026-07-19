@@ -589,12 +589,12 @@ export default function MissionPlayer() {
               </p>
               <div className="info-list">
                 {[
-                  ['🎯', t('mission_sim.briefing.item_mission_label'), t('mission_sim.briefing.item_mission_desc')],
-                  ['📍', t('mission_sim.briefing.item_airport_label'), t('mission_sim.briefing.item_airport_desc')],
-                  ['🚨', t('mission_sim.briefing.item_type_label'), t('mission_sim.briefing.item_type_desc')],
-                  ['⏱️', t('mission_sim.briefing.item_sla_label'), t('mission_sim.briefing.item_sla_desc')],
-                ].map(([dot, label, d]) => (
-                  <div key={label} className="info-item">
+                  ['mission', '🎯', t('mission_sim.briefing.item_mission_label'), t('mission_sim.briefing.item_mission_desc')],
+                  ['airport', '📍', t('mission_sim.briefing.item_airport_label'), t('mission_sim.briefing.item_airport_desc')],
+                  ['type', '🚨', t('mission_sim.briefing.item_type_label'), t('mission_sim.briefing.item_type_desc')],
+                  ['sla', '⏱️', t('mission_sim.briefing.item_sla_label'), t('mission_sim.briefing.item_sla_desc')],
+                ].map(([id, dot, label, d]) => (
+                  <div key={id} className="info-item">
                     <span>{dot}</span>
                     <div><span className="info-item-label">{label}</span> <span className="info-item-desc">{d}</span></div>
                   </div>

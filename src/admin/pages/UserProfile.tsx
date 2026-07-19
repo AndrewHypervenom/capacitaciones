@@ -192,12 +192,12 @@ export default function UserProfile() {
     )
   }
 
-  const dataRows: { icon: typeof IdCard; label: string; value: string | null }[] = [
-    { icon: Briefcase, label: t('profile.job_title'), value: profile.job_title },
-    { icon: IdCard, label: t('profile.national_id'), value: profile.national_id },
-    { icon: Phone, label: t('profile.phone'), value: profile.phone },
-    { icon: MapPin, label: t('profile.country'), value: profile.country ? (COUNTRY_LABEL[profile.country] ? t(COUNTRY_LABEL[profile.country]) : profile.country) : null },
-    { icon: CalendarDays, label: t('admin.users.member_since'), value: fmtDate(profile.created_at) },
+  const dataRows: { id: string; icon: typeof IdCard; label: string; value: string | null }[] = [
+    { id: 'job_title', icon: Briefcase, label: t('profile.job_title'), value: profile.job_title },
+    { id: 'national_id', icon: IdCard, label: t('profile.national_id'), value: profile.national_id },
+    { id: 'phone', icon: Phone, label: t('profile.phone'), value: profile.phone },
+    { id: 'country', icon: MapPin, label: t('profile.country'), value: profile.country ? (COUNTRY_LABEL[profile.country] ? t(COUNTRY_LABEL[profile.country]) : profile.country) : null },
+    { id: 'member_since', icon: CalendarDays, label: t('admin.users.member_since'), value: fmtDate(profile.created_at) },
   ]
 
   const editLabel = 'mb-1.5 block text-[12px] font-semibold uppercase tracking-wide text-text-subtle'
@@ -266,12 +266,12 @@ export default function UserProfile() {
       {!coursesDenied && (
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { icon: BookOpen, label: t('admin.users.assigned_courses'), value: stats.total },
-            { icon: CheckCircle2, label: t('admin.users.courses_completed'), value: stats.completed },
-            { icon: Award, label: t('admin.users.certifications'), value: stats.certs },
-            { icon: BarChart3, label: t('admin.users.avg_score'), value: stats.avg != null ? `${stats.avg}%` : '—' },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="rounded-2xl border border-line bg-surface p-4">
+            { id: 'total', icon: BookOpen, label: t('admin.users.assigned_courses'), value: stats.total },
+            { id: 'completed', icon: CheckCircle2, label: t('admin.users.courses_completed'), value: stats.completed },
+            { id: 'certs', icon: Award, label: t('admin.users.certifications'), value: stats.certs },
+            { id: 'avg', icon: BarChart3, label: t('admin.users.avg_score'), value: stats.avg != null ? `${stats.avg}%` : '—' },
+          ].map(({ id, icon: Icon, label, value }) => (
+            <div key={id} className="rounded-2xl border border-line bg-surface p-4">
               <Icon className="mb-2 h-4 w-4 text-text-muted" />
               <div className="text-[22px] font-bold tabular-nums text-text">{value}</div>
               <div className="text-[11px] text-text-muted">{label}</div>
@@ -340,8 +340,8 @@ export default function UserProfile() {
         ) : (
           <>
             <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-              {dataRows.map(({ icon: Icon, label, value }) => (
-                <div key={label} className="flex items-start gap-3">
+              {dataRows.map(({ id, icon: Icon, label, value }) => (
+                <div key={id} className="flex items-start gap-3">
                   <Icon className="mt-0.5 h-4 w-4 shrink-0 text-text-subtle" />
                   <div className="min-w-0">
                     <div className="text-[11px] uppercase tracking-wide text-text-subtle">{label}</div>

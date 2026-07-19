@@ -159,18 +159,21 @@ export default function SimulatorResult() {
 
   const metrics = [
     {
+      id: 'time',
       icon: Clock,
       label: t('simulator.metric_time'),
       raw: durationSec,
       format: (n: number) => formatDuration(Math.round(n)),
     },
     {
+      id: 'checklist',
       icon: ShieldCheck,
       label: t('simulator.metric_checklist'),
       raw: Math.round(checklistPct * 100),
       format: (n: number) => `${Math.round(n)}%`,
     },
     {
+      id: 'empathy',
       icon: HeartHandshake,
       label: t('simulator.metric_empathy'),
       raw: Math.round(empathyPct * 100),
@@ -221,7 +224,7 @@ export default function SimulatorResult() {
 
       <div className="grid md:grid-cols-3 gap-5 mb-10">
         {metrics.map((m, i) => (
-          <Reveal key={m.label} delay={200 + i * 80}>
+          <Reveal key={m.id} delay={200 + i * 80}>
             <div className="surface-card p-6">
               <m.icon className="h-4 w-4 text-text-muted mb-3" />
               <div className="text-[11px] uppercase tracking-wider text-text-subtle mb-2 font-medium">

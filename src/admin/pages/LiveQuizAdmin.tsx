@@ -205,10 +205,9 @@ export default function LiveQuizAdmin() {
   useEffect(() => {
     if (!activeQuiz) return
 
-    let channel: RealtimeChannel
     let presenceChannel: RealtimeChannel
 
-    channel = supabase
+    const channel = supabase
       .channel(`admin-quiz-${activeQuiz.id}`)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'live_quizzes', filter: `id=eq.${activeQuiz.id}` },

@@ -396,12 +396,12 @@ export default function ChoiceSimulatorRun() {
 
                 <div className="w-full mb-8 bg-surface border border-line rounded-2xl p-5">
                   {[
-                    { label: t('simulator.customer'), value: scenario.clientName },
-                    { label: t('simulator.choice.company'), value: scenario.clientCompany[language] },
-                    { label: t('simulator.choice.objective'), value: scenario.objective[language] },
-                  ].map(({ label, value }, i, arr) => (
+                    { id: 'customer', label: t('simulator.customer'), value: scenario.clientName },
+                    { id: 'company', label: t('simulator.choice.company'), value: scenario.clientCompany[language] },
+                    { id: 'objective', label: t('simulator.choice.objective'), value: scenario.objective[language] },
+                  ].map(({ id, label, value }, i, arr) => (
                     <div
-                      key={label}
+                      key={id}
                       className="flex items-start justify-between py-3"
                       style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(128,128,128,0.15)' : 'none' }}
                     >
@@ -880,12 +880,12 @@ export default function ChoiceSimulatorRun() {
               <div className="bg-surface border border-line rounded-2xl p-4 mb-7">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr' }}>
                   {[
-                    { label: t('simulator.choice.stat_points'), value: `${totalPoints} / ${maxPoints}` },
-                    { label: t('simulator.choice.stat_duration'), value: formatTime(callSeconds) },
-                    { label: t('simulator.choice.stat_level'), value: getLevelLabel(scenario.level) },
-                  ].map(({ label, value }, i) => (
+                    { id: 'points', label: t('simulator.choice.stat_points'), value: `${totalPoints} / ${maxPoints}` },
+                    { id: 'duration', label: t('simulator.choice.stat_duration'), value: formatTime(callSeconds) },
+                    { id: 'level', label: t('simulator.choice.stat_level'), value: getLevelLabel(scenario.level) },
+                  ].map(({ id, label, value }, i) => (
                     <div
-                      key={label}
+                      key={id}
                       style={{
                         padding: '0 12px',
                         textAlign: 'center',

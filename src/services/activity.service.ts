@@ -44,7 +44,7 @@ export const saveActivityAttempt = async (attemptData: any) => {
     const currentProgress = progressRows && progressRows.length > 0 ? progressRows[0] : null;
 
     // 2. Preparar el arreglo de intentos previo o uno nuevo
-    let currentAttempts = currentProgress && Array.isArray(currentProgress.attempts)
+    const currentAttempts = currentProgress && Array.isArray(currentProgress.attempts)
       ? currentProgress.attempts
       : [];
 

@@ -187,11 +187,11 @@ export function EnrollLearnersModal({ course, campaignId, onClose, onSaved }: En
                   {stats && stats.enrolled > 0 && (
                     <div className="mb-3 grid grid-cols-3 gap-2">
                       {[
-                        { label: t('admin.courses.stats_enrolled'), value: stats.enrolled },
-                        { label: t('admin.courses.stats_completed'), value: `${stats.completion_pct}%` },
-                        { label: t('admin.courses.stats_avg_progress'), value: `${stats.avg_progress_pct}%` },
+                        { id: 'enrolled', label: t('admin.courses.stats_enrolled'), value: stats.enrolled },
+                        { id: 'completed', label: t('admin.courses.stats_completed'), value: `${stats.completion_pct}%` },
+                        { id: 'avg', label: t('admin.courses.stats_avg_progress'), value: `${stats.avg_progress_pct}%` },
                       ].map((s) => (
-                        <div key={s.label} className="rounded-xl border border-line px-3 py-2">
+                        <div key={s.id} className="rounded-xl border border-line px-3 py-2">
                           <div className="text-[16px] font-bold tabular-nums text-text leading-none">{s.value}</div>
                           <div className="text-[10px] text-text-muted mt-1">{s.label}</div>
                         </div>
