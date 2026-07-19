@@ -22,6 +22,7 @@ import { supabase } from '@/lib/supabase'
 import type { Campaign } from '@/types/database'
 import { useAuth } from '@/hooks/useAuth'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { FadeIn } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
@@ -179,7 +180,7 @@ export default function CampaignList() {
           )}
         </GlassCard>
       ) : (
-        <div className="space-y-3">
+        <FadeIn className="space-y-3" y={14}>
           {campaigns.map((c) => (
             <motion.div
               key={c.id}
@@ -347,7 +348,7 @@ export default function CampaignList() {
               </GlassCard>
             </motion.div>
           ))}
-        </div>
+        </FadeIn>
       )}
 
       {/* Asistente de creación */}

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { FadeIn } from '@/components/ui/motion'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
 
@@ -454,12 +455,12 @@ export default function FeedbackPanel() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5">
+          <FadeIn as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5" y={12}>
             <StatCard label={i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices')} value={String(stats.learners)} />
             <StatCard label={i18n.t('admin.feedback_panel.kpi_avance', 'Avance')} value={`${stats.avance}%`} accent />
             <StatCard label={i18n.t('admin.feedback_panel.kpi_desempeno', 'Desempeño')} value={`${stats.desempeno}%`} />
             <StatCard label={i18n.t('admin.feedback_panel.kpi_avg_stars', 'Prom. estrellas')} value={stats.avgStars.toFixed(1)} star />
-          </section>
+          </FadeIn>
 
           {/* ── Distribución por estado ── */}
           <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-4 sm:mb-5">
@@ -683,7 +684,7 @@ function StatCard({ label, value, suffix, accent, star }: {
   star?: boolean
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-1.5">
+    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-1.5 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
       <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-text-muted truncate">{label}</span>
       <div className="flex items-baseline gap-1.5">
         <span

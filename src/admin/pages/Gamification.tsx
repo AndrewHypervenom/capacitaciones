@@ -6,6 +6,7 @@ import {
   Trophy, Plus, Pencil, Trash2, Eye, EyeOff, Star, RotateCcw, Loader2, X, Save, Gauge,
 } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
+import { FadeIn } from '@/components/ui/motion'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
@@ -176,7 +177,7 @@ export default function Gamification() {
           </button>
         </div>
 
-        <div className="space-y-6">
+        <FadeIn className="space-y-6" y={14}>
           {CATEGORIES.map((cat) => {
             const items = byCategory.get(cat) ?? []
             if (items.length === 0) return null
@@ -201,7 +202,7 @@ export default function Gamification() {
               </div>
             )
           })}
-        </div>
+        </FadeIn>
       </section>
 
       {/* ── Niveles de XP ── */}
@@ -244,7 +245,7 @@ function BadgeRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-2xl border border-line bg-surface p-3',
+        'flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-card-hover',
         disabled && 'opacity-55',
       )}
     >

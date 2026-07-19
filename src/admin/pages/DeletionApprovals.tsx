@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { Loader2, Trash2, RotateCcw, ShieldAlert, Inbox } from 'lucide-react'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { FadeIn } from '@/components/ui/motion'
 import { toast } from '@/stores/toastStore'
 import {
   getPendingDeletions, approveDeletion, rejectDeletion,
@@ -106,12 +107,12 @@ export default function DeletionApprovals() {
           <h2 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
             {t('admin.approvals.count', { n: rows.length })}
           </h2>
-          <div className="rounded-2xl border border-line overflow-hidden divide-y divide-line">
+          <FadeIn className="rounded-2xl border border-line overflow-hidden divide-y divide-line" y={14}>
             {rows.map((r) => {
               const color = ENTITY_COLORS[r.entity_type] ?? '#94a3b8'
               const busy = busyId === r.id
               return (
-                <div key={r.id} className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 px-4 py-3 items-center">
+                <div key={r.id} className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 px-4 py-3 items-center transition-colors hover:bg-subtle/40">
                   <div className="min-w-0 flex items-center gap-3">
                     <span
                       className="inline-flex items-center rounded-full px-2 py-1 text-[10.5px] font-medium shrink-0"
@@ -149,7 +150,7 @@ export default function DeletionApprovals() {
                 </div>
               )
             })}
-          </div>
+          </FadeIn>
         </>
       )}
     </div>

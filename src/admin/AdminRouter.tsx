@@ -1,4 +1,5 @@
 
+import { useRef, useLayoutEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FolderX } from 'lucide-react'
@@ -42,6 +43,17 @@ export default function AdminRouter() {
   const { t } = useTranslation()
   const noCampaigns = useHasNoCampaigns()
 
+  // El panel scrollea dentro de este contenedor (no en `window`), y como
+  // /admin/* vive fuera de AppShell, nada reseteaba su scroll al navegar. Al
+  // pasar de una vista alta (p.ej. el editor de un mundo, scrolleado abajo) a
+  // otra más corta, el contenedor quedaba scrolleado más allá del contenido
+  // nuevo → se veía en blanco y las entradas `whileInView` no disparaban.
+  // Volvemos arriba en cada cambio de ruta, antes del primer pintado.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+  }, [location.pathname])
+
   // La presencia colaborativa ahora es global (PresenceSync en App.tsx):
   // todos los roles emiten su vista actual desde cualquier parte del sitio.
 
@@ -67,7 +79,7 @@ export default function AdminRouter() {
   return (
     <div className="flex min-h-screen bg-bg">
       <AdminNav />
-      <div className="flex-1 md:ml-56 overflow-auto pt-14 md:pt-0">
+      <div ref={scrollRef} className="flex-1 md:ml-56 overflow-auto pt-14 md:pt-0">
         <Routes>
           <Route index element={<AdminDashboard />} />
           <Route path="campaigns" element={<CampaignList />} />

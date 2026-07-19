@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { FadeIn } from '@/components/ui/motion'
 
 interface Quiz {
   id: string
@@ -104,7 +105,7 @@ export default function ArenaHub() {
             </div>
           ) : (
             /* Cards grid */
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px),1fr))', gap: 16 }}>
+            <FadeIn style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px),1fr))', gap: 16 }} y={16}>
               {quizzes.map(q => (
                 <div
                   key={q.id}
@@ -190,7 +191,7 @@ export default function ArenaHub() {
                   </button>
                 </div>
               ))}
-            </div>
+            </FadeIn>
           )}
         </div>
       </div>

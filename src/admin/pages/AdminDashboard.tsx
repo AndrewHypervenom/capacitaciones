@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { FadeIn } from '@/components/ui/motion'
+
+const MotionLink = motion(Link)
 
 interface Stats {
   campaigns: number
@@ -16,6 +21,7 @@ interface Stats {
 export default function AdminDashboard() {
   const { isSuperAdmin, campaignId, user } = useAuth()
   const { t } = useTranslation()
+  const reduce = useReducedMotion()
   const [stats, setStats] = useState<Stats>({ campaigns: 0, modules: 0, scenarios: 0, users: 0 })
   const [loading, setLoading] = useState(true)
 
@@ -136,19 +142,21 @@ export default function AdminDashboard() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-8 sm:mb-10">
+        <FadeIn className="grid grid-cols-3 gap-2 sm:gap-4 mb-8 sm:mb-10" y={12}>
           {statCards.map((c) => (
-            <Link
+            <MotionLink
               key={c.label}
               to={c.to}
-              className="rounded-2xl p-3 sm:p-5 transition-all hover:scale-[1.02] bg-surface border border-line"
+              whileHover={reduce ? undefined : { y: -4 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+              className="rounded-2xl p-3 sm:p-5 transition-[border-color,box-shadow] duration-300 ease-apple hover:border-primary hover:shadow-card-hover bg-surface border border-line"
             >
               <c.icon className="h-4 w-4 sm:h-5 sm:w-5 mb-2 sm:mb-3" style={{ color: c.color }} />
               <div className="text-[20px] sm:text-[28px] font-semibold text-text tabular-nums">{c.value}</div>
               <div className="text-[10px] sm:text-[12px] text-text-muted mt-1 leading-tight">{c.label}</div>
-            </Link>
+            </MotionLink>
           ))}
-        </div>
+        </FadeIn>
       )}
 
       {/* Acceso rápido a módulos cargados */}
@@ -182,12 +190,14 @@ export default function AdminDashboard() {
 
       {/* Quick actions grid */}
       {/* Ocultas del panel principal a pedido de Isa - siguen disponibles en el menú lateral */}
-      <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+      <FadeIn className="grid sm:grid-cols-2 gap-3 sm:gap-4" y={16}>
         {quickActions.filter((a) => a.to !== '/admin/missions' && a.to !== '/admin/arena').map((a) => (
-          <Link
+          <MotionLink
             key={a.to}
             to={a.to}
-            className="group rounded-2xl p-4 sm:p-5 flex items-start gap-3 sm:gap-4 transition-all hover:scale-[1.01] bg-surface border border-line"
+            whileHover={reduce ? undefined : { y: -4 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+            className="group rounded-2xl p-4 sm:p-5 flex items-start gap-3 sm:gap-4 transition-[border-color,box-shadow] duration-300 ease-apple hover:border-primary hover:shadow-card-hover bg-surface border border-line"
           >
             <div
               className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
@@ -200,9 +210,9 @@ export default function AdminDashboard() {
               <div className="text-[12px] text-text-muted leading-relaxed">{a.desc}</div>
             </div>
             <ArrowRight className="h-4 w-4 text-text-muted shrink-0 mt-0.5 group-hover:translate-x-0.5 transition-transform" />
-          </Link>
+          </MotionLink>
         ))}
-      </div>
+      </FadeIn>
     </div>
   )
 }

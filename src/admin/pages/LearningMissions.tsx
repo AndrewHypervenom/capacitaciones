@@ -9,6 +9,7 @@ import type { Json } from '@/types/database'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { FadeIn } from '@/components/ui/motion'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -314,13 +315,13 @@ export default function LearningMissions() {
           </div>
         ) : (
           /* Mission cards grid */
-          <div className="grid md:grid-cols-2 gap-4">
+          <FadeIn className="grid md:grid-cols-2 gap-4" y={16}>
             {missions.filter(m => filterCampaign === 'all' || m.campaign_id === filterCampaign).map(m => {
               const campaignName = campaigns.find(c => c.id === m.campaign_id)?.name
               return (
                 <div
                   key={m.id}
-                  className="group rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4 transition-all hover:scale-[1.01] bg-surface border border-line"
+                  className="group rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover hover:border-primary/40 bg-surface border border-line"
                 >
                   <div className="flex items-start gap-4 flex-1 min-w-0">
                   <div
@@ -402,7 +403,7 @@ export default function LearningMissions() {
                 </div>
               )
             })}
-          </div>
+          </FadeIn>
         )}
       </div>
 

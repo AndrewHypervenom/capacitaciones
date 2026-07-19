@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence, useMotionValue, useMotionTemplate } from 'framer-motion'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, X, Pencil, Trash2, Globe, Map, BookOpen } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
@@ -13,6 +14,9 @@ import { toast } from '@/stores/toastStore'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
+import { Stagger, StaggerItem } from '@/components/ui/motion'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { cn } from '@/lib/cn'
 
 type WorldStatus = 'draft' | 'published'
 type BgType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -83,10 +87,46 @@ function normalizeRow(row: Record<string, unknown>): World {
   }
 }
 
+/* ── Tarjeta con spotlight que sigue al cursor + elevación con resorte ──
+   Reutiliza el escalonado del kit (StaggerItem) y añade el halo reactivo del
+   mismo lenguaje visual que el mapa del aprendiz. Respeta reduced-motion. */
+function SpotlightWrap({
+  color, reduce, className, children, ...rest
+}: {
+  color: string
+  reduce: boolean
+  className?: string
+  children: React.ReactNode
+} & React.ComponentProps<typeof StaggerItem>) {
+  const mx = useMotionValue(-300)
+  const my = useMotionValue(-300)
+  const halo = useMotionTemplate`radial-gradient(260px circle at ${mx}px ${my}px, ${color}22, transparent 60%)`
+  const onMove = (e: React.MouseEvent) => {
+    if (reduce) return
+    const r = e.currentTarget.getBoundingClientRect()
+    mx.set(e.clientX - r.left); my.set(e.clientY - r.top)
+  }
+  const reset = () => { mx.set(-300); my.set(-300) }
+  return (
+    <StaggerItem
+      onMouseMove={onMove}
+      onMouseLeave={reset}
+      whileHover={reduce ? undefined : { y: -4 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+      className={cn('relative', className)}
+      {...rest}
+    >
+      {!reduce && <motion.div aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl" style={{ background: halo }} />}
+      <div className="relative">{children}</div>
+    </StaggerItem>
+  )
+}
+
 export default function Worlds() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
+  const reduce = useReducedMotion()
   const [worlds, setWorlds] = useState<World[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // Cursos accesibles, para enlazar un mundo a su curso desde el modal.
@@ -324,11 +364,6 @@ export default function Worlds() {
 
   return (
     <>
-      <style>{`
-        @keyframes slideUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-        .worlds-modal { animation: slideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
-      `}</style>
-
       <div className="p-4 sm:p-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-1">
@@ -389,17 +424,20 @@ export default function Worlds() {
             </button>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 gap-4">
+          <Stagger className="grid md:grid-cols-2 gap-4">
             {filtered.map(w => {
               const campaignName = campaigns.find(c => c.id === w.campaign_id)?.name
               const courseName = courses.find(c => c.id === w.course_id)?.title_es
               const isPublished = w.status === 'published'
               const nRegions = regionCounts[w.id] ?? 0
               return (
-                <div
+                <SpotlightWrap
                   key={w.id}
-                  className="group rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4 transition-all hover:scale-[1.01] bg-surface border border-line"
+                  color={w.color}
+                  reduce={reduce}
+                  className="group rounded-2xl p-4 sm:p-5 transition-colors duration-300 ease-apple hover:shadow-card-hover hover:border-primary/40 bg-surface border border-line"
                 >
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
                   <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
                     <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 text-[20px]" style={{ background: `${w.color}18` }}>
                       {w.icon}
@@ -492,21 +530,34 @@ export default function Worlds() {
                       Regiones y niveles
                     </button>
                   </div>
-                </div>
+                  </div>
+                </SpotlightWrap>
               )
             })}
-          </div>
+          </Stagger>
         )}
       </div>
 
       {/* ── Modal: crear / editar mundo (una sola pantalla) ── */}
+      <AnimatePresence>
       {wizardOpen && (
-        <div
+        <motion.div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           {...backdropDismiss(closeWizard)}
         >
-          <div className="worlds-modal w-full max-w-lg rounded-2xl bg-surface border border-line flex flex-col overflow-hidden" style={{ maxHeight: '90vh' }}>
+          <motion.div
+            className="w-full max-w-lg rounded-2xl bg-surface border border-line flex flex-col overflow-hidden"
+            style={{ maxHeight: '90vh' }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 10 }}
+            transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 300, damping: 26 }}
+          >
             {/* Header */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[16px] font-semibold text-text">
@@ -641,9 +692,10 @@ export default function Worlds() {
                     : i18n.t('common.save_changes')}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </>
   )
 }

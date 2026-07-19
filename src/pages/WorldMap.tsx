@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { motion, useReducedMotion, useMotionValue, useSpring, useMotionTemplate, animate } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
 import { useProgressStore } from '@/stores/progressStore'
+import { LevelTransition } from '@/components/worlds/LevelTransition'
 
 /* ── Types ── */
 interface World {
@@ -64,11 +66,31 @@ const THEMES: Record<string, {
   },
 }
 
-/* ── Sound ── */
+/* ── Sound ──
+   Un único AudioContext reutilizado. Antes se creaba `new AudioContext()` en
+   CADA sonido: los navegadores limitan la cantidad de contextos (~6) y a partir
+   de ahí `new AudioContext()` lanza y el sonido fallaba en silencio. Además hay
+   que hacer `resume()` porque el contexto arranca "suspended" por la política de
+   autoplay hasta que hay un gesto del usuario. */
+let wmAudioCtx: AudioContext | null = null
+function getWorldCtx(): AudioContext | null {
+  try {
+    if (!wmAudioCtx) {
+      const AudioCtx = window.AudioContext || (window as unknown as {webkitAudioContext?: typeof AudioContext}).webkitAudioContext
+      if (!AudioCtx) return null
+      wmAudioCtx = new AudioCtx()
+    }
+    if (wmAudioCtx.state === 'suspended') void wmAudioCtx.resume()
+    return wmAudioCtx
+  } catch {
+    return null
+  }
+}
+
 function playSound(soundTheme: string, type: 'enter' | 'unlock' | 'click') {
   try {
-    const AudioCtx = window.AudioContext || (window as unknown as {webkitAudioContext: typeof AudioContext}).webkitAudioContext
-    const ctx = new AudioCtx()
+    const ctx = getWorldCtx()
+    if (!ctx) return
     const t = ctx.currentTime
     const mk = (wave: OscillatorType, dur: number, delay = 0) => {
       const o = ctx.createOscillator(), g = ctx.createGain()
@@ -158,80 +180,6 @@ function playSound(soundTheme: string, type: 'enter' | 'unlock' | 'click') {
   } catch { /* silent */ }
 }
 
-/* ── Transition overlay ── */
-function Transition({ type, color }: { type: string; color: string }) {
-  const { t } = useTranslation()
-  const content: Record<string, React.ReactNode> = {
-    clouds: (
-      <>
-        <style>{`@keyframes cL{from{transform:translateX(-120vw) translateY(0)}to{transform:translateX(120vw) translateY(-20px)}} @keyframes cR{from{transform:translateX(120vw)}to{transform:translateX(-120vw)}}`}</style>
-        <div style={{position:'absolute',top:'25%',fontSize:'5rem',animation:'cL 1.3s ease both'}}>☁️</div>
-        <div style={{position:'absolute',top:'45%',fontSize:'3rem',animation:'cR 1.3s ease .15s both'}}>☁️</div>
-        <div style={{position:'absolute',top:'35%',left:'45%',fontSize:'5rem',animation:'cL 1.3s ease .1s both'}}>✈️</div>
-      </>
-    ),
-    cards: (
-      <>
-        <style>{`@keyframes flip{0%{transform:perspective(600px) rotateY(0) scale(1)}50%{transform:perspective(600px) rotateY(90deg) scale(1.2)}100%{transform:perspective(600px) rotateY(0) scale(1)}}`}</style>
-        <div style={{fontSize:'8rem',animation:'flip 1.2s ease infinite'}}>💳</div>
-      </>
-    ),
-    pulse: (
-      <>
-        <style>{`@keyframes hb{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}`}</style>
-        <div style={{fontSize:'7rem',animation:'hb .55s ease infinite'}}>❤️</div>
-        <svg width="320" height="70" style={{position:'absolute',bottom:'28%'}}>
-          <polyline points="0,35 70,35 90,5 110,65 130,35 180,35 200,12 220,58 240,35 320,35" fill="none" stroke="#00c864" strokeWidth="3" strokeLinecap="round"/>
-        </svg>
-      </>
-    ),
-    rocket: (
-      <>
-        <style>{`@keyframes up{from{transform:translateY(100vh) scale(.5)}to{transform:translateY(-100vh) scale(1.5)}}`}</style>
-        <div style={{fontSize:'6rem',animation:'up 1.2s ease both'}}>🚀</div>
-      </>
-    ),
-    terminal: (
-      <>
-        <style>{`@keyframes mx{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}`}</style>
-        {[t('world.term_loading'),t('world.term_unlocked'),t('world.term_granted')].map((line,i)=>(
-          <div key={i} style={{color:'#00ff80',fontFamily:'monospace',fontSize:'1.1rem',fontWeight:700,letterSpacing:2,animation:`mx .5s ease ${i*.25}s both`,textShadow:'0 0 10px #00ff80',marginBottom:12}}>{line}</div>
-        ))}
-      </>
-    ),
-    confetti: (
-      <>
-        <style>{`@keyframes confFall{0%{transform:translateY(-20vh) rotate(0);opacity:1}100%{transform:translateY(120vh) rotate(720deg);opacity:0}}`}</style>
-        {['🎉','🎊','⭐','✨','🌟','💫','🎈','🎆','🥳','🎊'].map((em,i)=>(
-          <div key={i} style={{position:'absolute',left:`${5+i*9}%`,top:0,fontSize:`${1.5+(i%3)*.5}rem`,animation:`confFall ${1+i*.08}s ease ${i*.06}s both`}}>{em}</div>
-        ))}
-      </>
-    ),
-    scan: (
-      <>
-        <style>{`@keyframes scanDown{from{top:-5%}to{top:105%}} @keyframes scanGlow{0%,100%{opacity:.4;transform:scale(.95)}50%{opacity:1;transform:scale(1.05)}}`}</style>
-        <div style={{position:'absolute',left:'5%',right:'5%',height:3,background:`linear-gradient(90deg,transparent,${color},transparent)`,animation:'scanDown 1s ease both',boxShadow:`0 0 40px 8px ${color}`}}/>
-        <div style={{fontSize:'5rem',animation:'scanGlow .4s ease infinite'}}>🔍</div>
-      </>
-    ),
-    warp: (
-      <>
-        <style>{`@keyframes warpStr{from{height:0;opacity:1}to{height:80vh;opacity:0}}`}</style>
-        {[...Array(10)].map((_,i)=>(
-          <div key={i} style={{position:'absolute',left:`${8+i*8.5}%`,top:'50%',width:3,background:`linear-gradient(transparent,${color})`,animation:`warpStr .8s ease ${i*.04}s both`,borderRadius:2,boxShadow:`0 0 8px ${color}`}}/>
-        ))}
-        <div style={{fontSize:'4rem',zIndex:1}}>💫</div>
-      </>
-    ),
-  }
-  return (
-    <div style={{position:'fixed',inset:0,zIndex:9999,background:'rgb(var(--bg) / 0.94)',backdropFilter:'blur(12px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
-      {content[type] ?? content.clouds}
-      <div style={{position:'absolute',bottom:'20%',color:'rgb(var(--text-muted))',fontSize:'.8rem',letterSpacing:3,textTransform:'uppercase',fontFamily:'inherit'}}>{t('world.loading_level')}</div>
-    </div>
-  )
-}
-
 /* ── Confetti burst on unlock ── */
 function ConfettiBurst({ color }: { color: string }) {
   return (
@@ -258,6 +206,109 @@ function ConfettiBurst({ color }: { color: string }) {
   )
 }
 
+/* ── Aurora animada de fondo ──
+   Capa de "blobs" de color a la deriva con desenfoque grande y mezcla screen:
+   da profundidad y un aire premium sin distraer del mapa. Se apaga con
+   prefers-reduced-motion. */
+function Aurora({ color, reduce }: { color: string; reduce: boolean }) {
+  if (reduce) return null
+  const blobs = [
+    { x: '8%',  y: '12%', s: 540, d: 24, dx: 45,  dy: -32 },
+    { x: '76%', y: '6%',  s: 460, d: 30, dx: -38, dy: 28  },
+    { x: '62%', y: '66%', s: 620, d: 27, dx: 34,  dy: -40 },
+    { x: '16%', y: '78%', s: 500, d: 33, dx: -30, dy: 36  },
+  ]
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+      {blobs.map((b, i) => (
+        <motion.div key={i}
+          style={{
+            position: 'absolute', left: b.x, top: b.y, width: b.s, height: b.s, borderRadius: '50%',
+            background: `radial-gradient(circle, ${color}26, transparent 62%)`,
+            filter: 'blur(64px)', mixBlendMode: 'screen', willChange: 'transform',
+          }}
+          animate={{ x: [0, b.dx, -b.dx * 0.7, 0], y: [0, b.dy, -b.dy * 0.6, 0], scale: [1, 1.14, 0.94, 1] }}
+          transition={{ duration: b.d, repeat: Infinity, ease: 'easeInOut', delay: i * 1.4 }}
+        />
+      ))}
+    </div>
+  )
+}
+
+/* ── Tarjeta del selector con tilt 3D + spotlight que sigue al cursor ── */
+function SelectorCard({ w, i, reduce, onPick }: {
+  w: World; i: number; reduce: boolean; onPick: (w: World) => void
+}) {
+  const { t } = useTranslation()
+  const th = THEMES[w.bg_type] ?? THEMES.corporate
+  const rx = useSpring(useMotionValue(0), { stiffness: 200, damping: 18 })
+  const ry = useSpring(useMotionValue(0), { stiffness: 200, damping: 18 })
+  const mx = useMotionValue(-300)
+  const my = useMotionValue(-300)
+  const halo = useMotionTemplate`radial-gradient(240px circle at ${mx}px ${my}px, ${w.color}2e, transparent 62%)`
+
+  const onMove = (e: React.MouseEvent) => {
+    if (reduce) return
+    const r = e.currentTarget.getBoundingClientRect()
+    const px = (e.clientX - r.left) / r.width - 0.5
+    const py = (e.clientY - r.top) / r.height - 0.5
+    ry.set(px * 14); rx.set(-py * 14)
+    mx.set(e.clientX - r.left); my.set(e.clientY - r.top)
+  }
+  const reset = () => { rx.set(0); ry.set(0); mx.set(-300); my.set(-300) }
+
+  return (
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 28, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: reduce ? 0 : i * 0.09, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      whileHover={reduce ? undefined : { scale: 1.03 }}
+      whileTap={reduce ? undefined : { scale: 0.98 }}
+      onMouseMove={onMove}
+      onMouseLeave={reset}
+      style={{
+        rotateX: reduce ? 0 : rx, rotateY: reduce ? 0 : ry, transformPerspective: 900,
+        position: 'relative', overflow: 'hidden', cursor: 'pointer',
+        background: `radial-gradient(ellipse 130% 80% at 50% 15%, ${th.tint}, transparent 70%), rgb(var(--surface))`,
+        border: `1.5px solid ${w.color}33`, borderRadius: '1.5rem', padding: '34px 24px 30px',
+        textAlign: 'center', boxShadow: `0 14px 44px ${w.color}18`, willChange: 'transform',
+      }}
+      onClick={() => { playSound(w.sound_theme, 'click'); onPick(w) }}
+    >
+      {/* Spotlight que sigue al cursor */}
+      {!reduce && <motion.div aria-hidden style={{ position: 'absolute', inset: 0, background: halo, pointerEvents: 'none' }} />}
+      {/* Brillo superior sutil */}
+      <div aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${w.color}66, transparent)` }} />
+      <div style={{ position: 'relative' }}>
+        <motion.div
+          style={{ fontSize: '3.6rem', marginBottom: 14, filter: `drop-shadow(0 0 16px ${w.color})`, display: 'inline-block' }}
+          animate={reduce ? undefined : { y: [0, -7, 0] }}
+          transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
+        >{w.icon}</motion.div>
+        <div style={{ fontSize: '1.22rem', fontWeight: 800, color: 'rgb(var(--text))', marginBottom: 8 }}>{w.name}</div>
+        {w.description && <div style={{ fontSize: '.78rem', color: 'rgb(var(--text-muted))', lineHeight: 1.6, marginBottom: 14 }}>{w.description}</div>}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${w.color}15`, border: `1px solid ${w.color}30`, borderRadius: 20, padding: '5px 14px', fontSize: '.72rem', color: w.color, fontWeight: 700 }}>{w.icon} {t(`themes.${w.bg_type}`, th.label)}</div>
+      </div>
+    </motion.div>
+  )
+}
+
+/* ── Número que "cuenta" hacia su valor (para el XP) ── */
+function CountUp({ value, reduce }: { value: number; reduce: boolean }) {
+  const [display, setDisplay] = useState(value)
+  const prev = useRef(value)
+  useEffect(() => {
+    if (reduce || prev.current === value) { setDisplay(value); prev.current = value; return }
+    const controls = animate(prev.current, value, {
+      duration: 0.9, ease: [0.16, 1, 0.3, 1],
+      onUpdate: v => setDisplay(Math.round(v)),
+    })
+    prev.current = value
+    return () => controls.stop()
+  }, [value, reduce])
+  return <>{display}</>
+}
+
 export default function WorldMap() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -281,6 +332,11 @@ export default function WorldMap() {
   const [xpDisplay, setXpDisplay]     = useState(0)
   const [mapW, setMapW]               = useState(() => Math.min(380, typeof window !== 'undefined' ? window.innerWidth - 40 : 380))
   const charRef = useRef<HTMLDivElement>(null)
+  const reduce = !!useReducedMotion()
+  // El efecto de carga puede correr varias veces (la referencia de `profile`
+  // cambia mientras la sesión se asienta), y con ello loadWorld. Este guard evita
+  // que el sonido/animación de "nivel desbloqueado" se dispare repetidamente.
+  const unlockPlayedRef = useRef(false)
 
   useEffect(() => {
     const update = () => setMapW(Math.min(380, window.innerWidth - 40))
@@ -292,7 +348,17 @@ export default function WorldMap() {
   const campaignId   = profile?.campaign_id ?? null
   const isSuperAdmin = ['superadmin','super_admin'].includes(profile?.role ?? '')
   const isStaff      = ['superadmin','super_admin','capacitador'].includes(profile?.role ?? '')
-  const backPath     = locState?.from === 'admin' ? '/admin/worlds' : '/'
+  // "Volver" debe regresar a DONDE se venía, no a '/'. Antes iba a '/', y como
+  // Welcome redirige al staff autenticado a '/admin', un capacitador/superadmin
+  // en "vista aprendiz" terminaba fuera de la vista aprendiz, en un panel a medio
+  // renderizar. Desde el curso (from:'course') volvemos con history back, que
+  // devuelve a la página del curso conservando la vista aprendiz. Desde el CMS
+  // (from:'admin') vamos al listado de mundos. En cualquier otro caso, a '/'.
+  const goBack = useCallback(() => {
+    if (locState?.from === 'admin') { navigate('/admin/worlds'); return }
+    if (locState?.from === 'course' && window.history.length > 1) { navigate(-1); return }
+    navigate('/')
+  }, [locState, navigate])
 
   // El menú de Mundos sigue oculto para el aprendiz y /world queda reservada
   // para staff (preview desde el CMS)… EXCEPTO cuando un aprendiz llega desde
@@ -360,12 +426,15 @@ export default function WorldMap() {
       setScoreMap(sm)
       const totalXP = (pData ?? []).reduce((s: number, p: {xp_earned: number}) => s + (p.xp_earned || 0), 0)
       setXpDisplay(totalXP)
-      // Check for newly unlocked (last state from quiz)
-      if (locState?.worldId && pData && pData.length > 0) {
+      // Check for newly unlocked (last state from quiz). El guard evita que, si
+      // loadWorld corre varias veces, el sonido/animación se repita (el usuario
+      // oía el "unlock" varias veces seguidas al entrar).
+      if (locState?.worldId && pData && pData.length > 0 && !unlockPlayedRef.current) {
         const lastLevels = (lData ?? []) as Level[]
         const lastCompleted = [...ids].pop()
         const nextIdx = lastLevels.findIndex(l => l.id === lastCompleted) + 1
         if (nextIdx > 0 && nextIdx < lastLevels.length) {
+          unlockPlayedRef.current = true
           setNewlyUnlocked(lastLevels[nextIdx].id)
           playSound(w.sound_theme, 'unlock')
           setTimeout(() => setNewlyUnlocked(null), 2000)
@@ -380,12 +449,14 @@ export default function WorldMap() {
     if ((!done && !available) || !level.quiz_id) return
     playSound(world?.sound_theme ?? 'neutral', 'enter')
     setTransition(true)
+    // ~2s cinematográficos para que la escena de la transición se aprecie;
+    // con movimiento reducido no hay animación, así que saltamos rápido.
     setTimeout(() => {
       setTransition(false)
       navigate(`/arena/${level.quiz_id}`, {
         state: { from: 'world', worldId: world?.id, levelId: level.id, minScorePct: level.min_score_pct }
       })
-    }, 1500)
+    }, reduce ? 500 : 2000)
   }
 
   /* Duolingo-style vertical path positions */
@@ -428,6 +499,17 @@ export default function WorldMap() {
     }
   }, [completedCount, totalCount])
 
+  // Al volver de un quiz con un nivel recién desbloqueado, desplazamos el mapa
+  // suavemente hasta el personaje para que el aprendiz vea el pop del nodo nuevo.
+  useEffect(() => {
+    if (!newlyUnlocked || reduce) return
+    const id = setTimeout(
+      () => charRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      350,
+    )
+    return () => clearTimeout(id)
+  }, [newlyUnlocked, reduce])
+
   /* Stars score per level */
   const getStars = (level: Level): number => {
     if (!completedIds.has(level.id)) return 0
@@ -459,28 +541,17 @@ export default function WorldMap() {
       <style>{`
         @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-        .wc{transition:transform .2s,box-shadow .2s;cursor:pointer;}
-        .wc:hover{transform:translateY(-6px) scale(1.03);}
       `}</style>
-      <div className="wm-selector-wrap" style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,fontFamily:'inherit'}}>
-        <button onClick={() => navigate(backPath)} style={{position:'fixed',top:20,left:20,background:'none',border:'none',color:'rgb(var(--text-muted))',cursor:'pointer',fontSize:'.875rem',fontFamily:'inherit'}}>{t('world.back')}</button>
-        <div style={{fontSize:'3.5rem',marginBottom:20,animation:'bob 3s ease infinite'}}>🌍</div>
-        <h1 style={{color:'rgb(var(--text))',fontSize:'2rem',fontWeight:900,margin:'0 0 10px',textAlign:'center',letterSpacing:'-1px'}}>{t('world.choose_world')}</h1>
-        <p style={{color:'rgb(var(--text-muted))',margin:'0 0 48px',fontSize:'.9rem'}}>{t('world.choose_world_sub')}</p>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:24,maxWidth:800,width:'100%'}}>
-          {worlds.map((w,i) => {
-            const th = THEMES[w.bg_type] ?? THEMES.corporate
-            return (
-              <div key={w.id} className="wc"
-                style={{background:`radial-gradient(ellipse 130% 80% at 50% 20%, ${th.tint}, transparent 70%), rgb(var(--surface))`,border:`2px solid ${w.color}30`,borderRadius:'1.5rem',padding:'32px 24px',textAlign:'center',boxShadow:`0 12px 40px ${w.color}15`,animation:`fadeUp .4s ease ${i*.08}s both`}}
-                onClick={() => { playSound(w.sound_theme,'click'); loadWorld(w) }}>
-                <div style={{fontSize:'3.5rem',marginBottom:14,filter:`drop-shadow(0 0 14px ${w.color})`}}>{w.icon}</div>
-                <div style={{fontSize:'1.2rem',fontWeight:800,color:'rgb(var(--text))',marginBottom:8}}>{w.name}</div>
-                {w.description && <div style={{fontSize:'.78rem',color:'rgb(var(--text-muted))',lineHeight:1.6,marginBottom:14}}>{w.description}</div>}
-                <div style={{display:'inline-flex',alignItems:'center',gap:6,background:`${w.color}15`,border:`1px solid ${w.color}30`,borderRadius:20,padding:'5px 14px',fontSize:'.72rem',color:w.color,fontWeight:700}}>{w.icon} {t(`themes.${w.bg_type}`, th.label)}</div>
-              </div>
-            )
-          })}
+      <div className="wm-selector-wrap" style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,fontFamily:'inherit',position:'relative',overflow:'hidden'}}>
+        <Aurora color="#10D451" reduce={reduce} />
+        <button onClick={goBack} style={{position:'fixed',top:20,left:20,zIndex:2,background:'none',border:'none',color:'rgb(var(--text-muted))',cursor:'pointer',fontSize:'.875rem',fontFamily:'inherit'}}>{t('world.back')}</button>
+        <div style={{fontSize:'3.5rem',marginBottom:20,animation:'bob 3s ease infinite',position:'relative',zIndex:1}}>🌍</div>
+        <h1 style={{color:'rgb(var(--text))',fontSize:'2rem',fontWeight:900,margin:'0 0 10px',textAlign:'center',letterSpacing:'-1px',position:'relative',zIndex:1}}>{t('world.choose_world')}</h1>
+        <p style={{color:'rgb(var(--text-muted))',margin:'0 0 48px',fontSize:'.9rem',position:'relative',zIndex:1}}>{t('world.choose_world_sub')}</p>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:24,maxWidth:800,width:'100%',position:'relative',zIndex:1}}>
+          {worlds.map((w,i) => (
+            <SelectorCard key={w.id} w={w} i={i} reduce={reduce} onPick={loadWorld} />
+          ))}
         </div>
       </div>
     </>
@@ -490,7 +561,7 @@ export default function WorldMap() {
     <div style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,fontFamily:'inherit'}}>
       <div style={{fontSize:'3rem'}}>🌍</div>
       <div style={{color:'rgb(var(--text))',fontWeight:700,fontSize:'1.1rem'}}>{t('world.no_world')}</div>
-      <button onClick={() => navigate(backPath)} style={{background:'none',border:'1px solid rgb(var(--line))',borderRadius:12,padding:'8px 20px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.875rem'}}>{t('world.back')}</button>
+      <button onClick={goBack} style={{background:'none',border:'1px solid rgb(var(--line))',borderRadius:12,padding:'8px 20px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.875rem'}}>{t('world.back')}</button>
     </div>
   )
 
@@ -500,17 +571,14 @@ export default function WorldMap() {
         @keyframes charBob{0%,100%{transform:translate(-50%,-120%) scale(1) rotate(-5deg)}50%{transform:translate(-50%,-135%) scale(1.08) rotate(5deg)}}
         @keyframes titleBob{0%,100%{transform:translateY(0) scale(1) rotate(-3deg)}50%{transform:translateY(-8px) scale(1.06) rotate(3deg)}}
         @keyframes pulse{0%{box-shadow:0 0 0 0 ${tc}80}70%{box-shadow:0 0 0 18px ${tc}00}100%{box-shadow:0 0 0 0 ${tc}00}}
-        @keyframes unlockPop{0%{transform:translate(-50%,-50%) scale(.5);opacity:0}60%{transform:translate(-50%,-50%) scale(1.2);opacity:1}100%{transform:translate(-50%,-50%) scale(1);opacity:1}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         @keyframes starT{0%,100%{opacity:.15;transform:scale(.7)}50%{opacity:.7;transform:scale(1.2)}}
         @keyframes amb{0%{opacity:0;transform:translateY(10px) scale(.8)}20%{opacity:.5}80%{opacity:.3}100%{opacity:0;transform:translateY(-70px) scale(1.2)}}
         @keyframes dashFlow{to{stroke-dashoffset:-20}}
         @keyframes xpPop{0%{opacity:0;transform:translateY(0) scale(.8)}20%{opacity:1;transform:translateY(-10px) scale(1.1)}80%{opacity:1;transform:translateY(-30px)}100%{opacity:0;transform:translateY(-50px)}}
-        @keyframes regionSlide{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes barShimmer{0%{transform:translateX(-120%)}60%,100%{transform:translateX(320%)}}
         .node-avail{animation:pulse 2s ease infinite;}
-        .node-avail:hover{transform:translate(-50%,-50%) scale(1.18)!important;cursor:pointer!important;}
         .char{animation:charBob 2.5s ease-in-out infinite;}
-        .node-new{animation:unlockPop .6s cubic-bezier(.2,.8,.4,1) both;}
         @media (max-width:400px){
           .wm-selector-wrap{padding:16px!important;}
           .wm-hdr-cambiar{display:none!important;}
@@ -522,9 +590,12 @@ export default function WorldMap() {
         }
       `}</style>
 
-      {transition && <Transition type={world.transition_type || 'clouds'} color={tc}/>}
+      {transition && <LevelTransition type={world.transition_type || 'clouds'} color={tc} reduce={reduce}/>}
 
       <div style={{minHeight:'100vh',background:`radial-gradient(ellipse 130% 80% at 50% 20%, ${theme.tint}, transparent 70%), rgb(var(--bg))`,fontFamily:'inherit',position:'relative',overflow:'hidden'}}>
+
+        {/* Aurora animada de fondo */}
+        <Aurora color={tc} reduce={reduce} />
 
         {/* Stars */}
         {stars.map((s,i) => (
@@ -538,7 +609,7 @@ export default function WorldMap() {
 
         {/* ── Header ── */}
         <header style={{position:'sticky',top:0,zIndex:50,background:'rgb(var(--bg) / 0.85)',backdropFilter:'blur(24px)',borderBottom:`1px solid ${tc}20`,height:60,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px'}}>
-          <button onClick={() => { playSound(world.sound_theme,'click'); navigate(backPath) }}
+          <button onClick={() => { playSound(world.sound_theme,'click'); goBack() }}
             style={{background:'none',border:'none',color:'rgb(var(--text-muted))',cursor:'pointer',fontSize:'.875rem',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}>
             {t('world.back')}
           </button>
@@ -553,7 +624,13 @@ export default function WorldMap() {
             {/* XP counter */}
             <div className="wm-hdr-xp" style={{display:'flex',alignItems:'center',gap:6,background:`${tc}15`,border:`1px solid ${tc}25`,borderRadius:20,padding:'4px 12px'}}>
               <span style={{fontSize:'.7rem'}}>⭐</span>
-              <span style={{color:tc,fontWeight:800,fontSize:'.82rem'}}>{xpDisplay} XP</span>
+              <motion.span
+                key={xpDisplay}
+                initial={reduce ? false : { scale: 1.5, color: '#FBBF24' }}
+                animate={{ scale: 1, color: tc }}
+                transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                style={{color:tc,fontWeight:800,fontSize:'.82rem',display:'inline-block'}}
+              ><CountUp value={xpDisplay} reduce={reduce} /> XP</motion.span>
             </div>
             {worlds.length > 1 && (
               <button className="wm-hdr-cambiar" onClick={() => setShowSelector(true)}
@@ -565,12 +642,20 @@ export default function WorldMap() {
         </header>
 
         {/* Progress bar */}
-        <div style={{height:4,background:'rgb(var(--line) / 0.3)',position:'relative',zIndex:1}}>
-          <div style={{height:'100%',width:`${progressPct}%`,background:`linear-gradient(90deg,${tc},${tc}80)`,transition:'width 1s ease',boxShadow:`0 0 10px ${tc}80`}}/>
+        <div style={{height:4,background:'rgb(var(--line) / 0.3)',position:'relative',zIndex:1,overflow:'hidden'}}>
+          <div style={{height:'100%',width:`${progressPct}%`,background:`linear-gradient(90deg,${tc},${tc}80)`,transition:'width 1s ease',boxShadow:`0 0 10px ${tc}80`,position:'relative',overflow:'hidden'}}>
+            {!reduce && progressPct > 0 && (
+              <div style={{position:'absolute',inset:0,width:'40%',background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.6),transparent)',animation:'barShimmer 3.5s ease-in-out infinite'}}/>
+            )}
+          </div>
         </div>
 
         {/* World title */}
-        <div style={{textAlign:'center',padding:'32px 20px 16px',position:'relative',zIndex:1}}>
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          style={{textAlign:'center',padding:'32px 20px 16px',position:'relative',zIndex:1}}>
           <div style={{fontSize:'2.8rem',marginBottom:10,filter:`drop-shadow(0 0 20px ${tc})`,animation:'titleBob 4s ease infinite'}}>{world.icon}</div>
           <h1 className="wm-world-title" style={{margin:0,fontSize:'1.9rem',fontWeight:900,color:'rgb(var(--text))',textShadow:`0 0 40px ${tc}`,letterSpacing:'-1px',lineHeight:1.1,wordBreak:'break-word'}}>{world.name}</h1>
           {world.description && <p style={{margin:'10px auto 0',fontSize:'.875rem',color:'rgb(var(--text-muted))',maxWidth:420,lineHeight:1.6}}>{world.description}</p>}
@@ -583,7 +668,7 @@ export default function WorldMap() {
               {t('world.pct_complete', { pct: Math.round(progressPct) })}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* ── Duolingo Map ── */}
         <div className="wm-map-outer" style={{display:'flex',justifyContent:'center',padding:'0 20px 80px',position:'relative',zIndex:1}}>
@@ -597,7 +682,12 @@ export default function WorldMap() {
               const pos = positions[idx]
               if (!pos) return null
               return (
-                <div key={region.id} style={{
+                <motion.div key={region.id}
+                  initial={reduce ? false : { opacity: 0, x: -10 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true, margin: '-40px' }}
+                  transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  style={{
                   position:'absolute',
                   left:'50%',
                   top: pos.y - 52,
@@ -611,12 +701,12 @@ export default function WorldMap() {
                   color:'rgb(var(--text-muted))',
                   letterSpacing:'.08em',textTransform:'uppercase',
                   whiteSpace:'nowrap',
+                  maxWidth: mapW - 24,
                   zIndex:3,
-                  animation:'regionSlide .4s ease both',
                 }}>
-                  <span>{region.icon}</span>
-                  <span>{region.name}</span>
-                </div>
+                  <span style={{flexShrink:0}}>{region.icon}</span>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis'}}>{region.name}</span>
+                </motion.div>
               )
             })}
 
@@ -634,8 +724,21 @@ export default function WorldMap() {
                 <path d={buildPath(positions)} fill="none" stroke="rgb(var(--text) / 0.12)" strokeWidth={14} strokeLinecap="round" strokeLinejoin="round"/>
                 {/* Base track */}
                 <path d={buildPath(positions)} fill="none" stroke="rgb(var(--text) / 0.07)" strokeWidth={10} strokeLinecap="round" strokeLinejoin="round"/>
-                {/* Completed section */}
-                <path d={buildPath(positions)} fill="none" stroke={tc} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" opacity={.3}/>
+                {/* Completed section (fondo tenue del trazo completo) */}
+                <path d={buildPath(positions)} fill="none" stroke={tc} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" opacity={.15}/>
+                {/* Progreso real: el trazo se "dibuja" hasta la fracción completada */}
+                <motion.path
+                  d={buildPath(positions)}
+                  fill="none"
+                  stroke={tc}
+                  strokeWidth={6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: totalCount > 0 ? Math.min(1, completedCount / totalCount) : 0 }}
+                  transition={{ duration: reduce ? 0 : 1.1, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ filter: `drop-shadow(0 0 6px ${tc}66)` }}
+                />
                 {/* Animated dashes */}
                 <path d={buildPath(positions)} fill="none" stroke={tc} strokeWidth={3} strokeLinecap="round" strokeDasharray="12 8" opacity={.6} style={{animation:'dashFlow 1s linear infinite'}}/>
                 {/* Glow */}
@@ -648,17 +751,22 @@ export default function WorldMap() {
               const lastDoneIdx = [...Array(levels.length)].reduce((acc,_,i) => completedIds.has(levels[i]?.id) ? i : acc, -1)
               const charPos = positions[lastDoneIdx >= 0 ? lastDoneIdx : 0] ?? positions[0]
               return (
-                <div ref={charRef} className="char" style={{
-                  position:'absolute',
-                  left:charPos.x, top:charPos.y,
-                  fontSize:'2rem',zIndex:10,
-                  filter:`drop-shadow(0 0 16px ${tc}) drop-shadow(0 3px 6px rgb(var(--text) / 0.3))`,
-                  transform:'translate(-50%,-120%)',
-                  pointerEvents:'none',
-                  transition:'left 1s cubic-bezier(.4,0,.2,1), top 1s cubic-bezier(.4,0,.2,1)',
-                }}>
+                <motion.div
+                  ref={charRef}
+                  className="char"
+                  style={{
+                    position:'absolute',
+                    fontSize:'2rem',zIndex:10,
+                    filter:`drop-shadow(0 0 16px ${tc}) drop-shadow(0 3px 6px rgb(var(--text) / 0.3))`,
+                    transform:'translate(-50%,-120%)',
+                    pointerEvents:'none',
+                  }}
+                  initial={false}
+                  animate={{ left: charPos.x, top: charPos.y }}
+                  transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 120, damping: 18, mass: 0.8 }}
+                >
                   {world.character_emoji || '🧑'}
-                </div>
+                </motion.div>
               )
             })()}
 
@@ -694,19 +802,51 @@ export default function WorldMap() {
                   {/* Confetti on new unlock */}
                   {isNew && <ConfettiBurst color={tc}/>}
 
+                  {/* Sombra flotante bajo el nodo (da sensación de relieve) */}
+                  {(available || done) && (
+                    <div aria-hidden style={{
+                      position:'absolute',left:0,top:size*0.5,transform:'translateX(-50%)',
+                      width:size*0.7,height:size*0.2,borderRadius:'50%',
+                      background:'rgb(var(--text) / 0.16)',filter:'blur(5px)',pointerEvents:'none',
+                    }}/>
+                  )}
+
+                  {/* Halo orbital para el nodo disponible */}
+                  {available && !reduce && (
+                    <motion.div aria-hidden
+                      style={{position:'absolute',left:0,top:0,width:size+28,height:size+28,x:'-50%',y:'-50%',borderRadius:'50%',pointerEvents:'none'}}
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 7, repeat: Infinity, ease: 'linear' }}
+                    >
+                      <div style={{position:'absolute',top:-4,left:'50%',transform:'translateX(-50%)',width:8,height:8,borderRadius:'50%',background:tc,boxShadow:`0 0 12px ${tc}, 0 0 4px #fff`}}/>
+                    </motion.div>
+                  )}
+
                   {/* Main node */}
-                  <div
-                    className={available ? 'node-avail' : isNew ? 'node-new' : ''}
+                  <motion.div
+                    className={available ? 'node-avail' : ''}
                     style={{
                       width:size, height:size, borderRadius:'50%',
                       background:bg, border, boxShadow:shadow,
                       display:'flex',alignItems:'center',justifyContent:'center',
                       cursor:(available||done)?'pointer':'default',
                       backdropFilter:'blur(16px)',
-                      transform:`translate(-50%,-50%) scale(${isHov&&(available||done)?1.1:1})`,
-                      transition:'transform .2s, box-shadow .3s',
+                      x:'-50%', y:'-50%',
                       position:'relative',
                     }}
+                    initial={reduce ? false : { opacity: 0, scale: 0 }}
+                    animate={
+                      isNew && !reduce
+                        ? { opacity: 1, scale: [0.4, 1.25, 1] }
+                        : { opacity: 1, scale: 1 }
+                    }
+                    transition={
+                      isNew
+                        ? { duration: 0.6, ease: [0.2, 0.8, 0.4, 1] }
+                        : { delay: reduce ? 0 : Math.min(i * 0.03, 0.6), type: 'spring', stiffness: 260, damping: 18 }
+                    }
+                    whileHover={(available || done) && !reduce ? { scale: 1.14 } : undefined}
+                    whileTap={(available || done) && !reduce ? { scale: 0.9 } : undefined}
                     onClick={() => handleNodeClick(level, i)}
                     onMouseEnter={() => (available||done) && setHoveredId(level.id)}
                     onMouseLeave={() => setHoveredId(null)}
@@ -737,18 +877,19 @@ export default function WorldMap() {
                         <StarDisplay value={getStarsDisplay(scoreMap.get(level.id) ?? 0)} size={12} />
                       </div>
                     )}
-                  </div>
+                  </motion.div>
 
-                  {/* Label */}
+                  {/* Label — se permite hasta 2 líneas para no cortar nombres largos */}
                   <div style={{
                     position:'absolute',
                     top: done ? 52 : available ? 54 : 44,
                     left:'50%',transform:'translateX(-50%)',
-                    fontSize:'.62rem',fontWeight:600,
+                    fontSize:'.62rem',fontWeight:600,lineHeight:1.15,
                     color:done?'#92400E':available?tc:'rgb(var(--text-subtle))',
-                    textAlign:'center',whiteSpace:'nowrap',
-                    maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',
-                    textShadow:'0 1px 8px rgb(var(--bg) / 0.8)',
+                    textAlign:'center',whiteSpace:'normal',wordBreak:'break-word',
+                    width:112,maxWidth:112,
+                    display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden',
+                    textShadow:'0 1px 8px rgb(var(--bg) / 0.8), 0 0 4px rgb(var(--bg))',
                     pointerEvents:'none',
                   }}>{level.name}</div>
 
@@ -788,7 +929,11 @@ export default function WorldMap() {
 
             {/* Completion banner */}
             {completedCount === totalCount && totalCount > 0 && (
-              <div style={{
+              <motion.div
+                initial={reduce ? false : { opacity: 0, scale: 0.7, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 220, damping: 16, delay: 0.15 }}
+                style={{
                 position:'absolute',
                 top: positions[positions.length-1]?.y + 80,
                 left:'50%',transform:'translateX(-50%)',
@@ -797,14 +942,17 @@ export default function WorldMap() {
                 border:`1px solid ${tc}35`,
                 borderRadius:'1.25rem',
                 padding:'20px 24px',
-                animation:'fadeUp .6s ease both',
                 backdropFilter:'blur(12px)',
                 width:'max-content',maxWidth: mapW - 16,
               }}>
-                <div style={{fontSize:'2.5rem',marginBottom:8}}>🏆</div>
+                <motion.div
+                  style={{fontSize:'2.5rem',marginBottom:8}}
+                  animate={reduce ? undefined : { rotate: [0, -8, 8, -8, 0], scale: [1, 1.12, 1] }}
+                  transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 1.4, ease: 'easeInOut' }}
+                >🏆</motion.div>
                 <div style={{color:tc,fontWeight:900,fontSize:'1.1rem',textShadow:`0 0 20px ${tc}`}}>{t('world.world_complete')}</div>
                 <div style={{color:'rgb(var(--text-muted))',fontSize:'.78rem',marginTop:6}}>{t('world.world_complete_sub', { total: totalCount, xp: xpDisplay })}</div>
-              </div>
+              </motion.div>
             )}
 
           </div>

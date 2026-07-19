@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, Sparkles, BookOpen, AlertTriangle } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, Sparkles, BookOpen, AlertTriangle, Play } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { supabase } from '@/lib/supabase'
@@ -16,6 +17,10 @@ import i18n from '@/i18n'
 import { useEditingPresence } from '@/hooks/usePresence'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
+import { Stagger, StaggerItem } from '@/components/ui/motion'
+import { LevelTransition } from '@/components/worlds/LevelTransition'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { cn } from '@/lib/cn'
 
 interface World {
   id: string; name: string; description: string | null
@@ -30,18 +35,54 @@ interface Quiz   { id: string; title: string }
 
 const BG_LABELS: Record<string,string> = { airline:'admin.arena.theme_airline', bank:'admin.arena.theme_bank', health:'admin.arena.theme_health', corporate:'admin.arena.theme_corporate', tech:'admin.arena.theme_tech' }
 const SOUND_LABELS: Record<string,string> = { airport:'admin.worlds.sound_airport', bank:'admin.arena.theme_bank', nature:'admin.worlds.sound_nature', tech:'admin.arena.theme_tech', neutral:'admin.worlds.sound_neutral' }
-const TRANS_LABELS: Record<string,string> = { clouds:'admin.worlds.trans_clouds', cards:'admin.worlds.trans_cards', pulse:'admin.worlds.trans_pulse', rocket:'admin.worlds.trans_rocket', terminal:'admin.worlds.trans_terminal', confetti:'admin.worlds.trans_confetti', scan:'admin.worlds.trans_scan', warp:'admin.worlds.trans_warp' }
+const TRANS_LABELS: Record<string,string> = { clouds:'admin.worlds.trans_clouds', cards:'admin.worlds.trans_cards', pulse:'admin.worlds.trans_pulse', rocket:'admin.worlds.trans_rocket', terminal:'admin.worlds.trans_terminal', confetti:'admin.worlds.trans_confetti', scan:'admin.worlds.trans_scan', warp:'admin.worlds.trans_warp', portal:'admin.worlds.trans_portal', shatter:'admin.worlds.trans_shatter', splitflap:'admin.worlds.trans_splitflap', dna:'admin.worlds.trans_dna', matrix:'admin.worlds.trans_matrix', fireworks:'admin.worlds.trans_fireworks', curtain:'admin.worlds.trans_curtain', glitch:'admin.worlds.trans_glitch', doors:'admin.worlds.trans_doors', sunrise:'admin.worlds.trans_sunrise', equalizer:'admin.worlds.trans_equalizer', tunnel:'admin.worlds.trans_tunnel' }
 
 // Preguntas por sección por defecto (P1, P2… en el recorrido del aprendiz).
 // El capacitador puede cambiarlo al generar; se guarda en cada quiz
 // (arena_quizzes.section_size) y el ArenaPlayer lo respeta.
 const DEFAULT_QUESTIONS_PER_SECTION = 3
 
+/* ── Carcasa de modal reutilizable ──
+   Centraliza el fondo (fade) y el panel (resorte con entrada Y salida) para que
+   los 5 modales del editor compartan la misma transición. Va siempre dentro de
+   un <AnimatePresence> y bajo un guard `{cond && <ModalShell/>}` para que la
+   salida anime con los datos que tenía al cerrarse. Respeta reduced-motion. */
+function ModalShell({ onClose, className, reduce, children }: {
+  onClose: () => void
+  className?: string
+  reduce: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      {...backdropDismiss(onClose)}
+    >
+      <motion.div
+        className={cn('w-full rounded-2xl bg-surface border border-line overflow-hidden flex flex-col', className)}
+        style={{ maxHeight: '90vh' }}
+        initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 10 }}
+        transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 300, damping: 26 }}
+      >
+        {children}
+      </motion.div>
+    </motion.div>
+  )
+}
+
 export default function WorldDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
+  const reduce = useReducedMotion()
   const { user, isSuperAdmin, campaignId, loading: authLoading } = useAuth()
   // El capacitador solo puede ver/editar los mundos de su propia campaña; el superadmin todos.
   const scopedToCampaign = !isSuperAdmin
@@ -89,6 +130,14 @@ export default function WorldDetail() {
   const [aiSections, setAiSections] = useState<number | ''>(2)
   const [aiPerSection, setAiPerSection] = useState<number | ''>(DEFAULT_QUESTIONS_PER_SECTION)
   const [aiMinScore, setAiMinScore] = useState<number | ''>(80)
+
+  // Previsualizar la transición de nivel elegida, sin tener que jugar un nivel.
+  const [previewTrans, setPreviewTrans] = useState(false)
+  useEffect(() => {
+    if (!previewTrans) return
+    const id = setTimeout(() => setPreviewTrans(false), reduce ? 1200 : 2600)
+    return () => clearTimeout(id)
+  }, [previewTrans, reduce])
 
   // Generar en bloque todas las regiones del curso (una por módulo) con sus niveles.
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -433,13 +482,6 @@ export default function WorldDetail() {
 
   return (
     <>
-      <style>{`
-        @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes modalIn   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-        .region-body { animation: slideDown .2s ease both; }
-        .wd-modal    { animation: modalIn .22s cubic-bezier(.16,1,.3,1); }
-      `}</style>
-
       <div className="p-4 sm:p-6 max-w-4xl mx-auto">
 
         {/* ── Back ── */}
@@ -515,6 +557,11 @@ export default function WorldDetail() {
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.transition')}</label>
               <Select value={world.transition_type||'clouds'} onChange={v => handleTheme('transition_type',v)}
                 options={Object.entries(TRANS_LABELS).map(([k,v]) => ({ value: k, label: i18n.t(v) }))} />
+              <button type="button" onClick={() => setPreviewTrans(true)}
+                className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium transition-opacity hover:opacity-70"
+                style={{ color: world.color }}>
+                <Play className="h-3 w-3" /> {i18n.t('admin.worlds.preview_transition', { defaultValue: 'Previsualizar' })}
+              </button>
             </div>
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.character')}</label>
@@ -658,12 +705,12 @@ export default function WorldDetail() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <Stagger className="flex flex-col gap-3">
             {regions.sort((a,b) => a.order_index - b.order_index).map((region, ri) => {
               const regionLevels = levels.filter(l => l.region_id === region.id).sort((a,b) => a.order_index - b.order_index)
               const isOpen = expanded[region.id] ?? false
               return (
-                <div key={region.id} className="rounded-2xl border border-line bg-surface overflow-hidden">
+                <StaggerItem key={region.id} className="rounded-2xl border border-line bg-surface overflow-hidden">
                   {/* Region header */}
                   <div className="flex items-center gap-3 px-3 sm:px-5 py-3 sm:py-4 cursor-pointer select-none"
                     onClick={() => setExpanded(prev => ({ ...prev, [region.id]: !isOpen }))}>
@@ -700,8 +747,15 @@ export default function WorldDetail() {
                   </div>
 
                   {/* Levels */}
+                  <AnimatePresence initial={false}>
                   {isOpen && (
-                    <div className="region-body border-t border-line">
+                    <motion.div
+                      className="border-t border-line overflow-hidden"
+                      initial={reduce ? false : { height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                    >
                       {regionLevels.length === 0 ? (
                         <div className="px-5 py-6 text-center">
                           <div className="text-[12px] text-text-muted mb-3">{i18n.t('admin.worlds.no_levels_hint')}</div>
@@ -780,20 +834,20 @@ export default function WorldDetail() {
                           </div>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   )}
-                </div>
+                  </AnimatePresence>
+                </StaggerItem>
               )
             })}
-          </div>
+          </Stagger>
         )}
       </div>
 
       {/* ── Region Modal ── */}
+      <AnimatePresence>
       {regionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          {...backdropDismiss(() => setRegionModal(false))}>
-          <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+        <ModalShell onClose={() => setRegionModal(false)} className="max-w-md" reduce={reduce}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text">{editingRegion ? i18n.t('admin.worlds.edit_region') : i18n.t('admin.worlds.new_region')}</h2>
               <button onClick={() => setRegionModal(false)} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
@@ -850,15 +904,14 @@ export default function WorldDetail() {
                 {savingRegion ? i18n.t('common.saving') : editingRegion ? i18n.t('common.save') : i18n.t('admin.worlds.create_region')}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
+      </AnimatePresence>
 
       {/* ── Level Modal ── */}
+      <AnimatePresence>
       {levelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          {...backdropDismiss(() => setLevelModal(false))}>
-          <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+        <ModalShell onClose={() => setLevelModal(false)} className="max-w-md" reduce={reduce}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text">{editingLevel ? i18n.t('admin.worlds.edit_level') : i18n.t('admin.worlds.new_level')}</h2>
               <button onClick={() => setLevelModal(false)} className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-subtle">
@@ -950,15 +1003,14 @@ export default function WorldDetail() {
                 {savingLevel ? i18n.t('common.saving') : editingLevel ? i18n.t('common.save') : i18n.t('admin.worlds.create_level')}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
+      </AnimatePresence>
 
       {/* ── Generar niveles con IA (modal) ── */}
+      <AnimatePresence>
       {aiRegion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          {...backdropDismiss(() => setAiRegion(null))}>
-          <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+        <ModalShell onClose={() => setAiRegion(null)} className="max-w-md" reduce={reduce}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
                 <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
@@ -1021,9 +1073,9 @@ export default function WorldDetail() {
                 <Sparkles className="h-4 w-4"/> {i18n.t('admin.worlds.ai_gen_submit')}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
+      </AnimatePresence>
 
       {/* ── Crear quiz nuevo inline (desde el modal de nivel) ── */}
       {quizEditorOpen && world && (
@@ -1040,10 +1092,9 @@ export default function WorldDetail() {
       )}
 
       {/* ── Generar regiones desde el curso (modal en bloque) ── */}
+      <AnimatePresence>
       {bulkOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)' }}
-          {...backdropDismiss(() => setBulkOpen(false))}>
-          <div className="wd-modal w-full max-w-md rounded-2xl bg-surface border border-line overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+        <ModalShell onClose={() => setBulkOpen(false)} className="max-w-md" reduce={reduce}>
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
               <h2 className="text-[15px] font-semibold text-text flex items-center gap-2">
                 <Sparkles className="h-4 w-4" style={{ color:'#8B5CF6' }} />
@@ -1094,16 +1145,14 @@ export default function WorldDetail() {
                 {i18n.t('admin.worlds.bulk_modal_submit', { count: modulesWithoutRegion.length, defaultValue: `Generar ${modulesWithoutRegion.length} regiones` })}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
+      </AnimatePresence>
 
       {/* ── Reset confirm modal ── */}
+      <AnimatePresence>
       {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)' }}
-          {...backdropDismiss(() => setShowResetConfirm(false))}>
-          <div className="wd-modal w-full max-w-sm rounded-2xl bg-surface border border-line overflow-hidden">
+        <ModalShell onClose={() => setShowResetConfirm(false)} className="max-w-sm" reduce={reduce}>
             <div className="px-4 sm:px-6 pt-6 pb-4 text-center">
               <div className="text-[2rem] mb-3">⚠️</div>
               <h3 className="text-[16px] font-semibold text-text mb-2">{i18n.t('admin.worlds.sure')}</h3>
@@ -1122,23 +1171,47 @@ export default function WorldDetail() {
                 {resetting ? 'Borrando…' : 'Confirmar'}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
+      </AnimatePresence>
 
       {/* ── Toast ── */}
-      {resetToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-[13px] font-medium"
-          style={{ background:'rgba(16,212,81,0.15)', color:'#10D451', border:'1px solid rgba(16,212,81,0.30)', boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
-          {i18n.t('admin.worlds.toast_reset_ok')}
-        </div>
-      )}
-      {resetError && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-[13px] font-medium"
-          style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.30)', boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
-          ✗ No se pudo reiniciar el progreso, intenta de nuevo
-        </div>
-      )}
+      <AnimatePresence>
+        {resetToast && (
+          <motion.div key="ok" className="fixed bottom-6 left-1/2 z-50 px-5 py-3 rounded-xl text-[13px] font-medium"
+            initial={reduce ? { opacity: 0, x: '-50%' } : { opacity: 0, y: 20, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={reduce ? { opacity: 0, x: '-50%' } : { opacity: 0, y: 12, x: '-50%' }}
+            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+            style={{ background:'rgba(16,212,81,0.15)', color:'#10D451', border:'1px solid rgba(16,212,81,0.30)', boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
+            {i18n.t('admin.worlds.toast_reset_ok')}
+          </motion.div>
+        )}
+        {resetError && (
+          <motion.div key="err" className="fixed bottom-6 left-1/2 z-50 px-5 py-3 rounded-xl text-[13px] font-medium"
+            initial={reduce ? { opacity: 0, x: '-50%' } : { opacity: 0, y: 20, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={reduce ? { opacity: 0, x: '-50%' } : { opacity: 0, y: 12, x: '-50%' }}
+            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+            style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.30)', boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
+            ✗ No se pudo reiniciar el progreso, intenta de nuevo
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Previsualización de la transición de nivel (clic para cerrar) ── */}
+      <AnimatePresence>
+        {previewTrans && (
+          <div onClick={() => setPreviewTrans(false)} style={{ cursor: 'pointer' }}>
+            <LevelTransition
+              type={world.transition_type || 'clouds'}
+              color={world.color}
+              reduce={reduce}
+              caption={i18n.t('admin.worlds.preview_transition_caption', { defaultValue: 'Vista previa · toca para cerrar' })}
+            />
+          </div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

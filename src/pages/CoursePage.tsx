@@ -450,9 +450,9 @@ export default function CoursePage() {
               <Wrapper
                 {...wrapperProps}
                 className={cn(
-                  'flex items-center gap-4 rounded-2xl border bg-surface p-4 sm:p-5 transition-all duration-200',
-                  status === 'available' && 'border-line hover:border-primary hover:shadow-card-hover cursor-pointer',
-                  status === 'completed' && 'border-primary/25 hover:border-primary hover:shadow-card-hover cursor-pointer',
+                  'flex items-center gap-4 rounded-2xl border bg-surface p-4 sm:p-5 transition-all duration-300 ease-apple',
+                  status === 'available' && 'border-line hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer',
+                  status === 'completed' && 'border-primary/25 hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer',
                   status === 'locked' && 'border-line opacity-55',
                 )}
               >
@@ -556,7 +556,7 @@ export default function CoursePage() {
                         },
                       })
                     }
-                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all hover:border-primary hover:shadow-card-hover"
+                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all duration-300 ease-apple hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5"
                   >
                     <div className="mb-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -592,7 +592,7 @@ export default function CoursePage() {
                         },
                       })
                     }
-                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all hover:border-primary hover:shadow-card-hover"
+                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all duration-300 ease-apple hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5"
                   >
                     <div className="mb-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">

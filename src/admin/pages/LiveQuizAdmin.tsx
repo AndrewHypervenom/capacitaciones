@@ -17,6 +17,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import type { LiveQuiz, QuizQuestion, Campaign, QuizLeaderboardEntry, LiveQuizAnswer } from '@/types/database'
+import { FadeIn } from '@/components/ui/motion'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D']
@@ -512,7 +513,7 @@ export default function LiveQuizAdmin() {
           {quizzes.length === 0 ? i18n.t('livequiz.empty_none') : i18n.t('livequiz.empty_campaign')}
         </div>
       ) : (
-        <div className="rounded-2xl border border-line overflow-x-auto">
+        <FadeIn className="rounded-2xl border border-line overflow-x-auto" y={14}>
         <div className="min-w-[720px]">
           <div className={`grid ${showCampaignCol ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
             <span>{i18n.t('admin.livequiz.col_title')}</span>
@@ -526,7 +527,7 @@ export default function LiveQuizAdmin() {
             return (
               <div
                 key={q.id}
-                className={`grid ${showCampaignCol ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-4 items-center border-t border-line`}
+                className={`grid ${showCampaignCol ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-4 items-center border-t border-line transition-colors hover:bg-subtle/40`}
               >
                 <div>
                   <div className="text-[13px] text-text">{q.title}</div>
@@ -577,7 +578,7 @@ export default function LiveQuizAdmin() {
             )
           })}
         </div>
-        </div>
+        </FadeIn>
       )}
     </div>
   )

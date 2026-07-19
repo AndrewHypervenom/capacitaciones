@@ -15,6 +15,7 @@ import {
   setUserCampaigns as saveUserCampaigns,
 } from '@/services/campaigns.service'
 import { Avatar } from '@/components/ui/Avatar'
+import { FadeIn } from '@/components/ui/motion'
 import { Select } from '@/components/ui/Select'
 import { MultiSelect } from '@/components/ui/MultiSelect'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
@@ -486,7 +487,7 @@ export default function UserList() {
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
       ) : (
-        <div className="rounded-2xl border border-line overflow-x-auto">
+        <FadeIn className="rounded-2xl border border-line overflow-x-auto" y={14}>
           <div className="min-w-[640px]">
           <div className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
             style={{ gridTemplateColumns: isSuperAdmin ? '1fr auto auto auto auto' : '1fr auto auto' }}
@@ -499,7 +500,7 @@ export default function UserList() {
           </div>
           <div className="divide-y divide-line">
             {filteredUsers.map((user) => (
-              <div key={user.id} className="grid gap-4 px-5 py-3.5 items-center"
+              <div key={user.id} className="grid gap-4 px-5 py-3.5 items-center transition-colors hover:bg-subtle/40"
                 style={{ gridTemplateColumns: isSuperAdmin ? '1fr auto auto auto auto' : '1fr auto auto' }}
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -703,7 +704,7 @@ export default function UserList() {
             )}
           </div>
           </div>
-        </div>
+        </FadeIn>
       )}
 
       {assignUser && (

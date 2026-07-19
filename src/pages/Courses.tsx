@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Loader2, Plus, Search, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
@@ -12,6 +13,8 @@ import { Reveal } from '@/components/ui/Reveal';
 import { cn } from '@/lib/cn';
 
 type Filter = 'all' | 'mandatory' | 'optional' | 'in_progress' | 'completed';
+
+const MotionLink = motion(Link);
 
 function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
   if (lang === 'en') return en || es || '';
@@ -35,6 +38,7 @@ function CourseCard({
   onEnrolled?: () => void;
 }) {
   const { t } = useTranslation();
+  const reduce = useReducedMotion();
   const language = useUserStore((s) => s.language);
   const completedSlugs = useProgressStore((s) => s.completedModules);
   const { total, done, pct } = courseProgress(course, completedSlugs);
@@ -60,14 +64,16 @@ function CourseCard({
 
   return (
     <Reveal delay={Math.min(index * 60, 240)}>
-      <Link
+      <MotionLink
         to={`/courses/${course.slug}`}
         state={{ from: 'courses' }}
-        className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface transition-all duration-300 hover:border-primary hover:shadow-card-hover"
+        whileHover={reduce ? undefined : { y: -4 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+        className="group flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface transition-[border-color,box-shadow] duration-300 hover:border-primary hover:shadow-card-hover"
       >
         {/* Portada */}
         <div
-          className="relative h-28 w-full shrink-0"
+          className="relative h-28 w-full shrink-0 overflow-hidden"
           style={{
             background: course.cover_url
               ? course.cover_fit === 'contain'
@@ -77,7 +83,7 @@ function CourseCard({
           }}
         >
           {course.cover_url && (
-            <img src={course.cover_url} alt={pickText(course.title_es, course.title_en, course.title_pt, language)} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
+            <img src={course.cover_url} alt={pickText(course.title_es, course.title_en, course.title_pt, language)} className={`h-full w-full transition-transform duration-500 ease-apple group-hover:scale-105 ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" aria-hidden />
           <div
@@ -161,7 +167,7 @@ function CourseCard({
             </div>
           </div>
         </div>
-      </Link>
+      </MotionLink>
     </Reveal>
   );
 }

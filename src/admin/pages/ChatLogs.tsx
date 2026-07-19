@@ -6,6 +6,7 @@ import {
   fetchHelpKpis, fetchHelpLogs, fetchTopUnanswered,
   type HelpKpis, type HelpLogRow, type HelpLogSource,
 } from '@/services/helpLog.service'
+import { FadeIn } from '@/components/ui/motion'
 
 const SOURCE_META: Record<HelpLogSource, { labelKey: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
   faq:      { labelKey: 'admin.chat_logs.src_faq',      color: '#22c55e', icon: Zap },
@@ -77,12 +78,12 @@ export default function ChatLogs() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5">
+          <FadeIn as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5" y={12}>
             <KpiCard label={t('admin.chat_logs.kpi_total')} value={String(kpis?.total ?? 0)} />
             <KpiCard label={t('admin.chat_logs.src_faq')} value={`${pct(kpis?.faq ?? 0)}%`} sub={`${kpis?.faq ?? 0}`} color={SOURCE_META.faq.color} />
             <KpiCard label={t('admin.chat_logs.kpi_ai')} value={`${pct(kpis?.ai ?? 0)}%`} sub={`${kpis?.ai ?? 0}`} color={SOURCE_META.ai.color} />
             <KpiCard label={t('admin.chat_logs.src_no_match')} value={`${pct(kpis?.no_match ?? 0)}%`} sub={`${kpis?.no_match ?? 0}`} color={SOURCE_META.no_match.color} />
-          </section>
+          </FadeIn>
 
           {/* ── Vacíos de conocimiento ── */}
           {gaps.length > 0 && (
@@ -206,7 +207,7 @@ export default function ChatLogs() {
 
 function KpiCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-1.5">
+    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-1.5 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
       <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-text-muted truncate">{label}</span>
       <div className="flex items-baseline gap-1.5">
         <span className="text-2xl sm:text-3xl font-bold tabular-nums" style={color ? { color } : { color: 'var(--text)' }}>{value}</span>

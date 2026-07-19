@@ -634,7 +634,7 @@ export default function ModulePage() {
                     <li key={p.unit.key}>
                       <a
                         href={`#section-${p.unit.sectionIndex}`}
-                        className="group flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5 transition-colors hover:border-primary/40"
+                        className="group flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5 transition-all duration-300 ease-apple hover:border-primary/40 hover:-translate-y-0.5"
                       >
                         <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                           p.status === 'failed' ? 'bg-neon-magenta/10 text-neon-magenta' : 'bg-subtle text-text-muted')}>

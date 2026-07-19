@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
+import { FadeIn } from '@/components/ui/motion'
 import {
   fetchAiUsage, fetchAiUsageUsers, functionLabel, functionColor, FUNCTION_META,
   type AiUsageData, type AiUsageFilters, type AiUsageRow, type UserOption,
@@ -182,12 +183,12 @@ export default function AiUsage() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+          <FadeIn as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5" y={12}>
             <KpiCard icon={Bot} label={t('admin.ai_usage.kpi_calls')} value={fmtInt(data.kpis.calls)} color="#8b5cf6" />
             <KpiCard icon={Coins} label={t('admin.ai_usage.kpi_cost')} value={fmtUsd(data.kpis.costUsd)} color="#22c55e" />
             <KpiCard icon={Cpu} label={t('admin.ai_usage.kpi_tokens')} value={fmtTokens(data.kpis.tokens)} color="#06b6d4" />
             <KpiCard icon={Users} label={t('admin.ai_usage.kpi_active_users')} value={fmtInt(data.kpis.activeUsers)} color="#f59e0b" />
-          </section>
+          </FadeIn>
 
           {/* ── Gráfico de costo por día ── */}
           <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-5">
@@ -260,7 +261,7 @@ function KpiCard({ icon: Icon, label, value, color }: {
   icon: React.ComponentType<{ className?: string }>; label: string; value: string; color: string
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-2">
+    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-2 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
       <div className="flex items-center gap-2">
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${color}1a`, color }}>
           <Icon className="h-4 w-4" />

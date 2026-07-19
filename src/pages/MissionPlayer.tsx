@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { motion, AnimatePresence, useReducedMotion, animate } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -17,6 +18,9 @@ function useSFX() {
     if (!ctxRef.current) {
       try { ctxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)() } catch {}
     }
+    // El contexto arranca "suspended" por la política de autoplay; hay que
+    // reanudarlo (tras el primer gesto del usuario ya prende) o queda mudo.
+    if (ctxRef.current && ctxRef.current.state === 'suspended') void ctxRef.current.resume()
     return ctxRef.current
   }
   const play = useCallback((type: string) => {
@@ -104,6 +108,10 @@ export default function MissionPlayer() {
   const [xpPopup, setXpPopup] = useState<{ val: number; key: number } | null>(null)
   const [showCompletion, setShowCompletion] = useState(false)
   const [quizAnswers, setQuizAnswers] = useState<Record<number, boolean | null>>({})
+  // Opción elegida por el aprendiz (solo para pintar su elección incorrecta en
+  // rojo); no altera la lógica de puntaje, que sigue en quizAnswers.
+  const [quizChosen, setQuizChosen] = useState<Record<number, string>>({})
+  const reduce = !!useReducedMotion()
 
   /* Login state */
   const [loginUser, setLoginUser] = useState('')
@@ -272,6 +280,7 @@ export default function MissionPlayer() {
   const answerQuiz = (qIdx: number, optId: string) => {
     if (quizAnswers[qIdx] !== undefined) return
     const isCorrect = QUIZ_KEYS[qIdx].correct === optId
+    setQuizChosen(prev => ({ ...prev, [qIdx]: optId }))
     setQuizAnswers(prev => {
       const next = { ...prev, [qIdx]: isCorrect }
       if (Object.keys(next).length >= QUIZ_KEYS.length) {
@@ -379,7 +388,10 @@ export default function MissionPlayer() {
     .info-item-label { font-weight:600; color:#10D451; min-width:80px; }
     .info-item-desc { color:rgb(var(--text-muted)); }
     .next-btn { display:inline-flex; align-items:center; gap:10px; padding:10px 24px; background:rgba(16,212,81,0.08); border:1px solid rgba(16,212,81,0.25); border-radius:0.75rem; color:#10D451; font-family:'Poppins',sans-serif; font-size:.9rem; font-weight:600; cursor:pointer; transition:.25s; margin-top:6px; }
-    .next-btn:hover { background:rgba(16,212,81,0.15); border-color:rgba(16,212,81,0.4); }
+    .next-btn:hover { background:rgba(16,212,81,0.15); border-color:rgba(16,212,81,0.4); transform:translateY(-1px); }
+    .next-btn:active,.glpi-submit-btn:active,.completion-btn:active,.completion-btn-sec:active { transform:scale(.97); }
+    .nav-btn:not(.locked):not(.active):hover { background:rgba(16,212,81,0.04); color:rgb(var(--text)); }
+    .nav-btn:not(.locked):active { transform:scale(.98); }
     .glpi-screen { background:rgb(var(--surface)); border:1px solid rgb(var(--line)); border-radius:1rem; overflow:hidden; }
     .glpi-topbar { background:rgb(var(--bg)); padding:10px 18px; display:flex; align-items:center; gap:12px; border-bottom:1px solid rgb(var(--line)); }
     .browser-dots { display:flex; gap:6px; }
@@ -446,15 +458,13 @@ export default function MissionPlayer() {
     .log-entry.err { color:#ff3b5c; border-left-color:#ff3b5c; }
     .log-entry.dim { color:rgb(var(--text-muted)); border-left-color:rgb(var(--line)); }
     .log-time { color:rgb(var(--text-muted)); font-size:.58rem; }
-    .toast-wrap { position:fixed; bottom:28px; right:28px; padding:14px 22px; border-radius:0.75rem; font-family:'Poppins',sans-serif; font-size:.85rem; font-weight:600; display:flex; align-items:center; gap:10px; z-index:9998; max-width:320px; backdrop-filter:blur(10px); animation:fadeSlide .35s ease; }
+    .toast-wrap { position:fixed; bottom:28px; right:28px; padding:14px 22px; border-radius:0.75rem; font-family:'Poppins',sans-serif; font-size:.85rem; font-weight:600; display:flex; align-items:center; gap:10px; z-index:9998; max-width:320px; backdrop-filter:blur(10px); }
     .t-ok { background:rgba(16,212,81,0.1); border:1px solid rgba(16,212,81,0.35); color:#10D451; }
     .t-err { background:rgba(255,59,92,0.1); border:1px solid rgba(255,59,92,0.3); color:#ff3b5c; }
     .t-info { background:rgba(255,255,255,0.06); border:1px solid rgb(var(--line)); color:rgb(var(--text)); }
-    .xp-popup { position:fixed; top:70px; right:28px; font-family:'Poppins',sans-serif; font-size:1.2rem; font-weight:700; color:#10D451; z-index:9997; animation:xp-rise 1.5s ease forwards; }
-    @keyframes xp-rise { 0%{opacity:1;transform:translateY(0);} 80%{opacity:1;transform:translateY(-30px);} 100%{opacity:0;transform:translateY(-40px);} }
-    .completion-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.88); backdrop-filter:blur(10px); z-index:9990; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:24px; text-align:center; animation:fadeSlide .5s ease; }
-    .completion-icon { font-size:4rem; animation:spin-in .6s ease; }
-    @keyframes spin-in { from{transform:scale(0) rotate(-180deg);} to{transform:scale(1) rotate(0);} }
+    .xp-popup { position:fixed; top:70px; right:28px; font-family:'Poppins',sans-serif; font-size:1.2rem; font-weight:700; color:#10D451; z-index:9997; }
+    .completion-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.88); backdrop-filter:blur(10px); z-index:9990; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:24px; text-align:center; overflow:hidden; padding:24px; }
+    .completion-icon { font-size:4rem; filter:drop-shadow(0 0 30px rgba(16,212,81,0.5)); }
     .completion-title { font-family:'Poppins',sans-serif; font-size:2rem; font-weight:700; color:#10D451; }
     .completion-sub { font-size:.9rem; color:rgb(var(--text-muted)); max-width:400px; line-height:1.6; }
     .completion-xp { font-family:'Poppins',sans-serif; font-size:1.5rem; color:#ffb800; font-weight:700; }
@@ -482,7 +492,15 @@ export default function MissionPlayer() {
           <div className="hud-right">
             <div className="xp-bar-wrap">
               <span style={{ fontSize:'.78rem', fontWeight:700 }}>{xp} XP</span>
-              <div className="xp-track"><div className="xp-fill" style={{ width:`${xpPct}%` }} /></div>
+              <div className="xp-track">
+                <motion.div
+                  className="xp-fill"
+                  initial={false}
+                  animate={{ width:`${xpPct}%` }}
+                  transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 120, damping: 20 }}
+                  style={{ boxShadow: '0 0 8px rgba(16,212,81,0.7)' }}
+                />
+              </div>
               <span style={{ fontSize:'.7rem', color:'#5a7f8f' }}>{xpTarget}</span>
             </div>
             <div className="step-badge">{t('mission_sim.step_word')} {currentStep + 1}/{STEPS.length}</div>
@@ -492,17 +510,23 @@ export default function MissionPlayer() {
         {/* ══ NAV ══ */}
         <nav className="sim-nav">
           <div className="nav-label">{t('mission_sim.mission_label', { title: mission.title })}</div>
-          {STEPS.map((s, i) => (
-            <button
-              key={s.id}
-              className={`nav-btn ${i < currentStep ? 'done' : i === currentStep ? 'active' : 'locked'}`}
-              onClick={() => i <= currentStep && goStep(i)}
-            >
-              <span>{s.icon}</span> {t(`mission_sim.steps.${s.id}`)}
-              {i < currentStep && <span style={{ position:'absolute', right:10, fontSize:'.75rem', color:'#10D451' }}>✓</span>}
-              {i > currentStep && <span style={{ position:'absolute', right:8, fontSize:'.7rem' }}>🔒</span>}
-            </button>
-          ))}
+          {STEPS.map((s, i) => {
+            const clickable = i <= currentStep
+            return (
+              <motion.button
+                key={s.id}
+                className={`nav-btn ${i < currentStep ? 'done' : i === currentStep ? 'active' : 'locked'}`}
+                onClick={() => clickable && goStep(i)}
+                whileHover={clickable && !reduce ? { x: 3 } : undefined}
+                whileTap={clickable && !reduce ? { scale: 0.97 } : undefined}
+                transition={{ type: 'spring', stiffness: 400, damping: 26 }}
+              >
+                <span>{s.icon}</span> {t(`mission_sim.steps.${s.id}`)}
+                {i < currentStep && <span style={{ position:'absolute', right:10, fontSize:'.75rem', color:'#10D451' }}>✓</span>}
+                {i > currentStep && <span style={{ position:'absolute', right:8, fontSize:'.7rem' }}>🔒</span>}
+              </motion.button>
+            )
+          })}
           <div style={{ flex:1 }} />
           <div className="nav-label">{t('mission_sim.system')}</div>
           <button className="nav-btn" onClick={() => navigate('/admin/missions')} style={{ fontSize:'.8rem' }}>
@@ -513,11 +537,21 @@ export default function MissionPlayer() {
         {/* ══ SCENE ══ */}
         <main className="scene">
 
-          {/* Mission header */}
+          {/* Mission header — transiciona al cambiar de paso */}
           <div className="mission-header">
             <div className="mission-tag">{t('mission_sim.sim_active')}</div>
-            <h1 className="mission-title-h">{title}</h1>
-            <p className="mission-desc-p">{desc}</p>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentStep}
+                initial={reduce ? false : { opacity: 0, y: 12, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={reduce ? undefined : { opacity: 0, y: -8, filter: 'blur(4px)' }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <h1 className="mission-title-h">{title}</h1>
+                <p className="mission-desc-p">{desc}</p>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           {/* Checkpoints */}
@@ -526,9 +560,14 @@ export default function MissionPlayer() {
               <Fragment key={s.id}>
                 {i > 0 && <div className={`cp-line${i <= currentStep ? ' done-line' : ''}`} />}
                 <div className="cp-item">
-                  <div className={`cp-dot${i < currentStep ? ' done' : i === currentStep ? ' active' : ''}`}>
+                  <motion.div
+                    className={`cp-dot${i < currentStep ? ' done' : i === currentStep ? ' active' : ''}`}
+                    initial={false}
+                    animate={reduce ? undefined : (i < currentStep ? { scale: [1, 1.3, 1] } : { scale: 1 })}
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  >
                     {i < currentStep ? '✓' : i + 1}
-                  </div>
+                  </motion.div>
                   <div className={`cp-label${i < currentStep ? ' done-lbl' : i === currentStep ? ' active-lbl' : ''}`}>{t(`mission_sim.steps.${s.id}`)}</div>
                 </div>
               </Fragment>
@@ -576,7 +615,7 @@ export default function MissionPlayer() {
                 ))}
               </div>
             </div>
-            <button className="next-btn" onClick={() => { markStepDone(0, 20); nextStep() }}>{t('mission_sim.briefing.start_btn')}</button>
+            <motion.button className="next-btn" onClick={() => { markStepDone(0, 20); nextStep() }} whileHover={reduce ? undefined : { scale: 1.03, y: -1 }} whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 24 }}>{t('mission_sim.briefing.start_btn')}</motion.button>
           </div>
 
           {/* ══ STEP 1: LOGIN ══ */}
@@ -667,7 +706,7 @@ export default function MissionPlayer() {
                 </div>
               </div>
             )}
-            {stepDone[1] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
+            {stepDone[1] && <motion.button className="next-btn" onClick={nextStep} whileHover={reduce ? undefined : { scale: 1.03, y: -1 }} whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 24 }}>{t('mission_sim.next_btn')}</motion.button>}
           </div>
 
           {/* ══ STEP 2: CREAR CASO ══ */}
@@ -723,7 +762,7 @@ export default function MissionPlayer() {
                 </div>
               </div>
             </div>
-            {stepDone[2] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
+            {stepDone[2] && <motion.button className="next-btn" onClick={nextStep} whileHover={reduce ? undefined : { scale: 1.03, y: -1 }} whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 24 }}>{t('mission_sim.next_btn')}</motion.button>}
           </div>
 
           {/* ══ STEP 3: CAMPOS ══ */}
@@ -830,7 +869,7 @@ export default function MissionPlayer() {
                 </div>
               </div>
             </div>
-            {stepDone[3] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
+            {stepDone[3] && <motion.button className="next-btn" onClick={nextStep} whileHover={reduce ? undefined : { scale: 1.03, y: -1 }} whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 24 }}>{t('mission_sim.next_btn')}</motion.button>}
           </div>
 
           {/* ══ STEP 4: SEGUIMIENTO ══ */}
@@ -916,7 +955,7 @@ export default function MissionPlayer() {
                 </div>
               </div>
             )}
-            {stepDone[4] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.next_btn')}</button>}
+            {stepDone[4] && <motion.button className="next-btn" onClick={nextStep} whileHover={reduce ? undefined : { scale: 1.03, y: -1 }} whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 24 }}>{t('mission_sim.next_btn')}</motion.button>}
           </div>
 
           {/* ══ STEP 5: SLA QUIZ ══ */}
@@ -945,27 +984,54 @@ export default function MissionPlayer() {
                   {QUIZ_OPT_IDS.map(optId => {
                     const answered = quizAnswers[qIdx] !== undefined
                     const isCorrect = item.correct === optId
+                    const chosenWrong = answered && quizChosen[qIdx] === optId && !isCorrect
                     let cls = 'quiz-opt'
                     if (answered) {
                       if (isCorrect) cls += ' opt-correct'
+                      else if (chosenWrong) cls += ' opt-wrong'
                       else cls += ' opt-disabled'
                     }
                     return (
-                      <button key={optId} className={cls} onClick={() => answerQuiz(qIdx, optId)}>
+                      <motion.button
+                        key={optId}
+                        className={cls}
+                        onClick={() => answerQuiz(qIdx, optId)}
+                        whileHover={!answered && !reduce ? { scale: 1.015, x: 3 } : undefined}
+                        whileTap={!answered && !reduce ? { scale: 0.97 } : undefined}
+                        animate={
+                          reduce
+                            ? undefined
+                            : isCorrect && answered
+                              ? { scale: [1, 1.05, 1] }
+                              : chosenWrong
+                                ? { x: [0, -7, 7, -5, 5, 0] }
+                                : undefined
+                        }
+                        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                      >
                         <span className="opt-letter">{optId.toUpperCase()}</span>
                         {t(`mission_sim.quiz.${item.key}.${optId}`)}
-                      </button>
+                      </motion.button>
                     )
                   })}
                 </div>
-                {quizAnswers[qIdx] !== undefined && (
-                  <div className={`quiz-fb ${quizAnswers[qIdx] ? 'fb-ok' : 'fb-fail'}`}>
-                    {quizAnswers[qIdx] ? t(`mission_sim.quiz.${item.key}.ok`) : t(`mission_sim.quiz.${item.key}.fail`)}
-                  </div>
-                )}
+                <AnimatePresence>
+                  {quizAnswers[qIdx] !== undefined && (
+                    <motion.div
+                      className={`quiz-fb ${quizAnswers[qIdx] ? 'fb-ok' : 'fb-fail'}`}
+                      initial={reduce ? false : { opacity: 0, height: 0, marginTop: 0 }}
+                      animate={{ opacity: 1, height: 'auto', marginTop: 14 }}
+                      exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      {quizAnswers[qIdx] ? t(`mission_sim.quiz.${item.key}.ok`) : t(`mission_sim.quiz.${item.key}.fail`)}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             ))}
-            {stepDone[5] && <button className="next-btn" onClick={nextStep}>{t('mission_sim.sla.finish_btn')}</button>}
+            {stepDone[5] && <motion.button className="next-btn" onClick={nextStep} whileHover={reduce ? undefined : { scale: 1.03, y: -1 }} whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 24 }}>{t('mission_sim.sla.finish_btn')}</motion.button>}
           </div>
 
         </main>
@@ -984,25 +1050,116 @@ export default function MissionPlayer() {
       </div>
 
       {/* Toast */}
-      {toast && <div className={`toast-wrap t-${toast.type}`}>{toast.msg}</div>}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key="toast"
+            className={`toast-wrap t-${toast.type}`}
+            initial={reduce ? false : { opacity: 0, x: 40, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, x: 40, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+          >
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* XP Popup */}
-      {xpPopup && <div key={xpPopup.key} className="xp-popup">+{xpPopup.val} XP</div>}
+      <AnimatePresence>
+        {xpPopup && (
+          <motion.div
+            key={xpPopup.key}
+            className="xp-popup"
+            initial={reduce ? false : { opacity: 0, y: 8, scale: 0.8 }}
+            animate={reduce ? { opacity: 1 } : { opacity: [0, 1, 1, 0], y: [8, -6, -26, -40], scale: [0.8, 1.15, 1, 1] }}
+            transition={{ duration: 1.5, ease: 'easeOut', times: [0, 0.2, 0.8, 1] }}
+          >
+            +{xpPopup.val} XP
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Completion */}
-      {showCompletion && (
-        <div className="completion-overlay">
-          <div className="completion-icon">🏆</div>
-          <div className="completion-title">{t('mission_sim.completion.title')}</div>
-          <div className="completion-sub">{t('mission_sim.completion.sub')}</div>
-          <div className="completion-xp">{xp} / {xpTarget} XP</div>
-          <div style={{ fontSize:'.8rem', color:'#5a7f8f' }}>
-            {t('mission_sim.completion.results', { correct: Object.values(quizAnswers).filter(Boolean).length, total: QUIZ_KEYS.length, time: formatTimer(timerSeconds) })}
-          </div>
-          <button className="completion-btn" onClick={() => window.location.reload()}>{t('mission_sim.completion.repeat')}</button>
-          <button className="completion-btn-sec" onClick={() => navigate('/admin/missions')}>{t('mission_sim.completion.back')}</button>
-        </div>
-      )}
+      <AnimatePresence>
+        {showCompletion && (
+          <motion.div
+            className="completion-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            {/* Confeti */}
+            {!reduce && [...Array(22)].map((_, i) => {
+              const angle = (i / 22) * 360
+              const dist = 140 + Math.random() * 160
+              const tx = Math.cos((angle * Math.PI) / 180) * dist
+              const ty = Math.sin((angle * Math.PI) / 180) * dist
+              const col = ['#10D451', '#ffb800', '#00d4e8', '#ff3b5c', '#a855f7'][i % 5]
+              return (
+                <motion.span
+                  key={i}
+                  style={{ position: 'absolute', top: '42%', left: '50%', width: 9, height: 9, borderRadius: i % 2 ? '50%' : 2, background: col }}
+                  initial={{ opacity: 1, x: 0, y: 0, scale: 1, rotate: 0 }}
+                  animate={{ opacity: [1, 1, 0], x: tx, y: [0, ty, ty + 120], scale: [1, 1, 0.5], rotate: Math.random() * 720 - 360 }}
+                  transition={{ duration: 1.6 + Math.random() * 0.6, ease: 'easeOut', delay: 0.1 + i * 0.02 }}
+                />
+              )
+            })}
+
+            <motion.div
+              className="completion-icon"
+              initial={reduce ? false : { scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 12, delay: 0.1 }}
+            >🏆</motion.div>
+            <motion.div className="completion-title"
+              initial={reduce ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+              {t('mission_sim.completion.title')}
+            </motion.div>
+            <motion.div className="completion-sub"
+              initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.33 }}>
+              {t('mission_sim.completion.sub')}
+            </motion.div>
+            <motion.div className="completion-xp"
+              initial={reduce ? false : { opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 16, delay: 0.4 }}>
+              <CountUpXP to={xp} reduce={reduce} /> / {xpTarget} XP
+            </motion.div>
+            <motion.div style={{ fontSize:'.8rem', color:'#5a7f8f' }}
+              initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
+              {t('mission_sim.completion.results', { correct: Object.values(quizAnswers).filter(Boolean).length, total: QUIZ_KEYS.length, time: formatTimer(timerSeconds) })}
+            </motion.div>
+            <motion.button className="completion-btn" onClick={() => window.location.reload()}
+              initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.58 }}
+              whileHover={reduce ? undefined : { scale: 1.04 }} whileTap={reduce ? undefined : { scale: 0.96 }}>
+              {t('mission_sim.completion.repeat')}
+            </motion.button>
+            <motion.button className="completion-btn-sec" onClick={() => navigate('/admin/missions')}
+              initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.64 }}
+              whileHover={reduce ? undefined : { scale: 1.04 }} whileTap={reduce ? undefined : { scale: 0.96 }}>
+              {t('mission_sim.completion.back')}
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
+}
+
+/* Contador que sube de 0 al XP final en la pantalla de completado. */
+function CountUpXP({ to, reduce }: { to: number; reduce: boolean }) {
+  const [v, setV] = useState(reduce ? to : 0)
+  useEffect(() => {
+    if (reduce) { setV(to); return }
+    const controls = animate(0, to, {
+      duration: 1.2,
+      ease: [0.16, 1, 0.3, 1],
+      delay: 0.4,
+      onUpdate: (x) => setV(Math.round(x)),
+    })
+    return () => controls.stop()
+  }, [to, reduce])
+  return <>{v}</>
 }

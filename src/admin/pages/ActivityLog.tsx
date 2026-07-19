@@ -6,6 +6,7 @@ import {
   Plus, Pencil, EyeOff, RotateCcw, Trash2, ShieldCheck,
 } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
+import { FadeIn } from '@/components/ui/motion'
 import {
   getActivityLog, type ActivityLogRow, type ActivityAction, type EntityType,
 } from '@/services/audit.service'
@@ -150,7 +151,7 @@ export default function ActivityLog() {
           <h2 className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
             {t('admin.activity.count', { n: grouped.length })}
           </h2>
-          <div className="rounded-2xl border border-line overflow-hidden divide-y divide-line">
+          <FadeIn className="rounded-2xl border border-line overflow-hidden divide-y divide-line" y={14}>
             {grouped.map((r) => (
               <LogItem
                 key={r.id}
@@ -159,7 +160,7 @@ export default function ActivityLog() {
                 onToggle={() => setExpanded(expanded === r.id ? null : r.id)}
               />
             ))}
-          </div>
+          </FadeIn>
         </>
       )}
     </div>

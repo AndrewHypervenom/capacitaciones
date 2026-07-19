@@ -5,6 +5,7 @@ import { Loader2, MessageSquare, Clock, ChevronRight, GraduationCap, Inbox, Arro
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
 import { getMyTrainerFeedback, type StudentFeedbackItem } from '@/services/activity.service';
+import { FadeIn } from '@/components/ui/motion';
 
 function scoreHex(score: number): string {
   if (score >= 90) return '#22c55e';
@@ -105,13 +106,13 @@ export default function MyFeedback() {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <FadeIn className="space-y-3" y={14}>
             {items.map((it) => {
               const moduleTitle = pick(it.module_title, t('my_feedback.module_fallback', 'Módulo'));
               const sectionTitle = pick(it.section_heading, '');
               const date = fmtDate(it.feedback_date);
               const card = (
-                <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 transition-colors hover:border-neon-green/30">
+                <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 transition-all duration-300 ease-apple hover:border-neon-green/30 hover:-translate-y-0.5 hover:shadow-card-hover">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-[13px] font-semibold text-text min-w-0">
@@ -164,7 +165,7 @@ export default function MyFeedback() {
                 <div key={it.id}>{card}</div>
               );
             })}
-          </div>
+          </FadeIn>
         </>
       )}
     </div>

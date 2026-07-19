@@ -16,6 +16,7 @@ import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { FadeIn } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
@@ -215,7 +216,7 @@ export default function ModuleList() {
       rounded="2xl"
       ref={mod.id === focusId ? focusRef : undefined}
       className={cn(
-        'group hover:border-glass-border/15 transition-all duration-200',
+        'group hover:border-glass-border/15 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover',
         mod.is_published && 'hover:border-glass-border/15',
         // Resalte al venir siguiendo a alguien: señala la fila sin abrirla.
         mod.id === focusId && 'ring-2 ring-primary/70 border-primary/40',
@@ -388,7 +389,7 @@ export default function ModuleList() {
             </Link>
           </GlassCard>
         ) : (
-          <div className="space-y-8">
+          <FadeIn className="space-y-8" y={14}>
             {courseGroups.map((group) => (
               <div key={group.id}>
                 <div className="flex items-center gap-2.5 mb-3 px-1">
@@ -423,7 +424,7 @@ export default function ModuleList() {
                 </div>
               </div>
             )}
-          </div>
+          </FadeIn>
         )}
       </div>
 

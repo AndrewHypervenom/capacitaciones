@@ -16,6 +16,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { Stagger, StaggerItem } from '@/components/ui/motion';
 import { useUserStore } from '@/stores/userStore';
 import { useProgressStore } from '@/stores/progressStore';
 import {
@@ -43,6 +45,8 @@ import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
 
+const MotionLink = motion(Link);
+
 // Todos ven este panel con su menú lateral. El staff que mira "como aprendiz"
 // lo ve idéntico al aprendiz; para volver a gestión usa el ViewSwitcher que se
 // inserta en el sidebar y en la barra móvil (invisible para los aprendices).
@@ -54,6 +58,7 @@ export default function LearnerDashboard() {
 
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const reduce = useReducedMotion();
   const { name, language, reset } = useUserStore();
   const { modules: allModules, loading: modulesLoading } = useModules();
   const { courses } = useLearnerCourses();
@@ -448,9 +453,11 @@ export default function LearnerDashboard() {
                           : course.title_es;
                     return (
                       <Reveal key={course.id} delay={idx * 60}>
-                        <Link
+                        <MotionLink
                           to={`/courses/${course.slug}`}
-                          className="flex h-full flex-col justify-between rounded-3xl border border-line bg-surface p-6 transition-all duration-300 hover:border-primary hover:shadow-card-hover"
+                          whileHover={reduce ? undefined : { y: -4 }}
+                          transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                          className="flex h-full flex-col justify-between rounded-3xl border border-line bg-surface p-6 transition-[border-color,box-shadow] duration-300 hover:border-primary hover:shadow-card-hover"
                         >
                           <div className="mb-5">
                             <div className="mb-4 flex items-center justify-between">
@@ -489,14 +496,16 @@ export default function LearnerDashboard() {
                               {t('courses.progress', { done: courseDone, total: courseTotal })}
                             </span>
                           </div>
-                        </Link>
+                        </MotionLink>
                       </Reveal>
                     );
                   })}
               <Reveal delay={dashboardCourses.length * 60}>
-                <Link
+                <MotionLink
                   to="/courses"
-                  className="group flex h-full flex-col justify-center gap-3 rounded-3xl border border-dashed border-line bg-surface/60 p-6 text-center transition-all duration-300 hover:border-primary hover:bg-surface"
+                  whileHover={reduce ? undefined : { y: -4 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                  className="group flex h-full flex-col justify-center gap-3 rounded-3xl border border-dashed border-line bg-surface/60 p-6 text-center transition-[border-color,background-color] duration-300 hover:border-primary hover:bg-surface"
                 >
                   <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <Compass className="h-5 w-5" />
@@ -513,7 +522,7 @@ export default function LearnerDashboard() {
                     {t('dashboard.courses_title')}
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </span>
-                </Link>
+                </MotionLink>
               </Reveal>
             </div>
           </section>
@@ -631,13 +640,15 @@ export default function LearnerDashboard() {
             </div>
 
             {/* Grilla de insignias */}
-            <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
+            <Stagger gap={0.04} className="grid grid-cols-4 md:grid-cols-7 gap-3">
               {visibleBadges.map((badge) => {
                 const earned = badges.includes(badge.id);
                 return (
-                  <div
+                  <StaggerItem
                     key={badge.id}
                     title={badgeDescription(badge, language)}
+                    whileHover={reduce || !earned ? undefined : { y: -3, scale: 1.04 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 20 }}
                     className={cn(
                       'flex flex-col items-center gap-2 cursor-default',
                       !earned && 'opacity-40',
@@ -668,10 +679,10 @@ export default function LearnerDashboard() {
                     <p className="w-full truncate text-center text-[10px] font-medium text-text-muted">
                       {badgeLabel(badge, language)}
                     </p>
-                  </div>
+                  </StaggerItem>
                 );
               })}
-            </div>
+            </Stagger>
           </Reveal>
 
           {/* Estadísticas de pie de página */}

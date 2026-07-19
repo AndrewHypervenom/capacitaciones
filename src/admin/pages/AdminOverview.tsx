@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { FadeIn } from '@/components/ui/motion'
 import {
   getAllCoursesProgressAdmin,
   type AdminOverview as Overview,
@@ -303,7 +304,7 @@ export default function AdminOverview() {
       ) : (
         <>
           {/* KPIs */}
-          <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+          <FadeIn className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5" y={12}>
             <Kpi icon={Users} label={t('admin.overview.kpi_users')} value={String(rows.length)} tint="#6366f1" />
             <Kpi icon={BookOpen} label={t('admin.overview.kpi_courses')} value={String(visibleCourses.length)} tint="#0ea5e9" />
             <Kpi icon={GraduationCap} label={t('admin.overview.kpi_certified')} value={String(totalCertified)} tint="#d97706" />
@@ -313,7 +314,7 @@ export default function AdminOverview() {
               value={totalCells > 0 ? `${Math.round((activeCells / totalCells) * 100)}%` : '—'}
               tint="#22c55e"
             />
-          </div>
+          </FadeIn>
 
           {/* Filtros */}
           <div className="shrink-0 flex flex-wrap items-center gap-2.5 mb-4">
@@ -597,7 +598,7 @@ function Kpi({
   tint: string
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex items-center gap-3.5">
+    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex items-center gap-3.5 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
       <span
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
         style={{ background: `${tint}1a`, color: tint }}

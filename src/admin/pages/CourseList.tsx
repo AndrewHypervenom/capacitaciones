@@ -30,6 +30,7 @@ import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignSc
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { FadeIn } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
@@ -459,9 +460,9 @@ export default function CourseList() {
               <p className="text-text-muted text-[14px]">{t('admin.courses.shared_empty')}</p>
             </GlassCard>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <FadeIn className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" y={16}>
               {filteredShared.map((course) => (
-                <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden">
+                <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden transition-all duration-300 ease-apple hover:-translate-y-1 hover:shadow-card-hover">
                   <div
                     className="h-20 w-full relative"
                     style={{ background: course.cover_url ? (course.cover_fit === 'contain' ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)` : undefined) : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
@@ -498,7 +499,7 @@ export default function CourseList() {
                   </div>
                 </GlassCard>
               ))}
-            </div>
+            </FadeIn>
           )}
         </div>
       )}
@@ -538,7 +539,7 @@ export default function CourseList() {
           </Button>
         </GlassCard>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <FadeIn className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" y={16}>
           {courses.map((course) => (
             <GlassCard
               key={course.id}
@@ -546,7 +547,7 @@ export default function CourseList() {
               rounded="2xl"
               ref={course.id === focusId ? focusRef : undefined}
               className={cn(
-                'group flex flex-col hover:border-glass-border/15 transition-all duration-200 overflow-hidden',
+                'group flex flex-col hover:border-glass-border/15 transition-all duration-300 ease-apple hover:-translate-y-1 hover:shadow-card-hover overflow-hidden',
                 // Resalte al venir siguiendo a alguien: señala sin abrir.
                 course.id === focusId && 'ring-2 ring-primary/70 border-primary/40',
               )}
@@ -645,7 +646,7 @@ export default function CourseList() {
               </div>
             </GlassCard>
           ))}
-        </div>
+        </FadeIn>
       ))}
 
       {/* Modal de creación */}

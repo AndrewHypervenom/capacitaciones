@@ -1,10 +1,12 @@
-import { forwardRef, type ButtonHTMLAttributes } from 'react';
+import { forwardRef } from 'react';
+import { motion, type HTMLMotionProps } from 'framer-motion';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'glass' | 'neon';
 type Size = 'sm' | 'md' | 'lg' | 'xl';
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'ref'> {
   variant?: Variant;
   size?: Size;
 }
@@ -33,15 +35,19 @@ const sizeClasses: Record<Size, string> = {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', children, disabled, ...props }, ref) => {
+    const reduce = useReducedMotion();
     return (
-      <button
+      <motion.button
         ref={ref}
         disabled={disabled}
+        // Resorte sutil al presionar — reemplaza el active:scale por CSS con
+        // una física más natural; se desactiva si el usuario pide menos motion.
+        whileTap={reduce || disabled ? undefined : { scale: 0.97 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
         className={cn(
           'inline-flex items-center justify-center gap-2 font-medium tracking-tight',
-          'transition-[background-color,border-color,opacity] duration-200 ease-apple',
-          'active:scale-[0.98]',
-          'disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100',
+          'transition-[background-color,border-color,opacity,filter] duration-200 ease-apple',
+          'disabled:opacity-40 disabled:cursor-not-allowed',
           variantClasses[variant],
           sizeClasses[size],
           className,
@@ -49,7 +55,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {children}
-      </button>
+      </motion.button>
     );
   },
 );

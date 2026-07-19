@@ -30,9 +30,10 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         className={cn(
-          'rounded-3xl transition-colors duration-200 ease-apple',
+          'rounded-3xl transition-all duration-300 ease-apple',
           toneMap[tone],
-          interactive && 'cursor-pointer hover:bg-subtle',
+          interactive &&
+            'cursor-pointer hover:bg-subtle hover:-translate-y-0.5 hover:shadow-card-hover',
           padMap[padding],
           className,
         )}

@@ -17,6 +17,7 @@ import {
 import { NewSimulationModal } from '@/admin/components/simulation/NewSimulationModal'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { FadeIn } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
@@ -206,12 +207,12 @@ export default function SimulationList() {
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
-        <div className="space-y-2">
+        <FadeIn className="space-y-2" y={14}>
           {tab === 'dialogue' && (
             dialogueRows.length === 0
               ? <EmptyState onNew={() => setShowNewModal(true)} />
               : dialogueRows.map((row) => (
-                <GlassCard key={row.id} className="p-4 flex items-center gap-4">
+                <GlassCard key={row.id} className="p-4 flex items-center gap-4 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-sm text-text truncate">{row.title_es}</span>
@@ -261,7 +262,7 @@ export default function SimulationList() {
             choiceRows.length === 0
               ? <EmptyState onNew={() => setShowNewModal(true)} />
               : choiceRows.map((row) => (
-                <GlassCard key={row.id} className="p-4 flex items-center gap-4">
+                <GlassCard key={row.id} className="p-4 flex items-center gap-4 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-sm text-text truncate">{row.title_es}</span>
@@ -301,7 +302,7 @@ export default function SimulationList() {
                 </GlassCard>
               ))
           )}
-        </div>
+        </FadeIn>
       )}
     </div>
   )
