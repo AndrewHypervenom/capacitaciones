@@ -377,10 +377,16 @@ export default function CourseEditor() {
     return out
   }, [campaignModules])
 
-  const visibleCampaigns = useMemo(
-    () => (isSuperAdmin ? campaigns : campaigns.filter((c) => c.id === authCampaignId)),
-    [campaigns, isSuperAdmin, authCampaignId],
-  )
+  // El capacitador asigna el curso a CUALQUIERA de sus campañas (casa +
+  // colaboraciones), no solo a la casa: con varias campañas antes no podía
+  // asignar el curso a la campaña donde realmente vive el contenido, y sin fila
+  // en course_campaigns el curso no aparece en la vista de aprendiz.
+  const visibleCampaigns = useMemo(() => {
+    if (isSuperAdmin) return campaigns
+    const allowed = new Set(accessibleCampaigns.map((c) => c.id))
+    if (authCampaignId) allowed.add(authCampaignId)
+    return campaigns.filter((c) => allowed.has(c.id))
+  }, [campaigns, isSuperAdmin, accessibleCampaigns, authCampaignId])
 
   const filteredCampaigns = useMemo(() => {
     const q = campaignSearch.trim().toLowerCase()
@@ -562,7 +568,36 @@ export default function CourseEditor() {
       await updateCourse(course.id, { is_published: next })
       setCourse({ ...course, is_published: next })
       invalidateModulesCache()
-      toast.success(next ? t('admin.courses.course_published') : t('admin.courses.course_unpublished'))
+
+      // Publicar debe bastar para que el curso aparezca en la vista de aprendiz.
+      // Un curso publicado sin fila en course_campaigns (ni asignación directa)
+      // queda invisible para todos, que era la confusión de "lo publiqué y no
+      // le sale a nadie". Al publicar por primera vez lo asignamos a su propia
+      // campaña; el capacitador puede quitarla o añadir más en "Asignar".
+      let assignedNow = false
+      if (next && course.campaign_id && courseCampaigns.length === 0 && assignments.length === 0) {
+        try {
+          await setCourseCampaign(course.id, course.campaign_id, false)
+          const rows = await getCourseCampaigns(course.id)
+          setCourseCampaigns(rows)
+          setDraftCampaigns(Object.fromEntries(rows.map((r) => [r.campaign_id, r.is_mandatory])))
+          assignedNow = true
+        } catch (e) {
+          // No es fatal: el curso queda publicado y el aviso de "sin asignar"
+          // le dice al capacitador que lo haga a mano.
+          console.error('[CourseEditor] auto-assign on publish', e)
+        }
+      }
+
+      if (!next) toast.success(t('admin.courses.course_unpublished'))
+      else if (assignedNow) {
+        toast.success(
+          t('admin.courses.course_published'),
+          t('admin.courses.published_auto_assigned', {
+            name: campaigns.find((c) => c.id === course.campaign_id)?.name ?? '',
+          }),
+        )
+      } else toast.success(t('admin.courses.course_published'))
     } catch {
       toast.error(t('admin.courses.error_save'))
     }
@@ -1038,6 +1073,10 @@ export default function CourseEditor() {
         // El simulador es opcional: solo cuenta si hay escenarios ligados al curso.
         const simAllPublished = unpublishedLinkedCount === 0
         const everythingPublished = course.is_published && modulesAllPublished && simAllPublished
+        // Quién puede ver el curso: campañas asignadas, personas asignadas o
+        // catálogo abierto. Espeja el filtro de getLearnerCourses().
+        const hasAudience =
+          courseCampaigns.length > 0 || assignments.length > 0 || course.visibility === 'catalog'
         return (
           <div className="rounded-2xl border border-line bg-surface px-4 py-3 mb-6">
             <div className="flex flex-wrap items-center gap-2">
@@ -1211,6 +1250,25 @@ export default function CourseEditor() {
                 )}
               </div>
             </div>
+
+            {/* Aviso clave: publicado ≠ visible. Sin campañas ni personas
+                asignadas (y sin catálogo abierto) el curso no le aparece a
+                NADIE en la vista de aprendiz. */}
+            {course.is_published && !hasAudience && (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <p className="flex items-start gap-1.5 text-[11px] text-amber-500">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {t('admin.courses.no_audience_warn')}
+                </p>
+                <button
+                  onClick={() => setTab('assign')}
+                  className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors"
+                  style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+                >
+                  <Users className="h-3 w-3" /> {t('admin.courses.no_audience_cta')}
+                </button>
+              </div>
+            )}
 
             {/* Avisos: curso publicado pero falta contenido por publicar */}
             {course.is_published && !modulesAllPublished && (

@@ -229,6 +229,44 @@ export function HoverLift({
   );
 }
 
+/* ── PulseHint: aro que respira detrás de una acción, para enseñarla ──────
+   Envuelve al hijo (que sigue siendo el que recibe el clic) con un halo suave
+   que late. Pensado para descubrimiento: se enciende con `active` y la pantalla
+   que lo usa lo apaga en cuanto el usuario usa la acción una vez — un pulso
+   permanente en cada tarjeta se vuelve ruido y abarata la interfaz.
+
+   El aro es `pointer-events-none` y `aria-hidden`: no interfiere con el clic ni
+   con lectores de pantalla. Con `prefers-reduced-motion` no se anima. */
+export function PulseHint({
+  children,
+  active = true,
+  className,
+  color = 'rgb(var(--neon-green))',
+}: {
+  children: ReactNode;
+  /** Enciende el latido. En false, renderiza el hijo tal cual. */
+  active?: boolean;
+  className?: string;
+  color?: string;
+}) {
+  const reduce = useReducedMotion();
+
+  if (!active || reduce) return <div className={cn('min-w-0', className)}>{children}</div>;
+
+  return (
+    <div className={cn('relative min-w-0', className)}>
+      <motion.span
+        aria-hidden
+        className="pointer-events-none absolute -inset-1 rounded-2xl"
+        style={{ boxShadow: `0 0 0 0 ${color}` }}
+        animate={{ boxShadow: [`0 0 0 0 ${color}55`, `0 0 0 8px ${color}00`] }}
+        transition={{ duration: 2, ease: 'easeOut', repeat: Infinity, repeatDelay: 1.2 }}
+      />
+      <div className="relative">{children}</div>
+    </div>
+  );
+}
+
 /* ── SpotlightCard: halo + borde reactivo que siguen al cursor ──────────── */
 export function SpotlightCard({
   children,

@@ -16,7 +16,7 @@ import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
-import { FadeIn } from '@/components/ui/motion'
+import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
@@ -30,10 +30,23 @@ import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
 import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 
+// Marca de que el staff ya usó la vista previa (apaga el pulso de la fila).
+const PREVIEW_HINT_KEY = 'module-preview-hint-seen'
+
 export default function ModuleList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
+
+  // El pulso que señala "Vista previa" late hasta que se usa una vez y luego no
+  // vuelve: es ayuda de descubrimiento, no un adorno permanente.
+  const [previewHintSeen, setPreviewHintSeen] = useState(() => {
+    try { return localStorage.getItem(PREVIEW_HINT_KEY) === '1' } catch { return true }
+  })
+  const markPreviewHintSeen = () => {
+    setPreviewHintSeen(true)
+    try { localStorage.setItem(PREVIEW_HINT_KEY, '1') } catch { /* modo privado */ }
+  }
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // Arranca vacío y se resuelve al cargar las campañas accesibles: partir de la
@@ -247,45 +260,50 @@ export default function ModuleList() {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1 sm:shrink-0 flex-wrap opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
-          <Link
-            to={`/admin/modules/${mod.id}/preview`}
-            title={t('admin.modules.preview')}
-            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-          >
-            <ExternalLink className="h-4 w-4" />
-          </Link>
+        {/* Acciones — con etiqueta de texto, igual que en Cursos: los iconos
+            sueltos se confundían (el ojo de "despublicar" parecía "ver"). La
+            vista previa es la principal; eliminar va al final y separada. */}
+        <div className="flex items-center gap-1.5 sm:shrink-0 flex-wrap opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
+          <PulseHint active={!previewHintSeen}>
+            <Link
+              to={`/admin/modules/${mod.id}/preview`}
+              onClick={markPreviewHintSeen}
+              className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 rounded-xl text-[13px] font-semibold text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 transition-colors"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              {t('admin.modules.preview')}
+            </Link>
+          </PulseHint>
 
           <button
             onClick={() => handleTogglePublished(mod)}
-            title={mod.is_published ? t('admin.modules.unpublish') : t('admin.modules.publish')}
-            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+            className="min-h-[44px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
           >
-            {mod.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            {mod.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {mod.is_published ? t('admin.modules.unpublish') : t('admin.modules.publish')}
           </button>
 
           {movable && campaigns.length > 1 && (
             <button
               onClick={() => { setMoveModule(mod); setMoveTargetId('') }}
-              title={t('admin.modules.move_title')}
-              className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+              className="min-h-[44px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
             >
-              <ArrowLeftRight className="h-4 w-4" />
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              {t('admin.modules.move_action')}
             </button>
           )}
 
           <button
             onClick={() => handleDelete(mod)}
-            title={t('admin.modules.delete')}
-            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
+            className="min-h-[44px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-subtle hover:text-danger hover:bg-danger/8 transition-colors"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-3.5 w-3.5" />
+            {t('admin.modules.delete')}
           </button>
 
           <Link
             to={`/admin/modules/${mod.id}`}
-            className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-[13px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors min-h-[44px]"
+            className="min-h-[44px] flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:text-text hover:bg-glass/8 transition-colors"
           >
             <Pencil className="h-3.5 w-3.5" />
             {t('admin.modules.edit')}

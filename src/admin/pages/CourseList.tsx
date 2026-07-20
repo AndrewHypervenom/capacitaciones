@@ -30,7 +30,7 @@ import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignSc
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
-import { FadeIn } from '@/components/ui/motion'
+import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
@@ -43,6 +43,9 @@ import { toast } from '@/stores/toastStore'
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
 
+// Marca de que el staff ya usó "Ver como aprendiz" (apaga el pulso de la tarjeta).
+const PREVIEW_HINT_KEY = 'course-preview-hint-seen'
+
 export default function CourseList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
@@ -50,6 +53,11 @@ export default function CourseList() {
   const { user, campaignId: authCampaignId, isSuperAdmin } = useAuth()
   // Curso que se está abriendo "como aprendiz" (auto-inscripción en curso).
   const [previewingId, setPreviewingId] = useState<string | null>(null)
+  // El pulso que señala "Ver como aprendiz" late hasta que se usa una vez y
+  // luego no vuelve: es una ayuda de descubrimiento, no un adorno permanente.
+  const [previewHintSeen, setPreviewHintSeen] = useState(() => {
+    try { return localStorage.getItem(PREVIEW_HINT_KEY) === '1' } catch { return true }
+  })
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // El superadmin arranca viendo TODOS los cursos (no una campaña suelta como
@@ -296,6 +304,9 @@ export default function CourseList() {
       return
     }
     if (!user?.id) return
+    // Ya la descubrió: el pulso de la tarjeta se apaga para siempre.
+    setPreviewHintSeen(true)
+    try { localStorage.setItem(PREVIEW_HINT_KEY, '1') } catch { /* modo privado */ }
     setPreviewingId(course.id)
     try {
       await previewEnrollSelf(course.id)
@@ -604,45 +615,58 @@ export default function CourseList() {
                 )}
               </div>
 
-              {/* Acciones */}
-              <div className="flex items-center justify-end gap-1 px-3 pb-3 opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => handleViewAsLearner(course)}
-                  disabled={previewingId === course.id}
-                  title={course.is_published ? t('admin.courses.view_as_learner') : t('admin.courses.view_as_learner_publish_first')}
-                  className={cn(
-                    'h-10 w-10 flex items-center justify-center rounded-lg transition-colors hover:bg-glass/8',
-                    course.is_published ? 'text-text-muted hover:text-primary' : 'text-text-subtle/50',
-                  )}
-                >
-                  {previewingId === course.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <GraduationCap className="h-4 w-4" />
-                  )}
-                </button>
-                <button
-                  onClick={() => handleTogglePublished(course)}
-                  title={course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}
-                  className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-                >
-                  {course.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => handleDelete(course)}
-                  title={t('admin.courses.delete')}
-                  className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-                <Link
-                  to={`/admin/courses/${course.id}`}
-                  className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-[13px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  {t('admin.courses.edit')}
-                  <ChevronRight className="h-4 w-4" />
-                </Link>
+              {/* Acciones — todas con etiqueta de texto: los iconos sueltos se
+                  confundían entre sí (el ojo de "despublicar" parecía "ver"). La
+                  acción principal va arriba y sola; publicar/borrar van abajo,
+                  más discretas y con la destructiva separada a la derecha. */}
+              <div className="px-3 pb-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <PulseHint active={course.is_published && !previewHintSeen} className="flex-1">
+                    <button
+                      onClick={() => handleViewAsLearner(course)}
+                      disabled={previewingId === course.id || !course.is_published}
+                      title={course.is_published ? undefined : t('admin.courses.view_as_learner_publish_first')}
+                      className={cn(
+                        'w-full min-h-[44px] flex items-center justify-center gap-1.5 px-3 rounded-xl text-[13px] font-semibold transition-colors',
+                        course.is_published
+                          ? 'text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15'
+                          : 'text-text-subtle/60 border border-line cursor-not-allowed',
+                      )}
+                    >
+                      {previewingId === course.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <GraduationCap className="h-4 w-4" />
+                      )}
+                      {t('admin.courses.view_as_learner')}
+                    </button>
+                  </PulseHint>
+                  <Link
+                    to={`/admin/courses/${course.id}`}
+                    className="min-h-[44px] shrink-0 flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:text-text hover:bg-glass/8 transition-colors"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    {t('admin.courses.edit')}
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleTogglePublished(course)}
+                    className="min-h-[40px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                  >
+                    {course.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(course)}
+                    className="min-h-[40px] ml-auto flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-subtle hover:text-danger hover:bg-danger/8 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t('admin.courses.delete')}
+                  </button>
+                </div>
               </div>
             </GlassCard>
           ))}

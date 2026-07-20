@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { generateLevelsForRegion, generateBulkModuleRegions, WORLD_LEVELS_EVENT } from '@/services/worlds.service'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import type { WorldRow } from '@/services/worlds.service'
 import { ArenaEditorModal, normalizeArenaRow, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
 import { useTranslation } from 'react-i18next'
@@ -84,8 +85,22 @@ export default function WorldDetail() {
   const confirm = useConfirm()
   const reduce = useReducedMotion()
   const { user, isSuperAdmin, campaignId, loading: authLoading } = useAuth()
-  // El capacitador solo puede ver/editar los mundos de su propia campaña; el superadmin todos.
+  // El capacitador puede ver/editar los mundos de TODAS sus campañas (casa +
+  // colaboraciones), igual que la lista de /admin/worlds. Comparar solo contra la
+  // campaña casa daba "Acceso denegado" en mundos que sí figuraban en la lista.
   const scopedToCampaign = !isSuperAdmin
+  // undefined = todavía cargando; [] = sin campañas.
+  const [myCampaignIds, setMyCampaignIds] = useState<string[] | undefined>(undefined)
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!scopedToCampaign) { setMyCampaignIds([]); return }
+    let active = true
+    getAccessibleCampaigns({ isSuperAdmin, homeCampaignId: campaignId, userId: user?.id ?? null })
+      .then((camps) => { if (active) setMyCampaignIds(camps.map((c) => c.id)) })
+      .catch(() => { if (active) setMyCampaignIds(campaignId ? [campaignId] : []) })
+    return () => { active = false }
+  }, [authLoading, scopedToCampaign, isSuperAdmin, campaignId, user?.id])
 
   const [world, setWorld]     = useState<World | null>(null)
 
@@ -457,10 +472,17 @@ export default function WorldDetail() {
 
   if (loading || authLoading) return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.loading')}</div>
   if (!world) return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.world_not_found')}</div>
-  if (scopedToCampaign && !campaignId) {
-    return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
+  if (scopedToCampaign) {
+    if (myCampaignIds === undefined) {
+      return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.loading')}</div>
+    }
+    if (myCampaignIds.length === 0) {
+      return <div className="p-8 text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
+    }
   }
-  if (scopedToCampaign && world.campaign_id !== campaignId) {
+  const worldInMyCampaigns =
+    !!world.campaign_id && !!myCampaignIds?.includes(world.campaign_id)
+  if (scopedToCampaign && !worldInMyCampaigns) {
     return (
       <div className="p-4 sm:p-8">
         <button onClick={() => navigate('/admin/worlds')}
