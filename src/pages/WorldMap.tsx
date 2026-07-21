@@ -12,7 +12,7 @@ import { LevelTransition } from '@/components/worlds/LevelTransition'
 /* ── Types ── */
 interface World {
   id: string; name: string; description: string
-  campaign_id: string | null; icon: string; color: string
+  campaign_id: string | null; course_id: string | null; icon: string; color: string
   bg_type: string; status: string
   sound_theme: string; transition_type: string; character_emoji: string
 }
@@ -330,6 +330,10 @@ export default function WorldMap() {
   const [transition, setTransition]   = useState(false)
   const [newlyUnlocked, setNewlyUnlocked] = useState<string | null>(null)
   const [xpDisplay, setXpDisplay]     = useState(0)
+  // Slug del curso dueño del mundo, para que "Volver" regrese SIEMPRE al curso
+  // (no dependemos de navigate(-1), que con el historial curso→mundo→nivel→mundo
+  // devolvía al nivel en vez de al curso).
+  const [courseSlug, setCourseSlug]   = useState<string | null>(null)
   const [mapW, setMapW]               = useState(() => Math.min(380, typeof window !== 'undefined' ? window.innerWidth - 40 : 380))
   const charRef = useRef<HTMLDivElement>(null)
   const reduce = !!useReducedMotion()
@@ -356,9 +360,11 @@ export default function WorldMap() {
   // (from:'admin') vamos al listado de mundos. En cualquier otro caso, a '/'.
   const goBack = useCallback(() => {
     if (locState?.from === 'admin') { navigate('/admin/worlds'); return }
+    // Regresamos directo al curso por su slug (fiable, sin depender del historial).
+    if (courseSlug) { navigate(`/courses/${courseSlug}`); return }
     if (locState?.from === 'course' && window.history.length > 1) { navigate(-1); return }
     navigate('/')
-  }, [locState, navigate])
+  }, [locState, navigate, courseSlug])
 
   // El menú de Mundos sigue oculto para el aprendiz y /world queda reservada
   // para staff (preview desde el CMS)… EXCEPTO cuando un aprendiz llega desde
@@ -413,6 +419,14 @@ export default function WorldMap() {
 
   const loadWorld = useCallback(async (w: World) => {
     setWorld(w); setShowSelector(false)
+    // Slug del curso dueño (para el botón "Volver"). Si el mundo no está ligado a
+    // un curso, queda null y "Volver" cae al fallback (historial / dashboard).
+    if (w.course_id) {
+      supabase.from('courses').select('slug').eq('id', w.course_id).maybeSingle()
+        .then(({ data }) => setCourseSlug((data as { slug?: string } | null)?.slug ?? null))
+    } else {
+      setCourseSlug(null)
+    }
     const { data: rData } = await supabase.from('world_regions').select('*').eq('world_id',w.id).order('order_index')
     setRegions((rData ?? []) as Region[])
     const { data: lData } = await supabase.from('world_levels').select('*').eq('world_id',w.id).order('order_index')
