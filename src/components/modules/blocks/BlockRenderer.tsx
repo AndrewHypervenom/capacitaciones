@@ -14,6 +14,7 @@ import { ClassifyGameBlockRenderer } from './ClassifyGameBlock';
 import { CardsBlockRenderer } from './CardsBlock';
 import { StatBlockRenderer } from './StatBlock';
 import { HotspotImageBlockRenderer } from './HotspotImageBlock';
+import { PdfBlockRenderer } from './PdfBlock';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
 import { mapVideoMarkersFromDb } from '@/services/modules.service';
 import type { ModuleSection } from '@/data/modules';
@@ -297,6 +298,20 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
     case 'hotspot':
       return <HotspotImageBlockRenderer block={block} language={language} />;
 
+    case 'pdf':
+      return (
+        <PdfBlockRenderer
+          block={block}
+          language={language}
+          userId={userId}
+          campaignId={campaignId}
+          moduleId={moduleId}
+          sectionId={sectionId}
+          blockIndex={blockIndex}
+          savedAttempt={sectionId ? savedAttempts?.get(`DOC__${sectionId}:b${blockIndex ?? 0}`) : undefined}
+        />
+      );
+
     default:
       return null;
   }
@@ -319,7 +334,8 @@ function blockSpacing(type: ContentBlock['type']): string {
     case 'divider':      return 'my-6';
     case 'code':         return 'mt-6';
     case 'image':
-    case 'video':        return 'mt-6';
+    case 'video':
+    case 'pdf':          return 'mt-6';
     default:             return 'mt-5';
   }
 }

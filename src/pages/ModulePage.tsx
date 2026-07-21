@@ -71,7 +71,7 @@ function MediaBlock({ media, language }: { media: SectionMedia; language: Langua
   );
 }
 
-type GradedUnitType = 'KNOWLEDGE_CHECK' | 'SORT_PROCESS' | 'CLASSIFY_CASES' | 'VIDEO_QUIZ';
+type GradedUnitType = 'KNOWLEDGE_CHECK' | 'SORT_PROCESS' | 'CLASSIFY_CASES' | 'VIDEO_QUIZ' | 'DOCUMENT_REVIEW';
 interface GradedUnit {
   key: string;
   sectionIndex: number;
@@ -83,6 +83,7 @@ const ACTIVITY_LABEL_KEY: Record<GradedUnitType, string> = {
   SORT_PROCESS: 'module.activity_sort',
   CLASSIFY_CASES: 'module.activity_classify',
   VIDEO_QUIZ: 'module.activity_video',
+  DOCUMENT_REVIEW: 'module.activity_document',
 };
 
 export default function ModulePage() {
@@ -252,6 +253,11 @@ export default function ModulePage() {
           if (b?.type === 'quiz') {
             units.push({ key: `KC__${sid}:b${bi}`, sectionIndex: i, type: 'KNOWLEDGE_CHECK', detail: heading });
           }
+          // Documento PDF marcado como obligatorio: revisar cuenta como unidad
+          // calificable (score 100 al confirmar). Los opcionales no exigen nada.
+          if (b?.type === 'pdf' && b.required !== false && b.url) {
+            units.push({ key: `DOC__${sid}:b${bi}`, sectionIndex: i, type: 'DOCUMENT_REVIEW', detail: heading });
+          }
         });
       }
       // Video interactivo: cada marcador tipo quiz es una unidad independiente.
@@ -291,6 +297,9 @@ export default function ModulePage() {
       } else if (a.game_type === 'KNOWLEDGE_CHECK' && quizKey) {
         // Quiz-bloque: se cruza por su llave única, no por sección.
         key = `KC__${quizKey}`;
+      } else if (a.game_type === 'DOCUMENT_REVIEW') {
+        // Documento PDF: se cruza por su llave de bloque (varios PDFs por sección).
+        key = `DOC__${a.submitted_answers?.doc_key ?? sid}`;
       } else {
         key = `${sid}__${a.game_type}`;
       }
@@ -317,6 +326,8 @@ export default function ModulePage() {
         key = `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`;
       } else if (a.game_type === 'KNOWLEDGE_CHECK' && quizKey) {
         key = `KC__${quizKey}`;
+      } else if (a.game_type === 'DOCUMENT_REVIEW') {
+        key = `DOC__${a.submitted_answers?.doc_key ?? sid}`;
       } else {
         key = `${sid}__${a.game_type}`;
       }

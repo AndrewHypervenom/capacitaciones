@@ -23,7 +23,8 @@ export type BlockType =
   | 'game-classify' // 🌟 Agregado el nuevo tipo de juego
   | 'cards'
   | 'stat'
-  | 'hotspot';
+  | 'hotspot'
+  | 'pdf';
 
 // ─── Shared primitives ─────────────────────────────────────────
 
@@ -279,6 +280,20 @@ export interface HotspotImageBlock {
   points: HotspotPoint[];
 }
 
+export interface PdfBlock {
+  type: 'pdf';
+  /** URL pública del PDF en el bucket module-media. */
+  url: string;
+  /** Título mostrado al aprendiz (opcional; cae al nombre de archivo). */
+  title?: ML;
+  /** Nombre original del archivo, para el botón de descarga. */
+  filename?: string;
+  /** Nota/descripción corta bajo el título (opcional). */
+  caption?: ML;
+  /** Si true, el aprendiz debe marcarlo como revisado para completar el módulo. */
+  required?: boolean;
+}
+
 // ─── Union type ─────────────────────────────────────────────────
 
 export type ContentBlock =
@@ -302,7 +317,8 @@ export type ContentBlock =
   | GameClassifyBlock // 🌟 Registrado aquí en la unión
   | CardsBlock
   | StatBlock
-  | HotspotImageBlock;
+  | HotspotImageBlock
+  | PdfBlock;
 
 // ─── Block with runtime ID (for editor) ────────────────────────
 
@@ -388,6 +404,8 @@ export function emptyBlock(type: BlockType): ContentBlock {
       return { type, items: [{ value: '', label: emptyML() }] };
     case 'hotspot':
       return { type, url: '', points: [] };
+    case 'pdf':
+      return { type, url: '', title: emptyML(), required: true };
   }
 }
 
@@ -425,4 +443,5 @@ export const BLOCK_REGISTRY: BlockMeta[] = [
   { type: 'cards',       label: 'Tarjetas',       description: 'Grid de tarjetas con ícono',       icon: '▦',   group: 'layout' },
   { type: 'stat',        label: 'Datos',          description: 'Métricas con números destacados',  icon: '📊',  group: 'interactive' },
   { type: 'hotspot',     label: 'Imagen interactiva', description: 'Imagen con puntos clicables',  icon: '📍',  group: 'media' },
+  { type: 'pdf',         label: 'Documento PDF',  description: 'PDF para revisar, con visor y descarga', icon: '📄',  group: 'media' },
 ];

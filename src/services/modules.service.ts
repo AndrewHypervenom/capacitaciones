@@ -979,7 +979,7 @@ export interface GenSourceImage {
 const VALID_BLOCK_TYPES = new Set<string>([
   'paragraph', 'heading', 'list', 'image', 'video', 'callout', 'quiz',
   'flashcard', 'accordion', 'tabs', 'code', 'quote', 'divider', 'columns', 'timeline', 'comparison',
-  'cards', 'stat', 'hotspot',
+  'cards', 'stat', 'hotspot', 'pdf',
   'game-sort', 'game-classify',
 ])
 

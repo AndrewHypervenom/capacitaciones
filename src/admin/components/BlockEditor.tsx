@@ -5,6 +5,7 @@ import {
   Type, AlignLeft, List, Image as ImageIcon, Video, Lightbulb,
   HelpCircle, CreditCard, ChevronDown as AccIcon, Layers, Code,
   Quote, Minus, Columns, Clock, Table, LayoutGrid, BarChart3, MapPin,
+  FileText, Upload, Loader2,
 } from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -19,6 +20,7 @@ import {
 } from '@/types/blocks';
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
+import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service';
 import { VideoMarkerEditor } from './VideoMarkerEditor';
 import { extractYouTubeId } from '@/lib/youtube';
 import { extractVimeoId } from '@/lib/vimeo';
@@ -244,6 +246,159 @@ function ImageEditor({
           {i18n.t('admin.modules.be.shadow')}
         </label>
       </div>
+    </div>
+  );
+}
+
+// Bloque de documento PDF: subida por arrastrar/seleccionar (reusa el bucket
+// module-media vía uploadSectionMedia), título opcional, nota y toggle de
+// "obligatorio revisar". Sin mediaContext (vista previa de importación) cae a
+// una entrada de URL simple. Requiere la sección ya guardada para poder subir.
+function PdfEditor({
+  block, onChange, lang, mediaContext,
+}: {
+  block: ContentBlock & { type: 'pdf' };
+  onChange: (b: ContentBlock) => void;
+  lang: Lang;
+  mediaContext?: MediaContext;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Tope de subida. Supabase Free impone 50 MB globales; dejamos margen.
+  const PDF_MAX = 25 * 1024 * 1024;
+  const sectionSaved = !!mediaContext && mediaContext.sectionId !== '';
+
+  const handleFile = async (file: File) => {
+    setError(null);
+    if (file.type !== 'application/pdf') { setError(i18n.t('admin.modules.be.pdf_type_error')); return; }
+    if (file.size > PDF_MAX) { setError(i18n.t('admin.modules.be.pdf_size_error')); return; }
+    if (!mediaContext) return;
+    setUploading(true); setProgress(0);
+    try {
+      const url = await uploadSectionMedia(
+        file, mediaContext.campaignId, mediaContext.moduleId, mediaContext.sectionId, setProgress,
+      );
+      onChange({ ...block, url, filename: file.name });
+    } catch (err) {
+      console.error('[PdfEditor] upload failed', err);
+      setError(i18n.t('admin.modules.be.pdf_upload_error'));
+    } finally {
+      setUploading(false); setProgress(0);
+    }
+  };
+
+  const handleClear = async () => {
+    if (block.url) { try { await deleteSectionMedia(block.url); } catch { /* no bloquea la limpieza */ } }
+    onChange({ ...block, url: '', filename: undefined });
+  };
+
+  const titleField = (
+    <input
+      type="text"
+      value={block.title?.[lang] ?? ''}
+      onChange={(e) => onChange({ ...block, title: { ...(block.title ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
+      placeholder={i18n.t('admin.modules.be.pdf_title_ph', { lang })}
+      className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
+    />
+  );
+
+  const captionField = (
+    <input
+      type="text"
+      value={block.caption?.[lang] ?? ''}
+      onChange={(e) => onChange({ ...block, caption: { ...(block.caption ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
+      placeholder={i18n.t('admin.modules.be.pdf_caption_ph', { lang })}
+      className="w-full bg-transparent text-[12.5px] text-text-subtle placeholder:text-text-subtle outline-none italic"
+    />
+  );
+
+  const requiredToggle = (
+    <label className="flex items-center gap-2 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={block.required !== false}
+        onChange={(e) => onChange({ ...block, required: e.target.checked })}
+        className="h-4 w-4 accent-neon-green"
+      />
+      <span className="text-[12px] text-text-muted">{i18n.t('admin.modules.be.pdf_required')}</span>
+    </label>
+  );
+
+  // Sin contexto de medios (vista previa de importación): URL directa.
+  if (!mediaContext) {
+    return (
+      <div className="space-y-3">
+        {titleField}
+        <input
+          type="url"
+          value={block.url}
+          onChange={(e) => onChange({ ...block, url: e.target.value })}
+          placeholder={i18n.t('admin.modules.be.pdf_url_ph')}
+          className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
+        />
+        {captionField}
+        {requiredToggle}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {titleField}
+
+      {block.url ? (
+        <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 bg-subtle/50">
+          <FileText className="h-4.5 w-4.5 text-neon-magenta shrink-0" />
+          <span className="text-[12.5px] text-text truncate flex-1">{block.filename || i18n.t('admin.modules.be.pdf_loaded')}</span>
+          <a href={block.url} target="_blank" rel="noopener noreferrer" className="text-[11.5px] text-text-muted hover:text-text underline underline-offset-2">
+            {i18n.t('admin.modules.be.pdf_view')}
+          </a>
+          <button onClick={handleClear} className="p-1.5 text-text-muted hover:text-red-400 transition-colors" title={i18n.t('confirm.remove')}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : !sectionSaved ? (
+        <div className="rounded-xl border-2 border-dashed border-line p-6 text-center">
+          <p className="text-[12.5px] text-text-muted">{i18n.t('admin.modules.media_save_section_first')}</p>
+        </div>
+      ) : (
+        <div>
+          <div
+            className={cn(
+              'rounded-xl border-2 border-dashed transition-all cursor-pointer p-6 text-center',
+              dragging ? 'border-brand-green bg-brand-green/5' : 'border-line hover:border-text-muted hover:bg-subtle/50',
+              uploading && 'pointer-events-none opacity-60',
+            )}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload className="mx-auto mb-2 h-5 w-5 text-text-muted" />
+            <p className="text-[12.5px] text-text-muted">
+              {i18n.t('admin.modules.be.pdf_drag_hint')}{' '}
+              <span className="text-text font-medium underline underline-offset-2">{i18n.t('admin.modules.media_browse')}</span>
+            </p>
+            <p className="text-[11px] text-text-subtle mt-1">{i18n.t('admin.modules.be.pdf_size_hint')}</p>
+            <input ref={inputRef} type="file" accept="application/pdf" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+          </div>
+          {uploading && (
+            <div className="mt-2 flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-green" />
+              <span className="text-[12px] text-text-muted">{i18n.t('common.uploading')} {progress}%</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {captionField}
+      {requiredToggle}
+      {error && <p className="text-[12px] text-red-400">{error}</p>}
     </div>
   );
 }
@@ -1257,7 +1412,7 @@ const BLOCK_ICONS: Record<string, React.ComponentType<{ className?: string }>> =
   callout: Lightbulb, quiz: HelpCircle, flashcard: CreditCard, accordion: AccIcon,
   tabs: Layers, code: Code, quote: Quote, divider: Minus, columns: Columns,
   timeline: Clock, comparison: Table, cards: LayoutGrid, stat: BarChart3, hotspot: MapPin,
-  'game-sort': List, 'game-classify': LayoutGrid,
+  'game-sort': List, 'game-classify': LayoutGrid, pdf: FileText,
 };
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -1266,7 +1421,7 @@ const BLOCK_LABELS: Record<string, string> = {
   accordion: 'Acordeón', tabs: 'Tabs', timeline: 'Timeline', comparison: 'Comparación',
   code: 'Código', quote: 'Cita', divider: 'Divisor', columns: 'Columnas',
   cards: 'Tarjetas', stat: 'Datos', hotspot: 'Imagen interactiva',
-  'game-sort': 'Ordenar Procesos', 'game-classify': 'Clasificar Casos',
+  'game-sort': 'Ordenar Procesos', 'game-classify': 'Clasificar Casos', pdf: 'Documento PDF',
 };
 
 // ─── Single block row ──────────────────────────────────────────
@@ -1321,6 +1476,7 @@ function BlockRow({
       case 'cards':       return <CardsEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'stat':        return <StatEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'hotspot':     return <HotspotEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
+      case 'pdf':         return <PdfEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'columns':     return <ColumnsEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'code':        return <CodeEditorBlock block={b} onChange={onUpdate} />;
       case 'quote':       return <QuoteEditorBlock block={b} onChange={onUpdate} lang={lang} />;
