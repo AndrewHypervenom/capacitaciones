@@ -754,8 +754,9 @@
   },
   "admin": {
     "no_campaigns": {
-      "title": "Você não tem campanhas atribuídas",
-      "desc": "Um superadministrador precisa atribuir pelo menos uma campanha para que você possa ver e criar conteúdo."
+      "title": "Você ainda não tem nenhuma campanha",
+      "desc": "Crie sua primeira campanha para começar a organizar e publicar seu conteúdo. Você se tornará o gestor dela automaticamente.",
+      "create": "Criar minha campanha"
     },
     "nav": {
       "panel": "Painel",

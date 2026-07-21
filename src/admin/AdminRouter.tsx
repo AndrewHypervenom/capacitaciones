@@ -1,13 +1,15 @@
 
-import { useRef, useLayoutEffect } from 'react'
+import { useRef, useLayoutEffect, useState } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { FolderX } from 'lucide-react'
+import { FolderX, Plus } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
 import { useHasNoCampaigns } from '@/hooks/useHasNoCampaigns'
 
 import { AdminNav } from './components/AdminNav'
+import { CampaignWizard } from './components/CampaignWizard'
+import { Button } from '@/components/ui/Button'
 import { ViewPresenceChip } from '@/components/presence/ViewPresenceChip'
 import AdminDashboard from './pages/AdminDashboard'
 import CampaignList from './pages/CampaignList'
@@ -42,6 +44,7 @@ export default function AdminRouter() {
   const profile = useAuthStore((s) => s.profile)
   const { t } = useTranslation()
   const noCampaigns = useHasNoCampaigns()
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   // El panel scrollea dentro de este contenedor (no en `window`), y como
   // /admin/* vive fuera de AppShell, nada reseteaba su scroll al navegar. Al
@@ -61,18 +64,30 @@ export default function AdminRouter() {
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
   if (!isSuperAdmin && !isCapacitador) return <Navigate to="/dashboard" replace />
 
-  // Sin campañas no hay nada que gestionar: todas las vistas del panel filtran
-  // por campaña y quedarían vacías o, peor, invitando a crear contenido sin
-  // destino. Mejor decirlo de frente.
+  // Sin campañas no hay nada que gestionar, pero tampoco lo bloqueamos: un
+  // capacitador nuevo (o al que le quitaron su única campaña) puede crear la
+  // suya aquí mismo. CampaignWizard.finalize se la asigna como campaña casa, así
+  // que al crearla `useHasNoCampaigns` recalcula a false y aparece el panel.
   if (noCampaigns) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg p-6">
-        <div className="max-w-md rounded-2xl border border-line bg-surface p-8 text-center">
-          <FolderX className="mx-auto mb-4 h-10 w-10 text-text-subtle" />
-          <h1 className="text-[18px] font-bold text-text">{t('admin.no_campaigns.title')}</h1>
-          <p className="mt-2 text-[13px] text-text-muted">{t('admin.no_campaigns.desc')}</p>
+      <>
+        <div className="flex min-h-screen items-center justify-center bg-bg p-6">
+          <div className="max-w-md rounded-2xl border border-line bg-surface p-8 text-center">
+            <FolderX className="mx-auto mb-4 h-10 w-10 text-text-subtle" />
+            <h1 className="text-[18px] font-bold text-text">{t('admin.no_campaigns.title')}</h1>
+            <p className="mt-2 text-[13px] text-text-muted">{t('admin.no_campaigns.desc')}</p>
+            <Button variant="neon" size="sm" className="mt-6 mx-auto" onClick={() => setWizardOpen(true)}>
+              <Plus className="h-4 w-4" />
+              {t('admin.no_campaigns.create')}
+            </Button>
+          </div>
         </div>
-      </div>
+        <CampaignWizard
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          onCreated={() => { /* finalize asigna la campaña casa → el panel se revela solo */ }}
+        />
+      </>
     )
   }
 

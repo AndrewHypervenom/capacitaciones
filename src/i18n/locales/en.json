@@ -754,8 +754,9 @@
   },
   "admin": {
     "no_campaigns": {
-      "title": "You have no campaigns assigned",
-      "desc": "A superadmin must assign you at least one campaign before you can view or create content."
+      "title": "You don't have any campaign yet",
+      "desc": "Create your first campaign to start organizing and publishing your content. You'll automatically become its manager.",
+      "create": "Create my campaign"
     },
     "nav": {
       "panel": "Dashboard",
