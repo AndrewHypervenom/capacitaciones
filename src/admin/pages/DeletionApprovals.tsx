@@ -20,6 +20,14 @@ const ENTITY_COLORS: Record<EntityType, string> = {
   worlds: '#10b981',
   arena_quizzes: '#ef4444',
   guided_missions: '#3b82f6',
+  // No son objetivos de borrado; presentes sólo para satisfacer el Record.
+  campaign_collaborators: '#10D451',
+  profiles: '#8b5cf6',
+  course_assignments: '#22c55e',
+  course_campaigns: '#10D451',
+  certifications: '#eab308',
+  progress: '#06b6d4',
+  gamification: '#a855f7',
 }
 
 function entityLabel(type: string): string {

@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import {
   Loader2, Activity, ChevronDown, ChevronRight,
-  Plus, Pencil, EyeOff, RotateCcw, Trash2, ShieldCheck,
+  Plus, Pencil, EyeOff, RotateCcw, Trash2, ShieldCheck, Share2,
+  UserMinus, UserPlus, UserX, UserCog, ArrowRightLeft, Send, Undo2,
+  Award, RefreshCw, MessageSquare, FileEdit,
 } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { FadeIn } from '@/components/ui/motion'
@@ -14,26 +16,55 @@ import {
 const ENTITY_TYPES: EntityType[] = [
   'campaigns', 'courses', 'modules', 'scenarios', 'choice_scenarios',
   'live_quizzes', 'worlds', 'arena_quizzes', 'guided_missions',
+  'campaign_collaborators', 'course_assignments', 'course_campaigns',
+  'certifications', 'progress', 'profiles', 'gamification',
 ]
 
 const ACTIONS: ActivityAction[] = [
-  'insert', 'update', 'soft_delete', 'restore', 'delete', 'approve_delete',
+  'insert', 'update', 'edit_content', 'soft_delete', 'restore', 'delete', 'approve_delete',
+  'share', 'unshare', 'role_change', 'campaign_change', 'assign', 'unassign',
+  'publish', 'unpublish', 'certify', 'recertify', 'reset', 'feedback',
+  'create_user', 'delete_user',
 ]
 
 const ACTION_META: Record<ActivityAction, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
-  insert:         { icon: Plus,        color: '#22c55e' },
-  update:         { icon: Pencil,      color: '#06b6d4' },
-  soft_delete:    { icon: EyeOff,      color: '#f59e0b' },
-  restore:        { icon: RotateCcw,   color: '#8b5cf6' },
-  delete:         { icon: Trash2,      color: '#ef4444' },
-  approve_delete: { icon: ShieldCheck, color: '#ef4444' },
+  insert:          { icon: Plus,          color: '#22c55e' },
+  update:          { icon: Pencil,        color: '#06b6d4' },
+  edit_content:    { icon: FileEdit,      color: '#06b6d4' },
+  soft_delete:     { icon: EyeOff,        color: '#f59e0b' },
+  restore:         { icon: RotateCcw,     color: '#8b5cf6' },
+  delete:          { icon: Trash2,        color: '#ef4444' },
+  approve_delete:  { icon: ShieldCheck,   color: '#ef4444' },
+  share:           { icon: Share2,        color: '#10D451' },
+  unshare:         { icon: UserMinus,     color: '#f59e0b' },
+  role_change:     { icon: UserCog,       color: '#8b5cf6' },
+  campaign_change: { icon: ArrowRightLeft, color: '#06b6d4' },
+  assign:          { icon: UserPlus,      color: '#22c55e' },
+  unassign:        { icon: UserMinus,     color: '#f59e0b' },
+  publish:         { icon: Send,          color: '#10D451' },
+  unpublish:       { icon: Undo2,         color: '#f59e0b' },
+  certify:         { icon: Award,         color: '#eab308' },
+  recertify:       { icon: RefreshCw,     color: '#f59e0b' },
+  reset:           { icon: RefreshCw,     color: '#ef4444' },
+  feedback:        { icon: MessageSquare, color: '#06b6d4' },
+  create_user:     { icon: UserPlus,      color: '#22c55e' },
+  delete_user:     { icon: UserX,         color: '#ef4444' },
 }
 
+/** Etiqueta corta del tipo (para los filtros y chips). */
 function entityLabel(type: string): string {
   return i18n.t(`admin.entity_types.${type}`, type)
 }
+/** Tipo con artículo, para las frases ("el curso", "la campaña", …). */
+function typeThe(type: string): string {
+  return i18n.t(`admin.activity.type_the.${type}`, entityLabel(type))
+}
 function actionLabel(a: string): string {
   return i18n.t(`admin.activity.action_${a}`, a)
+}
+function roleLabel(role: string | null | undefined): string {
+  if (!role) return '—'
+  return i18n.t(`admin.activity.role_${role}`, role)
 }
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString(i18n.language, {
@@ -54,6 +85,73 @@ function fmtValue(v: unknown): string {
     return s.length > 120 ? s.slice(0, 120) + '…' : s
   }
   return String(v)
+}
+
+/**
+ * Rellena una plantilla con tokens {{actor}}, {{type}}, {{label}}, {{target}},
+ * {{count}}. Los nombres (actor/label/target) van en negrita; el resto en el
+ * tono atenuado del contenedor. Así cada evento se lee como una frase natural.
+ */
+function renderTemplate(
+  tpl: string,
+  parts: Record<string, { text: string; strong?: boolean }>,
+): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  const re = /\{\{(\w+)\}\}/g
+  let last = 0
+  let key = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(tpl)) !== null) {
+    if (m.index > last) out.push(<span key={key++}>{tpl.slice(last, m.index)}</span>)
+    const p = parts[m[1]]
+    if (p) {
+      out.push(
+        p.strong
+          ? <span key={key++} className="font-medium text-text">{p.text}</span>
+          : <span key={key++}>{p.text}</span>,
+      )
+    }
+    last = m.index + m[0].length
+  }
+  if (last < tpl.length) out.push(<span key={key++}>{tpl.slice(last)}</span>)
+  return out
+}
+
+/** Construye la frase del evento a partir de su acción y datos. */
+function describe(row: ActivityLogRow): React.ReactNode {
+  const detail = (row.detail ?? {}) as Record<string, unknown>
+  const label = row.entity_label ? `«${row.entity_label}»` : '—'
+  const parts: Record<string, { text: string; strong?: boolean }> = {
+    actor: { text: row.actor_name ?? '—', strong: true },
+    type: { text: typeThe(row.entity_type) },
+    label: { text: label, strong: true },
+    target: { text: String(detail.target ?? ''), strong: true },
+    count: { text: String(detail.count ?? ''), strong: true },
+  }
+
+  // La carga masiva de usuarios llega como create_user con {count} y sin etiqueta.
+  const action =
+    row.action === 'create_user' && detail.count != null ? 'create_user_bulk' : row.action
+
+  const tpl = i18n.t(`admin.activity.tpl_${action}`, '')
+  if (tpl) return renderTemplate(tpl, parts)
+
+  // Respaldo genérico si faltara la plantilla: "actor acción tipo label".
+  return renderTemplate('{{actor}} {{type}} {{label}}', parts)
+}
+
+/** Chip de detalle inline para cambios con from→to (rol/campaña). */
+function changeChip(row: ActivityLogRow): string | null {
+  const d = (row.detail ?? {}) as Record<string, unknown>
+  if (row.action === 'role_change' && d.role && typeof d.role === 'object') {
+    const r = d.role as { from?: string; to?: string }
+    return `${roleLabel(r.from)} → ${roleLabel(r.to)}`
+  }
+  if (row.action === 'campaign_change' && d.campaign && typeof d.campaign === 'object') {
+    const c = d.campaign as { from?: string | null; to?: string | null }
+    return `${c.from ?? '∅'} → ${c.to ?? '∅'}`
+  }
+  return null
 }
 
 export default function ActivityLog() {
@@ -80,8 +178,7 @@ export default function ActivityLog() {
     return () => { alive = false }
   }, [entityType, action, actorId])
 
-  // Opciones de actor derivadas de lo cargado (evita un query extra). Se
-  // completan a medida que aparecen actores; el filtro "todos" siempre está.
+  // Opciones de actor derivadas de lo cargado (evita un query extra).
   const [actorOptions, setActorOptions] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
     setActorOptions((prev) => {
@@ -171,8 +268,14 @@ function LogItem({ row, open, onToggle }: { row: ActivityLogRow; open: boolean; 
   const { t } = useTranslation()
   const meta = ACTION_META[row.action] ?? ACTION_META.update
   const Icon = meta.icon
-  const hasDetail = row.action === 'update' && row.detail && Object.keys(row.detail).length > 0
+  // El desglose de campos sólo aplica a ediciones con forma {from,to}.
+  const hasDetail =
+    row.action === 'update' &&
+    !!row.detail &&
+    Object.values(row.detail).every((v) => v && typeof v === 'object' && 'from' in (v as object)) &&
+    Object.keys(row.detail).length > 0
   const changedKeys = hasDetail ? Object.keys(row.detail!) : []
+  const chip = changeChip(row)
 
   return (
     <div>
@@ -188,18 +291,20 @@ function LogItem({ row, open, onToggle }: { row: ActivityLogRow; open: boolean; 
           <Icon className="h-3.5 w-3.5" />
         </span>
         <div className="min-w-0">
-          <div className="text-[13.5px] text-text truncate">
-            <span className="font-medium">{row.actor_name ?? '—'}</span>{' '}
-            <span className="text-text-muted">{actionLabel(row.action).toLowerCase()}</span>{' '}
-            <span className="text-text-muted">{entityLabel(row.entity_type)}</span>{' '}
-            <span className="font-medium">{row.entity_label ?? ''}</span>
+          <div className="text-[13.5px] text-text-muted truncate">
+            {describe(row)}
+            {chip && (
+              <span className="ml-1.5 rounded-md bg-subtle px-1.5 py-0.5 text-[11px] text-text">
+                {chip}
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-text-muted truncate flex items-center gap-1.5">
             <span
               className="inline-block h-1.5 w-1.5 rounded-full"
               style={{ background: roleColor(row.actor_role) }}
             />
-            {row.actor_role ?? '—'} · {fmtDate(row.created_at)}
+            {roleLabel(row.actor_role)} · {fmtDate(row.created_at)}
             {hasDetail && <span className="text-text-subtle">· {changedKeys.length} {t('admin.activity.changed_fields').toLowerCase()}</span>}
           </div>
         </div>
@@ -211,16 +316,19 @@ function LogItem({ row, open, onToggle }: { row: ActivityLogRow; open: boolean; 
         <div className="px-4 pb-4 pt-1 bg-subtle/40 border-t border-line">
           <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">{t('admin.activity.changed_fields')}</div>
           <div className="space-y-1.5">
-            {changedKeys.map((k) => (
-              <div key={k} className="grid grid-cols-[minmax(80px,140px)_1fr] gap-3 text-[12px]">
-                <span className="text-text-muted truncate">{k}</span>
-                <span className="min-w-0 break-words">
-                  <span className="text-danger/80 line-through">{fmtValue(row.detail![k]?.from)}</span>
-                  <span className="text-text-muted mx-1.5">→</span>
-                  <span className="text-[rgb(var(--brand-green))]">{fmtValue(row.detail![k]?.to)}</span>
-                </span>
-              </div>
-            ))}
+            {changedKeys.map((k) => {
+              const change = row.detail![k] as { from: unknown; to: unknown }
+              return (
+                <div key={k} className="grid grid-cols-[minmax(80px,140px)_1fr] gap-3 text-[12px]">
+                  <span className="text-text-muted truncate">{k}</span>
+                  <span className="min-w-0 break-words">
+                    <span className="text-danger/80 line-through">{fmtValue(change?.from)}</span>
+                    <span className="text-text-muted mx-1.5">→</span>
+                    <span className="text-[rgb(var(--brand-green))]">{fmtValue(change?.to)}</span>
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

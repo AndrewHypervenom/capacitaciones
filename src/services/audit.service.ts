@@ -16,14 +16,36 @@ export type EntityType =
   | 'worlds'
   | 'arena_quizzes'
   | 'guided_missions'
+  | 'campaign_collaborators'
+  | 'profiles'
+  | 'course_assignments'
+  | 'course_campaigns'
+  | 'certifications'
+  | 'progress'
+  | 'gamification'
 
 export type ActivityAction =
   | 'insert'
   | 'update'
+  | 'edit_content'
   | 'soft_delete'
   | 'restore'
   | 'delete'
   | 'approve_delete'
+  | 'share'
+  | 'unshare'
+  | 'role_change'
+  | 'campaign_change'
+  | 'assign'
+  | 'unassign'
+  | 'publish'
+  | 'unpublish'
+  | 'certify'
+  | 'recertify'
+  | 'reset'
+  | 'feedback'
+  | 'create_user'
+  | 'delete_user'
 
 export interface ActivityLogRow {
   id: string
@@ -35,8 +57,29 @@ export interface ActivityLogRow {
   entity_id: string | null
   entity_label: string | null
   campaign_id: string | null
-  detail: Record<string, { from: unknown; to: unknown }> | null
+  detail: Record<string, unknown> | null
   created_at: string
+}
+
+/** Registro de actividad desde el cliente (staff). Ver RPC log_activity. */
+export async function logActivity(params: {
+  action: ActivityAction
+  entityType: EntityType
+  entityId?: string | null
+  entityLabel?: string | null
+  campaignId?: string | null
+  detail?: Record<string, unknown> | null
+}): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.rpc as any)('log_activity', {
+    p_action: params.action,
+    p_entity_type: params.entityType,
+    p_entity_id: params.entityId ?? null,
+    p_entity_label: params.entityLabel ?? null,
+    p_campaign_id: params.campaignId ?? null,
+    p_detail: params.detail ?? null,
+  })
+  if (error) throw error
 }
 
 export interface DeletionRequestRow {

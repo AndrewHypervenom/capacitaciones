@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/services/audit.service'
 import type {
   CourseCertStatus,
   Certification,
@@ -281,5 +282,27 @@ export async function requestCourseRecertification(courseId: string): Promise<nu
     p_course_id: courseId,
   })
   if (error) throw error
-  return (data as number) ?? 0
+  const affected = (data as number) ?? 0
+
+  // Trazabilidad: la RPC no deja rastro por sí misma. Registramos el corte de
+  // recertificación con el título del curso y a cuántos afecta. No-fatal.
+  try {
+    const { data: course } = await supabase
+      .from('courses')
+      .select('title_es, campaign_id')
+      .eq('id', courseId)
+      .single()
+    await logActivity({
+      action: 'recertify',
+      entityType: 'certifications',
+      entityId: courseId,
+      entityLabel: (course as { title_es?: string } | null)?.title_es ?? null,
+      campaignId: (course as { campaign_id?: string } | null)?.campaign_id ?? null,
+      detail: { count: affected },
+    })
+  } catch {
+    /* el registro es best-effort; no bloquea la recertificación */
+  }
+
+  return affected
 }
