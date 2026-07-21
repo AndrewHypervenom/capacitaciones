@@ -2534,7 +2534,8 @@
     "stat_min_required": "mínimo requerido",
     "repeat": "↩ Repetir",
     "retry": "↩ Intentar de nuevo",
-    "back_map_btn": "🗺️ Volver al Mapa"
+    "back_map_btn": "🗺️ Volver al Mapa",
+    "next_level": "Siguiente nivel →"
   },
   "livequiz": {
     "dashboard": "Dashboard",

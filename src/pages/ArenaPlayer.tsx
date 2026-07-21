@@ -133,8 +133,11 @@ export default function ArenaPlayer() {
     : backPath === '/admin/arena' ? t('arena.back_admin')
     : t('arena.back_arena')
 
+  // `from: 'course'` es imprescindible: el guard de WorldMap rebota al aprendiz a
+  // '/' salvo que llegue con ese flag (+ worldId). Sin él, "Volver al mapa" mandaba
+  // al aprendiz al dashboard en vez de a su mundo.
   const backNavOpts = backPath === '/world'
-    ? { state: { worldId: locationState?.worldId } }
+    ? { state: { worldId: locationState?.worldId, from: 'course' } }
     : {}
 
   const [quiz, setQuiz]               = useState<ArenaQuiz | null>(null)
@@ -150,6 +153,8 @@ export default function ArenaPlayer() {
   const [popup, setPopup]             = useState<{show:boolean;icon:string;title:string;text:string}>({show:false,icon:'',title:'',text:''})
   const [groupIndex, setGroupIndex]   = useState(0)
   const progressSaved = useRef(false)
+  // Siguiente nivel del mundo (para el botón "Siguiente nivel" al aprobar).
+  const [nextLevel, setNextLevel] = useState<{ id: string; quiz_id: string; min_score_pct: number | null } | null>(null)
 
   /* Load quiz */
   useEffect(() => {
@@ -166,6 +171,44 @@ export default function ArenaPlayer() {
     const iv = setInterval(() => setTimerSecs(s => s+1), 1000)
     return () => clearInterval(iv)
   }, [])
+
+  /* Siguiente nivel del mundo (solo cuando venimos de un mundo). */
+  useEffect(() => {
+    const st = locationState
+    if (st?.from !== 'world' || !st?.worldId || !st?.levelId) { setNextLevel(null); return }
+    let active = true
+    supabase.from('world_levels')
+      .select('id, quiz_id, order_index, min_score_pct')
+      .eq('world_id', st.worldId)
+      .order('order_index')
+      .then(({ data }) => {
+        if (!active || !data) return
+        const idx = data.findIndex((l: { id: string }) => l.id === st.levelId)
+        const nxt = idx >= 0 ? (data[idx + 1] as { id: string; quiz_id: string | null; min_score_pct: number | null } | undefined) : undefined
+        setNextLevel(nxt?.quiz_id ? { id: nxt.id, quiz_id: nxt.quiz_id, min_score_pct: nxt.min_score_pct } : null)
+      })
+    return () => { active = false }
+  }, [locationState])
+
+  /* Ir al siguiente nivel: como es la MISMA ruta /arena/:id, reseteamos a mano el
+     estado del quiz (React Router no remonta al cambiar solo el parámetro). */
+  const goToNextLevel = useCallback(() => {
+    if (!nextLevel?.quiz_id) return
+    navigate(`/arena/${nextLevel.quiz_id}`, {
+      state: { from: 'world', worldId: locationState?.worldId, levelId: nextLevel.id, minScorePct: nextLevel.min_score_pct },
+    })
+    setShowComplete(false)
+    setSelected({})
+    setCurrentQ(0)
+    setXp(0)
+    setGroupIndex(0)
+    setPlanePos(0)
+    setTimerSecs(0)
+    setQuiz(null)
+    setLoading(true)
+    setNextLevel(null)
+    progressSaved.current = false
+  }, [nextLevel, locationState, navigate])
 
   const showPopup = useCallback((icon:string, title:string, text:string) => {
     setPopup({show:true,icon,title,text})
@@ -745,9 +788,15 @@ export default function ArenaPlayer() {
               ))}
             </div>
             <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center'}}>
+              {nextLevel && (
+                <button
+                  onClick={goToNextLevel}
+                  style={{padding:'12px 28px',borderRadius:'0.75rem',border:'none',background:tc,color:'#fff',fontSize:'.9rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}
+                >{t('arena.next_level')}</button>
+              )}
               <button
                 onClick={() => window.location.reload()}
-                style={{padding:'12px 28px',borderRadius:'0.75rem',border:'none',background:tc,color:'#fff',fontSize:'.9rem',fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}
+                style={{padding:'12px 28px',borderRadius:'0.75rem',border: nextLevel ? '1px solid rgba(255,255,255,0.12)' : 'none',background: nextLevel ? 'transparent' : tc,color: nextLevel ? 'rgb(var(--text-muted))' : '#fff',fontSize:'.9rem',fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}
               >{t('arena.repeat')}</button>
               <button
                 onClick={() => navigate(backPath, backNavOpts)}
