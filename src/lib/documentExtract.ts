@@ -862,6 +862,31 @@ export async function cropCaptures(
  * las imágenes que solo sirven para que la IA lea el documento. Lanza un error
  * legible si el formato no está soportado o no hay contenido aprovechable.
  */
+/**
+ * Sugiere cuántas secciones debería tener el módulo, proporcional al tamaño del documento.
+ * Un documento largo (p. ej. un manual de ~90 páginas) se divide en MÁS secciones digeribles
+ * para no perder información ni empacar demasiado en una sola sección (lo que reventaba el
+ * techo de tokens del modelo y hacía que la sección se descartara: por eso antes "solo
+ * alcanzaba a crear 2"). El servidor la usa como objetivo aproximado (±2).
+ *
+ * Señales: caracteres de texto (~1 sección por 11k) y, para PDFs escaneados/manuales sin
+ * mucho texto, la página máxima vista (~1 sección por 6 páginas). Se toma la mayor.
+ */
+export function suggestModuleSectionCount(doc: Pick<ExtractedDocument, 'text' | 'images' | 'contextImages'>): number {
+  const MIN = 2
+  const MAX = 20
+  const chars = (doc.text ?? '').trim().length
+  const maxPage = Math.max(
+    0,
+    ...doc.images.map((i) => i.page ?? 0),
+    ...doc.contextImages.map((i) => i.page ?? 0),
+    doc.contextImages.length, // fallback: páginas rasterizadas cuando no hay número de página
+  )
+  const byChars = Math.round(chars / 11000)
+  const byPages = Math.round(maxPage / 6)
+  return Math.max(MIN, Math.min(MAX, Math.max(byChars, byPages, MIN)))
+}
+
 export async function extractDocumentText(
   file: File,
   onProgress?: ExtractProgressFn,

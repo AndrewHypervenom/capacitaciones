@@ -246,6 +246,8 @@ export async function generateModule(opts: {
  */
 export async function generateModuleOutline(opts: {
   description: string
+  /** Cantidad de secciones sugerida (proporcional al tamaño del documento). */
+  targetSections?: number
 } & DocContext, signal?: AbortSignal): Promise<{ data: ModuleOutline; usage: CacheUsage }> {
   const { data, usage } = await postGenerateModule({ mode: 'outline', esOnly: true, ...opts }, signal)
   let outline = data as ModuleOutline

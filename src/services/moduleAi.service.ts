@@ -10,7 +10,7 @@ import {
 import { saveGeneratedModule } from '@/services/modules.service'
 import { addModuleToCourse } from '@/services/courses.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
-import { cropCaptures, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
+import { cropCaptures, suggestModuleSectionCount, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
 
 /** Evento global emitido al terminar de generar un módulo con IA en segundo plano. */
 export const MODULE_AI_CREATED_EVENT = 'module_ai_created'
@@ -63,12 +63,15 @@ export function runModuleAiGeneration(input: ModuleAiInput): void {
 
       const docContext = { documentText: doc.text, images, contextImages: doc.contextImages, manualMode }
 
-      // 1) Esquema.
+      // 1) Esquema. La cantidad de secciones se dimensiona al documento (un manual largo
+      // se divide en más secciones digeribles → ninguna revienta el techo de tokens).
       bgTask.update(taskId, { detail: i18n.t('admin.import.step_outline') })
-      const { data: outline } = await generateModuleOutline({ description, ...docContext }, signal)
+      const targetSections = suggestModuleSectionCount(doc)
+      const { data: outline } = await generateModuleOutline({ description, targetSections, ...docContext }, signal)
       const headings = outline.sections.map((h) => h.heading_es)
 
-      // 2) Cada sección por separado.
+      // 2) Cada sección por separado, con UN reintento ante fallo transitorio (429/500) para
+      // no perder una sección entera (antes se descartaba en silencio → faltaba información).
       const sections: GeneratedModule['sections'] = []
       let aborted = false
       for (let s = 0; s < outline.sections.length; s++) {
@@ -77,22 +80,29 @@ export function runModuleAiGeneration(input: ModuleAiInput): void {
           detail: i18n.t('admin.import.step_section', { n: s + 1, total: outline.sections.length }),
         })
         const h = outline.sections[s]
+        const genSection = () => generateModuleSection({
+          description,
+          moduleTitle: outline.metadata.title_es,
+          moduleSubtitle: outline.metadata.subtitle_es,
+          objectives: outline.metadata.objectives_es,
+          sectionHeading: h.heading_es,
+          sectionIndex: s,
+          totalSections: outline.sections.length,
+          allHeadings: headings,
+          ...docContext,
+        }, signal)
         try {
-          const { data } = await generateModuleSection({
-            description,
-            moduleTitle: outline.metadata.title_es,
-            moduleSubtitle: outline.metadata.subtitle_es,
-            objectives: outline.metadata.objectives_es,
-            sectionHeading: h.heading_es,
-            sectionIndex: s,
-            totalSections: outline.sections.length,
-            allHeadings: headings,
-            ...docContext,
-          }, signal)
+          let data
+          try {
+            ;({ data } = await genSection())
+          } catch (e) {
+            if (signal.aborted || (e as Error)?.name === 'AbortError') throw e
+            ;({ data } = await genSection()) // reintento único
+          }
           sections.push({ ...h, blocks: data.blocks })
         } catch (e) {
           if (signal.aborted || (e as Error)?.name === 'AbortError') { aborted = true; break }
-          /* si una sección falla (no por cancelación), se omite y seguimos */
+          /* si una sección falla tras el reintento (no por cancelación), se omite y seguimos */
         }
       }
 
