@@ -209,6 +209,9 @@ export default function CourseEditor() {
   const [cond, setCond] = useState<CertConditions>(DEFAULT_CERT_CONDITIONS)
   const [simRule, setSimRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
   const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
+  // Desbloqueo del mundo (juego), mismo esquema que el simulador.
+  const [worldRule, setWorldRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
+  const [worldUnlockModuleId, setWorldUnlockModuleId] = useState<string | null>(null)
   const [savingEval, setSavingEval] = useState(false)
   const [campaignScenarios, setCampaignScenarios] = useState<ScenarioRow[]>([])
   const [campaignChoiceScenarios, setCampaignChoiceScenarios] = useState<ChoiceScenarioRow[]>([])
@@ -249,6 +252,8 @@ export default function CourseEditor() {
     setCond({ ...DEFAULT_CERT_CONDITIONS, ...(c.cert_conditions ?? {}) })
     setSimRule(c.sim_unlock_rule ?? 'after_modules')
     setSimUnlockModuleId(c.sim_unlock_module_id ?? null)
+    setWorldRule(c.world_unlock_rule ?? 'after_modules')
+    setWorldUnlockModuleId(c.world_unlock_module_id ?? null)
   }, [courseId, navigate])
 
   useEffect(() => {
@@ -899,6 +904,8 @@ export default function CourseEditor() {
         cert_conditions: cond,
         sim_unlock_rule: simRule,
         sim_unlock_module_id: simRule === 'after_module' ? simUnlockModuleId : null,
+        world_unlock_rule: worldRule,
+        world_unlock_module_id: worldRule === 'after_module' ? worldUnlockModuleId : null,
       })
       toast.success(t('admin.courses.saved_ok'))
       await reload()
@@ -2229,6 +2236,42 @@ export default function CourseEditor() {
                     </Button>
                   </div>
                 </div>
+
+                {/* Regla de desbloqueo del mundo (juego) — solo si el curso tiene mundo */}
+                {world && (
+                  <div className="rounded-xl border border-line px-3.5 py-3">
+                    <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.world_unlock_label')}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(['after_modules', 'from_start', 'after_module'] as const).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => setWorldRule(r)}
+                          className={cn('px-3 py-1.5 rounded-lg text-[12px] font-medium border',
+                            worldRule === r ? 'border-primary/40 bg-primary/10 text-primary' : 'border-line text-text-muted hover:text-text')}
+                        >
+                          {t(`admin.courses.sim_unlock_${r}`)}
+                        </button>
+                      ))}
+                    </div>
+                    {worldRule === 'after_module' && (
+                      <Select
+                        className="mt-3"
+                        value={worldUnlockModuleId ?? ''}
+                        onChange={(v) => setWorldUnlockModuleId(v || null)}
+                        placeholder={t('admin.courses.sim_unlock_pick_module')}
+                        options={[
+                          { value: '', label: t('admin.courses.sim_unlock_pick_module') },
+                          ...course.modules.map((m) => ({ value: m.id, label: m.title_es })),
+                        ]}
+                      />
+                    )}
+                    <div className="flex justify-end mt-3">
+                      <Button variant="glass" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
+                        <Save className="h-3.5 w-3.5" /> {t('admin.courses.save')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Escenarios ligados al curso */}
                 <div>

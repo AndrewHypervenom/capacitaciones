@@ -173,6 +173,8 @@ export interface Database {
           sim_unlock_rule: 'after_modules' | 'from_start' | 'after_module'
           sim_unlock_module_id: string | null
           sim_max_attempts: number | null
+          world_unlock_rule: 'after_modules' | 'from_start' | 'after_module'
+          world_unlock_module_id: string | null
           created_at: string
           updated_at: string
         }
@@ -202,6 +204,8 @@ export interface Database {
           sim_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
           sim_unlock_module_id?: string | null
           sim_max_attempts?: number | null
+          world_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
+          world_unlock_module_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -228,6 +232,8 @@ export interface Database {
           sim_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
           sim_unlock_module_id?: string | null
           sim_max_attempts?: number | null
+          world_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
+          world_unlock_module_id?: string | null
           updated_at?: string
         }
         Relationships: []

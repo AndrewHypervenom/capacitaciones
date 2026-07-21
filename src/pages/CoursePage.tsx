@@ -243,6 +243,28 @@ export default function CoursePage() {
       setPickerOpen(true);
     }
   };
+  // Desbloqueo del mundo (juego), mismo esquema configurable que el simulador.
+  const worldRule = course.world_unlock_rule ?? 'after_modules';
+  const worldUnlockModule = course.world_unlock_module_id
+    ? course.modules.find((m) => m.id === course.world_unlock_module_id)
+    : null;
+  const worldUnlocked =
+    worldRule === 'from_start' ||
+    (worldRule === 'after_modules' && completed) ||
+    (worldRule === 'after_module' && !!worldUnlockModule && completedSlugs.includes(worldUnlockModule.slug)) ||
+    (worldRule === 'after_module' && !worldUnlockModule && completed);
+  const worldLockedReason =
+    worldRule === 'after_module' && worldUnlockModule
+      ? t('course_practice.locked_after_module', {
+          title: pickText(
+            worldUnlockModule.title_es,
+            worldUnlockModule.title_en,
+            worldUnlockModule.title_pt,
+            language,
+          ),
+        })
+      : t('courses.world_locked');
+
   const simLockedReason =
     course.sim_unlock_rule === 'after_module' && simUnlockModule
       ? t('course_practice.locked_after_module', {
@@ -374,15 +396,28 @@ export default function CoursePage() {
                       {t('course_practice.do_simulation')}
                     </button>
                   )}
+                  {/* El mundo se desbloquea según la regla configurada por el capacitador
+                      (desde el inicio / tras los módulos / tras un módulo). El staff
+                      (superadmin/capacitador) siempre puede entrar (preview). */}
                   {worldId && (isAdminOrCapacitador || course.isAssigned) && (
-                    <Link
-                      to="/world"
-                      state={{ worldId, from: 'course' }}
-                      className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-6 py-3 text-[14px] font-semibold text-primary shadow-sm transition-all hover:bg-primary/10"
-                    >
-                      <Map className="h-4 w-4" />
-                      {t('courses.play_world')}
-                    </Link>
+                    isAdminOrCapacitador || worldUnlocked ? (
+                      <Link
+                        to="/world"
+                        state={{ worldId, from: 'course' }}
+                        className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-6 py-3 text-[14px] font-semibold text-primary shadow-sm transition-all hover:bg-primary/10"
+                      >
+                        <Map className="h-4 w-4" />
+                        {t('courses.play_world')}
+                      </Link>
+                    ) : (
+                      <div
+                        title={worldLockedReason}
+                        className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-line bg-subtle px-6 py-3 text-[14px] font-semibold text-text-subtle"
+                      >
+                        <Lock className="h-4 w-4" />
+                        {t('courses.play_world')}
+                      </div>
+                    )
                   )}
                   {!course.isAssigned && (
                     <button
