@@ -19,6 +19,8 @@ export interface CourseModuleSummary {
   subtitle_es: string | null
   subtitle_en: string | null
   subtitle_pt: string | null
+  /** Marca de borrado suave; si no es null el módulo está eliminado. */
+  deleted_at: string | null
 }
 
 export type CourseWithModules = Course & { modules: CourseModuleSummary[] }
@@ -51,12 +53,15 @@ export interface LearnerCourse extends CourseWithModules {
 // Si no, un segundo vínculo courses->modules (p. ej. sim_unlock_module_id) vuelve
 // ambiguo el embed y PostgREST responde 400 ("more than one relationship").
 const COURSE_MODULES_SELECT =
-  'modules!modules_course_id_fkey(id, slug, icon, duration_min, course_sort_order, is_published, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt)'
+  'modules!modules_course_id_fkey(id, slug, icon, duration_min, course_sort_order, is_published, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt, deleted_at)'
 
 function sortCourseModules<T extends { modules: CourseModuleSummary[] }>(course: T): T {
-  course.modules = (course.modules ?? []).sort(
-    (a, b) => a.course_sort_order - b.course_sort_order,
-  )
+  // Descartamos los borrados suave: el borrado (request_deletion) solo marca
+  // deleted_at, y confiar solo en la RLS para ocultarlos dejaba el conteo de la
+  // tarjeta del curso inflado ("dice que hay módulos" cuando ya no los hay).
+  course.modules = (course.modules ?? [])
+    .filter((m) => !m.deleted_at)
+    .sort((a, b) => a.course_sort_order - b.course_sort_order)
   return course
 }
 
