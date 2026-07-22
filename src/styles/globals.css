@@ -272,6 +272,27 @@
   .reveal-in .stagger-p > p:nth-child(4), .reveal-in .stagger-p > li:nth-child(4) { opacity: 1; transform: none; transition-delay: 290ms; }
   .reveal-in .stagger-p > p:nth-child(5), .reveal-in .stagger-p > li:nth-child(5) { opacity: 1; transform: none; transition-delay: 360ms; }
 
+  /* Entrada "rise" 100% CSS: SIEMPRE termina visible (a diferencia de las
+     animaciones JS de framer, que dentro del scroll del panel admin a veces se
+     quedan atascadas en opacity:0). Se usa en el selector de Progreso y en los
+     KPIs. `both` mantiene el estado final; si no hay soporte de animación o el
+     usuario pide menos movimiento, el elemento queda visible por defecto. */
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(16px); filter: blur(4px); }
+    to   { opacity: 1; transform: none;             filter: blur(0);   }
+  }
+  .animate-rise { animation: rise-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .rise-stagger > * { animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .rise-stagger > *:nth-child(1) { animation-delay: 0.04s }
+  .rise-stagger > *:nth-child(2) { animation-delay: 0.11s }
+  .rise-stagger > *:nth-child(3) { animation-delay: 0.18s }
+  .rise-stagger > *:nth-child(4) { animation-delay: 0.25s }
+  .rise-stagger > *:nth-child(5) { animation-delay: 0.32s }
+  .rise-stagger > *:nth-child(6) { animation-delay: 0.39s }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-rise, .rise-stagger > * { animation: none; opacity: 1; }
+  }
+
   /* Scrollbar sutil del asistente de ayuda (chat "Guía") */
   .help-scroll {
     scrollbar-width: thin;

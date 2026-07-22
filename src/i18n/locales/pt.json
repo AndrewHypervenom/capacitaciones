@@ -1698,7 +1698,15 @@
       "open": "Ver progresso",
       "back": "Trocar visão",
       "viewing": "Você está vendo",
-      "hint": "Os dados só são carregados ao selecionar uma visão."
+      "hint": "Os dados só são carregados ao selecionar uma visão.",
+      "sim_title": "Progresso de Simulações",
+      "sim_desc": "Desempenho nos simuladores de prática: pontuação, empatia, checklist e resolução da chamada.",
+      "sim_b1": "Tentativas e cenários praticados",
+      "sim_b2": "Empatia, checklist e pontuação média",
+      "sim_b3": "Taxa de resolução e feedback de IA",
+      "modules_tab": "Módulos",
+      "worlds_tab": "Mundos",
+      "sim_tab": "Simulações"
     },
     "feedback_panel": {
       "title": "Progresso dos Aprendizes",
@@ -1714,7 +1722,10 @@
       "col_level": "Nível",
       "col_score": "Score",
       "col_stars": "Estrelas",
-      "col_date": "Data"
+      "col_date": "Data",
+      "risk_title": "{{count}} aprendizes em risco",
+      "risk_detail": "Começaram, mas o desempenho médio está abaixo de 60%.",
+      "risk_action": "Ver quais"
     },
     "trainer_panel": {
       "answer_ratio": "Relação de Respostas",
@@ -2542,6 +2553,44 @@
       "designing_flow": "Desenhando o fluxo de conversa",
       "generating_dialogues": "Gerando diálogos em 3 idiomas",
       "finalizing_scenario": "Finalizando o cenário"
+    },
+    "sim_panel": {
+      "title": "Progresso de Simulações",
+      "subtitle": "Desempenho dos aprendizes nos simuladores de prática (chamada e opção).",
+      "export": "Exportar para Excel",
+      "no_name": "Sem nome",
+      "no_data": "Ainda não há simulações registradas",
+      "no_data_desc": "Quando seus aprendizes praticarem nos simuladores, os resultados aparecerão aqui.",
+      "no_match": "Nenhum aprendiz corresponde aos filtros.",
+      "no_attempts": "Sem tentativas ainda.",
+      "search_ph": "Buscar aprendiz…",
+      "distribution_title": "Distribuição por estado",
+      "distribution_subtitle": "Como os aprendizes se dividem conforme sua prática",
+      "attempts_history": "Histórico de tentativas",
+      "attempts_short": "tentativas",
+      "kpi_learners": "Aprendizes",
+      "kpi_attempts": "Tentativas",
+      "kpi_score": "Desempenho",
+      "kpi_resolved": "Resolução",
+      "col_learner": "Aprendiz",
+      "col_status": "Estado",
+      "col_attempts": "Tentativas",
+      "col_score": "Desempenho",
+      "col_empathy": "Empatia",
+      "status_all": "Todos",
+      "status_completed": "Dominado",
+      "status_in_progress": "Praticando",
+      "status_at_risk": "Em risco",
+      "status_not_started": "Sem tentativas",
+      "empathy": "Empatia",
+      "checklist": "Checklist",
+      "duration": "Duração",
+      "resolved": "Resolvido",
+      "unresolved": "Não resolvido",
+      "all_scenarios": "Todos os cenários",
+      "risk_title": "{{count}} aprendizes em risco",
+      "risk_detail": "A melhor pontuação está abaixo de 60%. Vale reforçar a prática.",
+      "risk_action": "Ver quais"
     }
   },
   "themes": {

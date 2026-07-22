@@ -159,21 +159,31 @@ export const TrainerFeedbackPanel: React.FC = () => {
   ];
 
   useEffect(() => {
+    // Guarda de cancelación + try/finally: si el panel se desmonta (cambio rápido
+    // de vista) o el fetch falla, no dejamos el spinner colgado ni tocamos estado
+    // de una carga vieja.
+    let cancelled = false;
     const loadAttempts = async () => {
       setLoading(true);
-      const { data, error: fetchError } = await getPendingAttempts({ excludeSuperadmins: !isSuperAdmin });
-      if (fetchError) setError(t('admin.trainer_panel.load_err_title'));
-      else if (data) {
-        const rows = data as PendingAttempt[];
-        setAttempts(rows);
-        // Cargamos el tiempo activo de todos los aprendices con entregas en una
-        // sola consulta y lo cruzamos por user_id+module_id al pintar cada intento.
-        const userIds = rows.map((r) => r.user_id).filter(Boolean);
-        getModuleTimesForUsers(userIds).then(setModuleTimes);
+      try {
+        const { data, error: fetchError } = await getPendingAttempts({ excludeSuperadmins: !isSuperAdmin });
+        if (cancelled) return;
+        if (fetchError) setError(t('admin.trainer_panel.load_err_title'));
+        else if (data) {
+          const rows = data as PendingAttempt[];
+          setAttempts(rows);
+          // Tiempo activo de todos los aprendices con entregas, en una sola consulta.
+          const userIds = rows.map((r) => r.user_id).filter(Boolean);
+          getModuleTimesForUsers(userIds).then((m) => { if (!cancelled) setModuleTimes(m); });
+        }
+      } catch (e) {
+        if (!cancelled) { console.error('TrainerFeedbackPanel load error:', e); setError(t('admin.trainer_panel.load_err_title')); }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     };
     loadAttempts();
+    return () => { cancelled = true; };
   }, [isSuperAdmin, t]);
 
   useEffect(() => {
@@ -543,10 +553,14 @@ export const TrainerFeedbackPanel: React.FC = () => {
     <div className="flex flex-col h-full bg-bg text-text overflow-hidden font-sans">
 
       {/* ===== Barra superior con resumen global ===== */}
-      <header className="shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sm:gap-4">
+      <header className="relative shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sm:gap-4">
+        <div aria-hidden className="absolute inset-x-0 top-0 h-0.5" style={{ background: 'linear-gradient(90deg, rgb(var(--brand-magenta)), transparent)' }} />
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center shrink-0">
-            <ClipboardCheck className="w-5 h-5 text-green-500" />
+          <div
+            className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-lg"
+            style={{ background: 'linear-gradient(135deg, rgb(var(--brand-magenta)), color-mix(in srgb, rgb(var(--brand-magenta)) 72%, #000))', boxShadow: '0 8px 22px -8px color-mix(in srgb, rgb(var(--brand-magenta)) 55%, transparent)' }}
+          >
+            <ClipboardCheck className="w-5 h-5" />
           </div>
           <div className="min-w-0">
             <h1 className="text-lg font-bold tracking-tight truncate">{t('admin.trainer_panel.pending_evals')}</h1>

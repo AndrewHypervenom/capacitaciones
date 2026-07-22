@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import i18n from '@/i18n'
-import { ChevronDown, ChevronRight, Download, Loader2, Star, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download, Loader2, Star, Search, Globe2, AlertTriangle, Map as MapIcon, GaugeCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
-import { FadeIn } from '@/components/ui/motion'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
+import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
+
+const WORLD_ACCENT = 'rgb(var(--brand-green))'
 
 interface Campaign { id: string; name: string }
 interface World { id: string; name: string; icon: string; campaign_id: string | null }
@@ -92,8 +94,13 @@ export default function FeedbackPanel() {
 
   useEffect(() => {
     if (authLoading) return
+    // Guarda de cancelación + carga a prueba de fallos: si un query falla o el
+    // panel se desmonta (cambio rápido de vista), no dejamos el spinner colgado.
+    let cancelled = false
 
     async function load() {
+      setLoading(true)
+      try {
       // Campañas accesibles (superadmin: todas; capacitador: casa + colaboraciones).
       const accessible = await getAccessibleCampaigns({
         isSuperAdmin,
@@ -101,7 +108,10 @@ export default function FeedbackPanel() {
         userId: user?.id ?? null,
       }).catch(() => [] as Campaign[])
       const ids = accessible.map((c) => c.id)
-      if (scopedToCampaign && ids.length === 0) { setCampaigns([]); setRows([]); setLoading(false); return }
+      if (scopedToCampaign && ids.length === 0) {
+        if (!cancelled) { setCampaigns([]); setRows([]) }
+        return
+      }
       const scope = ids.length ? ids : ['']
 
       const [campRes, worldRes, levelRes, profileRes, progressRes] = await Promise.all([
@@ -203,10 +213,15 @@ export default function FeedbackPanel() {
         })
       }
 
-      setRows(result)
-      setLoading(false)
+      if (!cancelled) setRows(result)
+      } catch (e) {
+        if (!cancelled) console.error('FeedbackPanel load error:', e)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     load()
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, scopedToCampaign, campaignId, user?.id])
 
@@ -402,13 +417,12 @@ export default function FeedbackPanel() {
 
   return (
     <div className="p-4 sm:p-8">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{i18n.t('admin.feedback_panel.title')}</h1>
-          <p className="text-[13px] text-text-muted">{i18n.t('admin.feedback_panel.subtitle')}</p>
-        </div>
-        {canExport && !loading && tableRows.length > 0 && (
+      <PanelHeader
+        icon={<Globe2 className="h-6 w-6" />}
+        accent={WORLD_ACCENT}
+        title={i18n.t('admin.feedback_panel.title')}
+        subtitle={i18n.t('admin.feedback_panel.subtitle')}
+        actions={canExport && !loading && tableRows.length > 0 ? (
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -418,8 +432,8 @@ export default function FeedbackPanel() {
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Exportar a Excel
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Filtros: el de campaña aparece si el usuario abarca varias; el de mundo, siempre que haya datos */}
       {(isSuperAdmin || multiCampaign) && (
@@ -455,12 +469,23 @@ export default function FeedbackPanel() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <FadeIn as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5" y={12}>
-            <StatCard label={i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices')} value={String(stats.learners)} />
-            <StatCard label={i18n.t('admin.feedback_panel.kpi_avance', 'Avance')} value={`${stats.avance}%`} accent />
-            <StatCard label={i18n.t('admin.feedback_panel.kpi_desempeno', 'Desempeño')} value={`${stats.desempeno}%`} />
-            <StatCard label={i18n.t('admin.feedback_panel.kpi_avg_stars', 'Prom. estrellas')} value={stats.avgStars.toFixed(1)} star />
-          </FadeIn>
+          <KpiRow>
+            <Kpi accent={WORLD_ACCENT} icon={<Globe2 className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices')} value={String(stats.learners)} />
+            <Kpi accent={WORLD_ACCENT} highlight icon={<MapIcon className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_avance', 'Avance')} value={`${stats.avance}%`} />
+            <Kpi accent={WORLD_ACCENT} icon={<GaugeCircle className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_desempeno', 'Desempeño')} value={`${stats.desempeno}%`} />
+            <Kpi accent="#f59e0b" icon={<Star className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_avg_stars', 'Prom. estrellas')} value={stats.avgStars.toFixed(1)} />
+          </KpiRow>
+
+          {/* Insight accionable: aprendices en riesgo */}
+          {stats.statusCounts.at_risk > 0 && statusFilter !== 'at_risk' && (
+            <InsightBanner
+              icon={<AlertTriangle className="h-5 w-5" />}
+              title={i18n.t('admin.feedback_panel.risk_title', { count: stats.statusCounts.at_risk, defaultValue: '{{count}} aprendices en riesgo' })}
+              detail={i18n.t('admin.feedback_panel.risk_detail', 'Empezaron pero su desempeño promedio está por debajo del 60%.')}
+              actionLabel={i18n.t('admin.feedback_panel.risk_action', 'Ver quiénes')}
+              onAction={() => setStatusFilter('at_risk')}
+            />
+          )}
 
           {/* ── Distribución por estado ── */}
           <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-4 sm:mb-5">
@@ -675,30 +700,6 @@ export default function FeedbackPanel() {
 }
 
 /* ── Dashboard sub-components ── */
-
-function StatCard({ label, value, suffix, accent, star }: {
-  label: string
-  value: string
-  suffix?: string
-  accent?: boolean
-  star?: boolean
-}) {
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-1.5 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
-      <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-text-muted truncate">{label}</span>
-      <div className="flex items-baseline gap-1.5">
-        <span
-          className="text-2xl sm:text-3xl font-bold text-text tabular-nums"
-          style={accent ? { color: 'rgb(var(--brand-green))' } : undefined}
-        >
-          {value}
-        </span>
-        {suffix && <span className="text-[12px] text-text-muted tabular-nums">{suffix}</span>}
-        {star && <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400" />}
-      </div>
-    </div>
-  )
-}
 
 function StatusDonut({ total, counts }: { total: number; counts: Record<LearnerStatus, number> }) {
   const C = 2 * Math.PI * 40

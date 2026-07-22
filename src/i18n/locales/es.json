@@ -1698,7 +1698,15 @@
       "open": "Ver progreso",
       "back": "Cambiar vista",
       "viewing": "Estás viendo",
-      "hint": "Los datos se cargan únicamente al seleccionar una vista."
+      "hint": "Los datos se cargan únicamente al seleccionar una vista.",
+      "sim_title": "Progreso de Simulaciones",
+      "sim_desc": "Desempeño en los simuladores de práctica: puntaje, empatía, checklist y resolución de la llamada.",
+      "sim_b1": "Intentos y escenarios practicados",
+      "sim_b2": "Empatía, checklist y puntaje promedio",
+      "sim_b3": "Tasa de resolución y feedback de IA",
+      "modules_tab": "Módulos",
+      "worlds_tab": "Mundos",
+      "sim_tab": "Simulaciones"
     },
     "feedback_panel": {
       "title": "Progreso de Aprendices",
@@ -1714,7 +1722,10 @@
       "col_level": "Nivel",
       "col_score": "Score",
       "col_stars": "Estrellas",
-      "col_date": "Fecha"
+      "col_date": "Fecha",
+      "risk_title": "{{count}} aprendices en riesgo",
+      "risk_detail": "Empezaron pero su desempeño promedio está por debajo del 60%.",
+      "risk_action": "Ver quiénes"
     },
     "trainer_panel": {
       "answer_ratio": "Relación de Respuestas",
@@ -2542,6 +2553,44 @@
       "designing_flow": "Diseñando el flujo de conversación",
       "generating_dialogues": "Generando diálogos en 3 idiomas",
       "finalizing_scenario": "Finalizando el escenario"
+    },
+    "sim_panel": {
+      "title": "Progreso de Simulaciones",
+      "subtitle": "Desempeño de los aprendices en los simuladores de práctica (llamada y opción).",
+      "export": "Exportar a Excel",
+      "no_name": "Sin nombre",
+      "no_data": "Todavía no hay simulaciones registradas",
+      "no_data_desc": "Cuando tus aprendices practiquen en los simuladores, sus resultados aparecerán aquí.",
+      "no_match": "Ningún aprendiz coincide con los filtros.",
+      "no_attempts": "Sin intentos todavía.",
+      "search_ph": "Buscar aprendiz…",
+      "distribution_title": "Distribución por estado",
+      "distribution_subtitle": "Cómo se reparten los aprendices según su práctica",
+      "attempts_history": "Historial de intentos",
+      "attempts_short": "intentos",
+      "kpi_learners": "Aprendices",
+      "kpi_attempts": "Intentos",
+      "kpi_score": "Desempeño",
+      "kpi_resolved": "Resolución",
+      "col_learner": "Aprendiz",
+      "col_status": "Estado",
+      "col_attempts": "Intentos",
+      "col_score": "Desempeño",
+      "col_empathy": "Empatía",
+      "status_all": "Todos",
+      "status_completed": "Dominado",
+      "status_in_progress": "Practicando",
+      "status_at_risk": "En riesgo",
+      "status_not_started": "Sin intentos",
+      "empathy": "Empatía",
+      "checklist": "Checklist",
+      "duration": "Duración",
+      "resolved": "Resuelto",
+      "unresolved": "No resuelto",
+      "all_scenarios": "Todos los escenarios",
+      "risk_title": "{{count}} aprendices en riesgo",
+      "risk_detail": "Su mejor puntaje está por debajo del 60%. Conviene reforzar la práctica.",
+      "risk_action": "Ver quiénes"
     }
   },
   "themes": {

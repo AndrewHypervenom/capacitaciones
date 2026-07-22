@@ -195,12 +195,12 @@ export const FAQ: FaqEntry[] = [
   {
     id: 'evaluations',
     audience: 'staff',
-    strong: ['evaluaciones', 'evaluations', 'resultados', 'results', 'notas', 'calificaciones', 'estadisticas', 'statistics', 'estatisticas'],
-    keywords: ['aprendices', 'ver', 'quizzes', 'simulaciones', 'desempeno', 'curso', 'course', 'promedio', 'certificados'],
+    strong: ['evaluaciones', 'evaluations', 'resultados', 'results', 'notas', 'calificaciones', 'estadisticas', 'statistics', 'estatisticas', 'simulador', 'simulator', 'llamadas', 'calls'],
+    keywords: ['aprendices', 'ver', 'quizzes', 'simulaciones', 'simulations', 'desempeno', 'curso', 'course', 'promedio', 'certificados', 'empatia', 'checklist'],
     answer: {
-      es: 'En **Personas → Progreso**, elige **Progreso de Módulos** para revisar entregas, notas y tiempo de tus aprendices (y **Progreso de Mundos** para el avance gamificado): abre [Progreso](/admin/progress). Si eres superadmin, las estadísticas por curso (promedio, certificados, inscritos y exportar CSV) están en **Personas → Vista global**: [Vista global](/admin/overview).',
-      en: 'In **People → Progress**, pick **Module Progress** to review your learners\' submissions, scores and time (and **World Progress** for gamified advancement): open [Progress](/admin/progress). If you are a superadmin, per-course stats (average, certified, enrolled and CSV export) live in **People → Global view**: [Global view](/admin/overview).',
-      pt: 'Em **Pessoas → Progresso**, escolha **Progresso de Módulos** para revisar entregas, notas e tempo dos seus aprendizes (e **Progresso de Mundos** para o avanço gamificado): abra [Progresso](/admin/progress). Se você for superadmin, as estatísticas por curso (média, certificados, inscritos e exportar CSV) estão em **Pessoas → Visão global**: [Visão global](/admin/overview).',
+      es: 'En **Personas → Progreso** eliges una de tres vistas: **Progreso de Módulos** (entregas, notas y tiempo), **Progreso de Mundos** (avance gamificado) o **Progreso de Simulaciones** (resultados del simulador: puntaje, empatía, checklist, resolución y feedback de IA, con filtro por escenario). Abre [Progreso](/admin/progress). Las estadísticas por curso (promedio, certificados, exportar) están en **Personas → Vista global**: [Vista global](/admin/overview).',
+      en: 'In **People → Progress** you pick one of three views: **Module Progress** (submissions, scores, time), **World Progress** (gamified) or **Simulation Progress** (simulator results: score, empathy, checklist, resolution and AI feedback, with a scenario filter). Open [Progress](/admin/progress). Per-course stats (average, certified, export) live in **People → Global view**: [Global view](/admin/overview).',
+      pt: 'Em **Pessoas → Progresso** você escolhe uma de três vistas: **Progresso de Módulos** (entregas, notas, tempo), **Progresso de Mundos** (gamificado) ou **Progresso de Simulações** (resultados do simulador: pontuação, empatia, checklist, resolução e feedback de IA, com filtro por cenário). Abra [Progresso](/admin/progress). As estatísticas por curso estão em **Pessoas → Visão global**: [Visão global](/admin/overview).',
     },
   },
   {

@@ -1698,7 +1698,15 @@
       "open": "View progress",
       "back": "Switch view",
       "viewing": "You are viewing",
-      "hint": "Data is only loaded when you select a view."
+      "hint": "Data is only loaded when you select a view.",
+      "sim_title": "Simulation Progress",
+      "sim_desc": "Performance in the practice simulators: score, empathy, checklist and call resolution.",
+      "sim_b1": "Attempts and scenarios practiced",
+      "sim_b2": "Empathy, checklist and average score",
+      "sim_b3": "Resolution rate and AI feedback",
+      "modules_tab": "Modules",
+      "worlds_tab": "Worlds",
+      "sim_tab": "Simulations"
     },
     "feedback_panel": {
       "title": "Learner Progress",
@@ -1714,7 +1722,10 @@
       "col_level": "Level",
       "col_score": "Score",
       "col_stars": "Stars",
-      "col_date": "Date"
+      "col_date": "Date",
+      "risk_title": "{{count}} learners at risk",
+      "risk_detail": "They started but their average performance is below 60%.",
+      "risk_action": "See who"
     },
     "trainer_panel": {
       "answer_ratio": "Answer Ratio",
@@ -2542,6 +2553,44 @@
       "designing_flow": "Designing the conversation flow",
       "generating_dialogues": "Generating dialogues in 3 languages",
       "finalizing_scenario": "Finalizing the scenario"
+    },
+    "sim_panel": {
+      "title": "Simulation Progress",
+      "subtitle": "Learners performance in the practice simulators (call and choice).",
+      "export": "Export to Excel",
+      "no_name": "No name",
+      "no_data": "No simulations recorded yet",
+      "no_data_desc": "When your learners practice in the simulators, their results will appear here.",
+      "no_match": "No learner matches the filters.",
+      "no_attempts": "No attempts yet.",
+      "search_ph": "Search learner…",
+      "distribution_title": "Distribution by status",
+      "distribution_subtitle": "How learners split according to their practice",
+      "attempts_history": "Attempt history",
+      "attempts_short": "attempts",
+      "kpi_learners": "Learners",
+      "kpi_attempts": "Attempts",
+      "kpi_score": "Performance",
+      "kpi_resolved": "Resolution",
+      "col_learner": "Learner",
+      "col_status": "Status",
+      "col_attempts": "Attempts",
+      "col_score": "Performance",
+      "col_empathy": "Empathy",
+      "status_all": "All",
+      "status_completed": "Mastered",
+      "status_in_progress": "Practicing",
+      "status_at_risk": "At risk",
+      "status_not_started": "No attempts",
+      "empathy": "Empathy",
+      "checklist": "Checklist",
+      "duration": "Duration",
+      "resolved": "Resolved",
+      "unresolved": "Unresolved",
+      "all_scenarios": "All scenarios",
+      "risk_title": "{{count}} learners at risk",
+      "risk_detail": "Their best score is below 60%. Worth reinforcing practice.",
+      "risk_action": "See who"
     }
   },
   "themes": {
