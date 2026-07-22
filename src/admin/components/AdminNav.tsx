@@ -63,6 +63,18 @@ export function AdminNav() {
       ]
     },
     {
+      title: t('admin.nav.group_challenges', 'Retos y Simulaciones'),
+      icon: Trophy,
+      items: [
+        // Mundos ahora contiene también las arenas de competencia (antes sección aparte).
+        { to: '/admin/worlds', label: t('admin.nav.worlds', 'Mundos'), end: false },
+        // Misiones: solo superadmin.
+        ...(isSuperAdmin ? [{ to: '/admin/missions', label: t('admin.nav.missions', 'Misiones'), end: false }] : []),
+        { to: '/admin/quiz', label: t('admin.nav.quiz_live', 'Quizzes'), end: false },
+        { to: '/admin/simulations', label: t('admin.nav.simulations', 'Simulaciones'), end: false }
+      ]
+    },
+    {
       title: t('admin.nav.group_people', 'Personas'),
       icon: Users,
       items: [
@@ -73,18 +85,6 @@ export function AdminNav() {
         ...(isSuperAdmin ? [{ to: '/admin/gamification', label: t('admin.nav.gamification', 'Gamificación'), end: false }] : []),
         // Progreso unificado: Mundos y Módulos viven en una sola vista con selector.
         { to: '/admin/progress', label: t('admin.nav.progress', 'Progreso'), end: false }
-      ]
-    },
-    {
-      title: t('admin.nav.group_challenges', 'Retos y Simulaciones'),
-      icon: Trophy,
-      items: [
-        // Mundos ahora contiene también las arenas de competencia (antes sección aparte).
-        { to: '/admin/worlds', label: t('admin.nav.worlds', 'Mundos'), end: false },
-        // Misiones: solo superadmin.
-        ...(isSuperAdmin ? [{ to: '/admin/missions', label: t('admin.nav.missions', 'Misiones'), end: false }] : []),
-        { to: '/admin/quiz', label: t('admin.nav.quiz_live', 'Quizzes'), end: false },
-        { to: '/admin/simulations', label: t('admin.nav.simulations', 'Simulaciones'), end: false }
       ]
     },
     // Secciones exclusivas de superadmin (no las ve el capacitador): van al final
