@@ -23,7 +23,11 @@
   "update": {
     "title": "New version available",
     "description": "Refresh to get the latest changes.",
-    "action": "Refresh"
+    "action": "Refresh",
+    "confirm_title": "Refresh now?",
+    "confirm_description": "Refreshing reloads the page. If you're in the middle of something unsaved (creating or editing content, taking an assessment, etc.), you could lose that progress. Save first and refresh when you're done.",
+    "confirm_action": "Yes, refresh",
+    "confirm_cancel": "Not now"
   },
   "welcome": {
     "kicker": "Training · LearningAI",
@@ -481,6 +485,7 @@
     "status_on_hold": "On hold",
     "status_transferring": "Transferring…",
     "muted_badge": "Microphone muted",
+    "closing_hint": "The customer is wrapping up. Say your goodbye before ending the call.",
     "toast_muted_on": "Microphone muted",
     "toast_muted_on_desc": "The customer can no longer hear you.",
     "toast_muted_off": "Microphone live",
@@ -1263,6 +1268,21 @@
       "sim_unlock_after_module": "After a module",
       "sim_unlock_pick_module": "Pick the module…",
       "world_unlock_label": "World unlock",
+      "world_gate_title": "Course world",
+      "world_gate_hint": "The world is a game, separate from the simulator. Choose when learners can play it.",
+      "world_gate_free_tag": "Free",
+      "world_gate_from_start_title": "Free from the start",
+      "world_gate_from_start_desc": "Learners can enter the world anytime, without finishing the modules.",
+      "world_gate_after_modules_title": "After completing the course",
+      "world_gate_after_modules_desc": "The world unlocks once the learner completes every module.",
+      "world_gate_after_module_title": "After a specific module",
+      "world_gate_after_module_desc": "The world unlocks when the learner completes the module you pick.",
+      "world_gate_pick_module": "Pick the module that unlocks it…",
+      "world_gate_preview_label": "What the learner will see",
+      "world_gate_preview_from_start": "The world will be available from day one.",
+      "world_gate_preview_after_modules": "The world will show as locked 🔒 until the learner completes every module.",
+      "world_gate_preview_after_module": "The world will show as locked 🔒 until “{{title}}” is completed.",
+      "world_gate_preview_after_module_generic": "The world will show as locked 🔒 until the module you pick above is completed.",
       "sim_in_course": "Scenarios in this course",
       "sim_none_in_course": "No scenarios linked to this course yet.",
       "sim_available": "Available scenarios",
@@ -1483,6 +1503,8 @@
       "summary_pt": "Summary (Portuguese)",
       "add_step": "Add step",
       "del_step": "Remove step",
+      "del_item_title": "Delete evaluation item?",
+      "del_item_desc": "This item will be removed from the simulation's evaluation. This action cannot be undone.",
       "start": "START",
       "step_label": "Step:",
       "select_step": "Select a step to edit it",
@@ -1562,6 +1584,9 @@
       "ai_gen": {
         "generate_ai": "Generate with AI",
         "generate_ai_sub": "— Claude creates the full scenario from your description",
+        "generate_scenario": "Generate scenario",
+        "improve_current": "Improve with AI",
+        "improve_hint": "Polishes the dialogue, fills in translations and slightly extends the scenario you already built.",
         "ph_prompt": "E.g.: Customer upset because their bill has an extra charge they don't recognize. The agent must show empathy, identify the problem, and offer a solution or clarification...",
         "prompt_hint": "The more detailed the description, the better the result.",
         "optional": "(optional)",
@@ -3096,7 +3121,8 @@
     "suggestions_title": "Try asking",
     "thinking_0": "Checking the manual…",
     "thinking_1": "Reviewing your courses…",
-    "thinking_2": "Writing a reply…"
+    "thinking_2": "Writing a reply…",
+    "quota_low": "{{count}} left today"
   },
   "presence": {
     "browsing": "In the panel",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Plus, Save, Trash2, X } from 'lucide-react'
@@ -8,7 +8,7 @@ import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import {
   getChoiceScenarioAdmin, createChoiceScenario, updateChoiceScenario, type ChoiceScenarioRow,
 } from '@/services/choiceScenarios.admin.service'
-import { type GeneratedChoice, type GeneratedDialogue } from '@/services/ai.service'
+import { type GeneratedChoice, type GeneratedDialogue, type GeneratedScenario } from '@/services/ai.service'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
 import { ChoiceNodeForm, type ChoiceNodeData } from '@/admin/components/simulation/ChoiceNodeForm'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -55,12 +55,21 @@ const defaultNodes = (): NodesMap => ({
   start: { message: { es: '', en: '', pt: '' }, speaker: 'client', options: [] },
 })
 
-// El paso inicial siempre lo habla el cliente. Si lo abriera el agente, el
-// aprendiz entraría a la llamada sin nada a lo que responder.
-const withClientStart = (nodes: NodesMap, startId: string): NodesMap => {
-  const start = nodes[startId]
-  if (!start || start.speaker === 'client') return nodes
-  return { ...nodes, [startId]: { ...start, speaker: 'client' } }
+// En opción múltiple cada paso lo habla siempre el cliente: las respuestas del
+// agente son las opciones que el aprendiz selecciona. Normalizamos todos los
+// nodos a 'client' (incluye escenarios viejos que quedaron con pasos de agente).
+const withClientStart = (nodes: NodesMap, _startId: string): NodesMap => {
+  let changed = false
+  const next: NodesMap = {}
+  for (const [id, node] of Object.entries(nodes)) {
+    if (node.speaker !== 'client') {
+      next[id] = { ...node, speaker: 'client' }
+      changed = true
+    } else {
+      next[id] = node
+    }
+  }
+  return changed ? next : nodes
 }
 
 function rowToState(row: ChoiceScenarioRow): { meta: MetaState; nodes: NodesMap } {
@@ -107,7 +116,13 @@ export default function ChoiceSimEditor() {
   const [manualGuide, setManualGuide] = useState(isNew && isManualMode)
 
   const slugManualRef = useRef(!isNew)
-  const nodeIds = Object.keys(nodes)
+  // El paso inicial siempre va primero (Paso 1), sin importar el orden en que se
+  // hayan creado los pasos, para que el flujo se lea de arriba hacia abajo.
+  const nodeIds = (() => {
+    const ids = Object.keys(nodes)
+    const start = meta.start_node_id
+    return start && nodes[start] ? [start, ...ids.filter((id) => id !== start)] : ids
+  })()
 
   // Presencia colaborativa: coeditores de este escenario (una vez guardado).
   const coeditors = useEditingPresence(
@@ -119,6 +134,24 @@ export default function ChoiceSimEditor() {
     const preview = nodes[nid]?.message?.es?.slice(0, 32)
     return { value: nid, label: preview ? `${stepLabel(nid)} — ${preview}` : stepLabel(nid) }
   })
+
+  // Escenario actual (para "Mejorar con IA"). null si aún no hay contenido real.
+  const currentContent = useMemo<GeneratedScenario | null>(() => {
+    const hasText = Object.values(nodes).some(
+      (n) => n.message?.es?.trim() || (n.options ?? []).some((o) => o.text?.es?.trim()),
+    )
+    if (!hasText && !meta.title_es.trim()) return null
+    return {
+      metadata: {
+        title_es: meta.title_es, title_en: meta.title_en, title_pt: meta.title_pt,
+        description: meta.description, client_name: meta.client_name,
+        client_company: meta.client_company, objective: meta.objective,
+        level: meta.level,
+      },
+      start_node_id: meta.start_node_id,
+      nodes,
+    }
+  }, [meta, nodes])
 
   // Campañas donde puede crear: superadmin todas; capacitador su campaña casa +
   // aquellas donde colabora (equipos). Un escenario ya existente conserva la
@@ -282,7 +315,7 @@ export default function ChoiceSimEditor() {
       </div>
 
       {/* AI Generator — abierto por defecto salvo en modo manual */}
-      <AIGeneratorPanel type="choice" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} />
+      <AIGeneratorPanel type="choice" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} currentContent={currentContent} />
 
       {/* Guía rápida para creación manual */}
       {manualGuide && (
@@ -502,7 +535,6 @@ export default function ChoiceSimEditor() {
                   nodeId={selectedNodeId}
                   data={nodes[selectedNodeId]}
                   nodeOptions={nodeOptions}
-                  isStart={selectedNodeId === meta.start_node_id}
                   onCreateNode={createLinkedNode}
                   onChange={(nid, data) => setNodes((prev) => ({ ...prev, [nid]: data }))}
                 />

@@ -142,6 +142,10 @@ export default function ChoiceSimulatorRun() {
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
   const attemptSavedRef = useRef(false);
   const feedbackReqRef = useRef(false);
+  // Solo false en el desmontaje real (no atado al ciclo del efecto), para que la
+  // petición de feedback en vuelo siempre pueda apagar el loading.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -194,7 +198,6 @@ export default function ChoiceSimulatorRun() {
       return;
     }
     const pct = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
-    let alive = true;
     choiceFeedback({
       language,
       scenario: {
@@ -205,10 +208,9 @@ export default function ChoiceSimulatorRun() {
       transcript,
       metrics: { scorePct: pct },
     })
-      .then((fb) => { if (alive) setAiFeedback(fb); })
+      .then((fb) => { if (mountedRef.current) setAiFeedback(fb); })
       .catch(() => { /* IA no disponible → intento sin feedback */ })
-      .finally(() => { if (alive) { setFeedbackLoading(false); setFeedbackReady(true); } });
-    return () => { alive = false; };
+      .finally(() => { if (mountedRef.current) { setFeedbackLoading(false); setFeedbackReady(true); } });
   }, [phase, scenario, messages, maxPoints, totalPoints, language]);
 
   // Persistir el intento en BD (auditable + cuenta para la certificación del curso).

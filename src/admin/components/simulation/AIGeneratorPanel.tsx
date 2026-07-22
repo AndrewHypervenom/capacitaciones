@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X } from 'lucide-react'
+import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2 } from 'lucide-react'
 import { GenerationProgress, SIMULATION_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { generateSimulation, getModuleContextText, type CacheUsage, type GeneratedDialogue, type GeneratedChoice } from '@/services/ai.service'
+import { generateSimulation, getModuleContextText, type CacheUsage, type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario } from '@/services/ai.service'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
@@ -55,9 +55,15 @@ interface Props {
   onApply: (generated: GeneratedDialogue | GeneratedChoice) => void
   defaultOpen?: boolean
   campaignId?: string | null
+  /**
+   * Escenario actual del editor. Si tiene contenido, se habilita "Mejorar con
+   * IA": la IA pule y extiende lo que ya se armó (útil para simulaciones
+   * hechas a mano). Si es null, solo se puede generar desde cero.
+   */
+  currentContent?: GeneratedScenario | null
 }
 
-export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignId: campaignIdProp }: Props) {
+export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignId: campaignIdProp, currentContent }: Props) {
   const { campaignId: authCampaignId } = useAuth()
   const campaignId = campaignIdProp || authCampaignId
   const { remaining, notifyCache } = useCacheTimer()
@@ -69,6 +75,10 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<GeneratedDialogue | GeneratedChoice | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // Recuerda si el último preview vino de "Generar" o "Mejorar" para que
+  // Regenerar repita la misma acción.
+  const lastModeRef = useRef<'generate' | 'improve'>('generate')
+  const canImprove = !!currentContent
 
   useEffect(() => {
     if (!campaignId) return
@@ -81,8 +91,10 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
       .then(({ data }) => setModules(data ?? []))
   }, [campaignId])
 
-  const handleGenerate = async () => {
-    if (!description.trim()) return
+  const runAi = async (mode: 'generate' | 'improve') => {
+    if (mode === 'generate' && !description.trim()) return
+    if (mode === 'improve' && !currentContent) return
+    lastModeRef.current = mode
     const controller = new AbortController()
     abortRef.current = controller
     setLoading(true)
@@ -91,7 +103,12 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     try {
       let moduleContext: string | undefined
       if (selectedModuleId) moduleContext = await getModuleContextText(selectedModuleId)
-      const result = await generateSimulation({ type, description, moduleContext }, controller.signal)
+      const result = await generateSimulation({
+        type,
+        description,
+        moduleContext,
+        existing: mode === 'improve' ? currentContent ?? undefined : undefined,
+      }, controller.signal)
       setPreview(result.data)
       notifyCache(result.usage)
     } catch (e) {
@@ -103,6 +120,10 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
       setLoading(false)
     }
   }
+
+  const handleGenerate = () => runAi('generate')
+  const handleImprove = () => runAi('improve')
+  const handleRegenerate = () => runAi(lastModeRef.current)
 
   const handleCancel = () => abortRef.current?.abort()
 
@@ -192,15 +213,25 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
           )}
 
           {preview && !loading && (
-            <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleGenerate} />
+            <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleRegenerate} />
           )}
 
           {!preview && !loading && (
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              {canImprove && (
+                <Button onClick={handleImprove} variant="secondary" size="sm">
+                  <Wand2 className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.improve_current')}
+                </Button>
+              )}
               <Button onClick={handleGenerate} disabled={!description.trim()} size="sm">
-                <Sparkles className="h-4 w-4" /> Generar escenario
+                <Sparkles className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.generate_scenario')}
               </Button>
             </div>
+          )}
+          {canImprove && !preview && !loading && (
+            <p className="text-[11px] text-text-subtle text-right -mt-2">
+              {i18n.t('admin.simulations.ai_gen.improve_hint')}
+            </p>
           )}
         </div>
       )}

@@ -14,6 +14,9 @@ import { aiDailyLimit, todayKey } from './config'
 import { ChatMarkdown } from './ChatMarkdown'
 import { cn } from '@/lib/cn'
 
+/** Solo se muestra el cupo diario de IA cuando quedan estas consultas o menos. */
+const QUOTA_LOW_THRESHOLD = 5
+
 export function HelpWidget() {
   const { t, i18n } = useTranslation()
   const { isAuthenticated, isAdminOrCapacitador, displayName, role, campaignId } = useAuth()
@@ -319,7 +322,10 @@ export function HelpWidget() {
               </div>
               <p className="mt-1.5 flex items-center justify-center gap-1 text-center text-[10.5px] text-text-subtle">
                 {t('help.disclaimer')}
-                <span className="opacity-60">· {quotaLeft}/{dailyLimit}</span>
+                {/* El cupo diario solo se muestra cuando queda poco (aviso). */}
+                {quotaLeft <= QUOTA_LOW_THRESHOLD && (
+                  <span className="text-amber-500">· {t('help.quota_low', { count: quotaLeft, defaultValue: 'quedan {{count}} hoy' })}</span>
+                )}
               </p>
             </div>
           </motion.div>

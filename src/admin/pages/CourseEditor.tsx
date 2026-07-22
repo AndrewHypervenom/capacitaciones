@@ -25,11 +25,14 @@ import {
   Map as MapIcon,
   PhoneCall,
   Plus,
+  Rocket,
+  Flag,
   Save,
   Search,
   Share2,
   Sparkles,
   Unlink,
+  Unlock,
   Users,
   X,
 } from 'lucide-react'
@@ -2169,7 +2172,111 @@ export default function CourseEditor() {
             </div>
           </div>
 
-          {/* 2. Simulador del curso — opcional y poco frecuente: sección plegable */}
+          {/* 2. Mundo del curso — juego aparte del simulador (son cosas distintas).
+              Sección propia y visible: aquí el capacitador decide si el mundo
+              queda libre o se desbloquea, sin que quede escondido bajo el simulador. */}
+          {world && (
+            <div>
+              <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+                <MapIcon className="h-4 w-4 text-text-muted" />
+                {t('admin.courses.world_gate_title')}
+              </h2>
+              <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.world_gate_hint')}</p>
+
+              <div className="space-y-2.5">
+                {([
+                  { id: 'from_start', icon: Rocket },
+                  { id: 'after_modules', icon: Check },
+                  { id: 'after_module', icon: Flag },
+                ] as const).map(({ id, icon: Icon }) => {
+                  const selected = worldRule === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setWorldRule(id)}
+                      className={cn(
+                        'w-full flex items-start gap-3.5 rounded-2xl border px-4 py-3.5 text-left transition-all',
+                        selected
+                          ? 'border-primary/50 bg-primary/8 ring-1 ring-primary/20'
+                          : 'border-line hover:border-primary/25 hover:bg-glass/5',
+                      )}
+                    >
+                      <div className={cn(
+                        'grid h-9 w-9 shrink-0 place-items-center rounded-xl',
+                        selected ? 'bg-primary/15 text-primary' : 'bg-subtle text-text-muted',
+                      )}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[13.5px] font-semibold text-text">
+                            {t(`admin.courses.world_gate_${id}_title`)}
+                          </span>
+                          {id === 'from_start' && (
+                            <span className="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                              {t('admin.courses.world_gate_free_tag')}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[12px] text-text-muted mt-0.5">
+                          {t(`admin.courses.world_gate_${id}_desc`)}
+                        </p>
+                        {id === 'after_module' && selected && (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Select
+                              className="mt-2.5"
+                              value={worldUnlockModuleId ?? ''}
+                              onChange={(v) => setWorldUnlockModuleId(v || null)}
+                              placeholder={t('admin.courses.world_gate_pick_module')}
+                              options={[
+                                { value: '', label: t('admin.courses.world_gate_pick_module') },
+                                ...course.modules.map((m) => ({ value: m.id, label: m.title_es })),
+                              ]}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className={cn(
+                        'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 transition-colors',
+                        selected ? 'border-primary bg-primary' : 'border-line',
+                      )}>
+                        {selected && <Check className="h-3 w-3 text-on-primary" />}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Vista previa de lo que verá el aprendiz */}
+              <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3">
+                {worldRule === 'from_start'
+                  ? <Unlock className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  : <Lock className="h-4 w-4 text-primary shrink-0 mt-0.5" />}
+                <div className="text-[12px] text-text">
+                  <span className="block font-medium text-text-muted mb-0.5">{t('admin.courses.world_gate_preview_label')}</span>
+                  {worldRule === 'from_start' && t('admin.courses.world_gate_preview_from_start')}
+                  {worldRule === 'after_modules' && t('admin.courses.world_gate_preview_after_modules')}
+                  {worldRule === 'after_module' && (
+                    worldUnlockModuleId
+                      ? t('admin.courses.world_gate_preview_after_module', {
+                          title: course.modules.find((m) => m.id === worldUnlockModuleId)?.title_es ?? '',
+                        })
+                      : t('admin.courses.world_gate_preview_after_module_generic')
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end mt-4">
+                <Button variant="neon" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
+                  <Save className="h-3.5 w-3.5" />
+                  {savingEval ? t('admin.courses.saving') : t('admin.courses.save')}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 3. Simulador del curso — opcional y poco frecuente: sección plegable */}
           <div className={cn('rounded-2xl border overflow-hidden', simRequiredButEmpty ? 'border-amber-500/40' : 'border-line')}>
             <button
               type="button"
@@ -2236,42 +2343,6 @@ export default function CourseEditor() {
                     </Button>
                   </div>
                 </div>
-
-                {/* Regla de desbloqueo del mundo (juego) — solo si el curso tiene mundo */}
-                {world && (
-                  <div className="rounded-xl border border-line px-3.5 py-3">
-                    <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.world_unlock_label')}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(['after_modules', 'from_start', 'after_module'] as const).map((r) => (
-                        <button
-                          key={r}
-                          onClick={() => setWorldRule(r)}
-                          className={cn('px-3 py-1.5 rounded-lg text-[12px] font-medium border',
-                            worldRule === r ? 'border-primary/40 bg-primary/10 text-primary' : 'border-line text-text-muted hover:text-text')}
-                        >
-                          {t(`admin.courses.sim_unlock_${r}`)}
-                        </button>
-                      ))}
-                    </div>
-                    {worldRule === 'after_module' && (
-                      <Select
-                        className="mt-3"
-                        value={worldUnlockModuleId ?? ''}
-                        onChange={(v) => setWorldUnlockModuleId(v || null)}
-                        placeholder={t('admin.courses.sim_unlock_pick_module')}
-                        options={[
-                          { value: '', label: t('admin.courses.sim_unlock_pick_module') },
-                          ...course.modules.map((m) => ({ value: m.id, label: m.title_es })),
-                        ]}
-                      />
-                    )}
-                    <div className="flex justify-end mt-3">
-                      <Button variant="glass" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
-                        <Save className="h-3.5 w-3.5" /> {t('admin.courses.save')}
-                      </Button>
-                    </div>
-                  </div>
-                )}
 
                 {/* Escenarios ligados al curso */}
                 <div>

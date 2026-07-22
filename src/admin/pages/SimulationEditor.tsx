@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import {
@@ -11,7 +11,7 @@ import {
   getScenarioAdmin, createScenario, updateScenario, type ScenarioRow,
 } from '@/services/scenarios.admin.service'
 import { getCoursesForCampaign } from '@/services/courses.service'
-import { type GeneratedDialogue } from '@/services/ai.service'
+import { type GeneratedDialogue, type GeneratedScenario } from '@/services/ai.service'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
 import {
   DialogueNodeForm, type DialogueNodeData,
@@ -165,7 +165,13 @@ export default function SimulationEditor() {
   const [manualGuide, setManualGuide] = useState(isNew && isManualMode)
 
   const slugManualRef = useRef(!isNew)
-  const nodeIds = Object.keys(nodes)
+  // El paso inicial siempre va primero (Paso 1), sin importar el orden en que se
+  // hayan creado los pasos, para que el flujo se lea de arriba hacia abajo.
+  const nodeIds = (() => {
+    const ids = Object.keys(nodes)
+    const start = meta.start_node_id
+    return start && nodes[start] ? [start, ...ids.filter((id) => id !== start)] : ids
+  })()
 
   // Presencia colaborativa: coeditores de este simulador (una vez guardado).
   const coeditors = useEditingPresence(
@@ -173,6 +179,27 @@ export default function SimulationEditor() {
   )
 
   const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
+
+  // Escenario actual (para "Mejorar con IA"). null si aún no hay contenido real.
+  const currentContent = useMemo<GeneratedScenario | null>(() => {
+    const hasText = Object.values(nodes).some((n) => n.customerLine?.es?.trim())
+    if (!hasText && !meta.title_es.trim()) return null
+    return {
+      metadata: {
+        title_es: meta.title_es, title_en: meta.title_en, title_pt: meta.title_pt,
+        summary_es: meta.summary_es, summary_en: meta.summary_en, summary_pt: meta.summary_pt,
+        country: meta.country, difficulty: meta.difficulty,
+        customer_name: meta.customer_name, customer_phone: meta.customer_phone,
+        customer_reason_es: meta.customer_reason_es, customer_reason_en: meta.customer_reason_en, customer_reason_pt: meta.customer_reason_pt,
+        avatar_seed: meta.avatar_seed, max_turns: meta.max_turns,
+        empathy_keywords: meta.empathy_keywords,
+        checklist_items: checklist,
+      },
+      start_node_id: meta.start_node_id,
+      nodes,
+    }
+  }, [meta, nodes, checklist])
+
   const nodeOptions = nodeIds.map((nid) => {
     const preview = nodes[nid]?.customerLine?.es?.slice(0, 32)
     return { value: nid, label: preview ? `${stepLabel(nid)} — ${preview}` : stepLabel(nid) }
@@ -387,7 +414,7 @@ export default function SimulationEditor() {
       </div>
 
       {/* AI Generator — abierto por defecto salvo en modo manual */}
-      <AIGeneratorPanel type="dialogue" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} />
+      <AIGeneratorPanel type="dialogue" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} currentContent={currentContent} />
 
       {/* Guía rápida para creación manual */}
       {manualGuide && (
@@ -742,7 +769,8 @@ export default function SimulationEditor() {
           </div>
           {checklist.map((item, idx) => (
             <GlassCard key={item.id} className="p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 flex-1 min-w-0">
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.item_name')}</label>
                   <input
@@ -769,6 +797,22 @@ export default function SimulationEditor() {
                     className={inputClass}
                   />
                 </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: t('admin.simulations.del_item_title'),
+                      description: t('admin.simulations.del_item_desc'),
+                      confirmLabel: t('confirm.remove'),
+                    })
+                    if (!ok) return
+                    setChecklist((prev) => prev.filter((_, i) => i !== idx))
+                  }}
+                  title={t('admin.simulations.del_item_title')}
+                  className="shrink-0 text-text-subtle hover:text-danger transition-colors mt-6"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             </GlassCard>
           ))}

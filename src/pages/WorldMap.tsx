@@ -380,17 +380,22 @@ export default function WorldMap() {
   useEffect(() => {
     if (!user || !profile) return
     async function load() {
-      // Aprendiz sin campaña asignada → no cargar ningún mundo
-      if (!isSuperAdmin && !campaignId) {
+      // "Sin campaña" solo bloquea al APRENDIZ que llega sin campaña y sin venir de
+      // un curso. El staff (incl. capacitadores con campaña solo por colaboración,
+      // cuya campaña "casa" puede ser null) NUNCA debe toparse con este muro, y
+      // cualquiera que venga desde su curso con un worldId ya trae el mundo elegido.
+      // Antes miraba solo `!isSuperAdmin`, así que un capacitador con campaign_id
+      // null previsualizando el mundo veía "no tienes campaña".
+      if (!isStaff && !campaignId && !fromCourse) {
         setLoading(false)
         return
       }
 
       const { data: wData } = await supabase.from('worlds').select('*').eq('status','published')
       const all = (wData ?? []) as World[]
-      // El aprendiz elige entre los mundos de su campaña; el superadmin, entre todos.
-      // (Los deep-links por worldId desde el curso usan `all`, así funcionan igual.)
-      const visible = isSuperAdmin ? all : all.filter(x => x.campaign_id === campaignId)
+      // El aprendiz elige entre los mundos de su campaña; el staff, entre todos
+      // (preview). Los deep-links por worldId desde el curso usan `all` igual.
+      const visible = isStaff ? all : all.filter(x => x.campaign_id === campaignId)
       setWorlds(visible)
 
       // Force reload after progress reset — clear in-memory state first
@@ -410,7 +415,7 @@ export default function WorldMap() {
 
       // Con varios mundos, mostramos el selector (antes solo para superadmin).
       if (visible.length > 1) { setShowSelector(true); setLoading(false); return }
-      const w = visible[0] ?? (isSuperAdmin ? all[0] : null)
+      const w = visible[0] ?? (isStaff ? all[0] : null)
       if (w) await loadWorld(w)
       setLoading(false)
     }
@@ -539,8 +544,8 @@ export default function WorldMap() {
     </div>
   )
 
-  /* ── Sin campaña asignada ── */
-  if (!isSuperAdmin && !campaignId) return (
+  /* ── Sin campaña asignada ── (nunca para staff ni para quien viene del curso) */
+  if (!isStaff && !campaignId && !fromCourse) return (
     <div style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,fontFamily:'inherit',padding:'0 24px',textAlign:'center'}}>
       <div style={{fontSize:'3.5rem'}}>🗺️</div>
       <div style={{color:'rgb(var(--text))',fontWeight:800,fontSize:'1.2rem'}}>{t('world.no_campaign_title')}</div>

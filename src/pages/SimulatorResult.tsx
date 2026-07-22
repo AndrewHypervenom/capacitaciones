@@ -35,6 +35,12 @@ export default function SimulatorResult() {
   const [feedbackLoading, setFeedbackLoading] = useState(true);
   const [feedbackReady, setFeedbackReady] = useState(false);
   const feedbackReqRef = useRef(false);
+  // Solo es false en el desmontaje real. No se ata al ciclo del efecto: si el
+  // efecto se re-ejecuta (p. ej. useScenarios recarga y cambia la referencia de
+  // scenario/computed), la petición ya en vuelo debe poder apagar el loading;
+  // atarla a un `alive` local dejaba el feedback pegado en "analizando".
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // Respaldo por slug: el staff sin campaña o el aprendiz cross-campaña no
   // encuentran el escenario en useScenarios; sin esto se perdía el intento.
@@ -85,7 +91,6 @@ export default function SimulatorResult() {
       setFeedbackReady(true);
       return;
     }
-    let alive = true;
     callFeedback({
       language,
       scenario: {
@@ -101,10 +106,9 @@ export default function SimulatorResult() {
         resolved: computed.resolved,
       },
     })
-      .then((fb) => { if (alive) setAiFeedback(fb); })
+      .then((fb) => { if (mountedRef.current) setAiFeedback(fb); })
       .catch(() => { /* IA no disponible → se guarda el intento sin feedback */ })
-      .finally(() => { if (alive) { setFeedbackLoading(false); setFeedbackReady(true); } });
-    return () => { alive = false; };
+      .finally(() => { if (mountedRef.current) { setFeedbackLoading(false); setFeedbackReady(true); } });
   }, [valid, scenario, lastResult, computed, language]);
 
   useEffect(() => {

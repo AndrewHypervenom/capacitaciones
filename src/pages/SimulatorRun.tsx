@@ -473,6 +473,19 @@ export default function SimulatorRun() {
               )}
             </AnimatePresence>
           </div>
+          <AnimatePresence>
+            {live && state.awaitingClose && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 6 }}
+                transition={{ duration: 0.25 }}
+                className="rounded-2xl border border-brand-green/30 bg-brand-green/10 px-4 py-2.5 text-[12.5px] text-brand-green"
+              >
+                {t('simulator.closing_hint')}
+              </motion.div>
+            )}
+          </AnimatePresence>
           <AgentInput onSend={onSend} disabled={inputBlocked} />
         </div>
 

@@ -75,6 +75,12 @@ export async function generateSimulation(opts: {
   type: 'dialogue' | 'choice'
   description: string
   moduleContext?: string
+  /**
+   * Escenario actual (metadata + nodos). Si se envía, la IA MEJORA y extiende
+   * ese contenido en vez de generar uno nuevo desde cero. `description` se toma
+   * como instrucciones opcionales de la mejora.
+   */
+  existing?: GeneratedScenario
 }, signal?: AbortSignal): Promise<{ data: GeneratedScenario; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')

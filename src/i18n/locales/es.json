@@ -23,7 +23,11 @@
   "update": {
     "title": "Nueva versión disponible",
     "description": "Actualizá para ver los últimos cambios del sitio.",
-    "action": "Actualizar"
+    "action": "Actualizar",
+    "confirm_title": "¿Actualizar ahora?",
+    "confirm_description": "Al actualizar se recarga la página. Si estás en medio de algo sin guardar (creando o editando contenido, respondiendo una evaluación, etc.), podrías perder ese progreso. Guardá primero y actualizá cuando termines.",
+    "confirm_action": "Sí, actualizar",
+    "confirm_cancel": "Ahora no"
   },
   "welcome": {
     "kicker": "Capacitación · LearningAI",
@@ -481,6 +485,7 @@
     "status_on_hold": "En espera",
     "status_transferring": "Transfiriendo…",
     "muted_badge": "Micrófono silenciado",
+    "closing_hint": "El cliente se está despidiendo. Cierra la llamada con tu despedida antes de finalizar.",
     "toast_muted_on": "Micrófono silenciado",
     "toast_muted_on_desc": "El cliente ya no te escucha.",
     "toast_muted_off": "Micrófono activo",
@@ -1263,6 +1268,21 @@
       "sim_unlock_after_module": "Tras un módulo",
       "sim_unlock_pick_module": "Elige el módulo…",
       "world_unlock_label": "Desbloqueo del mundo",
+      "world_gate_title": "Mundo del curso",
+      "world_gate_hint": "El mundo es un juego aparte del simulador. Elige cuándo puede jugarlo el aprendiz.",
+      "world_gate_free_tag": "Libre",
+      "world_gate_from_start_title": "Libre desde el inicio",
+      "world_gate_from_start_desc": "El aprendiz entra al mundo cuando quiera, sin necesidad de terminar los módulos.",
+      "world_gate_after_modules_title": "Al completar el curso",
+      "world_gate_after_modules_desc": "El mundo se desbloquea cuando el aprendiz completa todos los módulos.",
+      "world_gate_after_module_title": "Tras un módulo específico",
+      "world_gate_after_module_desc": "El mundo se desbloquea al completar el módulo que elijas.",
+      "world_gate_pick_module": "Elige el módulo que lo desbloquea…",
+      "world_gate_preview_label": "Lo que verá el aprendiz",
+      "world_gate_preview_from_start": "El mundo estará disponible desde el primer día.",
+      "world_gate_preview_after_modules": "El mundo aparecerá bloqueado 🔒 hasta que el aprendiz complete todos los módulos.",
+      "world_gate_preview_after_module": "El mundo aparecerá bloqueado 🔒 hasta completar «{{title}}».",
+      "world_gate_preview_after_module_generic": "El mundo aparecerá bloqueado 🔒 hasta completar el módulo que elijas arriba.",
       "sim_in_course": "Escenarios de este curso",
       "sim_none_in_course": "Aún no hay escenarios ligados a este curso.",
       "sim_available": "Escenarios disponibles",
@@ -1483,6 +1503,8 @@
       "summary_pt": "Resumo (Português)",
       "add_step": "Agregar paso",
       "del_step": "Eliminar paso",
+      "del_item_title": "¿Eliminar ítem de evaluación?",
+      "del_item_desc": "Se quitará este ítem de la evaluación de la simulación. Esta acción no se puede deshacer.",
       "start": "INICIO",
       "step_label": "Paso:",
       "select_step": "Selecciona un paso para editarlo",
@@ -1562,6 +1584,9 @@
       "ai_gen": {
         "generate_ai": "Generar con IA",
         "generate_ai_sub": "— Claude crea el escenario completo a partir de tu descripción",
+        "generate_scenario": "Generar escenario",
+        "improve_current": "Mejorar con IA",
+        "improve_hint": "Pule los diálogos, completa traducciones y extiende un poco el escenario que ya armaste.",
         "ph_prompt": "Ej: Cliente molesto porque su factura tiene un cargo extra que no reconoce. El agente debe mostrar empatía, identificar el problema y ofrecer una solución o aclaración...",
         "prompt_hint": "Mientras más detallada la descripción, mejor el resultado.",
         "optional": "(opcional)",
@@ -3096,7 +3121,8 @@
     "suggestions_title": "Prueba a preguntar",
     "thinking_0": "Consultando el manual…",
     "thinking_1": "Revisando tus cursos…",
-    "thinking_2": "Redactando respuesta…"
+    "thinking_2": "Redactando respuesta…",
+    "quota_low": "quedan {{count}} hoy"
   },
   "presence": {
     "browsing": "En el panel",

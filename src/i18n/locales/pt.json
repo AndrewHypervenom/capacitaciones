@@ -23,7 +23,11 @@
   "update": {
     "title": "Nova versão disponível",
     "description": "Atualize para ver as últimas mudanças do site.",
-    "action": "Atualizar"
+    "action": "Atualizar",
+    "confirm_title": "Atualizar agora?",
+    "confirm_description": "Atualizar recarrega a página. Se você estiver no meio de algo sem salvar (criando ou editando conteúdo, respondendo uma avaliação, etc.), pode perder esse progresso. Salve primeiro e atualize quando terminar.",
+    "confirm_action": "Sim, atualizar",
+    "confirm_cancel": "Agora não"
   },
   "welcome": {
     "kicker": "Treinamento · LearningAI",
@@ -481,6 +485,7 @@
     "status_on_hold": "Em espera",
     "status_transferring": "Transferindo…",
     "muted_badge": "Microfone silenciado",
+    "closing_hint": "O cliente está se despedindo. Faça sua despedida antes de encerrar a chamada.",
     "toast_muted_on": "Microfone silenciado",
     "toast_muted_on_desc": "O cliente não consegue mais ouvir você.",
     "toast_muted_off": "Microfone ativo",
@@ -1263,6 +1268,21 @@
       "sim_unlock_after_module": "Após um módulo",
       "sim_unlock_pick_module": "Escolha o módulo…",
       "world_unlock_label": "Desbloqueio do mundo",
+      "world_gate_title": "Mundo do curso",
+      "world_gate_hint": "O mundo é um jogo, separado do simulador. Escolha quando o aprendiz pode jogá-lo.",
+      "world_gate_free_tag": "Livre",
+      "world_gate_from_start_title": "Livre desde o início",
+      "world_gate_from_start_desc": "O aprendiz entra no mundo quando quiser, sem precisar terminar os módulos.",
+      "world_gate_after_modules_title": "Ao concluir o curso",
+      "world_gate_after_modules_desc": "O mundo é desbloqueado quando o aprendiz conclui todos os módulos.",
+      "world_gate_after_module_title": "Após um módulo específico",
+      "world_gate_after_module_desc": "O mundo é desbloqueado ao concluir o módulo que você escolher.",
+      "world_gate_pick_module": "Escolha o módulo que o desbloqueia…",
+      "world_gate_preview_label": "O que o aprendiz verá",
+      "world_gate_preview_from_start": "O mundo estará disponível desde o primeiro dia.",
+      "world_gate_preview_after_modules": "O mundo aparecerá bloqueado 🔒 até o aprendiz concluir todos os módulos.",
+      "world_gate_preview_after_module": "O mundo aparecerá bloqueado 🔒 até concluir “{{title}}”.",
+      "world_gate_preview_after_module_generic": "O mundo aparecerá bloqueado 🔒 até concluir o módulo escolhido acima.",
       "sim_in_course": "Cenários deste curso",
       "sim_none_in_course": "Ainda não há cenários vinculados a este curso.",
       "sim_available": "Cenários disponíveis",
@@ -1483,6 +1503,8 @@
       "summary_pt": "Resumo (português)",
       "add_step": "Adicionar passo",
       "del_step": "Remover passo",
+      "del_item_title": "Excluir item de avaliação?",
+      "del_item_desc": "Este item será removido da avaliação da simulação. Esta ação não pode ser desfeita.",
       "start": "INÍCIO",
       "step_label": "Passo:",
       "select_step": "Selecione um passo para editá-lo",
@@ -1562,6 +1584,9 @@
       "ai_gen": {
         "generate_ai": "Gerar com IA",
         "generate_ai_sub": "— Claude cria o cenário completo a partir da sua descrição",
+        "generate_scenario": "Gerar cenário",
+        "improve_current": "Melhorar com IA",
+        "improve_hint": "Aprimora os diálogos, completa as traduções e estende um pouco o cenário que você já montou.",
         "ph_prompt": "Ex: Cliente irritado porque sua fatura tem uma cobrança extra que não reconhece. O agente deve demonstrar empatia, identificar o problema e oferecer uma solução ou esclarecimento...",
         "prompt_hint": "Quanto mais detalhada a descrição, melhor o resultado.",
         "optional": "(opcional)",
@@ -3096,7 +3121,8 @@
     "suggestions_title": "Experimente perguntar",
     "thinking_0": "Consultando o manual…",
     "thinking_1": "Revisando seus cursos…",
-    "thinking_2": "Escrevendo a resposta…"
+    "thinking_2": "Escrevendo a resposta…",
+    "quota_low": "restam {{count}} hoje"
   },
   "presence": {
     "browsing": "No painel",

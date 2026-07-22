@@ -3,6 +3,7 @@ import { RefreshCw, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 
 /**
  * Aviso flotante que aparece cuando hay una versión más reciente del sitio
@@ -12,8 +13,22 @@ export function UpdatePrompt() {
   const updateAvailable = useVersionCheck();
   const [dismissed, setDismissed] = useState(false);
   const { t } = useTranslation();
+  const confirm = useConfirm();
 
   const show = updateAvailable && !dismissed;
+
+  // Antes de recargar, advertir que un proceso manual sin guardar (crear/editar
+  // contenido, responder una evaluación, etc.) se perdería al actualizar.
+  const handleUpdate = async () => {
+    const ok = await confirm({
+      title: t('update.confirm_title'),
+      description: t('update.confirm_description'),
+      confirmLabel: t('update.confirm_action'),
+      cancelLabel: t('update.confirm_cancel'),
+      tone: 'default',
+    });
+    if (ok) window.location.reload();
+  };
 
   return (
     <AnimatePresence>
@@ -43,7 +58,7 @@ export function UpdatePrompt() {
             </div>
 
             <button
-              onClick={() => window.location.reload()}
+              onClick={handleUpdate}
               className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-neon-cyan/15 hover:bg-neon-cyan/25 text-neon-cyan text-[12.5px] font-semibold px-3 py-2 transition-colors"
             >
               <RefreshCw className="h-3.5 w-3.5" />

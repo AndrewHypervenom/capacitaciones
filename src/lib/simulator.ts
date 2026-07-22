@@ -19,6 +19,12 @@ export interface SimState {
   startedAt: number;
   endedAt?: number;
   outcome?: 'resolved' | 'unresolved';
+  /**
+   * El cliente ya señaló el cierre de la llamada, pero NO se termina aún: se
+   * deja un turno más para que el agente se despida y pueda sumar el check de
+   * cierre. El siguiente turno con cierre (o el fin de turnos) sí la termina.
+   */
+  awaitingClose?: boolean;
 }
 
 let uidCounter = 0;
@@ -95,6 +101,27 @@ export function stepSim(
   const isTerminal = Boolean(nextNode.terminal);
   const outOfTurns = turns >= scenario.maxTurns;
 
+  // Cierre en dos tiempos: si el guion llega a un nodo terminal, primero dejamos
+  // que el agente se despida (awaitingClose) y solo en el turno siguiente se
+  // termina de verdad. Quedarse sin turnos sí corta de inmediato.
+  let ended: boolean;
+  let awaitingClose: boolean;
+  if (outOfTurns) {
+    ended = true;
+    awaitingClose = false;
+  } else if (isTerminal) {
+    if (state.awaitingClose) {
+      ended = true;
+      awaitingClose = false;
+    } else {
+      ended = false;
+      awaitingClose = true;
+    }
+  } else {
+    ended = false;
+    awaitingClose = false;
+  }
+
   return {
     ...state,
     currentNodeId: nextNodeId,
@@ -102,12 +129,9 @@ export function stepSim(
     messages: [...state.messages, agentMsg, customerMsg],
     completedChecklist,
     empathyHits,
-    endedAt: isTerminal || outOfTurns ? Date.now() : undefined,
-    outcome: isTerminal
-      ? nextNode.terminal
-      : outOfTurns
-        ? 'unresolved'
-        : undefined,
+    awaitingClose,
+    endedAt: ended ? Date.now() : undefined,
+    outcome: ended ? (isTerminal ? nextNode.terminal : 'unresolved') : undefined,
   };
 }
 
@@ -143,7 +167,28 @@ export function applyTurn(
   const empathyHits = state.empathyHits + Math.max(0, Math.min(2, result.empathyDelta ?? 0));
   const turns = state.turns + 1;
   const outOfTurns = turns >= scenario.maxTurns;
-  const ended = result.ended || outOfTurns;
+
+  // Cierre en dos tiempos: cuando el cliente da por terminada la llamada
+  // (result.ended), NO se corta de golpe — se deja un turno más para que el
+  // agente se despida y sume el check de cierre. En el turno siguiente, si el
+  // cliente vuelve a cerrar, ahí sí termina. Quedarse sin turnos corta ya.
+  let ended: boolean;
+  let awaitingClose: boolean;
+  if (outOfTurns) {
+    ended = true;
+    awaitingClose = false;
+  } else if (result.ended) {
+    if (state.awaitingClose) {
+      ended = true;
+      awaitingClose = false;
+    } else {
+      ended = false;
+      awaitingClose = true;
+    }
+  } else {
+    ended = false;
+    awaitingClose = false;
+  }
 
   return {
     ...state,
@@ -151,6 +196,7 @@ export function applyTurn(
     messages: [...state.messages, agentMsg, customerMsg],
     completedChecklist,
     empathyHits,
+    awaitingClose,
     endedAt: ended ? Date.now() : undefined,
     outcome: ended ? (result.resolved ? 'resolved' : 'unresolved') : undefined,
   };
