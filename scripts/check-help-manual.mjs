@@ -15,12 +15,21 @@
  * Correr:  node scripts/check-help-manual.mjs   (o  npm run check:help)
  * Sale con código 1 si hay rutas fantasma (rompe CI); las no documentadas avisan.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(resolve(root, p), 'utf8')
+
+// El manual vive en supabase/functions, que está en .gitignore → NO existe en el
+// checkout de CI/Vercel. Si no está, saltamos el chequeo (exit 0) para no romper
+// el build. Localmente sí existe, así que el guardarraíl sigue activo al desarrollar.
+const MANUAL_PATH = 'supabase/functions/help-chat/index.ts'
+if (!existsSync(resolve(root, MANUAL_PATH))) {
+  console.log(`ℹ️  ${MANUAL_PATH} no está presente (esperado en CI/Vercel: supabase/ está en .gitignore). Se omite la verificación del manual.`)
+  process.exit(0)
+}
 
 // ── 1. Rutas reales del código ───────────────────────────────
 function extractPaths(src) {
@@ -57,7 +66,7 @@ const redirectPaths = new Set(
 const NON_HELP = new Set(['/', '/login', '/verify/:certId'])
 
 // ── 2. Rutas que el manual menciona ──────────────────────────
-const edgeSrc = read('supabase/functions/help-chat/index.ts')
+const edgeSrc = read(MANUAL_PATH)
 const start = edgeSrc.indexOf('PLATFORM_MANUAL = `')
 if (start === -1) { console.error('No encontré PLATFORM_MANUAL en el edge function.'); process.exit(2) }
 const manualBody = edgeSrc.slice(start + 'PLATFORM_MANUAL = `'.length)
