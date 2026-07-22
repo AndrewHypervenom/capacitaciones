@@ -272,6 +272,30 @@
   .reveal-in .stagger-p > p:nth-child(4), .reveal-in .stagger-p > li:nth-child(4) { opacity: 1; transform: none; transition-delay: 290ms; }
   .reveal-in .stagger-p > p:nth-child(5), .reveal-in .stagger-p > li:nth-child(5) { opacity: 1; transform: none; transition-delay: 360ms; }
 
+  /* Scrollbar sutil del asistente de ayuda (chat "Guía") */
+  .help-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--glass-border) / 0.2) transparent;
+  }
+  .help-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 0;
+  }
+  .help-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .help-scroll::-webkit-scrollbar-thumb {
+    background: rgb(var(--glass-border) / 0.18);
+    border-radius: 999px;
+  }
+  .help-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--glass-border) / 0.32);
+  }
+  /* Fila de chips: sin barra horizontal visible */
+  .help-scroll.\[scrollbar-width\:none\]::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Tarjeta con inclinación 3D */
   .tilt-card {
     transform-style: preserve-3d;

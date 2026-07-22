@@ -195,12 +195,12 @@ export const FAQ: FaqEntry[] = [
   {
     id: 'evaluations',
     audience: 'staff',
-    strong: ['evaluaciones', 'evaluations', 'resultados', 'results', 'notas', 'calificaciones'],
-    keywords: ['aprendices', 'ver', 'quizzes', 'simulaciones', 'desempeno', 'panel'],
+    strong: ['evaluaciones', 'evaluations', 'resultados', 'results', 'notas', 'calificaciones', 'estadisticas', 'statistics', 'estatisticas'],
+    keywords: ['aprendices', 'ver', 'quizzes', 'simulaciones', 'desempeno', 'curso', 'course', 'promedio', 'certificados'],
     answer: {
-      es: 'En [Evaluaciones](/admin/evaluaciones) revisas los resultados de quizzes y simulaciones de tus aprendices y su desempeño.',
-      en: 'In [Evaluations](/admin/evaluaciones) you review your learners\' quiz and simulation results and their performance.',
-      pt: 'Em [Avaliações](/admin/evaluaciones) você revisa os resultados de quizzes e simulações dos seus aprendizes e o desempenho deles.',
+      es: 'En **Personas → Progreso**, elige **Progreso de Módulos** para revisar entregas, notas y tiempo de tus aprendices (y **Progreso de Mundos** para el avance gamificado): abre [Progreso](/admin/progress). Si eres superadmin, las estadísticas por curso (promedio, certificados, inscritos y exportar CSV) están en **Personas → Vista global**: [Vista global](/admin/overview).',
+      en: 'In **People → Progress**, pick **Module Progress** to review your learners\' submissions, scores and time (and **World Progress** for gamified advancement): open [Progress](/admin/progress). If you are a superadmin, per-course stats (average, certified, enrolled and CSV export) live in **People → Global view**: [Global view](/admin/overview).',
+      pt: 'Em **Pessoas → Progresso**, escolha **Progresso de Módulos** para revisar entregas, notas e tempo dos seus aprendizes (e **Progresso de Mundos** para o avanço gamificado): abra [Progresso](/admin/progress). Se você for superadmin, as estatísticas por curso (média, certificados, inscritos e exportar CSV) estão em **Pessoas → Visão global**: [Visão global](/admin/overview).',
     },
   },
   {

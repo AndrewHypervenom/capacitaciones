@@ -3038,7 +3038,16 @@
       "staff_create_sim": "How do I create a simulation?",
       "staff_ai_sim": "How do I generate a simulation with AI?",
       "staff_evaluate": "Where do I see evaluations?"
-    }
+    },
+    "greeting_name": "Hi, {{name}} 👋",
+    "assistant_name": "Guide",
+    "role_tag": "AI",
+    "status_online": "Online · replies instantly",
+    "status_typing": "typing…",
+    "suggestions_title": "Try asking",
+    "thinking_0": "Checking the manual…",
+    "thinking_1": "Reviewing your courses…",
+    "thinking_2": "Writing a reply…"
   },
   "presence": {
     "browsing": "In the panel",

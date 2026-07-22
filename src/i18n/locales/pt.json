@@ -3038,7 +3038,16 @@
       "staff_create_sim": "Como crio uma simulação?",
       "staff_ai_sim": "Como gero uma simulação com IA?",
       "staff_evaluate": "Onde vejo as avaliações?"
-    }
+    },
+    "greeting_name": "Olá, {{name}} 👋",
+    "assistant_name": "Guia",
+    "role_tag": "IA",
+    "status_online": "On-line · responde na hora",
+    "status_typing": "digitando…",
+    "suggestions_title": "Experimente perguntar",
+    "thinking_0": "Consultando o manual…",
+    "thinking_1": "Revisando seus cursos…",
+    "thinking_2": "Escrevendo a resposta…"
   },
   "presence": {
     "browsing": "No painel",
