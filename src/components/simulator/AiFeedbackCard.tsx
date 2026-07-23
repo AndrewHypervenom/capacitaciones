@@ -45,6 +45,9 @@ export function AiFeedbackCard({ feedback, loading }: Props) {
             <p className="text-[14px] leading-relaxed text-text">{feedback.summary}</p>
           )}
 
+          {/* Fortalezas y mejoras lado a lado en pantallas anchas: apiladas se
+              leía como una columna interminable. */}
+          <div className="grid gap-5 md:grid-cols-2">
           {feedback.strengths?.length > 0 && (
             <div>
               <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-brand-green">
@@ -78,6 +81,7 @@ export function AiFeedbackCard({ feedback, loading }: Props) {
               </ul>
             </div>
           )}
+          </div>
         </div>
       )}
     </div>

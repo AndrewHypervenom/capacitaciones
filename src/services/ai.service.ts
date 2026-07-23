@@ -82,6 +82,40 @@ export async function generateSimulation(opts: {
    */
   existing?: GeneratedScenario
 }, signal?: AbortSignal): Promise<{ data: GeneratedScenario; usage: CacheUsage }> {
+  // Ahorro + velocidad: Sonnet escribe SOLO el español y en/pt se traducen después con
+  // Haiku, por piezas. Pedir los 3 idiomas de un tirón triplicaba la salida y la Edge
+  // Function topaba el timeout del gateway (504 tras ~2 min de "Generando…").
+  const { data, usage } = await postGenerateSimulation({ ...opts, esOnly: true }, signal)
+  let scenario = data as GeneratedScenario
+
+  try {
+    const meta = await translateGenerated<{ metadata: unknown }>({ metadata: scenario.metadata }, signal)
+    if (meta?.metadata) scenario = { ...scenario, metadata: meta.metadata } as GeneratedScenario
+  } catch { /* red de seguridad más abajo */ }
+
+  // Los nodos van por lotes: acota cada llamada de traducción y evita respuestas cortadas.
+  const entries = Object.entries(scenario.nodes ?? {})
+  const nodes: Record<string, unknown> = {}
+  for (let i = 0; i < entries.length; i += TRANSLATE_NODE_BATCH) {
+    const batch = Object.fromEntries(entries.slice(i, i + TRANSLATE_NODE_BATCH))
+    let translated = batch
+    try {
+      translated = await translateGenerated<Record<string, unknown>>(batch, signal)
+    } catch { /* red de seguridad más abajo */ }
+    Object.assign(nodes, translated ?? batch)
+  }
+  scenario = { ...scenario, nodes } as GeneratedScenario
+
+  return { data: deepFillTranslations(scenario) as GeneratedScenario, usage }
+}
+
+/** Nodos por llamada de traducción (Haiku): suficientes para ir rápido, sin cortar el JSON. */
+const TRANSLATE_NODE_BATCH = 4
+
+async function postGenerateSimulation(
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<{ data: unknown; usage: CacheUsage }> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')
 
@@ -94,17 +128,22 @@ export async function generateSimulation(opts: {
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(opts),
+      body: JSON.stringify(body),
       signal,
     },
   )
 
-  const result = await response.json()
+  // Un 504 del gateway no trae JSON: sin esto el usuario veía "Unexpected token '<'".
+  if (response.status === 504 || response.status === 502) {
+    throw new Error('La generación tardó demasiado y el servidor cortó la conexión. Intenta con una descripción más corta o un escenario más simple.')
+  }
+
+  const result = await response.json().catch(() => ({ error: `Error del servidor (${response.status})` }))
   if (!response.ok || result.error) {
     throw new Error(result.error ?? 'Error generando simulación')
   }
 
-  return { data: result.data as GeneratedScenario, usage: result.usage as CacheUsage }
+  return { data: result.data, usage: result.usage as CacheUsage }
 }
 
 export interface DocImage {

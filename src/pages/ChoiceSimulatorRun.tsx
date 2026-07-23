@@ -859,66 +859,74 @@ export default function ChoiceSimulatorRun() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="min-h-screen flex items-center justify-center px-4 py-16"
+            className="min-h-screen px-5 pt-12 pb-24"
           >
+            {/* Mismo ancho y ritmo que el resultado de la simulación de llamada
+                (SimulatorResult): tarjeta de puntaje + métricas en fila, no una
+                columna angosta. */}
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full max-w-lg bg-surface border border-line rounded-3xl p-8 text-center"
+              className="mx-auto w-full max-w-5xl"
             >
-              <ResultStars endType={endType} />
+              <header className="mb-10 text-center">
+                <div className="text-[12px] uppercase tracking-wider text-text-subtle mb-3">
+                  {t('simulator.result_title')}
+                </div>
+                <h1 className="text-[32px] md:text-[40px] font-semibold tracking-[-0.04em] text-text text-balance">
+                  {scenario.title[language]}
+                </h1>
+              </header>
 
-              <h2 className="text-text text-[28px] font-bold mb-3">{resultTitle}</h2>
+              <div className="surface-card p-10 md:p-12 mb-6 text-center">
+                <ResultStars endType={endType} />
 
-              <div style={{ fontSize: 72, fontWeight: 700, color: resultColor, lineHeight: 1, marginBottom: 12 }}>
-                {scorePercent}%
+                <div
+                  className="tabular-nums"
+                  style={{ fontSize: 'clamp(72px, 14vw, 140px)', fontWeight: 700, color: resultColor, lineHeight: 1 }}
+                >
+                  {scorePercent}%
+                </div>
+
+                <h2 className="text-text text-[22px] font-semibold mt-4">{resultTitle}</h2>
+
+                {(earlyEnd || endMessage) && (
+                  <p className="text-text-muted text-sm leading-relaxed max-w-xl mx-auto mt-3">
+                    {earlyEnd ? t('simulator.choice.ended_early') : endMessage?.[language]}
+                  </p>
+                )}
               </div>
 
-              {(earlyEnd || endMessage) && (
-                <p className="text-text-muted text-sm leading-relaxed max-w-[360px] mx-auto mb-7">
-                  {earlyEnd ? t('simulator.choice.ended_early') : endMessage?.[language]}
-                </p>
-              )}
-
-              <div className="bg-surface border border-line rounded-2xl p-4 mb-7">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr' }}>
-                  {[
-                    { id: 'points', label: t('simulator.choice.stat_points'), value: `${totalPoints} / ${maxPoints}` },
-                    { id: 'duration', label: t('simulator.choice.stat_duration'), value: formatTime(callSeconds) },
-                    { id: 'level', label: t('simulator.choice.stat_level'), value: getLevelLabel(scenario.level) },
-                  ].map(({ id, label, value }, i) => (
-                    <div
-                      key={id}
-                      style={{
-                        padding: '0 12px',
-                        textAlign: 'center',
-                        borderRight: i < 2 ? '1px solid rgba(128,128,128,0.15)' : 'none',
-                      }}
-                    >
-                      <p className="text-text-muted text-[11px] uppercase tracking-widest mb-1">{label}</p>
-                      <p className="text-text text-sm font-semibold">{value}</p>
-                    </div>
-                  ))}
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+                {[
+                  { id: 'points', label: t('simulator.choice.stat_points'), value: `${totalPoints} / ${maxPoints}` },
+                  { id: 'duration', label: t('simulator.choice.stat_duration'), value: formatTime(callSeconds) },
+                  { id: 'level', label: t('simulator.choice.stat_level'), value: getLevelLabel(scenario.level) },
+                ].map(({ id, label, value }) => (
+                  <div key={id} className="surface-card p-6 text-center sm:text-left">
+                    <p className="text-text-muted text-[11px] uppercase tracking-wider mb-2 font-medium">{label}</p>
+                    <p className="text-text text-[28px] font-semibold tracking-tight tabular-nums">{value}</p>
+                  </div>
+                ))}
               </div>
 
               {(feedbackLoading || aiFeedback) && (
-                <div className="mb-7">
+                <div className="mb-8">
                   <AiFeedbackCard feedback={aiFeedback} loading={feedbackLoading} />
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <button
                   onClick={handleRetry}
-                  className="w-full text-text text-sm font-medium cursor-pointer bg-surface border border-line rounded-2xl px-6 py-3 hover:bg-subtle transition-colors"
+                  className="text-text text-sm font-medium cursor-pointer bg-surface border border-line rounded-2xl px-8 py-3 hover:bg-subtle transition-colors"
                 >
                   {t('simulator.choice.retry')}
                 </button>
                 <button
                   onClick={() => nav(simContext.returnTo ?? '/dashboard')}
-                  className="text-text-muted text-sm cursor-pointer hover:text-text transition-colors bg-transparent border-none py-1"
+                  className="text-text-muted text-sm cursor-pointer hover:text-text transition-colors bg-surface border border-line rounded-2xl px-8 py-3"
                 >
                   {t('simulator.back_dashboard')}
                 </button>
