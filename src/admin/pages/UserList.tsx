@@ -322,6 +322,15 @@ export default function UserList() {
     ...campaigns.map((c) => ({ value: c.id, label: c.name })),
   ]
 
+  // La tabla NO se colapsa en pantallas chicas: mantiene sus columnas a un ancho
+  // legible y el contenedor hace scroll horizontal. Columnas fijas (no `auto`)
+  // para que encabezado y filas queden siempre alineados aunque una fila tenga
+  // más botones que otra (p. ej. "copiar credenciales").
+  const gridCols = isSuperAdmin
+    ? 'minmax(280px,1fr) 150px 210px 460px 48px'
+    : 'minmax(280px,1fr) 150px 350px'
+  const tableMinWidth = isSuperAdmin ? 1200 : 800
+
   return (
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 sm:mb-8">
@@ -487,10 +496,10 @@ export default function UserList() {
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
       ) : (
-        <FadeIn className="rounded-2xl border border-line overflow-x-auto" y={14}>
-          <div className="min-w-[640px]">
+        <FadeIn className="rounded-2xl border border-line overflow-x-auto overscroll-x-contain" y={14}>
+          <div style={{ minWidth: tableMinWidth }}>
           <div className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
-            style={{ gridTemplateColumns: isSuperAdmin ? '1fr auto auto auto auto' : '1fr auto auto' }}
+            style={{ gridTemplateColumns: gridCols }}
           >
             <span>{t('admin.users.col_user')}</span>
             <span>{t('admin.users.col_role')}</span>
@@ -501,7 +510,7 @@ export default function UserList() {
           <div className="divide-y divide-line">
             {filteredUsers.map((user) => (
               <div key={user.id} className="grid gap-4 px-5 py-3.5 items-center transition-colors hover:bg-subtle/40"
-                style={{ gridTemplateColumns: isSuperAdmin ? '1fr auto auto auto auto' : '1fr auto auto' }}
+                style={{ gridTemplateColumns: gridCols }}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="relative shrink-0">
@@ -598,27 +607,27 @@ export default function UserList() {
                   <Select
                     compact
                     tinted
-                    className="w-auto shrink-0"
+                    className="w-full min-w-0"
                     value={user.role}
                     onChange={(v) => handleRoleChange(user.id, v as Profile['role'])}
                     options={roleOptions}
                   />
                 ) : (
                   <span
-                    className="rounded-lg px-2.5 py-1 text-[11px] font-medium"
+                    className="justify-self-start rounded-lg px-2.5 py-1 text-[11px] font-medium"
                     style={{ background: roleColors[user.role], color: roleText[user.role] }}
                   >
                     {roleLabel[user.role]}
                   </span>
                 )}
                 {isSuperAdmin && (
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     {user.role === 'learner' ? (
                       // El aprendiz vive en UNA campaña: su progreso, inscripciones
                       // y certificados cuelgan de ella.
                       <Select
                         compact
-                        className="w-auto shrink-0"
+                        className="w-full min-w-0"
                         value={user.campaign_id ?? ''}
                         onChange={(v) => handleCampaignsChange(user, v ? [v] : [])}
                         options={campaignOptions(i18n.t('admin.worlds.no_campaign'))}
@@ -626,7 +635,7 @@ export default function UserList() {
                     ) : (
                       <MultiSelect
                         compact
-                        className="w-auto shrink-0 min-w-[140px]"
+                        className="w-full min-w-0"
                         values={userCampaigns[user.id] ?? []}
                         onChange={(ids) => handleCampaignsChange(user, ids)}
                         options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
@@ -640,37 +649,37 @@ export default function UserList() {
                     )}
                   </div>
                 )}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 min-w-0">
                   <button
                     onClick={() => navigate(`/admin/users/${user.id}`)}
-                    className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+                    className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors min-w-0"
                     title={t('admin.users.view_profile')}
                   >
-                    <IdCard className="h-4 w-4" />
-                    <span className="hidden sm:inline">{t('admin.users.view_profile')}</span>
+                    <IdCard className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{t('admin.users.view_profile')}</span>
                   </button>
                   {isSuperAdmin && tempCreds[user.id] && (
                     <button
                       onClick={() => copyCreds(user.id, tempCreds[user.id].email, tempCreds[user.id].temp_password)}
-                      className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors"
+                      className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors min-w-0"
                       style={{ color: copiedId === user.id ? '#16a34a' : '#d97706' }}
                       title={t('admin.users.copy_creds')}
                     >
-                      {copiedId === user.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      <span className="hidden sm:inline">{t('admin.users.copy_creds')}</span>
+                      {copiedId === user.id ? <Check className="h-4 w-4 shrink-0" /> : <Copy className="h-4 w-4 shrink-0" />}
+                      <span className="truncate">{t('admin.users.copy_creds')}</span>
                     </button>
                   )}
                   <button
                     onClick={() => setAssignUser(user)}
-                    className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+                    className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors min-w-0"
                     title={t('admin.users.assign_courses')}
                   >
-                    <BookOpen className="h-4 w-4" />
-                    <span className="hidden sm:inline">{t('admin.users.assign_courses')}</span>
+                    <BookOpen className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{t('admin.users.assign_courses')}</span>
                   </button>
                   <button
                     onClick={() => navigate(`/admin/progress?view=worlds&user=${user.id}`)}
-                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                    className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
                     title={t('admin.users.view_progress')}
                   >
                     <BarChart3 className="h-4 w-4" />
@@ -678,7 +687,7 @@ export default function UserList() {
                   {isSuperAdmin && (
                     <button
                       onClick={() => setResetUser(user)}
-                      className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                      className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
                       title={t('admin.users.manage_courses')}
                     >
                       <RotateCcw className="h-4 w-4" />

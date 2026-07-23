@@ -94,8 +94,8 @@ export function ChoiceNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChan
 
   const removeOption = async (idx: number) => {
     const ok = await confirm({
-      title: t('confirm.delete_option_title'),
-      description: t('confirm.delete_option_desc'),
+      title: t('admin.simulations.choice.delete_answer_title'),
+      description: t('admin.simulations.choice.delete_answer_desc'),
       confirmLabel: t('confirm.remove'),
     })
     if (!ok) return
@@ -181,13 +181,13 @@ export function ChoiceNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChan
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs text-text-muted font-medium">
-              Opciones de respuesta ({(data.options ?? []).length})
+              {t('admin.simulations.choice.answers_count', { n: (data.options ?? []).length })}
             </label>
             <button
               onClick={addOption}
               className="flex items-center gap-1 text-xs text-neon-green hover:text-neon-green/80 transition-colors"
             >
-              <Plus className="h-3.5 w-3.5" /> {t('common.add_option_full')}
+              <Plus className="h-3.5 w-3.5" /> {t('admin.simulations.choice.add_answer')}
             </button>
           </div>
 
@@ -195,7 +195,7 @@ export function ChoiceNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChan
             {(data.options ?? []).map((opt, idx) => (
               <div key={idx} className="p-4 rounded-xl bg-glass/4 border border-glass-border/8 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-text-muted">{t('common.option_n_label', { n: idx + 1 })}</span>
+                  <span className="text-xs font-medium text-text-muted">{t('admin.simulations.choice.answer_n', { n: idx + 1 })}</span>
                   <button onClick={() => removeOption(idx)} className="text-text-subtle hover:text-danger transition-colors">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

@@ -24,8 +24,23 @@ interface ChatMessage {
 const LEVEL_COLORS: Record<string, string> = { basico: '#34c759', medio: '#0071e3', avanzado: '#ff453a' };
 const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 
+/** Cuántas veces se tolera volver a un mismo paso antes de cerrar la llamada. */
+const MAX_NODE_VISITS = 2;
+/** Tope duro de pasos por llamada, por si el grafo tiene un ciclo largo. */
+const MAX_STEPS = 40;
+
 function formatTime(s: number) {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+}
+
+/**
+ * Porcentaje del escenario, acotado a 0-100. El tope importa: si el escenario
+ * tiene un ciclo, el aprendiz puede pasar dos veces por el mismo paso y sumar
+ * más puntos que el mejor camino, lo que antes mostraba resultados de 120%.
+ */
+function toScorePct(points: number, max: number) {
+  if (max <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((points / max) * 100)));
 }
 
 function getClockTime() {
@@ -133,6 +148,11 @@ export default function ChoiceSimulatorRun() {
   const [endType, setEndType] = useState<'excellent' | 'good' | 'poor'>('good');
   const [endMessage, setEndMessage] = useState<Record<Language, string> | null>(null);
   const [earlyEnd, setEarlyEnd] = useState(false);
+  // La conversación se cerró sola: ciclo, tope de pasos o paso inexistente.
+  const [stuckEnd, setStuckEnd] = useState(false);
+  const [decisions, setDecisions] = useState(0);
+  // Última decisión, para que el aprendiz entienda por qué sube o no el puntaje.
+  const [lastChoice, setLastChoice] = useState<{ letter: string; points: number; best: number } | null>(null);
   const [clockTime, setClockTime] = useState(getClockTime);
 
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
@@ -144,6 +164,9 @@ export default function ChoiceSimulatorRun() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Antibucle: cuántas veces se pasó por cada paso y cuántos pasos lleva la llamada.
+  const visitsRef = useRef<Record<string, number>>({});
+  const stepsRef = useRef(0);
   const attemptSavedRef = useRef(false);
   const feedbackReqRef = useRef(false);
   // Solo false en el desmontaje real (no atado al ciclo del efecto), para que la
@@ -208,7 +231,7 @@ export default function ChoiceSimulatorRun() {
       setFeedbackReady(true);
       return;
     }
-    const pct = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
+    const pct = toScorePct(totalPoints, maxPoints);
     choiceFeedback({
       language,
       scenario: {
@@ -239,7 +262,7 @@ export default function ChoiceSimulatorRun() {
   useEffect(() => {
     if (phase !== 'result' || attemptSavedRef.current || !user?.id || !scenario || !feedbackReady) return;
     attemptSavedRef.current = true;
-    const pct = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
+    const pct = toScorePct(totalPoints, maxPoints);
     saveSimulatorAttempt(user.id, {
       courseId: simContext.courseId ?? null,
       campaignId: simContext.campaignId ?? null,
@@ -247,11 +270,13 @@ export default function ChoiceSimulatorRun() {
       score: pct,
       checklistPct: pct / 100,
       empathyPct: pct / 100,
-      resolved: !earlyEnd && endType !== 'poor',
+      // Se considera resuelta si llegó a un final bueno por sus propios medios
+      // y con al menos la mitad de los puntos posibles.
+      resolved: !earlyEnd && !stuckEnd && endType !== 'poor' && pct >= 50,
       durationSec: callSeconds,
       aiFeedback,
     }).catch(() => {});
-  }, [phase, user?.id, scenario, maxPoints, totalPoints, earlyEnd, endType, callSeconds, feedbackReady, aiFeedback, simContext.courseId, simContext.campaignId]);
+  }, [phase, user?.id, scenario, maxPoints, totalPoints, earlyEnd, stuckEnd, endType, callSeconds, feedbackReady, aiFeedback, simContext.courseId, simContext.campaignId]);
 
   const endCall = useCallback((node: ChoiceNode) => {
     setEndType(node.endType ?? 'poor');
@@ -260,10 +285,40 @@ export default function ChoiceSimulatorRun() {
     timeoutRefs.current.push(tid);
   }, []);
 
+  /**
+   * Cierre de emergencia: el escenario ya no puede avanzar (ciclo, paso
+   * inexistente o un paso sin opciones que tampoco es final). Antes esto
+   * dejaba la llamada colgada en "El cliente está hablando…" para siempre o
+   * daba vueltas por el mismo tramo; ahora termina y se califica lo hecho.
+   */
+  const endStuck = useCallback(() => {
+    clearAllTimeouts();
+    setTyping(false);
+    setWaitingForUser(false);
+    setActiveNodeId('');
+    setStuckEnd(true);
+    setEndMessage(null);
+    const tid = setTimeout(() => setPhase('result'), 900);
+    timeoutRefs.current.push(tid);
+  }, []);
+
   const showClientMessage = useCallback(
     (nodeId: string, scn: ChoiceScenario) => {
       const node = scn.nodes[nodeId];
-      if (!node) return;
+      // Paso inexistente (nextId roto) → no dejar la llamada colgada.
+      if (!node) {
+        endStuck();
+        return;
+      }
+      // Antibucle: un escenario con ciclos repetía el mismo tramo sin fin y,
+      // de paso, sumaba puntos repetidos.
+      const visits = (visitsRef.current[nodeId] ?? 0) + 1;
+      visitsRef.current[nodeId] = visits;
+      stepsRef.current += 1;
+      if (visits > MAX_NODE_VISITS || stepsRef.current > MAX_STEPS) {
+        endStuck();
+        return;
+      }
       setTyping(true);
       setWaitingForUser(false);
       const delay = 1200 + Math.random() * 600;
@@ -278,20 +333,28 @@ export default function ChoiceSimulatorRun() {
         } else if (node.options?.length) {
           setActiveNodeId(nodeId);
           setWaitingForUser(true);
+        } else {
+          // Paso sin salida y sin marcar como final.
+          endStuck();
         }
       }, delay);
       timeoutRefs.current.push(tid);
     },
-    [endCall, language],
+    [endCall, endStuck, language],
   );
 
   const startCall = useCallback(() => {
     if (!scenario) return;
     clearAllTimeouts();
+    visitsRef.current = {};
+    stepsRef.current = 0;
     setMaxPoints(calcMaxPoints(scenario));
     setTotalPoints(0);
     setCallSeconds(0);
     setMessages([]);
+    setDecisions(0);
+    setLastChoice(null);
+    setStuckEnd(false);
     setWaitingForUser(false);
     setActiveNodeId('');
     setTyping(false);
@@ -301,7 +364,9 @@ export default function ChoiceSimulatorRun() {
   }, [scenario, showClientMessage]);
 
   const handleOptionSelect = useCallback(
-    (option: ChoiceOption, scn: ChoiceScenario) => {
+    (option: ChoiceOption, index: number, scn: ChoiceScenario) => {
+      const options = scn.nodes[activeNodeId]?.options ?? [];
+      const best = options.length ? Math.max(...options.map((o) => o.points)) : option.points;
       setWaitingForUser(false);
       setActiveNodeId('');
       setMessages((prev) => [
@@ -309,10 +374,12 @@ export default function ChoiceSimulatorRun() {
         { id: `agent_${Date.now()}`, speaker: 'agent', message: option.text[language] },
       ]);
       setTotalPoints((prev) => prev + option.points);
+      setDecisions((n) => n + 1);
+      setLastChoice({ letter: LETTERS[index] ?? '?', points: option.points, best });
       const tid = setTimeout(() => showClientMessage(option.nextId, scn), 600);
       timeoutRefs.current.push(tid);
     },
-    [showClientMessage, language],
+    [showClientMessage, language, activeNodeId],
   );
 
   const handleEndCall = useCallback(() => {
@@ -327,6 +394,11 @@ export default function ChoiceSimulatorRun() {
 
   const handleRetry = useCallback(() => {
     clearAllTimeouts();
+    visitsRef.current = {};
+    stepsRef.current = 0;
+    setDecisions(0);
+    setLastChoice(null);
+    setStuckEnd(false);
     attemptSavedRef.current = false;
     feedbackReqRef.current = false;
     setAiFeedback(null);
@@ -357,13 +429,19 @@ export default function ChoiceSimulatorRun() {
   }
 
   const currentOptions = waitingForUser ? scenario.nodes[activeNodeId]?.options ?? [] : [];
-  const scorePercent = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
+  const scorePercent = toScorePct(totalPoints, maxPoints);
   const levelColor = LEVEL_COLORS[scenario.level] ?? '#86868b';
-  const resultColor = endType === 'excellent' ? '#34c759' : endType === 'good' ? '#0071e3' : '#ff3b30';
+  // El puntaje manda sobre el final narrativo: mostrar "¡Excelente!" con 40%
+  // (o al revés) era lo que hacía incomprensible el resultado.
+  const resultTier: 'excellent' | 'good' | 'poor' =
+    earlyEnd ? 'poor' :
+    scorePercent >= 80 ? 'excellent' :
+    scorePercent >= 50 ? 'good' : 'poor';
+  const resultColor = resultTier === 'excellent' ? '#34c759' : resultTier === 'good' ? '#0071e3' : '#ff3b30';
   const resultTitle =
-    endType === 'excellent' ? t('simulator.choice.result_excellent') :
-    endType === 'good'      ? t('simulator.choice.result_good') :
-                              t('simulator.choice.result_poor');
+    resultTier === 'excellent' ? t('simulator.choice.result_excellent') :
+    resultTier === 'good'      ? t('simulator.choice.result_good') :
+                                 t('simulator.choice.result_poor');
 
   return (
     <div
@@ -434,6 +512,16 @@ export default function ChoiceSimulatorRun() {
                       <span className="text-[13px] text-text text-right">{value}</span>
                     </div>
                   ))}
+                </div>
+
+                {/* Reglas antes de empezar: qué se espera y cómo se califica. */}
+                <div className="w-full mb-8 text-left rounded-2xl p-5" style={{ background: 'rgba(0,113,227,0.08)', border: '1px solid rgba(0,113,227,0.25)' }}>
+                  <p className="text-text text-[13px] font-semibold mb-2">{t('simulator.choice.how_it_works')}</p>
+                  <ul className="text-text-muted text-[13px] leading-relaxed list-disc pl-4 space-y-1">
+                    <li>{t('simulator.choice.rule_choose')}</li>
+                    <li>{t('simulator.choice.rule_points')}</li>
+                    <li>{t('simulator.choice.rule_end')}</li>
+                  </ul>
                 </div>
 
                 <motion.button
@@ -778,12 +866,38 @@ export default function ChoiceSimulatorRun() {
               {/* ── DERECHA: Panel de opciones ── */}
               <div className="flex-1 flex flex-col gap-5 w-full max-w-lg">
                 <div className="bg-surface border border-line rounded-3xl p-5 md:p-6">
-                  <p className="text-text font-bold text-lg mb-1">
-                    {t('simulator.choice.your_response')}
-                  </p>
-                  <p className="text-text-muted text-[13px] mb-5">
+                  <div className="flex items-start justify-between gap-3 mb-1">
+                    <p className="text-text font-bold text-lg">
+                      {t('simulator.choice.your_response')}
+                    </p>
+                    <span className="text-text-muted text-[12px] shrink-0 mt-1.5">
+                      {t('simulator.choice.decision_n', { n: decisions + 1 })}
+                    </span>
+                  </div>
+                  <p className="text-text-muted text-[13px] mb-4">
                     {t('simulator.choice.select_prompt')}
                   </p>
+
+                  {/* Qué pasó con la última decisión: sin esto el puntaje subía
+                      o se quedaba quieto sin explicación. */}
+                  <AnimatePresence>
+                    {lastChoice && (
+                      <motion.p
+                        key={`fb_${decisions}`}
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="text-[12px] mb-4 rounded-xl px-3 py-2 bg-subtle border border-line"
+                        style={{ color: lastChoice.points >= lastChoice.best ? '#34c759' : lastChoice.points > 0 ? '#0071e3' : '#ff453a' }}
+                      >
+                        {t('simulator.choice.last_choice', {
+                          letter: lastChoice.letter,
+                          points: lastChoice.points,
+                          best: lastChoice.best,
+                        })}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
 
                   <AnimatePresence mode="wait">
                     {waitingForUser && currentOptions.length > 0 ? (
@@ -794,7 +908,7 @@ export default function ChoiceSimulatorRun() {
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.08, ease: [0.16, 1, 0.3, 1], duration: 0.35 }}
-                            onClick={() => handleOptionSelect(opt, scenario)}
+                            onClick={() => handleOptionSelect(opt, i, scenario)}
                             className="bg-subtle border border-line hover:bg-line"
                             style={{
                               borderRadius: 16,
@@ -850,13 +964,13 @@ export default function ChoiceSimulatorRun() {
                 <div className="bg-surface border border-line rounded-2xl p-4">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <span className="text-text-muted text-[13px]">{t('simulator.choice.live_score')}</span>
-                    <span className="text-text font-bold text-lg">{totalPoints} pts</span>
+                    <span className="text-text font-bold text-lg">{totalPoints} / {maxPoints} pts</span>
                   </div>
                   {maxPoints > 0 && (
                     <div style={{ height: 4, borderRadius: 2, background: 'rgba(128,128,128,0.2)', overflow: 'hidden' }}>
                       <motion.div
                         style={{ height: '100%', borderRadius: 2, background: '#0071e3' }}
-                        animate={{ width: `${(totalPoints / maxPoints) * 100}%` }}
+                        animate={{ width: `${scorePercent}%` }}
                         transition={{ ease: 'easeOut', duration: 0.4 }}
                       />
                     </div>
@@ -901,7 +1015,7 @@ export default function ChoiceSimulatorRun() {
               </header>
 
               <div className="surface-card p-10 md:p-12 mb-6 text-center">
-                <ResultStars endType={endType} />
+                <ResultStars endType={resultTier} />
 
                 <div
                   className="tabular-nums"
@@ -912,16 +1026,26 @@ export default function ChoiceSimulatorRun() {
 
                 <h2 className="text-text text-[22px] font-semibold mt-4">{resultTitle}</h2>
 
-                {(earlyEnd || endMessage) && (
+                {(earlyEnd || stuckEnd || endMessage) && (
                   <p className="text-text-muted text-sm leading-relaxed max-w-xl mx-auto mt-3">
-                    {earlyEnd ? t('simulator.choice.ended_early') : endMessage?.[language]}
+                    {earlyEnd
+                      ? t('simulator.choice.ended_early')
+                      : stuckEnd
+                        ? t('simulator.choice.ended_stuck')
+                        : endMessage?.[language]}
                   </p>
                 )}
+
+                {/* Cómo se calculó el número grande. */}
+                <p className="text-text-subtle text-[12px] leading-relaxed max-w-xl mx-auto mt-4">
+                  {t('simulator.choice.scoring_hint', { points: totalPoints, max: maxPoints })}
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-5 mb-8">
                 {[
                   { id: 'points', label: t('simulator.choice.stat_points'), value: `${totalPoints} / ${maxPoints}` },
+                  { id: 'decisions', label: t('simulator.choice.stat_decisions'), value: String(decisions) },
                   { id: 'duration', label: t('simulator.choice.stat_duration'), value: formatTime(callSeconds) },
                   { id: 'level', label: t('simulator.choice.stat_level'), value: getLevelLabel(scenario.level) },
                 ].map(({ id, label, value }) => (

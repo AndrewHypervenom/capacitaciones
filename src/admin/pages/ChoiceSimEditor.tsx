@@ -503,7 +503,7 @@ export default function ChoiceSimEditor() {
                     </div>
                     {linePreview
                       ? <div className="text-[10px] text-text-subtle truncate mt-1 ml-3 italic">"{linePreview}{(node.message.es?.length ?? 0) > 48 ? '…' : ''}"</div>
-                      : <div className="text-[10px] text-text-subtle mt-1 ml-3">{node?.options?.length ?? 0} opciones</div>
+                      : <div className="text-[10px] text-text-subtle mt-1 ml-3">{t('admin.simulations.choice.answers_count', { n: node?.options?.length ?? 0 })}</div>
                     }
                   </button>
                 )

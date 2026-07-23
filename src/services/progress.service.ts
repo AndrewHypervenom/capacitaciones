@@ -12,18 +12,24 @@ export interface ProgressData {
   quizCorrectCount: number
 }
 
+/**
+ * Lee el espejo de progreso de la BD. NO usa `.single()`: la tabla no tiene
+ * índice único sobre (user_id, campaign_id) y pueden existir filas duplicadas
+ * (ver nota en `upsertProgress`); con `.single()` reventaba y el aprendiz se
+ * quedaba sin hidratar → 0%. Toma la fila más reciente.
+ */
 export async function getProgress(userId: string, campaignId: string): Promise<ProgressData | null> {
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from('user_progress')
     .select('*')
     .eq('user_id', userId)
     .eq('campaign_id', campaignId)
-    .single()
+    .order('updated_at', { ascending: false })
+    .limit(1)
 
-  if (error) {
-    if (error.code === 'PGRST116') return null // no rows
-    throw error
-  }
+  if (error) throw error
+  const data = rows && rows.length > 0 ? rows[0] : null
+  if (!data) return null
 
   return {
     completedModules: data.completed_modules ?? [],

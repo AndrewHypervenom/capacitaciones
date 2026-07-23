@@ -329,7 +329,7 @@ export default function CoursePage() {
                     </span>
                   ) : (
                     <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-text-muted">
-                      {t('courses.catalog')}
+                      {course.campaign_name || t('courses.catalog')}
                     </span>
                   )}
                   <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">

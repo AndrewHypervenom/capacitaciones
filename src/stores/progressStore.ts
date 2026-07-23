@@ -100,10 +100,28 @@ interface ProgressState {
   recheckBadges: (modules: { id: string; courseId?: string | null }[]) => string[];
   reset: () => void;
   /**
+   * Rehidrata la caché local desde el espejo de BD (`user_progress`). Es SIEMPRE
+   * aditiva: une módulos e insignias y toma el máximo de xp/racha, nunca borra.
+   * Así, si el localStorage se pierde (otro navegador, otro equipo, limpieza de
+   * caché, recarga tras un despliegue), el aprendiz no vuelve a 0% ni tiene que
+   * re-marcar módulos que ya completó. Lo que sí borra es un reset explícito del
+   * superadmin, que se aplica antes en BD (ver `applyReset`).
+   */
+  hydrateFromServer: (data: ServerProgress) => void;
+  /**
    * Aplica un restablecimiento hecho por el superadmin sobre la caché local, para
    * que la UI deje de mostrar 100%. Limpia solo lo que indique el payload.
    */
   applyReset: (payload: ResetLocalPayload) => void;
+}
+
+/** Lo que el espejo de BD sabe del progreso (subconjunto de lo local). */
+export interface ServerProgress {
+  completedModules: string[];
+  xp: number;
+  streak: number;
+  lastActivityDate: string | null;
+  badges: string[];
 }
 
 /** Datos mínimos del payload de notificación que afectan al store local. */
@@ -322,6 +340,35 @@ export const useProgressStore = create<ProgressState>()(
           worldLevelsCompleted: 0,
           worldsCompleted: 0,
         }),
+
+      hydrateFromServer: (data) => {
+        const s = get();
+        const completedModules = [...new Set([...s.completedModules, ...data.completedModules])];
+        const badges = [...new Set([...s.badges, ...data.badges])];
+        const lastActivityDate =
+          !s.lastActivityDate || (data.lastActivityDate ?? '') > s.lastActivityDate
+            ? (data.lastActivityDate ?? s.lastActivityDate)
+            : s.lastActivityDate;
+
+        // Solo escribir si algo cambió: evita re-render y un espejo de vuelta.
+        if (
+          completedModules.length === s.completedModules.length &&
+          badges.length === s.badges.length &&
+          data.xp <= s.xp &&
+          data.streak <= s.streak &&
+          lastActivityDate === s.lastActivityDate
+        ) {
+          return;
+        }
+
+        set({
+          completedModules,
+          badges,
+          xp: Math.max(s.xp, data.xp),
+          streak: Math.max(s.streak, data.streak),
+          lastActivityDate,
+        });
+      },
 
       applyReset: (payload) => {
         const s = get();

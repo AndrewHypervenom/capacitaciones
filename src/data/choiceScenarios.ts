@@ -34,14 +34,37 @@ export function getChoiceScenario(id: string): ChoiceScenario | undefined {
   return CHOICE_SCENARIOS.find((s) => s.id === id);
 }
 
+/**
+ * Máximo alcanzable en UNA partida: el mejor camino desde el inicio hasta un
+ * final, no la suma de todos los nodos del grafo.
+ *
+ * Sumar todos los nodos daba dos errores: el aprendiz nunca podía llegar al
+ * 100% (un recorrido solo visita parte del grafo) y, si el escenario tenía
+ * ciclos (frecuente en los generados con IA), un nodo repetido sumaba puntos
+ * varias veces y el resultado pasaba del 100%.
+ *
+ * El recorrido corta ciclos: un nodo ya en la ruta actual no se vuelve a
+ * puntuar.
+ */
 export function calcMaxPoints(scenario: ChoiceScenario): number {
-  let total = 0;
-  for (const node of Object.values(scenario.nodes)) {
-    if (node.options?.length) {
-      total += Math.max(...node.options.map((o) => o.points));
+  // Sin memoización: el mejor puntaje de un nodo depende del camino ya
+  // recorrido (por los ciclos), y los escenarios son pequeños. El presupuesto
+  // evita que un grafo denso dispare la exploración.
+  let budget = 20000;
+
+  const best = (nodeId: string, path: Set<string>): number => {
+    const node = scenario.nodes[nodeId];
+    if (!node || !node.options?.length || path.has(nodeId) || budget-- <= 0) return 0;
+
+    const next = new Set(path).add(nodeId);
+    let max = 0;
+    for (const opt of node.options) {
+      max = Math.max(max, opt.points + best(opt.nextId, next));
     }
-  }
-  return total;
+    return max;
+  };
+
+  return best(scenario.startId, new Set());
 }
 
 export const CHOICE_SCENARIOS: ChoiceScenario[] = [

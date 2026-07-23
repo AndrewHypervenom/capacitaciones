@@ -1,7 +1,7 @@
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useMemo, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Loader2, Plus, Search, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Loader2, Plus, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
@@ -10,6 +10,7 @@ import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLea
 import { selfEnroll, type LearnerCourse } from '@/services/courses.service';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
+import { Select } from '@/components/ui/Select';
 import { stripMarkdown } from '@/components/ui/RichText';
 import { cn } from '@/lib/cn';
 
@@ -72,37 +73,57 @@ function CourseCard({
         transition={{ type: 'spring', stiffness: 300, damping: 22 }}
         className="group flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface transition-[border-color,box-shadow] duration-300 hover:border-primary hover:shadow-card-hover"
       >
-        {/* Portada */}
-        <div
-          className="relative h-28 w-full shrink-0 overflow-hidden"
-          style={{
-            background: course.cover_url
-              ? course.cover_fit === 'contain'
-                ? `linear-gradient(120deg, ${course.color}26, ${course.color}0A)`
-                : undefined
-              : `linear-gradient(120deg, ${course.color}40, ${course.color}0D)`,
-          }}
-        >
-          {course.cover_url && (
-            <img src={course.cover_url} alt={pickText(course.title_es, course.title_en, course.title_pt, language)} className={`h-full w-full transition-transform duration-500 ease-apple group-hover:scale-105 ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" aria-hidden />
+        {/* Portada. El recorte (overflow-hidden) va en una capa interna: si lo
+            ponemos aquí, el birrete que sobresale por abajo queda cortado a la mitad. */}
+        <div className="relative h-28 w-full shrink-0">
           <div
-            className="absolute -bottom-5 left-5 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-md"
+            className="absolute inset-0 overflow-hidden"
+            style={{
+              background: course.cover_url
+                ? course.cover_fit === 'contain'
+                  ? `linear-gradient(120deg, ${course.color}26, ${course.color}0A)`
+                  : undefined
+                : `linear-gradient(120deg, ${course.color}40, ${course.color}0D)`,
+            }}
+          >
+            {course.cover_url && (
+              <img src={course.cover_url} alt={pickText(course.title_es, course.title_en, course.title_pt, language)} className={`h-full w-full transition-transform duration-500 ease-apple group-hover:scale-105 ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" aria-hidden />
+          </div>
+          <div
+            className="absolute -bottom-5 left-5 z-10 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-md ring-4 ring-surface"
             style={{ background: course.color }}
           >
             <GraduationCap className="h-5 w-5" />
           </div>
-          <div className="absolute top-3 right-3 flex gap-1.5">
+          <div className="absolute top-3 right-3 z-10 flex gap-1.5">
             {course.isMandatory && (
               <span className="rounded-full bg-danger/90 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
                 {t('courses.mandatory')}
               </span>
             )}
-            {!course.isAssigned && (
-              <span className="rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
-                {t('courses.catalog')}
+            {course.isAssigned ? (
+              // Mis cursos: el estado del aprendiz (completado / en proceso / sin empezar).
+              <span
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-sm',
+                  completed ? 'bg-primary/90' : done > 0 ? 'bg-black/50' : 'bg-black/40',
+                )}
+              >
+                {completed
+                  ? t('courses.status_completed')
+                  : done > 0
+                    ? t('courses.status_in_progress')
+                    : t('courses.status_not_started')}
               </span>
+            ) : (
+              // Catálogo: la campaña dueña del curso (más útil que decir "Catálogo").
+              course.campaign_name && (
+                <span className="max-w-[10rem] truncate rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
+                  {course.campaign_name}
+                </span>
+              )
             )}
           </div>
         </div>
@@ -182,15 +203,21 @@ export default function Courses() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
-  const filtered = useMemo(() => {
+  // Separamos búsqueda de filtro para poder contar cuántos cursos caen en cada
+  // pestaña sobre el mismo texto buscado.
+  const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
+    if (!q) return courses;
     return courses.filter((c) => {
-      if (q) {
-        const text = `${c.title_es} ${c.title_en ?? ''} ${c.title_pt ?? ''} ${c.description_es ?? ''} ${c.category ?? ''}`.toLowerCase();
-        if (!text.includes(q)) return false;
-      }
+      const text = `${c.title_es} ${c.title_en ?? ''} ${c.title_pt ?? ''} ${c.description_es ?? ''} ${c.category ?? ''}`.toLowerCase();
+      return text.includes(q);
+    });
+  }, [courses, query]);
+
+  const matchesFilter = useCallback(
+    (c: LearnerCourse, f: Filter) => {
       const { total, done } = courseProgress(c, completedSlugs);
-      switch (filter) {
+      switch (f) {
         case 'mandatory':
           return c.isMandatory;
         case 'optional':
@@ -202,8 +229,14 @@ export default function Courses() {
         default:
           return true;
       }
-    });
-  }, [courses, query, filter, completedSlugs]);
+    },
+    [completedSlugs],
+  );
+
+  const filtered = useMemo(
+    () => searched.filter((c) => matchesFilter(c, filter)),
+    [searched, filter, matchesFilter],
+  );
 
   const sortCourses = (list: LearnerCourse[]) =>
     [...list].sort((a, b) => {
@@ -213,8 +246,21 @@ export default function Courses() {
       );
     });
 
-  const myCourses = sortCourses(filtered.filter((c) => c.isAssigned));
-  const exploreCourses = sortCourses(filtered.filter((c) => !c.isAssigned));
+  // El estado pesa más que el orden alfabético: primero lo que el aprendiz ya
+  // empezó, luego lo que no ha tocado y de último lo ya completado. El sort es
+  // estable, así que dentro de cada grupo se mantiene obligatorio + alfabético.
+  const statusRank = (c: LearnerCourse) => {
+    const { total, done } = courseProgress(c, completedSlugs);
+    if (total > 0 && done === total) return 2;
+    if (done > 0) return 0;
+    return 1;
+  };
+
+  const sortByStatus = (list: LearnerCourse[]) =>
+    sortCourses(list).sort((a, b) => statusRank(a) - statusRank(b));
+
+  const myCourses = sortByStatus(filtered.filter((c) => c.isAssigned));
+  const exploreCourses = sortByStatus(filtered.filter((c) => !c.isAssigned));
 
   const mandatoryPending = courses.filter((c) => {
     if (!c.isMandatory) return false;
@@ -229,6 +275,14 @@ export default function Courses() {
     { id: 'in_progress', label: t('courses.filter_in_progress') },
     { id: 'completed', label: t('courses.filter_completed') },
   ];
+
+  const counts = filters.reduce<Record<Filter, number>>(
+    (acc, f) => {
+      acc[f.id] = searched.filter((c) => matchesFilter(c, f.id)).length;
+      return acc;
+    },
+    { all: 0, mandatory: 0, optional: 0, in_progress: 0, completed: 0 },
+  );
 
   if (loading) {
     return (
@@ -281,21 +335,30 @@ export default function Courses() {
             className="w-full rounded-full border border-line bg-surface pl-11 pr-4 py-2.5 text-[14px] text-text outline-none transition-colors focus:border-primary"
           />
         </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-          {filters.map((f) => (
+        {/* Un solo desplegable en vez de cápsulas: escala si mañana se agregan
+            más criterios de filtrado sin desbordar la fila. */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Select
+            value={filter}
+            onChange={(v) => setFilter(v as Filter)}
+            options={filters.map((f) => ({
+              value: f.id,
+              label: `${f.label} (${counts[f.id]})`,
+            }))}
+            leadingIcon={<SlidersHorizontal className="h-4 w-4 text-text-subtle" />}
+            aria-label={t('courses.filter_label')}
+            className="min-w-[13rem]"
+          />
+          {filter !== 'all' && (
             <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className={cn(
-                'shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors',
-                filter === f.id
-                  ? 'bg-primary text-on-primary'
-                  : 'border border-line text-text-muted hover:border-primary hover:text-text',
-              )}
+              onClick={() => setFilter('all')}
+              className="shrink-0 rounded-full p-2 text-text-subtle transition-colors hover:bg-subtle hover:text-text"
+              aria-label={t('courses.filter_clear')}
+              title={t('courses.filter_clear')}
             >
-              {f.label}
+              <X className="h-4 w-4" />
             </button>
-          ))}
+          )}
         </div>
       </Reveal>
 
