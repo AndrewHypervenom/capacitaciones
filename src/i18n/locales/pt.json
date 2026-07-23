@@ -509,8 +509,18 @@
       "tag": "Feedback com IA",
       "title": "Seu desempenho, analisado",
       "loading": "Analisando sua conversa…",
+      "loading_hint": "A IA está lendo o que você disse. Costuma levar de 5 a 20 segundos.",
+      "loading_hint_long": "Está demorando mais que o normal. Você pode esperar mais um pouco ou sair: sua tentativa já foi salva.",
       "strengths": "O que você fez bem",
-      "improvements": "Para melhorar na próxima vez"
+      "improvements": "Para melhorar na próxima vez",
+      "error": {
+        "timeout": "A IA não respondeu a tempo.",
+        "unavailable": "Não conseguimos conectar com a IA.",
+        "not_configured": "O feedback com IA ainda não está habilitado neste ambiente.",
+        "unknown": "Não foi possível gerar o feedback com IA.",
+        "saved_anyway": "Sua tentativa e sua pontuação foram salvas.",
+        "retry": "Tentar novamente"
+      }
     },
     "metric_score": "Pontuação geral",
     "metric_time": "Duração da chamada",

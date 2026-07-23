@@ -509,8 +509,18 @@
       "tag": "Retroalimentación con IA",
       "title": "Tu desempeño, analizado",
       "loading": "Analizando tu conversación…",
+      "loading_hint": "La IA está leyendo lo que dijiste. Suele tardar entre 5 y 20 segundos.",
+      "loading_hint_long": "Está tardando más de lo normal. Puedes esperar un poco más o salir: tu intento ya quedó guardado.",
       "strengths": "Lo que hiciste bien",
-      "improvements": "Para mejorar la próxima vez"
+      "improvements": "Para mejorar la próxima vez",
+      "error": {
+        "timeout": "La IA no alcanzó a responder a tiempo.",
+        "unavailable": "No pudimos conectarnos con la IA.",
+        "not_configured": "La retroalimentación con IA aún no está habilitada en este entorno.",
+        "unknown": "No se pudo generar la retroalimentación con IA.",
+        "saved_anyway": "Tu intento y tu puntaje sí quedaron guardados.",
+        "retry": "Reintentar"
+      }
     },
     "metric_score": "Puntaje global",
     "metric_time": "Tiempo de llamada",

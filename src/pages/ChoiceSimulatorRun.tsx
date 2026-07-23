@@ -6,7 +6,7 @@ import { ArrowLeft, Phone, PhoneOff, Star } from 'lucide-react';
 import { type ChoiceNode, type ChoiceOption, type ChoiceScenario, calcMaxPoints, getChoiceScenario } from '@/data/choiceScenarios';
 import { getChoiceScenarioBySlug } from '@/services/choiceScenarios.service';
 import { saveSimulatorAttempt, type AiFeedback } from '@/services/certification.service';
-import { choiceFeedback } from '@/services/simGroq.service';
+import { choiceFeedback, SimAiError, type SimAiErrorKind } from '@/services/simGroq.service';
 import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import { RichText } from '@/components/ui/RichText';
 import { useAuth } from '@/hooks/useAuth';
@@ -138,6 +138,9 @@ export default function ChoiceSimulatorRun() {
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(true);
   const [feedbackReady, setFeedbackReady] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<SimAiErrorKind | null>(null);
+  // Cambiarlo dispara de nuevo el efecto de feedback (botón "Reintentar").
+  const [feedbackAttempt, setFeedbackAttempt] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -145,8 +148,15 @@ export default function ChoiceSimulatorRun() {
   const feedbackReqRef = useRef(false);
   // Solo false en el desmontaje real (no atado al ciclo del efecto), para que la
   // petición de feedback en vuelo siempre pueda apagar el loading.
+  // Se vuelve a poner en true al montar: con StrictMode (dev) el efecto corre
+  // mount → cleanup → mount, y sin esto el ref quedaba en false para siempre,
+  // así que el .finally() del feedback nunca apagaba el loading ("Analizando…"
+  // eterno aunque la IA respondiera o fallara).
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -209,10 +219,20 @@ export default function ChoiceSimulatorRun() {
       transcript,
       metrics: { scorePct: pct },
     })
-      .then((fb) => { if (mountedRef.current) setAiFeedback(fb); })
-      .catch(() => { /* IA no disponible → intento sin feedback */ })
+      .then((fb) => { if (mountedRef.current) { setAiFeedback(fb); setFeedbackError(null); } })
+      .catch((err) => {
+        // IA no disponible → intento sin feedback, pero explicando el motivo en pantalla.
+        if (mountedRef.current) setFeedbackError(err instanceof SimAiError ? err.kind : 'unknown');
+      })
       .finally(() => { if (mountedRef.current) { setFeedbackLoading(false); setFeedbackReady(true); } });
-  }, [phase, scenario, messages, maxPoints, totalPoints, language]);
+  }, [phase, scenario, messages, maxPoints, totalPoints, language, feedbackAttempt]);
+
+  const retryFeedback = useCallback(() => {
+    feedbackReqRef.current = false;
+    setFeedbackError(null);
+    setFeedbackLoading(true);
+    setFeedbackAttempt((n) => n + 1);
+  }, []);
 
   // Persistir el intento en BD (auditable + cuenta para la certificación del curso).
   // Espera a que la IA termine (o falle) para guardar el feedback junto al intento.
@@ -312,6 +332,7 @@ export default function ChoiceSimulatorRun() {
     setAiFeedback(null);
     setFeedbackLoading(true);
     setFeedbackReady(false);
+    setFeedbackError(null);
     setPhase('intro');
     setMessages([]);
     setTotalPoints(0);
@@ -911,9 +932,14 @@ export default function ChoiceSimulatorRun() {
                 ))}
               </div>
 
-              {(feedbackLoading || aiFeedback) && (
+              {(feedbackLoading || aiFeedback || feedbackError) && (
                 <div className="mb-8">
-                  <AiFeedbackCard feedback={aiFeedback} loading={feedbackLoading} />
+                  <AiFeedbackCard
+                    feedback={aiFeedback}
+                    loading={feedbackLoading}
+                    error={feedbackError}
+                    onRetry={retryFeedback}
+                  />
                 </div>
               )}
 

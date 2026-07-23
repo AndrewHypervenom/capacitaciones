@@ -10,7 +10,7 @@ import { useProgressStore } from '@/stores/progressStore';
 import { useAuth } from '@/hooks/useAuth';
 import { scoreRun, formatDuration } from '@/lib/scoring';
 import { saveSimulatorAttempt, getCourseCertStatus, type AiFeedback } from '@/services/certification.service';
-import { callFeedback } from '@/services/simGroq.service';
+import { callFeedback, SimAiError, type SimAiErrorKind } from '@/services/simGroq.service';
 import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import type { CourseCertStatus } from '@/types/database';
 import { useUserStore } from '@/stores/userStore';
@@ -34,13 +34,22 @@ export default function SimulatorResult() {
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(true);
   const [feedbackReady, setFeedbackReady] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<SimAiErrorKind | null>(null);
   const feedbackReqRef = useRef(false);
+  // Cambiarlo dispara de nuevo el efecto de feedback (botón "Reintentar").
+  const [feedbackAttempt, setFeedbackAttempt] = useState(0);
   // Solo es false en el desmontaje real. No se ata al ciclo del efecto: si el
   // efecto se re-ejecuta (p. ej. useScenarios recarga y cambia la referencia de
   // scenario/computed), la petición ya en vuelo debe poder apagar el loading;
   // atarla a un `alive` local dejaba el feedback pegado en "analizando".
+  // Se vuelve a poner en true al montar: con StrictMode (dev) el efecto corre
+  // mount → cleanup → mount y el ref quedaba en false para siempre, dejando el
+  // feedback pegado en "Analizando…" aunque la IA ya hubiera respondido.
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Respaldo por slug: el staff sin campaña o el aprendiz cross-campaña no
   // encuentran el escenario en useScenarios; sin esto se perdía el intento.
@@ -106,10 +115,20 @@ export default function SimulatorResult() {
         resolved: computed.resolved,
       },
     })
-      .then((fb) => { if (mountedRef.current) setAiFeedback(fb); })
-      .catch(() => { /* IA no disponible → se guarda el intento sin feedback */ })
+      .then((fb) => { if (mountedRef.current) { setAiFeedback(fb); setFeedbackError(null); } })
+      .catch((err) => {
+        // IA no disponible → se guarda el intento sin feedback, pero se le dice al aprendiz por qué.
+        if (mountedRef.current) setFeedbackError(err instanceof SimAiError ? err.kind : 'unknown');
+      })
       .finally(() => { if (mountedRef.current) { setFeedbackLoading(false); setFeedbackReady(true); } });
-  }, [valid, scenario, lastResult, computed, language]);
+  }, [valid, scenario, lastResult, computed, language, feedbackAttempt]);
+
+  const retryFeedback = () => {
+    feedbackReqRef.current = false;
+    setFeedbackError(null);
+    setFeedbackLoading(true);
+    setFeedbackAttempt((n) => n + 1);
+  };
 
   useEffect(() => {
     if (!valid || !scenario || !lastResult || !computed || recordedRef.current) return;
@@ -244,7 +263,12 @@ export default function SimulatorResult() {
 
       <Reveal delay={300}>
         <div className="mb-8">
-          <AiFeedbackCard feedback={aiFeedback} loading={feedbackLoading} />
+          <AiFeedbackCard
+            feedback={aiFeedback}
+            loading={feedbackLoading}
+            error={feedbackError}
+            onRetry={retryFeedback}
+          />
         </div>
       </Reveal>
 

@@ -1,22 +1,58 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lightbulb, Loader2, Sparkles, ThumbsUp } from 'lucide-react';
+import { AlertCircle, Lightbulb, Loader2, RotateCw, Sparkles, ThumbsUp } from 'lucide-react';
 import type { AiFeedback } from '@/services/certification.service';
+import type { SimAiErrorKind } from '@/services/simGroq.service';
 
 interface Props {
   feedback: AiFeedback | null;
   loading: boolean;
+  /** Motivo del fallo, si la IA no pudo responder. */
+  error?: SimAiErrorKind | null;
+  /** Si se pasa, se ofrece un botón para reintentar tras un fallo. */
+  onRetry?: () => void;
+}
+
+/**
+ * Estado "analizando" con cronómetro: el aprendiz necesita ver que algo avanza
+ * para decidir si espera. Vive en su propio componente para que el contador
+ * nazca en 0 en cada montaje (y en cada reintento) sin resetear estado a mano.
+ */
+function AnalyzingState() {
+  const { t } = useTranslation();
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center gap-2 text-[14px] text-text-muted">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {t('simulator.ai_feedback.loading')}
+        <span className="tabular-nums text-text-subtle">{seconds}s</span>
+      </div>
+      <p className="mt-2 text-[12.5px] leading-relaxed text-text-subtle">
+        {seconds < 10
+          ? t('simulator.ai_feedback.loading_hint')
+          : t('simulator.ai_feedback.loading_hint_long')}
+      </p>
+    </div>
+  );
 }
 
 /**
  * Tarjeta de retroalimentación personalizada generada por IA (Groq).
  * Compartida por el resultado de llamada y el de opción múltiple.
- * Si `loading`, muestra un estado de "analizando". Si no hay feedback y no
- * está cargando (IA no disponible), no renderiza nada.
+ * Estados: analizando (con cronómetro, para saber si vale la pena esperar),
+ * error explicado + reintentar, o el feedback ya listo.
  */
-export function AiFeedbackCard({ feedback, loading }: Props) {
+export function AiFeedbackCard({ feedback, loading, error = null, onRetry }: Props) {
   const { t } = useTranslation();
 
-  if (!feedback && !loading) return null;
+  if (!feedback && !loading && !error) return null;
 
   return (
     <div className="surface-card p-6 text-left">
@@ -34,10 +70,29 @@ export function AiFeedbackCard({ feedback, loading }: Props) {
         </div>
       </div>
 
-      {loading || !feedback ? (
-        <div className="flex items-center gap-2 py-4 text-[14px] text-text-muted">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {t('simulator.ai_feedback.loading')}
+      {loading ? (
+        <AnalyzingState />
+      ) : error || !feedback ? (
+        <div className="py-2">
+          <div className="flex items-start gap-2 text-[14px] text-text-muted">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-brand-magenta" />
+            <div>
+              <p className="text-text">{t(`simulator.ai_feedback.error.${error ?? 'unknown'}`)}</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-text-subtle">
+                {t('simulator.ai_feedback.error.saved_anyway')}
+              </p>
+            </div>
+          </div>
+          {onRetry && error !== 'not_configured' && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-text hover:bg-surface"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              {t('simulator.ai_feedback.error.retry')}
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-5">

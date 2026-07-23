@@ -509,8 +509,18 @@
       "tag": "AI feedback",
       "title": "Your performance, analyzed",
       "loading": "Analyzing your conversation…",
+      "loading_hint": "The AI is reading what you said. This usually takes 5–20 seconds.",
+      "loading_hint_long": "This is taking longer than usual. You can wait a bit more or leave: your attempt is already saved.",
       "strengths": "What you did well",
-      "improvements": "To improve next time"
+      "improvements": "To improve next time",
+      "error": {
+        "timeout": "The AI didn't respond in time.",
+        "unavailable": "We couldn't reach the AI service.",
+        "not_configured": "AI feedback isn't enabled in this environment yet.",
+        "unknown": "We couldn't generate the AI feedback.",
+        "saved_anyway": "Your attempt and score were saved.",
+        "retry": "Try again"
+      }
     },
     "metric_score": "Overall score",
     "metric_time": "Call duration",
