@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { X, ChevronRight, Plus, Trash2, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Select } from '@/components/ui/Select'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -355,12 +356,11 @@ export function ArenaEditorModal({
             {/* Descripción */}
             <div>
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')}</label>
-              <textarea
+              <RichTextArea
                 value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                onChange={v => setForm(f => ({ ...f, description: v }))}
                 placeholder={i18n.t('admin.arena.ph_quiz_desc')}
-                rows={2}
-                className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors resize-none"
+                rows={3}
               />
             </div>
 

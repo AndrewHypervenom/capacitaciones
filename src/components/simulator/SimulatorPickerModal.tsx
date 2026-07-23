@@ -9,6 +9,7 @@ import type { Language } from '@/stores/userStore';
 import { CountryFlag } from '@/components/layout/CountryFlag';
 import { backdropDismiss } from '@/lib/backdropDismiss';
 import { cn } from '@/lib/cn';
+import { stripMarkdown } from '@/components/ui/RichText';
 
 export type SimPick = { kind: 'call' | 'choice'; id: string };
 
@@ -246,7 +247,7 @@ export function SimulatorPickerModal({
                         </div>
 
                         <h4 className="mb-1 text-[15px] font-semibold tracking-tight text-text">{row.title}</h4>
-                        <p className="mb-3 line-clamp-2 text-[13px] leading-relaxed text-text-muted">{row.summary}</p>
+                        <p className="mb-3 line-clamp-2 text-[13px] leading-relaxed text-text-muted">{stripMarkdown(row.summary)}</p>
 
                         <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary">
                           {t('course_practice.picker_start')}

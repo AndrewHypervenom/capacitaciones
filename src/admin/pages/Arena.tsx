@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, X, Pencil, Trash2, Trophy } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
+import { RichTextArea } from '@/components/ui/RichTextArea'
+import { stripMarkdown } from '@/components/ui/RichText'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import type { Json } from '@/types/database'
@@ -450,7 +452,7 @@ export default function Arena() {
                       </div>
                       {q.description && (
                         <div className="text-[12px] text-text-muted leading-relaxed line-clamp-2 mb-2">
-                          {q.description}
+                          {stripMarkdown(q.description)}
                         </div>
                       )}
                       <div className="flex items-center gap-2 flex-wrap">
@@ -562,12 +564,11 @@ export default function Arena() {
                 {/* Descripción */}
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')}</label>
-                  <textarea
+                  <RichTextArea
                     value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    onChange={v => setForm(f => ({ ...f, description: v }))}
                     placeholder={i18n.t('admin.arena.ph_quiz_desc')}
-                    rows={2}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors resize-none"
+                    rows={3}
                   />
                 </div>
 

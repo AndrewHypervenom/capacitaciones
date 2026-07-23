@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/cn';
+import { RichTextInline } from '@/components/ui/RichText';
 import type { CalloutKind } from '@/data/modules';
 
 interface CalloutConfig {
@@ -100,7 +101,7 @@ export function Callout({ kind, text, animate = true, className }: Props) {
           <div className={cn('text-[11px] uppercase tracking-wider font-bold mb-2', config.labelClass)}>
             {t(config.labelKey)}
           </div>
-          <p className="text-[15px] leading-[1.65] text-text">{text}</p>
+          <p className="text-[15px] leading-[1.65] text-text whitespace-pre-line"><RichTextInline text={text} /></p>
         </div>
       </div>
     </div>

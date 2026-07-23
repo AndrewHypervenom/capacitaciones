@@ -20,6 +20,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
@@ -596,20 +597,20 @@ export default function SimulationEditor() {
                 </div>
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary')}</label>
-                  <textarea rows={4} value={meta.summary_es} onChange={(e) => setMeta((m) => ({ ...m, summary_es: e.target.value }))} className={cn(inputClass, 'resize-y min-h-[96px] leading-relaxed')} placeholder={t('admin.simulations.ph_summary')} />
+                  <RichTextArea rows={4} value={meta.summary_es} onChange={(v) => setMeta((m) => ({ ...m, summary_es: v }))} placeholder={t('admin.simulations.ph_summary')} />
                 </div>
               </>
             )}
             {metaLang === 'en' && (
               <>
                 <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_en')}</label><input value={meta.title_en} onChange={(e) => setMeta((m) => ({ ...m, title_en: e.target.value }))} className={inputClass} /></div>
-                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_en')}</label><textarea rows={4} value={meta.summary_en} onChange={(e) => setMeta((m) => ({ ...m, summary_en: e.target.value }))} className={cn(inputClass, 'resize-y min-h-[96px] leading-relaxed')} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_en')}</label><RichTextArea rows={4} value={meta.summary_en} onChange={(v) => setMeta((m) => ({ ...m, summary_en: v }))} /></div>
               </>
             )}
             {metaLang === 'pt' && (
               <>
                 <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.title_pt')}</label><input value={meta.title_pt} onChange={(e) => setMeta((m) => ({ ...m, title_pt: e.target.value }))} className={inputClass} /></div>
-                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_pt')}</label><textarea rows={4} value={meta.summary_pt} onChange={(e) => setMeta((m) => ({ ...m, summary_pt: e.target.value }))} className={cn(inputClass, 'resize-y min-h-[96px] leading-relaxed')} /></div>
+                <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.summary_pt')}</label><RichTextArea rows={4} value={meta.summary_pt} onChange={(v) => setMeta((m) => ({ ...m, summary_pt: v }))} /></div>
               </>
             )}
           </GlassCard>

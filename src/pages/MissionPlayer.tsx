@@ -4,6 +4,7 @@ import { motion, AnimatePresence, useReducedMotion, animate } from 'framer-motio
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { stripMarkdown } from '@/components/ui/RichText'
 
 /* ══════════════════════════════════════════════════
    SkyLearn – Training Simulation · GLPI Module
@@ -486,7 +487,7 @@ export default function MissionPlayer() {
         <header className="hud">
           <div className="hud-brand">{mission.title}<span className="hud-training"> / {t('mission_sim.training')}</span></div>
           <div className="hud-center">
-            <div className="hud-mission">🎯 {(mission.category || mission.description).slice(0, 60)}</div>
+            <div className="hud-mission">🎯 {stripMarkdown(mission.category || mission.description).slice(0, 60)}</div>
             <div className="hud-timer">{formatTimer(timerSeconds)}</div>
           </div>
           <div className="hud-right">

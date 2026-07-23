@@ -67,6 +67,7 @@ import type { VideoMarkerRaw } from '@/services/modules.service'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
 import { QUIZ_SOUND_THEMES, playQuizSound } from '@/lib/sound'
 import { vimeoEmbedUrl } from '@/lib/vimeo'
@@ -717,11 +718,16 @@ function SectionEditorPanel({
         </div>
         <div>
           <FieldLabel>{t('admin.modules.field_body')}</FieldLabel>
-          <GlassTextarea
+          {/* showSpacing off: el cuerpo se guarda como array de párrafos
+              (parseParagraphs), así que el marcador de interlineado no
+              sobreviviría. Negrita/cursiva sí, y los renglones en blanco
+              siguen separando párrafos. */}
+          <RichTextArea
             rows={7}
             value={body[lang]}
             onChange={(v) => setBody((prev) => ({ ...prev, [lang]: v }))}
             placeholder={t('admin.modules.field_body_hint')}
+            showSpacing={false}
           />
           <p className="text-[11px] text-text-subtle mt-1">{t('admin.modules.field_body_tip')}</p>
         </div>
@@ -853,11 +859,12 @@ function SectionEditorPanel({
             </div>
             <div>
               <FieldLabel>{t('admin.modules.ed_callout_text', { lang: lang.toUpperCase() })}</FieldLabel>
-              <GlassTextarea
+              <RichTextArea
                 rows={3}
                 value={callout[lang]}
                 onChange={(v) => setCallout((prev) => ({ ...prev, [lang]: v }))}
                 placeholder={t('admin.modules.callout_placeholder')}
+                showSpacing={false}
               />
             </div>
           </>
@@ -1137,9 +1144,10 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
 
         <div>
           <FieldLabel>{t('admin.modules.field_subtitle')}</FieldLabel>
-          <GlassInput
+          <RichTextArea
             value={subtitle[lang]}
             onChange={(v) => setSubtitle((p) => ({ ...p, [lang]: v }))}
+            rows={3}
           />
         </div>
 

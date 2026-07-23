@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { Button } from '@/components/ui/Button'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
@@ -226,9 +227,9 @@ export default function NewModulePage() {
         title_es: title.es.trim(),
         title_en: title.en.trim() || null,
         title_pt: title.pt.trim() || null,
-        subtitle_es: subtitle.es.trim() || null,
-        subtitle_en: subtitle.en.trim() || null,
-        subtitle_pt: subtitle.pt.trim() || null,
+        subtitle_es: subtitle.es.trim() ? subtitle.es : null,
+        subtitle_en: subtitle.en.trim() ? subtitle.en : null,
+        subtitle_pt: subtitle.pt.trim() ? subtitle.pt : null,
       })
       await handleCreated(id)
     } catch (err) {
@@ -361,7 +362,7 @@ export default function NewModulePage() {
                   </label>
                   <LangTabs active={subtitleLang} onChange={setSubtitleLang} />
                 </div>
-                <GlassInput
+                <RichTextArea
                   key={`subtitle-${subtitleLang}`}
                   value={subtitle[subtitleLang]}
                   onChange={(v) => setSubtitle((prev) => ({ ...prev, [subtitleLang]: v }))}
@@ -370,7 +371,7 @@ export default function NewModulePage() {
                       ? t('admin.modules.new.ph_subtitle_example')
                       : t('admin.modules.new.subtitle_in_lang', { lang: LANG_NAMES[subtitleLang] })
                   }
-                  maxLength={200}
+                  rows={3}
                 />
               </div>
             </GlassCard>

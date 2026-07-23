@@ -73,6 +73,7 @@ import {
   requestCourseRecertification,
 } from '@/services/certification.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
+import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
 import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseRecertStatus } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -80,6 +81,7 @@ import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -523,9 +525,12 @@ export default function CourseEditor() {
         title_es: form.title_es.trim() || course.title_es,
         title_en: form.title_en.trim() || null,
         title_pt: form.title_pt.trim() || null,
-        description_es: form.description_es.trim() || null,
-        description_en: form.description_en.trim() || null,
-        description_pt: form.description_pt.trim() || null,
+        // Preserva saltos y espacio arriba/abajo tal cual se escribió (solo se
+        // descarta si es puro espacio en blanco). Un .trim() aquí borraba el
+        // "margen" que el capacitador agrega con el editor enriquecido.
+        description_es: form.description_es.trim() ? form.description_es : null,
+        description_en: form.description_en.trim() ? form.description_en : null,
+        description_pt: form.description_pt.trim() ? form.description_pt : null,
         color: form.color,
         level: form.level,
         category: form.category.trim() || null,
@@ -535,6 +540,7 @@ export default function CourseEditor() {
       })
       toast.success(t('admin.courses.saved_ok'))
       invalidateModulesCache()
+      invalidateLearnerCoursesCache() // que la portada del aprendiz refleje el cambio (no quede en caché)
       await reload()
     } catch (e) {
       console.error('[CourseEditor] handleSaveInfo', e)
@@ -1464,12 +1470,16 @@ export default function CourseEditor() {
               <label className="block text-[12px] font-medium text-text-muted mb-1.5">
                 {t('admin.courses.field_description')} ({lang.toUpperCase()})
               </label>
-              <textarea
+              <RichTextArea
                 value={form[`description_${lang}`]}
-                onChange={(e) => setForm({ ...form, [`description_${lang}`]: e.target.value })}
-                rows={3}
-                className={cn(inputCls, 'resize-none')}
+                onChange={(v) => setForm({ ...form, [`description_${lang}`]: v })}
+                rows={5}
               />
+              <p className="mt-1.5 text-[11px] text-text-subtle">
+                {t('admin.courses.description_format_hint', {
+                  defaultValue: 'Usa la barra para poner negrita, cursiva, títulos o listas. Deja un renglón en blanco para separar párrafos.',
+                })}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

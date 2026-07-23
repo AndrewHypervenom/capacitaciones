@@ -8,6 +8,7 @@ import { getChoiceScenarioBySlug } from '@/services/choiceScenarios.service';
 import { saveSimulatorAttempt, type AiFeedback } from '@/services/certification.service';
 import { choiceFeedback } from '@/services/simGroq.service';
 import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
+import { RichText } from '@/components/ui/RichText';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
 import type { Language } from '@/stores/userStore';
@@ -392,9 +393,10 @@ export default function ChoiceSimulatorRun() {
                 <h1 className="text-[34px] font-bold text-text tracking-tight leading-tight mb-3">
                   {scenario.title[language]}
                 </h1>
-                <p className="text-[16px] leading-relaxed mb-8 text-text-muted">
-                  {scenario.description[language]}
-                </p>
+                <RichText
+                  text={scenario.description[language]}
+                  className="text-[16px] mb-8 text-text-muted"
+                />
 
                 <div className="w-full mb-8 bg-surface border border-line rounded-2xl p-5">
                   {[

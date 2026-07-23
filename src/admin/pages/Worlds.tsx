@@ -15,6 +15,8 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { Stagger, StaggerItem } from '@/components/ui/motion'
+import { RichTextArea } from '@/components/ui/RichTextArea'
+import { stripMarkdown } from '@/components/ui/RichText'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/cn'
 
@@ -252,7 +254,9 @@ export default function Worlds() {
     setSavingWorld(true)
     const payload = {
       name: form.name.trim(),
-      description: form.description.trim(),
+      // Preserva el espacio arriba/abajo del editor enriquecido (solo vacía si
+      // es puro espacio en blanco).
+      description: form.description.trim() ? form.description : '',
       campaign_id: campaign,
       course_id: form.course_id || null,
       icon: form.icon || '🌍',
@@ -469,7 +473,7 @@ export default function Worlds() {
                         <ResourcePresence type="world" id={w.id} />
                       </div>
                       {w.description && (
-                        <div className="text-[12px] text-text-muted leading-relaxed line-clamp-2 mb-2">{w.description}</div>
+                        <div className="text-[12px] text-text-muted leading-relaxed line-clamp-2 mb-2">{stripMarkdown(w.description)}</div>
                       )}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${w.color}15`, color: w.color }}>
@@ -662,12 +666,11 @@ export default function Worlds() {
                 </div>
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')} <span className="text-text-subtle font-normal">{i18n.t('common.optional_paren')}</span></label>
-                  <textarea
+                  <RichTextArea
                     value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    onChange={v => setForm(f => ({ ...f, description: v }))}
                     placeholder={i18n.t('admin.worlds.ph_world_desc')}
-                    rows={2}
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/50 transition-colors resize-none"
+                    rows={3}
                   />
                 </div>
               </div>

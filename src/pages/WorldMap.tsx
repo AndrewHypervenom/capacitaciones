@@ -8,6 +8,7 @@ import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
 import { useProgressStore } from '@/stores/progressStore'
 import { LevelTransition } from '@/components/worlds/LevelTransition'
+import { RichText } from '@/components/ui/RichText'
 
 /* ── Types ── */
 interface World {
@@ -286,7 +287,7 @@ function SelectorCard({ w, i, reduce, onPick }: {
           transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
         >{w.icon}</motion.div>
         <div style={{ fontSize: '1.22rem', fontWeight: 800, color: 'rgb(var(--text))', marginBottom: 8 }}>{w.name}</div>
-        {w.description && <div style={{ fontSize: '.78rem', color: 'rgb(var(--text-muted))', lineHeight: 1.6, marginBottom: 14 }}>{w.description}</div>}
+        {w.description && <div style={{ fontSize: '.78rem', color: 'rgb(var(--text-muted))', lineHeight: 1.6, marginBottom: 14 }}><RichText text={w.description} /></div>}
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${w.color}15`, border: `1px solid ${w.color}30`, borderRadius: 20, padding: '5px 14px', fontSize: '.72rem', color: w.color, fontWeight: 700 }}>{w.icon} {t(`themes.${w.bg_type}`, th.label)}</div>
       </div>
     </motion.div>
@@ -677,7 +678,7 @@ export default function WorldMap() {
           style={{textAlign:'center',padding:'32px 20px 16px',position:'relative',zIndex:1}}>
           <div style={{fontSize:'2.8rem',marginBottom:10,filter:`drop-shadow(0 0 20px ${tc})`,animation:'titleBob 4s ease infinite'}}>{world.icon}</div>
           <h1 className="wm-world-title" style={{margin:0,fontSize:'1.9rem',fontWeight:900,color:'rgb(var(--text))',textShadow:`0 0 40px ${tc}`,letterSpacing:'-1px',lineHeight:1.1,wordBreak:'break-word'}}>{world.name}</h1>
-          {world.description && <p style={{margin:'10px auto 0',fontSize:'.875rem',color:'rgb(var(--text-muted))',maxWidth:420,lineHeight:1.6}}>{world.description}</p>}
+          {world.description && <div style={{margin:'10px auto 0',fontSize:'.875rem',color:'rgb(var(--text-muted))',maxWidth:420,lineHeight:1.6}}><RichText text={world.description} /></div>}
           {/* Progress pills */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:16,marginTop:20}}>
             <div style={{background:'rgb(var(--subtle))',border:'1px solid rgb(var(--line))',borderRadius:20,padding:'6px 16px',fontSize:'.78rem',color:'rgb(var(--text-muted))'}}>

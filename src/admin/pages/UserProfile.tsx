@@ -13,6 +13,8 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
+import { RichText } from '@/components/ui/RichText'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { updateProfile, uploadAvatar } from '@/services/auth.service'
 import { getUserCoursesAdmin, type AdminUserCourse } from '@/services/courses.service'
 import { toast } from '@/stores/toastStore'
@@ -84,7 +86,7 @@ export default function UserProfile() {
         national_id: form.national_id.trim() || null,
         phone: form.phone.trim() || null,
         country: form.country || null,
-        bio: form.bio.trim() || null,
+        bio: form.bio.trim() ? form.bio : null, // preserva saltos/espacio del editor enriquecido
       })
       setProfile(updated as Profile)
       setEditing(false)
@@ -318,12 +320,11 @@ export default function UserProfile() {
               </div>
               <div className="sm:col-span-2">
                 <label className={editLabel}>{t('profile.bio', 'Acerca de mí')}</label>
-                <textarea
+                <RichTextArea
                   value={form.bio}
-                  onChange={set('bio')}
+                  onChange={(v) => setForm((f) => ({ ...f, bio: v }))}
                   rows={3}
                   placeholder={t('profile.bio_ph', 'Cuéntanos algo sobre ti (opcional)')}
-                  className="w-full resize-none rounded-2xl border border-line bg-surface px-4 py-3 text-[15px] text-text outline-none transition-colors placeholder:text-text-subtle/70 focus:border-brand-green"
                 />
               </div>
             </div>
@@ -353,7 +354,7 @@ export default function UserProfile() {
             {profile.bio && (
               <div className="mt-5 border-t border-line pt-4">
                 <div className="mb-1 text-[11px] uppercase tracking-wide text-text-subtle">{t('profile.bio')}</div>
-                <p className="text-[14px] leading-relaxed text-text-muted">{profile.bio}</p>
+                <RichText text={profile.bio} className="text-[14px] text-text-muted" />
               </div>
             )}
           </>

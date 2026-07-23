@@ -10,6 +10,7 @@ import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLea
 import { selfEnroll, type LearnerCourse } from '@/services/courses.service';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
+import { stripMarkdown } from '@/components/ui/RichText';
 import { cn } from '@/lib/cn';
 
 type Filter = 'all' | 'mandatory' | 'optional' | 'in_progress' | 'completed';
@@ -111,7 +112,7 @@ function CourseCard({
             {pickText(course.title_es, course.title_en, course.title_pt, language)}
           </h3>
           <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
-            {pickText(course.description_es, course.description_en, course.description_pt, language)}
+            {stripMarkdown(pickText(course.description_es, course.description_en, course.description_pt, language))}
           </p>
 
           <div className="mt-auto">

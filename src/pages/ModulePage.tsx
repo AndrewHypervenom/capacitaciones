@@ -22,6 +22,7 @@ import { useViewingPresence } from '@/hooks/usePresence';
 import { useProgressStore } from '@/stores/progressStore';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
+import { RichText, RichTextInline } from '@/components/ui/RichText';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { GradientHeading } from '@/components/ui/GradientHeading';
 import { NeonBadge } from '@/components/ui/NeonBadge';
@@ -492,9 +493,10 @@ export default function ModulePage() {
             </GradientHeading>
 
             {module.subtitle?.[language] && (
-              <p className="text-[17px] text-text-muted leading-relaxed max-w-2xl mb-10">
-                {module.subtitle[language]}
-              </p>
+              <RichText
+                text={module.subtitle[language]}
+                className="text-[17px] text-text-muted max-w-2xl mb-10"
+              />
             )}
           </Reveal>
 
@@ -600,7 +602,7 @@ export default function ModulePage() {
                       ) : (
                         <div className="space-y-5 text-[16px] leading-[1.8] text-text/92">
                           {(s.body as any)?.[language]?.map((p: any, j: number) => (
-                            <p key={j}>{p}</p>
+                            <p key={j} className="whitespace-pre-line"><RichTextInline text={p} /></p>
                           ))}
                         </div>
                       )}

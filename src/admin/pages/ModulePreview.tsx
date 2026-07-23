@@ -14,6 +14,7 @@ import { SectionLayout } from '@/components/modules/SectionLayout'
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule'
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer'
 import { cn } from '@/lib/cn'
+import { RichText, RichTextInline } from '@/components/ui/RichText'
 import { setQuizSoundTheme } from '@/lib/sound'
 import { vimeoEmbedUrl } from '@/lib/vimeo'
 import type { CalloutKind, ModuleSection, SectionStyle } from '@/data/modules'
@@ -140,7 +141,7 @@ export default function ModulePreview() {
             {title}
           </h1>
           {subtitle && (
-            <p className="text-text-muted text-[18px] max-w-2xl leading-relaxed">{subtitle}</p>
+            <RichText text={subtitle} className="text-text-muted text-[18px] max-w-2xl" />
           )}
         </div>
 
@@ -321,7 +322,7 @@ export default function ModulePreview() {
                           </div>
                         ) : (
                           <div className="space-y-5 text-[16px] text-text/90 leading-relaxed max-w-[72ch]">
-                            {bodyArr.map((p, j) => <p key={j}>{p}</p>)}
+                            {bodyArr.map((p, j) => <p key={j} className="whitespace-pre-line"><RichTextInline text={p} /></p>)}
                           </div>
                         )}
                       </>

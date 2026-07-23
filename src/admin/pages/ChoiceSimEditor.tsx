@@ -15,6 +15,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
@@ -451,7 +452,7 @@ export default function ChoiceSimEditor() {
               <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.client_company')}</label><input value={meta.client_company} onChange={(e) => setMeta((m) => ({ ...m, client_company: e.target.value }))} placeholder={t('admin.simulations.ph_company')} className={inputClass} /></div>
             </div>
             <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.agent_goal')}</label><input value={meta.objective} onChange={(e) => setMeta((m) => ({ ...m, objective: e.target.value }))} placeholder={t('admin.simulations.ph_agent_goal')} className={inputClass} /></div>
-            <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.scenario_desc')}</label><textarea rows={2} value={meta.description} onChange={(e) => setMeta((m) => ({ ...m, description: e.target.value }))} placeholder={t('admin.simulations.ph_scenario_desc')} className={cn(inputClass, 'resize-none')} /></div>
+            <div><label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.scenario_desc')}</label><RichTextArea rows={3} value={meta.description} onChange={(v) => setMeta((m) => ({ ...m, description: v }))} placeholder={t('admin.simulations.ph_scenario_desc')} /></div>
           </GlassCard>
         </div>
       )}

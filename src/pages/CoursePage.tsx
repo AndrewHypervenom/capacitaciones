@@ -20,6 +20,7 @@ import { CountryFlag } from '@/components/layout/CountryFlag';
 import { SimulatorPickerModal, type SimPick } from '@/components/simulator/SimulatorPickerModal';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
+import { RichText, stripMarkdown } from '@/components/ui/RichText';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { cn } from '@/lib/cn';
@@ -343,9 +344,10 @@ export default function CoursePage() {
                 <h1 className="text-[26px] sm:text-3xl font-extrabold tracking-tight text-text mb-2">
                   {pickText(course.title_es, course.title_en, course.title_pt, language)}
                 </h1>
-                <p className="text-[14px] sm:text-[15px] text-text-muted leading-relaxed mb-4">
-                  {pickText(course.description_es, course.description_en, course.description_pt, language)}
-                </p>
+                <RichText
+                  text={pickText(course.description_es, course.description_en, course.description_pt, language)}
+                  className="text-[14px] sm:text-[15px] text-text-muted mb-4"
+                />
                 <div className="flex items-center gap-4 text-[13px] text-text-subtle">
                   <span className="inline-flex items-center gap-1.5">
                     <BookOpen className="h-4 w-4" />
@@ -513,7 +515,7 @@ export default function CoursePage() {
                   <p className="text-[13px] text-text-muted truncate">
                     {status === 'locked'
                       ? t('courses.module_locked_hint')
-                      : pickText(module.subtitle_es, module.subtitle_en, module.subtitle_pt, language)}
+                      : stripMarkdown(pickText(module.subtitle_es, module.subtitle_en, module.subtitle_pt, language))}
                   </p>
                 </div>
 
@@ -604,7 +606,7 @@ export default function CoursePage() {
                       {scn.title[language]}
                     </h3>
                     <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
-                      {scn.description[language]}
+                      {stripMarkdown(scn.description[language])}
                     </p>
                     <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
                       {t('simulator.take_call')} →

@@ -5,6 +5,7 @@ import { ChevronRight, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { FadeIn } from '@/components/ui/motion'
+import { stripMarkdown } from '@/components/ui/RichText'
 
 interface Quiz {
   id: string
@@ -149,7 +150,7 @@ export default function ArenaHub() {
                           lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box',
                           WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                         }}>
-                          {q.description}
+                          {stripMarkdown(q.description)}
                         </p>
                       )}
                     </div>

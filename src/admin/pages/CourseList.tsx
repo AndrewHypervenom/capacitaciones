@@ -30,6 +30,8 @@ import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignSc
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { stripMarkdown } from '@/components/ui/RichText'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -269,7 +271,7 @@ export default function CourseList() {
     try {
       const course = await createCourse(selectedCampaignId, {
         title_es: newTitle.trim(),
-        description_es: newDescription.trim() || null,
+        description_es: newDescription.trim() ? newDescription : null,
       })
       // El mundo gamificado es opcional: no se crea aquí. Se activa a demanda desde
       // el curso (toggle "mundo") o se genera con IA, para no gastar IA de más.
@@ -486,7 +488,7 @@ export default function CourseList() {
                   <div className="flex-1 px-4 pt-7 pb-3">
                     <div className="text-[15px] font-semibold text-text truncate mb-1">{course.title_es}</div>
                     {course.description_es && (
-                      <p className="text-[12px] text-text-muted line-clamp-2 mb-2">{course.description_es}</p>
+                      <p className="text-[12px] text-text-muted line-clamp-2 mb-2">{stripMarkdown(course.description_es)}</p>
                     )}
                     <div className="flex items-center gap-1.5 text-[12px] text-text-subtle">
                       <BookOpen className="h-3.5 w-3.5" />
@@ -707,13 +709,14 @@ export default function CourseList() {
             <label className="block text-[12px] font-medium text-text-muted mb-1.5">
               {t('admin.courses.field_description')}
             </label>
-            <textarea
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              rows={3}
-              placeholder={t('admin.courses.field_description_ph')}
-              className="w-full mb-5 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none focus:border-primary resize-none"
-            />
+            <div className="mb-5">
+              <RichTextArea
+                value={newDescription}
+                onChange={setNewDescription}
+                rows={3}
+                placeholder={t('admin.courses.field_description_ph')}
+              />
+            </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)} disabled={creating}>
                 {t('admin.courses.cancel')}
