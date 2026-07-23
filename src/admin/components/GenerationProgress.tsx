@@ -14,6 +14,13 @@ interface Props {
   steps: GenerationStep[]
   active: boolean
   title?: string
+  /**
+   * Paso actual REAL (índice). Si viene, manda sobre los temporizadores: los pasos
+   * dejan de ser una animación y reflejan en qué anda de verdad el proceso.
+   */
+  stepIndex?: number
+  /** Explicación de lo que está pasando ahora (por qué se está demorando). */
+  note?: string
 }
 
 function PulsingDots() {
@@ -31,8 +38,9 @@ function PulsingDots() {
   )
 }
 
-export function GenerationProgress({ steps, active, title = 'Generando con Claude...' }: Props) {
-  const [currentStep, setCurrentStep] = useState(0)
+export function GenerationProgress({ steps, active, title = 'Generando con Claude...', stepIndex, note }: Props) {
+  const controlled = stepIndex != null
+  const [timedStep, setTimedStep] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [phase, setPhase] = useState<'idle' | 'running' | 'done'>('idle')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -41,7 +49,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
   useEffect(() => {
     if (active) {
       setPhase('running')
-      setCurrentStep(0)
+      setTimedStep(0)
       setElapsed(0)
       startRef.current = Date.now()
 
@@ -56,7 +64,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
           if (el >= acc) step = i + 1
           else break
         }
-        setCurrentStep(step)
+        setTimedStep(step)
       }, 200)
 
       return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
@@ -64,7 +72,7 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
       if (intervalRef.current) clearInterval(intervalRef.current)
       if (phase === 'running') {
         setPhase('done')
-        setCurrentStep(steps.length - 1)
+        setTimedStep(steps.length - 1)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,10 +80,13 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
 
   if (phase === 'idle') return null
 
+  const currentStep = controlled ? Math.min(stepIndex!, steps.length - 1) : timedStep
   const totalDuration = steps.reduce((s, step) => s + step.durationMs, 0)
   const progress = phase === 'done'
     ? 100
-    : Math.min(95, (elapsed / totalDuration) * 100)
+    : controlled
+      ? Math.min(95, ((currentStep + 0.5) / steps.length) * 100)
+      : Math.min(95, (elapsed / totalDuration) * 100)
   const elapsedSec = Math.floor(elapsed / 1000)
 
   return (
@@ -160,6 +171,18 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
               </motion.div>
             )
           })}
+
+          {/* Por qué se está demorando: detalle real del paso en curso. */}
+          {note && phase === 'running' && (
+            <motion.p
+              key={note}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="pl-[26px] text-[11px] leading-relaxed text-text-subtle"
+            >
+              {note}
+            </motion.p>
+          )}
         </div>
 
         {/* Barra de progreso */}
@@ -199,11 +222,12 @@ export const ASSIST_STEPS: GenerationStep[] = [
   { label: 'admin.gen.finalizing',          durationMs: 99999 },
 ]
 
-export const SIMULATION_GENERATION_STEPS: GenerationStep[] = [
-  { label: 'admin.gen.analyzing_desc',        durationMs: 2000  },
-  { label: 'admin.gen.building_prompt',       durationMs: 2500  },
-  { label: 'admin.gen.sending_claude',        durationMs: 1500  },
-  { label: 'admin.gen.designing_flow',        durationMs: 10000 },
-  { label: 'admin.gen.generating_dialogues',  durationMs: 8000  },
-  { label: 'admin.gen.finalizing_scenario',   durationMs: 99999 },
-]
+// Pasos REALES de una simulación: el panel arma la lista según lo que va a pasar
+// (¿hay módulo base?, ¿se traduce ahora?) y va marcando el avance de verdad.
+export const SIM_STEP_READ_MODULE: GenerationStep = { label: 'admin.gen.reading_module', durationMs: 1 }
+export const SIM_STEP_WRITE: GenerationStep = { label: 'admin.gen.writing_scenario', durationMs: 1 }
+export const SIM_STEP_IMPROVE: GenerationStep = { label: 'admin.gen.improving_scenario', durationMs: 1 }
+export const SIM_STEP_TRANSLATE: GenerationStep = { label: 'admin.gen.translating_langs', durationMs: 1 }
+export const SIM_STEP_FINALIZE: GenerationStep = { label: 'admin.gen.finalizing_scenario', durationMs: 1 }
+
+// (Los pasos por temporizador de simulación se retiraron: el panel usa los reales de arriba.)

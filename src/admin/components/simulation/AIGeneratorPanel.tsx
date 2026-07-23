@@ -1,9 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2 } from 'lucide-react'
-import { GenerationProgress, SIMULATION_GENERATION_STEPS } from '@/admin/components/GenerationProgress'
+import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2, Languages } from 'lucide-react'
+import {
+  GenerationProgress, type GenerationStep,
+  SIM_STEP_READ_MODULE, SIM_STEP_WRITE, SIM_STEP_IMPROVE, SIM_STEP_TRANSLATE, SIM_STEP_FINALIZE,
+} from '@/admin/components/GenerationProgress'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { generateSimulation, getModuleContextText, type CacheUsage, type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario } from '@/services/ai.service'
+import {
+  generateSimulation, translateScenario, getModuleContextText, SCENARIO_LENGTH_NODES,
+  type CacheUsage, type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario,
+  type ScenarioLength, type SimProgress,
+} from '@/services/ai.service'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
@@ -74,11 +81,22 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<GeneratedDialogue | GeneratedChoice | null>(null)
+  const [length, setLength] = useState<ScenarioLength>('long')
+  // Por defecto la IA escribe solo en español: es bastante más rápido y el capacitador
+  // primero quiere ver el escenario. La traducción se pide después con "Traducir".
+  const [translateNow, setTranslateNow] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   // Recuerda si el último preview vino de "Generar" o "Mejorar" para que
   // Regenerar repita la misma acción.
   const lastModeRef = useRef<'generate' | 'improve'>('generate')
   const canImprove = !!currentContent
+
+  // Progreso REAL: los pasos se arman según lo que de verdad va a ocurrir y avanzan
+  // con el proceso, en vez de correr un temporizador de mentiras.
+  const [runSteps, setRunSteps] = useState<GenerationStep[]>([])
+  const [stepIdx, setStepIdx] = useState(0)
+  const [note, setNote] = useState<string | undefined>()
+  const [runTitle, setRunTitle] = useState<string>(i18n.t('admin.simulations.ai_gen.title_generating'))
 
   useEffect(() => {
     if (!campaignId) return
@@ -91,26 +109,66 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
       .then(({ data }) => setModules(data ?? []))
   }, [campaignId])
 
-  const runAi = async (mode: 'generate' | 'improve') => {
+  const runAi = async (mode: 'generate' | 'improve' | 'translate') => {
     if (mode === 'generate' && !description.trim()) return
-    if (mode === 'improve' && !currentContent) return
-    lastModeRef.current = mode
+    if (mode !== 'generate' && !currentContent) return
+    if (mode !== 'translate') lastModeRef.current = mode
+
+    // Pasos reales de ESTA corrida.
+    const usesModule = mode !== 'translate' && !!selectedModuleId
+    const willTranslate = mode === 'translate' || translateNow
+    const steps: GenerationStep[] = []
+    if (usesModule) steps.push(SIM_STEP_READ_MODULE)
+    if (mode !== 'translate') steps.push(mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE)
+    if (willTranslate) steps.push(SIM_STEP_TRANSLATE)
+    steps.push(SIM_STEP_FINALIZE)
+    const idxOf = (s: GenerationStep) => steps.indexOf(s)
+
     const controller = new AbortController()
     abortRef.current = controller
+    setRunSteps(steps)
+    setStepIdx(0)
+    setNote(undefined)
+    setRunTitle(i18n.t(mode === 'translate'
+      ? 'admin.simulations.ai_gen.title_translating'
+      : 'admin.simulations.ai_gen.title_generating'))
     setLoading(true)
     setError(null)
     setPreview(null)
+
+    const onProgress = (p: SimProgress) => {
+      const step = p.stage === 'translating' ? SIM_STEP_TRANSLATE
+        : mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE
+      const i = idxOf(step)
+      if (i >= 0) setStepIdx(i)
+      setNote(p.detail)
+    }
+
     try {
       let moduleContext: string | undefined
-      if (selectedModuleId) moduleContext = await getModuleContextText(selectedModuleId)
-      const result = await generateSimulation({
-        type,
-        description,
-        moduleContext,
-        existing: mode === 'improve' ? currentContent ?? undefined : undefined,
-      }, controller.signal)
-      setPreview(result.data)
-      notifyCache(result.usage)
+      if (usesModule) {
+        setNote(i18n.t('admin.simulations.ai_gen.note_reading_module'))
+        moduleContext = await getModuleContextText(selectedModuleId)
+        setStepIdx(idxOf(SIM_STEP_READ_MODULE) + 1)
+      }
+
+      if (mode === 'translate') {
+        const translated = await translateScenario(currentContent!, controller.signal, onProgress)
+        setStepIdx(steps.length - 1)
+        setPreview(translated as GeneratedDialogue | GeneratedChoice)
+      } else {
+        const result = await generateSimulation({
+          type,
+          description,
+          moduleContext,
+          length,
+          translate: translateNow,
+          existing: mode === 'improve' ? currentContent ?? undefined : undefined,
+        }, controller.signal, onProgress)
+        setStepIdx(steps.length - 1)
+        setPreview(result.data)
+        notifyCache(result.usage)
+      }
     } catch (e) {
       // Cancelación del usuario: no es un error, se descarta en silencio.
       if (controller.signal.aborted || (e as Error)?.name === 'AbortError') return
@@ -118,11 +176,13 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     } finally {
       abortRef.current = null
       setLoading(false)
+      setNote(undefined)
     }
   }
 
   const handleGenerate = () => runAi('generate')
   const handleImprove = () => runAi('improve')
+  const handleTranslate = () => runAi('translate')
   const handleRegenerate = () => runAi(lastModeRef.current)
 
   const handleCancel = () => abortRef.current?.abort()
@@ -171,6 +231,47 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
             <p className="text-[11px] text-text-subtle mt-1">{i18n.t('admin.simulations.ai_gen.prompt_hint')}</p>
           </div>
 
+          {/* Extensión: la IA se quedaba en el mínimo y salían escenarios de 4 pasos. */}
+          <div>
+            <label className="text-xs font-medium text-text-muted mb-1.5 block">
+              {i18n.t('admin.simulations.ai_gen.length_label')}
+            </label>
+            <div className="flex gap-1 p-0.5 rounded-xl glass w-fit">
+              {(['short', 'medium', 'long'] as ScenarioLength[]).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => setLength(l)}
+                  className={cn(
+                    'px-3 py-2 rounded-lg text-[11px] font-medium transition-colors',
+                    length === l ? 'bg-neon-green/12 text-neon-green' : 'text-text-subtle hover:text-text-muted',
+                  )}
+                >
+                  {i18n.t(`admin.simulations.ai_gen.length_${l}`)}
+                  <span className="ml-1 text-[10px] opacity-70">~{SCENARIO_LENGTH_NODES[l]}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-text-subtle mt-1">{i18n.t('admin.simulations.ai_gen.length_hint')}</p>
+          </div>
+
+          {/* Idiomas: por defecto solo español; traducir después es más rápido y evita rehacer. */}
+          <div>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={translateNow}
+                onChange={(e) => setTranslateNow(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-brand-green"
+              />
+              <span className="text-xs text-text-muted">
+                {i18n.t('admin.simulations.ai_gen.translate_now')}
+                <span className="block text-[11px] text-text-subtle mt-0.5">
+                  {i18n.t('admin.simulations.ai_gen.translate_now_hint')}
+                </span>
+              </span>
+            </label>
+          </div>
+
           {modules.length > 0 && (
             <div>
               <label className="text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
@@ -196,9 +297,11 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
           )}
 
           <GenerationProgress
-            steps={SIMULATION_GENERATION_STEPS}
+            steps={runSteps}
             active={loading}
-            title={i18n.t('admin.simulations.ai_gen.title_generating')}
+            stepIndex={stepIdx}
+            note={note}
+            title={runTitle}
           />
 
           {loading && (
@@ -219,6 +322,11 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
           {!preview && !loading && (
             <div className="flex flex-wrap justify-end gap-2">
               {canImprove && (
+                <Button onClick={handleTranslate} variant="ghost" size="sm">
+                  <Languages className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.translate_current')}
+                </Button>
+              )}
+              {canImprove && (
                 <Button onClick={handleImprove} variant="secondary" size="sm">
                   <Wand2 className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.improve_current')}
                 </Button>
@@ -229,9 +337,10 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
             </div>
           )}
           {canImprove && !preview && !loading && (
-            <p className="text-[11px] text-text-subtle text-right -mt-2">
-              {i18n.t('admin.simulations.ai_gen.improve_hint')}
-            </p>
+            <div className="text-[11px] text-text-subtle text-right -mt-2 space-y-0.5">
+              <p>{i18n.t('admin.simulations.ai_gen.improve_hint')}</p>
+              <p>{i18n.t('admin.simulations.ai_gen.translate_hint')}</p>
+            </div>
           )}
         </div>
       )}

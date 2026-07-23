@@ -71,6 +71,25 @@ export interface GeneratedModule {
   sections: GeneratedModuleSection[]
 }
 
+/** Extensión pedida a la IA. Se traduce en el servidor a cantidad de nodos y profundidad. */
+export type ScenarioLength = 'short' | 'medium' | 'long'
+
+/** Nodos aproximados por extensión: solo para avisarle al capacitador cuánto va a tardar. */
+export const SCENARIO_LENGTH_NODES: Record<ScenarioLength, number> = { short: 12, medium: 20, long: 28 }
+
+/**
+ * Avance real del proceso (no un temporizador falso): el panel lo usa para decir
+ * en qué está la IA y por qué se está demorando.
+ */
+export interface SimProgress {
+  stage: 'module' | 'writing' | 'translating'
+  /** Detalle humano de lo que está pasando ahora mismo. */
+  detail?: string
+  /** Solo en 'translating': lotes de nodos ya traducidos / totales. */
+  done?: number
+  total?: number
+}
+
 export async function generateSimulation(opts: {
   type: 'dialogue' | 'choice'
   description: string
@@ -81,36 +100,113 @@ export async function generateSimulation(opts: {
    * como instrucciones opcionales de la mejora.
    */
   existing?: GeneratedScenario
-}, signal?: AbortSignal): Promise<{ data: GeneratedScenario; usage: CacheUsage }> {
-  // Ahorro + velocidad: Sonnet escribe SOLO el español y en/pt se traducen después con
-  // Haiku, por piezas. Pedir los 3 idiomas de un tirón triplicaba la salida y la Edge
+  /** Extensión del escenario (por defecto 'long'). */
+  length?: ScenarioLength
+  /**
+   * Traducir a inglés y portugués al terminar. Por defecto NO: primero se pule el
+   * español y la traducción se pide después con `translateScenario`, cuando el
+   * escenario ya está bien. Traducir de una alarga bastante la espera.
+   */
+  translate?: boolean
+}, signal?: AbortSignal, onProgress?: (p: SimProgress) => void): Promise<{ data: GeneratedScenario; usage: CacheUsage }> {
+  const length = opts.length ?? 'long'
+  const nodes = SCENARIO_LENGTH_NODES[length]
+
+  onProgress?.({
+    stage: 'writing',
+    detail: `Claude está escribiendo el escenario completo en español: ~${nodes} momentos de conversación con sus ramas, objeciones y finales. Es la parte lenta (normalmente 40-90 s).`,
+  })
+
+  // Ahorro + velocidad: Sonnet escribe SOLO el español y en/pt se traducen aparte, con
+  // Haiku y por piezas. Pedir los 3 idiomas de un tirón triplicaba la salida y la Edge
   // Function topaba el timeout del gateway (504 tras ~2 min de "Generando…").
-  const { data, usage } = await postGenerateSimulation({ ...opts, esOnly: true }, signal)
-  let scenario = data as GeneratedScenario
+  const { data, usage } = await postGenerateSimulation({ ...opts, length, esOnly: true }, signal)
+  const scenario = data as GeneratedScenario
 
-  try {
-    const meta = await translateGenerated<{ metadata: unknown }>({ metadata: scenario.metadata }, signal)
-    if (meta?.metadata) scenario = { ...scenario, metadata: meta.metadata } as GeneratedScenario
-  } catch { /* red de seguridad más abajo */ }
-
-  // Los nodos van por lotes: acota cada llamada de traducción y evita respuestas cortadas.
-  const entries = Object.entries(scenario.nodes ?? {})
-  const nodes: Record<string, unknown> = {}
-  for (let i = 0; i < entries.length; i += TRANSLATE_NODE_BATCH) {
-    const batch = Object.fromEntries(entries.slice(i, i + TRANSLATE_NODE_BATCH))
-    let translated = batch
-    try {
-      translated = await translateGenerated<Record<string, unknown>>(batch, signal)
-    } catch { /* red de seguridad más abajo */ }
-    Object.assign(nodes, translated ?? batch)
+  if (!opts.translate) {
+    // Sin traducción: en/pt quedan con el español (mejor que un hueco) hasta que el
+    // capacitador pida "Traducir" desde el panel.
+    return { data: deepFillTranslations(scenario) as GeneratedScenario, usage }
   }
-  scenario = { ...scenario, nodes } as GeneratedScenario
 
-  return { data: deepFillTranslations(scenario) as GeneratedScenario, usage }
+  return { data: await translateScenario(scenario, signal, onProgress), usage }
 }
 
 /** Nodos por llamada de traducción (Haiku): suficientes para ir rápido, sin cortar el JSON. */
 const TRANSLATE_NODE_BATCH = 4
+
+/**
+ * Vacía inglés y portugués para que la pasada de traducción los rellene de verdad.
+ * Hace falta porque `deepFillTranslations` copia el español en en/pt: sin esto, al
+ * traducir después Haiku ve los campos "llenos" (en español) y no los toca.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function blankTranslations(value: any): any {
+  if (Array.isArray(value)) return value.map(blankTranslations)
+  if (value && typeof value === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const o: any = {}
+    for (const k of Object.keys(value)) o[k] = blankTranslations(value[k])
+    if (typeof o.es === 'string') {
+      if (typeof o.en === 'string') o.en = ''
+      if (typeof o.pt === 'string') o.pt = ''
+    }
+    for (const k of Object.keys(o)) {
+      if (!k.endsWith('_es')) continue
+      const base = k.slice(0, -3)
+      for (const lang of ['en', 'pt']) {
+        const key = `${base}_${lang}`
+        if (typeof o[key] === 'string') o[key] = ''
+        else if (Array.isArray(o[key])) o[key] = []
+      }
+    }
+    return o
+  }
+  return value
+}
+
+/**
+ * Traduce a inglés y portugués un escenario ya escrito en español (Haiku, por lotes).
+ * Se usa cuando el capacitador ya pulió el contenido y recién ahí quiere los 3 idiomas.
+ */
+export async function translateScenario(
+  scenario: GeneratedScenario,
+  signal?: AbortSignal,
+  onProgress?: (p: SimProgress) => void,
+): Promise<GeneratedScenario> {
+  const source = blankTranslations(scenario) as GeneratedScenario
+  const entries = Object.entries(source.nodes ?? {})
+  const batches = Math.ceil(entries.length / TRANSLATE_NODE_BATCH)
+  const total = batches + 1 // + la metadata
+
+  let out = source
+  onProgress?.({ stage: 'translating', detail: 'Traduciendo la ficha del escenario…', done: 0, total })
+
+  try {
+    const meta = await translateGenerated<{ metadata: unknown }>({ metadata: source.metadata }, signal)
+    if (meta?.metadata) out = { ...out, metadata: meta.metadata } as GeneratedScenario
+  } catch { /* red de seguridad al final */ }
+
+  // Los nodos van por lotes: acota cada llamada y evita respuestas cortadas.
+  const nodes: Record<string, unknown> = {}
+  for (let i = 0; i < entries.length; i += TRANSLATE_NODE_BATCH) {
+    const n = i / TRANSLATE_NODE_BATCH + 1
+    onProgress?.({
+      stage: 'translating',
+      detail: `Traduciendo los momentos de la conversación a inglés y portugués (lote ${n} de ${batches}).`,
+      done: n,
+      total,
+    })
+    const batch = Object.fromEntries(entries.slice(i, i + TRANSLATE_NODE_BATCH))
+    let translated = batch
+    try {
+      translated = await translateGenerated<Record<string, unknown>>(batch, signal)
+    } catch { /* red de seguridad al final */ }
+    Object.assign(nodes, translated ?? batch)
+  }
+
+  return deepFillTranslations({ ...out, nodes }) as GeneratedScenario
+}
 
 async function postGenerateSimulation(
   body: Record<string, unknown>,
