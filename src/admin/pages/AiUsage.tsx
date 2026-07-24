@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users, AlertCircle } from 'lucide-react'
+import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users, AlertCircle, TrendingUp, TrendingDown, Trophy, Building2, Minus } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
-import { FadeIn } from '@/components/ui/motion'
+import { FadeIn, Stagger, StaggerItem, ease } from '@/components/ui/motion'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { motion } from 'framer-motion'
 import {
   fetchAiUsage, fetchAiUsageUsers, functionLabel, functionColor, FUNCTION_META,
-  type AiUsageData, type AiUsageFilters, type AiUsageRow, type UserOption,
+  type AiUsageData, type AiUsageFilters, type AiUsageRow, type UserOption, type TimePoint, type Breakdown,
 } from '@/services/aiUsage.service'
 import { useAiCreditsStore, updateAiCreditsSetting, loadAiCreditsSetting } from '@/lib/aiCredits'
 import { toast } from '@/stores/toastStore'
@@ -77,6 +79,7 @@ export default function AiUsage() {
   const [users, setUsers] = useState<UserOption[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [metric, setMetric] = useState<ChartMetric>('cost')
 
   // Opciones de usuario (una vez).
   useEffect(() => {
@@ -94,11 +97,6 @@ export default function AiUsage() {
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [preset, functionName, model, userId, search])
-
-  const maxCost = useMemo(
-    () => Math.max(1e-9, ...(data?.timeseries.map((ts) => ts.costUsd) ?? [0])),
-    [data],
-  )
 
   return (
     <div className="p-4 sm:p-8">
@@ -189,43 +187,67 @@ export default function AiUsage() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <FadeIn as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5" y={12}>
-            <KpiCard icon={Bot} label={t('admin.ai_usage.kpi_calls')} value={fmtInt(data.kpis.calls)} color="#8b5cf6" />
-            <KpiCard icon={Coins} label={t('admin.ai_usage.kpi_cost')} value={fmtUsd(data.kpis.costUsd)} color="#22c55e" />
-            <KpiCard icon={Cpu} label={t('admin.ai_usage.kpi_tokens')} value={fmtTokens(data.kpis.tokens)} color="#06b6d4" />
-            <KpiCard icon={Users} label={t('admin.ai_usage.kpi_active_users')} value={fmtInt(data.kpis.activeUsers)} color="#f59e0b" />
-          </FadeIn>
+          <Stagger as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5" gap={0.06}>
+            <KpiCard icon={Coins} label={t('admin.ai_usage.kpi_cost')} color="#22c55e"
+              value={<AnimatedNumber value={data.kpis.costUsd} format={fmtUsd} />}
+              delta={data.kpis.costDeltaPct}
+              footer={data.kpis.avgPerDay > 0 ? t('admin.ai_usage.kpi_avg_day', { v: fmtUsd(data.kpis.avgPerDay) }) : undefined}
+            />
+            <KpiCard icon={Bot} label={t('admin.ai_usage.kpi_calls')} color="#8b5cf6"
+              value={<AnimatedNumber value={data.kpis.calls} format={(n) => fmtInt(Math.round(n))} />} />
+            <KpiCard icon={Cpu} label={t('admin.ai_usage.kpi_tokens')} color="#06b6d4"
+              value={<AnimatedNumber value={data.kpis.tokens} format={(n) => fmtTokens(Math.round(n))} />} />
+            <KpiCard icon={Users} label={t('admin.ai_usage.kpi_active_users')} color="#f59e0b"
+              value={<AnimatedNumber value={data.kpis.activeUsers} format={(n) => fmtInt(Math.round(n))} />} />
+          </Stagger>
 
-          {/* ── Gráfico de costo por día ── */}
-          <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.ai_usage.chart_title')}</h3>
-              <span className="text-[12px] text-text-muted">{t('admin.ai_usage.total_label')} <span className="text-text font-semibold tabular-nums">{fmtUsd(data.kpis.costUsd)}</span></span>
-            </div>
-            {data.timeseries.length === 0 ? (
-              <div className="text-[13px] text-text-muted py-6 text-center">{t('admin.ai_usage.no_data_range')}</div>
-            ) : (
-              <div className="flex items-end gap-1 h-40 overflow-x-auto">
-                {data.timeseries.map((ts) => (
-                  <div key={ts.day} className="flex-1 min-w-[10px] flex flex-col items-center justify-end group relative">
-                    <div
-                      className="w-full rounded-t bg-[rgb(var(--brand-green))]/70 group-hover:bg-[rgb(var(--brand-green))] transition-colors"
-                      style={{ height: `${Math.max(2, (ts.costUsd / maxCost) * 100)}%` }}
-                    />
-                    <div className="pointer-events-none absolute bottom-full mb-1 hidden group-hover:block whitespace-nowrap rounded-lg bg-bg border border-line px-2 py-1 text-[11px] text-text shadow-lg z-10">
-                      <div className="font-medium">{fmtDayLabel(ts.day)}</div>
-                      <div className="text-text-muted">{fmtUsd(ts.costUsd)} · {ts.calls} {t('admin.ai_usage.calls_suffix')}</div>
-                    </div>
-                  </div>
+          {/* ── Línea de tiempo histórica ── */}
+          <FadeIn as="section" className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-5" y={12}>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.ai_usage.chart_title')}</h3>
+                <div className="mt-1 text-[13px] text-text-muted">
+                  {t('admin.ai_usage.total_label')}{' '}
+                  <span className="text-text font-semibold tabular-nums">
+                    {metric === 'cost' ? fmtUsd(data.kpis.costUsd) : metric === 'calls' ? fmtInt(data.kpis.calls) : fmtTokens(data.kpis.tokens)}
+                  </span>
+                </div>
+              </div>
+              {/* Selector de métrica */}
+              <div className="flex gap-1 rounded-xl border border-line p-0.5">
+                {METRICS.map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={() => setMetric(m.key)}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors',
+                      metric === m.key ? 'bg-subtle text-text' : 'text-text-muted hover:text-text',
+                    )}
+                  >
+                    {t(m.labelKey)}
+                  </button>
                 ))}
               </div>
+            </div>
+            {data.timeseries.length === 0 ? (
+              <div className="text-[13px] text-text-muted py-10 text-center">{t('admin.ai_usage.no_data_range')}</div>
+            ) : (
+              <TrendChart points={data.timeseries} metric={metric} />
             )}
-            {data.timeseries.length > 1 && (
-              <div className="flex justify-between mt-2 text-[10.5px] text-text-subtle tabular-nums">
-                <span>{fmtDayLabel(data.timeseries[0].day)}</span>
-                <span>{fmtDayLabel(data.timeseries[data.timeseries.length - 1].day)}</span>
-              </div>
-            )}
+          </FadeIn>
+
+          {/* ── Quién consumió + Qué campaña ── */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+            <Leaderboard
+              title={t('admin.ai_usage.top_users')} icon={Trophy}
+              rows={data.topUsers} totalCost={data.kpis.costUsd}
+              empty={t('admin.ai_usage.no_data')} ranked
+            />
+            <Leaderboard
+              title={t('admin.ai_usage.by_campaign')} icon={Building2}
+              rows={data.byCampaign} totalCost={data.kpis.costUsd}
+              empty={t('admin.ai_usage.no_data')}
+            />
           </section>
 
           {/* ── Desgloses ── */}
@@ -262,12 +284,30 @@ export default function AiUsage() {
   )
 }
 
+// ─── Métricas del gráfico de línea de tiempo ─────────────────────────
+type ChartMetric = 'cost' | 'calls' | 'tokens'
+const METRICS: { key: ChartMetric; labelKey: string }[] = [
+  { key: 'cost', labelKey: 'admin.ai_usage.metric_cost' },
+  { key: 'calls', labelKey: 'admin.ai_usage.metric_calls' },
+  { key: 'tokens', labelKey: 'admin.ai_usage.metric_tokens' },
+]
+const metricValue = (p: TimePoint, m: ChartMetric) => m === 'cost' ? p.costUsd : m === 'calls' ? p.calls : p.tokens
+const metricColor = (m: ChartMetric) => m === 'cost' ? '#22c55e' : m === 'calls' ? '#8b5cf6' : '#06b6d4'
+function fmtMetric(v: number, m: ChartMetric) {
+  return m === 'cost' ? fmtUsd(v) : m === 'calls' ? fmtInt(v) : fmtTokens(v)
+}
+
 // ─── Componentes ─────────────────────────────────────────────────────
-function KpiCard({ icon: Icon, label, value, color }: {
-  icon: React.ComponentType<{ className?: string }>; label: string; value: string; color: string
+function KpiCard({ icon: Icon, label, value, color, delta, footer }: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: React.ReactNode
+  color: string
+  delta?: number | null
+  footer?: string
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-2 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
+    <StaggerItem className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-2 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
       <div className="flex items-center gap-2">
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${color}1a`, color }}>
           <Icon className="h-4 w-4" />
@@ -275,7 +315,260 @@ function KpiCard({ icon: Icon, label, value, color }: {
         <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-text-muted truncate">{label}</span>
       </div>
       <span className="text-2xl sm:text-3xl font-bold tabular-nums text-text">{value}</span>
+      <div className="flex items-center gap-2 min-h-[16px]">
+        {delta != null && <DeltaChip pct={delta} />}
+        {footer && <span className="text-[11px] text-text-subtle truncate">{footer}</span>}
+      </div>
+    </StaggerItem>
+  )
+}
+
+/** Chip de variación vs período anterior: verde si bajó el gasto, rojo si subió. */
+function DeltaChip({ pct }: { pct: number }) {
+  const { t } = useTranslation()
+  const flat = Math.abs(pct) < 1
+  const up = pct > 0
+  const Icon = flat ? Minus : up ? TrendingUp : TrendingDown
+  // Subir el costo es "malo" (rojo); bajarlo es "bueno" (verde).
+  const color = flat ? 'text-text-subtle' : up ? 'text-rose-500' : 'text-emerald-500'
+  return (
+    <span className={cn('inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums', color)}
+      title={t('admin.ai_usage.vs_prev')}>
+      <Icon className="h-3 w-3" />
+      {flat ? '±0%' : `${up ? '+' : ''}${Math.round(pct)}%`}
+    </span>
+  )
+}
+
+/**
+ * Curva suave con interpolación MONÓTONA (Fritsch-Carlson): pasa por todos los
+ * puntos sin sobrepasarse. Clave con outliers fuertes (p. ej. el día que se
+ * dispara el gasto): una spline cardinal se pasaría de largo e inventaría ondas.
+ */
+function smoothLine(pts: { x: number; y: number }[]): string {
+  const n = pts.length
+  if (n === 0) return ''
+  if (n === 1) return `M ${pts[0].x} ${pts[0].y}`
+  const f = (v: number) => v.toFixed(1)
+  if (n === 2) return `M ${f(pts[0].x)} ${f(pts[0].y)} L ${f(pts[1].x)} ${f(pts[1].y)}`
+
+  const dx: number[] = [], dy: number[] = [], m: number[] = []
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1].x - pts[i].x
+    dy[i] = pts[i + 1].y - pts[i].y
+    m[i] = dy[i] / (dx[i] || 1)
+  }
+  const t = new Array(n)
+  t[0] = m[0]; t[n - 1] = m[n - 2]
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue }
+    const a = t[i] / m[i], b = t[i + 1] / m[i]
+    const h = Math.hypot(a, b)
+    if (h > 3) { const k = 3 / h; t[i] = k * a * m[i]; t[i + 1] = k * b * m[i] }
+  }
+  const d = [`M ${f(pts[0].x)} ${f(pts[0].y)}`]
+  for (let i = 0; i < n - 1; i++) {
+    const x1 = pts[i].x + dx[i] / 3, y1 = pts[i].y + t[i] * dx[i] / 3
+    const x2 = pts[i + 1].x - dx[i] / 3, y2 = pts[i + 1].y - t[i + 1] * dx[i] / 3
+    d.push(`C ${f(x1)} ${f(y1)} ${f(x2)} ${f(y2)} ${f(pts[i + 1].x)} ${f(pts[i + 1].y)}`)
+  }
+  return d.join(' ')
+}
+
+/** Gráfico de línea de tiempo: área + curva suave animada, con hover y selector de métrica. */
+function TrendChart({ points, metric }: { points: TimePoint[]; metric: ChartMetric }) {
+  const { t } = useTranslation()
+  const [hover, setHover] = useState<number | null>(null)
+  const color = metricColor(metric)
+  const W = 1000, H = 160, padTop = 26, padBottom = 8
+
+  const { coords, line, area, max } = useMemo(() => {
+    const vals = points.map((p) => metricValue(p, metric))
+    const mx = Math.max(1e-9, ...vals)
+    const n = points.length
+    const xAt = (i: number) => (n <= 1 ? W / 2 : (i / (n - 1)) * W)
+    const yAt = (v: number) => H - padBottom - (v / mx) * (H - padTop - padBottom)
+    const cs = points.map((p, i) => ({ x: xAt(i), y: yAt(metricValue(p, metric)) }))
+    const ln = smoothLine(cs)
+    const last = cs[cs.length - 1], first = cs[0]
+    const ar = `${ln} L ${last.x.toFixed(1)} ${H} L ${first.x.toFixed(1)} ${H} Z`
+    return { coords: cs, line: ln, area: ar, max: mx }
+  }, [points, metric])
+
+  const n = points.length
+  const gid = `ai-grad-${metric}`
+  const last = coords[n - 1]
+  const hp = hover != null ? points[hover] : null
+  const hc = hover != null ? coords[hover] : null
+  // Tooltip: arriba del punto salvo que el punto esté muy arriba (entonces, abajo).
+  const tipBelow = hc ? (hc.y / H) < 0.32 : false
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block w-full h-52">
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.14" />
+              <stop offset="60%" stopColor={color} stopOpacity="0.03" />
+              <stop offset="100%" stopColor={color} stopOpacity="0" />
+            </linearGradient>
+            {/* Reveal izquierda→derecha robusto (no depende de pathLength, que con
+                el escalado no uniforme dejaba el trazo a medias). */}
+            <clipPath id={`${gid}-clip`}>
+              <motion.rect x="0" y="0" height={H}
+                initial={{ width: 0 }} animate={{ width: W }} transition={{ duration: 1, ease }} />
+            </clipPath>
+          </defs>
+          {/* Rejilla base */}
+          {[0, 0.5, 1].map((f) => {
+            const y = padTop + f * (H - padTop - padBottom)
+            return <line key={f} x1="0" x2={W} y1={y} y2={y}
+              stroke="currentColor" className="text-line" strokeWidth="1" strokeDasharray="3 7" opacity="0.6" />
+          })}
+          <g clipPath={`url(#${gid}-clip)`}>
+            <path d={area} fill={`url(#${gid})`} />
+            <path d={line} fill="none" stroke={color} strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          </g>
+        </svg>
+
+        {/* Valor máximo del eje (referencia) */}
+        <span className="pointer-events-none absolute left-0 top-0 text-[10.5px] text-text-subtle tabular-nums">
+          {fmtMetric(max, metric)}
+        </span>
+
+        {/* Punto final siempre visible */}
+        <span className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface"
+          style={{ left: `${(last.x / W) * 100}%`, top: `${(last.y / H) * 100}%`, background: color }} />
+
+        {/* Guía + punto activo (solo en hover) */}
+        {hc && (
+          <>
+            <span className="pointer-events-none absolute top-0 bottom-0 w-px" style={{ left: `${(hc.x / W) * 100}%`, background: `${color}66` }} />
+            <span className="pointer-events-none absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-4 shadow"
+              style={{ left: `${(hc.x / W) * 100}%`, top: `${(hc.y / H) * 100}%`, background: color, boxShadow: `0 0 0 4px ${color}22` }} />
+          </>
+        )}
+
+        {/* Tooltip (solo en hover). Se ancla a la guía: centrado, pero pegado a la
+            izquierda/derecha cerca de los bordes para no despegarse del cursor. */}
+        {hp && hc && (() => {
+          const px = (hc.x / W) * 100
+          const tx = px > 72 ? 'calc(-100% - 10px)' : px < 28 ? '10px' : '-50%'
+          return (
+            <div className="pointer-events-none absolute z-10"
+              style={{
+                left: `${px}%`,
+                transform: `translateX(${tx})`,
+                top: tipBelow ? `${(hc.y / H) * 100 + 6}%` : undefined,
+                bottom: tipBelow ? undefined : `${100 - (hc.y / H) * 100 + 6}%`,
+              }}>
+              <div className="whitespace-nowrap rounded-lg border border-line bg-bg px-2.5 py-1.5 text-[11px] shadow-lg">
+                <div className="font-semibold text-text">{fmtDayLabel(hp.day)}</div>
+                <div className="tabular-nums font-semibold" style={{ color }}>{fmtMetric(metricValue(hp, metric), metric)}</div>
+                {metric !== 'cost' && <div className="text-text-muted tabular-nums">{fmtUsd(hp.costUsd)}</div>}
+                <div className="text-text-muted tabular-nums">{hp.calls} {t('admin.ai_usage.calls_suffix')}</div>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Superficie de hover: elige el punto MÁS CERCANO a la posición real del
+            cursor (los puntos no están centrados en columnas iguales, así que un
+            flex por punto desalineaba la guía respecto del cursor). */}
+        <div
+          className="absolute inset-0 cursor-crosshair"
+          onMouseMove={(e) => {
+            if (n <= 1) { setHover(0); return }
+            const rect = e.currentTarget.getBoundingClientRect()
+            const ratio = (e.clientX - rect.left) / rect.width
+            setHover(Math.max(0, Math.min(n - 1, Math.round(ratio * (n - 1)))))
+          }}
+          onMouseLeave={() => setHover(null)}
+        />
+      </div>
+
+      {/* Eje X: primer, medio y último día */}
+      {n > 1 && (
+        <div className="flex justify-between mt-2.5 text-[10.5px] text-text-subtle tabular-nums">
+          <span>{fmtDayLabel(points[0].day)}</span>
+          {n > 2 && <span>{fmtDayLabel(points[Math.floor(n / 2)].day)}</span>}
+          <span>{fmtDayLabel(points[n - 1].day)}</span>
+        </div>
+      )}
     </div>
+  )
+}
+
+/** Ranking (quién consumió / qué campaña) con barras animadas y % de participación. */
+function Leaderboard({ title, icon: Icon, rows, totalCost, empty, ranked }: {
+  title: string
+  icon: React.ComponentType<{ className?: string }>
+  rows: Breakdown[]
+  totalCost: number
+  empty: string
+  ranked?: boolean
+}) {
+  const maxCost = Math.max(1e-9, ...rows.map((r) => r.costUsd))
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
+      <h3 className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-text-muted mb-4">
+        <Icon className="h-3.5 w-3.5" /> {title}
+      </h3>
+      {rows.length === 0 ? (
+        <div className="text-[13px] text-text-muted py-2">{empty}</div>
+      ) : (
+        <Stagger className="space-y-3.5" gap={0.05}>
+          {rows.map((r, i) => {
+            const share = totalCost > 0 ? Math.round((r.costUsd / totalCost) * 100) : 0
+            const barPct = Math.max(2, (r.costUsd / maxCost) * 100)
+            return (
+              <StaggerItem key={r.key} className="flex items-center gap-3">
+                {ranked && <RankBadge i={i} />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2 text-[13px] mb-1">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: r.color }} />
+                      <span className="text-text truncate">{r.label}</span>
+                      {r.sublabel && <span className="text-text-subtle text-[11px] truncate hidden sm:inline">· {r.sublabel}</span>}
+                    </span>
+                    <span className="text-text-muted tabular-nums shrink-0">
+                      <span className="text-text font-semibold">{fmtUsd(r.costUsd)}</span>
+                      <span className="text-text-subtle"> · {share}%</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-subtle overflow-hidden">
+                    <motion.div className="h-full rounded-full"
+                      style={{ background: r.color }}
+                      initial={{ width: 0 }} animate={{ width: `${barPct}%` }}
+                      transition={{ duration: 0.8, ease, delay: 0.05 * i }} />
+                  </div>
+                </div>
+              </StaggerItem>
+            )
+          })}
+        </Stagger>
+      )}
+    </div>
+  )
+}
+
+/** Medalla para top-3, número para el resto. */
+function RankBadge({ i }: { i: number }) {
+  const medals = ['#fbbf24', '#cbd5e1', '#d97757'] // oro, plata, bronce
+  const isMedal = i < 3
+  return (
+    <span
+      className={cn(
+        'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold tabular-nums',
+        isMedal ? 'text-white' : 'bg-subtle text-text-muted',
+      )}
+      style={isMedal ? { background: medals[i] } : undefined}
+    >
+      {i + 1}
+    </span>
   )
 }
 
