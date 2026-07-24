@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users } from 'lucide-react'
+import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users, AlertCircle } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { FadeIn } from '@/components/ui/motion'
 import {
   fetchAiUsage, fetchAiUsageUsers, functionLabel, functionColor, FUNCTION_META,
   type AiUsageData, type AiUsageFilters, type AiUsageRow, type UserOption,
 } from '@/services/aiUsage.service'
+import { useAiCreditsStore, updateAiCreditsSetting, loadAiCreditsSetting } from '@/lib/aiCredits'
+import { toast } from '@/stores/toastStore'
+import { cn } from '@/lib/cn'
 
 // ─── Presets de rango de fechas ──────────────────────────────────────
 type Preset = 'today' | '7d' | '30d' | 'month' | 'all'
@@ -105,6 +108,9 @@ export default function AiUsage() {
           {t('admin.ai_usage.subtitle')}
         </p>
       </div>
+
+      <AiCreditsToggleCard />
+
 
       {/* ── Filtros ── */}
       <div className="flex flex-col gap-3 mb-5">
@@ -365,5 +371,86 @@ function Field({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] uppercase tracking-wider text-text-muted mb-0.5">{label}</div>
       <div className="text-[12.5px] text-text tabular-nums break-words">{value}</div>
     </div>
+  )
+}
+
+/**
+ * Toggle global "IA sin créditos". Solo superadmin llega a esta página, así que
+ * aquí sí puede prender/apagar el ajuste que ven todos los capacitadores.
+ */
+function AiCreditsToggleCard() {
+  const { t } = useTranslation()
+  const manualOut = useAiCreditsStore((s) => s.manualOut)
+  const detectedOut = useAiCreditsStore((s) => s.detectedOut)
+  const [saving, setSaving] = useState(false)
+
+  // Refresca desde la base al abrir la página (por si otro superadmin lo cambió).
+  useEffect(() => { void loadAiCreditsSetting() }, [])
+
+  const toggle = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await updateAiCreditsSetting(!manualOut)
+      toast.success(t('ai_credits.toggle_saved'))
+    } catch {
+      toast.error(t('ai_credits.toggle_error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className={cn(
+      'rounded-2xl border p-5 sm:p-6 mb-5 transition-colors',
+      manualOut ? 'border-amber-500/30 bg-amber-500/[0.05]' : 'border-line bg-surface',
+    )}>
+      <div className="flex items-start gap-3">
+        <span className={cn(
+          'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+          manualOut ? 'bg-amber-500/15 text-amber-500' : 'bg-[rgb(var(--brand-green))]/12 text-[rgb(var(--brand-green))]',
+        )}>
+          {manualOut ? <AlertCircle className="h-4 w-4" /> : <Coins className="h-4 w-4" />}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-[14px] font-semibold text-text">{t('ai_credits.toggle_title')}</h3>
+            <span className={cn(
+              'rounded-full px-2 py-0.5 text-[10.5px] font-semibold',
+              manualOut ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-[rgb(var(--brand-green))]/12 text-[rgb(var(--brand-green))]',
+            )}>
+              {manualOut ? t('ai_credits.toggle_on') : t('ai_credits.toggle_off')}
+            </span>
+          </div>
+          <p className="mt-1 text-[12.5px] text-text-muted leading-relaxed">{t('ai_credits.toggle_desc')}</p>
+          {detectedOut && !manualOut && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-amber-500">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              {t('ai_credits.toggle_detected')}
+            </p>
+          )}
+        </div>
+
+        {/* Switch */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={manualOut}
+          aria-label={t('ai_credits.toggle_label')}
+          onClick={toggle}
+          disabled={saving}
+          className={cn(
+            'relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50',
+            manualOut ? 'bg-amber-500' : 'bg-glass/25',
+          )}
+        >
+          <span className={cn(
+            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all',
+            manualOut ? 'left-[22px]' : 'left-0.5',
+          )} />
+        </button>
+      </div>
+    </section>
   )
 }

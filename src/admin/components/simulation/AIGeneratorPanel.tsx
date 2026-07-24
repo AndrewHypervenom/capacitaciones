@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2, Languages } from 'lucide-react'
+import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2, Languages, FileText, Upload, Loader2 } from 'lucide-react'
 import {
   GenerationProgress, type GenerationStep,
-  SIM_STEP_READ_MODULE, SIM_STEP_WRITE, SIM_STEP_IMPROVE, SIM_STEP_TRANSLATE, SIM_STEP_FINALIZE,
+  SIM_STEP_READ_MODULE, SIM_STEP_CONDENSE_DOC, SIM_STEP_WRITE, SIM_STEP_IMPROVE, SIM_STEP_TRANSLATE, SIM_STEP_FINALIZE,
 } from '@/admin/components/GenerationProgress'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import {
   generateSimulation, translateScenario, getModuleContextText, SCENARIO_LENGTH_NODES,
+  simDocNeedsCondense, estimateDocPages,
   type CacheUsage, type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario,
   type ScenarioLength, type SimProgress,
 } from '@/services/ai.service'
+import { extractDocumentText, ACCEPTED_DOC_EXTENSIONS } from '@/lib/documentExtract'
 import { Button } from '@/components/ui/Button'
+import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
@@ -86,6 +89,12 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   // primero quiere ver el escenario. La traducción se pide después con "Traducir".
   const [translateNow, setTranslateNow] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  // Documento de apoyo: se lee en el navegador (mismo extractor que "Generar
+  // contenido") y viaja solo como contexto del prompt; no se guarda en la base.
+  const [doc, setDoc] = useState<{ name: string; text: string } | null>(null)
+  const [docReading, setDocReading] = useState<string | null>(null)
+  const [docError, setDocError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   // Recuerda si el último preview vino de "Generar" o "Mejorar" para que
   // Regenerar repita la misma acción.
   const lastModeRef = useRef<'generate' | 'improve'>('generate')
@@ -109,16 +118,40 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
       .then(({ data }) => setModules(data ?? []))
   }, [campaignId])
 
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (fileRef.current) fileRef.current.value = ''
+    if (!file) return
+    setDocError(null)
+    setDocReading(file.name)
+    try {
+      // Solo texto: las figuras no aportan al guion y encarecen la petición.
+      const extracted = await extractDocumentText(file)
+      const text = extracted.text.trim()
+      if (!text) throw new Error(i18n.t('admin.simulations.ai_gen.doc_error'))
+      setDoc({ name: extracted.fileName, text })
+    } catch (err) {
+      setDoc(null)
+      setDocError(err instanceof Error ? err.message : i18n.t('admin.simulations.ai_gen.doc_error'))
+    } finally {
+      setDocReading(null)
+    }
+  }
+
   const runAi = async (mode: 'generate' | 'improve' | 'translate') => {
-    if (mode === 'generate' && !description.trim()) return
+    // Con documento la descripción es opcional: el escenario puede salir del material.
+    if (mode === 'generate' && !description.trim() && !doc) return
     if (mode !== 'generate' && !currentContent) return
     if (mode !== 'translate') lastModeRef.current = mode
 
     // Pasos reales de ESTA corrida.
     const usesModule = mode !== 'translate' && !!selectedModuleId
+    const usesDoc = mode !== 'translate' && !!doc
+    const condenses = usesDoc && simDocNeedsCondense(doc!.text)
     const willTranslate = mode === 'translate' || translateNow
     const steps: GenerationStep[] = []
     if (usesModule) steps.push(SIM_STEP_READ_MODULE)
+    if (condenses) steps.push(SIM_STEP_CONDENSE_DOC)
     if (mode !== 'translate') steps.push(mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE)
     if (willTranslate) steps.push(SIM_STEP_TRANSLATE)
     steps.push(SIM_STEP_FINALIZE)
@@ -138,6 +171,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
 
     const onProgress = (p: SimProgress) => {
       const step = p.stage === 'translating' ? SIM_STEP_TRANSLATE
+        : p.stage === 'document' ? SIM_STEP_CONDENSE_DOC
         : mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE
       const i = idxOf(step)
       if (i >= 0) setStepIdx(i)
@@ -161,6 +195,8 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
           type,
           description,
           moduleContext,
+          documentContext: usesDoc ? doc!.text : undefined,
+          documentName: usesDoc ? doc!.name : undefined,
           length,
           translate: translateNow,
           existing: mode === 'improve' ? currentContent ?? undefined : undefined,
@@ -202,9 +238,14 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     )}>
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left">
         <div className="flex items-center gap-2 flex-1">
-          <Sparkles className="h-4 w-4 text-neon-green shrink-0" />
+          <span className="relative shrink-0">
+            <Sparkles className="h-4 w-4 text-neon-green" />
+            <AiCreditsDot className="absolute -top-1 -right-1" />
+          </span>
           <span className="text-sm font-medium text-text">{i18n.t('admin.simulations.ai_gen.generate_ai')}</span>
-          <span className="text-xs text-text-subtle">{i18n.t('admin.simulations.ai_gen.generate_ai_sub')}</span>
+          <span className="text-xs text-text-subtle">
+            {i18n.t(doc ? 'admin.simulations.ai_gen.generate_ai_sub_doc' : 'admin.simulations.ai_gen.generate_ai_sub')}
+          </span>
         </div>
         {remaining > 0 && (
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-green/8 border border-brand-green/20 text-brand-green text-[10px] font-medium">
@@ -217,6 +258,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
 
       {open && (
         <div className="px-5 pb-5 space-y-4 border-t border-glass-border/10">
+          <AiCreditsNotice className="mt-4" />
           <div className="pt-4">
             <label className="text-xs font-medium text-text-muted mb-1.5 block">
               {i18n.t('admin.simulations.ai_gen.what_scenario_about')}
@@ -270,6 +312,68 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
                 </span>
               </span>
             </label>
+          </div>
+
+          {/* Documento de apoyo: lo que hace que la simulación se sienta del negocio
+              real (banca, seguros, telco) y no una llamada de call center genérica. */}
+          <div>
+            <label className="text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
+              {i18n.t('admin.simulations.ai_gen.doc_label')} <span className="text-text-subtle font-normal">{i18n.t('admin.simulations.ai_gen.optional')}</span>
+            </label>
+            <input ref={fileRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleFile} />
+
+            {docReading ? (
+              <div className="flex items-center gap-2 rounded-xl glass border border-glass-border/20 px-3 py-2.5 text-xs text-text-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-neon-green" />
+                {i18n.t('admin.simulations.ai_gen.doc_reading', { name: docReading })}
+              </div>
+            ) : doc ? (
+              <div className="rounded-xl glass border border-neon-green/25 px-3 py-2.5 space-y-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-neon-green shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-text font-medium truncate">{doc.name}</p>
+                    <p className="text-[11px] text-text-subtle">
+                      {i18n.t('admin.simulations.ai_gen.doc_ready', { pages: estimateDocPages(doc.text) })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    className="text-[11px] text-text-muted hover:text-text px-2 py-1 rounded-lg hover:bg-glass/8 transition-colors"
+                  >
+                    {i18n.t('admin.simulations.ai_gen.doc_replace')}
+                  </button>
+                  <button
+                    onClick={() => setDoc(null)}
+                    aria-label={i18n.t('admin.simulations.ai_gen.doc_remove')}
+                    className="text-text-subtle hover:text-danger p-1 rounded-lg hover:bg-glass/8 transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {simDocNeedsCondense(doc.text) && (
+                  <p className="text-[11px] text-text-subtle leading-relaxed border-t border-glass-border/10 pt-2">
+                    {i18n.t('admin.simulations.ai_gen.doc_long_notice')}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-glass-border/30 px-3 py-3 text-xs text-text-muted hover:text-text hover:border-neon-green/40 transition-colors"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {i18n.t('admin.simulations.ai_gen.doc_upload')}
+              </button>
+            )}
+
+            {docError && (
+              <p className="text-[11px] text-danger mt-1.5">{docError}</p>
+            )}
+            <p className="text-[11px] text-text-subtle mt-1 leading-relaxed">
+              {i18n.t('admin.simulations.ai_gen.doc_hint')}
+            </p>
           </div>
 
           {modules.length > 0 && (
@@ -331,7 +435,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
                   <Wand2 className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.improve_current')}
                 </Button>
               )}
-              <Button onClick={handleGenerate} disabled={!description.trim()} size="sm">
+              <Button onClick={handleGenerate} disabled={!description.trim() && !doc} size="sm">
                 <Sparkles className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.generate_scenario')}
               </Button>
             </div>

@@ -225,6 +225,8 @@ export const ASSIST_STEPS: GenerationStep[] = [
 // Pasos REALES de una simulación: el panel arma la lista según lo que va a pasar
 // (¿hay módulo base?, ¿se traduce ahora?) y va marcando el avance de verdad.
 export const SIM_STEP_READ_MODULE: GenerationStep = { label: 'admin.gen.reading_module', durationMs: 1 }
+/** Solo aparece con documentos largos: Haiku los condensa antes de escribir. */
+export const SIM_STEP_CONDENSE_DOC: GenerationStep = { label: 'admin.gen.condensing_doc', durationMs: 1 }
 export const SIM_STEP_WRITE: GenerationStep = { label: 'admin.gen.writing_scenario', durationMs: 1 }
 export const SIM_STEP_IMPROVE: GenerationStep = { label: 'admin.gen.improving_scenario', durationMs: 1 }
 export const SIM_STEP_TRANSLATE: GenerationStep = { label: 'admin.gen.translating_langs', durationMs: 1 }

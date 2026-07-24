@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import type { ContentBlock } from '@/types/blocks'
 
 export interface CacheUsage {
@@ -82,7 +83,7 @@ export const SCENARIO_LENGTH_NODES: Record<ScenarioLength, number> = { short: 12
  * en qué está la IA y por qué se está demorando.
  */
 export interface SimProgress {
-  stage: 'module' | 'writing' | 'translating'
+  stage: 'module' | 'document' | 'writing' | 'translating'
   /** Detalle humano de lo que está pasando ahora mismo. */
   detail?: string
   /** Solo en 'translating': lotes de nodos ya traducidos / totales. */
@@ -90,10 +91,58 @@ export interface SimProgress {
   total?: number
 }
 
+/**
+ * Umbral de condensado. ~2.400 caracteres por página → 120k ≈ 50 páginas, que es
+ * el límite que pidió el capacitador: por debajo se manda el documento tal cual
+ * (fidelidad total), por encima Haiku lo condensa a un briefing operativo.
+ */
+export const SIM_DOC_CONDENSE_THRESHOLD = 120_000
+/** Tope duro de lo que viaja al prompt aunque el condensado se quede corto. */
+const SIM_DOC_HARD_LIMIT = 60_000
+
+/** ¿Este documento necesita pasar por el condensado con Haiku? */
+export function simDocNeedsCondense(text: string): boolean {
+  return text.length > SIM_DOC_CONDENSE_THRESHOLD
+}
+
+/** Páginas estimadas de un texto extraído (solo para mostrárselo al capacitador). */
+export function estimateDocPages(text: string): number {
+  return Math.max(1, Math.round(text.length / 2400))
+}
+
+/**
+ * Condensa un documento largo a un briefing operativo (Haiku) para que quepa en el
+ * prompt del escenario sin perder las reglas duras. Llamada aparte a propósito:
+ * encadenarla con la generación de Sonnet rozaba el timeout del gateway.
+ */
+export async function condenseSimulationDocument(opts: {
+  documentContext: string
+  documentName?: string
+  description?: string
+}, signal?: AbortSignal): Promise<string> {
+  const { data } = await postGenerateSimulation({
+    mode: 'condense',
+    type: 'dialogue',
+    description: opts.description ?? '',
+    documentContext: opts.documentContext,
+    documentName: opts.documentName,
+  }, signal)
+  const brief = (data as { brief?: string })?.brief?.trim()
+  if (!brief) throw new Error('No se pudo condensar el documento')
+  return brief
+}
+
 export async function generateSimulation(opts: {
   type: 'dialogue' | 'choice'
   description: string
   moduleContext?: string
+  /**
+   * Texto del documento de apoyo (manual, política, guion). Es lo que hace que la
+   * simulación se sienta del negocio real y no una llamada genérica. Si supera el
+   * umbral se condensa antes con Haiku.
+   */
+  documentContext?: string
+  documentName?: string
   /**
    * Escenario actual (metadata + nodos). Si se envía, la IA MEJORA y extiende
    * ese contenido en vez de generar uno nuevo desde cero. `description` se toma
@@ -112,6 +161,24 @@ export async function generateSimulation(opts: {
   const length = opts.length ?? 'long'
   const nodes = SCENARIO_LENGTH_NODES[length]
 
+  // Documento de apoyo: si es un manual largo, primero se condensa; si no, va tal cual
+  // (recortado por seguridad) para conservar la letra exacta de los procedimientos.
+  let documentContext = opts.documentContext?.trim() || undefined
+  if (documentContext && simDocNeedsCondense(documentContext)) {
+    onProgress?.({
+      stage: 'document',
+      detail: `El documento es largo (~${estimateDocPages(documentContext)} páginas). Claude lo está condensando en un resumen operativo con las reglas, plazos y procedimientos que necesita la simulación.`,
+    })
+    documentContext = await condenseSimulationDocument({
+      documentContext,
+      documentName: opts.documentName,
+      description: opts.description,
+    }, signal)
+  }
+  if (documentContext && documentContext.length > SIM_DOC_HARD_LIMIT) {
+    documentContext = documentContext.slice(0, SIM_DOC_HARD_LIMIT)
+  }
+
   onProgress?.({
     stage: 'writing',
     detail: `Claude está escribiendo el escenario completo en español: ~${nodes} momentos de conversación con sus ramas, objeciones y finales. Es la parte lenta (normalmente 40-90 s).`,
@@ -120,7 +187,7 @@ export async function generateSimulation(opts: {
   // Ahorro + velocidad: Sonnet escribe SOLO el español y en/pt se traducen aparte, con
   // Haiku y por piezas. Pedir los 3 idiomas de un tirón triplicaba la salida y la Edge
   // Function topaba el timeout del gateway (504 tras ~2 min de "Generando…").
-  const { data, usage } = await postGenerateSimulation({ ...opts, length, esOnly: true }, signal)
+  const { data, usage } = await postGenerateSimulation({ ...opts, documentContext, length, esOnly: true }, signal)
   const scenario = data as GeneratedScenario
 
   if (!opts.translate) {
@@ -236,9 +303,10 @@ async function postGenerateSimulation(
 
   const result = await response.json().catch(() => ({ error: `Error del servidor (${response.status})` }))
   if (!response.ok || result.error) {
-    throw new Error(result.error ?? 'Error generando simulación')
+    throwAiError(result.error ?? 'Error generando simulación')
   }
 
+  useAiCreditsStore.getState().markOk()
   return { data: result.data, usage: result.usage as CacheUsage }
 }
 
@@ -328,8 +396,9 @@ async function postGenerateModule(
 
   const result = await response.json()
   if (!response.ok || result.error) {
-    throw new Error(result.error ?? 'Error generando módulo')
+    throwAiError(result.error ?? 'Error generando módulo')
   }
+  useAiCreditsStore.getState().markOk()
   return { data: result.data, usage: result.usage as CacheUsage }
 }
 
@@ -452,7 +521,7 @@ export async function analyzeDocument(opts: {
 
   const result = await response.json()
   if (!response.ok || result.error) {
-    throw new Error(result.error ?? 'Error analizando el documento')
+    throwAiError(result.error ?? 'Error analizando el documento')
   }
 
   return {
@@ -489,7 +558,7 @@ export async function moduleAiAssist(opts: AssistRequest): Promise<{ data: Recor
 
   const result = await response.json()
   if (!response.ok || result.error) {
-    throw new Error(result.error ?? 'Error procesando contenido')
+    throwAiError(result.error ?? 'Error procesando contenido')
   }
 
   return { data: result.data, usage: result.usage as CacheUsage }

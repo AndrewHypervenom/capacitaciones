@@ -12,6 +12,7 @@ import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { Select } from '@/components/ui/Select';
 import { stripMarkdown } from '@/components/ui/RichText';
+import { CourseCover, courseHasCover } from '@/components/course/CourseCover';
 import { cn } from '@/lib/cn';
 
 type Filter = 'all' | 'mandatory' | 'optional' | 'in_progress' | 'completed';
@@ -79,16 +80,19 @@ function CourseCard({
           <div
             className="absolute inset-0 overflow-hidden"
             style={{
-              background: course.cover_url
+              background: courseHasCover(course)
                 ? course.cover_fit === 'contain'
                   ? `linear-gradient(120deg, ${course.color}26, ${course.color}0A)`
                   : undefined
                 : `linear-gradient(120deg, ${course.color}40, ${course.color}0D)`,
             }}
           >
-            {course.cover_url && (
-              <img src={course.cover_url} alt={pickText(course.title_es, course.title_en, course.title_pt, language)} className={`h-full w-full transition-transform duration-500 ease-apple group-hover:scale-105 ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
-            )}
+            <CourseCover
+              course={course}
+              alt={pickText(course.title_es, course.title_en, course.title_pt, language)}
+              className={`h-full w-full transition-transform duration-500 ease-apple group-hover:scale-105 ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`}
+              loading="lazy"
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" aria-hidden />
           </div>
           <div

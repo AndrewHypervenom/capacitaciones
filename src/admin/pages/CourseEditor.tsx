@@ -77,6 +77,7 @@ import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
 import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseRecertStatus } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { CourseCover, courseHasCover } from '@/components/course/CourseCover'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Select } from '@/components/ui/Select'
@@ -98,6 +99,16 @@ const TAB_LABEL_KEY: Record<Tab, string> = {
 type Lang = 'es' | 'en' | 'pt'
 
 const COLOR_PRESETS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#14B8A6']
+
+/** Columnas de portada (una imagen independiente por tipo de pantalla). */
+type CoverSlot = 'cover_url' | 'cover_url_mobile' | 'cover_url_tablet'
+
+/** Metadata de cada slot: rótulo i18n, tamaño recomendado y rango de pantalla. */
+const COVER_SLOTS: { slot: CoverSlot; labelKey: string; size: string; range: string }[] = [
+  { slot: 'cover_url_mobile', labelKey: 'admin.courses.cover_slot_mobile', size: '1200×400', range: '<640px' },
+  { slot: 'cover_url_tablet', labelKey: 'admin.courses.cover_slot_tablet', size: '1680×360', range: '640–895px' },
+  { slot: 'cover_url', labelKey: 'admin.courses.cover_slot_desktop', size: '1664×320', range: '≥896px' },
+]
 
 /**
  * Extrae un mensaje legible de un error de Supabase/PostgREST para mostrarlo en el
@@ -185,7 +196,9 @@ export default function CourseEditor() {
     cover_fit: 'cover' as 'cover' | 'contain',
   })
   const coverInputRef = useRef<HTMLInputElement>(null)
-  const [uploadingCover, setUploadingCover] = useState(false)
+  // Qué variante de portada dispara la subida (móvil/tablet/pc/nítida).
+  const coverSlotRef = useRef<CoverSlot>('cover_url')
+  const [uploadingSlot, setUploadingSlot] = useState<CoverSlot | null>(null)
 
   // Métricas agregadas (matriculados / avance) — solo dueño/superadmin
   const [stats, setStats] = useState<CourseStats | null>(null)
@@ -761,18 +774,27 @@ export default function CourseEditor() {
     }
   }
 
-  const handleCoverUpload = async (file: File) => {
-    setUploadingCover(true)
+  const handleCoverUpload = async (file: File, slot: CoverSlot) => {
+    setUploadingSlot(slot)
     try {
       const url = await uploadCourseCover(file, course.id, course.campaign_id)
-      await updateCourse(course.id, { cover_url: url })
-      setCourse({ ...course, cover_url: url })
+      await updateCourse(course.id, { [slot]: url })
+      setCourse({ ...course, [slot]: url })
       toast.success(t('admin.courses.cover_ok'))
     } catch (e) {
       console.error('[CourseEditor] handleCoverUpload', e)
       toast.error(t('admin.courses.error_save'), errMsg(e))
     } finally {
-      setUploadingCover(false)
+      setUploadingSlot(null)
+    }
+  }
+
+  const handleCoverRemove = async (slot: CoverSlot) => {
+    try {
+      await updateCourse(course.id, { [slot]: null })
+      setCourse({ ...course, [slot]: null })
+    } catch (e) {
+      toast.error(t('admin.courses.error_save'), errMsg(e))
     }
   }
 
@@ -1365,10 +1387,11 @@ export default function CourseEditor() {
               <div className="min-w-0">
                 <h2 className="text-[13px] font-semibold text-text">{t('admin.courses.cover_title')}</h2>
                 <p className="text-[11px] text-text-muted mt-0.5">{t('admin.courses.cover_preview_hint')}</p>
+                <p className="text-[11px] text-text-subtle mt-1">{t('admin.courses.cover_size_hint')}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {/* Ajuste: Rellenar (recorta) vs Ajustar (muestra completa, sin deformar) */}
-                {course.cover_url && (
+                {/* Ajuste: Rellenar (recorta) vs Ajustar (muestra completa, sin deformar) — aplica a todas las variantes */}
+                {courseHasCover(course) && (
                   <div className="flex rounded-lg border border-line p-0.5">
                     {(['cover', 'contain'] as const).map((fit) => (
                       <button
@@ -1385,6 +1408,7 @@ export default function CourseEditor() {
                     ))}
                   </div>
                 )}
+                {/* Un solo input; coverSlotRef recuerda qué variante se está subiendo */}
                 <input
                   ref={coverInputRef}
                   type="file"
@@ -1392,21 +1416,70 @@ export default function CourseEditor() {
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0]
-                    if (f) handleCoverUpload(f)
+                    if (f) handleCoverUpload(f, coverSlotRef.current)
                     e.target.value = ''
                   }}
                 />
-                <Button
-                  variant="glass"
-                  size="sm"
-                  disabled={uploadingCover}
-                  onClick={() => coverInputRef.current?.click()}
-                  className="flex items-center gap-1.5"
-                >
-                  <ImagePlus className="h-3.5 w-3.5" />
-                  {uploadingCover ? t('admin.courses.uploading') : t('admin.courses.upload_cover')}
-                </Button>
               </div>
+            </div>
+
+            {/* Un slot de subida por tipo de pantalla (art-direction). */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {COVER_SLOTS.map(({ slot, labelKey, size, range }) => {
+                const url = course[slot]
+                const busy = uploadingSlot === slot
+                return (
+                  <div key={slot} className="rounded-xl border border-line p-2 space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-1">
+                      <span className="text-[11px] font-semibold text-text">{t(labelKey)}</span>
+                      <span className="text-[10px] text-text-subtle">{range}</span>
+                    </div>
+                    <div
+                      className="relative h-14 w-full overflow-hidden rounded-lg border border-line"
+                      style={{ background: url ? undefined : `linear-gradient(120deg, ${form.color}22, ${form.color}0A)` }}
+                    >
+                      {url && (
+                        <img
+                          src={url}
+                          alt=""
+                          className={cn('h-full w-full', form.cover_fit === 'contain' ? 'object-contain' : 'object-cover')}
+                        />
+                      )}
+                      {busy && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                          <Loader2 className="h-4 w-4 animate-spin text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-text-subtle text-center">{size} px</p>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => {
+                          coverSlotRef.current = slot
+                          coverInputRef.current?.click()
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1 !px-2 !py-1 text-[11px]"
+                      >
+                        <ImagePlus className="h-3 w-3" />
+                        {url ? t('admin.courses.cover_replace') : t('admin.courses.upload_cover')}
+                      </Button>
+                      {url && (
+                        <button
+                          type="button"
+                          onClick={() => handleCoverRemove(slot)}
+                          className="rounded-md border border-line px-1.5 text-text-muted hover:text-danger hover:border-danger/40 transition-colors"
+                          title={t('common.remove')}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
 
             {/* Simulación de la tarjeta real: mismo alto/proporción + insignia */}
@@ -1414,20 +1487,17 @@ export default function CourseEditor() {
               <div
                 className="h-28 w-full rounded-xl overflow-hidden border border-line"
                 style={{
-                  background: course.cover_url
+                  background: courseHasCover(course)
                     ? form.cover_fit === 'contain'
                       ? `linear-gradient(120deg, ${form.color}22, ${form.color}0A)`
                       : undefined
                     : `linear-gradient(120deg, ${form.color}33, ${form.color}0D)`,
                 }}
               >
-                {course.cover_url && (
-                  <img
-                    src={course.cover_url}
-                    alt=""
-                    className={cn('h-full w-full', form.cover_fit === 'contain' ? 'object-contain' : 'object-cover')}
-                  />
-                )}
+                <CourseCover
+                  course={course}
+                  className={cn('h-full w-full', form.cover_fit === 'contain' ? 'object-contain' : 'object-cover')}
+                />
               </div>
               <div
                 className="absolute -bottom-4 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md"

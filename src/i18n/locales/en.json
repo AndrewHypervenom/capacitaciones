@@ -20,6 +20,20 @@
       "reload": "Reload"
     }
   },
+  "ai_credits": {
+    "notice_title": "AI out of credits for now",
+    "notice_body": "The Claude API has no available balance, so AI generation is paused. Don't worry: you can still add and create all content manually (courses, modules, worlds, simulators and questions). As soon as it's topped up, the AI will work again automatically.",
+    "notice_short": "AI paused: the Claude API is out of credits for now. You can still add content manually.",
+    "error": "Couldn't generate with AI: the Claude API has no credits available right now. In the meantime you can add and create the content manually. Ask the administrator to top up the balance and try again later.",
+    "toggle_title": "AI credits status",
+    "toggle_desc": "When the Claude API runs out of balance, turn this on to let trainers know AI generation is paused (content can still be added manually). Turn it off once you top up credits.",
+    "toggle_label": "Mark AI as \"out of credits\"",
+    "toggle_on": "Paused — out of credits",
+    "toggle_off": "Active — credits available",
+    "toggle_detected": "Auto-detected: a generation failed due to insufficient balance.",
+    "toggle_saved": "Status updated",
+    "toggle_error": "Couldn't save the change"
+  },
   "update": {
     "title": "New version available",
     "description": "Refresh to get the latest changes.",
@@ -1375,6 +1389,11 @@
       "uploading": "Uploading…",
       "cover_title": "Cover",
       "cover_preview_hint": "This is how the cover will look on the course card before publishing.",
+      "cover_size_hint": "Upload one image per screen type. These are minimum sizes: uploading larger always looks sharp (never zoomed); anything too small looks blurry. Keep text and logos centered (edges get cropped on mobile). If a variant is missing, the Desktop one is used; you can also upload the same large image in all 3.",
+      "cover_slot_mobile": "Mobile",
+      "cover_slot_tablet": "Tablet",
+      "cover_slot_desktop": "Desktop",
+      "cover_replace": "Replace",
       "description_format_hint": "Use the toolbar for bold, italics, headings or lists. Leave a blank line to separate paragraphs, and press Add space (or Enter a few times) for more room between texts.",
       "cover_fit_cover": "Fill",
       "cover_fit_contain": "Fit",
@@ -1669,7 +1688,17 @@
         "conversation_flow": "Conversation flow",
         "base_on_module": "Base on training module",
         "what_scenario_about": "What is the scenario about?",
-        "no_module_option": "No module — use only the description"
+        "no_module_option": "No module — use only the description",
+        "doc_label": "Reference document",
+        "doc_hint": "Upload your operation's manual, policy or service script. The AI infers the industry and builds the simulation around its real products, procedures and rules instead of a generic call.",
+        "doc_upload": "Upload document",
+        "doc_replace": "Change document",
+        "doc_remove": "Remove document",
+        "doc_reading": "Reading {{name}}...",
+        "doc_ready": "~{{pages}} pages · ready to use as context",
+        "doc_long_notice": "Long document: before generating, the AI will condense it into an operational brief with the rules, deadlines and procedures.",
+        "doc_error": "The document could not be read",
+        "generate_ai_sub_doc": "— Claude builds the scenario from your description and your document"
       },
       "list": {
         "title": "Simulations",
@@ -2669,6 +2698,7 @@
       "analyzing_content": "Analyzing the content",
       "processing_claude": "Processing with Claude",
       "reading_module": "Reading the training module",
+      "condensing_doc": "Condensing the reference document",
       "writing_scenario": "Writing the scenario in Spanish",
       "improving_scenario": "Polishing and extending the scenario",
       "translating_langs": "Translating to English and Portuguese",

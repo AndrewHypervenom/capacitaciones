@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { getModuleContextText } from '@/services/ai.service'
+import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import { bgTask } from '@/stores/bgTaskStore'
 import i18n from '@/i18n'
 
@@ -78,7 +79,8 @@ async function postGenerateWorld(body: Record<string, unknown>, signal?: AbortSi
     },
   )
   const result = await res.json()
-  if (!res.ok || result.error) throw new Error(result.error ?? 'Error generando con IA')
+  if (!res.ok || result.error) throwAiError(result.error ?? 'Error generando con IA')
+  useAiCreditsStore.getState().markOk()
   return result.data
 }
 

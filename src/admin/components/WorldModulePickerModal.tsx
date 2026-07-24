@@ -12,6 +12,7 @@ import { cn } from '@/lib/cn'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
 import type { WorldGenOptions } from '@/services/worlds.service'
 
 /** Módulo elegido; la forma que consume `generateBulkModuleRegions`. */
@@ -454,7 +455,9 @@ export function WorldModulePickerModal({
             </div>
 
             {/* ── Footer ── */}
-            <div className="flex items-center justify-end gap-3 border-t border-line px-5 py-4">
+            <div className="border-t border-line px-5 py-4">
+              <AiCreditsNotice className="mb-3" />
+              <div className="flex items-center justify-end gap-3">
               <button
                 onClick={onClose}
                 className="flex min-h-[44px] items-center justify-center rounded-xl border border-line px-4 py-2 text-[13px] text-text-muted transition-colors hover:text-text"
@@ -475,6 +478,7 @@ export function WorldModulePickerModal({
                       defaultValue: `Generar ${pickedModules.length} región(es)`,
                     })}
               </button>
+              </div>
             </div>
           </div>
         </motion.div>

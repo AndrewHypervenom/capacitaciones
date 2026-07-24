@@ -17,6 +17,7 @@ import type { ChoiceScenario } from '@/data/choiceScenarios';
 import { getCourseCertStatus } from '@/services/certification.service';
 import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
+import { CourseCover, courseHasCover } from '@/components/course/CourseCover';
 import { SimulatorPickerModal, type SimPick } from '@/components/simulator/SimulatorPickerModal';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
@@ -297,20 +298,18 @@ export default function CoursePage() {
           <div
             className="h-32 sm:h-40 w-full"
             style={{
-              background: course.cover_url
+              background: courseHasCover(course)
                 ? course.cover_fit === 'contain'
                   ? `linear-gradient(120deg, ${course.color}26, ${course.color}0A)`
                   : undefined
                 : `linear-gradient(120deg, ${course.color}4D, ${course.color}14)`,
             }}
           >
-            {course.cover_url && (
-              <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
-            )}
+            <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
           </div>
           <div className="px-6 sm:px-8 pb-6 sm:pb-8">
             <div
-              className="-mt-7 mb-4 flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md"
+              className="relative z-10 -mt-7 mb-4 flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md"
               style={{ background: course.color }}
             >
               <GraduationCap className="h-6 w-6" />

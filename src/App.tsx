@@ -28,6 +28,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { initAuth } from '@/stores/authStore';
 import { loadGamification } from '@/services/gamification.service';
+import { loadAiCreditsSetting } from '@/lib/aiCredits';
 import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
 import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
@@ -54,6 +55,15 @@ function GamificationInit() {
   const { isAuthenticated } = useAuth();
   useEffect(() => {
     if (isAuthenticated) void loadGamification();
+  }, [isAuthenticated]);
+  return null;
+}
+
+/** Carga el flag global de "IA sin créditos" desde la base al iniciar sesión. */
+function AiCreditsInit() {
+  const { isAuthenticated } = useAuth();
+  useEffect(() => {
+    if (isAuthenticated) void loadAiCreditsSetting();
   }, [isAuthenticated]);
   return null;
 }
@@ -162,6 +172,7 @@ export default function App() {
       <PresenceSync />
       <LanguageSync />
       <GamificationInit />
+      <AiCreditsInit />
       <ConfirmProvider>
       <Routes>
         <Route path="/" element={<Welcome />} />

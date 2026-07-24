@@ -20,6 +20,20 @@
       "reload": "Recarregar"
     }
   },
+  "ai_credits": {
+    "notice_title": "IA sem créditos por enquanto",
+    "notice_body": "A API do Claude está sem saldo disponível, então a geração com IA está pausada. Fique tranquilo: você pode adicionar e criar todo o conteúdo manualmente (cursos, módulos, mundos, simuladores e perguntas). Assim que o saldo for recarregado, a IA voltará a funcionar sozinha.",
+    "notice_short": "IA pausada: a API do Claude está sem créditos por enquanto. Você pode adicionar o conteúdo manualmente.",
+    "error": "Não foi possível gerar com IA: a API do Claude não tem créditos disponíveis no momento. Enquanto isso, você pode adicionar e criar o conteúdo manualmente. Avise o administrador para recarregar o saldo e tente novamente mais tarde.",
+    "toggle_title": "Status de créditos da IA",
+    "toggle_desc": "Quando a API do Claude ficar sem saldo, ative para avisar os instrutores de que a geração com IA está pausada (o conteúdo pode continuar sendo adicionado manualmente). Ao recarregar créditos, desative.",
+    "toggle_label": "Marcar a IA como «sem créditos»",
+    "toggle_on": "Pausada — sem créditos",
+    "toggle_off": "Ativa — há créditos",
+    "toggle_detected": "Detectado automaticamente: uma geração falhou por saldo insuficiente.",
+    "toggle_saved": "Status atualizado",
+    "toggle_error": "Não foi possível salvar a alteração"
+  },
   "update": {
     "title": "Nova versão disponível",
     "description": "Atualize para ver as últimas mudanças do site.",
@@ -1375,6 +1389,11 @@
       "uploading": "Enviando…",
       "cover_title": "Capa",
       "cover_preview_hint": "É assim que a capa aparecerá no cartão do curso antes de publicar.",
+      "cover_size_hint": "Envie uma imagem por tipo de tela. Estes são tamanhos mínimos: enviar maior sempre fica nítido (nunca com zoom); o que fica pequeno fica borrado. Mantenha o texto e os logos centralizados (no celular as bordas são cortadas). Se faltar alguma variante, usa-se a de Desktop; você também pode enviar a mesma imagem grande nas 3.",
+      "cover_slot_mobile": "Celular",
+      "cover_slot_tablet": "Tablet",
+      "cover_slot_desktop": "Desktop",
+      "cover_replace": "Trocar",
       "description_format_hint": "Use a barra para negrito, itálico, títulos ou listas. Deixe uma linha em branco para separar parágrafos e toque em Adicionar espaço (ou Enter várias vezes) para mais respiro entre os textos.",
       "cover_fit_cover": "Preencher",
       "cover_fit_contain": "Ajustar",
@@ -1669,7 +1688,17 @@
         "conversation_flow": "Fluxo de conversa",
         "base_on_module": "Basear em módulo de treinamento",
         "what_scenario_about": "Sobre o que é o cenário?",
-        "no_module_option": "Sem módulo — usar apenas a descrição"
+        "no_module_option": "Sem módulo — usar apenas a descrição",
+        "doc_label": "Documento de apoio",
+        "doc_hint": "Envie o manual, a política ou o roteiro de atendimento da sua operação. A IA deduz o setor e monta a simulação com seus produtos, procedimentos e regras reais, em vez de uma ligação genérica.",
+        "doc_upload": "Enviar documento",
+        "doc_replace": "Trocar documento",
+        "doc_remove": "Remover documento",
+        "doc_reading": "Lendo {{name}}...",
+        "doc_ready": "~{{pages}} págs. · pronto para usar como contexto",
+        "doc_long_notice": "Documento longo: antes de gerar, a IA vai condensá-lo em um resumo operacional com as regras, prazos e procedimentos.",
+        "doc_error": "Não foi possível ler o documento",
+        "generate_ai_sub_doc": "— Claude cria o cenário a partir da sua descrição e do seu documento"
       },
       "list": {
         "title": "Simulações",
@@ -2669,6 +2698,7 @@
       "analyzing_content": "Analisando o conteúdo",
       "processing_claude": "Processando com o Claude",
       "reading_module": "Lendo o módulo de capacitação",
+      "condensing_doc": "Condensando o documento de apoio",
       "writing_scenario": "Escrevendo o cenário em espanhol",
       "improving_scenario": "Aprimorando e estendendo o cenário",
       "translating_langs": "Traduzindo para inglês e português",

@@ -30,11 +30,13 @@ import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignSc
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { CourseCover, courseHasCover } from '@/components/course/CourseCover'
 import { stripMarkdown } from '@/components/ui/RichText'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
@@ -371,7 +373,10 @@ export default function CourseList() {
               disabled={selectedCampaignId === ALL_CAMPAIGNS}
               title={selectedCampaignId === ALL_CAMPAIGNS ? t('admin.courses.pick_campaign_to_create') : undefined}
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              <span className="relative flex items-center">
+                <Sparkles className="h-3.5 w-3.5" />
+                <AiCreditsDot className="absolute -top-1.5 -right-1.5" />
+              </span>
               {t('admin.courses.ai_create')}
             </Button>
             <Button
@@ -478,9 +483,9 @@ export default function CourseList() {
                 <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden transition-all duration-300 ease-apple hover:-translate-y-1 hover:shadow-card-hover">
                   <div
                     className="h-20 w-full relative"
-                    style={{ background: course.cover_url ? (course.cover_fit === 'contain' ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)` : undefined) : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
+                    style={{ background: courseHasCover(course) ? (course.cover_fit === 'contain' ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)` : undefined) : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
                   >
-                    {course.cover_url && <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />}
+                    <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
                     <div className="absolute -bottom-5 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md" style={{ background: course.color }}>
                       <GraduationCap className="h-5 w-5" />
                     </div>
@@ -570,16 +575,14 @@ export default function CourseList() {
               <div
                 className="h-20 w-full relative"
                 style={{
-                  background: course.cover_url
+                  background: courseHasCover(course)
                     ? course.cover_fit === 'contain'
                       ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)`
                       : undefined
                     : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)`,
                 }}
               >
-                {course.cover_url && (
-                  <img src={course.cover_url} alt="" className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
-                )}
+                <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
                 <div
                   className="absolute -bottom-5 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md"
                   style={{ background: course.color }}
@@ -758,6 +761,8 @@ export default function CourseList() {
               </button>
             </div>
             <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.ai_create_hint')}</p>
+
+            <AiCreditsNotice className="mb-4" />
 
             {/* Título */}
             <label className="block text-[12px] font-medium text-text-muted mb-1.5">
