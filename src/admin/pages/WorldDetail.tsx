@@ -11,7 +11,8 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { generateLevelsForRegion, generateBulkModuleRegions, WORLD_LEVELS_EVENT } from '@/services/worlds.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
-import type { WorldRow } from '@/services/worlds.service'
+import type { WorldRow, WorldGenOptions } from '@/services/worlds.service'
+import { WorldModulePickerModal, type PickedModule } from '@/admin/components/WorldModulePickerModal'
 import { ArenaEditorModal, normalizeArenaRow, type ArenaQuiz } from '@/admin/components/ArenaEditorModal'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
@@ -153,6 +154,10 @@ export default function WorldDetail() {
     const id = setTimeout(() => setPreviewTrans(false), reduce ? 1200 : 2600)
     return () => clearTimeout(id)
   }, [previewTrans, reduce])
+
+  // Elegir módulos de CUALQUIER curso accesible (no solo el curso enlazado) para
+  // crear una región por módulo.
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   // Generar en bloque todas las regiones del curso (una por módulo) con sus niveles.
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -452,6 +457,16 @@ export default function WorldDetail() {
     setBulkOpen(false)
   }
 
+  /* ── Generar regiones desde módulos elegidos a mano (multi-curso) ── */
+  // Mismo motor que el bloque del curso enlazado, pero la fuente son módulos de
+  // cualquier curso accesible: cada uno se vuelve una región completa.
+  const runPickerGen = (mods: PickedModule[], opts: WorldGenOptions) => {
+    if (!world || mods.length === 0) return
+    generateBulkModuleRegions(world as unknown as WorldRow, mods, regions.length, opts)
+    toast.success(i18n.t('admin.worlds.ai_gen_started'))
+    setPickerOpen(false)
+  }
+
   const resetProgress = async () => {
     if (!world || !user) return
     setResetting(true)
@@ -622,7 +637,7 @@ export default function WorldDetail() {
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-semibold text-text">
                   {modulesWithoutRegion.length === courseModules.length
-                    ? i18n.t('admin.worlds.bulk_cta_title', { name: linkedCourse.title_es, count: modulesWithoutRegion.length, defaultValue: `Armá este mundo desde “${linkedCourse.title_es}”` })
+                    ? i18n.t('admin.worlds.bulk_cta_title', { name: linkedCourse.title_es, count: modulesWithoutRegion.length, defaultValue: `Arma este mundo desde “${linkedCourse.title_es}”` })
                     : i18n.t('admin.worlds.bulk_cta_more', { count: modulesWithoutRegion.length, defaultValue: `${modulesWithoutRegion.length} módulo(s) del curso todavía sin región` })}
                 </div>
                 <div className="text-[12px] text-text-muted mt-0.5">
@@ -707,6 +722,16 @@ export default function WorldDetail() {
                 <span className="sm:hidden">{orphanQuizzes.length}</span>
               </button>
             )}
+            {/* Regiones desde módulos de cualquier curso (no solo el enlazado) */}
+            <button onClick={() => setPickerOpen(true)}
+              title={i18n.t('admin.worlds.from_modules_hint', { defaultValue: 'Elige módulos de tus cursos: cada uno se vuelve una región generada con IA.' })}
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors min-h-[44px]"
+              style={{ background:'rgba(139,92,246,0.12)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.25)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.20)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(139,92,246,0.12)'}>
+              <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4"/>
+              <span className="hidden sm:inline">{i18n.t('admin.worlds.from_modules_btn', { defaultValue: 'Desde módulos' })}</span>
+            </button>
             <button onClick={openNewRegion}
               className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors min-h-[44px]"
               style={{ background:'rgba(16,212,81,0.12)', color:'#10D451', border:'1px solid rgba(16,212,81,0.25)' }}
@@ -722,9 +747,15 @@ export default function WorldDetail() {
             <div className="text-3xl mb-3">🗺️</div>
             <div className="text-[14px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_regions')}</div>
             <div className="text-[12px] text-text-muted mb-4">{i18n.t('admin.worlds.no_regions_hint')}</div>
-            <button onClick={openNewRegion} className="flex items-center justify-center min-h-[44px] text-[13px] font-medium px-4 py-2 rounded-xl" style={{ background:'rgba(16,212,81,0.12)', color:'#10D451', border:'1px solid rgba(16,212,81,0.25)' }}>
-              + {i18n.t('admin.worlds.new_region')}
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button onClick={() => setPickerOpen(true)} className="flex items-center justify-center gap-2 min-h-[44px] text-[13px] font-semibold px-4 py-2 rounded-xl" style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
+                <Sparkles className="h-4 w-4"/>
+                {i18n.t('admin.worlds.from_modules_cta', { defaultValue: 'Armar desde módulos de mis cursos' })}
+              </button>
+              <button onClick={openNewRegion} className="flex items-center justify-center min-h-[44px] text-[13px] font-medium px-4 py-2 rounded-xl" style={{ background:'rgba(16,212,81,0.12)', color:'#10D451', border:'1px solid rgba(16,212,81,0.25)' }}>
+                + {i18n.t('admin.worlds.new_region')}
+              </button>
+            </div>
           </div>
         ) : (
           <Stagger className="flex flex-col gap-3">
@@ -979,8 +1010,8 @@ export default function WorldDetail() {
                   ]} />
                 <p className="text-[11px] text-text-muted mt-1">
                   {quizzes.length === 0
-                    ? i18n.t('admin.worlds.quiz_none_yet', { defaultValue: 'Todavía no hay quizzes. Creá uno con “Crear quiz nuevo”.' })
-                    : i18n.t('admin.worlds.quiz_pick_edit_create', { defaultValue: 'Elegí un quiz (podés reutilizar el mismo en varios niveles), editá el seleccionado o creá uno nuevo.' })}
+                    ? i18n.t('admin.worlds.quiz_none_yet', { defaultValue: 'Todavía no hay quizzes. Crea uno con “Crear quiz nuevo”.' })
+                    : i18n.t('admin.worlds.quiz_pick_edit_create', { defaultValue: 'Elige un quiz (puedes reutilizar el mismo en varios niveles), edita el seleccionado o crea uno nuevo.' })}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1110,6 +1141,16 @@ export default function WorldDetail() {
           crumb={i18n.t('admin.worlds.crumb_worlds', { name: world.name })}
           onClose={closeQuizEditor}
           onSaved={onQuizSaved}
+        />
+      )}
+
+      {/* ── Elegir módulos de cualquier curso → una región por módulo ── */}
+      {pickerOpen && world && (
+        <WorldModulePickerModal
+          excludeModuleIds={regions.map(r => r.module_id).filter(Boolean) as string[]}
+          subtitle={i18n.t('admin.worlds.picker_subtitle_world', { name: world.name, defaultValue: `Cada módulo que elijas se vuelve una región de “${world.name}”, generada desde su contenido. Puedes mezclar módulos de distintos cursos.` })}
+          onClose={() => setPickerOpen(false)}
+          onConfirm={runPickerGen}
         />
       )}
 

@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useMotionValue, useMotionTemplate } from 'framer-motion'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { Plus, X, Pencil, Trash2, Globe, Map, BookOpen } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Globe, Map, BookOpen, Sparkles, Layers } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { generateBulkModuleRegions, type WorldRow, type WorldGenOptions } from '@/services/worlds.service'
+import { WorldModulePickerModal, type PickedModule } from '@/admin/components/WorldModulePickerModal'
 import { requestDeletion } from '@/services/audit.service'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
@@ -152,6 +154,13 @@ export default function Worlds() {
   const [form, setForm] = useState<WorldForm>(emptyForm())
   const [editingId, setEditingId] = useState<string | null>(null)
 
+  // ── Armar el mundo desde módulos de varios cursos ──
+  // La selección se guarda mientras se completa el modal; al crear el mundo se
+  // dispara la generación en 2º plano (una región por módulo).
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickedModules, setPickedModules] = useState<PickedModule[]>([])
+  const [pickedOpts, setPickedOpts] = useState<WorldGenOptions | null>(null)
+
   async function load() {
     // Campañas accesibles (superadmin: todas; capacitador: casa + colaboraciones).
     const camps = await getAccessibleCampaigns({
@@ -207,6 +216,8 @@ export default function Worlds() {
     setWizardMode('new')
     setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
     setEditingId(null)
+    setPickedModules([])
+    setPickedOpts(null)
     setWizardOpen(true)
   }
 
@@ -239,11 +250,13 @@ export default function Worlds() {
   const closeWizard = () => {
     setWizardOpen(false)
     setEditingId(null)
+    setPickedModules([])
+    setPickedOpts(null)
     load()
   }
 
-  // Inserta (nuevo) o actualiza (edición) el mundo. Devuelve su id o null si falla.
-  async function persistWorld(): Promise<string | null> {
+  // Inserta (nuevo) o actualiza (edición) el mundo. Devuelve la fila o null si falla.
+  async function persistWorld(): Promise<World | null> {
     if (!form.name.trim()) return null
     // worlds.campaign_id es NOT NULL: el mundo siempre pertenece a una campaña.
     const campaign = form.campaign_id || (scopedToCampaign ? (campaignId ?? '') : '')
@@ -265,12 +278,13 @@ export default function Worlds() {
     }
     try {
       // Un curso solo puede tener un mundo (índice único worlds_course_id_uidx).
-      const courseTakenMsg = i18n.t('admin.worlds.toast_course_taken', { defaultValue: 'Ese curso ya tiene un mundo enlazado. Elegí otro curso o dejalo sin curso.' })
+      const courseTakenMsg = i18n.t('admin.worlds.toast_course_taken', { defaultValue: 'Ese curso ya tiene un mundo enlazado. Elige otro curso o déjalo sin curso.' })
       if (editingId) {
         const { data, error } = await supabase.from('worlds').update(payload).eq('id', editingId).select().single()
         if (error || !data) { console.error('Error updating world:', error); toast.error('No se pudo guardar el mundo', error?.code === '23505' ? courseTakenMsg : error?.message); return null }
-        setWorlds(prev => prev.map(x => (x.id === editingId ? normalizeRow(data) : x)))
-        return editingId
+        const updated = normalizeRow(data)
+        setWorlds(prev => prev.map(x => (x.id === editingId ? updated : x)))
+        return updated
       } else {
         const { data, error } = await supabase
           .from('worlds')
@@ -281,7 +295,7 @@ export default function Worlds() {
         const w = normalizeRow(data)
         setWorlds(prev => [w, ...prev])
         setEditingId(w.id)
-        return w.id
+        return w
       }
     } finally {
       setSavingWorld(false)
@@ -289,13 +303,21 @@ export default function Worlds() {
   }
 
   // Guardar: al crear, lleva directo a armar regiones/niveles; al editar, cierra.
+  // Si se eligieron módulos, dispara la generación (una región por módulo) en 2º
+  // plano: el detalle se refresca solo cuando cada región queda lista.
   const submitWizard = async () => {
-    const id = await persistWorld()
-    if (!id) return
+    const world = await persistWorld()
+    if (!world) return
     if (wizardMode === 'new') {
+      if (pickedModules.length > 0) {
+        generateBulkModuleRegions(world as WorldRow, pickedModules, 0, pickedOpts ?? {})
+        toast.success(i18n.t('admin.worlds.ai_gen_started'))
+      }
       setWizardOpen(false)
       setEditingId(null)
-      navigate(`/admin/worlds/${id}`)
+      setPickedModules([])
+      setPickedOpts(null)
+      navigate(`/admin/worlds/${world.id}`)
     } else {
       closeWizard()
     }
@@ -386,7 +408,7 @@ export default function Worlds() {
           </div>
         </div>
         <p className="text-text-muted text-[13px] mb-8">
-          Creá mundos temáticos con sus regiones y niveles. Todo lo gamificado de tu campaña vive acá.
+          Crea mundos temáticos con sus regiones y niveles. Todo lo gamificado de tu campaña vive aquí.
         </p>
 
         {/* Filtro de campaña (cuando el usuario abarca más de una) */}
@@ -414,7 +436,7 @@ export default function Worlds() {
             <Globe className="h-10 w-10 mb-4" style={{ color: '#10D451', opacity: 0.5 }} />
             <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_worlds')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
-              Creá tu primer mundo y armá sus regiones y niveles.
+              Crea tu primer mundo y arma sus regiones y niveles.
             </div>
             <button
               onClick={openWizardNew}
@@ -661,9 +683,50 @@ export default function Worlds() {
                   <p className="text-[11px] text-text-muted mt-1">
                     {form.course_id
                       ? i18n.t('admin.worlds.course_link_hint', { defaultValue: 'La IA de este mundo se basa en el contenido del curso.' })
-                      : i18n.t('admin.worlds.course_nolink_hint', { defaultValue: 'Sin curso, armás las regiones y preguntas a mano.' })}
+                      : i18n.t('admin.worlds.course_nolink_hint', { defaultValue: 'Sin curso, armas las regiones y preguntas a mano.' })}
                   </p>
                 </div>
+                {/* Armar el mundo desde módulos de VARIOS cursos: cada módulo
+                    elegido se vuelve una región generada con IA desde su contenido.
+                    Solo al crear; en un mundo existente se hace desde su detalle. */}
+                {wizardMode === 'new' && (
+                  <div className="rounded-2xl p-3.5" style={{ background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.22)' }}>
+                    <div className="flex items-start gap-3">
+                      <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0" style={{ background:'rgba(139,92,246,0.14)' }}>
+                        <Layers className="h-4 w-4" style={{ color:'#8B5CF6' }} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-semibold text-text">
+                          {i18n.t('admin.worlds.from_modules_title', { defaultValue: 'Ármalo desde tus módulos' })}
+                        </div>
+                        <div className="text-[11.5px] text-text-muted mt-0.5">
+                          {pickedModules.length > 0
+                            ? i18n.t('admin.worlds.from_modules_picked', { count: pickedModules.length, defaultValue: `${pickedModules.length} módulo(s) elegidos: se creará una región por cada uno.` })
+                            : i18n.t('admin.worlds.from_modules_desc', { defaultValue: 'Elige módulos de cualquiera de tus cursos; cada uno se vuelve una región con sus niveles y preguntas.' })}
+                        </div>
+                        {pickedModules.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {pickedModules.map((m, i) => (
+                              <span key={m.id} className="rounded-lg border border-line bg-glass/[0.06] px-2 py-1 text-[11px] text-text-muted">
+                                <span className="font-bold text-[#8B5CF6]">{i + 1}</span> {m.title_es}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setPickerOpen(true)}
+                        className="flex shrink-0 items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl text-[12.5px] font-semibold transition-colors"
+                        style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        {pickedModules.length > 0
+                          ? i18n.t('common.change', { defaultValue: 'Cambiar' })
+                          : i18n.t('admin.worlds.from_modules_pick', { defaultValue: 'Elegir módulos' })}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.description')} <span className="text-text-subtle font-normal">{i18n.t('common.optional_paren')}</span></label>
                   <RichTextArea
@@ -691,7 +754,9 @@ export default function Worlds() {
                 {savingWorld
                   ? i18n.t('common.saving')
                   : wizardMode === 'new'
-                    ? <>{i18n.t('admin.worlds.wiz_create_build')} <Map className="h-4 w-4" /></>
+                    ? (pickedModules.length > 0
+                        ? <>{i18n.t('admin.worlds.wiz_create_generate', { count: pickedModules.length, defaultValue: `Crear y generar ${pickedModules.length} región(es)` })} <Sparkles className="h-4 w-4" /></>
+                        : <>{i18n.t('admin.worlds.wiz_create_build')} <Map className="h-4 w-4" /></>)
                     : i18n.t('common.save_changes')}
               </button>
             </div>
@@ -699,6 +764,19 @@ export default function Worlds() {
         </motion.div>
       )}
       </AnimatePresence>
+
+      {/* Selector de módulos multi-curso: la selección se aplica al crear el mundo. */}
+      {pickerOpen && (
+        <WorldModulePickerModal
+          submitLabel={(n) => i18n.t('admin.worlds.picker_use', { count: n, defaultValue: `Usar ${n} módulo(s)` })}
+          onClose={() => setPickerOpen(false)}
+          onConfirm={(mods, opts) => {
+            setPickedModules(mods)
+            setPickedOpts(opts)
+            setPickerOpen(false)
+          }}
+        />
+      )}
     </>
   )
 }

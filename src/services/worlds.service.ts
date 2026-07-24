@@ -187,7 +187,7 @@ export async function generateRegionLevelsFlexible(
   if ((source.moduleText ?? '').trim().length < MIN_SOURCE_CHARS) {
     throw new Error(
       'El contenido de origen es insuficiente para generar sin inventar. ' +
-      'Asegurate de que el módulo tenga contenido (texto) y volvé a intentar.',
+      'Asegúrate de que el módulo tenga contenido (texto) e inténtalo de nuevo.',
     )
   }
 
@@ -795,63 +795,6 @@ export async function generateStandaloneWorldFromTopic(opts: {
       }
     }
     bgTask.succeed(taskId, i18n.t('worldgen.world_done', { n: regions.length }))
-    return world.id
-  } catch (e) {
-    bgTask.fail(taskId, i18n.t('worldgen.world_error'))
-    throw e
-  }
-}
-
-/** Genera un mundo a partir de módulos existentes: una región (3-5 niveles) por módulo. */
-export async function generateStandaloneWorldFromModules(opts: {
-  campaignId: string
-  name: string
-  moduleIds: string[]
-  levelCount?: number
-  questionsPerLevel?: number
-}): Promise<string> {
-  const taskId = bgTask.start(
-    i18n.t('worldgen.world_title', { name: opts.name }),
-    i18n.t('worldgen.starting', { n: opts.moduleIds.length }),
-  )
-  try {
-    const world = await insertStandaloneWorld({
-      campaignId: opts.campaignId,
-      name: opts.name,
-      bgType: 'corporate',
-    })
-
-    for (let i = 0; i < opts.moduleIds.length; i++) {
-      const moduleId = opts.moduleIds[i]
-      const { data: mod } = await supabase
-        .from('modules').select('title_es, icon').eq('id', moduleId).single()
-      const title = (mod as { title_es?: string })?.title_es ?? 'Módulo'
-      const icon = (mod as { icon?: string })?.icon
-      bgTask.update(taskId, {
-        detail: i18n.t('worldgen.region_progress', { i: i + 1, n: opts.moduleIds.length, title }),
-      })
-
-      const { data: region, error } = await supabase
-        .from('world_regions')
-        .insert({
-          world_id: world.id,
-          module_id: moduleId,
-          name: title,
-          icon: (icon && icon.length <= 2) ? icon : '📍',
-          order_index: i,
-        })
-        .select('id')
-        .single()
-      if (error) throw error
-      try {
-        await generateModuleRegionLevels(world, (region as { id: string }).id, moduleId, {
-          levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel,
-        })
-      } catch (e) {
-        console.error('Fallo generando niveles de región (módulo):', moduleId, e)
-      }
-    }
-    bgTask.succeed(taskId, i18n.t('worldgen.world_done', { n: opts.moduleIds.length }))
     return world.id
   } catch (e) {
     bgTask.fail(taskId, i18n.t('worldgen.world_error'))

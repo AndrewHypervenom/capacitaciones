@@ -691,7 +691,7 @@ export const SCENARIOS: Scenario[] = [
       confirm: {
         id: 'confirm',
         customerLine: {
-          es: 'Dale, activalo por favor. Sale de viaje el lunes.',
+          es: 'Listo, actívalo por favor. Sale de viaje el lunes.',
           en: 'OK, activate it please. I leave on Monday.',
           pt: 'Tá, ativa por favor. Viajo segunda.',
         },

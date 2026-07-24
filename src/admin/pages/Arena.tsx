@@ -373,7 +373,7 @@ export default function Arena() {
           </button>
         </div>
         <p className="text-text-muted text-[13px] mb-8">
-          Creá quizzes gamificados con preguntas, opciones y XP por respuesta correcta
+          Crea quizzes gamificados con preguntas, opciones y XP por respuesta correcta
         </p>
 
         {/* Filtro de campaña (cuando el usuario abarca más de una) */}
@@ -401,7 +401,7 @@ export default function Arena() {
             <Trophy className="h-10 w-10 mb-4" style={{ color: '#10D451', opacity: 0.5 }} />
             <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.arena.no_quizzes')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
-              Creá tu primer quiz para poner a prueba el conocimiento de los participantes
+              Crea tu primer quiz para poner a prueba el conocimiento de los participantes
             </div>
             <button
               onClick={openModal}

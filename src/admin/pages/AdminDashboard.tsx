@@ -172,7 +172,7 @@ export default function AdminDashboard() {
                 {stats.modules} módulo{stats.modules !== 1 ? 's' : ''} cargado{stats.modules !== 1 ? 's' : ''}
               </div>
               <div className="text-[12px] text-text-muted leading-relaxed">
-                Podés ver cómo se verían en el sitio desde la sección de módulos
+                Puedes ver cómo se verían en el sitio desde la sección de módulos
               </div>
             </div>
           </div>

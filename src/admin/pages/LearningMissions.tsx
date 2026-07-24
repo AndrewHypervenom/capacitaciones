@@ -273,7 +273,7 @@ export default function LearningMissions() {
           </button>
         </div>
         <p className="text-text-muted text-[13px] mb-8">
-          Diseñá rutas de aprendizaje paso a paso con objetivos claros
+          Diseña rutas de aprendizaje paso a paso con objetivos claros
         </p>
 
         {/* Campaign filter — solo para superadmin */}
@@ -302,7 +302,7 @@ export default function LearningMissions() {
             <Target className="h-10 w-10 mb-4" style={{ color: '#10D451', opacity: 0.5 }} />
             <div className="text-[15px] font-medium text-text mb-1">{i18n.t('admin.worlds.no_missions')}</div>
             <div className="text-[13px] text-text-muted mb-5 max-w-xs">
-              Creá tu primera misión para organizar el aprendizaje en pasos claros y medibles
+              Crea tu primera misión para organizar el aprendizaje en pasos claros y medibles
             </div>
             <button
               onClick={openModal}
