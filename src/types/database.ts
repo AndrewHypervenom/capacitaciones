@@ -1513,6 +1513,10 @@ export interface Database {
         Args: { p_course_id: string }
         Returns: undefined
       }
+      preview_unenroll_self: {
+        Args: { p_course_id: string }
+        Returns: undefined
+      }
       get_course_stats: {
         Args: { p_course_id: string }
         Returns: {
@@ -1523,6 +1527,9 @@ export interface Database {
           avg_progress_pct: number
           is_owner: boolean
           global_enrolled: number
+          direct_assigned: number
+          campaign_reach: number
+          staff_preview: number
         }
       }
       get_course_certification_status: {

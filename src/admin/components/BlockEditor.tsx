@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import {
-  GripVertical, Plus, Trash2, ChevronUp, ChevronDown,
+  GripVertical, Plus, Trash2, ChevronUp, ChevronDown, Copy,
   Type, AlignLeft, List, Image as ImageIcon, Video, Lightbulb,
   HelpCircle, CreditCard, ChevronDown as AccIcon, Layers, Code,
   Quote, Minus, Columns, Clock, Table, LayoutGrid, BarChart3, MapPin,
@@ -1429,21 +1429,27 @@ const BLOCK_LABELS: Record<string, string> = {
 function BlockRow({
   item,
   lang,
+  index,
+  total,
   onUpdate,
   onDelete,
+  onDuplicate,
   onMoveUp,
   onMoveDown,
-  showMenu,
+  onAddBefore,
   onAddAfter,
   mediaContext,
 }: {
   item: BlockWithId;
   lang: Lang;
+  index: number;
+  total: number;
   onUpdate: (data: ContentBlock) => void;
   onDelete: () => void;
+  onDuplicate: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
-  showMenu: boolean;
+  onAddBefore: () => void;
   onAddAfter: () => void;
   mediaContext?: MediaContext;
 }) {
@@ -1486,11 +1492,18 @@ function BlockRow({
     }
   };
 
+  const label = i18n.t(`admin.modules.be.block_labels.${item.data.type}`, BLOCK_LABELS[item.data.type] ?? item.data.type);
+
   return (
     <div ref={setNodeRef} style={style} className="group relative">
+      {/* Insertar bloque ARRIBA (solo en el primero: entre bloques ya hay tira inferior) */}
+      {index === 0 && (
+        <InsertStrip onClick={onAddBefore} label={i18n.t('admin.modules.be.insert_above', 'Insertar bloque aquí')} />
+      )}
+
       <div className={cn(
         'flex gap-3 rounded-2xl border transition-colors duration-150 px-4 py-4',
-        isDragging ? 'border-neon-green/20 glass-md' : 'border-transparent hover:border-glass-border/12 hover:glass',
+        isDragging ? 'border-neon-green/20 glass-md' : 'border-glass-border/8 hover:border-glass-border/20 glass',
       )}>
         {/* Drag handle */}
         <div
@@ -1507,8 +1520,9 @@ function BlockRow({
             <Icon className="h-3.5 w-3.5 text-text-muted" />
           </div>
           <span className="text-[9px] uppercase tracking-wide text-text-subtle whitespace-nowrap">
-            {i18n.t(`admin.modules.be.block_labels.${item.data.type}`, BLOCK_LABELS[item.data.type] ?? item.data.type)}
+            {label}
           </span>
+          <span className="text-[9px] font-mono text-text-subtle/70">{index + 1}/{total}</span>
         </div>
 
         {/* Editor */}
@@ -1516,29 +1530,63 @@ function BlockRow({
           {renderEditor()}
         </div>
 
-        {/* Actions */}
-        <div className="shrink-0 flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity pt-0.5">
-          <button onClick={onMoveUp} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
-            <ChevronUp className="h-4 w-4 md:h-3 md:w-3" />
+        {/* Acciones del bloque: siempre visibles (antes solo aparecían al pasar el mouse) */}
+        <div className="shrink-0 flex flex-col gap-0.5 pt-0.5">
+          <button
+            onClick={onMoveUp}
+            disabled={index === 0}
+            title={i18n.t('admin.modules.be.move_up', 'Subir bloque')}
+            className="h-9 w-9 md:h-7 md:w-7 rounded-lg flex items-center justify-center text-text-muted hover:text-text hover:bg-glass disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronUp className="h-4 w-4 md:h-3.5 md:w-3.5" />
           </button>
-          <button onClick={onMoveDown} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-text hover:bg-glass transition-colors">
-            <ChevronDown className="h-4 w-4 md:h-3 md:w-3" />
+          <button
+            onClick={onMoveDown}
+            disabled={index === total - 1}
+            title={i18n.t('admin.modules.be.move_down', 'Bajar bloque')}
+            className="h-9 w-9 md:h-7 md:w-7 rounded-lg flex items-center justify-center text-text-muted hover:text-text hover:bg-glass disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronDown className="h-4 w-4 md:h-3.5 md:w-3.5" />
           </button>
-          <button onClick={onDelete} className="h-11 w-11 md:h-6 md:w-6 rounded-lg flex items-center justify-center text-text-subtle hover:text-red-400 hover:bg-red-400/8 transition-colors">
-            <Trash2 className="h-4 w-4 md:h-3 md:w-3" />
+          <button
+            onClick={onDuplicate}
+            title={i18n.t('admin.modules.be.duplicate', 'Duplicar bloque')}
+            className="h-9 w-9 md:h-7 md:w-7 rounded-lg flex items-center justify-center text-text-muted hover:text-neon-green hover:bg-neon-green/8 transition-colors"
+          >
+            <Copy className="h-4 w-4 md:h-3.5 md:w-3.5" />
+          </button>
+          <button
+            onClick={onDelete}
+            title={i18n.t('admin.modules.be.delete_block', 'Borrar este bloque')}
+            className="h-9 w-9 md:h-7 md:w-7 rounded-lg flex items-center justify-center text-danger/70 hover:text-danger hover:bg-danger/10 transition-colors"
+          >
+            <Trash2 className="h-4 w-4 md:h-3.5 md:w-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Add block below trigger */}
-      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex justify-center w-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={onAddAfter}
-          className="h-11 md:h-6 px-3 glass rounded-full text-[11px] text-text-subtle hover:text-neon-green hover:border-neon-green/20 border border-transparent flex items-center gap-1 transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5 md:h-3 md:w-3" /> bloque
-        </button>
-      </div>
+      {/* Insertar bloque DEBAJO de este */}
+      <InsertStrip onClick={onAddAfter} label={i18n.t('admin.modules.be.insert_below', 'Insertar bloque aquí')} />
+    </div>
+  );
+}
+
+/** Tira delgada entre bloques para insertar contenido en esa posición exacta. */
+function InsertStrip({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <div className="relative h-6 flex items-center justify-center group/strip">
+      <div className="absolute inset-x-0 h-px bg-glass-border/10 group-hover/strip:bg-neon-green/25 transition-colors" />
+      <button
+        onClick={onClick}
+        title={label}
+        className={cn(
+          'relative z-10 h-6 px-3 rounded-full glass border border-glass-border/12 flex items-center gap-1',
+          'text-[11px] text-text-subtle hover:text-neon-green hover:border-neon-green/30 transition-colors',
+        )}
+      >
+        <Plus className="h-3 w-3" />
+        <span className="hidden md:inline">{i18n.t('admin.modules.be.add_block_short', 'bloque')}</span>
+      </button>
     </div>
   );
 }
@@ -1556,10 +1604,22 @@ let blockSeq = 0;
 function newId() { return `block-${++blockSeq}-${Date.now()}`; }
 
 export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: BlockEditorProps) {
-  const [menuAfterIndex, setMenuAfterIndex] = useState<number | null>(null);
+  // Posición del arreglo donde se insertará el bloque nuevo (0 = antes del primero,
+  // blocks.length = al final). null = menú cerrado.
+  const [insertAt, setInsertAt] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Cerrar el menú de inserción al hacer clic fuera.
+  useEffect(() => {
+    if (insertAt === null) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setInsertAt(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [insertAt]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -1569,15 +1629,27 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
     onChange(arrayMove(blocks, oldIdx, newIdx));
   }, [blocks, onChange]);
 
-  const insertBlock = (type: BlockType, afterIndex: number) => {
+  const insertBlock = (type: BlockType, at: number) => {
     const newBlock: BlockWithId = { id: newId(), data: emptyBlock(type) };
     const next = [...blocks];
-    next.splice(afterIndex + 1, 0, newBlock);
+    next.splice(Math.max(0, Math.min(at, next.length)), 0, newBlock);
     onChange(next);
   };
 
   const updateBlock = (id: string, data: ContentBlock) => {
     onChange(blocks.map((b) => (b.id === id ? { ...b, data } : b)));
+  };
+
+  const duplicateBlock = (id: string) => {
+    const idx = blocks.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const copy: BlockWithId = {
+      id: newId(),
+      data: JSON.parse(JSON.stringify(blocks[idx].data)) as ContentBlock,
+    };
+    const next = [...blocks];
+    next.splice(idx + 1, 0, copy);
+    onChange(next);
   };
 
   const deleteBlock = async (id: string) => {
@@ -1619,7 +1691,7 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
             <div className="text-center py-12 text-text-subtle text-[13px]">
               <p>{i18n.t('admin.modules.be.no_blocks')}</p>
               <button
-                onClick={() => setMenuAfterIndex(-1)}
+                onClick={() => setInsertAt(0)}
                 className="mt-3 inline-flex items-center gap-1.5 text-neon-green hover:brightness-110 transition-all text-[13px]"
               >
                 <Plus className="h-4 w-4" /> {i18n.t('admin.modules.be.add_first_block')}
@@ -1632,25 +1704,31 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
               <BlockRow
                 item={item}
                 lang={activeLang}
+                index={i}
+                total={blocks.length}
                 onUpdate={(data) => updateBlock(item.id, data)}
                 onDelete={() => deleteBlock(item.id)}
+                onDuplicate={() => duplicateBlock(item.id)}
                 onMoveUp={() => moveBlock(item.id, -1)}
                 onMoveDown={() => moveBlock(item.id, 1)}
-                showMenu={menuAfterIndex === i}
-                onAddAfter={() => setMenuAfterIndex(i)}
+                onAddBefore={() => setInsertAt(i)}
+                onAddAfter={() => setInsertAt(i + 1)}
                 mediaContext={mediaContext}
               />
 
-              {/* Insert menu for this position */}
+              {/* Menú de inserción anclado a esta posición */}
               <AnimatePresence>
-                {menuAfterIndex === i && (
-                  <div ref={menuRef} className="absolute left-12 z-50 mt-2">
+                {(insertAt === i || insertAt === i + 1) && (
+                  <div
+                    ref={menuRef}
+                    className={cn('absolute left-12 z-50', insertAt === i ? 'top-0' : 'bottom-0 translate-y-full')}
+                  >
                     <BlockInsertMenu
                       onSelect={(type) => {
-                        insertBlock(type, i);
-                        setMenuAfterIndex(null);
+                        insertBlock(type, insertAt ?? i + 1);
+                        setInsertAt(null);
                       }}
-                      onClose={() => setMenuAfterIndex(null)}
+                      onClose={() => setInsertAt(null)}
                     />
                   </div>
                 )}
@@ -1660,27 +1738,27 @@ export function BlockEditor({ blocks, onChange, activeLang, mediaContext }: Bloc
         </SortableContext>
       </DndContext>
 
-      {/* Insert menu at top when no blocks */}
+      {/* Menú de inserción cuando no hay ningún bloque */}
       <AnimatePresence>
-        {menuAfterIndex === -1 && (
-          <div className="relative z-50">
+        {insertAt !== null && blocks.length === 0 && (
+          <div ref={menuRef} className="relative z-50">
             <BlockInsertMenu
               onSelect={(type) => {
-                insertBlock(type, -1);
-                setMenuAfterIndex(null);
+                insertBlock(type, 0);
+                setInsertAt(null);
               }}
-              onClose={() => setMenuAfterIndex(null)}
+              onClose={() => setInsertAt(null)}
             />
           </div>
         )}
       </AnimatePresence>
 
-      {/* Add block at end */}
+      {/* Agregar bloque al final */}
       {blocks.length > 0 && (
         <div className="pt-2 flex justify-center">
           <button
-            onClick={() => setMenuAfterIndex(blocks.length - 1)}
-            className="h-9 px-5 glass rounded-full text-[12px] text-text-subtle hover:text-neon-green border border-transparent hover:border-neon-green/20 flex items-center gap-2 transition-all duration-200"
+            onClick={() => setInsertAt(blocks.length)}
+            className="h-9 px-5 glass rounded-full text-[12px] text-text-subtle hover:text-neon-green border border-glass-border/12 hover:border-neon-green/20 flex items-center gap-2 transition-all duration-200"
           >
             <Plus className="h-3.5 w-3.5" /> {i18n.t('admin.modules.be.add_block')}
           </button>

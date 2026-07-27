@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProgressStore } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { useViewingPresence } from '@/hooks/usePresence';
-import { selfEnroll, unenrollSelf } from '@/services/courses.service';
+import { selfEnroll, unenrollSelf, previewUnenrollSelf } from '@/services/courses.service';
 import { getScenariosForCourse } from '@/services/scenarios.service';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
 import type { ChoiceScenario } from '@/data/choiceScenarios';
@@ -148,13 +148,16 @@ export default function CoursePage() {
     }
   };
 
+  // El staff llega aquí por "Ver como aprendiz", que lo matricula de verdad: al
+  // salir hay que borrar esa fila para que no cuente como persona matriculada.
   const handleLeave = async () => {
     if (!course) return;
     setEnrollBusy(true);
     try {
-      await unenrollSelf(course.id);
+      if (isAdminOrCapacitador) await previewUnenrollSelf(course.id);
+      else await unenrollSelf(course.id);
       invalidateLearnerCoursesCache();
-      toast.success(t('courses.left_ok'));
+      toast.success(isAdminOrCapacitador ? t('admin.courses.exit_preview_ok') : t('courses.left_ok'));
       reload();
     } catch {
       toast.error(t('courses.enroll_error'));
@@ -437,7 +440,7 @@ export default function CoursePage() {
                       className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-60"
                     >
                       <LogOut className="h-3.5 w-3.5" />
-                      {t('courses.leave')}
+                      {isAdminOrCapacitador ? t('admin.courses.exit_preview') : t('courses.leave')}
                     </button>
                   )}
                 </div>

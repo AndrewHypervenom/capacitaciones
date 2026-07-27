@@ -473,9 +473,13 @@ export default function ModulePage() {
           </Reveal>
           <Reveal>
             <div className="flex flex-wrap items-center gap-3 mb-5">
-              <NeonBadge color="neutral">
-                {t('module.of_modules', { idx: moduleIndex + 1, total: modules.length })}
-              </NeonBadge>
+              {moduleIndex >= 0 && (
+                <NeonBadge color="neutral">
+                  {/* El total son los hermanos visibles (mismo curso o plan general),
+                      no todos los módulos publicados de la plataforma. */}
+                  {t('module.of_modules', { idx: moduleIndex + 1, total: siblings.length })}
+                </NeonBadge>
+              )}
               <span className="inline-flex items-center gap-1.5 text-[12px] text-text-muted">
                 <Clock className="h-3.5 w-3.5" />
                 {t('module.duration', { min: module.duration })}

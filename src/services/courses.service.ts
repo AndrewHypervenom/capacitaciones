@@ -185,6 +185,52 @@ export async function unenrollSelf(courseId: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * Deshace la matrícula de previsualización del staff. Sin esto, cada clic en
+ * "Ver como aprendiz" dejaba una fila permanente en `course_assignments` que
+ * inflaba los contadores del curso. El RPC solo borra la fila si el propio
+ * usuario se la puso (assigned_by = auth.uid()): nunca quita una asignación
+ * hecha por otra persona.
+ */
+export async function previewUnenrollSelf(courseId: string): Promise<void> {
+  const { error } = await supabase.rpc('preview_unenroll_self', { p_course_id: courseId })
+  if (error) throw error
+}
+
+/** Cursos en los que el usuario actual se inscribió a sí mismo (preview o catálogo). */
+export async function getSelfEnrolledCourseIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('course_assignments')
+    .select('course_id')
+    .eq('user_id', userId)
+    .eq('assigned_by', userId)
+  if (error) throw error
+  return (data ?? []).map((r) => r.course_id)
+}
+
+/**
+ * Cuántos aprendices tiene cada campaña. Sirve para mostrar el alcance real de
+ * un curso: las personas que lo reciben por campaña no aparecen en la lista de
+ * asignaciones individuales. Lo que devuelva depende de la RLS de `profiles`
+ * (el capacitador solo ve las suyas), así que es una estimación desde su vista.
+ */
+export async function getLearnerCountsByCampaign(
+  campaignIds: string[],
+): Promise<Record<string, number>> {
+  if (campaignIds.length === 0) return {}
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('campaign_id')
+    .eq('role', 'learner')
+    .in('campaign_id', campaignIds)
+  if (error) throw error
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    if (row.campaign_id) counts[row.campaign_id] = (counts[row.campaign_id] ?? 0) + 1
+  }
+  return counts
+}
+
 export interface CourseStats {
   /** Aprendices de la campaña del que consulta (superadmin: todas). */
   enrolled: number
@@ -196,13 +242,33 @@ export interface CourseStats {
   is_owner: boolean
   /** Alcance total en todas las campañas (solo para dueño/superadmin). */
   global_enrolled: number
+  /** De `enrolled`, cuántos tienen asignación individual. */
+  direct_assigned: number
+  /** De `enrolled`, cuántos llegan por campaña asignada (sin fila propia). */
+  campaign_reach: number
+  /** Filas de staff (previsualizaciones) que NO se cuentan como matrícula. */
+  staff_preview: number
 }
 
 /** Métricas agregadas de un curso (solo dueño/superadmin). */
 export async function getCourseStats(courseId: string): Promise<CourseStats> {
   const { data, error } = await supabase.rpc('get_course_stats', { p_course_id: courseId })
   if (error) throw error
-  return data as unknown as CourseStats
+  // Los tres últimos campos los añade la versión de `get_course_stats` que excluye
+  // al staff; mientras no se corra ese SQL el RPC viejo no los trae.
+  const raw = (data ?? {}) as Partial<CourseStats>
+  return {
+    enrolled: raw.enrolled ?? 0,
+    completed: raw.completed ?? 0,
+    total_modules: raw.total_modules ?? 0,
+    completion_pct: raw.completion_pct ?? 0,
+    avg_progress_pct: raw.avg_progress_pct ?? 0,
+    is_owner: raw.is_owner ?? false,
+    global_enrolled: raw.global_enrolled ?? 0,
+    direct_assigned: raw.direct_assigned ?? 0,
+    campaign_reach: raw.campaign_reach ?? 0,
+    staff_preview: raw.staff_preview ?? 0,
+  }
 }
 
 /**

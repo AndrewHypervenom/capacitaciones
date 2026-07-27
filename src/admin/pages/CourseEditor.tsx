@@ -56,6 +56,7 @@ import {
   removeCourseAssignment,
   uploadCourseCover,
   getCourseStats,
+  getLearnerCountsByCampaign,
   type CourseWithModules,
   type CourseCampaignRow,
   type CourseAssignmentRow,
@@ -222,6 +223,9 @@ export default function CourseEditor() {
   const [draftCampaigns, setDraftCampaigns] = useState<Record<string, boolean>>({})
   const [draftUsers, setDraftUsers] = useState<Record<string, boolean>>({})
   const [savingAssign, setSavingAssign] = useState(false)
+  // Aprendices por campaña: lo que la lista de personas NO muestra. Sin esto,
+  // "N personas con el curso asignado" parecía contradecir a "Matriculados".
+  const [learnersByCampaign, setLearnersByCampaign] = useState<Record<string, number>>({})
 
   // ── Evaluación (condiciones del certificado + simulador + resultados) ──
   const [cond, setCond] = useState<CertConditions>(DEFAULT_CERT_CONDITIONS)
@@ -374,6 +378,37 @@ export default function CourseEditor() {
       profilesQuery.then(({ data }) => setProfiles((data ?? []) as Profile[]))
     }
   }, [courseId, course?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cuánta gente alcanza cada campaña marcada (se recalcula al marcar/desmarcar).
+  const draftCampaignIds = useMemo(() => Object.keys(draftCampaigns), [draftCampaigns])
+  useEffect(() => {
+    if (draftCampaignIds.length === 0) { setLearnersByCampaign({}); return }
+    getLearnerCountsByCampaign(draftCampaignIds)
+      .then(setLearnersByCampaign)
+      .catch(() => {})
+  }, [draftCampaignIds.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Alcance total estimado: asignaciones individuales + aprendices de las
+  // campañas marcadas. Las personas que ya tienen fila propia no se cuentan dos
+  // veces solo si están en `profiles` (la vista del capacitador es su campaña).
+  const audienceReach = useMemo(() => {
+    const direct = Object.keys(draftUsers)
+    const campaignLearners = draftCampaignIds.reduce(
+      (sum, id) => sum + (learnersByCampaign[id] ?? 0),
+      0,
+    )
+    // Descuento los individuales que ya vienen incluidos en una campaña marcada.
+    const overlap = direct.filter((uid) => {
+      const p = profiles.find((x) => x.id === uid)
+      return !!p && p.role === 'learner' && !!p.campaign_id && draftCampaignIds.includes(p.campaign_id)
+    }).length
+    return {
+      direct: direct.length,
+      campaigns: draftCampaignIds.length,
+      campaignLearners,
+      total: direct.length + campaignLearners - overlap,
+    }
+  }, [draftUsers, draftCampaignIds, learnersByCampaign, profiles])
 
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
@@ -1356,6 +1391,20 @@ export default function CourseEditor() {
               </GlassCard>
             ))}
           </div>
+          {/* De dónde sale el número de matriculados: sin este desglose, la lista
+              de asignaciones individuales parecía no cuadrar con el contador. */}
+          {(stats.campaign_reach > 0 || stats.staff_preview > 0) && (
+            <p className="text-[11px] text-text-subtle mt-2">
+              {stats.campaign_reach > 0 &&
+                t('admin.courses.stats_breakdown', {
+                  direct: stats.direct_assigned,
+                  campaign: stats.campaign_reach,
+                })}
+              {stats.campaign_reach > 0 && stats.staff_preview > 0 && ' · '}
+              {stats.staff_preview > 0 &&
+                t('admin.courses.stats_staff_excluded', { n: stats.staff_preview })}
+            </p>
+          )}
         </div>
       )}
 
@@ -2110,12 +2159,39 @@ export default function CourseEditor() {
                 })
               )}
             </div>
-            {Object.keys(draftUsers).length > 0 && (
+            {audienceReach.direct > 0 && (
               <p className="text-[12px] text-text-subtle mt-3">
-                {t('admin.courses.assigned_users_count', { n: Object.keys(draftUsers).length })}
+                {t('admin.courses.assigned_users_count', { n: audienceReach.direct })}
               </p>
             )}
           </div>
+
+          {/* Alcance total — el contador de arriba solo cuenta asignaciones una a
+              una; quien recibe el curso por campaña no aparece en esa lista, y esa
+              es la diferencia contra "Matriculados". */}
+          {(audienceReach.direct > 0 || audienceReach.campaigns > 0 || form.visibility === 'catalog') && (
+            <GlassCard intensity="subtle" rounded="2xl" className="px-4 py-3.5">
+              <h3 className="flex items-center gap-2 text-[13px] font-semibold text-text mb-1.5">
+                <Users className="h-4 w-4 text-text-muted" />
+                {t('admin.courses.reach_title')}
+              </h3>
+              <p className="text-[20px] font-bold tabular-nums text-text leading-none mb-2">
+                {t('admin.courses.reach_people', { n: audienceReach.total })}
+              </p>
+              <ul className="space-y-1 text-[12px] text-text-muted">
+                <li>{t('admin.courses.reach_direct', { n: audienceReach.direct })}</li>
+                {audienceReach.campaigns > 0 && (
+                  <li>
+                    {t('admin.courses.reach_campaigns', {
+                      n: audienceReach.campaignLearners,
+                      c: audienceReach.campaigns,
+                    })}
+                  </li>
+                )}
+                {form.visibility === 'catalog' && <li>{t('admin.courses.reach_catalog')}</li>}
+              </ul>
+            </GlassCard>
+          )}
 
           {/* Barra de guardado */}
           <div className="sticky bottom-0 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 border-t border-line bg-bg/80 backdrop-blur flex items-center justify-between gap-3">

@@ -22,8 +22,10 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
   // Inicializamos el bloque leyendo los datos guardados o creando una plantilla base limpia
   const [block, setBlock] = useState<GameClassifyBlock>(() => {
     if (section.blocks_data && Array.isArray(section.blocks_data)) {
-      const first = section.blocks_data[0] as any
-      if (first?.type === 'game-classify') return first
+      // Se busca el bloque del juego (puede no ser el primero: la sección
+      // admite además bloques normales de contenido).
+      const found = (section.blocks_data as any[]).find((b) => b?.type === 'game-classify')
+      if (found) return found
     }
     return {
       id: crypto.randomUUID(),

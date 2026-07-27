@@ -291,8 +291,10 @@ function GameSortEditorWrapper({
   const { t } = useTranslation()
   const getInitialBlock = (): GameSortBlock => {
     if (section.blocks_data && Array.isArray(section.blocks_data)) {
-      const first = section.blocks_data[0] as any
-      if (first?.type === 'game-sort') return first
+      // El bloque del juego puede no ser el primero: la sección admite además
+      // bloques normales de contenido.
+      const found = (section.blocks_data as any[]).find((b) => b?.type === 'game-sort')
+      if (found) return found
     }
       return {
       type: 'game-sort' as const,
@@ -327,6 +329,12 @@ function GameSortEditorWrapper({
   )
 }
 
+// Identificador local (no persistido) para cada bloque del editor.
+let localBlockSeq = 0
+const nextLocalBlockId = () => `sec-block-${++localBlockSeq}-${Date.now()}`
+
+const GAME_BLOCK_TYPES = new Set(['game-sort', 'game-classify'])
+
 function SectionEditorPanel({
   section,
   campaignId,
@@ -352,9 +360,12 @@ function SectionEditorPanel({
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'ok'>('idle')
   const [error, setError] = useState<string | null>(null)
   
+  // Ojo: el id es solo para React/dnd y para identificar el bloque al borrarlo.
+  // NO se reutiliza `data.id` porque la IA puede repetirlo entre bloques y entonces
+  // borrar uno se llevaba a todos los que compartían ese id.
   const [blocks, setBlocks] = useState<BlockWithId[]>(() => {
     if (!section.blocks_data || !Array.isArray(section.blocks_data)) return []
-    return section.blocks_data.map((data, i) => ({ id: (data as any).id || `loaded-${i}-${Date.now()}`, data: data as ContentBlock }))
+    return section.blocks_data.map((data) => ({ id: nextLocalBlockId(), data: data as ContentBlock }))
   })
   
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -424,6 +435,98 @@ function SectionEditorPanel({
 
   const parseParagraphs = (text: string): string[] =>
     text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+
+  // En secciones de juego el bloque del juego tiene su propio editor arriba; la
+  // lista de bloques muestra solo el contenido normal que acompaña al juego.
+  const isGameSection = sectionStyle === 'game-sort' || sectionStyle === 'game-classify'
+  const contentBlocks = isGameSection
+    ? blocks.filter((b) => !GAME_BLOCK_TYPES.has(b.data.type))
+    : blocks
+
+  // ── Contenido antiguo → bloques ──────────────────────────────────────
+  // Antes del sistema de bloques (y en los módulos IA viejos) el texto vivía en
+  // `body_*`, el callout y la media como campos sueltos de la sección: al no ser
+  // bloques no se podían borrar por partes, solo la sección entera. Esto los
+  // convierte en bloques individuales (movibles, duplicables y borrables).
+  const hasLegacyContent =
+    !!(body.es.trim() || body.en.trim() || body.pt.trim()) ||
+    (hasCallout && !!(callout.es || callout.en || callout.pt)) ||
+    (hasMedia && !!mediaUrl)
+
+  const convertLegacyToBlocks = () => {
+    const paras = {
+      es: parseParagraphs(body.es),
+      en: parseParagraphs(body.en),
+      pt: parseParagraphs(body.pt),
+    }
+    const count = Math.max(paras.es.length, paras.en.length, paras.pt.length)
+    const converted: BlockWithId[] = []
+
+    for (let i = 0; i < count; i++) {
+      converted.push({
+        id: nextLocalBlockId(),
+        data: {
+          type: 'paragraph',
+          text: { es: paras.es[i] ?? '', en: paras.en[i] ?? '', pt: paras.pt[i] ?? '' },
+        },
+      })
+    }
+
+    if (hasCallout && (callout.es || callout.en || callout.pt)) {
+      converted.push({
+        id: nextLocalBlockId(),
+        data: { type: 'callout', kind: calloutKind, text: { ...callout } },
+      })
+    }
+
+    if (hasMedia && mediaUrl) {
+      const caption = { ...mediaCaption }
+      if (mediaType === 'image') {
+        converted.push({
+          id: nextLocalBlockId(),
+          data: {
+            type: 'image',
+            url: mediaUrl,
+            caption,
+            size: mediaSize === 'bleed' ? 'full' : mediaSize,
+            align: mediaAlign,
+            shadow: mediaShadow,
+          },
+        })
+      } else if (mediaType) {
+        converted.push({
+          id: nextLocalBlockId(),
+          data: {
+            type: 'video',
+            kind: mediaType === 'youtube' ? 'youtube' : mediaType === 'vimeo' ? 'vimeo' : 'upload',
+            url: mediaUrl,
+            caption,
+          },
+        })
+      }
+    }
+
+    if (converted.length === 0) return
+
+    // Los bloques convertidos van primero: así conservan el orden en que el
+    // aprendiz los veía (cuerpo → callout → media → bloques ya existentes).
+    // El bloque de juego, si lo hay, se mantiene al frente.
+    setBlocks([
+      ...blocks.filter((b) => GAME_BLOCK_TYPES.has(b.data.type)),
+      ...converted,
+      ...blocks.filter((b) => !GAME_BLOCK_TYPES.has(b.data.type)),
+    ])
+    // Se vacían los campos antiguos para que el contenido no salga duplicado.
+    // La media NO se borra del Storage: el bloque nuevo apunta a la misma URL.
+    setBody({ es: '', en: '', pt: '' })
+    setHasCallout(false)
+    setCallout({ es: '', en: '', pt: '' })
+    setHasMedia(false)
+    setMediaType(null)
+    setMediaUrl(null)
+    onDirty(true)
+    toast.success(t('admin.modules.ed_legacy_done'))
+  }
 
   const isFirstRender = useRef(true)
   useEffect(() => {
@@ -925,18 +1028,6 @@ function SectionEditorPanel({
         )}
       </div>
 
-      {/* ── BLOQUES (Renders normales) ── */}
-      {sectionStyle !== 'game-sort' && sectionStyle !== 'game-classify' && (
-        <div className="space-y-4">
-          <GroupDivider label={t('admin.modules.ed_group_blocks')} />
-          <BlockEditor
-            blocks={blocks}
-            onChange={(next) => { setBlocks(next); onDirty(true) }}
-            activeLang={lang}
-            mediaContext={section.id ? { moduleId: section.module_id, sectionId: section.id, campaignId } : undefined}
-          />
-        </div>
-      )}
       {/* ── ORDENAR ── */}
       {sectionStyle === 'game-sort' && (
         <GameSortEditorWrapper
@@ -949,7 +1040,12 @@ function SectionEditorPanel({
               en: updated.title?.en || heading.en,
               pt: updated.title?.pt || heading.pt,
             })
-            setBlocks([{ id: 'game-sort-block', data: updated }])
+            // Se reemplaza solo el bloque del juego: los bloques de contenido
+            // que el capacitador haya agregado a la sección se conservan.
+            setBlocks((prev) => [
+              { id: 'game-sort-block', data: updated },
+              ...prev.filter((b) => !GAME_BLOCK_TYPES.has(b.data.type)),
+            ])
             onDirty(true)
           }}
         />
@@ -968,13 +1064,49 @@ function SectionEditorPanel({
                 en: updated.title?.en || heading.en,
                 pt: updated.title?.pt || heading.pt
               })
-              // Almacenamos el bloque del juego dentro del arreglo de bloques locales de la sección
-              setBlocks([{ id: `game-classify-${Date.now()}`, data: updated }])
+              setBlocks((prev) => [
+                { id: 'game-classify-block', data: updated },
+                ...prev.filter((b) => !GAME_BLOCK_TYPES.has(b.data.type)),
+              ])
               onDirty(true)
             }}
           />
         </div>
       )}
+
+      {/* ── BLOQUES ── */}
+      <div className="space-y-4">
+        <GroupDivider label={t('admin.modules.ed_group_blocks')} />
+
+        {hasLegacyContent && (
+          <GlassCard intensity="subtle" rounded="xl" className="p-4 space-y-2.5 border border-amber-400/25">
+            <p className="text-[12px] font-semibold text-amber-400">{t('admin.modules.ed_legacy_title')}</p>
+            <p className="text-[11px] text-text-muted leading-relaxed">{t('admin.modules.ed_legacy_desc')}</p>
+            <Button variant="glass" size="sm" onClick={convertLegacyToBlocks}>
+              <Layers className="h-3.5 w-3.5" />
+              {t('admin.modules.ed_legacy_convert')}
+            </Button>
+          </GlassCard>
+        )}
+
+        {isGameSection && (
+          <p className="text-[11px] text-text-subtle">{t('admin.modules.ed_game_blocks_hint')}</p>
+        )}
+
+        <BlockEditor
+          blocks={contentBlocks}
+          onChange={(next) => {
+            // En secciones de juego el bloque del juego no se lista aquí (se
+            // edita arriba), así que se vuelve a anteponer al guardar.
+            setBlocks(isGameSection
+              ? [...blocks.filter((b) => GAME_BLOCK_TYPES.has(b.data.type)), ...next]
+              : next)
+            onDirty(true)
+          }}
+          activeLang={lang}
+          mediaContext={section.id ? { moduleId: section.module_id, sectionId: section.id, campaignId } : undefined}
+        />
+      </div>
 
       {/* ── Pie de guardado ── */}
       <div className="pt-5 border-t border-glass-border/8 flex items-center gap-3">

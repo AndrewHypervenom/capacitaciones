@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, LogOut, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -11,6 +11,8 @@ import {
   deleteCourse,
   getShareableCourses,
   previewEnrollSelf,
+  previewUnenrollSelf,
+  getSelfEnrolledCourseIds,
   type CourseWithModules,
   type AdminCourse,
   type ShareableCourse,
@@ -57,6 +59,10 @@ export default function CourseList() {
   const { user, campaignId: authCampaignId, isSuperAdmin } = useAuth()
   // Curso que se está abriendo "como aprendiz" (auto-inscripción en curso).
   const [previewingId, setPreviewingId] = useState<string | null>(null)
+  // Cursos donde el staff ya se auto-inscribió para previsualizar. Esa matrícula
+  // es real (cuenta en `course_assignments`), así que la pantalla ofrece salir
+  // en vez de dejarla ahí sumando gente que no es alumna del curso.
+  const [previewEnrolled, setPreviewEnrolled] = useState<Set<string>>(new Set())
   // El pulso que señala "Ver como aprendiz" late hasta que se usa una vez y
   // luego no vuelve: es una ayuda de descubrimiento, no un adorno permanente.
   const [previewHintSeen, setPreviewHintSeen] = useState(() => {
@@ -198,6 +204,14 @@ export default function CourseList() {
     setSelectedCampaignId(focusCampaignId)
   }, [focusCampaignId, campaigns])
 
+  // Qué cursos tengo yo mismo matriculados por haber previsualizado antes.
+  useEffect(() => {
+    if (!user?.id) return
+    getSelfEnrolledCourseIds(user.id)
+      .then((ids) => setPreviewEnrolled(new Set(ids)))
+      .catch(() => {})
+  }, [user?.id])
+
   useEffect(() => {
     if (!focusId || loading) return
     focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -314,11 +328,32 @@ export default function CourseList() {
     setPreviewingId(course.id)
     try {
       await previewEnrollSelf(course.id)
+      setPreviewEnrolled((prev) => new Set(prev).add(course.id))
       invalidateLearnerCoursesCache()
       toast.success(t('admin.courses.view_as_learner_ok'))
       navigate('/dashboard')
     } catch {
       toast.error(t('admin.courses.view_as_learner_error'))
+    } finally {
+      setPreviewingId(null)
+    }
+  }
+
+  // Deshace la previsualización: quita al staff de la matrícula del curso para
+  // que no siga contando como persona matriculada en las métricas.
+  const handleExitPreview = async (course: CourseWithModules) => {
+    setPreviewingId(course.id)
+    try {
+      await previewUnenrollSelf(course.id)
+      setPreviewEnrolled((prev) => {
+        const next = new Set(prev)
+        next.delete(course.id)
+        return next
+      })
+      invalidateLearnerCoursesCache()
+      toast.success(t('admin.courses.exit_preview_ok'))
+    } catch {
+      toast.error(t('admin.courses.exit_preview_error'))
     } finally {
       setPreviewingId(null)
     }
@@ -646,6 +681,17 @@ export default function CourseList() {
                       {t('admin.courses.view_as_learner')}
                     </button>
                   </PulseHint>
+                  {previewEnrolled.has(course.id) && (
+                    <button
+                      onClick={() => handleExitPreview(course)}
+                      disabled={previewingId === course.id}
+                      title={t('admin.courses.exit_preview_hint')}
+                      className="min-h-[44px] shrink-0 flex items-center justify-center gap-1.5 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:border-danger/40 hover:text-danger transition-colors disabled:opacity-60"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      {t('admin.courses.exit_preview')}
+                    </button>
+                  )}
                   <Link
                     to={`/admin/courses/${course.id}`}
                     className="min-h-[44px] shrink-0 flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:text-text hover:bg-glass/8 transition-colors"
