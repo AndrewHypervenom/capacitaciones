@@ -18,6 +18,7 @@ import {
   GraduationCap,
   ImagePlus,
   Info,
+  Languages,
   Layers,
   ListChecks,
   Loader2,
@@ -64,6 +65,8 @@ import {
 } from '@/services/courses.service'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
+import { TranslationModal } from '@/admin/components/TranslationModal'
+import { getCourseTranslationState } from '@/services/translation.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
@@ -178,6 +181,9 @@ export default function CourseEditor() {
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
   const [openingWorld, setOpeningWorld] = useState(false)
+  // Traducción diferida: cuántas piezas del curso siguen solo en español.
+  const [transPending, setTransPending] = useState(0)
+  const [translateOpen, setTranslateOpen] = useState(false)
   // Estado del mundo del curso: undefined = cargando, null = no existe, objeto = existe (draft/published)
   const [world, setWorld] = useState<WorldRow | null | undefined>(undefined)
   const [publishingWorld, setPublishingWorld] = useState(false)
@@ -412,6 +418,20 @@ export default function CourseEditor() {
 
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
+
+  // Cuánto del curso sigue solo en español (el contenido se genera es-only y se
+  // traduce a pedido). Alimenta el contador del botón "Traducir".
+  const refreshTranslationState = useCallback(async () => {
+    if (!courseId) return
+    try {
+      const state = await getCourseTranslationState(courseId)
+      setTransPending(state.pendingCount)
+    } catch {
+      setTransPending(0) // sin datos preferimos no mostrar un contador falso
+    }
+  }, [courseId])
+
+  useEffect(() => { void refreshTranslationState() }, [refreshTranslationState])
 
   // Cuántos módulos de la campaña se pueden traer a este curso. A diferencia del
   // picker anterior (que solo listaba huérfanos), incluye los que ya están en OTRO
@@ -1129,6 +1149,23 @@ export default function CourseEditor() {
           >
             <Globe className="h-3.5 w-3.5" />
             {openingWorld ? t('admin.courses.opening_world') : t('admin.courses.view_world')}
+          </Button>
+
+          {/* Traducción diferida: el contenido nace en español y se traduce una
+              sola vez, cuando el capacitador da el curso por terminado. */}
+          <Button
+            variant="glass"
+            size="sm"
+            onClick={() => setTranslateOpen(true)}
+            className="flex items-center gap-1.5"
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {t('admin.translate.button')}
+            {transPending > 0 && (
+              <span className="ml-0.5 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
+                {transPending}
+              </span>
+            )}
           </Button>
         </div>
       </div>
@@ -1933,6 +1970,17 @@ export default function CourseEditor() {
             </Link>
           </div>
         </div>
+      )}
+
+      {translateOpen && (
+        <TranslationModal
+          scope="course"
+          id={course.id}
+          title={course.title_es}
+          campaignId={course.campaign_id}
+          onClose={() => setTranslateOpen(false)}
+          onDone={refreshTranslationState}
+        />
       )}
 
       {libraryOpen && (

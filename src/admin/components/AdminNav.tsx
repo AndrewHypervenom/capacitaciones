@@ -97,6 +97,7 @@ export function AdminNav() {
       items: [
         { to: '/admin/chat', label: t('admin.nav.chat', 'Chat de ayuda'), end: false },
         { to: '/admin/ai-usage', label: t('admin.nav.ai_usage', 'Uso de IA'), end: false },
+        { to: '/admin/limits', label: t('admin.nav.ai_limits', 'Límites de IA'), end: false },
       ]
     }] : []),
     // Supervisión (bitácora de actividad + aprobación de eliminaciones).

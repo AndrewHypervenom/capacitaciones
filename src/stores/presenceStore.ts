@@ -618,6 +618,7 @@ const VIEW_PATTERNS: Array<[RegExp, string]> = [
   [/^\/admin\/overview/, 'presence.views.overview'],
   [/^\/admin\/import/, 'presence.views.import'],
   [/^\/admin\/ai-usage/, 'presence.views.ai_usage'],
+  [/^\/admin\/limits/, 'presence.views.ai_limits'],
   [/^\/admin\/chat/, 'presence.views.chat'],
   [/^\/admin/, 'presence.views.admin_home'],
   [/^\/dashboard/, 'presence.views.dashboard'],

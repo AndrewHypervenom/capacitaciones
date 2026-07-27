@@ -11,6 +11,7 @@ import {
   EyeOff,
   HelpCircle,
   Image,
+  Languages,
   Layers,
   Lightbulb,
   Loader2,
@@ -74,6 +75,8 @@ import { vimeoEmbedUrl } from '@/lib/vimeo'
 import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
+import { TranslationModal } from '@/admin/components/TranslationModal'
+import { isUntranslated } from '@/services/translation.service'
 import { ClassifyGameEditor } from '@/components/modules/blocks/ClassifyGameEditor'
 import { useEditingPresence } from '@/hooks/usePresence'
 import { usePresenceStore } from '@/stores/presenceStore'
@@ -1376,8 +1379,13 @@ export default function ModuleEditor() {
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null)
   const [splitView, setSplitView] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [translateOpen, setTranslateOpen] = useState(false)
 
   const saveFnRef = useRef<(() => void) | null>(null)
+
+  // ¿El módulo sigue solo en español? Se deduce comparando es/en/pt: no hay
+  // columna nueva en la base para esto.
+  const untranslated = useMemo(() => (mod ? isUntranslated(mod) : false), [mod])
 
   // Presencia colaborativa: anuncio en qué módulo Y en qué sección estoy, y
   // obtengo la lista de coeditores que lo tienen abierto ahora mismo. La sección
@@ -1807,6 +1815,20 @@ export default function ModuleEditor() {
             >
               <Columns2 className="h-3.5 w-3.5" />
             </button>
+            {/* Traducir a EN/PT: el módulo nace en español y se traduce cuando
+                el capacitador lo da por terminado (ahorro de IA). */}
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={() => setTranslateOpen(true)}
+              title={t('admin.translate.button')}
+            >
+              <Languages className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t('admin.translate.button')}</span>
+              {untranslated && (
+                <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
+              )}
+            </Button>
             <Button
               variant="glass"
               size="sm"
@@ -1907,6 +1929,22 @@ export default function ModuleEditor() {
         onClose={() => setGalleryOpen(false)}
         onSelect={handleAddSection}
       />
+
+      {translateOpen && (
+        <TranslationModal
+          scope="module"
+          id={mod.id}
+          title={mod.title_es}
+          campaignId={mod.campaign_id}
+          onClose={() => setTranslateOpen(false)}
+          onDone={async () => {
+            // Recargar deja a la vista con el en/pt recién escrito.
+            const fresh = await getModuleWithSectionsRaw(mod.id)
+            setMod(fresh)
+            setSections(fresh.module_sections)
+          }}
+        />
+      )}
     </div>
   )
 }

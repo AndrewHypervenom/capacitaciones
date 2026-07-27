@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
+import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import type { WorldGenOptions } from '@/services/worlds.service'
 
 /** Módulo elegido; la forma que consume `generateBulkModuleRegions`. */
@@ -457,6 +458,7 @@ export function WorldModulePickerModal({
             {/* ── Footer ── */}
             <div className="border-t border-line px-5 py-4">
               <AiCreditsNotice className="mb-3" />
+              <AiQuotaNotice className="mb-3" />
               <div className="flex items-center justify-end gap-3">
               <button
                 onClick={onClose}

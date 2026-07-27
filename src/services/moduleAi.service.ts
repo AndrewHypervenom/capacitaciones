@@ -9,6 +9,7 @@ import {
 } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
 import { addModuleToCourse } from '@/services/courses.service'
+import { consumeAiOperation, isQuotaExceeded, refundAiOperation } from '@/services/aiQuota.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { cropCaptures, suggestModuleSectionCount, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
 
@@ -42,6 +43,10 @@ export function runModuleAiGeneration(input: ModuleAiInput): void {
 
   void (async () => {
     try {
+      // Cupo diario: se descuenta antes de gastar un solo token. Si no queda, la
+      // tarea falla de una con el motivo, sin llamar a la IA.
+      await consumeAiOperation('module', doc.fileName, campaignId)
+
       const description = input.instructions.trim()
         || `Crea un módulo de formación a partir del documento "${doc.fileName}". `
           + 'Usa únicamente el conocimiento presente en el documento, sin inventar contenido.'
@@ -107,6 +112,8 @@ export function runModuleAiGeneration(input: ModuleAiInput): void {
       }
 
       if (!sections.length) {
+        // No se guardó nada: se devuelve la operación al cupo del día.
+        await refundAiOperation('module')
         if (aborted || signal.aborted) bgTask.markCanceled(taskId, i18n.t('bgtask.canceled'))
         else bgTask.fail(taskId, i18n.t('admin.import.bg_no_sections'))
         return
@@ -139,7 +146,9 @@ export function runModuleAiGeneration(input: ModuleAiInput): void {
         new CustomEvent(MODULE_AI_CREATED_EVENT, { detail: { campaignId, courseId: input.course?.id ?? null, moduleId } }),
       )
     } catch (e) {
-      if (signal.aborted || (e as Error)?.name === 'AbortError') {
+      if (isQuotaExceeded(e)) {
+        bgTask.fail(taskId, i18n.t('admin.ai_limits.blocked_task'))
+      } else if (signal.aborted || (e as Error)?.name === 'AbortError') {
         bgTask.markCanceled(taskId, i18n.t('bgtask.canceled'))
       } else {
         bgTask.fail(taskId, (e as Error).message || i18n.t('admin.import.bg_no_sections'))

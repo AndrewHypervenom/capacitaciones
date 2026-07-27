@@ -33,6 +33,7 @@ import Worlds from './pages/Worlds'
 import WorldDetail from './pages/WorldDetail'
 import ChatLogs from './pages/ChatLogs'
 import AiUsage from './pages/AiUsage'
+import AiLimits from './pages/AiLimits'
 import Gamification from './pages/Gamification'
 import ActivityLog from './pages/ActivityLog'
 import DeletionApprovals from './pages/DeletionApprovals'
@@ -121,6 +122,8 @@ export default function AdminRouter() {
           <Route path="chat" element={isSuperAdmin ? <ChatLogs /> : <Navigate to="/admin" replace />} />
           {/* Panel de uso de IA y costos: solo superadmin */}
           <Route path="ai-usage" element={isSuperAdmin ? <AiUsage /> : <Navigate to="/admin" replace />} />
+          {/* Cupo diario de operaciones con IA (y sus excepciones): solo superadmin */}
+          <Route path="limits" element={isSuperAdmin ? <AiLimits /> : <Navigate to="/admin" replace />} />
           {/* Vista unificada de progreso (Mundos + Módulos); las rutas viejas redirigen. */}
           <Route path="evaluaciones" element={<Navigate to="/admin/progress?view=modules" replace />} />
           <Route path="simulations" element={<SimulationList />} />

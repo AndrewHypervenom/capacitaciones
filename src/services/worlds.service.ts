@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { getModuleContextText } from '@/services/ai.service'
 import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
+import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
 import { bgTask } from '@/stores/bgTaskStore'
 import i18n from '@/i18n'
 
@@ -364,6 +365,9 @@ export function generateLevelsForRegion(opts: {
     if (!w) { bgTask.fail(taskId, i18n.t('worldgen.error')); return }
     const world = w as WorldRow
     try {
+      // Cupo diario: generar los niveles de una región es UNA operación.
+      await consumeAiOperation('world', opts.regionName, world.campaign_id)
+
       if (opts.moduleId) {
         await generateModuleRegionLevels(world, opts.regionId, opts.moduleId, genOpts, signal)
       } else {
@@ -374,7 +378,9 @@ export function generateLevelsForRegion(opts: {
       }
       bgTask.succeed(taskId, i18n.t('worldgen.done', { n: 1 }))
     } catch (e) {
-      if (e instanceof CanceledError || signal.aborted) {
+      if (isQuotaExceeded(e)) {
+        bgTask.fail(taskId, i18n.t('admin.ai_limits.blocked_task'))
+      } else if (e instanceof CanceledError || signal.aborted) {
         bgTask.markCanceled(taskId, { detail: i18n.t('bgtask.canceled_incomplete'), incomplete: true })
       } else {
         bgTask.fail(taskId, i18n.t('worldgen.error'))
@@ -404,6 +410,10 @@ export function generateBulkModuleRegions(
     let ok = 0
     let failed = 0
     try {
+      // Cupo diario: armar el mundo de una tacada es UNA operación, sin importar
+      // cuántas regiones lleve (así el capacitador no paga por lote).
+      await consumeAiOperation('world', world.name, world.campaign_id)
+
       for (let i = 0; i < modules.length; i++) {
         throwIfAborted(signal)
         const m = modules[i]
@@ -436,7 +446,9 @@ export function generateBulkModuleRegions(
       else if (ok === 0) bgTask.fail(taskId, i18n.t('worldgen.error'))
       else bgTask.succeed(taskId, { detail: i18n.t('worldgen.partial', { ok, fail: failed }), incomplete: true })
     } catch (e) {
-      if (e instanceof CanceledError || signal.aborted) {
+      if (isQuotaExceeded(e)) {
+        bgTask.fail(taskId, i18n.t('admin.ai_limits.blocked_task'))
+      } else if (e instanceof CanceledError || signal.aborted) {
         bgTask.markCanceled(taskId, { detail: i18n.t('bgtask.canceled_incomplete'), incomplete: true })
       } else {
         bgTask.fail(taskId, i18n.t('worldgen.error'))

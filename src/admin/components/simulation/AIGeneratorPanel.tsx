@@ -13,8 +13,10 @@ import {
   type ScenarioLength, type SimProgress,
 } from '@/services/ai.service'
 import { extractDocumentText, ACCEPTED_DOC_EXTENSIONS } from '@/lib/documentExtract'
+import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
 import { Button } from '@/components/ui/Button'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
+import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
@@ -179,6 +181,14 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     }
 
     try {
+      // Cupo diario: generar, mejorar o traducir un escenario cuenta como UNA
+      // operación. Se descuenta antes de llamar a la IA.
+      await consumeAiOperation(
+        mode === 'translate' ? 'translation' : 'simulation',
+        description.slice(0, 80) || i18n.t('admin.simulations.ai_gen.title_generating'),
+        campaignId,
+      )
+
       let moduleContext: string | undefined
       if (usesModule) {
         setNote(i18n.t('admin.simulations.ai_gen.note_reading_module'))
@@ -208,7 +218,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     } catch (e) {
       // Cancelación del usuario: no es un error, se descarta en silencio.
       if (controller.signal.aborted || (e as Error)?.name === 'AbortError') return
-      setError((e as Error).message)
+      setError(isQuotaExceeded(e) ? i18n.t('admin.ai_limits.blocked_task') : (e as Error).message)
     } finally {
       abortRef.current = null
       setLoading(false)
@@ -259,6 +269,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
       {open && (
         <div className="px-5 pb-5 space-y-4 border-t border-glass-border/10">
           <AiCreditsNotice className="mt-4" />
+          <AiQuotaNotice className="mt-4" />
           <div className="pt-4">
             <label className="text-xs font-medium text-text-muted mb-1.5 block">
               {i18n.t('admin.simulations.ai_gen.what_scenario_about')}

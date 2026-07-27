@@ -18,6 +18,7 @@ import { getCourseById, type CourseWithModules } from '@/services/courses.servic
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
+import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
@@ -171,6 +172,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
       {/* ── Configuración (campaña + archivo + instrucciones) ── */}
       <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 mb-4">
         <AiCreditsNotice className="mb-5" />
+        <AiQuotaNotice className="mb-5" />
         {/* Campaña destino */}
         {campaigns.length > 1 && (
           <div className="mb-5">

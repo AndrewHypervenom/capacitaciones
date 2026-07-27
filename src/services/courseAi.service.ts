@@ -9,6 +9,7 @@ import {
 } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
 import { createCourse, addModuleToCourse } from '@/services/courses.service'
+import { consumeAiOperation, isQuotaExceeded, refundAiOperation } from '@/services/aiQuota.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { cropCaptures, suggestModuleSectionCount, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
 
@@ -45,6 +46,9 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
 
   void (async () => {
     try {
+      // Cupo diario: se descuenta antes de gastar tokens.
+      await consumeAiOperation('module', description, campaignId)
+
       // Modo manual + PDF escaneado (solo imágenes, sin texto): localizar y recortar
       // las capturas relevantes de las páginas renderizadas para insertarlas.
       let images: ExtractedImage[] = doc.images
@@ -111,8 +115,9 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
         }
       }
 
-      // Sin ninguna sección: nada que guardar.
+      // Sin ninguna sección: nada que guardar, y el cupo se devuelve.
       if (!sections.length) {
+        await refundAiOperation('module')
         if (aborted || signal.aborted) bgTask.markCanceled(taskId, i18n.t('bgtask.canceled'))
         else bgTask.fail(taskId, i18n.t('admin.courses.ai_no_sections'))
         return
@@ -142,7 +147,9 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
         new CustomEvent(COURSE_AI_CREATED_EVENT, { detail: { campaignId, courseId: course.id } }),
       )
     } catch (e) {
-      if (signal.aborted || (e as Error)?.name === 'AbortError') {
+      if (isQuotaExceeded(e)) {
+        bgTask.fail(taskId, i18n.t('admin.ai_limits.blocked_task'))
+      } else if (signal.aborted || (e as Error)?.name === 'AbortError') {
         bgTask.markCanceled(taskId, i18n.t('bgtask.canceled'))
       } else {
         bgTask.fail(taskId, (e as Error).message || i18n.t('admin.courses.ai_created_error'))
