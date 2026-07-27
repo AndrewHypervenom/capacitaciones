@@ -606,113 +606,155 @@ export default function CourseList() {
               )}
               padding="none"
             >
-              {/* Portada / franja de color */}
+              {/* Portada / franja de color. El estado (publicado/borrador) va
+                  sobre la portada como pastilla de vidrio: se lee de un vistazo
+                  y deja el título libre en una sola línea. */}
               <div
-                className="h-20 w-full relative"
+                className="h-24 w-full relative"
                 style={{
                   background: courseHasCover(course)
                     ? course.cover_fit === 'contain'
                       ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)`
                       : undefined
-                    : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)`,
+                    : `linear-gradient(120deg, ${course.color}44, ${course.color}0D)`,
                 }}
               >
                 <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
+                {/* Velo inferior: asegura contraste del avatar y del borde con el cuerpo */}
+                <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-black/45 to-transparent pointer-events-none" />
                 <div
-                  className="absolute -bottom-5 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md"
+                  className="absolute -bottom-5 left-4 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg ring-2 ring-bg/70 transition-transform duration-300 ease-apple group-hover:scale-105"
                   style={{ background: course.color }}
                 >
                   <GraduationCap className="h-5 w-5" />
+                </div>
+                <div className="absolute top-2 left-2">
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide backdrop-blur-sm',
+                      course.is_published
+                        ? 'bg-black/45 text-white ring-1 ring-white/20'
+                        : 'bg-black/45 text-white/75 ring-1 ring-white/15',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        course.is_published ? 'bg-neon-green animate-glow-pulse' : 'bg-white/50',
+                      )}
+                    />
+                    {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
+                  </span>
                 </div>
                 <div className="absolute top-2 right-2">
                   <ResourcePresence type="course" id={course.id} />
                 </div>
               </div>
 
-              <div className="flex-1 px-4 pt-7 pb-3">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="text-[15px] font-semibold text-text truncate">{course.title_es}</span>
-                  <NeonBadge color={course.is_published ? 'green' : 'neutral'} dot={course.is_published}>
-                    {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
-                  </NeonBadge>
+              <div className="flex-1 px-4 pt-8 pb-4">
+                <h3 className="text-[15px] font-semibold text-text leading-snug line-clamp-1 mb-1">
+                  {course.title_es}
+                </h3>
+                {course.description_es && (
+                  <p className="text-[12px] leading-relaxed text-text-muted line-clamp-2 mb-3">
+                    {stripMarkdown(course.description_es)}
+                  </p>
+                )}
+                {/* Datos del curso como pastillas: cada dato se lee solo, sin
+                    puntos medios que se confunden con separadores de acciones. */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-muted">
+                    <BookOpen className="h-3 w-3" />
+                    {t('admin.courses.modules_count', { n: course.modules.length })}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-muted">
+                    {t(`admin.courses.level_${course.level}`)}
+                  </span>
                   {course.visibility === 'catalog' && (
                     <NeonBadge color="cyan">{t('admin.courses.catalog_badge')}</NeonBadge>
                   )}
+                  {selectedCampaignId === ALL_CAMPAIGNS && course.campaign_name && (
+                    <span className="inline-flex items-center rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-subtle">
+                      {t('admin.courses.shared_from', { name: course.campaign_name })}
+                    </span>
+                  )}
                 </div>
-                {course.description_es && (
-                  <p className="text-[12px] text-text-muted line-clamp-2 mb-2">{course.description_es}</p>
-                )}
-                <div className="flex items-center gap-1.5 text-[12px] text-text-subtle">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  {t('admin.courses.modules_count', { n: course.modules.length })}
-                  <span>·</span>
-                  {t(`admin.courses.level_${course.level}`)}
-                </div>
-                {selectedCampaignId === ALL_CAMPAIGNS && course.campaign_name && (
-                  <p className="text-[11px] text-text-subtle mt-1">
-                    {t('admin.courses.shared_from', { name: course.campaign_name })}
-                  </p>
-                )}
               </div>
+
+              {/* Aviso de previsualización: cuando el staff se auto-inscribió, el
+                  estado se explica con palabras antes de ofrecer el botón. Antes
+                  "Salir de la vista de aprendiz" competía con la acción principal
+                  en la misma fila y se partía en tres líneas. */}
+              {previewEnrolled.has(course.id) && (
+                <div className="mx-4 mb-3 flex items-center gap-3 rounded-xl border border-primary/25 bg-primary/8 px-3 py-2">
+                  <Eye className="h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12px] font-semibold text-text leading-tight">
+                      {t('admin.courses.preview_state_title')}
+                    </p>
+                    <p className="text-[11px] text-text-muted leading-tight">
+                      {t('admin.courses.preview_state_hint')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleExitPreview(course)}
+                    disabled={previewingId === course.id}
+                    title={t('admin.courses.exit_preview_hint')}
+                    className="shrink-0 min-h-[32px] flex items-center gap-1.5 rounded-lg border border-line bg-bg/40 px-2.5 text-[12px] font-semibold text-text-muted hover:border-danger/40 hover:text-danger transition-colors disabled:opacity-60"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    {t('admin.courses.exit_preview_short')}
+                  </button>
+                </div>
+              )}
 
               {/* Acciones — todas con etiqueta de texto: los iconos sueltos se
                   confundían entre sí (el ojo de "despublicar" parecía "ver"). La
                   acción principal va arriba y sola; publicar/borrar van abajo,
                   más discretas y con la destructiva separada a la derecha. */}
-              <div className="px-3 pb-3 space-y-2">
+              <div className="border-t border-line/70 px-4 py-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <PulseHint active={course.is_published && !previewHintSeen} className="flex-1">
+                  <PulseHint active={course.is_published && !previewHintSeen} className="flex-1 min-w-0">
                     <button
                       onClick={() => handleViewAsLearner(course)}
                       disabled={previewingId === course.id || !course.is_published}
                       title={course.is_published ? undefined : t('admin.courses.view_as_learner_publish_first')}
                       className={cn(
-                        'w-full min-h-[44px] flex items-center justify-center gap-1.5 px-3 rounded-xl text-[13px] font-semibold transition-colors',
+                        'w-full min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200',
                         course.is_published
-                          ? 'text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15'
+                          ? 'text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 hover:border-primary/40 active:scale-[0.98]'
                           : 'text-text-subtle/60 border border-line cursor-not-allowed',
                       )}
                     >
                       {previewingId === course.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                       ) : (
-                        <GraduationCap className="h-4 w-4" />
+                        <GraduationCap className="h-4 w-4 shrink-0" />
                       )}
-                      {t('admin.courses.view_as_learner')}
+                      <span className="truncate">{t('admin.courses.view_as_learner')}</span>
                     </button>
                   </PulseHint>
-                  {previewEnrolled.has(course.id) && (
-                    <button
-                      onClick={() => handleExitPreview(course)}
-                      disabled={previewingId === course.id}
-                      title={t('admin.courses.exit_preview_hint')}
-                      className="min-h-[44px] shrink-0 flex items-center justify-center gap-1.5 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:border-danger/40 hover:text-danger transition-colors disabled:opacity-60"
-                    >
-                      <LogOut className="h-3.5 w-3.5" />
-                      {t('admin.courses.exit_preview')}
-                    </button>
-                  )}
                   <Link
                     to={`/admin/courses/${course.id}`}
-                    className="min-h-[44px] shrink-0 flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:text-text hover:bg-glass/8 transition-colors"
+                    className="min-h-[44px] shrink-0 flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-semibold text-text-muted border border-line hover:text-text hover:bg-glass/8 hover:border-glass-border/25 transition-colors"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     {t('admin.courses.edit')}
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                   </Link>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleTogglePublished(course)}
-                    className="min-h-[40px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                    className="min-h-[36px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
                   >
                     {course.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                     {course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}
                   </button>
                   <button
                     onClick={() => handleDelete(course)}
-                    className="min-h-[40px] ml-auto flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-subtle hover:text-danger hover:bg-danger/8 transition-colors"
+                    className="min-h-[36px] ml-auto flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-subtle hover:text-danger hover:bg-danger/8 transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     {t('admin.courses.delete')}
