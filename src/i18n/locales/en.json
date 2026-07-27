@@ -2890,7 +2890,10 @@
       "children_nodes": "Nodes",
       "children_steps": "Steps",
       "children_generic": "Content",
-      "hidden_snapshot": "Hidden by soft delete — showing the server snapshot"
+      "hidden_snapshot": "Hidden by soft delete — showing the server snapshot",
+      "stat_size": "Content size",
+      "stat_files": "Uploaded files",
+      "stat_media_size": "Files size"
     }
   },
   "themes": {

@@ -2890,7 +2890,10 @@
       "children_nodes": "Nodos",
       "children_steps": "Pasos",
       "children_generic": "Contenido",
-      "hidden_snapshot": "Oculto por borrado suave — se muestra la instantánea del servidor"
+      "hidden_snapshot": "Oculto por borrado suave — se muestra la instantánea del servidor",
+      "stat_size": "Peso del contenido",
+      "stat_files": "Archivos subidos",
+      "stat_media_size": "Peso de archivos"
     }
   },
   "themes": {

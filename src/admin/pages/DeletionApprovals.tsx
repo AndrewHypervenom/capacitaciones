@@ -461,7 +461,10 @@ function RequestDetail({ row }: { row: DeletionRequestRow }) {
     return <div className="px-4 pb-4 flex justify-center"><Loader2 className="h-4 w-4 animate-spin text-text-subtle" /></div>
   }
 
-  const impact = (detail?.impact ?? []).filter((i) => Number(i.value) > 0)
+  // Los conteos en cero no aportan; el peso ("1,2 MB") es texto y siempre entra.
+  const impact = (detail?.impact ?? []).filter(
+    (i) => (typeof i.value === 'number' ? i.value > 0 : String(i.value).trim() !== ''),
+  )
 
   return (
     <div className="px-4 pb-4 border-t border-line space-y-4 pt-3">

@@ -2890,7 +2890,10 @@
       "children_nodes": "Nós",
       "children_steps": "Passos",
       "children_generic": "Conteúdo",
-      "hidden_snapshot": "Oculto por exclusão suave — exibindo o instantâneo do servidor"
+      "hidden_snapshot": "Oculto por exclusão suave — exibindo o instantâneo do servidor",
+      "stat_size": "Tamanho do conteúdo",
+      "stat_files": "Arquivos enviados",
+      "stat_media_size": "Tamanho dos arquivos"
     }
   },
   "themes": {

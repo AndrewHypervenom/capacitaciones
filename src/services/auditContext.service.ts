@@ -65,6 +65,18 @@ export interface EntityContext {
 const num = (v: unknown) => (typeof v === 'number' ? v : 0)
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 
+/** Peso en bytes de un objeto, medido como su JSON (igual que hace el RPC). */
+function jsonBytes(...parts: unknown[]): number {
+  return parts.reduce<number>((n, p) => n + new Blob([JSON.stringify(p ?? null)]).size, 0)
+}
+
+/** Bytes en formato humano: 812 B · 24,3 kB · 1,2 MB. */
+export function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
 /** Tipos que sí tienen una fila propia que podamos leer. */
 const RESOLVABLE = new Set([
   'campaigns', 'courses', 'modules', 'worlds', 'arena_quizzes',
@@ -434,6 +446,7 @@ async function moduleDetail(id: string, base: ContentDetail): Promise<ContentDet
       { labelKey: 'admin.audit.stat_words', value: words },
       { labelKey: 'admin.audit.stat_duration', value: `${mod.duration_min} min` },
       { labelKey: 'admin.audit.stat_published', value: mod.is_published ? 'yes' : 'no' },
+      { labelKey: 'admin.audit.stat_size', value: fmtBytes(jsonBytes(mod, secs, quizzes ?? [])) },
     ],
     childrenLabelKey: 'admin.audit.children_sections',
     children: secs.map((s, i) => ({
