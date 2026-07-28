@@ -29,6 +29,8 @@ interface RowResult {
 interface BulkImportUsersProps {
   isSuperAdmin: boolean
   campaigns: Campaign[]
+  /** La contraseña predeterminada está activada: todos nacerán con la misma. */
+  defaultPasswordOn?: boolean
   onClose: () => void
   onImported: () => void | Promise<void>
 }
@@ -40,7 +42,7 @@ interface BulkImportUsersProps {
  * usuario con una contraseña temporal. Devuelve credenciales descargables (.xlsx)
  * para entregarlas; también quedan disponibles luego en la lista de usuarios.
  */
-export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }: BulkImportUsersProps) {
+export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = false, onClose, onImported }: BulkImportUsersProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
   const [rows, setRows] = useState<ParsedRow[]>([])
@@ -48,6 +50,8 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
   const [parseError, setParseError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const [results, setResults] = useState<RowResult[] | null>(null)
+  // Lo confirma el servidor: es él quien decide si aplicó la predeterminada.
+  const [usedDefaultPwd, setUsedDefaultPwd] = useState(false)
 
   const campaignByName = useMemo(() => {
     const m = new Map<string, string>()
@@ -134,6 +138,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error')
       setResults(json.results as RowResult[])
+      setUsedDefaultPwd(json.defaultPassword === true)
       toast.success(t('admin.users.bulk_done', { created: json.created, total: json.total }))
       await onImported()
     } catch (err) {
@@ -214,7 +219,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
                     )}
                   </div>
                   {createdCount > 0 && (
-                    <p className="text-[12px] text-text-muted">{t('admin.users.bulk_creds_hint')}</p>
+                    <p className="text-[12px] text-text-muted">
+                      {usedDefaultPwd ? t('admin.users.bulk_creds_hint_default') : t('admin.users.bulk_creds_hint')}
+                    </p>
                   )}
                   <div className="rounded-xl border border-line overflow-hidden">
                     <div className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-[11px] uppercase tracking-wider text-text-muted bg-subtle">
@@ -241,7 +248,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, onClose, onImported }
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-[13px] text-text-muted">{t('admin.users.bulk_help')}</p>
+                  <p className="text-[13px] text-text-muted">
+                    {defaultPasswordOn ? t('admin.users.bulk_help_default_pwd') : t('admin.users.bulk_help')}
+                  </p>
 
                   <input
                     ref={fileRef}

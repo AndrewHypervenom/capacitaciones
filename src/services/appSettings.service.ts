@@ -2,13 +2,17 @@ import { supabase } from '@/lib/supabase'
 
 /**
  * Configuración global del sitio (tabla `app_settings`, clave→valor JSON).
- * Hoy solo se usa para `ai_credits_out`, pero queda genérica por si suma más.
+ * Hoy guarda `ai_credits_out` y `default_user_password`.
  *
  * Nota: `app_settings` es una tabla nueva que aún no está en los tipos generados
  * (`database.ts`), por eso los accesos van con un cliente sin tipar.
  */
 
 const AI_CREDITS_KEY = 'ai_credits_out'
+const DEFAULT_PASSWORD_KEY = 'default_user_password'
+
+/** Mínimo que exige el onboarding para una contraseña. */
+export const MIN_DEFAULT_PASSWORD_LENGTH = 8
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -53,4 +57,49 @@ export async function reportAiCreditsOut(): Promise<void> {
   } catch {
     /* silencioso: el estado local ya muestra el aviso igual */
   }
+}
+
+/**
+ * Contraseña predeterminada para usuarios nuevos. Si está activada, todos los
+ * usuarios que se creen (alta individual y carga masiva) nacen con ella, así no
+ * hay que repartir una contraseña temporal distinta por chat. Si se desactiva,
+ * cada usuario vuelve a recibir su temporal aleatoria.
+ *
+ * Quien decide es la Edge Function (lee esta misma clave con service_role); acá
+ * solo se administra el ajuste.
+ */
+export interface DefaultPasswordSetting {
+  enabled: boolean
+  password: string
+}
+
+/** `null` si el ajuste no existe todavía (p. ej. el SQL aún no se corrió). */
+export async function getDefaultPassword(): Promise<DefaultPasswordSetting | null> {
+  const { data, error } = await db
+    .from('app_settings')
+    .select('value')
+    .eq('key', DEFAULT_PASSWORD_KEY)
+    .maybeSingle()
+
+  if (error || !data) return null
+  const value = (data.value ?? {}) as Partial<DefaultPasswordSetting>
+  return {
+    enabled: value.enabled === true,
+    password: typeof value.password === 'string' ? value.password : '',
+  }
+}
+
+/** Guarda el ajuste (solo superadmin lo logra pasar la RLS). */
+export async function setDefaultPassword(setting: DefaultPasswordSetting): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await db.from('app_settings').upsert(
+    {
+      key: DEFAULT_PASSWORD_KEY,
+      value: setting,
+      updated_at: new Date().toISOString(),
+      updated_by: user?.id ?? null,
+    },
+    { onConflict: 'key' },
+  )
+  if (error) throw error
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown } from 'lucide-react'
+import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -21,6 +21,8 @@ import { MultiSelect } from '@/components/ui/MultiSelect'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
+import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
+import { getDefaultPassword } from '@/services/appSettings.service'
 import type { Profile, Campaign } from '@/types/database'
 
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
@@ -53,6 +55,9 @@ export default function UserList() {
   // Vista superadmin de cursos + restablecer progreso de una persona.
   const [resetUser, setResetUser] = useState<ProfileWithEmail | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  // Contraseña predeterminada para usuarios nuevos (ajuste global de superadmin).
+  const [pwdOpen, setPwdOpen] = useState(false)
+  const [defaultPwdOn, setDefaultPwdOn] = useState(false)
   const [search, setSearch] = useState('')
   const [campaignFilter, setCampaignFilter] = useState('')
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
@@ -76,7 +81,9 @@ export default function UserList() {
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [createdEmail, setCreatedEmail] = useState('')
   const [createdPassword, setCreatedPassword] = useState('')
+  const [createdWithDefaultPwd, setCreatedWithDefaultPwd] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [resettingPwdFor, setResettingPwdFor] = useState<string | null>(null)
   // Credenciales temporales pendientes por usuario (solo el superadmin las recibe
   // vía RLS). Permite copiar el bloque de credenciales de cualquier pendiente.
   const [tempCreds, setTempCreds] = useState<Record<string, TempCred>>({})
@@ -133,6 +140,15 @@ export default function UserList() {
     }
     load()
   }, [isSuperAdmin, campaignId, authUser?.id])
+
+  // Estado del ajuste global, para avisar en el encabezado con qué contraseña
+  // nacerán los usuarios nuevos. Solo el superadmin lo administra.
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    getDefaultPassword()
+      .then((s) => setDefaultPwdOn(s?.enabled === true))
+      .catch(() => setDefaultPwdOn(false))
+  }, [isSuperAdmin])
 
   const refreshData = async () => {
     const [{ data: updated }, { data: creds }] = await Promise.all([
@@ -210,6 +226,7 @@ export default function UserList() {
 
       setCreatedEmail(json.email ?? inviteEmail.trim())
       setCreatedPassword(json.password ?? '')
+      setCreatedWithDefaultPwd(json.defaultPassword === true)
       setInviteSuccess(true)
       setInviteEmail('')
       setInviteName('')
@@ -262,6 +279,51 @@ export default function UserList() {
       toast.error(t('admin.users.campaigns_save_error'), (err as Error).message)
     } finally {
       setSavingCampaignsFor(null)
+    }
+  }
+
+  /**
+   * Devuelve al usuario a su contraseña inicial (la predeterminada del sitio si
+   * está activada, o una temporal aleatoria si no) y lo deja sin onboardear, así
+   * al entrar con ella tiene que definir una nueva. Copia las credenciales al
+   * portapapeles para entregarlas de una vez.
+   */
+  const handleResetPassword = async (user: ProfileWithEmail) => {
+    const name = user.display_name ?? user.email ?? user.id.slice(0, 8)
+    const ok = await confirm({
+      title: t('admin.users.reset_pwd'),
+      description: defaultPwdOn
+        ? t('admin.users.reset_pwd_confirm_default', { name })
+        : t('admin.users.reset_pwd_confirm_temp', { name }),
+      confirmLabel: t('admin.users.reset_pwd'),
+      tone: 'default',
+    })
+    if (!ok) return
+
+    setResettingPwdFor(user.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-user-password`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ userId: user.id }),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error')
+
+      await refreshData()
+      copyCreds(user.id, json.email ?? user.email ?? '', json.password ?? '')
+      toast.success(t('admin.users.reset_pwd_done', { name }), t('admin.users.reset_pwd_copied'))
+    } catch (err) {
+      toast.error(t('admin.users.reset_pwd_error'), (err as Error).message)
+    } finally {
+      setResettingPwdFor(null)
     }
   }
 
@@ -327,9 +389,9 @@ export default function UserList() {
   // para que encabezado y filas queden siempre alineados aunque una fila tenga
   // más botones que otra (p. ej. "copiar credenciales").
   const gridCols = isSuperAdmin
-    ? 'minmax(280px,1fr) 150px 210px 460px 48px'
+    ? 'minmax(280px,1fr) 150px 210px 505px 48px'
     : 'minmax(280px,1fr) 150px 350px'
-  const tableMinWidth = isSuperAdmin ? 1200 : 800
+  const tableMinWidth = isSuperAdmin ? 1245 : 800
 
   return (
     <div className="p-4 sm:p-8">
@@ -352,6 +414,24 @@ export default function UserList() {
               {optimizing && optProgress
                 ? `${optProgress.done}/${optProgress.total}`
                 : t('admin.users.optimize_photos')}
+            </button>
+            <button
+              onClick={() => setPwdOpen(true)}
+              title={t('admin.users.default_pwd_hint')}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
+            >
+              <KeyRound className="h-4 w-4" />
+              {t('admin.users.default_pwd_button')}
+              <span
+                className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md"
+                style={
+                  defaultPwdOn
+                    ? { background: 'rgba(16,212,81,0.15)', color: '#16a34a' }
+                    : { background: 'rgba(100,116,139,0.12)', color: '#64748b' }
+                }
+              >
+                {defaultPwdOn ? t('admin.users.default_pwd_on') : t('admin.users.default_pwd_off')}
+              </span>
             </button>
             <button
               onClick={() => setBulkOpen(true)}
@@ -393,6 +473,11 @@ export default function UserList() {
                   </div>
                 ))}
               </div>
+              {createdWithDefaultPwd && (
+                <p className="text-[12px] text-text-muted mt-2">
+                  {t('admin.users.created_with_default_pwd')}
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-3">
                 <button
                   onClick={() => copyCreds('__new__', createdEmail, createdPassword)}
@@ -693,6 +778,18 @@ export default function UserList() {
                       <RotateCcw className="h-4 w-4" />
                     </button>
                   )}
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => handleResetPassword(user)}
+                      disabled={resettingPwdFor === user.id}
+                      className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 disabled:opacity-50 transition-colors"
+                      title={t('admin.users.reset_pwd')}
+                    >
+                      {resettingPwdFor === user.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <KeyRound className="h-4 w-4" />}
+                    </button>
+                  )}
                 </div>
                 {isSuperAdmin && (
                   <button
@@ -728,9 +825,14 @@ export default function UserList() {
         <BulkImportUsers
           isSuperAdmin={isSuperAdmin}
           campaigns={campaigns}
+          defaultPasswordOn={defaultPwdOn}
           onClose={() => setBulkOpen(false)}
           onImported={refreshData}
         />
+      )}
+
+      {pwdOpen && (
+        <DefaultPasswordModal onClose={() => setPwdOpen(false)} onSaved={setDefaultPwdOn} />
       )}
     </div>
   )
