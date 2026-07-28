@@ -32,7 +32,7 @@ import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignSc
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
-import { CourseCover, courseHasCover } from '@/components/course/CourseCover'
+import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover'
 import { stripMarkdown } from '@/components/ui/RichText'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { FadeIn, PulseHint } from '@/components/ui/motion'
@@ -518,7 +518,7 @@ export default function CourseList() {
               {filteredShared.map((course) => (
                 <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden transition-all duration-300 ease-apple hover:-translate-y-1 hover:shadow-card-hover">
                   <div
-                    className="h-20 w-full relative"
+                    className={`relative ${COVER_BOX}`}
                     style={{ background: courseHasCover(course) ? (course.cover_fit === 'contain' ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)` : undefined) : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
                   >
                     <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
@@ -611,7 +611,7 @@ export default function CourseList() {
                   sobre la portada como pastilla de vidrio: se lee de un vistazo
                   y deja el título libre en una sola línea. */}
               <div
-                className="h-24 w-full relative"
+                className={`relative ${COVER_BOX}`}
                 style={{
                   background: courseHasCover(course)
                     ? course.cover_fit === 'contain'

@@ -81,7 +81,7 @@ import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
 import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseRecertStatus } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
-import { CourseCover, courseHasCover } from '@/components/course/CourseCover'
+import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Select } from '@/components/ui/Select'
@@ -108,10 +108,15 @@ const COLOR_PRESETS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#
 type CoverSlot = 'cover_url' | 'cover_url_mobile' | 'cover_url_tablet'
 
 /** Metadata de cada slot: rótulo i18n, tamaño recomendado y rango de pantalla. */
-const COVER_SLOTS: { slot: CoverSlot; labelKey: string; size: string; range: string }[] = [
-  { slot: 'cover_url_mobile', labelKey: 'admin.courses.cover_slot_mobile', size: '1200×400', range: '<640px' },
-  { slot: 'cover_url_tablet', labelKey: 'admin.courses.cover_slot_tablet', size: '1680×360', range: '640–895px' },
-  { slot: 'cover_url', labelKey: 'admin.courses.cover_slot_desktop', size: '1664×320', range: '≥896px' },
+// Cada medida es la proporción EXACTA que COVER_BOX usa en ese rango de
+// pantalla (3:1, 14:3 y 26:5): subida así, la portada llena la caja sin franjas
+// y sin recorte, tanto en el hero del curso como en las tarjetas.
+// `box` es la proporción de ese slot: la miniatura se ve con la forma real que
+// tendrá la portada en ese dispositivo, no con la del monitor del capacitador.
+const COVER_SLOTS: { slot: CoverSlot; labelKey: string; size: string; range: string; box: string }[] = [
+  { slot: 'cover_url_mobile', labelKey: 'admin.courses.cover_slot_mobile', size: '1200×400', range: '<640px', box: 'aspect-[3/1]' },
+  { slot: 'cover_url_tablet', labelKey: 'admin.courses.cover_slot_tablet', size: '1680×360', range: '640–895px', box: 'aspect-[14/3]' },
+  { slot: 'cover_url', labelKey: 'admin.courses.cover_slot_desktop', size: '1664×320', range: '≥896px', box: 'aspect-[26/5]' },
 ]
 
 /**
@@ -1515,7 +1520,7 @@ export default function CourseEditor() {
 
             {/* Un slot de subida por tipo de pantalla (art-direction). */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {COVER_SLOTS.map(({ slot, labelKey, size, range }) => {
+              {COVER_SLOTS.map(({ slot, labelKey, size, range, box }) => {
                 const url = course[slot]
                 const busy = uploadingSlot === slot
                 return (
@@ -1525,7 +1530,7 @@ export default function CourseEditor() {
                       <span className="text-[10px] text-text-subtle">{range}</span>
                     </div>
                     <div
-                      className="relative h-14 w-full overflow-hidden rounded-lg border border-line"
+                      className={cn('relative w-full min-h-0 overflow-hidden rounded-lg border border-line', box)}
                       style={{ background: url ? undefined : `linear-gradient(120deg, ${form.color}22, ${form.color}0A)` }}
                     >
                       {url && (
@@ -1575,7 +1580,7 @@ export default function CourseEditor() {
             {/* Simulación de la tarjeta real: mismo alto/proporción + insignia */}
             <div className="relative w-full max-w-sm">
               <div
-                className="h-28 w-full rounded-xl overflow-hidden border border-line"
+                className={cn('rounded-xl overflow-hidden border border-line', COVER_BOX)}
                 style={{
                   background: courseHasCover(course)
                     ? form.cover_fit === 'contain'

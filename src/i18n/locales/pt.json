@@ -1475,7 +1475,7 @@
       "uploading": "Enviando…",
       "cover_title": "Capa",
       "cover_preview_hint": "É assim que a capa aparecerá no cartão do curso antes de publicar.",
-      "cover_size_hint": "Envie uma imagem por tipo de tela. Estes são tamanhos mínimos: enviar maior sempre fica nítido (nunca com zoom); o que fica pequeno fica borrado. Mantenha o texto e os logos centralizados (no celular as bordas são cortadas). Se faltar alguma variante, usa-se a de Desktop; você também pode enviar a mesma imagem grande nas 3.",
+      "cover_size_hint": "Envie uma imagem por tipo de tela com a medida indicada em cada quadro: é a proporção exata da caixa, então a capa preenche tudo sem faixas vazias nem cortes, igual no curso e nos cartões. Pode enviar maior se mantiver a proporção (fica mais nítido); o que fica pequeno fica borrado. Se faltar alguma variante, usa-se a de Desktop.",
       "cover_slot_mobile": "Celular",
       "cover_slot_tablet": "Tablet",
       "cover_slot_desktop": "Desktop",

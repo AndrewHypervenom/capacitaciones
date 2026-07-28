@@ -12,7 +12,7 @@ import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { Select } from '@/components/ui/Select';
 import { stripMarkdown } from '@/components/ui/RichText';
-import { CourseCover, courseHasCover } from '@/components/course/CourseCover';
+import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { cn } from '@/lib/cn';
 
 type Filter = 'all' | 'mandatory' | 'optional' | 'in_progress' | 'completed';
@@ -76,7 +76,7 @@ function CourseCard({
       >
         {/* Portada. El recorte (overflow-hidden) va en una capa interna: si lo
             ponemos aquí, el birrete que sobresale por abajo queda cortado a la mitad. */}
-        <div className="relative h-28 w-full shrink-0">
+        <div className={`relative shrink-0 ${COVER_BOX}`}>
           <div
             className="absolute inset-0 overflow-hidden"
             style={{

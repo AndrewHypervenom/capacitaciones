@@ -1475,7 +1475,7 @@
       "uploading": "Uploading…",
       "cover_title": "Cover",
       "cover_preview_hint": "This is how the cover will look on the course card before publishing.",
-      "cover_size_hint": "Upload one image per screen type. These are minimum sizes: uploading larger always looks sharp (never zoomed); anything too small looks blurry. Keep text and logos centered (edges get cropped on mobile). If a variant is missing, the Desktop one is used; you can also upload the same large image in all 3.",
+      "cover_size_hint": "Upload one image per screen type using the size shown on each box: it is the exact ratio of the frame, so the cover fills it with no empty bands and no cropping — same on the course page and on the cards. You can go larger as long as you keep the ratio (it looks sharper); anything too small looks blurry. If a variant is missing, the Desktop one is used.",
       "cover_slot_mobile": "Mobile",
       "cover_slot_tablet": "Tablet",
       "cover_slot_desktop": "Desktop",

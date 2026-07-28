@@ -17,7 +17,7 @@ import type { ChoiceScenario } from '@/data/choiceScenarios';
 import { getCourseCertStatus } from '@/services/certification.service';
 import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
-import { CourseCover, courseHasCover } from '@/components/course/CourseCover';
+import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { SimulatorPickerModal, type SimPick } from '@/components/simulator/SimulatorPickerModal';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
@@ -299,7 +299,7 @@ export default function CoursePage() {
       <Reveal>
         <div className="relative overflow-hidden rounded-3xl border border-line bg-surface mb-10">
           <div
-            className="h-32 sm:h-40 w-full"
+            className={COVER_BOX}
             style={{
               background: courseHasCover(course)
                 ? course.cover_fit === 'contain'

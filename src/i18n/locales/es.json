@@ -1475,7 +1475,7 @@
       "uploading": "Subiendo…",
       "cover_title": "Portada",
       "cover_preview_hint": "Así se verá la portada en la tarjeta del curso antes de publicar.",
-      "cover_size_hint": "Sube una imagen por tipo de pantalla. Estos son tamaños mínimos: subir más grande siempre se ve nítido (nunca con zoom); lo que queda pequeño se ve borroso. Mantén el texto y logos centrados (en móvil se recortan los bordes). Si falta alguna variante, se usa la de Escritorio; también puedes subir la misma imagen grande en las 3.",
+      "cover_size_hint": "Sube una imagen por tipo de pantalla con la medida que indica cada recuadro: es la proporción exacta de la caja, así la portada llena todo sin franjas vacías ni recortes, igual en el curso que en las tarjetas. Puedes subir más grande si respetas la proporción (se ve más nítido); lo que queda pequeño se ve borroso. Si falta alguna variante, se usa la de Escritorio.",
       "cover_slot_mobile": "Móvil",
       "cover_slot_tablet": "Tablet",
       "cover_slot_desktop": "Escritorio",
