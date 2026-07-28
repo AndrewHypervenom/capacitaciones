@@ -219,12 +219,20 @@ export default function LiveQuizPlay() {
     if (code.length !== 6) { setJoinError(t('livequiz.pin_length')); return }
     setJoining(true); setJoinError(null)
 
+    // Se busca sin filtrar por estado para poder distinguir "código inexistente"
+    // de "sesión ya terminada": antes ambos decían lo mismo y el participante no
+    // sabía si se equivocó al escribir o si llegó tarde.
     const { data, error } = await supabase
       .from('live_quizzes').select('*')
-      .eq('pin', code).neq('status', 'ended').maybeSingle()
+      .eq('pin', code).maybeSingle()
 
     if (error || !data) {
       setJoinError(t('livequiz.pin_invalid'))
+      setJoining(false); return
+    }
+
+    if (data.status === 'ended') {
+      setJoinError(t('livequiz.join_ended'))
       setJoining(false); return
     }
 
@@ -237,7 +245,14 @@ export default function LiveQuizPlay() {
       setJoining(false); return
     }
 
-    const joined = { ...data, questions: data.questions as unknown as QuizQuestion[] } as LiveQuiz
+    const joined = { ...data, questions: (data.questions ?? []) as unknown as QuizQuestion[] } as LiveQuiz
+
+    // Entrar a un quiz vacío deja al participante mirando una pantalla muerta.
+    if (joined.questions.length === 0) {
+      setJoinError(t('livequiz.join_no_questions'))
+      setJoining(false); return
+    }
+
     sfx.join()
 
     if (joined.campaign_id) {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import {
   Plus, Trash2, ChevronLeft, ChevronRight, Square, Play, Copy, Check,
-  Loader2, Zap, X, BarChart2, RefreshCw, Pencil, Users, Clock,
+  Loader2, Zap, X, BarChart2, RefreshCw, Pencil, Users, Clock, AlertTriangle,
 } from 'lucide-react'
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
@@ -52,6 +52,24 @@ function emptyQuestion(): QuizQuestion {
   return { text: '', options: ['', '', '', ''], correctIndex: 0, timeLimitSec: 20 }
 }
 
+// Traduce un error de Supabase/Postgres a algo que un capacitador entienda.
+// Sin esto, cada fallo (RLS, red, PIN repetido) se veía igual: nada pasaba.
+function dbReason(error: { code?: string; message?: string } | null): string {
+  if (!error) return i18n.t('livequiz.db_unknown')
+  const msg = error.message ?? ''
+  if (error.code === '42501' || /row-level security|permission denied/i.test(msg)) return i18n.t('livequiz.db_denied')
+  if (error.code === 'PGRST116') return i18n.t('livequiz.db_no_rows')
+  if (error.code === '23505') return i18n.t('livequiz.db_duplicate')
+  if (error.code === '23503') return i18n.t('livequiz.db_fk')
+  if (/failed to fetch|network|fetch error/i.test(msg)) return i18n.t('livequiz.db_offline')
+  return msg || i18n.t('livequiz.db_unknown')
+}
+
+// Requisitos del formulario, cumplidos y pendientes. Se muestran SIEMPRE (no
+// solo al intentar guardar) para que nunca haya que adivinar por qué no deja crear.
+type Step = { id: string; label: string; done: boolean; hint: string }
+type FormCheck = { steps: Step[]; pending: Step[]; badTitle: boolean; badCampaign: boolean; badQuestions: Set<number> }
+
 // Iniciales para el avatar del ranking
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -92,6 +110,8 @@ export default function LiveQuizAdmin() {
   const [formQuestions, setFormQuestions] = useState<QuizQuestion[]>([emptyQuestion()])
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [showIssues, setShowIssues] = useState(false)   // marca en rojo lo que falta, tras intentar guardar
+  const [openingId, setOpeningId] = useState<string | null>(null)
   const [formTtlMin, setFormTtlMin] = useState(DEFAULT_PIN_TTL_MIN)  // vigencia del código, en minutos (0 = sin límite)
 
   // Sesión
@@ -131,10 +151,11 @@ export default function LiveQuizAdmin() {
       if (ids.length === 0) { setQuizzes([]); setLoadingList(false); return }
       query.in('campaign_id', ids)
     }
-    const { data } = await query
+    const { data, error } = await query
+    if (error) toast.error(t('livequiz.err_list'), dbReason(error))
     setQuizzes((data ?? []) as unknown as LiveQuiz[])
     setLoadingList(false)
-  }, [isSuperAdmin, accessibleKey, campaignId])
+  }, [isSuperAdmin, accessibleKey, campaignId, t])
 
   // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
@@ -151,8 +172,11 @@ export default function LiveQuizAdmin() {
           prev && ids.includes(prev) ? prev : resolveCreationCampaignId(null, ids),
         )
       })
-      .catch(() => {})
-  }, [isSuperAdmin, campaignId, user?.id])
+      .catch((e: { code?: string; message?: string }) => {
+        // Sin campañas no se puede crear nada: hay que decirlo, no quedarse mudo.
+        toast.error(t('livequiz.err_campaigns'), dbReason(e))
+      })
+  }, [isSuperAdmin, campaignId, user?.id, t])
 
   useEffect(() => {
     void loadQuizzes()
@@ -265,9 +289,77 @@ export default function LiveQuizAdmin() {
     }
   }, [answeredNames.length, participantCount, activeQuiz?.status, activeQuiz?.current_question, activeQuiz?.id, loadLeaderboard])
 
+  // ── Revisión del formulario ────────────────────────────────────────────────
+  // Se calcula en cada render: alimenta tanto el aviso de "qué falta" como el
+  // resaltado en rojo de los campos incompletos.
+  const check: FormCheck = (() => {
+    const badQuestions = new Set<number>()
+    const badTitle = !formTitle.trim()
+    const badCampaign = !formCampaign
+
+    const steps: Step[] = [
+      { id: 'title', label: t('livequiz.step_title'), done: !badTitle, hint: t('livequiz.issue_title') },
+      {
+        id: 'campaign',
+        label: t('livequiz.step_campaign'),
+        done: !badCampaign,
+        hint: campaigns.length === 0 ? t('livequiz.issue_no_campaign') : t('livequiz.issue_campaign'),
+      },
+    ]
+
+    formQuestions.forEach((q, i) => {
+      // Un solo motivo por pregunta: el primero que la bloquea.
+      let hint = ''
+      if (!q.text.trim()) hint = t('livequiz.issue_question_text', { n: i + 1 })
+      else if (q.options.filter((o) => o.trim()).length < 2) hint = t('livequiz.issue_question_options', { n: i + 1 })
+      else if (!q.options[q.correctIndex]?.trim()) hint = t('livequiz.issue_correct_option', { n: i + 1 })
+      if (hint) badQuestions.add(i)
+      steps.push({ id: `q${i}`, label: t('livequiz.step_question', { n: i + 1 }), done: !hint, hint })
+    })
+
+    return { steps, pending: steps.filter((s) => !s.done), badTitle, badCampaign, badQuestions }
+  })()
+
+  // ── Abrir el formulario en blanco ──────────────────────────────────────────
+  const startCreate = () => {
+    setEditingId(null)
+    setShowIssues(false)
+    setFormTitle('')
+    // Ojo: NO usar la campaña "casa" a secas. Si el usuario no la tiene entre
+    // las accesibles (superadmin sin casa, capacitador invitado), el formulario
+    // quedaba con una campaña inválida y el botón Crear no hacía nada.
+    setFormCampaign(resolveCreationCampaignId(null, accessibleIds))
+    setFormQuestions([emptyQuestion()])
+    setFormTtlMin(DEFAULT_PIN_TTL_MIN)
+    setView('create')
+  }
+
+  // ── Abrir la sesión de un quiz de la lista ─────────────────────────────────
+  // Se relee de la BD: así el estado/PIN están frescos y, si la fila ya no es
+  // visible (borrada o sin permiso), se dice en vez de abrir una pantalla muerta.
+  const openSession = async (quiz: LiveQuiz) => {
+    setOpeningId(quiz.id)
+    const { data, error } = await supabase.from('live_quizzes').select('*').eq('id', quiz.id).maybeSingle()
+    setOpeningId(null)
+    if (error) { toast.error(t('livequiz.err_open'), dbReason(error)); return }
+    if (!data) {
+      toast.error(t('livequiz.err_open'), t('livequiz.err_open_gone'))
+      void loadQuizzes()
+      return
+    }
+    const fresh = { ...data, questions: (data.questions ?? []) as unknown as QuizQuestion[] } as LiveQuiz
+    if (fresh.questions.length === 0) toast.info(t('livequiz.err_no_questions'))
+    setActiveQuiz(fresh)
+    setView('session')
+  }
+
   // ── Abrir formulario en modo edición ───────────────────────────────────────
   const startEdit = (quiz: LiveQuiz) => {
-    if (quiz.status === 'active') return  // no se edita un quiz en curso
+    if (quiz.status === 'active') {
+      toast.info(t('admin.livequiz.edit_locked'), t('livequiz.edit_locked_hint'))
+      return
+    }
+    setShowIssues(false)
     setEditingId(quiz.id)
     setFormTitle(quiz.title)
     setFormCampaign(quiz.campaign_id)
@@ -277,9 +369,16 @@ export default function LiveQuizAdmin() {
 
   // ── Guardar cambios de un quiz existente ────────────────────────────────────
   const handleUpdate = async () => {
-    if (!editingId || !formTitle.trim() || formQuestions.some((q) => !q.text.trim())) return
+    if (!editingId) return
+    if (check.pending.length > 0) {
+      // Además de marcar en rojo, se nombra el primer motivo: el usuario no
+      // tiene que buscar qué campo se puso rojo.
+      setShowIssues(true)
+      toast.error(t('livequiz.toast_missing'), check.pending[0].hint)
+      return
+    }
     setCreating(true)
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('live_quizzes')
       .update({
         title: formTitle.trim(),
@@ -287,8 +386,13 @@ export default function LiveQuizAdmin() {
         questions: formQuestions as unknown as never,
       })
       .eq('id', editingId)
+      .select()
     setCreating(false)
-    if (error) return
+    if (error) { toast.error(t('livequiz.err_update'), dbReason(error)); return }
+    // 0 filas = la RLS dejó pasar la consulta pero no la fila. Sin este aviso
+    // parecía que se guardaba y al volver estaba igual.
+    if (!data || data.length === 0) { toast.error(t('livequiz.err_update'), t('livequiz.db_no_rows')); return }
+    toast.success(t('livequiz.saved_ok'))
     setEditingId(null)
     setView('list')
     void loadQuizzes()
@@ -297,9 +401,14 @@ export default function LiveQuizAdmin() {
   // ── Crear ─────────────────────────────────────────────────────────────────
   const handleCreate = async () => {
     if (editingId) return handleUpdate()
-    if (!formTitle.trim() || formQuestions.some((q) => !q.text.trim())) return
-    const targetCampaign = formCampaign
-    if (!targetCampaign || !profile?.id) return
+    if (check.pending.length > 0) {
+      // Además de marcar en rojo, se nombra el primer motivo: el usuario no
+      // tiene que buscar qué campo se puso rojo.
+      setShowIssues(true)
+      toast.error(t('livequiz.toast_missing'), check.pending[0].hint)
+      return
+    }
+    if (!profile?.id) { toast.error(t('livequiz.err_create'), t('livequiz.err_no_profile')); return }
 
     setCreating(true)
     const pin = generatePin()
@@ -307,7 +416,7 @@ export default function LiveQuizAdmin() {
       .from('live_quizzes')
       .insert({
         title: formTitle.trim(),
-        campaign_id: targetCampaign,
+        campaign_id: formCampaign,
         created_by: profile.id,
         pin,
         pin_expires_at: expiryFromTtl(formTtlMin),
@@ -317,9 +426,11 @@ export default function LiveQuizAdmin() {
       .single()
 
     setCreating(false)
-    if (error || !data) return
+    if (error || !data) { toast.error(t('livequiz.err_create'), dbReason(error)); return }
 
     const quiz = { ...data, questions: formQuestions } as LiveQuiz
+    toast.success(t('livequiz.created_ok'), t('livequiz.created_ok_hint', { pin: quiz.pin }))
+    setShowIssues(false)
     setActiveQuiz(quiz)
     setView('session')
     void loadQuizzes()
@@ -332,35 +443,63 @@ export default function LiveQuizAdmin() {
       description: t('confirm.delete_quiz_desc'),
     })
     if (!ok) return
-    const result = await requestDeletion('live_quizzes', id)
-    if (result === 'pending') toast.success(t('deletion.pending_generic'))
+    try {
+      const result = await requestDeletion('live_quizzes', id)
+      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('livequiz.deleted_ok'))
+    } catch (e) {
+      // Antes esto reventaba la promesa y el quiz seguía en pantalla sin explicación.
+      toast.error(t('livequiz.err_delete'), dbReason(e as { code?: string; message?: string }))
+    }
     void loadQuizzes()
   }
 
   // ── Duplicar ──────────────────────────────────────────────────────────────
   const handleDuplicate = async (q: LiveQuiz) => {
-    if (!profile?.id) return
+    if (!profile?.id) { toast.error(t('livequiz.err_duplicate'), t('livequiz.err_no_profile')); return }
     const pin = generatePin()
-    await supabase.from('live_quizzes').insert({
+    const { error } = await supabase.from('live_quizzes').insert({
       title: `${q.title} (copia)`,
       campaign_id: q.campaign_id,
       created_by: profile.id,
       pin,
       questions: q.questions as unknown as never,
     })
+    if (error) { toast.error(t('livequiz.err_duplicate'), dbReason(error)); return }
+    toast.success(t('livequiz.duplicated_ok'))
     void loadQuizzes()
   }
 
   // ── Controles de sesión ───────────────────────────────────────────────────────
+  // Toda actualización pasa por aquí: si la BD no cambió ninguna fila (RLS,
+  // quiz borrado) el anfitrión se entera en vez de ver un botón que no responde.
+  const applySessionUpdate = async (
+    patch: Partial<Pick<LiveQuiz, 'status' | 'current_question' | 'pin' | 'question_started_at' | 'pin_expires_at'>>,
+    errTitle: string,
+  ): Promise<LiveQuiz | null> => {
+    if (!activeQuiz) return null
+    const { data, error } = await supabase
+      .from('live_quizzes')
+      .update(patch)
+      .eq('id', activeQuiz.id)
+      .select()
+    if (error) { toast.error(errTitle, dbReason(error)); return null }
+    const row = data?.[0] as unknown as LiveQuiz | undefined
+    if (!row) { toast.error(errTitle, t('livequiz.db_no_rows')); return null }
+    setActiveQuiz((prev) => ({ ...prev!, ...row }))
+    return row
+  }
+
   const startQuiz = async () => {
     if (!activeQuiz) return
+    if (activeQuiz.questions.length === 0) {
+      toast.error(t('livequiz.err_start'), t('livequiz.err_no_questions'))
+      return
+    }
     setAdvancing(true)
-    const { data } = await supabase
-      .from('live_quizzes')
-      .update({ status: 'active', current_question: 0, question_started_at: new Date().toISOString() })
-      .eq('id', activeQuiz.id)
-      .select().single()
-    if (data) setActiveQuiz((prev) => ({ ...prev!, ...(data as unknown as LiveQuiz) }))
+    await applySessionUpdate(
+      { status: 'active', current_question: 0, question_started_at: new Date().toISOString() },
+      t('livequiz.err_start'),
+    )
     setAdvancing(false)
   }
 
@@ -369,26 +508,19 @@ export default function LiveQuizAdmin() {
     setAdvancing(true)
     const nextIdx = activeQuiz.current_question + 1
     const isLast = nextIdx >= activeQuiz.questions.length
-    const { data } = await supabase
-      .from('live_quizzes')
-      .update(isLast
+    await applySessionUpdate(
+      isLast
         ? { status: 'ended', current_question: -1 }
-        : { current_question: nextIdx, question_started_at: new Date().toISOString() })
-      .eq('id', activeQuiz.id)
-      .select().single()
-    if (data) setActiveQuiz((prev) => ({ ...prev!, ...(data as unknown as LiveQuiz) }))
+        : { current_question: nextIdx, question_started_at: new Date().toISOString() },
+      t('livequiz.err_advance'),
+    )
     setAdvancing(false)
   }
 
   const endQuiz = async () => {
     if (!activeQuiz) return
     setAdvancing(true)
-    const { data } = await supabase
-      .from('live_quizzes')
-      .update({ status: 'ended', current_question: -1 })
-      .eq('id', activeQuiz.id)
-      .select().single()
-    if (data) setActiveQuiz((prev) => ({ ...prev!, ...(data as unknown as LiveQuiz) }))
+    await applySessionUpdate({ status: 'ended', current_question: -1 }, t('livequiz.err_end'))
     setAdvancing(false)
   }
 
@@ -403,19 +535,19 @@ export default function LiveQuizAdmin() {
     if (!ok) return
     setAdvancing(true)
     const newPin = generatePin()
-    await supabase.from('live_quiz_answers').delete().eq('quiz_id', activeQuiz.id)
-    const { data } = await supabase
-      .from('live_quizzes')
-      .update({ status: 'lobby', current_question: -1, pin: newPin, question_started_at: null, pin_expires_at: expiryFromTtl(DEFAULT_PIN_TTL_MIN) })
-      .eq('id', activeQuiz.id)
-      .select().single()
-    if (data) {
-      setActiveQuiz((prev) => ({ ...prev!, ...(data as unknown as LiveQuiz) }))
+    const { error: delError } = await supabase.from('live_quiz_answers').delete().eq('quiz_id', activeQuiz.id)
+    if (delError) { toast.error(t('livequiz.err_restart'), dbReason(delError)); setAdvancing(false); return }
+    const row = await applySessionUpdate(
+      { status: 'lobby', current_question: -1, pin: newPin, question_started_at: null, pin_expires_at: expiryFromTtl(DEFAULT_PIN_TTL_MIN) },
+      t('livequiz.err_restart'),
+    )
+    if (row) {
       setAnswerCounts([])
       setTotalAnswers(0)
       setLeaderboard([])
       setShowLeaderboard(false)
       autoRevealedQ.current = -1
+      toast.success(t('livequiz.restarted_ok'), t('livequiz.created_ok_hint', { pin: row.pin }))
     }
     setAdvancing(false)
   }
@@ -424,13 +556,11 @@ export default function LiveQuizAdmin() {
   const renewPin = async () => {
     if (!activeQuiz) return
     setAdvancing(true)
-    const newPin = generatePin()
-    const { data } = await supabase
-      .from('live_quizzes')
-      .update({ pin: newPin, pin_expires_at: expiryFromTtl(DEFAULT_PIN_TTL_MIN) })
-      .eq('id', activeQuiz.id)
-      .select().single()
-    if (data) setActiveQuiz((prev) => ({ ...prev!, ...(data as unknown as LiveQuiz) }))
+    const row = await applySessionUpdate(
+      { pin: generatePin(), pin_expires_at: expiryFromTtl(DEFAULT_PIN_TTL_MIN) },
+      t('livequiz.err_renew'),
+    )
+    if (row) toast.success(t('livequiz.renewed_ok'), t('livequiz.created_ok_hint', { pin: row.pin }))
     setAdvancing(false)
   }
 
@@ -473,7 +603,7 @@ export default function LiveQuizAdmin() {
           <p className="text-text-muted text-[13px] mt-1">{i18n.t('admin.livequiz.subtitle')}</p>
         </div>
         <button
-          onClick={() => { setEditingId(null); setFormTitle(''); setFormCampaign(campaignId ?? ''); setFormQuestions([emptyQuestion()]); setFormTtlMin(DEFAULT_PIN_TTL_MIN); setView('create') }}
+          onClick={startCreate}
           className="flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-medium text-black shrink-0"
           style={{ background: '#10D451' }}
         >
@@ -481,6 +611,19 @@ export default function LiveQuizAdmin() {
           {i18n.t('admin.livequiz.create_quiz')}
         </button>
       </div>
+
+      {/* Sin campañas accesibles no se puede crear: se explica en vez de dejar
+          que el botón Crear no haga nada. */}
+      {!loadingList && campaigns.length === 0 && (
+        <div className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-5 border"
+          style={{ background: 'rgba(250,204,21,0.08)', borderColor: 'rgba(250,204,21,0.35)' }}>
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-500" />
+          <div>
+            <div className="text-[13px] font-medium text-text">{i18n.t('livequiz.no_campaign_title')}</div>
+            <p className="text-[12px] text-text-muted mt-0.5">{i18n.t('livequiz.issue_no_campaign')}</p>
+          </div>
+        </div>
+      )}
 
       {/* Filtro de campaña (cuando el usuario abarca más de una) */}
       {showCampaignCol && (
@@ -545,16 +688,17 @@ export default function LiveQuizAdmin() {
                 </span>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => { setActiveQuiz(q); setView('session') }}
-                    className="inline-flex items-center min-h-[36px] text-[12px] text-text-muted hover:text-text px-3 py-1 rounded-lg hover:bg-subtle transition-colors whitespace-nowrap"
+                    onClick={() => void openSession(q)}
+                    disabled={openingId === q.id}
+                    className="inline-flex items-center gap-1.5 min-h-[36px] text-[12px] text-text-muted hover:text-text px-3 py-1 rounded-lg hover:bg-subtle transition-colors whitespace-nowrap disabled:opacity-60"
                   >
+                    {openingId === q.id && <Loader2 className="h-3 w-3 animate-spin" />}
                     {i18n.t('admin.livequiz.manage')} →
                   </button>
                   <button
                     onClick={() => startEdit(q)}
-                    disabled={q.status === 'active'}
                     title={q.status === 'active' ? i18n.t('admin.livequiz.edit_locked') : i18n.t('common.edit')}
-                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle enabled:hover:text-text enabled:hover:bg-subtle transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    className={`h-10 w-10 flex items-center justify-center rounded-lg transition-colors ${q.status === 'active' ? 'text-text-subtle/40 hover:bg-subtle' : 'text-text-subtle hover:text-text hover:bg-subtle'}`}
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -585,28 +729,103 @@ export default function LiveQuizAdmin() {
   // ── Vista de creación ────────────────────────────────────────────────────────
   if (view === 'create') return (
     <div className="p-4 sm:p-8 max-w-2xl">
-      <button onClick={() => { setEditingId(null); setView('list') }} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
+      <button onClick={() => { setEditingId(null); setShowIssues(false); setView('list') }} className="flex items-center gap-1.5 min-h-[44px] text-[13px] text-text-muted hover:text-text mb-6 transition-colors">
         <ChevronLeft className="h-4 w-4" /> {i18n.t('common.back')}
       </button>
-      <h1 className="text-[22px] font-bold text-text mb-6">{editingId ? i18n.t('common.edit_quiz') : i18n.t('admin.livequiz.create_quiz')}</h1>
+      <h1 className="text-[22px] font-bold text-text mb-4">{editingId ? i18n.t('common.edit_quiz') : i18n.t('admin.livequiz.create_quiz')}</h1>
+
+      {/* Sin campaña accesible no hay nada que hacer: se dice de entrada, con
+          el motivo y a quién pedírselo, en vez de dejar morir el botón Crear. */}
+      {campaigns.length === 0 && (
+        <div className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-5 border"
+          style={{ background: 'rgba(250,204,21,0.08)', borderColor: 'rgba(250,204,21,0.35)' }}>
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-500" />
+          <div>
+            <div className="text-[13px] font-medium text-text">{i18n.t('livequiz.no_campaign_title')}</div>
+            <p className="text-[12px] text-text-muted mt-0.5">{i18n.t('livequiz.issue_no_campaign')}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de requisitos en vivo: qué falta y por qué, antes de tocar nada */}
+      <div
+        className="rounded-2xl px-4 py-3 mb-6 border transition-colors"
+        style={
+          check.pending.length === 0
+            ? { background: 'rgba(16,212,81,0.07)', borderColor: 'rgba(16,212,81,0.35)' }
+            : showIssues
+              ? { background: 'rgba(239,68,68,0.07)', borderColor: 'rgba(239,68,68,0.35)' }
+              : { background: 'rgb(var(--subtle))', borderColor: 'rgb(var(--line))' }
+        }
+      >
+        <div className="flex items-center gap-2">
+          {check.pending.length === 0
+            ? <Check className="h-4 w-4 shrink-0" style={{ color: '#10D451' }} />
+            : <AlertTriangle className={`h-4 w-4 shrink-0 ${showIssues ? 'text-red-400' : 'text-text-subtle'}`} />}
+          <span className="text-[13px] font-medium text-text">
+            {check.pending.length === 0
+              ? i18n.t(editingId ? 'livequiz.checklist_ready_edit' : 'livequiz.checklist_ready')
+              : i18n.t(editingId ? 'livequiz.checklist_title_edit' : 'livequiz.checklist_title')}
+          </span>
+        </div>
+
+        {check.pending.length === 0 ? (
+          !editingId && <p className="text-[12px] text-text-muted mt-1 ml-6">{i18n.t('livequiz.checklist_ready_hint')}</p>
+        ) : (
+          <ul className="mt-2 ml-0.5 space-y-1">
+            {check.steps.map((s) => (
+              <li key={s.id} className="flex items-start gap-2 text-[12px]">
+                {s.done ? (
+                  <Check className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: '#10D451' }} />
+                ) : (
+                  <span className={`h-3 w-3 mt-1 shrink-0 rounded-full border-2 ${showIssues ? 'border-red-400' : 'border-text-subtle'}`} />
+                )}
+                <span className={s.done ? 'text-text-subtle line-through' : 'text-text'}>
+                  {s.label}
+                  {!s.done && <span className="text-text-muted"> — {s.hint}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="space-y-4 mb-6">
-        <input
-          type="text"
-          placeholder={i18n.t('admin.livequiz.ph_quiz_title')}
-          value={formTitle}
-          onChange={(e) => setFormTitle(e.target.value)}
-          className="w-full rounded-xl px-4 py-2.5 min-h-[44px] text-[14px] text-text bg-subtle border border-line outline-none focus:border-[#10D451] transition-colors"
-        />
-        {campaigns.length > 1 && (
-          <FilterDropdown
-            value={formCampaign}
-            onChange={setFormCampaign}
-            options={[
-              { value: '', label: i18n.t('livequiz.select_campaign') },
-              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-            ]}
+        <div>
+          <input
+            type="text"
+            placeholder={i18n.t('admin.livequiz.ph_quiz_title')}
+            value={formTitle}
+            onChange={(e) => setFormTitle(e.target.value)}
+            className="w-full rounded-xl px-4 py-2.5 min-h-[44px] text-[14px] text-text bg-subtle border outline-none focus:border-[#10D451] transition-colors"
+            style={{ borderColor: showIssues && check.badTitle ? '#ef4444' : 'rgb(var(--line))' }}
           />
+          {showIssues && check.badTitle && (
+            <p className="text-[11px] text-red-400 mt-1.5">{i18n.t('livequiz.issue_title')}</p>
+          )}
+        </div>
+        {campaigns.length > 1 ? (
+          <div>
+            <FilterDropdown
+              value={formCampaign}
+              onChange={setFormCampaign}
+              options={[
+                { value: '', label: i18n.t('livequiz.select_campaign') },
+                ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            />
+            {showIssues && check.badCampaign && (
+              <p className="text-[11px] text-red-400 mt-1.5">{i18n.t('livequiz.issue_campaign')}</p>
+            )}
+          </div>
+        ) : (
+          // Con una sola campaña no hay nada que elegir, pero sí que confirmar:
+          // el capacitador debe saber dónde va a quedar el quiz.
+          <p className="text-[11px] text-text-subtle">
+            {campaigns.length === 1
+              ? i18n.t('livequiz.create_target', { name: campaigns[0].name })
+              : i18n.t('livequiz.issue_no_campaign')}
+          </p>
         )}
 
         {/* Vigencia del código — solo al crear */}
@@ -638,7 +857,11 @@ export default function LiveQuizAdmin() {
 
       <div className="space-y-4 mb-6">
         {formQuestions.map((q, qi) => (
-          <div key={qi} className="rounded-2xl p-4 sm:p-5 bg-subtle border border-line">
+          <div
+            key={qi}
+            className="rounded-2xl p-4 sm:p-5 bg-subtle border"
+            style={{ borderColor: showIssues && check.badQuestions.has(qi) ? 'rgba(239,68,68,0.6)' : 'rgb(var(--line))' }}
+          >
             <div className="flex items-center justify-between mb-3">
               <span className="text-[12px] text-text-muted uppercase tracking-wider">{i18n.t('common.question_n', { n: qi + 1 })}</span>
               {formQuestions.length > 1 && (
@@ -686,6 +909,16 @@ export default function LiveQuizAdmin() {
                 </div>
               ))}
             </div>
+            {/* Aviso por pregunta: dice exactamente qué le falta a ESTA */}
+            {showIssues && check.badQuestions.has(qi) && (
+              <p className="text-[11px] text-red-400 mb-3">
+                {!formQuestions[qi].text.trim()
+                  ? i18n.t('livequiz.issue_question_text', { n: qi + 1 })
+                  : formQuestions[qi].options.filter((o) => o.trim()).length < 2
+                    ? i18n.t('livequiz.issue_question_options', { n: qi + 1 })
+                    : i18n.t('livequiz.issue_correct_option', { n: qi + 1 })}
+              </p>
+            )}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] text-text-subtle">{i18n.t('admin.livequiz.time_label')}</span>
               {[10, 15, 20, 30, 45].map((t) => (
@@ -712,15 +945,25 @@ export default function LiveQuizAdmin() {
         </button>
       </div>
 
-      <button
-        onClick={handleCreate}
-        disabled={creating || !formTitle.trim() || formQuestions.some((q) => !q.text.trim())}
-        className="flex items-center gap-2 px-6 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black disabled:opacity-50"
-        style={{ background: '#10D451' }}
-      >
-        {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-        {editingId ? i18n.t('common.save_changes') : i18n.t('livequiz.create_open')}
-      </button>
+      {/* El botón nunca se deshabilita sin decir por qué: se puede pulsar
+          siempre y, si falta algo, el texto de abajo lo nombra. */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          onClick={handleCreate}
+          disabled={creating}
+          title={check.pending.length > 0 ? check.pending[0].hint : undefined}
+          className="flex items-center gap-2 px-6 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-black disabled:opacity-50 transition-opacity"
+          style={{ background: '#10D451', opacity: check.pending.length > 0 ? 0.6 : 1 }}
+        >
+          {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+          {editingId ? i18n.t('common.save_changes') : i18n.t('livequiz.create_open')}
+        </button>
+        {check.pending.length > 0 && (
+          <span className={`text-[12px] ${showIssues ? 'text-red-400' : 'text-text-muted'}`}>
+            {i18n.t('livequiz.missing_count', { count: check.pending.length })}
+          </span>
+        )}
+      </div>
     </div>
   )
 
@@ -799,6 +1042,24 @@ export default function LiveQuizAdmin() {
           </div>
         </div>
       </div>
+
+      {/* Un quiz sin preguntas no se puede iniciar: se avisa antes de intentarlo */}
+      {activeQuiz.questions.length === 0 && (
+        <div className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-4 border"
+          style={{ background: 'rgba(250,204,21,0.08)', borderColor: 'rgba(250,204,21,0.35)' }}>
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-500" />
+          <div>
+            <div className="text-[13px] font-medium text-text">{i18n.t('livequiz.err_no_questions')}</div>
+            <button
+              onClick={() => startEdit(activeQuiz)}
+              className="text-[12px] mt-0.5 underline underline-offset-2"
+              style={{ color: '#10D451' }}
+            >
+              {i18n.t('livequiz.add_questions_cta')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Estado de lobby */}
       {activeQuiz.status === 'lobby' && (
