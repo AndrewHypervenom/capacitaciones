@@ -58,6 +58,7 @@ import {
   type DbSectionRow,
   type DbQuizRow,
 } from '@/services/modules.service'
+import { supabase } from '@/lib/supabase'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { MediaUploader } from '@/admin/components/MediaUploader'
 import { VideoMarkerEditor } from '@/admin/components/VideoMarkerEditor'
@@ -1387,6 +1388,20 @@ export default function ModuleEditor() {
   // columna nueva en la base para esto.
   const untranslated = useMemo(() => (mod ? isUntranslated(mod) : false), [mod])
 
+  // Traducir cuesta plata, así que solo se habilita cuando el contenido está
+  // dado por terminado: el curso publicado. Un módulo suelto (sin curso) usa su
+  // propia publicación como señal, si no jamás podría traducirse.
+  const [coursePublished, setCoursePublished] = useState<boolean | null>(null)
+  useEffect(() => {
+    const courseId = mod?.course_id
+    if (!courseId) { setCoursePublished(null); return }
+    let active = true
+    supabase.from('courses').select('is_published').eq('id', courseId).maybeSingle()
+      .then(({ data }) => { if (active) setCoursePublished(!!(data as { is_published?: boolean } | null)?.is_published) })
+    return () => { active = false }
+  }, [mod?.course_id])
+  const canTranslate = mod?.course_id ? coursePublished === true : !!mod?.is_published
+
   // Presencia colaborativa: anuncio en qué módulo Y en qué sección estoy, y
   // obtengo la lista de coeditores que lo tienen abierto ahora mismo. La sección
   // es el dato que de verdad evita choques: dos personas en el mismo módulo pero
@@ -1816,16 +1831,18 @@ export default function ModuleEditor() {
               <Columns2 className="h-3.5 w-3.5" />
             </button>
             {/* Traducir a EN/PT: el módulo nace en español y se traduce cuando
-                el capacitador lo da por terminado (ahorro de IA). */}
+                el capacitador lo da por terminado (ahorro de IA). "Terminado" =
+                el curso ya está publicado; hasta entonces el botón se bloquea. */}
             <Button
               variant="glass"
               size="sm"
               onClick={() => setTranslateOpen(true)}
-              title={t('admin.translate.button')}
+              disabled={!canTranslate}
+              title={canTranslate ? t('admin.translate.button') : t('admin.translate.locked_hint')}
             >
               <Languages className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t('admin.translate.button')}</span>
-              {untranslated && (
+              {canTranslate && untranslated && (
                 <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
               )}
             </Button>

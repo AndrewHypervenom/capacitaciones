@@ -2902,6 +2902,7 @@
     "translate": {
       "title": "Traduzir para inglês e português",
       "button": "Traduzir",
+      "locked_hint": "Publique o curso para poder traduzir: assim não se paga por traduzir conteúdo que ainda vai mudar.",
       "why": "O conteúdo é escrito só em espanhol para não gastar com traduções que depois são reescritas. Enquanto isso o aluno vê o espanhol nos três idiomas. Traduza quando considerar pronto.",
       "checking": "Verificando o que falta traduzir…",
       "preparing": "Preparando a tradução…",

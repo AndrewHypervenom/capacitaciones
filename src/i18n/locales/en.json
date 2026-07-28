@@ -2902,6 +2902,7 @@
     "translate": {
       "title": "Translate to English and Portuguese",
       "button": "Translate",
+      "locked_hint": "Publish the course to enable translation, so you don't pay to translate content that is still changing.",
       "why": "Content is written in Spanish only, so you do not pay for translations that get rewritten anyway. Meanwhile learners see the Spanish in all three languages. Translate once you consider it finished.",
       "checking": "Checking what still needs translating…",
       "preparing": "Preparing the translation…",

@@ -1152,16 +1152,20 @@ export default function CourseEditor() {
           </Button>
 
           {/* Traducción diferida: el contenido nace en español y se traduce una
-              sola vez, cuando el capacitador da el curso por terminado. */}
+              sola vez, cuando el capacitador da el curso por terminado. Publicar
+              el curso ES esa señal de "terminado": mientras esté en borrador el
+              botón queda bloqueado para no pagar traducciones que se reescriben. */}
           <Button
             variant="glass"
             size="sm"
             onClick={() => setTranslateOpen(true)}
+            disabled={!course.is_published}
+            title={course.is_published ? t('admin.translate.button') : t('admin.translate.locked_hint')}
             className="flex items-center gap-1.5"
           >
             <Languages className="h-3.5 w-3.5" />
             {t('admin.translate.button')}
-            {transPending > 0 && (
+            {course.is_published && transPending > 0 && (
               <span className="ml-0.5 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
                 {transPending}
               </span>
