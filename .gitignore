@@ -19,6 +19,9 @@ supabase
 # Bots de QA — nada de esto va al repositorio
 qa/
 
+# Material de marca de referencia (el logo que usa el certificado vive en public/)
+/logotipos/
+
 /agents
 
 skills-lock.json

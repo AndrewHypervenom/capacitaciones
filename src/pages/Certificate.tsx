@@ -3,6 +3,8 @@ import { useNavigate, Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Download, Lock, Linkedin, Link2, RefreshCw } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
+import { useAuth } from '@/hooks/useAuth';
+import { getProfile } from '@/services/auth.service';
 import { getCourseById, type CourseWithModules } from '@/services/courses.service';
 import {
   getCourseCertStatus, issueCertification,
@@ -105,6 +107,10 @@ export default function Certificate() {
   const { t, i18n } = useTranslation();
   const { courseId, userId: viewUserId } = useParams<{ courseId: string; userId?: string }>();
   const { name, language } = useUserStore();
+  const { profile } = useAuth();
+  // Documento del aprendiz que se imprime bajo el nombre. En la vista propia
+  // sale del perfil en sesión; en la del capacitador hay que ir a buscarlo.
+  const [learnerDoc, setLearnerDoc] = useState<string | null>(null);
   // Modo capacitador: se abre /certificate/:courseId/:userId para ver el
   // certificado de un aprendiz (datos vía RPC protegida por dueño/superadmin).
   const trainerMode = !!viewUserId;
@@ -150,6 +156,11 @@ export default function Certificate() {
         setLearner(rows.find((r) => r.user_id === viewUserId) ?? null);
         setActivity(act);
         setLearnerRecert(recertRows.find((r) => r.user_id === viewUserId) ?? null);
+        // El documento no viene en el RPC de resultados; se lee del perfil. Si
+        // la RLS no deja (o no está cargado), el certificado sale sin él.
+        getProfile(viewUserId)
+          .then((p) => { if (active) setLearnerDoc(p?.national_id ?? null); })
+          .catch(() => {});
         return;
       }
 
@@ -231,6 +242,7 @@ export default function Certificate() {
 
   // ── Variables unificadas (aprendiz propio / vista del capacitador) ──
   const viewName = trainerMode ? (learner?.display_name || '—') : name;
+  const nationalId = trainerMode ? learnerDoc : (profile?.national_id ?? null);
 
   // ── Recertificación (unificado aprendiz / capacitador) ──
   const needsRecert = trainerMode
@@ -273,6 +285,9 @@ export default function Certificate() {
   const issuedAtRaw = trainerMode ? learner?.issued_at : status?.issued_at;
   const dateSource = activity.completedAt ?? issuedAtRaw ?? null;
   const issuedOn = formatDate(dateSource ? new Date(dateSource) : new Date(), lang);
+  // Intensidad horaria: suma de la duración de los módulos del curso, la misma
+  // cifra que el aprendiz vio en el catálogo antes de inscribirse.
+  const durationMin = (course?.modules ?? []).reduce((acc, m) => acc + (m.duration_min || 0), 0);
   const certIdSource = trainerMode ? learner?.cert_id : status?.cert_id;
   const certId = (certIdSource ?? `${viewName}-${Date.now()}`).slice(0, 16).toUpperCase();
 
@@ -373,12 +388,14 @@ export default function Certificate() {
           <CertificateSheet
             ref={certRef}
             viewName={viewName}
+            nationalId={nationalId}
             courseTitle={courseTitle}
             completedCount={completedCount}
             totalModules={totalModules}
             showScore={showScore}
             scoreValue={scoreValue}
             issuedOn={issuedOn}
+            durationMin={durationMin}
             certId={certId}
             verifyUrl={shareUrl ?? undefined}
           />

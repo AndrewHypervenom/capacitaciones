@@ -1,27 +1,45 @@
 import { forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check } from 'lucide-react';
 
 // ── Corporate palette ────────────────────────────────────
 const GREEN = '#10D451';
 const MAGENTA = '#B33D9E';
-const GRAY_LIGHT = '#E0EBE7';
-const GRAY_MED = '#A1ADAD';
+const GRAY_LIGHT = '#E2E8E5';
+const GRAY_MED = '#8A9694';
 const WHITE = '#FFFFFF';
-const INK = '#16211D';
+const INK = '#0E1512';
 
 const SANS =
   '"Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
 
+/** Logo oficial PositivoS+ (1446×226). Vive en /public para que exista en producción. */
+const LOGO_SRC = '/positivos-logo.png';
+const LOGO_RATIO = 1446 / 226;
+
 export interface CertificateSheetData {
   viewName: string;
+  /** Documento de identidad de quien recibe el certificado (cédula, CURP…). */
+  nationalId?: string | null;
   courseTitle: string;
+  /**
+   * Módulos aprobados / totales al emitir. El certificado impreso no los
+   * muestra, pero se siguen recibiendo: son el dato con el que se decide si el
+   * certificado quedó desfasado (recertificación) y evita tocar los llamadores
+   * si se quisieran volver a imprimir.
+   */
   completedCount: number;
   totalModules: number;
   showScore: boolean;
   scoreValue: number | null;
   issuedOn: string;
+  /**
+   * Intensidad horaria del curso, en MINUTOS (suma de `modules.duration_min`).
+   * Si es 0 o falta, el dato simplemente no se imprime: un certificado sin
+   * duración es preferible a uno que diga "0 horas".
+   */
+  durationMin?: number | null;
   /** Código público del certificado (para mostrar). */
   certId: string;
   /** URL pública verificable → se codifica en el QR. Si falta, no se muestra QR. */
@@ -34,58 +52,32 @@ export interface CertificateSheetData {
   lang?: string;
 }
 
-/** Clean, modern verification badge (LearningAI mark + check ring). */
-function VerifiedBadge() {
-  return (
-    <div style={{ position: 'relative', width: 72, height: 72 }}>
-      <svg width="72" height="72" viewBox="0 0 100 100" style={{ display: 'block' }}>
-        <circle cx="50" cy="50" r="47" fill="none" stroke={GRAY_LIGHT} strokeWidth="2" />
-        <circle
-          cx="50" cy="50" r="47" fill="none"
-          stroke="url(#badgeGrad)" strokeWidth="3"
-          strokeLinecap="round" strokeDasharray="220 295" transform="rotate(-90 50 50)"
-        />
-        <defs>
-          <linearGradient id="badgeGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor={GREEN} />
-            <stop offset="1" stopColor={MAGENTA} />
-          </linearGradient>
-        </defs>
-      </svg>
-      <img
-        src="/logo.jpg"
-        alt="LearningAI"
-        style={{
-          position: 'absolute', top: 14, left: 14, width: 44, height: 44,
-          borderRadius: '50%', objectFit: 'cover',
-        }}
-      />
-      <div style={{
-        position: 'absolute', right: -2, bottom: -2, width: 24, height: 24,
-        borderRadius: '50%', background: GREEN, border: `2.5px solid ${WHITE}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Check size={13} color={WHITE} strokeWidth={3.5} />
-      </div>
-    </div>
-  );
+/**
+ * Minutos → texto de intensidad horaria. Por debajo de una hora se imprime en
+ * minutos (decir "0,5 horas" en un diploma se lee raro); a partir de ahí en
+ * horas, con un decimal solo cuando no es exacto (2 h / 2,5 h).
+ */
+function formatDuration(min: number, t: TFunction): string {
+  if (min < 60) return t('certificate.duration_minutes', { count: min });
+  const hours = Math.round((min / 60) * 10) / 10;
+  const count = Number.isInteger(hours) ? hours : Number(hours.toFixed(1));
+  return t('certificate.duration_hours', { count });
 }
 
 /**
- * Sello oficial PositivoS+ — reemplaza a las firmas manuscritas.
+ * Sello oficial PositivoS+ — es la marca de que Positivo certifica el
+ * documento; reemplaza a las firmas manuscritas del certificado impreso.
  * Estampa circular con doble anillo, texto curvo (textPath), anillo de estrellas
- * y monograma central. Ligeramente rotado y con brillo para leer como un sello
- * en relieve auténtico.
+ * y monograma central.
  */
-function PositivoSeal({ label, sub }: { label: string; sub: string }) {
-  const R_TEXT_TOP = 82;   // radio del texto superior
-  const R_TEXT_BOT = 82;   // radio del texto inferior
+function PositivoSeal({ label, sub, size = 118 }: { label: string; sub: string; size?: number }) {
+  const R_TEXT = 82;
   const stars = Array.from({ length: 28 });
 
   return (
-    <div style={{ position: 'relative', width: 176, height: 176 }}>
+    <div style={{ position: 'relative', width: size, height: size }}>
       <svg
-        width="176" height="176" viewBox="0 0 200 200"
+        width={size} height={size} viewBox="0 0 200 200"
         style={{ display: 'block', transform: 'rotate(-7deg)' }}
       >
         <defs>
@@ -100,9 +92,9 @@ function PositivoSeal({ label, sub }: { label: string; sub: string }) {
           </radialGradient>
           {/* Curvas para el texto (superior de izq→der, inferior invertida). */}
           <path id="sealTop" fill="none"
-            d={`M ${100 - R_TEXT_TOP} 100 A ${R_TEXT_TOP} ${R_TEXT_TOP} 0 0 1 ${100 + R_TEXT_TOP} 100`} />
+            d={`M ${100 - R_TEXT} 100 A ${R_TEXT} ${R_TEXT} 0 0 1 ${100 + R_TEXT} 100`} />
           <path id="sealBot" fill="none"
-            d={`M ${100 - R_TEXT_BOT} 100 A ${R_TEXT_BOT} ${R_TEXT_BOT} 0 0 0 ${100 + R_TEXT_BOT} 100`} />
+            d={`M ${100 - R_TEXT} 100 A ${R_TEXT} ${R_TEXT} 0 0 0 ${100 + R_TEXT} 100`} />
         </defs>
 
         {/* Cara del sello */}
@@ -116,9 +108,8 @@ function PositivoSeal({ label, sub }: { label: string; sub: string }) {
         <g fill={MAGENTA}>
           {stars.map((_, i) => {
             const a = (i / stars.length) * Math.PI * 2;
-            const r = 82;
-            const x = 100 + Math.cos(a) * r;
-            const y = 100 + Math.sin(a) * r;
+            const x = 100 + Math.cos(a) * 82;
+            const y = 100 + Math.sin(a) * 82;
             return <circle key={i} cx={x} cy={y} r={1.1} opacity={0.5} />;
           })}
         </g>
@@ -160,31 +151,24 @@ function PositivoSeal({ label, sub }: { label: string; sub: string }) {
 }
 
 /** Código QR de verificación (apunta a la página pública /verify/:certId). */
-function VerifyQR({ url, caption }: { url: string; caption: string }) {
+function VerifyQR({ url }: { url: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <div style={{
-        padding: 7, background: WHITE, borderRadius: 10,
-        border: `1px solid ${GRAY_LIGHT}`, boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-      }}>
-        <QRCodeSVG value={url} size={84} level="M" fgColor={INK} bgColor={WHITE} />
-      </div>
-      <span style={{
-        fontSize: 8, letterSpacing: 1.2, color: GRAY_MED, textTransform: 'uppercase',
-        fontWeight: 600, maxWidth: 110, textAlign: 'center', lineHeight: 1.4,
-      }}>
-        {caption}
-      </span>
+    <div style={{
+      padding: 6, background: WHITE, borderRadius: 8,
+      border: `1px solid ${GRAY_LIGHT}`, flexShrink: 0,
+    }}>
+      <QRCodeSVG value={url} size={82} level="M" fgColor={INK} bgColor={WHITE} />
     </div>
   );
 }
 
+/** Dato de la fila inferior (módulos / calificación / horas / fecha). */
 function MetaItem({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div style={{ textAlign: 'center', minWidth: 120 }}>
+    <div style={{ textAlign: 'center', minWidth: 118 }}>
       <div style={{
-        fontSize: 9.5, letterSpacing: 1.5, color: GRAY_MED,
-        textTransform: 'uppercase', fontWeight: 600, marginBottom: 6,
+        fontSize: 9, letterSpacing: 1.6, color: GRAY_MED,
+        textTransform: 'uppercase', fontWeight: 700, marginBottom: 5,
       }}>
         {label}
       </div>
@@ -199,192 +183,218 @@ function MetaItem({ label, value, accent }: { label: string; value: string; acce
 }
 
 /**
- * Hoja del certificado (A4 apaisado). Presentacional y sin dependencias de
- * sesión, de modo que la usa tanto la vista privada (Certificate.tsx) como la
- * página pública verificable (PublicCertificate.tsx). El `ref` apunta al
- * <article> para exportarlo a PDF.
+ * Hoja del certificado (A4 apaisado, 1123 × 794 px de diseño). Replica el
+ * certificado corporativo de Positivo S+: marco degradado (magenta → negro →
+ * verde), tarjeta blanca de esquinas muy redondeadas y todo el contenido
+ * centrado. No lleva firmas manuscritas: la autoría la respalda el sello
+ * oficial + el QR verificable.
+ *
+ * Es presentacional y sin dependencias de sesión, de modo que la usa tanto la
+ * vista privada (Certificate.tsx) como la página pública verificable
+ * (PublicCertificate.tsx). El `ref` apunta al <article> para exportarlo a PDF.
  */
 export const CertificateSheet = forwardRef<HTMLElement, CertificateSheetData>(
   function CertificateSheet(
-    { viewName, courseTitle, completedCount, totalModules, showScore, scoreValue, issuedOn, certId, verifyUrl, lang },
+    { viewName, nationalId, courseTitle, completedCount, totalModules, showScore, scoreValue, issuedOn, durationMin, certId, verifyUrl, lang },
     ref,
   ) {
     // `lng` devuelve un `t` fijo a ese idioma SIN cambiar el idioma global:
     // el visitante que abre un certificado compartido en otro idioma no debe
     // ver cómo se le cambia el sitio entero.
     const { t } = useTranslation(undefined, lang ? { lng: lang } : undefined);
+    const hasDuration = !!durationMin && durationMin > 0;
 
     return (
       <article
         ref={ref}
         style={{
-          background: WHITE,
-          color: INK,
           position: 'relative',
           width: '100%',
           aspectRatio: '1.414 / 1',
           boxSizing: 'border-box',
-          display: 'flex',
-          boxShadow: '0 30px 80px rgba(0,0,0,0.18), 0 4px 24px rgba(0,0,0,0.06)',
+          padding: 30,
+          // Marco degradado del certificado corporativo: verde en la esquina
+          // superior derecha, magenta bajando por el flanco izquierdo, negro
+          // en el resto. Son radial-gradients (no conic) porque html2canvas
+          // sabe rasterizar estos y así el PDF sale idéntico a la pantalla.
+          background: `
+            radial-gradient(58% 78% at 100% 0%, ${GREEN} 0%, rgba(16,212,81,0.5) 16%, rgba(6,20,12,0) 44%),
+            radial-gradient(60% 110% at 0% 22%, ${MAGENTA} 0%, rgba(179,61,158,0.72) 22%, rgba(12,6,12,0) 58%),
+            radial-gradient(55% 70% at 8% 100%, rgba(179,61,158,0.55) 0%, rgba(12,6,12,0) 60%),
+            radial-gradient(45% 60% at 100% 100%, rgba(179,61,158,0.35) 0%, rgba(12,6,12,0) 65%),
+            #07090A
+          `,
           fontFamily: SANS,
+          color: INK,
           overflow: 'hidden',
         }}
       >
-        {/* Left accent bar (green → magenta) */}
-        <div style={{ width: 14, flexShrink: 0, background: `linear-gradient(180deg, ${GREEN}, ${MAGENTA})` }} />
+        {/* Tarjeta blanca */}
+        <div style={{
+          width: '100%',
+          height: '100%',
+          boxSizing: 'border-box',
+          background: WHITE,
+          borderRadius: 76,
+          padding: '34px 92px 34px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center',
+        }}>
+          {/* Logo oficial */}
+          <img
+            src={LOGO_SRC}
+            alt="Positivo S+"
+            style={{ width: 246, height: 246 / LOGO_RATIO, objectFit: 'contain' }}
+          />
 
-        {/* Sheet body */}
-        <div style={{ flex: 1, position: 'relative', padding: '44px 68px 40px', display: 'flex', flexDirection: 'column' }}>
-          {/* Subtle corner marks */}
-          <div aria-hidden style={{
-            position: 'absolute', top: -70, right: -70, width: 260, height: 260,
-            borderRadius: '50%', background: `radial-gradient(circle at 30% 30%, rgba(16,212,81,0.10), transparent 60%)`,
-            pointerEvents: 'none',
-          }} />
-          <div aria-hidden style={{
-            position: 'absolute', bottom: -90, left: -40, width: 220, height: 220,
-            borderRadius: '50%', background: `radial-gradient(circle at 70% 70%, rgba(179,61,158,0.07), transparent 60%)`,
-            pointerEvents: 'none',
-          }} />
+          {/* Cuerpo. El título arranca pegado al logo (como en el certificado
+              impreso), NO centrado en el espacio libre: el aire sobrante se
+              reparte más abajo, con el separador flexible previo a los datos. */}
+          <div style={{
+            marginTop: 50,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center',
+            width: '100%',
+          }}>
+            <h1 style={{
+              margin: 0,
+              fontSize: 40,
+              fontWeight: 400,
+              letterSpacing: 0.4,
+              textTransform: 'uppercase',
+              color: INK,
+              lineHeight: 1.15,
+            }}>
+              {t('certificate.title')}
+            </h1>
 
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', flex: 1 }}>
-            {/* Brand header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <img
-                  src="/logo.jpg"
-                  alt="LearningAI"
-                  style={{ height: 42, width: 42, borderRadius: 10, objectFit: 'cover' }}
-                />
-                <div>
-                  <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.4, color: INK, lineHeight: 1 }}>
-                    LearningAI
-                  </div>
-                  <div style={{ fontSize: 10, letterSpacing: 1.5, color: GRAY_MED, textTransform: 'uppercase', marginTop: 3 }}>
-                    Academy
-                  </div>
-                </div>
-              </div>
-              <div style={{
-                fontSize: 10.5, letterSpacing: 2, color: GRAY_MED,
-                textTransform: 'uppercase', fontWeight: 600, textAlign: 'right',
-              }}>
-                {t('certificate.subtitle')}
-              </div>
+            {/* Filete verde */}
+            <div style={{ width: 372, height: 2, background: GREEN, margin: '18px 0 16px' }} />
+
+            <div style={{
+              fontSize: 14.5, letterSpacing: 0.6, color: '#2B3733', textTransform: 'uppercase',
+            }}>
+              {t('certificate.presented_to')}
             </div>
 
-            {/* Title + recipient */}
-            <div style={{ marginTop: 'auto', marginBottom: 'auto', paddingTop: 24, paddingBottom: 24 }}>
-              <div style={{
-                fontSize: 13, letterSpacing: 4, color: GREEN,
-                textTransform: 'uppercase', fontWeight: 700, marginBottom: 6,
-              }}>
-                {t('certificate.title')}
+            {/* Nombre y documento de identidad */}
+            <div style={{
+              marginTop: 20,
+              fontSize: 50,
+              fontWeight: 700,
+              letterSpacing: -0.6,
+              color: INK,
+              lineHeight: 1.12,
+            }}>
+              {viewName}
+            </div>
+            {nationalId && (
+              <div style={{ marginTop: 7, fontSize: 13, color: '#5A6763', letterSpacing: 0.3 }}>
+                {t('certificate.document_label')} {nationalId}
               </div>
-              <div style={{ fontSize: 12.5, color: GRAY_MED, marginBottom: 26 }}>
-                {t('certificate.presented_to')}
-              </div>
+            )}
 
-              <div style={{
-                fontSize: 54, fontWeight: 300, letterSpacing: -1,
-                color: INK, lineHeight: 1.05, marginBottom: 18,
-              }}>
-                {viewName}
-              </div>
-              <div style={{ width: 64, height: 3, background: GREEN, borderRadius: 2, marginBottom: 22 }} />
+            {/* Programa completado — una sola línea, como el certificado impreso */}
+            <div style={{
+              marginTop: 26, fontSize: 21, letterSpacing: 0.4,
+              textTransform: 'uppercase', color: INK, lineHeight: 1.35, maxWidth: 860,
+            }}>
+              {t('certificate.for_completing', { course: courseTitle })}
+            </div>
 
-              <p style={{
-                fontSize: 14.5, color: '#4A5650', lineHeight: 1.65,
-                maxWidth: 620, margin: 0,
-              }}>
-                {t('certificate.completion_text')}
-              </p>
+            {/* Línea de otorgamiento */}
+            <div style={{
+              marginTop: 14, fontSize: 13, color: '#4A5650', lineHeight: 1.5, maxWidth: 780,
+            }}>
+              {hasDuration
+                ? t('certificate.offered_by_hours', { hours: formatDuration(durationMin!, t) })
+                : t('certificate.offered_by')}
+            </div>
 
-              {courseTitle && (
-                <div style={{ marginTop: 16 }}>
+          </div>
+
+          <div style={{ flex: 1, minHeight: 26 }} />
+
+          {/* Datos del logro */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 34,
+            paddingBottom: 20,
+          }}>
+            <MetaItem
+              label={t('certificate.modules_completed')}
+              value={`${completedCount}/${totalModules}`}
+            />
+            {showScore && (
+              <>
+                <div style={{ width: 1, height: 32, background: GRAY_LIGHT }} />
+                <MetaItem
+                  label={t('certificate.best_score')}
+                  value={`${scoreValue}/100`}
+                  accent
+                />
+              </>
+            )}
+            {hasDuration && (
+              <>
+                <div style={{ width: 1, height: 32, background: GRAY_LIGHT }} />
+                <MetaItem
+                  label={t('certificate.duration_label')}
+                  value={formatDuration(durationMin!, t)}
+                />
+              </>
+            )}
+            <div style={{ width: 1, height: 32, background: GRAY_LIGHT }} />
+            <MetaItem
+              label={t('certificate.completed_label')}
+              value={issuedOn}
+            />
+          </div>
+
+          {/* Pie: QR verificable (izq) · sello oficial (der). Sin firmas: lo que
+              respalda el documento es el sello + la verificación en línea. */}
+          <div style={{
+            width: '100%',
+            borderTop: `1px solid ${GRAY_LIGHT}`,
+            paddingTop: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left' }}>
+              {verifyUrl && <VerifyQR url={verifyUrl} />}
+              <div style={{ fontSize: 9.5, color: GRAY_MED, lineHeight: 1.7 }}>
+                {/* Sin QR (certificado aún sin `cert_id` emitido) no tiene
+                    sentido invitar a escanear nada. */}
+                {verifyUrl && (
                   <div style={{
-                    fontSize: 9.5, letterSpacing: 2, color: GRAY_MED,
-                    textTransform: 'uppercase', fontWeight: 600, marginBottom: 4,
+                    fontSize: 8.5, letterSpacing: 1.4, textTransform: 'uppercase', fontWeight: 700,
+                    color: GREEN, marginBottom: 2,
                   }}>
-                    {t('certificate.program_label')}
+                    {t('certificate.scan_to_verify')}
                   </div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: MAGENTA, letterSpacing: -0.3, lineHeight: 1.15 }}>
-                    {courseTitle}
-                  </div>
+                )}
+                <div style={{ fontWeight: 700, color: '#42504C' }}>
+                  {t('certificate.cert_id_label')}{' '}
+                  <span style={{ fontFamily: 'monospace', letterSpacing: 0.6 }}>{certId}</span>
                 </div>
-              )}
+                <div>{t('certificate.registry_line')}</div>
+              </div>
             </div>
 
-            {/* Footer */}
-            <div>
-              {/* Meta row — el puntaje solo aplica si el curso exige simulador */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 32,
-                paddingBottom: 22, marginBottom: 18,
-                borderBottom: `1px solid ${GRAY_LIGHT}`,
-              }}>
-                <MetaItem
-                  label={t('certificate.modules_completed')}
-                  value={`${completedCount}/${totalModules}`}
-                />
-                {showScore && (
-                  <>
-                    <div style={{ width: 1, height: 34, background: GRAY_LIGHT }} />
-                    <MetaItem
-                      label={t('certificate.best_score')}
-                      value={`${scoreValue}/100`}
-                      accent
-                    />
-                  </>
-                )}
-                <div style={{ width: 1, height: 34, background: GRAY_LIGHT }} />
-                <MetaItem
-                  label={t('certificate.completed_label')}
-                  value={issuedOn}
-                />
-              </div>
-
-              {/* Sello oficial PositivoS+ (izq) + QR verificable / insignia (der) */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <PositivoSeal
-                    label={t('certificate.seal_label')}
-                    sub={t('certificate.seal_sub')}
-                  />
-                  <div style={{ maxWidth: 190 }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: INK, letterSpacing: -0.2 }}>
-                      {t('certificate.seal_issuer')}
-                    </div>
-                    <div style={{ fontSize: 10.5, color: GRAY_MED, lineHeight: 1.5, marginTop: 3 }}>
-                      {t('certificate.seal_caption')}
-                    </div>
-                  </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+              <div style={{ maxWidth: 178 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: INK, letterSpacing: -0.1 }}>
+                  {t('certificate.seal_issuer')}
                 </div>
-
-                {verifyUrl ? (
-                  <VerifyQR url={verifyUrl} caption={t('certificate.scan_to_verify')} />
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                    <VerifiedBadge />
-                    <span style={{ fontSize: 8.5, letterSpacing: 1.5, color: GRAY_MED, textTransform: 'uppercase', fontWeight: 600 }}>
-                      {t('certificate.verified')}
-                    </span>
-                  </div>
-                )}
+                <div style={{ fontSize: 9.5, color: GRAY_MED, lineHeight: 1.5, marginTop: 3 }}>
+                  {t('certificate.seal_caption')}
+                </div>
               </div>
-
-              {/* Cert id */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                marginTop: 16, fontSize: 9.5, color: GRAY_MED, letterSpacing: 0.5,
-              }}>
-                <span style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>
-                  {t('certificate.cert_id_label')}
-                </span>
-                <span style={{ fontFamily: 'monospace', color: INK, letterSpacing: 1 }}>{certId}</span>
-                <span>·</span>
-                <span>{t('certificate.verify_text')}</span>
-              </div>
+              <PositivoSeal
+                label={t('certificate.seal_label')}
+                sub={t('certificate.seal_sub')}
+                size={128}
+              />
             </div>
           </div>
         </div>

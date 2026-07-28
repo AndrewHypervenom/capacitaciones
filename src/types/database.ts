@@ -1705,6 +1705,12 @@ export interface PublicCertificate {
   title_en: string | null
   title_pt: string | null
   modules_total: number
+  /** Intensidad horaria del curso en minutos. `undefined` en certificados
+   *  leídos con una versión del RPC anterior al SQL 2026-07-27. */
+  duration_min?: number | null
+  /** Documento de identidad ENMASCARADO por el RPC (p. ej. "••••7890"). La
+   *  página es pública: el número completo nunca sale de la base de datos. */
+  national_id?: string | null
 }
 
 /** Constante por defecto de condiciones (coincide con el DEFAULT del SQL). */

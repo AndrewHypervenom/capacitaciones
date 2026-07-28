@@ -186,12 +186,14 @@ export default function PublicCertificate() {
           <CertificateSheet
             ref={certRef}
             viewName={cert.display_name}
+            nationalId={cert.national_id}
             courseTitle={courseTitle}
             completedCount={cert.modules_total}
             totalModules={cert.modules_total}
             showScore={showScore}
             scoreValue={cert.score}
             issuedOn={issuedOn}
+            durationMin={cert.duration_min}
             certId={displayCertId}
             verifyUrl={shareUrl}
             lang={lang}
