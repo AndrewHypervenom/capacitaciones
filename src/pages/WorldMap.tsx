@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { motion, useReducedMotion, useMotionValue, useSpring, useMotionTemplate, animate } from 'framer-motion'
+import { motion, useReducedMotion, animate } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -236,64 +236,6 @@ function Aurora({ color, reduce }: { color: string; reduce: boolean }) {
   )
 }
 
-/* ── Tarjeta del selector con tilt 3D + spotlight que sigue al cursor ── */
-function SelectorCard({ w, i, reduce, onPick }: {
-  w: World; i: number; reduce: boolean; onPick: (w: World) => void
-}) {
-  const { t } = useTranslation()
-  const th = THEMES[w.bg_type] ?? THEMES.corporate
-  const rx = useSpring(useMotionValue(0), { stiffness: 200, damping: 18 })
-  const ry = useSpring(useMotionValue(0), { stiffness: 200, damping: 18 })
-  const mx = useMotionValue(-300)
-  const my = useMotionValue(-300)
-  const halo = useMotionTemplate`radial-gradient(240px circle at ${mx}px ${my}px, ${w.color}2e, transparent 62%)`
-
-  const onMove = (e: React.MouseEvent) => {
-    if (reduce) return
-    const r = e.currentTarget.getBoundingClientRect()
-    const px = (e.clientX - r.left) / r.width - 0.5
-    const py = (e.clientY - r.top) / r.height - 0.5
-    ry.set(px * 14); rx.set(-py * 14)
-    mx.set(e.clientX - r.left); my.set(e.clientY - r.top)
-  }
-  const reset = () => { rx.set(0); ry.set(0); mx.set(-300); my.set(-300) }
-
-  return (
-    <motion.div
-      initial={reduce ? false : { opacity: 0, y: 28, scale: 0.94 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ delay: reduce ? 0 : i * 0.09, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      whileHover={reduce ? undefined : { scale: 1.03 }}
-      whileTap={reduce ? undefined : { scale: 0.98 }}
-      onMouseMove={onMove}
-      onMouseLeave={reset}
-      style={{
-        rotateX: reduce ? 0 : rx, rotateY: reduce ? 0 : ry, transformPerspective: 900,
-        position: 'relative', overflow: 'hidden', cursor: 'pointer',
-        background: `radial-gradient(ellipse 130% 80% at 50% 15%, ${th.tint}, transparent 70%), rgb(var(--surface))`,
-        border: `1.5px solid ${w.color}33`, borderRadius: '1.5rem', padding: '34px 24px 30px',
-        textAlign: 'center', boxShadow: `0 14px 44px ${w.color}18`, willChange: 'transform',
-      }}
-      onClick={() => { playSound(w.sound_theme, 'click'); onPick(w) }}
-    >
-      {/* Spotlight que sigue al cursor */}
-      {!reduce && <motion.div aria-hidden style={{ position: 'absolute', inset: 0, background: halo, pointerEvents: 'none' }} />}
-      {/* Brillo superior sutil */}
-      <div aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${w.color}66, transparent)` }} />
-      <div style={{ position: 'relative' }}>
-        <motion.div
-          style={{ fontSize: '3.6rem', marginBottom: 14, filter: `drop-shadow(0 0 16px ${w.color})`, display: 'inline-block' }}
-          animate={reduce ? undefined : { y: [0, -7, 0] }}
-          transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
-        >{w.icon}</motion.div>
-        <div style={{ fontSize: '1.22rem', fontWeight: 800, color: 'rgb(var(--text))', marginBottom: 8 }}>{w.name}</div>
-        {w.description && <div style={{ fontSize: '.78rem', color: 'rgb(var(--text-muted))', lineHeight: 1.6, marginBottom: 14 }}><RichText text={w.description} /></div>}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${w.color}15`, border: `1px solid ${w.color}30`, borderRadius: 20, padding: '5px 14px', fontSize: '.72rem', color: w.color, fontWeight: 700 }}>{w.icon} {t(`themes.${w.bg_type}`, th.label)}</div>
-      </div>
-    </motion.div>
-  )
-}
-
 /* ── Número que "cuenta" hacia su valor (para el XP) ── */
 function CountUp({ value, reduce }: { value: number; reduce: boolean }) {
   const [display, setDisplay] = useState(value)
@@ -319,14 +261,14 @@ export default function WorldMap() {
     profile: { campaign_id?: string | null; role?: string } | null
   }
 
-  const [worlds, setWorlds]           = useState<World[]>([])
   const [world, setWorld]             = useState<World | null>(null)
   const [regions, setRegions]         = useState<Region[]>([])
   const [levels, setLevels]           = useState<Level[]>([])
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set())
   const [scoreMap, setScoreMap]         = useState<Map<string, number>>(new Map())
   const [loading, setLoading]         = useState(true)
-  const [showSelector, setShowSelector] = useState(false)
+  // El mundo existe pero está en borrador: nadie puede recorrerlo todavía.
+  const [unpublished, setUnpublished] = useState(false)
   const [hoveredId, setHoveredId]     = useState<string | null>(null)
   const [transition, setTransition]   = useState(false)
   const [newlyUnlocked, setNewlyUnlocked] = useState<string | null>(null)
@@ -351,7 +293,6 @@ export default function WorldMap() {
 
   const locState     = location.state as { from?: string; worldId?: string; forceReload?: boolean } | null
   const campaignId   = profile?.campaign_id ?? null
-  const isSuperAdmin = ['superadmin','super_admin'].includes(profile?.role ?? '')
   const isStaff      = ['superadmin','super_admin','capacitador'].includes(profile?.role ?? '')
   // "Volver" debe regresar a DONDE se venía, no a '/'. Antes iba a '/', y como
   // Welcome redirige al staff autenticado a '/admin', un capacitador/superadmin
@@ -392,39 +333,40 @@ export default function WorldMap() {
         return
       }
 
+      // Cuando llega un mundo concreto (vista previa desde el CMS, "Jugar el
+      // mundo" desde el curso, o el regreso de un nivel) lo buscamos POR ID, no
+      // dentro de la lista de publicados. Así, si está en borrador, podemos
+      // decirlo con todas sus letras en vez de caer en otro mundo o en una
+      // pantalla vacía.
+      if (locState?.worldId) {
+        // Force reload after progress reset — clear in-memory state first
+        if (locState.forceReload) {
+          setCompletedIds(new Set())
+          setScoreMap(new Map())
+          setXpDisplay(0)
+        }
+        const { data } = await supabase.from('worlds').select('*').eq('id', locState.worldId).maybeSingle()
+        const w = data as World | null
+        if (w && w.status !== 'published') { setUnpublished(true); setLoading(false); return }
+        if (w) await loadWorld(w)
+        setLoading(false)
+        return
+      }
+
+      // Sin mundo explícito: ya no existe el selector "Elige tu mundo". El mundo
+      // se entra SIEMPRE desde el curso que lo contiene, así que aquí solo
+      // resolvemos el caso trivial de un único mundo visible.
       const { data: wData } = await supabase.from('worlds').select('*').eq('status','published')
       const all = (wData ?? []) as World[]
-      // El aprendiz elige entre los mundos de su campaña; el staff, entre todos
-      // (preview). Los deep-links por worldId desde el curso usan `all` igual.
       const visible = isStaff ? all : all.filter(x => x.campaign_id === campaignId)
-      setWorlds(visible)
-
-      // Force reload after progress reset — clear in-memory state first
-      if (locState?.forceReload && locState?.worldId) {
-        setCompletedIds(new Set())
-        setScoreMap(new Map())
-        setXpDisplay(0)
-        const w = all.find(x => x.id === locState.worldId)
-        if (w) { await loadWorld(w); setLoading(false); return }
-      }
-
-      // If returning from quiz, load that world directly
-      if (locState?.worldId) {
-        const w = all.find(x => x.id === locState.worldId)
-        if (w) { await loadWorld(w); setLoading(false); return }
-      }
-
-      // Con varios mundos, mostramos el selector (antes solo para superadmin).
-      if (visible.length > 1) { setShowSelector(true); setLoading(false); return }
-      const w = visible[0] ?? (isStaff ? all[0] : null)
-      if (w) await loadWorld(w)
+      if (visible.length === 1) await loadWorld(visible[0])
       setLoading(false)
     }
     load()
   }, [user, profile])
 
   const loadWorld = useCallback(async (w: World) => {
-    setWorld(w); setShowSelector(false)
+    setWorld(w); setUnpublished(false)
     // Slug del curso dueño (para el botón "Volver"). Si el mundo no está ligado a
     // un curso, queda null y "Volver" cae al fallback (historial / dashboard).
     if (w.course_id) {
@@ -555,26 +497,14 @@ export default function WorldMap() {
     </div>
   )
 
-  /* ── Selector ── */
-  if (showSelector) return (
-    <>
-      <style>{`
-        @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-      `}</style>
-      <div className="wm-selector-wrap" style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,fontFamily:'inherit',position:'relative',overflow:'hidden'}}>
-        <Aurora color="#10D451" reduce={reduce} />
-        <button onClick={goBack} style={{position:'fixed',top:20,left:20,zIndex:2,background:'none',border:'none',color:'rgb(var(--text-muted))',cursor:'pointer',fontSize:'.875rem',fontFamily:'inherit'}}>{t('world.back')}</button>
-        <div style={{fontSize:'3.5rem',marginBottom:20,animation:'bob 3s ease infinite',position:'relative',zIndex:1}}>🌍</div>
-        <h1 style={{color:'rgb(var(--text))',fontSize:'2rem',fontWeight:900,margin:'0 0 10px',textAlign:'center',letterSpacing:'-1px',position:'relative',zIndex:1}}>{t('world.choose_world')}</h1>
-        <p style={{color:'rgb(var(--text-muted))',margin:'0 0 48px',fontSize:'.9rem',position:'relative',zIndex:1}}>{t('world.choose_world_sub')}</p>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:24,maxWidth:800,width:'100%',position:'relative',zIndex:1}}>
-          {worlds.map((w,i) => (
-            <SelectorCard key={w.id} w={w} i={i} reduce={reduce} onPick={loadWorld} />
-          ))}
-        </div>
-      </div>
-    </>
+  /* ── Mundo en borrador ── (se pidió un mundo concreto que aún no se publica) */
+  if (unpublished) return (
+    <div style={{minHeight:'100vh',background:'rgb(var(--bg))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,fontFamily:'inherit',padding:'0 24px',textAlign:'center'}}>
+      <div style={{fontSize:'3.5rem'}}>🚧</div>
+      <div style={{color:'rgb(var(--text))',fontWeight:800,fontSize:'1.2rem'}}>{t('world.draft_title')}</div>
+      <div style={{color:'rgb(var(--text-muted))',fontSize:'.9rem',maxWidth:340,lineHeight:1.6}}>{t('world.draft_desc')}</div>
+      <button onClick={goBack} style={{marginTop:8,background:'rgb(var(--subtle))',border:'1px solid rgb(var(--line))',borderRadius:12,padding:'10px 24px',color:'rgb(var(--text-muted))',cursor:'pointer',fontFamily:'inherit',fontSize:'.9rem',fontWeight:600}}>{t('world.back')}</button>
+    </div>
   )
 
   if (!world) return (
@@ -600,8 +530,6 @@ export default function WorldMap() {
         .node-avail{animation:pulse 2s ease infinite;}
         .char{animation:charBob 2.5s ease-in-out infinite;}
         @media (max-width:400px){
-          .wm-selector-wrap{padding:16px!important;}
-          .wm-hdr-cambiar{display:none!important;}
           .wm-hdr-xp{padding:4px 8px!important;}
           .wm-world-title{font-size:1.45rem!important;}
           .wm-map-outer{padding:0 8px 80px!important;}
@@ -652,12 +580,6 @@ export default function WorldMap() {
                 style={{color:tc,fontWeight:800,fontSize:'.82rem',display:'inline-block'}}
               ><CountUp value={xpDisplay} reduce={reduce} /> XP</motion.span>
             </div>
-            {worlds.length > 1 && (
-              <button className="wm-hdr-cambiar" onClick={() => setShowSelector(true)}
-                style={{background:`${tc}15`,border:`1px solid ${tc}25`,borderRadius:20,padding:'4px 12px',color:tc,fontSize:'.72rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
-                {t('world.change')}
-              </button>
-            )}
           </div>
         </header>
 

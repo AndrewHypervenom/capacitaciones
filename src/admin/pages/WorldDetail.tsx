@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, Sparkles, BookOpen, AlertTriangle, Play } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, Sparkles, BookOpen, AlertTriangle, Play, Lock } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { supabase } from '@/lib/supabase'
@@ -235,6 +235,22 @@ export default function WorldDetail() {
     setWorld(prev => prev ? { ...prev, [field]: value } : prev)
     const { error } = await supabase.from('worlds').update({ [field]: value } as any).eq('id', world.id)
     if (error) console.error('Error updating theme:', error)
+  }
+
+  /* ── Publicar / despublicar ──
+     La vista previa del aprendiz (/world) solo carga mundos publicados: si el
+     mundo está en borrador, previsualizar terminaba en una pantalla vacía. Por
+     eso el botón de publicar vive aquí, al lado de "Vista previa". */
+  const [publishing, setPublishing] = useState(false)
+  const handlePublish = async () => {
+    if (!world || publishing) return
+    const next = world.status === 'published' ? 'draft' : 'published'
+    setPublishing(true)
+    const { error } = await supabase.from('worlds').update({ status: next }).eq('id', world.id)
+    setPublishing(false)
+    if (error) { toast.error(i18n.t('admin.worlds.publish_error'), error.message); return }
+    setWorld(prev => prev ? { ...prev, status: next } : prev)
+    toast.success(next === 'published' ? i18n.t('admin.worlds.publish_ok') : i18n.t('admin.worlds.unpublish_ok'))
   }
 
   /* ── Region CRUD ── */
@@ -516,6 +532,7 @@ export default function WorldDetail() {
   }
 
   const tc = world.color
+  const isPublished = world.status === 'published'
 
   return (
     <>
@@ -542,8 +559,8 @@ export default function WorldDetail() {
             {world.description && <p className="text-[13px] text-text-muted leading-relaxed">{world.description}</p>}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background:`${tc}15`, color:tc }}>{BG_LABELS[world.bg_type] ? i18n.t(BG_LABELS[world.bg_type]) : world.bg_type}</span>
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${world.status==='published' ? 'text-[#10D451]' : 'text-text-muted'}`} style={{ background: world.status==='published' ? 'rgba(16,212,81,0.1)' : 'rgb(var(--glass-border) / 0.06)' }}>
-                {world.status === 'published' ? 'Publicado' : 'Borrador'}
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${isPublished ? 'text-[#10D451]' : 'text-text-muted'}`} style={{ background: isPublished ? 'rgba(16,212,81,0.1)' : 'rgb(var(--glass-border) / 0.06)' }}>
+                {isPublished ? 'Publicado' : 'Borrador'}
               </span>
               {/* Vínculo con el curso: la fuente de conocimiento del mundo. */}
               {linkedCourse ? (
@@ -564,9 +581,28 @@ export default function WorldDetail() {
             </div>
           </div>
           <div className="flex flex-row sm:flex-col gap-2">
-            <button onClick={() => navigate(`/world`, { state:{ from:'admin', worldId:world.id } })}
-              className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors"
-              style={{ background:`${tc}15`, color:tc, border:`1px solid ${tc}30` }}>
+            {/* Publicar habilita la vista previa: en borrador el mundo no es
+                visitable y previsualizar solo llevaba a una pantalla vacía. */}
+            <button onClick={handlePublish} disabled={publishing}
+              className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-60"
+              style={
+                isPublished
+                  ? { background:'rgb(var(--glass-border) / 0.06)', color:'rgb(var(--text-muted))', border:'1px solid rgb(var(--glass-border) / 0.10)' }
+                  : { background:'rgba(16,212,81,0.10)', color:'#10D451', border:'1px solid rgba(16,212,81,0.22)' }
+              }>
+              {isPublished ? 'Despublicar' : 'Publicar'}
+            </button>
+            <button
+              onClick={() => navigate(`/world`, { state:{ from:'admin', worldId:world.id } })}
+              disabled={!isPublished}
+              title={isPublished ? undefined : 'Publica el mundo para poder previsualizarlo'}
+              className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:cursor-not-allowed"
+              style={
+                isPublished
+                  ? { background:`${tc}15`, color:tc, border:`1px solid ${tc}30` }
+                  : { background:'rgb(var(--glass-border) / 0.04)', color:'rgb(var(--text-subtle))', border:'1px solid rgb(var(--glass-border) / 0.10)' }
+              }>
+              {!isPublished && <Lock className="h-3.5 w-3.5 mr-1.5" />}
               Vista previa
             </button>
             {isSuperAdmin && (
