@@ -59,3 +59,47 @@ export async function toggleChoiceScenarioPublished(id: string, is_published: bo
     .eq('id', id)
   if (error) throw error
 }
+
+/** Simulación de opción múltiple compartida por otra campaña. */
+export type ShareableChoiceScenario = ChoiceScenarioRow & { campaign_name: string | null }
+
+/** Marca/desmarca la simulación como compartible con otros capacitadores. */
+export async function setChoiceScenarioShareable(id: string, value: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('choice_scenarios')
+    .update({ is_shareable: value })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** Simulaciones de opción múltiple compartidas por OTRAS campañas. */
+export async function getShareableChoiceScenarios(
+  ownCampaignId: string,
+): Promise<ShareableChoiceScenario[]> {
+  const { data, error } = await supabase
+    .from('choice_scenarios')
+    .select('*, campaigns!choice_scenarios_campaign_id_fkey(name)')
+    .eq('is_shareable', true)
+    .eq('is_published', true)
+    .neq('campaign_id', ownCampaignId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as unknown as (ChoiceScenarioRow & { campaigns: { name: string } | null })[])
+    .map(({ campaigns, ...row }) => ({ ...row, campaign_name: campaigns?.name ?? null }))
+}
+
+/**
+ * Copia una simulación de opción múltiple compartida a la campaña indicada.
+ * RPC SECURITY DEFINER con la misma validación que `clone_scenario`.
+ */
+export async function cloneChoiceScenario(
+  sourceId: string,
+  targetCampaignId: string,
+): Promise<string> {
+  const { data, error } = await supabase.rpc('clone_choice_scenario', {
+    p_scenario_id: sourceId,
+    p_target_campaign_id: targetCampaignId,
+  })
+  if (error) throw error
+  return data as string
+}

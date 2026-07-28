@@ -597,6 +597,8 @@ export interface Database {
           course_id: string | null
           pass_score: number
           counts_for_cert: boolean
+          is_shareable: boolean
+          copied_from: string | null
           created_at: string
         }
         Insert: {
@@ -626,6 +628,8 @@ export interface Database {
           course_id?: string | null
           pass_score?: number
           counts_for_cert?: boolean
+          is_shareable?: boolean
+          copied_from?: string | null
           created_at?: string
         }
         Update: {
@@ -655,6 +659,8 @@ export interface Database {
           course_id?: string | null
           pass_score?: number
           counts_for_cert?: boolean
+          is_shareable?: boolean
+          copied_from?: string | null
         }
         Relationships: []
       }
@@ -764,6 +770,8 @@ export interface Database {
           is_published: boolean
           course_id: string | null
           pass_score: number
+          is_shareable: boolean
+          copied_from: string | null
           created_at: string
         }
         Insert: {
@@ -783,6 +791,8 @@ export interface Database {
           is_published?: boolean
           course_id?: string | null
           pass_score?: number
+          is_shareable?: boolean
+          copied_from?: string | null
           created_at?: string
         }
         Update: {
@@ -802,6 +812,8 @@ export interface Database {
           is_published?: boolean
           course_id?: string | null
           pass_score?: number
+          is_shareable?: boolean
+          copied_from?: string | null
         }
         Relationships: []
       }
@@ -1499,6 +1511,15 @@ export interface Database {
       }
       clone_module_to_course: {
         Args: { p_module_id: string; p_course_id: string }
+        Returns: string
+      }
+      // Copian una simulación compartida a otra campaña (SECURITY DEFINER).
+      clone_scenario: {
+        Args: { p_scenario_id: string; p_target_campaign_id: string }
+        Returns: string
+      }
+      clone_choice_scenario: {
+        Args: { p_scenario_id: string; p_target_campaign_id: string }
         Returns: string
       }
       self_enroll_course: {
