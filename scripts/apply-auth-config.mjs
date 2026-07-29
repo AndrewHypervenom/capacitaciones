@@ -77,7 +77,7 @@ const desired = {
   // Rechaza contraseñas que aparecen en filtraciones conocidas (HaveIBeenPwned).
   password_hibp_enabled: true,
 
-  mailer_subjects_recovery: 'Restablece tu contraseña · Positivo S+',
+  mailer_subjects_recovery: 'Restablece tu contraseña · LearningAI',
   mailer_templates_recovery_content: template,
 }
 
