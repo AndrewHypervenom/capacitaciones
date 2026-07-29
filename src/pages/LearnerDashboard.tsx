@@ -19,7 +19,12 @@ import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Stagger, StaggerItem } from '@/components/ui/motion';
 import { useUserStore } from '@/stores/userStore';
-import { useProgressStore } from '@/stores/progressStore';
+import {
+  useProgressStore,
+  useModuleDone,
+  keyOfModule,
+  keyOfCourseModule,
+} from '@/stores/progressStore';
 import {
   useGamificationStore,
   getXPLevel,
@@ -86,6 +91,8 @@ export default function LearnerDashboard() {
   const progressState = useProgressStore();
   const { xp, streak, badges } = progressState;
   const recheckBadges = useProgressStore((s) => s.recheckBadges);
+  const reconcileModuleKeys = useProgressStore((s) => s.reconcileModuleKeys);
+  const isModuleDone = useModuleDone();
   const recordWorldProgress = useProgressStore((s) => s.recordWorldProgress);
 
   // Definiciones vivas (editables por el superadmin); caen a los defaults de
@@ -106,9 +113,12 @@ export default function LearnerDashboard() {
 
   useEffect(() => {
     if (!modulesLoading && modules.length > 0) {
-      recheckBadges(modules);
+      // Antes de reevaluar logros, completar la clave que falte (slug ↔ UUID):
+      // si no, un aprendiz a medio migrar contaría menos módulos de los que hizo.
+      reconcileModuleKeys(modules.map(keyOfModule));
+      recheckBadges(modules.map((m) => ({ ...keyOfModule(m), courseId: m.courseId })));
     }
-  }, [modulesLoading, modules, recheckBadges]);
+  }, [modulesLoading, modules, recheckBadges, reconcileModuleKeys]);
 
   // Avance de mundo (también retroactivo): cuenta los niveles completados en
   // cualquier mundo y deja que el motor otorgue "Explorador" y afines.
@@ -160,16 +170,13 @@ export default function LearnerDashboard() {
 
   const total = modules.length;
   // Only count completions for modules that actually exist right now
-  const completedModules = progressState.completedModules.filter((id) =>
-    modules.some((m) => m.id === id),
-  );
-  const done = completedModules.length;
+  // Solo cuentan los módulos que existen hoy (uno retirado no debe inflar el %).
+  const done = modules.filter((m) => isModuleDone(keyOfModule(m))).length;
   const progressPct = total > 0 ? Math.min(1, done / total) : 0;
 
-  const remainingMinutes = modules
-    .filter((m) => !completedModules.includes(m.id))
-    .reduce((acc, m) => acc + m.duration, 0);
-  const nextModule = modules.find((m) => !completedModules.includes(m.id));
+  const pending = modules.filter((m) => !isModuleDone(keyOfModule(m)));
+  const remainingMinutes = pending.reduce((acc, m) => acc + m.duration, 0);
+  const nextModule = pending[0];
 
   const sidebarItems = [
     { icon: Home, label: t('dashboard.sidebar_home'), id: 'inicio' },
@@ -442,7 +449,7 @@ export default function LearnerDashboard() {
                   .map((course, idx) => {
                     const courseTotal = course.modules.length;
                     const courseDone = course.modules.filter((m) =>
-                      progressState.completedModules.includes(m.slug),
+                      isModuleDone(keyOfCourseModule(m)),
                     ).length;
                     const coursePct = courseTotal > 0 ? courseDone / courseTotal : 0;
                     const courseTitle =

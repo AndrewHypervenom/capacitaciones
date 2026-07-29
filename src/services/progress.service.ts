@@ -2,6 +2,9 @@ import { supabase } from '@/lib/supabase'
 import type { SimulatorAttempt } from '@/stores/progressStore'
 
 export interface ProgressData {
+  /** UUIDs de módulo (`user_progress.completed_module_ids`). Clave buena. */
+  completedModuleIds: string[]
+  /** @deprecated slugs (`completed_modules`); espejo legado, ver el plan de migración. */
   completedModules: string[]
   checkAnswers: Record<string, Record<string, number>>
   attempts: SimulatorAttempt[]
@@ -32,6 +35,7 @@ export async function getProgress(userId: string, campaignId: string): Promise<P
   if (!data) return null
 
   return {
+    completedModuleIds: (data as { completed_module_ids?: string[] }).completed_module_ids ?? [],
     completedModules: data.completed_modules ?? [],
     checkAnswers: (data.check_answers ?? {}) as unknown as Record<string, Record<string, number>>,
     attempts: (data.attempts ?? []) as unknown as SimulatorAttempt[],
@@ -66,7 +70,7 @@ export async function upsertProgress(
   // reciente, o insert si no existe.
   const { data: rows, error: fetchError } = await supabase
     .from('user_progress')
-    .select('id, completed_modules, badges')
+    .select('id, completed_modules, completed_module_ids, badges')
     .eq('user_id', userId)
     .eq('campaign_id', campaignId)
     .order('updated_at', { ascending: false })
@@ -78,11 +82,18 @@ export async function upsertProgress(
     // Unión con lo ya guardado: si el aprendiz limpió localStorage o cambió de
     // equipo, el espejo nunca debe BORRAR módulos ya acreditados en BD.
     const completed = [...new Set([...(current.completed_modules ?? []), ...progress.completedModules])]
+    const completedIds = [
+      ...new Set([
+        ...((current as { completed_module_ids?: string[] }).completed_module_ids ?? []),
+        ...progress.completedModuleIds,
+      ]),
+    ]
     const badges = [...new Set([...(current.badges ?? []), ...progress.badges])]
     const { error } = await supabase
       .from('user_progress')
       .update({
         completed_modules: completed,
+        completed_module_ids: completedIds,
         xp_total: progress.xp,
         streak_days: progress.streak,
         last_activity: progress.lastActivityDate,
@@ -98,6 +109,7 @@ export async function upsertProgress(
         user_id: userId,
         campaign_id: campaignId,
         completed_modules: progress.completedModules,
+        completed_module_ids: progress.completedModuleIds,
         xp_total: progress.xp,
         streak_days: progress.streak,
         last_activity: progress.lastActivityDate,

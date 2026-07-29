@@ -19,7 +19,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
 import { useViewingPresence } from '@/hooks/usePresence';
-import { useProgressStore } from '@/stores/progressStore';
+import { useProgressStore, useModuleDone, keyOfModule } from '@/stores/progressStore';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { RichText, RichTextInline } from '@/components/ui/RichText';
@@ -100,7 +100,8 @@ export default function ModulePage() {
   const targetUserId = userId; 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const { completedModules, markModule, earnXP, updateStreak } = useProgressStore();
+  const { markModule, earnXP, updateStreak } = useProgressStore();
+  const isModuleDone = useModuleDone();
   const { modules, loading } = useModules();
   const { courses } = useLearnerCourses();
   const module = useMemo(() => modules.find((m) => m.id === id), [id, modules]);
@@ -145,7 +146,7 @@ export default function ModulePage() {
   }, [modules, module]);
   const moduleIndex = useMemo(() => siblings.findIndex((m) => m.id === id), [id, siblings]);
   const nextModule = moduleIndex >= 0 ? siblings[moduleIndex + 1] : undefined;
-  const completed = module ? completedModules.includes(module.id) : false;
+  const completed = module ? isModuleDone(keyOfModule(module)) : false;
 
   // Cronómetro real de tiempo activo en el módulo (se pausa al cambiar de
   // pestaña, sobrevive recargas, se persiste en BD y se congela al completar).
@@ -452,7 +453,7 @@ export default function ModulePage() {
     if (!moduleGate.canComplete) return; // compuerta: no aprobó las actividades
     earnXP(100);
     updateStreak();
-    markModule(module.id, siblings.map((s) => s.id));
+    markModule(keyOfModule(module), siblings.map(keyOfModule));
     toast.success(t('module.completed_toast', { title: module.title[language] }));
     if (nextModule) setTimeout(() => nav(`/modules/${nextModule.id}`), 600);
   };

@@ -1028,6 +1028,8 @@ export interface Database {
           user_id: string
           campaign_id: string
           completed_modules: string[]
+          /** UUIDs de módulo completados. Clave nueva; ver plan de migración. */
+          completed_module_ids: string[]
           check_answers: Json
           attempts: Json
           xp_total: number
@@ -1041,6 +1043,7 @@ export interface Database {
           user_id: string
           campaign_id: string
           completed_modules?: string[]
+          completed_module_ids?: string[]
           check_answers?: Json
           attempts?: Json
           xp_total?: number
@@ -1054,6 +1057,7 @@ export interface Database {
           user_id?: string
           campaign_id?: string
           completed_modules?: string[]
+          completed_module_ids?: string[]
           check_answers?: Json
           attempts?: Json
           xp_total?: number

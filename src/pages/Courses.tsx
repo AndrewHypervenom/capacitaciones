@@ -5,7 +5,7 @@ import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Loader2, Plus, Sear
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
-import { useProgressStore } from '@/stores/progressStore';
+import { useModuleDone, keyOfCourseModule, type ModuleKey } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { selfEnroll, type LearnerCourse } from '@/services/courses.service';
 import { toast } from '@/stores/toastStore';
@@ -25,9 +25,12 @@ function pickText(es: string | null, en: string | null, pt: string | null, lang:
   return es || '';
 }
 
-export function courseProgress(course: LearnerCourse, completedSlugs: string[]) {
+export function courseProgress(
+  course: LearnerCourse,
+  isModuleDone: (key: ModuleKey) => boolean,
+) {
   const total = course.modules.length;
-  const done = course.modules.filter((m) => completedSlugs.includes(m.slug)).length;
+  const done = course.modules.filter((m) => isModuleDone(keyOfCourseModule(m))).length;
   return { total, done, pct: total > 0 ? done / total : 0 };
 }
 
@@ -43,8 +46,8 @@ function CourseCard({
   const { t } = useTranslation();
   const reduce = useReducedMotion();
   const language = useUserStore((s) => s.language);
-  const completedSlugs = useProgressStore((s) => s.completedModules);
-  const { total, done, pct } = courseProgress(course, completedSlugs);
+  const isModuleDone = useModuleDone();
+  const { total, done, pct } = courseProgress(course, isModuleDone);
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
   const completed = total > 0 && done === total;
   const [enrolling, setEnrolling] = useState(false);
@@ -201,7 +204,7 @@ function CourseCard({
 export default function Courses() {
   const { t } = useTranslation();
   const language = useUserStore((s) => s.language);
-  const completedSlugs = useProgressStore((s) => s.completedModules);
+  const isModuleDone = useModuleDone();
   const { courses, loading, reload } = useLearnerCourses();
 
   const [query, setQuery] = useState('');
@@ -220,7 +223,7 @@ export default function Courses() {
 
   const matchesFilter = useCallback(
     (c: LearnerCourse, f: Filter) => {
-      const { total, done } = courseProgress(c, completedSlugs);
+      const { total, done } = courseProgress(c, isModuleDone);
       switch (f) {
         case 'mandatory':
           return c.isMandatory;
@@ -234,7 +237,7 @@ export default function Courses() {
           return true;
       }
     },
-    [completedSlugs],
+    [isModuleDone],
   );
 
   const filtered = useMemo(
@@ -254,7 +257,7 @@ export default function Courses() {
   // empezó, luego lo que no ha tocado y de último lo ya completado. El sort es
   // estable, así que dentro de cada grupo se mantiene obligatorio + alfabético.
   const statusRank = (c: LearnerCourse) => {
-    const { total, done } = courseProgress(c, completedSlugs);
+    const { total, done } = courseProgress(c, isModuleDone);
     if (total > 0 && done === total) return 2;
     if (done > 0) return 0;
     return 1;
@@ -268,7 +271,7 @@ export default function Courses() {
 
   const mandatoryPending = courses.filter((c) => {
     if (!c.isMandatory) return false;
-    const { total, done } = courseProgress(c, completedSlugs);
+    const { total, done } = courseProgress(c, isModuleDone);
     return total === 0 || done < total;
   }).length;
 

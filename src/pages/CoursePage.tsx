@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import type { Scenario } from '@/data/scenarios';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
-import { useProgressStore } from '@/stores/progressStore';
+import { useProgressStore, useModuleDone, keyOfCourseModule } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { useViewingPresence } from '@/hooks/usePresence';
 import { selfEnroll, unenrollSelf, previewUnenrollSelf } from '@/services/courses.service';
@@ -47,7 +47,7 @@ export default function CoursePage() {
   const language = useUserStore((s) => s.language);
   // El mundo es solo para staff (preview del CMS); el aprendiz ya no lo ve.
   const { isAdminOrCapacitador } = useAuth();
-  const completedSlugs = useProgressStore((s) => s.completedModules);
+  const isModuleDone = useModuleDone();
   const { courses, loading, reload } = useLearnerCourses();
   const [enrollBusy, setEnrollBusy] = useState(false);
 
@@ -88,7 +88,16 @@ export default function CoursePage() {
       .then((st) => { if (active) setRawCertStatus(st); })
       .catch(() => { if (active) setRawCertStatus(null); });
     return () => { active = false; };
-  }, [course?.id, completedSlugs]);
+  }, [course?.id, isModuleDone]);
+
+  // Migración slug → UUID: esta pantalla conoce ambas claves de cada módulo, así
+  // que aprovecha para completar la que falte en el progreso local (ver
+  // docs/plan-migracion-progreso-uuid.md).
+  const reconcileModuleKeys = useProgressStore((s) => s.reconcileModuleKeys);
+  useEffect(() => {
+    if (!course) return;
+    reconcileModuleKeys(course.modules.map(keyOfCourseModule));
+  }, [course, reconcileModuleKeys]);
 
   // El progreso local (localStorage) va por delante del RPC: el espejo a BD
   // (useProgressSync) tiene rebote de ~1.2 s, así que al terminar un módulo el
@@ -99,13 +108,13 @@ export default function CoursePage() {
   // `all_met: rawCertStatus.all_met || allMet` con un Math.max del progreso
   // local, y como localStorage lo edita el usuario, se podía desbloquear el
   // botón del certificado a mano. Ahora lo local solo puede mostrar, nunca
-  // abrir: el RPC re-consulta al cambiar `completedSlugs`, así que el botón
+  // abrir: el RPC re-consulta al cambiar el progreso local, así que el botón
   // aparece igual en cuanto el espejo se escribe.
   const certStatus = useMemo<CourseCertStatus | null>(() => {
     if (!rawCertStatus) return null;
     const localTotal = course?.modules.length ?? 0;
     const localDone = course
-      ? course.modules.filter((m) => completedSlugs.includes(m.slug)).length
+      ? course.modules.filter((m) => isModuleDone(keyOfCourseModule(m))).length
       : 0;
     return {
       ...rawCertStatus,
@@ -113,7 +122,7 @@ export default function CoursePage() {
       modules_done: Math.max(rawCertStatus.modules_done, localDone),
       // modules_ok / all_met quedan tal cual los devolvió el servidor.
     };
-  }, [rawCertStatus, course, completedSlugs]);
+  }, [rawCertStatus, course, isModuleDone]);
 
   // Mundo (juego) publicado de este curso, si existe, para el botón "Jugar el mundo".
   const [worldId, setWorldId] = useState<string | null>(null);
@@ -170,12 +179,13 @@ export default function CoursePage() {
     if (!course) return [];
     return course.modules.map((m, idx) => {
       let status: ModuleStatus;
-      if (completedSlugs.includes(m.slug)) status = 'completed';
-      else if (idx === 0 || completedSlugs.includes(course.modules[idx - 1].slug)) status = 'available';
+      if (isModuleDone(keyOfCourseModule(m))) status = 'completed';
+      else if (idx === 0 || isModuleDone(keyOfCourseModule(course.modules[idx - 1])))
+        status = 'available';
       else status = 'locked';
       return { module: m, status };
     });
-  }, [course, completedSlugs]);
+  }, [course, isModuleDone]);
 
   if (loading) {
     return (
@@ -208,7 +218,7 @@ export default function CoursePage() {
   }
 
   const total = course.modules.length;
-  const done = course.modules.filter((m) => completedSlugs.includes(m.slug)).length;
+  const done = course.modules.filter((m) => isModuleDone(keyOfCourseModule(m))).length;
   const pct = total > 0 ? done / total : 0;
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
   const nextItem = items.find((i) => i.status === 'available');
@@ -221,7 +231,7 @@ export default function CoursePage() {
   const simUnlocked =
     course.sim_unlock_rule === 'from_start' ||
     (course.sim_unlock_rule === 'after_modules' && completed) ||
-    (course.sim_unlock_rule === 'after_module' && !!simUnlockModule && completedSlugs.includes(simUnlockModule.slug)) ||
+    (course.sim_unlock_rule === 'after_module' && !!simUnlockModule && isModuleDone(keyOfCourseModule(simUnlockModule))) ||
     (course.sim_unlock_rule === 'after_module' && !simUnlockModule && completed);
 
   // Acceso directo a la simulación: si hay una sola y está desbloqueada, entra de una;
@@ -256,7 +266,7 @@ export default function CoursePage() {
   const worldUnlocked =
     worldRule === 'from_start' ||
     (worldRule === 'after_modules' && completed) ||
-    (worldRule === 'after_module' && !!worldUnlockModule && completedSlugs.includes(worldUnlockModule.slug)) ||
+    (worldRule === 'after_module' && !!worldUnlockModule && isModuleDone(keyOfCourseModule(worldUnlockModule))) ||
     (worldRule === 'after_module' && !worldUnlockModule && completed);
   const worldLockedReason =
     worldRule === 'after_module' && worldUnlockModule
@@ -532,7 +542,7 @@ export default function CoursePage() {
                   )}
                   {status === 'available' && (
                     <span className="rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-on-primary">
-                      {completedSlugs.includes(module.slug) ? t('courses.cta_review') : t('courses.cta_start')}
+                      {isModuleDone(keyOfCourseModule(module)) ? t('courses.cta_review') : t('courses.cta_start')}
                     </span>
                   )}
                 </div>

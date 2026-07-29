@@ -9,7 +9,16 @@ export type ResetScope = 'course' | 'module' | 'section' | 'world' | 'simulator'
  * según el alcance.
  */
 export interface ResetPayload {
-  /** Slugs de módulo a quitar de completedModules. */
+  /**
+   * UUIDs de módulo a quitar del progreso. Clave nueva; el RPC de reset debería
+   * emitirla siempre (ver docs/plan-migracion-progreso-uuid.md, fase 5).
+   */
+  module_ids?: string[]
+  /**
+   * Slugs de módulo a quitar del progreso.
+   * @deprecated clave legada. Mientras el RPC solo mande esto, el cliente
+   * traduce a UUID con su índice local para que el reset limpie de verdad.
+   */
   module_slugs?: string[]
   /** UUIDs de módulo cuyas respuestas (checkAnswers) hay que borrar. */
   check_answer_keys?: string[]

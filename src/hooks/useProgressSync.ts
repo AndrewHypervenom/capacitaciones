@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase'
  */
 export function useProgressSync() {
   const { user, campaignId: profileCampaignId, isSuperAdmin } = useAuth()
+  const completedModuleIds = useProgressStore((s) => s.completedModuleIds)
   const completedModules = useProgressStore((s) => s.completedModules)
   const xp = useProgressStore((s) => s.xp)
   const streak = useProgressStore((s) => s.streak)
@@ -74,12 +75,20 @@ export function useProgressSync() {
 
   useEffect(() => {
     if (!user?.id || !campaignId || hydratedKey !== syncKey) return
-    const payload = JSON.stringify({ completedModules, xp, streak, lastActivityDate, badges })
+    const payload = JSON.stringify({
+      completedModuleIds,
+      completedModules,
+      xp,
+      streak,
+      lastActivityDate,
+      badges,
+    })
     if (payload === lastPayload.current) return
 
     const timer = setTimeout(() => {
       lastPayload.current = payload
       void upsertProgress(user.id, campaignId, {
+        completedModuleIds,
         completedModules,
         checkAnswers,
         attempts,
@@ -100,6 +109,7 @@ export function useProgressSync() {
     campaignId,
     hydratedKey,
     syncKey,
+    completedModuleIds,
     completedModules,
     xp,
     streak,

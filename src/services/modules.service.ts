@@ -435,6 +435,33 @@ export async function moveModuleToCampaign(
   if (error) throw error
 }
 
+/**
+ * Devuelve un slug libre dentro de la campaña. IMPORTANTE: el progreso del
+ * aprendiz (`user_progress.completed_modules`) se guarda por SLUG, no por UUID.
+ * Si dos módulos de la misma campaña comparten slug, al completar uno el otro
+ * aparece "completado" sin que el aprendiz lo haya visto. Por eso el slug se
+ * desambigua ANTES de insertar (además del índice único en BD).
+ *
+ * Cuenta también los módulos BORRADOS: su slug sigue quemado, porque el progreso
+ * del aprendiz conserva el slug del módulo eliminado y reutilizarlo le heredaría
+ * la completitud. Si la RLS de borrado suave los oculta, el insert choca con el
+ * índice único y el reintento 23505 de `createModule` resuelve con sufijo.
+ */
+async function freeSlugInCampaign(campaignId: string, base: string): Promise<string> {
+  const { data } = await supabase
+    .from('modules')
+    .select('slug')
+    .eq('campaign_id', campaignId)
+    .like('slug', `${base}%`)
+  const taken = new Set((data ?? []).map((r) => (r as { slug: string }).slug))
+  if (!taken.has(base)) return base
+  for (let i = 2; i <= 50; i++) {
+    const candidate = `${base}-${i}`
+    if (!taken.has(candidate)) return candidate
+  }
+  return `${base}-${Date.now().toString(36)}`
+}
+
 export async function createModule(
   campaignId: string,
   data: {
@@ -457,7 +484,7 @@ export async function createModule(
     .limit(1)
     .maybeSingle()
   const maxOrder = maxRow?.sort_order ?? 0
-  const baseSlug = data.slug
+  const baseSlug = await freeSlugInCampaign(campaignId, data.slug)
   const tryInsert = async (slug: string) => supabase
     .from('modules')
     .insert({

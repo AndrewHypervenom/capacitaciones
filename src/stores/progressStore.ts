@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
@@ -28,6 +29,37 @@ export const BADGE_DEFS = DEFAULT_BADGE_DEFS;
 /** @deprecated usa useGamificationStore. Solo defaults de fábrica. */
 export const XP_LEVELS = DEFAULT_XP_LEVELS;
 
+// ─── Identidad de un módulo ───────────────────────────────────────────────────
+// El progreso se guardaba SOLO por slug. El slug se deriva del título, es
+// mutable y se puede repetir entre campañas, así que dos módulos distintos
+// podían compartir clave: completar uno marcaba el otro como hecho. La clave
+// buena es el UUID (`modules.id`), que es lo que ya usan `module_time` y
+// `activity_attempts`.
+//
+// Migración en curso (ver docs/plan-migracion-progreso-uuid.md): se escriben
+// AMBAS claves y se lee `uuid || slug`. El fallback por slug existe para que un
+// aprendiz con localStorage viejo (o una fila de BD sin backfill) no vea 0%; se
+// retira en la v7, cuando ya nadie escriba slugs.
+export interface ModuleKey {
+  /** `modules.id` real. Puede faltar en el seed estático de `data/modules.ts`. */
+  uuid?: string | null;
+  slug: string;
+}
+
+/** Adaptador para `LearningModule` (data/modules.ts), donde `id` ES el slug. */
+export function keyOfModule(m: { id: string; dbId?: string | null }): ModuleKey {
+  return { uuid: m.dbId ?? null, slug: m.id };
+}
+
+/** Adaptador para `CourseModuleSummary` (courses.service), donde `id` es el UUID. */
+export function keyOfCourseModule(m: { id: string; slug: string }): ModuleKey {
+  return { uuid: m.id, slug: m.slug };
+}
+
+function doneIn(ids: string[], slugs: string[], k: ModuleKey): boolean {
+  return (!!k.uuid && ids.includes(k.uuid)) || (!!k.slug && slugs.includes(k.slug));
+}
+
 export interface SimulatorAttempt {
   id: string;
   scenarioId: string;
@@ -56,7 +88,25 @@ export type MetricSnapshot = Partial<Record<BadgeMetric, number>>;
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 interface ProgressState {
+  /**
+   * Clave BUENA: UUIDs de módulo completados. Es la que manda.
+   * @see ModuleKey
+   */
+  completedModuleIds: string[];
+  /**
+   * Clave LEGADA: slugs de módulo completados. Se sigue escribiendo para que los
+   * RPCs y los clientes viejos no pierdan progreso durante la migración. No leer
+   * directo: usa `useModuleDone` / `selectModuleDone`.
+   * @deprecated se elimina en la v7 del persist.
+   */
   completedModules: string[];
+  /**
+   * Índice slug → UUID aprendido de los módulos que el aprendiz ha visto. Existe
+   * por el reset granular: el RPC del superadmin todavía emite `module_slugs`, y
+   * sin traducir a UUID el `filter` limpiaría solo la clave legada — el fallback
+   * `uuid || slug` volvería a dar el módulo por completado.
+   */
+  moduleSlugToId: Record<string, string>;
   attempts: SimulatorAttempt[];
   checkAnswers: Record<string, Record<string, number>>;
   xp: number;
@@ -79,8 +129,15 @@ interface ProgressState {
   /** Mundos completados por entero (máximo observado). */
   worldsCompleted: number;
 
-  markModule: (id: string, courseModuleIds?: string[]) => string[];
-  unmarkModule: (id: string) => void;
+  markModule: (key: ModuleKey, courseModules?: ModuleKey[]) => string[];
+  unmarkModule: (key: ModuleKey) => void;
+  /**
+   * Rellena la clave que falte en cada módulo conocido: si un módulo está
+   * completado por slug pero no por UUID (localStorage viejo, fila de BD sin
+   * backfill) le añade el UUID, y viceversa. Es lo que va vaciando la clave
+   * legada en el parque de navegadores sin pedirle nada al aprendiz.
+   */
+  reconcileModuleKeys: (keys: ModuleKey[]) => void;
   recordCheck: (moduleId: string, quizKey: string, optionIdx: number) => void;
   addAttempt: (attempt: SimulatorAttempt) => string[];
   earnXP: (amount: number) => void;
@@ -97,7 +154,7 @@ interface ProgressState {
   recordCertification: (courseId: string, score?: number | null) => string[];
   /** Registra avance de mundo (niveles y mundos completados) y evalúa logros. */
   recordWorldProgress: (levelsCompleted: number, worldsCompleted?: number) => string[];
-  recheckBadges: (modules: { id: string; courseId?: string | null }[]) => string[];
+  recheckBadges: (modules: (ModuleKey & { courseId?: string | null })[]) => string[];
   reset: () => void;
   /**
    * Rehidrata la caché local desde el espejo de BD (`user_progress`). Es SIEMPRE
@@ -117,6 +174,7 @@ interface ProgressState {
 
 /** Lo que el espejo de BD sabe del progreso (subconjunto de lo local). */
 export interface ServerProgress {
+  completedModuleIds: string[];
   completedModules: string[];
   xp: number;
   streak: number;
@@ -126,6 +184,9 @@ export interface ServerProgress {
 
 /** Datos mínimos del payload de notificación que afectan al store local. */
 export interface ResetLocalPayload {
+  /** UUIDs de módulo a limpiar (clave nueva). */
+  module_ids?: string[];
+  /** @deprecated slugs; se acepta mientras el RPC de reset siga emitiéndolos. */
   module_slugs?: string[];
   check_answer_keys?: string[];
   scenario_slugs?: string[];
@@ -144,7 +205,9 @@ function bestSimScore(attempts: SimulatorAttempt[]): number {
 export const useProgressStore = create<ProgressState>()(
   persist(
     (set, get) => ({
+      completedModuleIds: [],
       completedModules: [],
+      moduleSlugToId: {},
       attempts: [],
       checkAnswers: {},
       xp: 0,
@@ -174,26 +237,72 @@ export const useProgressStore = create<ProgressState>()(
         return toAward;
       },
 
-      markModule: (id, courseModuleIds) => {
-        if (get().completedModules.includes(id)) return [];
-        const next = [...get().completedModules, id];
-        set({ completedModules: next });
+      markModule: (key, courseModules) => {
+        const s = get();
+        if (doneIn(s.completedModuleIds, s.completedModules, key)) return [];
 
-        const snap: MetricSnapshot = { modules_completed: next.length };
+        // Doble escritura: el UUID es la clave real, el slug queda como espejo
+        // para los RPCs y los clientes que todavía no leen UUIDs.
+        const ids =
+          key.uuid && !s.completedModuleIds.includes(key.uuid)
+            ? [...s.completedModuleIds, key.uuid]
+            : s.completedModuleIds;
+        const slugs = s.completedModules.includes(key.slug)
+          ? s.completedModules
+          : [...s.completedModules, key.slug];
+        set({
+          completedModuleIds: ids,
+          completedModules: slugs,
+          ...(key.uuid ? { moduleSlugToId: { ...s.moduleSlugToId, [key.slug]: key.uuid } } : {}),
+        });
+
+        const snap: MetricSnapshot = { modules_completed: Math.max(ids.length, slugs.length) };
         // Métricas por curso: solo se pueden derivar si nos pasan los módulos del
         // curso actual (medir contra el total global daría falsos positivos).
-        if (courseModuleIds && courseModuleIds.length > 0) {
-          const doneInCourse = courseModuleIds.filter((m) => next.includes(m)).length;
-          if (courseModuleIds.length > 1) {
-            snap.course_progress_pct = (doneInCourse / courseModuleIds.length) * 100;
+        if (courseModules && courseModules.length > 0) {
+          const doneInCourse = courseModules.filter((m) => doneIn(ids, slugs, m)).length;
+          if (courseModules.length > 1) {
+            snap.course_progress_pct = (doneInCourse / courseModules.length) * 100;
           }
-          if (doneInCourse >= courseModuleIds.length) snap.courses_completed = 1;
+          if (doneInCourse >= courseModules.length) snap.courses_completed = 1;
         }
         return get().evaluateBadges(snap);
       },
 
-      unmarkModule: (id) =>
-        set({ completedModules: get().completedModules.filter((m) => m !== id) }),
+      unmarkModule: (key) =>
+        set({
+          completedModuleIds: get().completedModuleIds.filter((u) => u !== key.uuid),
+          completedModules: get().completedModules.filter((m) => m !== key.slug),
+        }),
+
+      reconcileModuleKeys: (keys) => {
+        const s = get();
+        const ids = new Set(s.completedModuleIds);
+        const slugs = new Set(s.completedModules);
+        const index = { ...s.moduleSlugToId };
+        let changed = false;
+        for (const k of keys) {
+          if (!k.uuid) continue;
+          if (index[k.slug] !== k.uuid) {
+            index[k.slug] = k.uuid;
+            changed = true;
+          }
+          if (slugs.has(k.slug) && !ids.has(k.uuid)) {
+            ids.add(k.uuid);
+            changed = true;
+          } else if (ids.has(k.uuid) && !slugs.has(k.slug)) {
+            slugs.add(k.slug);
+            changed = true;
+          }
+        }
+        if (changed) {
+          set({
+            completedModuleIds: [...ids],
+            completedModules: [...slugs],
+            moduleSlugToId: index,
+          });
+        }
+      },
 
       recordCheck: (moduleId, quizKey, optionIdx) =>
         set({
@@ -283,28 +392,27 @@ export const useProgressStore = create<ProgressState>()(
       // corre el motor. Es la red de seguridad retroactiva (al abrir el panel).
       recheckBadges: (modules) => {
         const s = get();
-        const completedAssigned = s.completedModules.filter((id) =>
-          modules.some((m) => m.id === id),
-        );
+        const isDone = (k: ModuleKey) => doneIn(s.completedModuleIds, s.completedModules, k);
+        const completedAssigned = modules.filter(isDone);
 
         // Agrupar por curso para % de avance y cursos completos.
-        const byCourse = new Map<string, string[]>();
+        const byCourse = new Map<string, ModuleKey[]>();
         for (const m of modules) {
           const key = m.courseId ?? '__none__';
           const arr = byCourse.get(key) ?? [];
-          arr.push(m.id);
+          arr.push(m);
           byCourse.set(key, arr);
         }
         let bestCoursePct = 0;
         let coursesCompleted = 0;
-        for (const ids of byCourse.values()) {
-          const done = ids.filter((id) => s.completedModules.includes(id)).length;
-          if (ids.length > 0) bestCoursePct = Math.max(bestCoursePct, (done / ids.length) * 100);
-          if (ids.length > 0 && done >= ids.length) coursesCompleted++;
+        for (const keys of byCourse.values()) {
+          const done = keys.filter(isDone).length;
+          if (keys.length > 0) bestCoursePct = Math.max(bestCoursePct, (done / keys.length) * 100);
+          if (keys.length > 0 && done >= keys.length) coursesCompleted++;
         }
 
         const snap: MetricSnapshot = {
-          modules_completed: s.completedModules.length,
+          modules_completed: Math.max(s.completedModuleIds.length, s.completedModules.length),
           course_progress_pct: bestCoursePct,
           courses_completed: coursesCompleted,
           all_assigned_completed:
@@ -324,7 +432,9 @@ export const useProgressStore = create<ProgressState>()(
 
       reset: () =>
         set({
+          completedModuleIds: [],
           completedModules: [],
+          moduleSlugToId: {},
           attempts: [],
           checkAnswers: {},
           xp: 0,
@@ -343,6 +453,9 @@ export const useProgressStore = create<ProgressState>()(
 
       hydrateFromServer: (data) => {
         const s = get();
+        const completedModuleIds = [
+          ...new Set([...s.completedModuleIds, ...data.completedModuleIds]),
+        ];
         const completedModules = [...new Set([...s.completedModules, ...data.completedModules])];
         const badges = [...new Set([...s.badges, ...data.badges])];
         const lastActivityDate =
@@ -352,6 +465,7 @@ export const useProgressStore = create<ProgressState>()(
 
         // Solo escribir si algo cambió: evita re-render y un espejo de vuelta.
         if (
+          completedModuleIds.length === s.completedModuleIds.length &&
           completedModules.length === s.completedModules.length &&
           badges.length === s.badges.length &&
           data.xp <= s.xp &&
@@ -362,6 +476,7 @@ export const useProgressStore = create<ProgressState>()(
         }
 
         set({
+          completedModuleIds,
           completedModules,
           badges,
           xp: Math.max(s.xp, data.xp),
@@ -374,10 +489,21 @@ export const useProgressStore = create<ProgressState>()(
         const s = get();
         const patch: Partial<ProgressState> = {};
 
-        // Módulos completados (guardados por SLUG).
+        // Módulos completados. El RPC de reset puede mandar UUIDs (clave nueva),
+        // slugs (clave legada) o ambos; hay que limpiar las dos listas o el
+        // fallback `uuid || slug` resucitaría el módulo restablecido.
+        const removeIds = new Set(payload.module_ids ?? []);
         if (payload.module_slugs?.length) {
-          const remove = new Set(payload.module_slugs);
-          patch.completedModules = s.completedModules.filter((m) => !remove.has(m));
+          const removeSlugs = new Set(payload.module_slugs);
+          patch.completedModules = s.completedModules.filter((m) => !removeSlugs.has(m));
+          // Traducir con el índice aprendido: si no, el UUID sobreviviría al reset.
+          for (const slug of removeSlugs) {
+            const uuid = s.moduleSlugToId[slug];
+            if (uuid) removeIds.add(uuid);
+          }
+        }
+        if (removeIds.size > 0) {
+          patch.completedModuleIds = s.completedModuleIds.filter((u) => !removeIds.has(u));
         }
 
         // Respuestas de knowledge-check (objeto keyed por UUID de módulo).
@@ -404,7 +530,7 @@ export const useProgressStore = create<ProgressState>()(
     }),
     {
       name: 'learningai.progress',
-      version: 5,
+      version: 6,
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState as Partial<ProgressState>) ?? {};
         if (version < 2) {
@@ -438,18 +564,47 @@ export const useProgressStore = create<ProgressState>()(
             worldsCompleted: state.badges?.includes('world-conqueror') ? 1 : 0,
           } as Partial<ProgressState>;
         }
+        // v6: progreso por UUID. NO se puede traducir slug → UUID aquí (migrate
+        // es síncrono y sin BD): los arreglos nuevos nacen vacíos y se llenan por
+        // `hydrateFromServer` y `reconcileModuleKeys`. Mientras tanto el aprendiz
+        // sigue viendo su progreso por el fallback de slug, que no se toca.
+        if (version < 6) {
+          return {
+            ...state,
+            completedModuleIds: [],
+            moduleSlugToId: {},
+          } as Partial<ProgressState>;
+        }
         return state as Partial<ProgressState>;
       },
     },
   ),
 );
 
-export function selectAllModulesCompleted(state: ProgressState, modules: { id: string }[]): boolean {
-  const completed = state.completedModules.filter((id) => modules.some((m) => m.id === id));
+// ─── Lectura ──────────────────────────────────────────────────────────────────
+// ÚNICO punto donde se decide si un módulo está completado. Toda la UI pasa por
+// aquí; nadie debe volver a hacer `completedModules.includes(m.slug)` a mano.
+
+export function selectModuleDone(state: ProgressState, key: ModuleKey): boolean {
+  return doneIn(state.completedModuleIds, state.completedModules, key);
+}
+
+/**
+ * Versión hook: se suscribe a las dos claves, así que la UI se re-renderiza
+ * tanto si el progreso llega por UUID como por el fallback de slug.
+ */
+export function useModuleDone(): (key: ModuleKey) => boolean {
+  const ids = useProgressStore((s) => s.completedModuleIds);
+  const slugs = useProgressStore((s) => s.completedModules);
+  return useCallback((key: ModuleKey) => doneIn(ids, slugs, key), [ids, slugs]);
+}
+
+export function selectAllModulesCompleted(state: ProgressState, modules: ModuleKey[]): boolean {
+  const completed = modules.filter((m) => selectModuleDone(state, m));
   return modules.length > 0 && completed.length === modules.length;
 }
 
-export function selectCertificationEarned(state: ProgressState, modules: { id: string }[]): boolean {
+export function selectCertificationEarned(state: ProgressState, modules: ModuleKey[]): boolean {
   return (
     selectAllModulesCompleted(state, modules) &&
     state.attempts.some((a) => a.score >= CERTIFICATION_MIN_SCORE)

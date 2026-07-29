@@ -2,7 +2,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LogOut } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
-import { useProgressStore } from '@/stores/progressStore';
+import { useModuleDone, keyOfModule } from '@/stores/progressStore';
 import { useModules } from '@/hooks/useModules';
 import { useAuth } from '@/hooks/useAuth';
 import { signOut } from '@/services/auth.service';
@@ -19,9 +19,12 @@ export function Navbar() {
   const nav = useNavigate();
   const { name, reset } = useUserStore();
   const { isAdminOrCapacitador, avatarUrl } = useAuth();
-  const completedModules = useProgressStore((s) => s.completedModules);
+  const isModuleDone = useModuleDone();
   const { planModules: modules } = useModules();
-  const progress = modules.length > 0 ? completedModules.length / modules.length : 0;
+  // Contra los módulos del plan, no contra el total global de completados: si el
+  // aprendiz completó módulos de otros cursos la barra se pasaba de 100%.
+  const done = modules.filter((m) => isModuleDone(keyOfModule(m))).length;
+  const progress = modules.length > 0 ? done / modules.length : 0;
 
   const handleLogout = async () => {
     reset();
