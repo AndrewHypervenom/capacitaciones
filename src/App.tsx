@@ -14,6 +14,7 @@ import Courses from '@/pages/Courses';
 import CoursePage from '@/pages/CoursePage';
 import ModulePage from '@/pages/ModulePage';
 import MyFeedback from '@/pages/MyFeedback';
+import MySuggestions from '@/pages/MySuggestions';
 import Profile from '@/pages/Profile';
 import SimulatorRun from '@/pages/SimulatorRun';
 import SimulatorResult from '@/pages/SimulatorResult';
@@ -34,6 +35,7 @@ import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
 import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
+import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
 
 // Admin CMS — lazy loaded (code-split, no se carga para learners)
 const AdminRouter = lazy(() => import('@/admin/AdminRouter'));
@@ -187,6 +189,8 @@ export default function App() {
           <Route path="/courses/:slug" element={<CoursePage />} />
           <Route path="/modules/:id" element={<ModulePage />} />
           <Route path="/feedback" element={<MyFeedback />} />
+          {/* Buzón permanente: lo que cada quien ha propuesto o reportado */}
+          <Route path="/suggestions" element={<MySuggestions />} />
           <Route path="/simulator/run/:id" element={<SimulatorRun />} />
           <Route path="/simulator/result/:id" element={<SimulatorResult />} />
           <Route path="/simulator/choice/:id" element={<ChoiceSimulatorRun />} />
@@ -211,6 +215,10 @@ export default function App() {
           }
         />
       </Routes>
+      {/* Opiniones del sitio: vive en la raíz para estar en TODAS las vistas
+          (aprendiz, mundos, panel de gestión) y para que lo escrito a medias no
+          se pierda al navegar. Él decide dónde no debe aparecer. */}
+      <FeedbackWidget />
       <Toaster />
       <BgTaskIndicator />
       <UpdatePrompt />

@@ -37,6 +37,7 @@ import AiLimits from './pages/AiLimits'
 import Gamification from './pages/Gamification'
 import ActivityLog from './pages/ActivityLog'
 import DeletionApprovals from './pages/DeletionApprovals'
+import SiteFeedback from './pages/SiteFeedback'
 import { HelpWidget } from '@/components/help/HelpWidget'
 
 export default function AdminRouter() {
@@ -117,6 +118,9 @@ export default function AdminRouter() {
           <Route path="activity" element={isSuperAdmin ? <ActivityLog /> : <Navigate to="/admin" replace />} />
           {/* Aprobación de eliminaciones (borrado suave de capacitadores): solo superadmin */}
           <Route path="approvals" element={isSuperAdmin ? <DeletionApprovals /> : <Navigate to="/admin" replace />} />
+          {/* Opiniones del sitio: el capacitador ve las de su campaña (lo acota
+              la RLS), el superadmin las ve todas. */}
+          <Route path="site-feedback" element={<SiteFeedback />} />
           <Route path="quiz" element={<LiveQuizAdmin />} />
           {/* Historial del chat de ayuda: solo superadmin */}
           <Route path="chat" element={isSuperAdmin ? <ChatLogs /> : <Navigate to="/admin" replace />} />

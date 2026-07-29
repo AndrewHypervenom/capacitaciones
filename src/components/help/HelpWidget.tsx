@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { MessageCircle, X, ArrowUp, Sparkles, Trash2, Bot } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHelpChatStore } from '@/stores/helpChatStore'
+import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
 import { sendHelpMessage } from '@/services/help.service'
 import { logHelpInteraction } from '@/services/helpLog.service'
 import { getSuggestionKeys } from './suggestions'
@@ -147,7 +148,12 @@ export function HelpWidget() {
     <>
       {/* ── Botón flotante ─────────────────────────────────────── */}
       <motion.button
-        onClick={toggle}
+        onClick={() => {
+          // El panel de opiniones vive en el mismo rincón: al abrir el chat se
+          // cierra, para que nunca queden dos paneles encimados.
+          if (!isOpen) useSiteFeedbackStore.getState().close()
+          toggle()
+        }}
         aria-label={t('help.title')}
         className="fixed bottom-5 right-5 z-[9990] h-14 w-14 rounded-full"
         initial={{ scale: 0, opacity: 0 }}

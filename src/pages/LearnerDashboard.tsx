@@ -12,6 +12,7 @@ import {
   Medal,
   Menu,
   MessageSquare,
+  MessageSquarePlus,
   X,
   Zap,
 } from 'lucide-react';
@@ -342,6 +343,17 @@ export default function LearnerDashboard() {
           >
             <MessageSquare className="h-4 w-4 shrink-0 text-text-subtle" />
             {t('nav.feedback', 'Retroalimentación')}
+          </Link>
+
+          {/* Buzón de mejoras del sitio: siempre disponible, no solo durante el
+              piloto del botón flotante. */}
+          <Link
+            to="/suggestions"
+            onClick={closeMenu}
+            className="flex items-center gap-3 rounded-full px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:bg-subtle hover:text-text"
+          >
+            <MessageSquarePlus className="h-4 w-4 shrink-0 text-text-subtle" />
+            {t('nav.suggestions', 'Sugerencias')}
           </Link>
         </nav>
 

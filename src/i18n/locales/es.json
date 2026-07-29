@@ -130,7 +130,8 @@
     "feedback": "Retroalimentación",
     "logout": "Salir",
     "admin": "Admin",
-    "manage": "Gestión"
+    "manage": "Gestión",
+    "suggestions": "Sugerencias"
   },
   "deletion": {
     "pending_generic": "Se envió para aprobación del superadmin y quedó oculto.",
@@ -866,7 +867,8 @@
       "group_challenges": "Retos y Simulaciones",
       "group_ai": "Inteligencia Artificial",
       "group_supervision": "Supervisión",
-      "ai_limits": "Límites de IA"
+      "ai_limits": "Límites de IA",
+      "site_feedback": "Opiniones"
     },
     "entity_types": {
       "campaigns": "Campaña",
@@ -3084,6 +3086,51 @@
       "preview_unlimited": "{{name}} quedará sin ningún tope.",
       "no_changes": "Sin cambios",
       "reset_disabled": "Esta persona no tiene ninguna excepción."
+    },
+    "site_feedback": {
+      "title": "Opiniones del sitio",
+      "subtitle": "Lo que tus aprendices reportan, proponen y celebran de la plataforma.",
+      "kpi_total": "Opiniones",
+      "kpi_open": "Sin resolver",
+      "kpi_contact": "Piden contacto",
+      "kpi_mood": "Ánimo promedio",
+      "search_ph": "Buscar en los comentarios…",
+      "kind_all": "Todo tipo",
+      "only_contact": "Piden contacto",
+      "filter_open": "Sin resolver",
+      "filter_all": "Todas",
+      "empty_title": "Nada por aquí todavía",
+      "empty_desc": "Cuando alguien opine desde el botón flotante, su mensaje aparecerá en esta bandeja.",
+      "no_message": "Sin comentario escrito",
+      "user_fallback": "Usuario",
+      "wants_contact": "Contactar",
+      "d_mood": "Ánimo general",
+      "d_ease": "Facilidad",
+      "d_page": "Pantalla",
+      "d_areas": "Zonas del sitio",
+      "d_message": "Comentario",
+      "contact_title": "Pidió que lo contactaran",
+      "contact_pref": "Prefiere",
+      "contact_when": "Momento",
+      "manage": "Gestión",
+      "note_ph": "Nota interna: qué se hizo con esto…",
+      "save_note": "Guardar nota",
+      "handled_by": "Última gestión: {{name}}",
+      "tech": "Detalles técnicos",
+      "saved": "Actualizado",
+      "save_error": "No se pudo guardar",
+      "load_error": "No pudimos cargar las opiniones",
+      "d_kind": "Tipo de opinión",
+      "d_when": "Enviado",
+      "d_who": "Quién",
+      "d_campaign": "Campaña",
+      "sec_said": "Lo que dijo",
+      "sec_felt": "Cómo se sintió",
+      "sec_answers": "Lo que respondió",
+      "page_unknown": "Pantalla no identificada",
+      "d_path": "Ruta",
+      "d_lang": "Idioma",
+      "d_id": "ID"
     }
   },
   "themes": {
@@ -3749,5 +3796,177 @@
     "in_this_view_other": "{{count}} personas más están aquí",
     "here_in_view": "{{name}} está aquí, en toda la vista «{{view}}»",
     "detail_preview": "Vista previa"
+  },
+  "my_suggestions": {
+    "title": "Mis sugerencias",
+    "subtitle": "Lo que has propuesto o reportado sobre la plataforma.",
+    "cta_title": "Tu opinión cambia el sitio",
+    "cta_desc": "Cuéntanos qué mejorarías o repórtanos un error. Toma menos de un minuto y lo lee el equipo.",
+    "cta_button": "Dar mi opinión",
+    "empty_title": "Todavía no has enviado nada",
+    "empty_desc": "Cuando compartas una idea o reportes un error, lo verás aquí con su estado.",
+    "kpi_total": "Enviadas",
+    "kpi_answered": "Tomadas en cuenta",
+    "contact_requested": "Pediste que te contactaran"
+  },
+  "site_feedback": {
+    "close": "Cerrar",
+    "invite_title": "¿Nos ayudas a mejorar?",
+    "invite_desc": "Cuéntanos qué te gustó y qué no. Toma menos de un minuto.",
+    "invite_cta": "Dar mi opinión",
+    "fab_label": "Dar mi opinión del sitio",
+    "fab_short": "Tu opinión",
+    "title": "Tu opinión",
+    "badge": "Beta",
+    "step_of": "Paso {{n}} de {{total}}",
+    "step_done": "¡Listo!",
+    "mood_title": "¿Cómo te ha ido en el sitio?",
+    "mood_title_name": "{{name}}, ¿cómo te ha ido en el sitio?",
+    "mood_subtitle": "Tu respuesta nos dice por dónde empezar a mejorar.",
+    "mood": {
+      "1": "Muy mal",
+      "2": "Regular",
+      "3": "Normal",
+      "4": "Bien",
+      "5": "Excelente"
+    },
+    "kind_title": "¿Qué quieres contarnos?",
+    "kind_subtitle": "Elige lo que más se parezca a lo que tienes en mente.",
+    "kind": {
+      "bug": {
+        "label": "Algo falló",
+        "desc": "Un error, algo que no cargó o no funcionó"
+      },
+      "idea": {
+        "label": "Tengo una idea",
+        "desc": "Algo que mejoraría tu experiencia"
+      },
+      "praise": {
+        "label": "Algo me encantó",
+        "desc": "Cuéntanos qué vale la pena conservar"
+      },
+      "question": {
+        "label": "Tengo una duda",
+        "desc": "Algo que no entendiste o no encontraste"
+      }
+    },
+    "detail_title": "Cuéntanos un poco más",
+    "detail_subtitle": "Toques rápidos, sin escribir nada.",
+    "ease_title": "¿Qué tan fácil te resultó lo que estabas haciendo?",
+    "ease_low": "Difícil",
+    "ease_high": "Muy fácil",
+    "areas_title": "¿De qué parte del sitio hablas?",
+    "areas_hint": "Puedes elegir varias",
+    "areas": {
+      "courses": "Cursos",
+      "modules": "Módulos",
+      "quizzes": "Quizzes",
+      "simulations": "Simulaciones",
+      "worlds": "Mundos",
+      "certificates": "Certificados",
+      "profile": "Mi perfil",
+      "navigation": "Navegación",
+      "design": "Diseño",
+      "other": "Otra cosa"
+    },
+    "q": {
+      "blocked": {
+        "title": "¿Pudiste seguir con lo que hacías?",
+        "opt": {
+          "no_block": "Sí, sin problema",
+          "slowed": "Sí, pero me costó",
+          "blocked": "No, me bloqueó"
+        }
+      },
+      "repeats": {
+        "title": "¿Te había pasado antes?",
+        "opt": {
+          "first_time": "Primera vez",
+          "sometimes": "A veces",
+          "always": "Siempre pasa"
+        }
+      },
+      "impact": {
+        "title": "¿Qué tanto te ayudaría?",
+        "opt": {
+          "nice": "Estaría bueno",
+          "useful": "Me serviría bastante",
+          "game_changer": "Me cambiaría el día"
+        }
+      },
+      "loved": {
+        "title": "¿Qué fue lo que más te gustó?",
+        "opt": {
+          "content": "El contenido",
+          "games": "Los juegos y retos",
+          "design": "El diseño",
+          "speed": "Lo rápido que va",
+          "support": "El acompañamiento"
+        }
+      },
+      "urgency": {
+        "title": "¿Qué tan pronto necesitas la respuesta?",
+        "opt": {
+          "whenever": "Cuando puedan",
+          "this_week": "Esta semana",
+          "today": "Hoy mismo"
+        }
+      },
+      "device": {
+        "title": "¿Desde qué dispositivo entras?",
+        "opt": {
+          "phone": "Celular",
+          "tablet": "Tablet",
+          "computer": "Computador"
+        }
+      }
+    },
+    "message_title": "Escríbelo con tus palabras",
+    "message_subtitle": "Entre más detalle, más rápido lo arreglamos.",
+    "message_ph": {
+      "bug": "Ej.: al abrir el módulo 3 la pantalla se quedó en blanco y tuve que volver a entrar…",
+      "idea": "Ej.: me gustaría poder descargar los módulos para verlos sin internet…",
+      "praise": "Ej.: los quizzes con sonido me mantienen enganchado, muy bueno…",
+      "question": "Ej.: no encuentro dónde queda mi certificado del curso anterior…"
+    },
+    "message_optional": "Opcional, pero se agradece muchísimo",
+    "page_context": "Enviado desde: {{page}}",
+    "contact_title": "¿Quieres que te contactemos?",
+    "contact_subtitle": "Solo si prefieres que alguien te escriba o te llame.",
+    "contact_toggle": "Sí, quiero que me contacten",
+    "contact_toggle_hint": "Tu capacitador verá tus datos para responderte.",
+    "contact_pref": "¿Cómo prefieres que te busquemos?",
+    "contact_pref_email": "Correo",
+    "contact_pref_whatsapp": "WhatsApp",
+    "contact_pref_call": "Llamada",
+    "contact_email": "Correo",
+    "contact_phone": "Teléfono / WhatsApp",
+    "contact_note": "¿Cuándo es buen momento?",
+    "contact_note_ph": "Ej.: en la mañana, después de las 10",
+    "contact_privacy": "Solo tu capacitador y el equipo del sitio ven estos datos, y únicamente para responderte.",
+    "error": "No pudimos enviar tu opinión. Revisa tu conexión e inténtalo otra vez.",
+    "back": "Atrás",
+    "next": "Continuar",
+    "send": "Enviar opinión",
+    "sending": "Enviando…",
+    "skip": "Prefiero no escribir nada",
+    "done_title": "¡Gracias! Ya lo tenemos",
+    "done_desc": "Tu opinión llega directo al equipo. Si pediste que te contactaran, te buscaremos pronto.",
+    "done_see_mine": "Ver mis sugerencias",
+    "done_again": "Quiero contar algo más",
+    "status": {
+      "new": "Nueva",
+      "in_review": "En revisión",
+      "planned": "Planeada",
+      "done": "Resuelta",
+      "archived": "Archivada"
+    },
+    "ease_level": {
+      "1": "Muy difícil",
+      "2": "Difícil",
+      "3": "Normal",
+      "4": "Fácil",
+      "5": "Muy fácil"
+    }
   }
 }

@@ -130,7 +130,8 @@
     "feedback": "Feedback",
     "logout": "Log out",
     "admin": "Admin",
-    "manage": "Manage"
+    "manage": "Manage",
+    "suggestions": "Suggestions"
   },
   "deletion": {
     "pending_generic": "Sent for superadmin approval and hidden.",
@@ -866,7 +867,8 @@
       "group_challenges": "Challenges & Simulations",
       "group_ai": "Artificial Intelligence",
       "group_supervision": "Supervision",
-      "ai_limits": "AI limits"
+      "ai_limits": "AI limits",
+      "site_feedback": "Feedback"
     },
     "entity_types": {
       "campaigns": "Campaign",
@@ -3084,6 +3086,51 @@
       "preview_unlimited": "{{name}} will have no cap at all.",
       "no_changes": "No changes",
       "reset_disabled": "This person has no exception."
+    },
+    "site_feedback": {
+      "title": "Site feedback",
+      "subtitle": "What your learners report, suggest and love about the platform.",
+      "kpi_total": "Responses",
+      "kpi_open": "Unresolved",
+      "kpi_contact": "Want contact",
+      "kpi_mood": "Average mood",
+      "search_ph": "Search comments…",
+      "kind_all": "All types",
+      "only_contact": "Want contact",
+      "filter_open": "Unresolved",
+      "filter_all": "All",
+      "empty_title": "Nothing here yet",
+      "empty_desc": "When someone sends feedback from the floating button, it will show up in this inbox.",
+      "no_message": "No written comment",
+      "user_fallback": "User",
+      "wants_contact": "Contact",
+      "d_mood": "Overall mood",
+      "d_ease": "Ease of use",
+      "d_page": "Screen",
+      "d_areas": "Site areas",
+      "d_message": "Comment",
+      "contact_title": "Asked to be contacted",
+      "contact_pref": "Prefers",
+      "contact_when": "Best time",
+      "manage": "Handling",
+      "note_ph": "Internal note: what was done about this…",
+      "save_note": "Save note",
+      "handled_by": "Last handled by: {{name}}",
+      "tech": "Technical details",
+      "saved": "Updated",
+      "save_error": "Could not save",
+      "load_error": "We could not load the feedback",
+      "d_kind": "Feedback type",
+      "d_when": "Sent",
+      "d_who": "Who",
+      "d_campaign": "Campaign",
+      "sec_said": "What they said",
+      "sec_felt": "How they felt",
+      "sec_answers": "What they answered",
+      "page_unknown": "Screen not identified",
+      "d_path": "Path",
+      "d_lang": "Language",
+      "d_id": "ID"
     }
   },
   "themes": {
@@ -3749,5 +3796,177 @@
     "in_this_view_other": "{{count}} others are also here",
     "here_in_view": "{{name}} is here, across the whole «{{view}}» view",
     "detail_preview": "Preview"
+  },
+  "my_suggestions": {
+    "title": "My suggestions",
+    "subtitle": "What you have suggested or reported about the platform.",
+    "cta_title": "Your feedback shapes this site",
+    "cta_desc": "Tell us what you would improve or report a bug. It takes less than a minute and the team reads it.",
+    "cta_button": "Share my feedback",
+    "empty_title": "You haven't sent anything yet",
+    "empty_desc": "When you share an idea or report a bug, it will appear here with its status.",
+    "kpi_total": "Sent",
+    "kpi_answered": "Taken into account",
+    "contact_requested": "You asked to be contacted"
+  },
+  "site_feedback": {
+    "close": "Close",
+    "invite_title": "Help us improve?",
+    "invite_desc": "Tell us what you liked and what you did not. It takes less than a minute.",
+    "invite_cta": "Share my feedback",
+    "fab_label": "Share feedback about the site",
+    "fab_short": "Feedback",
+    "title": "Your feedback",
+    "badge": "Beta",
+    "step_of": "Step {{n}} of {{total}}",
+    "step_done": "All set!",
+    "mood_title": "How has the site been for you?",
+    "mood_title_name": "{{name}}, how has the site been for you?",
+    "mood_subtitle": "Your answer tells us where to start improving.",
+    "mood": {
+      "1": "Very bad",
+      "2": "Not great",
+      "3": "Okay",
+      "4": "Good",
+      "5": "Excellent"
+    },
+    "kind_title": "What would you like to tell us?",
+    "kind_subtitle": "Pick whatever is closest to what you have in mind.",
+    "kind": {
+      "bug": {
+        "label": "Something broke",
+        "desc": "An error, something that did not load or work"
+      },
+      "idea": {
+        "label": "I have an idea",
+        "desc": "Something that would improve your experience"
+      },
+      "praise": {
+        "label": "I loved something",
+        "desc": "Tell us what is worth keeping"
+      },
+      "question": {
+        "label": "I have a question",
+        "desc": "Something you did not understand or could not find"
+      }
+    },
+    "detail_title": "Tell us a bit more",
+    "detail_subtitle": "Quick taps, no typing needed.",
+    "ease_title": "How easy was what you were doing?",
+    "ease_low": "Hard",
+    "ease_high": "Very easy",
+    "areas_title": "Which part of the site is this about?",
+    "areas_hint": "You can pick several",
+    "areas": {
+      "courses": "Courses",
+      "modules": "Modules",
+      "quizzes": "Quizzes",
+      "simulations": "Simulations",
+      "worlds": "Worlds",
+      "certificates": "Certificates",
+      "profile": "My profile",
+      "navigation": "Navigation",
+      "design": "Design",
+      "other": "Something else"
+    },
+    "q": {
+      "blocked": {
+        "title": "Could you keep going?",
+        "opt": {
+          "no_block": "Yes, no problem",
+          "slowed": "Yes, but it was hard",
+          "blocked": "No, it blocked me"
+        }
+      },
+      "repeats": {
+        "title": "Had it happened before?",
+        "opt": {
+          "first_time": "First time",
+          "sometimes": "Sometimes",
+          "always": "It always happens"
+        }
+      },
+      "impact": {
+        "title": "How much would it help you?",
+        "opt": {
+          "nice": "Would be nice",
+          "useful": "Would help a lot",
+          "game_changer": "Would change my day"
+        }
+      },
+      "loved": {
+        "title": "What did you like the most?",
+        "opt": {
+          "content": "The content",
+          "games": "Games and challenges",
+          "design": "The design",
+          "speed": "How fast it is",
+          "support": "The support"
+        }
+      },
+      "urgency": {
+        "title": "How soon do you need an answer?",
+        "opt": {
+          "whenever": "Whenever you can",
+          "this_week": "This week",
+          "today": "Today"
+        }
+      },
+      "device": {
+        "title": "Which device do you use?",
+        "opt": {
+          "phone": "Phone",
+          "tablet": "Tablet",
+          "computer": "Computer"
+        }
+      }
+    },
+    "message_title": "Say it in your own words",
+    "message_subtitle": "The more detail, the faster we fix it.",
+    "message_ph": {
+      "bug": "E.g.: when I opened module 3 the screen went blank and I had to log in again…",
+      "idea": "E.g.: I would love to download modules to watch them offline…",
+      "praise": "E.g.: the quizzes with sound keep me hooked, really good…",
+      "question": "E.g.: I cannot find the certificate for my previous course…"
+    },
+    "message_optional": "Optional, but hugely appreciated",
+    "page_context": "Sent from: {{page}}",
+    "contact_title": "Would you like us to contact you?",
+    "contact_subtitle": "Only if you would rather have someone write or call you.",
+    "contact_toggle": "Yes, please contact me",
+    "contact_toggle_hint": "Your trainer will see your details to get back to you.",
+    "contact_pref": "How should we reach you?",
+    "contact_pref_email": "Email",
+    "contact_pref_whatsapp": "WhatsApp",
+    "contact_pref_call": "Call",
+    "contact_email": "Email",
+    "contact_phone": "Phone / WhatsApp",
+    "contact_note": "When is a good time?",
+    "contact_note_ph": "E.g.: mornings, after 10",
+    "contact_privacy": "Only your trainer and the site team see these details, and only to get back to you.",
+    "error": "We could not send your feedback. Check your connection and try again.",
+    "back": "Back",
+    "next": "Continue",
+    "send": "Send feedback",
+    "sending": "Sending…",
+    "skip": "I would rather not write anything",
+    "done_title": "Thank you! We got it",
+    "done_desc": "Your feedback goes straight to the team. If you asked to be contacted, we will reach out soon.",
+    "done_see_mine": "See my suggestions",
+    "done_again": "I want to add something else",
+    "status": {
+      "new": "New",
+      "in_review": "In review",
+      "planned": "Planned",
+      "done": "Resolved",
+      "archived": "Archived"
+    },
+    "ease_level": {
+      "1": "Very hard",
+      "2": "Hard",
+      "3": "Okay",
+      "4": "Easy",
+      "5": "Very easy"
+    }
   }
 }

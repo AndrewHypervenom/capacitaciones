@@ -84,7 +84,9 @@ export function AdminNav() {
         // Gamificación (logros + niveles XP): solo superadmin.
         ...(isSuperAdmin ? [{ to: '/admin/gamification', label: t('admin.nav.gamification', 'Gamificación'), end: false }] : []),
         // Progreso unificado: Mundos y Módulos viven en una sola vista con selector.
-        { to: '/admin/progress', label: t('admin.nav.progress', 'Progreso'), end: false }
+        { to: '/admin/progress', label: t('admin.nav.progress', 'Progreso'), end: false },
+        // Opiniones del sitio: lo que los aprendices reportan y proponen.
+        { to: '/admin/site-feedback', label: t('admin.nav.site_feedback', 'Opiniones'), end: false }
       ]
     },
     // Secciones exclusivas de superadmin (no las ve el capacitador): van al final
