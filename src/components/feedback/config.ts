@@ -24,6 +24,17 @@ export function shouldShowFeedbackFab(pathname: string): boolean {
   return !HIDDEN_ON.some((re) => re.test(pathname))
 }
 
+// ─── Equipo que atiende el buzón ─────────────────────────────────
+/**
+ * Correos del equipo que revisa las opiniones. Se muestran en el último paso
+ * para quien prefiera escribirnos directo en lugar de dejar sus datos.
+ */
+export const TEAM_CONTACTS: { name: string; email: string }[] = [
+  { name: 'Andrés Fajardo', email: 'andresffp@positivosmais.com' },
+  { name: 'Isabela García', email: 'isabelage@positivosmais.com' },
+  { name: 'Jeanny Tole', email: 'jeannypto@positivosmais.com' },
+]
+
 // ─── Tipos de opinión ────────────────────────────────────────────
 export interface KindMeta {
   key: FeedbackKind

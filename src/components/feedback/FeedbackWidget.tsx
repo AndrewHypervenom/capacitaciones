@@ -5,14 +5,14 @@ import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   MessageSquarePlus, X, ArrowLeft, ArrowRight, Send, Check, Sparkles,
-  Loader2, Phone, Mail, MessageCircle, ChevronRight,
+  Loader2, Phone, Mail, MessageCircle, ChevronRight, Copy,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHelpChatStore } from '@/stores/helpChatStore'
 import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
 import { submitSiteFeedback, type ContactPref, type FeedbackKind } from '@/services/siteFeedback.service'
 import {
-  AREAS, KINDS, MOODS, areaFromPath, guessDevice, kindMeta, pageLabelFor,
+  AREAS, KINDS, MOODS, TEAM_CONTACTS, areaFromPath, guessDevice, kindMeta, pageLabelFor,
   questionsFor, shouldShowFeedbackFab, type AreaKey,
 } from './config'
 import { cn } from '@/lib/cn'
@@ -170,8 +170,9 @@ export function FeedbackWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.97 }}
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            // Va por encima del botón de "volver arriba" (bottom-[5.5rem]).
-            className="fixed bottom-36 right-4 z-[9991] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-border/10 glass-strong p-4 shadow-2xl shadow-black/30"
+            // Corona la columna de flotantes: chat, opinión y "volver arriba"
+            // (que termina en 12.5rem) quedan debajo.
+            className="fixed bottom-[13.25rem] right-4 z-[9991] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-border/10 glass-strong p-4 shadow-2xl shadow-black/30"
           >
             <button
               onClick={dismissInvite}
@@ -204,12 +205,14 @@ export function FeedbackWidget() {
         )}
       </AnimatePresence>
 
-      {/* ── Botón flotante (a la izquierda del chat de ayuda) ───── */}
+      {/* ── Botón flotante (justo encima del chat de ayuda) ─────── */}
+      {/* Columna derecha, de abajo hacia arriba: chat de ayuda (bottom-5,
+          h-14) → este botón → "volver arriba". */}
       <motion.button
         onClick={() => (open ? setOpen(false) : openPanel())}
         aria-label={t('site_feedback.fab_label', 'Dar mi opinión del sitio')}
         aria-expanded={open}
-        className="group fixed bottom-5 right-[4.75rem] z-[9991] h-14 w-14 rounded-full"
+        className="group fixed bottom-[5.5rem] right-5 z-[9991] h-14 w-14 rounded-full"
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.55, type: 'spring', stiffness: 260, damping: 20 }}
@@ -236,8 +239,9 @@ export function FeedbackWidget() {
             )}
           </AnimatePresence>
         </span>
-        {/* Etiqueta al pasar el mouse (solo escritorio) */}
-        <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-text px-2 py-1 text-[11px] font-medium text-bg opacity-0 transition-opacity group-hover:opacity-100 sm:block">
+        {/* Etiqueta al pasar el mouse (solo escritorio). Va a la izquierda:
+            arriba y abajo del botón ya hay otros flotantes. */}
+        <span className="pointer-events-none absolute right-full top-1/2 mr-2 hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-text px-2 py-1 text-[11px] font-medium text-bg opacity-0 transition-opacity group-hover:opacity-100 sm:block">
           {t('site_feedback.fab_short', 'Tu opinión')}
         </span>
       </motion.button>
@@ -550,6 +554,8 @@ export function FeedbackWidget() {
                         )}
                       </AnimatePresence>
 
+                      <TeamContacts accent={accent} />
+
                       {error && (
                         <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-[12.5px] text-red-400">
                           {t('site_feedback.error', 'No pudimos enviar tu opinión. Revisa tu conexión e inténtalo otra vez.')}
@@ -737,6 +743,96 @@ function Chip({ active, accent, onClick, children }: {
     >
       {children}
     </motion.button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Correos del equipo: para quien prefiere escribirnos directo
+// ─────────────────────────────────────────────────────────────
+function TeamContacts({ accent }: { accent: string }) {
+  const { t } = useTranslation()
+  const subject = encodeURIComponent(t('site_feedback.team_subject', 'Opinión sobre la plataforma'))
+  /** Qué se acaba de copiar: el correo de alguien o 'all'. Se borra solo. */
+  const [copied, setCopied] = useState<string | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+
+  const copy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(key)
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(null), 2000)
+    } catch { /* portapapeles bloqueado: el correo sigue visible para copiarlo a mano */ }
+  }
+
+  const allEmails = TEAM_CONTACTS.map((c) => c.email).join('; ')
+
+  return (
+    <div className="mt-6 border-t border-line/70 pt-4">
+      <p className="text-[12.5px] font-medium text-text">
+        {t('site_feedback.team_title', '¿Prefieres escribirnos directo?')}
+      </p>
+      <p className="mt-0.5 text-[11.5px] leading-relaxed text-text-muted">
+        {t('site_feedback.team_desc', 'Este es el equipo que revisa las opiniones. Escríbenos cuando quieras.')}
+      </p>
+      <div className="mt-2.5 space-y-1.5">
+        {TEAM_CONTACTS.map((c) => {
+          const isCopied = copied === c.email
+          return (
+            <div
+              key={c.email}
+              className="flex items-center gap-2.5 rounded-xl border border-line bg-subtle/25 px-3 py-2 transition-colors hover:bg-subtle/40"
+            >
+              <span
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                style={{ background: `${accent}1f`, color: accent }}
+              >
+                <Mail className="h-3.5 w-3.5" />
+              </span>
+              {/* El correo también se puede seleccionar a mano: no lo tapamos */}
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12.5px] font-medium leading-tight text-text">{c.name}</span>
+                <span className="block truncate text-[11px] leading-tight text-text-muted">{c.email}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => void copy(c.email, c.email)}
+                aria-label={t('site_feedback.team_copy', 'Copiar correo')}
+                title={t('site_feedback.team_copy', 'Copiar correo')}
+                className={cn(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors',
+                  isCopied ? 'border-transparent' : 'border-line text-text-muted hover:bg-subtle hover:text-text',
+                )}
+                style={isCopied ? { background: `${accent}1f`, color: accent } : undefined}
+              >
+                {isCopied ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+              <a
+                href={`mailto:${c.email}?subject=${subject}`}
+                aria-label={t('site_feedback.team_write', 'Escribir correo')}
+                title={t('site_feedback.team_write', 'Escribir correo')}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line text-text-muted transition-colors hover:bg-subtle hover:text-text"
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          )
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => void copy(allEmails, 'all')}
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-[12px] font-medium text-text-muted transition-colors hover:bg-subtle hover:text-text"
+      >
+        {copied === 'all' ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Copy className="h-3.5 w-3.5" />}
+        {copied === 'all'
+          ? t('site_feedback.team_copied_all', 'Los tres correos quedaron copiados')
+          : t('site_feedback.team_copy_all', 'Copiar los tres correos')}
+      </button>
+    </div>
   )
 }
 
