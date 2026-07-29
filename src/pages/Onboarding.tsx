@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Loader2, Eye, EyeOff, KeyRound } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/authStore'
+import { evaluatePassword } from '@/lib/password'
+import { PasswordStrength } from '@/components/auth/PasswordStrength'
 
 export function Onboarding() {
   const { t } = useTranslation()
@@ -15,8 +17,13 @@ export function Onboarding() {
   const [error, setError] = useState<string | null>(null)
   const profile = useAuthStore((s) => s.profile)
   const setProfile = useAuthStore((s) => s.setProfile)
+  const email = useAuthStore((s) => s.session?.user.email ?? null)
 
-  const isValid = password.length >= 8 && password === confirm
+  // Misma política que /reset-password: la primera contraseña personal es
+  // justamente donde más importa que sea fuerte, porque sustituye a la
+  // predeterminada que comparte todo el equipo.
+  const verdict = evaluatePassword(password, { email, name: profile?.display_name })
+  const isValid = verdict.valid && password === confirm
 
   const handleSubmit = async () => {
     if (!isValid || !profile) return
@@ -91,9 +98,8 @@ export function Onboarding() {
             className="w-full rounded-xl px-4 py-3 text-[14px] text-text bg-subtle border border-line outline-none"
           />
 
-          {password.length > 0 && password.length < 8 && (
-            <p className="text-[12px] text-amber-500">{t('onboarding.min_chars')}</p>
-          )}
+          <PasswordStrength verdict={verdict} visible={password.length > 0} />
+
           {confirm.length > 0 && password !== confirm && (
             <p className="text-[12px] text-red-500">{t('onboarding.mismatch')}</p>
           )}

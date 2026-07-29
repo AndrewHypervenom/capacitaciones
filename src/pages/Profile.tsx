@@ -8,6 +8,8 @@ import { useUserStore } from '@/stores/userStore';
 import { updateProfile, uploadAvatar, changePassword } from '@/services/auth.service';
 import { Avatar } from '@/components/ui/Avatar';
 import { Input } from '@/components/ui/Input';
+import { PasswordStrength } from '@/components/auth/PasswordStrength';
+import { evaluatePassword } from '@/lib/password';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { NeonBadge } from '@/components/ui/NeonBadge';
@@ -105,9 +107,13 @@ export default function Profile() {
     }
   };
 
+  // Misma política que el restablecimiento desde el login: no tiene sentido
+  // exigir una contraseña fuerte al recuperarla y aceptar una débil aquí.
+  const pwdVerdict = evaluatePassword(pwd, { email: user?.email, name: form.display_name });
+
   const handlePassword = async () => {
-    if (pwd.length < 6) {
-      toast.error(t('profile.pwd_short', 'La contraseña debe tener al menos 6 caracteres'));
+    if (!pwdVerdict.valid) {
+      toast.error(t('profile.pwd_weak', 'La contraseña no cumple los requisitos de seguridad'));
       return;
     }
     if (pwd !== pwd2) {
@@ -231,12 +237,13 @@ export default function Profile() {
           {t('profile.change_password', 'Cambiar contraseña')}
         </h2>
         <p className="mb-5 text-[13px] text-text-muted">
-          {t('profile.password_hint', 'Ingresa una nueva contraseña de al menos 6 caracteres.')}
+          {t('profile.password_hint_strong', 'Elige una contraseña larga y única: debe cumplir todos los requisitos.')}
         </p>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div>
             <label className={label}>{t('profile.new_password', 'Nueva contraseña')}</label>
-            <Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} autoComplete="new-password" placeholder="••••••••" />
+            <Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} autoComplete="new-password" placeholder="••••••••••••" />
+            <PasswordStrength verdict={pwdVerdict} visible={pwd.length > 0} />
           </div>
           <div>
             <label className={label}>{t('profile.confirm_password', 'Confirmar contraseña')}</label>
@@ -244,7 +251,11 @@ export default function Profile() {
           </div>
         </div>
         <div className="mt-6 flex justify-end">
-          <Button variant="secondary" onClick={handlePassword} disabled={savingPwd || !pwd}>
+          <Button
+            variant="secondary"
+            onClick={handlePassword}
+            disabled={savingPwd || !pwdVerdict.valid || pwd !== pwd2}
+          >
             {savingPwd ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
             {t('profile.update_password', 'Actualizar contraseña')}
           </Button>

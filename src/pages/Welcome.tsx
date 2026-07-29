@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Eye, EyeOff, Loader2, BookOpen, Sparkles, Gamepad2,
-  Radio, BarChart3, Globe, Check, Trophy, Phone,
+  ArrowRight, ArrowLeft, Eye, EyeOff, Loader2, BookOpen, Sparkles, Gamepad2,
+  Radio, BarChart3, Globe, Check, Trophy, Phone, MailCheck, KeyRound,
 } from 'lucide-react';
 import {
   motion, AnimatePresence, useScroll, useTransform, useInView, animate,
@@ -11,7 +11,7 @@ import {
 } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
-import { signInWithEmail } from '@/services/auth.service';
+import { signInWithEmail, requestPasswordReset } from '@/services/auth.service';
 import { supabase } from '@/lib/supabase';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
@@ -46,6 +46,33 @@ const stagger = {
     show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.45, ease } },
   },
 } satisfies Record<string, Variants>;
+
+/* ── Paneles intercambiables del overlay (login ⇄ recuperar) ──────────────
+   Ambos usan ETIQUETAS de variante (no objetos) para que el escalonado se
+   propague a los hijos: si el panel animara con un objeto, cortaría la cadena
+   y los campos con `variants` se quedarían en su estado inicial (invisibles). */
+const panel = {
+  container: {
+    enter: (dir: number) => ({ opacity: 0, x: dir * 34, filter: 'blur(6px)' }),
+    show: {
+      opacity: 1, x: 0, filter: 'blur(0px)',
+      transition: { duration: 0.4, ease, staggerChildren: 0.06, delayChildren: 0.05 },
+    },
+    exit: (dir: number) => ({
+      opacity: 0, x: -dir * 34, filter: 'blur(6px)',
+      transition: { duration: 0.2, ease },
+    }),
+  },
+  item: {
+    enter: { opacity: 0, y: 14, filter: 'blur(4px)' },
+    show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease } },
+    exit: { opacity: 0, transition: { duration: 0.14 } },
+  },
+} satisfies Record<string, Variants>;
+
+/** Espera obligatoria entre envíos del correo de recuperación (segundos). */
+const RESEND_COOLDOWN_S = 60;
+const COOLDOWN_KEY = 'pwreset:next-allowed-at';
 
 /* Revelado al hacer scroll (whileInView) ─────────────────────────────── */
 const reveal: Variants = {
@@ -155,12 +182,88 @@ export default function Welcome() {
   const emailRef = useRef<HTMLInputElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
 
+  /* ── Recuperación de contraseña ─────────────────────────────────────── */
+  // `mode` decide qué panel ocupa la tarjeta; `dir` da la dirección del deslizamiento.
+  const [mode, setMode] = useState<'login' | 'forgot'>('login');
+  const [dir, setDir] = useState(1);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [sentTo, setSentTo] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const resetEmailRef = useRef<HTMLInputElement>(null);
+
+  // La cuenta atrás vive en localStorage: recargar la página no debe regalar un
+  // envío extra (Supabase igual lo rechazaría, pero el usuario no lo entendería).
   useEffect(() => {
-    if (showLogin) {
-      const to = setTimeout(() => emailRef.current?.focus(), 480);
-      return () => clearTimeout(to);
+    const tick = () => {
+      const until = Number(localStorage.getItem(COOLDOWN_KEY) ?? 0);
+      setCooldown(Math.max(0, Math.ceil((until - Date.now()) / 1000)));
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    if (!showLogin) return;
+    const ref = mode === 'login' ? emailRef : resetEmailRef;
+    const to = setTimeout(() => ref.current?.focus(), 480);
+    return () => clearTimeout(to);
+  }, [showLogin, mode]);
+
+  const closeOverlay = () => {
+    setShowLogin(false);
+    setLoginError(null);
+    // El panel vuelve a "login" para que la próxima apertura no aterrice en
+    // mitad del flujo de recuperación.
+    setMode('login');
+    setResetSent(false);
+    setResetError(null);
+  };
+
+  const goForgot = () => {
+    setDir(1);
+    setResetEmail(email);
+    setResetError(null);
+    setResetSent(false);
+    setMode('forgot');
+  };
+
+  const goLogin = () => {
+    setDir(-1);
+    setResetError(null);
+    setMode('login');
+  };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = resetEmail.trim();
+    if (!target || resetBusy || cooldown > 0) return;
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      const outcome = await requestPasswordReset(target);
+
+      // Un correo que no existe no consume la espera: casi siempre es un typo y
+      // obligar a esperar un minuto para corregir una letra sería absurdo.
+      if (outcome === 'not_found') {
+        setResetError(t('welcome.reset.not_found'));
+        return;
+      }
+
+      // A partir de aquí sí hubo (o se intentó) un envío real.
+      localStorage.setItem(COOLDOWN_KEY, String(Date.now() + RESEND_COOLDOWN_S * 1000));
+      setCooldown(RESEND_COOLDOWN_S);
+      if (outcome === 'rate_limited') setResetError(t('welcome.reset.rate_limited'));
+      else { setSentTo(target); setResetSent(true); }
+    } catch {
+      setResetError(t('welcome.reset.error_generic'));
+    } finally {
+      setResetBusy(false);
     }
-  }, [showLogin]);
+  };
 
   const handleStart = () => {
     setRippling(true);
@@ -690,7 +793,7 @@ export default function Welcome() {
             <motion.div
               className="absolute inset-0"
               style={{ background: 'rgb(var(--bg) / 0.7)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-              onClick={() => { setShowLogin(false); setLoginError(null); }}
+              onClick={closeOverlay}
             />
 
             <motion.div
@@ -725,25 +828,46 @@ export default function Welcome() {
                   transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                 />
 
-                <motion.div variants={stagger.container} initial="hidden" animate="show" className="relative z-10">
+                <motion.div layout variants={stagger.container} initial="hidden" animate="show" className="relative z-10">
                   <motion.div
+                    layout="position"
                     variants={stagger.item}
                     className="flex items-center gap-3.5"
                     style={{ paddingBottom: 24, marginBottom: 24, borderBottom: '1px solid rgb(var(--line))' }}
                   >
                     <img src="/logo.jpg" alt="LearningAI" className="h-10 w-10 rounded-xl flex-shrink-0" />
-                    <div>
-                      <h2 className="text-[19px] font-bold tracking-[-0.025em] text-text leading-tight">
-                        {t('welcome.login_title')}
-                      </h2>
+                    <div className="min-w-0">
+                      {/* El título cambia con el panel; se cruza en vez de saltar. */}
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.h2
+                          key={mode}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          transition={{ duration: 0.18, ease }}
+                          className="text-[19px] font-bold tracking-[-0.025em] text-text leading-tight"
+                        >
+                          {mode === 'login' ? t('welcome.login_title') : t('welcome.reset.title')}
+                        </motion.h2>
+                      </AnimatePresence>
                       <p className="text-[11px] tracking-wide mt-0.5" style={{ color: 'rgb(var(--text-subtle))' }}>
                         LearningAI
                       </p>
                     </div>
                   </motion.div>
 
+                  <AnimatePresence mode="popLayout" custom={dir} initial={false}>
+                  {mode === 'login' ? (
+                  <motion.div
+                    key="panel-login"
+                    variants={panel.container}
+                    custom={dir}
+                    initial="enter"
+                    animate="show"
+                    exit="exit"
+                  >
                   <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-                    <motion.div variants={stagger.item}>
+                    <motion.div variants={panel.item}>
                       <label className="block mb-2" style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', color: 'rgb(var(--text-muted))' }}>
                         {t('welcome.email_label').toUpperCase()}
                       </label>
@@ -762,10 +886,22 @@ export default function Welcome() {
                       />
                     </motion.div>
 
-                    <motion.div variants={stagger.item}>
-                      <label className="block mb-2" style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', color: 'rgb(var(--text-muted))' }}>
-                        {t('welcome.password_label').toUpperCase()}
-                      </label>
+                    <motion.div variants={panel.item}>
+                      <div className="flex items-center justify-between mb-2">
+                        <label style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', color: 'rgb(var(--text-muted))' }}>
+                          {t('welcome.password_label').toUpperCase()}
+                        </label>
+                        <motion.button
+                          type="button"
+                          onClick={goForgot}
+                          whileHover={{ x: 2 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 24 }}
+                          className="text-[11.5px] font-medium transition-colors"
+                          style={{ color: GREEN }}
+                        >
+                          {t('welcome.reset.link')}
+                        </motion.button>
+                      </div>
                       <div className="relative">
                         <input
                           type={showPwd ? 'text' : 'password'}
@@ -805,7 +941,7 @@ export default function Welcome() {
                       )}
                     </AnimatePresence>
 
-                    <motion.div variants={stagger.item}>
+                    <motion.div variants={panel.item}>
                       <motion.button
                         type="submit"
                         disabled={submitting || !email || !password}
@@ -832,10 +968,10 @@ export default function Welcome() {
                     </motion.div>
                   </form>
 
-                  <motion.div variants={stagger.item} className="flex justify-center mt-6">
+                  <motion.div variants={panel.item} className="flex justify-center mt-6">
                     <button
                       type="button"
-                      onClick={() => { setShowLogin(false); setLoginError(null); }}
+                      onClick={closeOverlay}
                       className="text-[12px] tracking-wide transition-colors"
                       style={{ color: 'rgb(var(--text-subtle))', letterSpacing: '0.04em' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = 'rgb(var(--text-muted))'; }}
@@ -844,6 +980,159 @@ export default function Welcome() {
                       {t('welcome.back')}
                     </button>
                   </motion.div>
+                  </motion.div>
+                  ) : (
+                  /* ─────────── Panel: recuperar contraseña ─────────── */
+                  <motion.div
+                    key="panel-forgot"
+                    variants={panel.container}
+                    custom={dir}
+                    initial="enter"
+                    animate="show"
+                    exit="exit"
+                  >
+                    <AnimatePresence mode="wait" initial={false}>
+                      {!resetSent ? (
+                        <motion.div
+                          key="forgot-form"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                          transition={{ duration: 0.25, ease }}
+                        >
+                          <motion.p
+                            variants={panel.item}
+                            className="text-[13px] leading-relaxed mb-5"
+                            style={{ color: 'rgb(var(--text-muted))' }}
+                          >
+                            {t('welcome.reset.desc')}
+                          </motion.p>
+
+                          <form onSubmit={handleReset} className="flex flex-col gap-3.5">
+                            <motion.div variants={panel.item}>
+                              <label className="block mb-2" style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', color: 'rgb(var(--text-muted))' }}>
+                                {t('welcome.email_label').toUpperCase()}
+                              </label>
+                              <input
+                                ref={resetEmailRef}
+                                type="email"
+                                value={resetEmail}
+                                onChange={(e) => { setResetEmail(e.target.value); setResetError(null); }}
+                                placeholder={t('welcome.email_placeholder')}
+                                autoComplete="email"
+                                required
+                                style={inputBase}
+                                className="placeholder:text-text-subtle"
+                                onFocus={(e) => { e.currentTarget.style.borderColor = `${GREEN}65`; e.currentTarget.style.background = 'rgba(16,212,81,0.04)'; }}
+                                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgb(var(--line))'; e.currentTarget.style.background = 'rgb(var(--surface))'; }}
+                              />
+                            </motion.div>
+
+                            <AnimatePresence>
+                              {resetError && (
+                                <motion.p
+                                  initial={{ opacity: 0, y: -8, height: 0 }}
+                                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                                  exit={{ opacity: 0, height: 0, transition: { duration: 0.15 } }}
+                                  className="text-[12.5px] tracking-wide overflow-hidden text-danger"
+                                >
+                                  {resetError}
+                                </motion.p>
+                              )}
+                            </AnimatePresence>
+
+                            <motion.div variants={panel.item}>
+                              <motion.button
+                                type="submit"
+                                disabled={resetBusy || !resetEmail.trim() || cooldown > 0}
+                                whileHover={!resetBusy && cooldown === 0 ? { scale: 1.02 } : {}}
+                                whileTap={!resetBusy && cooldown === 0 ? { scale: 0.96 } : {}}
+                                transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                                className="relative w-full flex items-center justify-center gap-2 overflow-hidden font-semibold text-black disabled:opacity-40 disabled:cursor-not-allowed"
+                                style={{ background: GREEN, borderRadius: 14, padding: '14px 20px', fontSize: 15, marginTop: 4 }}
+                              >
+                                <span
+                                  aria-hidden
+                                  className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
+                                  style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 100%)', borderRadius: '14px 14px 0 0' }}
+                                />
+                                {resetBusy ? (
+                                  <Loader2 className="h-4 w-4 animate-spin relative z-10" />
+                                ) : cooldown > 0 ? (
+                                  <span className="relative z-10 tabular-nums">
+                                    {t('welcome.reset.wait', { seconds: cooldown })}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <KeyRound className="h-4 w-4 relative z-10" />
+                                    <span className="relative z-10">{t('welcome.reset.submit')}</span>
+                                  </>
+                                )}
+                              </motion.button>
+                            </motion.div>
+                          </form>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="forgot-sent"
+                          initial={{ opacity: 0, scale: 0.96 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                          transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+                          className="text-center"
+                        >
+                          <motion.div
+                            className="h-14 w-14 rounded-2xl flex items-center justify-center mb-5 mx-auto"
+                            style={{ background: `${GREEN}1a`, border: `1px solid ${GREEN}33` }}
+                            initial={{ scale: 0.5, rotate: -14 }}
+                            animate={{ scale: 1, rotate: 0 }}
+                            transition={{ type: 'spring', stiffness: 300, damping: 12, delay: 0.06 }}
+                          >
+                            <MailCheck className="h-6 w-6" style={{ color: GREEN }} />
+                          </motion.div>
+                          <h3 className="text-[16px] font-bold text-text mb-2 tracking-[-0.02em]">
+                            {t('welcome.reset.sent_title')}
+                          </h3>
+                          <p className="text-[13px] leading-relaxed mb-2" style={{ color: 'rgb(var(--text-muted))' }}>
+                            {t('welcome.reset.sent_desc')}{' '}
+                            <span className="font-semibold text-text break-all">{sentTo}</span>
+                          </p>
+                          <p className="text-[12px] leading-relaxed mb-6" style={{ color: 'rgb(var(--text-subtle))' }}>
+                            {t('welcome.reset.sent_hint')}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => { setResetSent(false); }}
+                            disabled={cooldown > 0}
+                            className="text-[12.5px] font-medium disabled:opacity-50 transition-opacity"
+                            style={{ color: cooldown > 0 ? 'rgb(var(--text-subtle))' : GREEN }}
+                          >
+                            {cooldown > 0
+                              ? t('welcome.reset.wait', { seconds: cooldown })
+                              : t('welcome.reset.resend')}
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <motion.div variants={panel.item} className="flex justify-center mt-6">
+                      <motion.button
+                        type="button"
+                        onClick={goLogin}
+                        whileHover={{ x: -2 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 24 }}
+                        className="inline-flex items-center gap-1.5 text-[12px] tracking-wide transition-colors"
+                        style={{ color: 'rgb(var(--text-subtle))', letterSpacing: '0.04em' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'rgb(var(--text-muted))'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'rgb(var(--text-subtle))'; }}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        {t('welcome.reset.back_to_login')}
+                      </motion.button>
+                    </motion.div>
+                  </motion.div>
+                  )}
+                  </AnimatePresence>
                 </motion.div>
               </div>
             </motion.div>

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { AppShell } from '@/components/layout/AppShell';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
+import ResetPassword from '@/pages/ResetPassword';
 import Dashboard from '@/pages/Dashboard';
 import Courses from '@/pages/Courses';
 import CoursePage from '@/pages/CoursePage';
@@ -177,6 +178,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
+        {/* Restablecer contraseña desde el enlace del correo — sin sesión previa */}
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route element={<AppShell requireAuth />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/profile" element={<Profile />} />

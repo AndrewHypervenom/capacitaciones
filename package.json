@@ -11,6 +11,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
     "check:help": "node scripts/check-help-manual.mjs",
+    "auth:config": "node scripts/apply-auth-config.mjs",
+    "auth:config:dry": "node scripts/apply-auth-config.mjs --dry-run",
     "deploy:help": "npm run check:help && supabase functions deploy help-chat"
   },
   "dependencies": {

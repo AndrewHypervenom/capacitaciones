@@ -13,5 +13,22 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    // PKCE en vez del flujo implícito: el enlace de restablecimiento viaja como
+    // un `code` de un solo uso que SOLO sirve acompañado del `code_verifier`
+    // guardado en este navegador. Consecuencias buscadas:
+    //   · el correo nunca lleva un access/refresh token en el fragmento de la
+    //     URL (que quedaría en el historial y en cualquier extensión),
+    //   · si alguien intercepta o reenvía el enlace, no puede canjearlo desde
+    //     otro dispositivo,
+    //   · los escáneres antispam que "visitan" los enlaces no obtienen sesión.
+    // A cambio, el enlace debe abrirse en el mismo navegador donde se pidió;
+    // ResetPassword.tsx detecta ese caso y lo explica en vez de fallar seco.
+    flowType: 'pkce',
+    // Desactivado a propósito: no queremos que CUALQUIER ruta de la app canjee
+    // un código de auth que aparezca en la URL. El único sitio que lo hace es
+    // /reset-password, con `exchangeCodeForSession`, para poder distinguir un
+    // enlace vencido de uno abierto en otro navegador y explicárselo al usuario
+    // (con auto-detección el canje ocurre en el arranque y el error se pierde).
+    detectSessionInUrl: false,
   },
 })
