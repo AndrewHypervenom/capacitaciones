@@ -32,6 +32,20 @@ const NAME_ALIASES = [
   'participante', 'persona', 'empleado', 'aprendiz',
 ]
 const ROLE_ALIASES = ['role', 'rol', 'perfil', 'tipo de usuario']
+// Cédula / documento: la llave con la que Talento Humano identifica a su gente.
+// Sin 'id' a secas: por `includes` pegaría en "apellido".
+const NATIONAL_ID_ALIASES = [
+  'cedula', 'cédula', 'no cedula', 'nro cedula', 'numero de cedula',
+  'documento', 'no documento', 'nro documento', 'numero de documento',
+  'num documento', 'doc identidad', 'documento de identidad',
+  'identificacion', 'identificación', 'numero de identificacion',
+  'national_id', 'dni', 'nit', 'cc',
+]
+// Estado laboral en el reporte de TH ("Activo", "Retirado", "Baja"…).
+const STATUS_ALIASES = [
+  'estado', 'estado actual', 'situacion', 'situación', 'novedad', 'status',
+  'estado empleado', 'estado del empleado', 'condicion', 'condición',
+]
 // Deliberadamente cortos: "área" o "proyecto" suelen ser otra cosa y no
 // queremos adivinar campañas a partir de columnas que solo se le parecen.
 const CAMPAIGN_ALIASES = ['campaign', 'campaña', 'campana', 'cuenta cliente']
@@ -120,6 +134,27 @@ export interface ColumnMapping {
   name: number
   role: number
   campaign: number
+  /** Cédula/documento. Opcional: solo la usa la sincronización con Talento Humano. */
+  nationalId?: number
+  /** Estado laboral del reporte de TH ("Activo"/"Retirado"). Opcional. */
+  status?: number
+}
+
+/**
+ * Deja una cédula comparable: sin puntos, guiones ni espacios, en mayúsculas y
+ * sin ceros de relleno cuando es puramente numérica (Excel y los reportes de TH
+ * los agregan o los quitan sin criterio). Devuelve '' si no queda nada útil.
+ */
+export function normalizeNationalId(value: string): string {
+  // Primero la cola decimal: Excel entrega la cédula como número y a veces la
+  // escribe "1098765432.0". Quitar los separadores antes convertiría ese ".0"
+  // en un dígito más.
+  const noDecimal = String(value ?? '').trim().replace(/[.,]0+$/, '')
+  const clean = noDecimal.replace(/[\s.\-_/]/g, '').toUpperCase()
+  if (!clean) return ''
+  // Ceros de relleno ("0001098765432") solo cuando es puramente numérica.
+  if (/^\d+$/.test(clean)) return clean.replace(/^0+(?=\d)/, '')
+  return clean
 }
 
 export interface SheetAnalysis {
@@ -130,6 +165,8 @@ export interface SheetAnalysis {
   mapping: ColumnMapping
   /** Cuántos correos se ven en la columna elegida (para avisar temprano). */
   emailCount: number
+  /** Cuántas cédulas se ven en la columna deducida (0 si no hay). */
+  nationalIdCount: number
 }
 
 const NONE = -1
@@ -137,7 +174,12 @@ const NONE = -1
 function matchAlias(header: string, aliases: string[]): boolean {
   const h = norm(header)
   if (!h) return false
-  return aliases.some((a) => h === a || h.startsWith(`${a} `) || h.includes(a))
+  return aliases.some((a) => {
+    if (h === a || h.startsWith(`${a} `) || h.startsWith(`${a}.`)) return true
+    // Los alias muy cortos ("cc", "dni") solo valen como palabra completa: por
+    // `includes` se colarían dentro de cualquier otro encabezado.
+    return a.length > 3 && h.includes(a)
+  })
 }
 
 function columnLabel(index: number): string {
@@ -146,7 +188,9 @@ function columnLabel(index: number): string {
 
 /**
  * Deduce fila de encabezados y columnas. Estrategia en dos tiempos:
- * 1) busca en las primeras filas una que tenga un encabezado tipo "email/correo";
+ * 1) busca en las primeras filas una que tenga un encabezado tipo "email/correo"
+ *    o de cédula/documento (los reportes de Talento Humano a veces vienen sin
+ *    correo, y con la cédula ya se puede cruzar contra las cuentas existentes);
  * 2) si no hay, elige como columna de correo la que más correos contenga
  *    (archivos sin encabezado, o con encabezados que no reconocemos).
  */
@@ -158,21 +202,25 @@ export function analyzeGrid(rows: string[][]): SheetAnalysis {
   for (let r = 0; r < limit; r++) {
     const row = rows[r]
     const emailCol = row.findIndex((c) => matchAlias(c, EMAIL_ALIASES))
-    if (emailCol === -1) continue
+    const nidCol = row.findIndex((c) => matchAlias(c, NATIONAL_ID_ALIASES))
+    if (emailCol === -1 && nidCol === -1) continue
     // Un encabezado real no debería ser en sí mismo un correo.
-    if (hasEmail(row[emailCol])) continue
+    if (emailCol !== -1 && hasEmail(row[emailCol])) continue
     const columns = Array.from({ length: width }, (_, i) => row[i] || `Columna ${columnLabel(i)}`)
     const mapping: ColumnMapping = {
       email: emailCol,
       name: row.findIndex((c) => matchAlias(c, NAME_ALIASES)),
       role: row.findIndex((c) => matchAlias(c, ROLE_ALIASES)),
       campaign: row.findIndex((c) => matchAlias(c, CAMPAIGN_ALIASES)),
+      nationalId: nidCol,
+      status: row.findIndex((c) => matchAlias(c, STATUS_ALIASES)),
     }
     return {
       headerRow: r,
       columns,
       mapping,
-      emailCount: countEmails(rows, emailCol, r + 1),
+      emailCount: emailCol === -1 ? 0 : countEmails(rows, emailCol, r + 1),
+      nationalIdCount: countFilled(rows, nidCol, r + 1),
     }
   }
 
@@ -206,8 +254,9 @@ export function analyzeGrid(rows: string[][]): SheetAnalysis {
   return {
     headerRow: -1,
     columns,
-    mapping: { email: best, name: nameCol, role: NONE, campaign: NONE },
+    mapping: { email: best, name: nameCol, role: NONE, campaign: NONE, nationalId: NONE, status: NONE },
     emailCount: bestCount,
+    nationalIdCount: 0,
   }
 }
 
@@ -215,6 +264,16 @@ function countEmails(rows: string[][], col: number, from: number): number {
   let n = 0
   for (let r = from; r < rows.length; r++) {
     if (hasEmail(rows[r][col] ?? '')) n++
+  }
+  return n
+}
+
+/** Cuántas filas traen algo en esa columna (para saber si vale la pena usarla). */
+function countFilled(rows: string[][], col: number, from: number): number {
+  if (col < 0) return 0
+  let n = 0
+  for (let r = from; r < rows.length; r++) {
+    if ((rows[r][col] ?? '') !== '') n++
   }
   return n
 }
@@ -230,6 +289,18 @@ export interface ExtractedRow {
   name: string
   role: string
   campaign: string
+  /** Cédula ya normalizada ('' si el archivo no la trae). */
+  nationalId: string
+  /** Cédula tal como venía, para mostrarla igual que en el archivo. */
+  nationalIdRaw: string
+  /** Estado laboral crudo del reporte de TH ('' si no hay columna). */
+  status: string
+  /**
+   * `invalid` significa "sin correo válido". Una fila con cédula pero sin correo
+   * llega marcada así a propósito: para la carga masiva sigue siendo inservible
+   * (no se puede crear una cuenta sin correo), mientras la sincronización con
+   * Talento Humano sí la aprovecha para cruzar por cédula.
+   */
   issue: RowIssue
 }
 
@@ -251,8 +322,13 @@ export function extractRows(
     const name = mapping.name >= 0 ? (row[mapping.name] ?? '') : ''
     const role = mapping.role >= 0 ? (row[mapping.role] ?? '') : ''
     const campaign = mapping.campaign >= 0 ? (row[mapping.campaign] ?? '') : ''
+    const nidCol = mapping.nationalId ?? NONE
+    const nationalIdRaw = nidCol >= 0 ? (row[nidCol] ?? '') : ''
+    const nationalId = normalizeNationalId(nationalIdRaw)
+    const statusCol = mapping.status ?? NONE
+    const status = statusCol >= 0 ? (row[statusCol] ?? '') : ''
     // Fila en blanco: no es un error, simplemente no existe.
-    if (!rawEmailCell && !name) continue
+    if (!rawEmailCell && !name && !nationalId) continue
 
     const found = extractEmails(rawEmailCell)
     if (found.length === 0) {
@@ -263,6 +339,9 @@ export function extractRows(
         name,
         role,
         campaign,
+        nationalId,
+        nationalIdRaw,
+        status,
         issue: 'invalid',
       })
       continue
@@ -279,6 +358,10 @@ export function extractRows(
         name: found.length > 1 && email !== found[0] ? '' : name,
         role,
         campaign,
+        // La cédula también pertenece solo a la primera persona de la celda.
+        nationalId: found.length > 1 && email !== found[0] ? '' : nationalId,
+        nationalIdRaw: found.length > 1 && email !== found[0] ? '' : nationalIdRaw,
+        status,
         issue,
       })
     }

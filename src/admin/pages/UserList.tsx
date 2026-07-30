@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound } from 'lucide-react'
+import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -21,8 +21,10 @@ import { MultiSelect } from '@/components/ui/MultiSelect'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
+import { HrRosterSyncModal } from '@/admin/components/HrRosterSyncModal'
 import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
 import { getDefaultPassword } from '@/services/appSettings.service'
+import { setUsersActive } from '@/services/hrSync.service'
 import type { Profile, Campaign } from '@/types/database'
 
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
@@ -55,11 +57,16 @@ export default function UserList() {
   // Vista superadmin de cursos + restablecer progreso de una persona.
   const [resetUser, setResetUser] = useState<ProfileWithEmail | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  // Sincronización de altas y bajas contra la base de Talento Humano.
+  const [hrOpen, setHrOpen] = useState(false)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   // Contraseña predeterminada para usuarios nuevos (ajuste global de superadmin).
   const [pwdOpen, setPwdOpen] = useState(false)
   const [defaultPwdOn, setDefaultPwdOn] = useState(false)
   const [search, setSearch] = useState('')
   const [campaignFilter, setCampaignFilter] = useState('')
+  // Las cuentas dadas de baja no estorban el día a día: se ven si se piden.
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active')
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
   // Campañas de cada usuario: casa + colaboraciones. El capacitador puede tener
   // varias (equipos compartidos), así que no basta con profiles.campaign_id.
@@ -105,9 +112,16 @@ export default function UserList() {
       // aunque trabaje en B.
       const matchesCampaign =
         !campaignFilter || (userCampaigns[u.id] ?? []).includes(campaignFilter)
-      return matchesQuery && matchesCampaign
+      // `is_active` puede venir undefined si el SQL de altas/bajas aún no se
+      // corrió: sin la columna, todas las cuentas cuentan como activas.
+      const active = u.is_active !== false
+      const matchesStatus =
+        statusFilter === 'all' || (statusFilter === 'active' ? active : !active)
+      return matchesQuery && matchesCampaign && matchesStatus
     })
-  }, [users, search, campaignFilter, userCampaigns])
+  }, [users, search, campaignFilter, statusFilter, userCampaigns])
+
+  const inactiveCount = useMemo(() => users.filter((u) => u.is_active === false).length, [users])
 
   useEffect(() => {
     async function load() {
@@ -327,6 +341,45 @@ export default function UserList() {
     }
   }
 
+  /**
+   * Da de baja (o vuelve a dar de alta) a una persona. La baja NO borra: bloquea
+   * el ingreso y la saca de listados y contadores, conservando su historial, así
+   * que reactivarla la devuelve exactamente donde estaba.
+   */
+  const handleToggleActive = async (user: ProfileWithEmail) => {
+    const name = user.display_name ?? user.email ?? user.id.slice(0, 8)
+    const deactivating = user.is_active !== false
+    const ok = await confirm({
+      title: deactivating ? t('admin.users.deactivate') : t('admin.users.reactivate'),
+      description: deactivating
+        ? t('admin.users.deactivate_confirm', { name })
+        : t('admin.users.reactivate_confirm', { name }),
+      confirmLabel: deactivating ? t('admin.users.deactivate') : t('admin.users.reactivate'),
+      tone: deactivating ? 'danger' : 'default',
+    })
+    if (!ok) return
+
+    setTogglingId(user.id)
+    try {
+      const { updated, skipped } = await setUsersActive([user.id], !deactivating)
+      if (updated === 0) {
+        throw new Error(skipped[0]?.reason ?? t('admin.users.status_no_change'))
+      }
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, is_active: !deactivating } : u)),
+      )
+      toast.success(
+        deactivating
+          ? t('admin.users.deactivate_done', { name })
+          : t('admin.users.reactivate_done', { name }),
+      )
+    } catch (err) {
+      toast.error(t('admin.users.status_error'), (err as Error).message)
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
   const handleDelete = async (user: ProfileWithEmail) => {
     const ok = await confirm({
       title: t('confirm.delete_user_title'),
@@ -389,9 +442,9 @@ export default function UserList() {
   // para que encabezado y filas queden siempre alineados aunque una fila tenga
   // más botones que otra (p. ej. "copiar credenciales").
   const gridCols = isSuperAdmin
-    ? 'minmax(280px,1fr) 150px 210px 505px 48px'
+    ? 'minmax(280px,1fr) 150px 210px 549px 48px'
     : 'minmax(280px,1fr) 150px 350px'
-  const tableMinWidth = isSuperAdmin ? 1245 : 800
+  const tableMinWidth = isSuperAdmin ? 1289 : 800
 
   return (
     <div className="p-4 sm:p-8">
@@ -432,6 +485,14 @@ export default function UserList() {
               >
                 {defaultPwdOn ? t('admin.users.default_pwd_on') : t('admin.users.default_pwd_off')}
               </span>
+            </button>
+            <button
+              onClick={() => setHrOpen(true)}
+              title={t('admin.hr.button_hint')}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
+            >
+              <Users className="h-4 w-4" />
+              {t('admin.hr.button')}
             </button>
             <button
               onClick={() => setBulkOpen(true)}
@@ -573,6 +634,21 @@ export default function UserList() {
               options={campaignOptions(t('admin.users.all_campaigns'))}
             />
           )}
+          <Select
+            className="sm:w-52"
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v as typeof statusFilter)}
+            options={[
+              { value: 'active', label: t('admin.users.filter_active') },
+              {
+                value: 'inactive',
+                label: inactiveCount > 0
+                  ? t('admin.users.filter_inactive_n', { n: inactiveCount })
+                  : t('admin.users.filter_inactive'),
+              },
+              { value: 'all', label: t('admin.users.filter_all') },
+            ]}
+          />
         </div>
       )}
 
@@ -653,6 +729,23 @@ export default function UserList() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
+                        )}
+                        {user.is_active === false && (
+                          <span
+                            className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{ background: 'rgba(239,68,68,0.15)', color: '#dc2626' }}
+                            title={
+                              user.deactivated_at
+                                ? t('admin.users.inactive_since', {
+                                    date: new Date(user.deactivated_at).toLocaleDateString(),
+                                    reason: user.deactivation_reason ?? '—',
+                                  })
+                                : t('admin.users.inactive_hint')
+                            }
+                          >
+                            <UserMinus className="h-3 w-3" />
+                            {t('admin.users.inactive')}
+                          </span>
                         )}
                         {!user.onboarded && (
                           <span
@@ -778,6 +871,24 @@ export default function UserList() {
                       <RotateCcw className="h-4 w-4" />
                     </button>
                   )}
+                  {isSuperAdmin && user.role === 'learner' && (
+                    <button
+                      onClick={() => handleToggleActive(user)}
+                      disabled={togglingId === user.id}
+                      className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+                        user.is_active === false
+                          ? 'text-green-600 hover:bg-green-500/10'
+                          : 'text-text-subtle hover:text-amber-600 hover:bg-amber-500/10'
+                      }`}
+                      title={user.is_active === false ? t('admin.users.reactivate') : t('admin.users.deactivate')}
+                    >
+                      {togglingId === user.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : user.is_active === false
+                          ? <UserCheck className="h-4 w-4" />
+                          : <UserMinus className="h-4 w-4" />}
+                    </button>
+                  )}
                   {isSuperAdmin && (
                     <button
                       onClick={() => handleResetPassword(user)}
@@ -828,6 +939,14 @@ export default function UserList() {
           defaultPasswordOn={defaultPwdOn}
           onClose={() => setBulkOpen(false)}
           onImported={refreshData}
+        />
+      )}
+
+      {hrOpen && (
+        <HrRosterSyncModal
+          campaigns={campaigns}
+          onClose={() => setHrOpen(false)}
+          onApplied={refreshData}
         />
       )}
 

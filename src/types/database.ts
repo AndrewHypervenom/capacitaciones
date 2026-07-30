@@ -63,6 +63,44 @@ export interface Database {
         }
         Relationships: []
       }
+      // Historial de sincronizaciones con la base de Talento Humano: una fila
+      // por carga aplicada, con la foto de lo que se hizo en `detail`.
+      hr_sync_runs: {
+        Row: {
+          id: string
+          actor_id: string | null
+          actor_name: string | null
+          file_name: string | null
+          campaign_ids: string[]
+          period: string | null
+          created_count: number
+          deactivated_count: number
+          reactivated_count: number
+          unchanged_count: number
+          skipped_count: number
+          detail: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          actor_id?: string | null
+          actor_name?: string | null
+          file_name?: string | null
+          campaign_ids?: string[]
+          period?: string | null
+          created_count?: number
+          deactivated_count?: number
+          reactivated_count?: number
+          unchanged_count?: number
+          skipped_count?: number
+          detail?: Json
+          created_at?: string
+        }
+        Update: {
+          detail?: Json
+        }
+        Relationships: []
+      }
       deletion_requests: {
         Row: {
           id: string
@@ -831,6 +869,14 @@ export interface Database {
           national_id: string | null
           job_title: string | null
           bio: string | null
+          /** Cuenta vigente. `false` = dada de baja: no puede entrar y sale de
+           *  listados y contadores, pero conserva todo su historial. */
+          is_active: boolean
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          /** Última nómina de Talento Humano en la que apareció la persona. */
+          hr_last_seen_at: string | null
           created_at: string
           updated_at: string
         }
@@ -847,6 +893,11 @@ export interface Database {
           national_id?: string | null
           job_title?: string | null
           bio?: string | null
+          is_active?: boolean
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          hr_last_seen_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -862,6 +913,11 @@ export interface Database {
           national_id?: string | null
           job_title?: string | null
           bio?: string | null
+          is_active?: boolean
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          hr_last_seen_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1664,6 +1720,23 @@ export interface Database {
           title_en: string | null
           title_pt: string | null
           modules_total: number
+        }[]
+      }
+      // Aprendices (activos e inactivos) de las campañas indicadas, con su
+      // correo de auth.users, para cruzar contra la nómina de Talento Humano.
+      // SECURITY DEFINER: solo responde al superadmin.
+      get_hr_roster: {
+        Args: { p_campaign_ids: string[] | null }
+        Returns: {
+          id: string
+          email: string | null
+          display_name: string | null
+          national_id: string | null
+          campaign_id: string | null
+          is_active: boolean
+          deactivated_at: string | null
+          hr_last_seen_at: string | null
+          created_at: string
         }[]
       }
     }

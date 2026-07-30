@@ -11,6 +11,7 @@ import {
 } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/stores/authStore';
 import { signInWithEmail, requestPasswordReset } from '@/services/auth.service';
 import { supabase } from '@/lib/supabase';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -89,6 +90,8 @@ export default function Welcome() {
   const { isAuthenticated, loading: authLoading, profile, isAdminOrCapacitador } = useAuth();
   const { t } = useTranslation();
   const reduce = !!useReducedMotion();
+  const inactiveAccount = useAuthStore((s) => s.inactiveAccount);
+  const setInactiveAccount = useAuthStore((s) => s.setInactiveAccount);
 
   // Redirección post-login según el rol: el staff (superadmin/capacitador) aterriza
   // en su panel de gestión; el aprendiz en su dashboard. Esperamos a que el perfil
@@ -206,6 +209,16 @@ export default function Welcome() {
     return () => clearInterval(iv);
   }, []);
 
+  // La sesión se cerró porque la cuenta quedó dada de baja: se abre el panel de
+  // ingreso con el motivo, en lugar de devolver al visitante a la portada sin
+  // explicación.
+  useEffect(() => {
+    if (!inactiveAccount) return;
+    setShowLogin(true);
+    setLoginError(t('welcome.error_inactive'));
+    setInactiveAccount(false);
+  }, [inactiveAccount, setInactiveAccount, t]);
+
   useEffect(() => {
     if (!showLogin) return;
     const ref = mode === 'login' ? emailRef : resetEmailRef;
@@ -280,7 +293,11 @@ export default function Welcome() {
       await signInWithEmail(email.trim(), password);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t('welcome.error_invalid');
-      if (msg.includes('Invalid login credentials')) setLoginError(t('welcome.error_invalid'));
+      // Cuenta dada de baja (Talento Humano ya no la reporta): Supabase la
+      // devuelve como "banned". Decirlo tal cual evita que la persona insista
+      // creyendo que se equivocó de contraseña.
+      if (/banned/i.test(msg)) setLoginError(t('welcome.error_inactive'));
+      else if (msg.includes('Invalid login credentials')) setLoginError(t('welcome.error_invalid'));
       else if (msg.includes('Email not confirmed')) setLoginError(t('welcome.error_unconfirmed'));
       else setLoginError(msg);
     } finally {

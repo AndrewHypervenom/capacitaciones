@@ -213,6 +213,65 @@ export async function getMyCertification(courseId: string): Promise<Certificatio
   return data
 }
 
+/** Certificado emitido + los datos del curso necesarios para pintarlo. */
+export interface UserCertificate {
+  certId: string
+  courseId: string
+  slug: string | null
+  titleEs: string
+  titleEn: string | null
+  titlePt: string | null
+  icon: string | null
+  score: number
+  issuedAt: string
+}
+
+/**
+ * Todos los certificados emitidos de una persona, con el título e ícono de su
+ * curso, ordenados del más reciente al más antiguo.
+ *
+ * Es la fuente de la "vitrina" de certificados del perfil. Para el propio
+ * usuario funciona con la RLS de siempre; para un tercero solo devuelve filas
+ * si el rol tiene lectura (superadmin/capacitador de la campaña). Si la RLS no
+ * autoriza, devuelve [] en vez de reventar la página: el perfil sigue siendo
+ * útil sin la vitrina.
+ */
+export async function getUserCertificates(userId: string): Promise<UserCertificate[]> {
+  const { data: certs, error } = await supabase
+    .from('certifications')
+    .select('cert_id, course_id, score, issued_at')
+    .eq('user_id', userId)
+    .order('issued_at', { ascending: false })
+  if (error || !certs || certs.length === 0) return []
+
+  const ids = [...new Set(certs.map((c) => c.course_id))]
+  const { data: courses } = await supabase
+    .from('courses')
+    .select('id, slug, title_es, title_en, title_pt, icon')
+    .in('id', ids)
+
+  type CourseRow = {
+    id: string; slug: string | null; title_es: string
+    title_en: string | null; title_pt: string | null; icon: string | null
+  }
+  const byId = new Map<string, CourseRow>((courses ?? []).map((c) => [c.id, c as CourseRow]))
+
+  return certs.map((c) => {
+    const course = byId.get(c.course_id)
+    return {
+      certId: c.cert_id,
+      courseId: c.course_id,
+      slug: course?.slug ?? null,
+      titleEs: course?.title_es ?? '',
+      titleEn: course?.title_en ?? null,
+      titlePt: course?.title_pt ?? null,
+      icon: course?.icon ?? null,
+      score: c.score ?? 0,
+      issuedAt: c.issued_at,
+    }
+  })
+}
+
 // ─── Verificación pública (LinkedIn) ─────────────────────────────────────
 
 /**

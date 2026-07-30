@@ -7,9 +7,16 @@ interface AuthState {
   session: Session | null
   profile: Profile | null
   loading: boolean
+  /**
+   * La cuenta está dada de baja (Talento Humano ya no la reporta). Se expulsa la
+   * sesión y el login lo explica en vez de mostrar un genérico "credenciales
+   * inválidas": la persona no se equivocó de contraseña.
+   */
+  inactiveAccount: boolean
   setSession: (session: Session | null) => void
   setProfile: (profile: Profile | null) => void
   setLoading: (loading: boolean) => void
+  setInactiveAccount: (value: boolean) => void
   reset: () => void
 }
 
@@ -17,9 +24,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   profile: null,
   loading: true,
+  inactiveAccount: false,
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile }),
   setLoading: (loading) => set({ loading }),
+  setInactiveAccount: (value) => set({ inactiveAccount: value }),
   reset: () => set({ session: null, profile: null, loading: false }),
 }))
 
@@ -83,6 +92,18 @@ async function fetchProfile(userId: string) {
     .maybeSingle()
 
   let profile = existing ?? null
+
+  /* Cuenta dada de baja: fuera. El bloqueo real vive en la cuenta de auth (la
+   * Edge Function `set-user-status` la banea), pero un token ya emitido sigue
+   * siendo válido hasta que expire; este guard cierra esa ventana en el momento
+   * en que la app vuelve a leer el perfil. */
+  if (profile && profile.is_active === false) {
+    useAuthStore.getState().setInactiveAccount(true)
+    useAuthStore.getState().setProfile(null)
+    useAuthStore.getState().setLoading(false)
+    await supabase.auth.signOut({ scope: 'local' })
+    return
+  }
 
   // Un perfil SIN campaña se respeta tal cual: significa que el superadmin se la
   // quitó, y quedarse sin campaña es el resultado esperado (panel vacío, sin

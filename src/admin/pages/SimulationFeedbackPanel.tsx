@@ -8,13 +8,14 @@ import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
 
 const SIM_ACCENT = 'rgb(var(--brand-cyan, 6 182 212))'
 
 // ── Tipos de datos ───────────────────────────────────────────
 interface Campaign { id: string; name: string }
-interface Profile { id: string; display_name: string | null; campaign_id: string | null }
+interface Profile { id: string; display_name: string | null; campaign_id: string | null; is_active?: boolean | null }
 
 interface AiFeedback { summary?: string; strengths?: string[]; improvements?: string[] }
 
@@ -160,7 +161,9 @@ export default function SimulationFeedbackPanel() {
 
       const [profileRes, attemptRes, callRes, choiceRes] = await Promise.all([
         (() => {
-          let q = supabase.from('profiles').select('id,display_name,campaign_id').eq('role', 'learner')
+          // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
+          // baja se filtran en memoria para no depender de la columna).
+          let q = supabase.from('profiles').select('*').eq('role', 'learner')
           if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
@@ -186,7 +189,8 @@ export default function SimulationFeedbackPanel() {
       if (attemptRes.error) console.error('simulator_attempts query error:', attemptRes.error)
 
       const camps = accessible as Campaign[]
-      const profiles = (profileRes.data ?? []) as Profile[]
+      // El capacitador ve a su gente vigente; las bajas quedan para el superadmin.
+      const profiles = hideInactiveUnlessSuperAdmin((profileRes.data ?? []) as Profile[], isSuperAdmin)
       const attempts = (attemptRes.data ?? []) as SimAttempt[]
 
       // Mapa slug → título en el idioma actual (llamada tiene 3 idiomas; opción, es).

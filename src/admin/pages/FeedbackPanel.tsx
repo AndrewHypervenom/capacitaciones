@@ -6,6 +6,7 @@ import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
+import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import StarDisplay from '@/components/StarDisplay'
 import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
 
@@ -14,7 +15,7 @@ const WORLD_ACCENT = 'rgb(var(--brand-green))'
 interface Campaign { id: string; name: string }
 interface World { id: string; name: string; icon: string; campaign_id: string | null }
 interface WorldLevel { id: string; name: string; world_id: string; order_index: number; min_score_pct: number | null }
-interface Profile { id: string; display_name: string | null; campaign_id: string | null }
+interface Profile { id: string; display_name: string | null; campaign_id: string | null; is_active?: boolean | null }
 interface Progress { user_id: string; level_id: string; world_id: string; score: number }
 interface Attempt { id: string; level_id: string; score: number; completed_at: string }
 
@@ -123,7 +124,9 @@ export default function FeedbackPanel() {
         })(),
         supabase.from('world_levels').select('id,name,world_id,order_index,min_score_pct').order('order_index'),
         (() => {
-          let q = supabase.from('profiles').select('id,display_name,campaign_id').eq('role', 'learner')
+          // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
+          // baja se filtran en memoria para no depender de la columna).
+          let q = supabase.from('profiles').select('*').eq('role', 'learner')
           if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
@@ -140,7 +143,8 @@ export default function FeedbackPanel() {
       const camps = (campRes.data ?? []) as Campaign[]
       const ws = (worldRes.data ?? []) as World[]
       const lvls = (levelRes.data ?? []) as WorldLevel[]
-      const profiles = (profileRes.data ?? []) as Profile[]
+      // El capacitador ve a su gente vigente; las bajas quedan para el superadmin.
+      const profiles = hideInactiveUnlessSuperAdmin((profileRes.data ?? []) as Profile[], isSuperAdmin)
       const progress = (progressRes.data ?? []) as Progress[]
 
       setCampaigns(camps)

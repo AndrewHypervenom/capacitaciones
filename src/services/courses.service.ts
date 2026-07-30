@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { requestDeletion } from '@/services/audit.service'
+import { onlyActive } from '@/lib/activeUsers'
 
 // ─── Tipos ───────────────────────────────────────────────────────
 
@@ -148,18 +149,22 @@ export async function enrollUsers(
   if (error) throw error
 }
 
-/** Aprendices de una campaña (para el selector de inscripción). */
+/**
+ * Aprendices VIGENTES de una campaña (para el selector de inscripción). A quien
+ * Talento Humano ya no reporta no se le asignan cursos nuevos: su cuenta está
+ * dada de baja. Ver `src/lib/activeUsers.ts` para por qué se filtra en memoria.
+ */
 export async function getCampaignLearners(
   campaignId: string,
 ): Promise<Array<{ id: string; display_name: string | null; campaign_id: string | null }>> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, display_name, campaign_id')
+    .select('*')
     .eq('role', 'learner')
     .eq('campaign_id', campaignId)
     .order('display_name')
   if (error) throw error
-  return data ?? []
+  return onlyActive(data ?? [])
 }
 
 /** Auto-inscripción del aprendiz en un curso abierto (catálogo/compartido). */
@@ -220,12 +225,13 @@ export async function getLearnerCountsByCampaign(
   if (campaignIds.length === 0) return {}
   const { data, error } = await supabase
     .from('profiles')
-    .select('campaign_id')
+    .select('*')
     .eq('role', 'learner')
     .in('campaign_id', campaignIds)
   if (error) throw error
   const counts: Record<string, number> = {}
-  for (const row of data ?? []) {
+  // Las cuentas dadas de baja no son alcance del curso: ya no entran al sitio.
+  for (const row of onlyActive(data ?? [])) {
     if (row.campaign_id) counts[row.campaign_id] = (counts[row.campaign_id] ?? 0) + 1
   }
   return counts

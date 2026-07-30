@@ -47,6 +47,43 @@ export async function getProgress(userId: string, campaignId: string): Promise<P
   }
 }
 
+/** XP, racha e insignias de una persona, agregados sobre TODAS sus campañas. */
+export interface GamificationSummary {
+  xp: number
+  streak: number
+  badges: string[]
+  lastActivityDate: string | null
+}
+
+/**
+ * Resumen de gamificación de un usuario leyendo el espejo en BD. Sirve para
+ * mostrar los logros de OTRA persona (perfil consultado por staff), donde el
+ * store local —que es la fuente de verdad de la sesión propia— no aplica.
+ *
+ * Un usuario multi-campaña tiene una fila por campaña: se unen las insignias,
+ * se suma el XP y se toma la racha mayor. Si la RLS no autoriza la lectura,
+ * devuelve null y la vista simplemente no pinta la sección.
+ */
+export async function getUserGamification(userId: string): Promise<GamificationSummary | null> {
+  const { data, error } = await supabase
+    .from('user_progress')
+    .select('xp_total, streak_days, badges, last_activity')
+    .eq('user_id', userId)
+  if (error || !data || data.length === 0) return null
+
+  const badges = new Set<string>()
+  let xp = 0
+  let streak = 0
+  let last: string | null = null
+  for (const row of data) {
+    for (const b of row.badges ?? []) badges.add(b)
+    xp += row.xp_total ?? 0
+    streak = Math.max(streak, row.streak_days ?? 0)
+    if (row.last_activity && (!last || row.last_activity > last)) last = row.last_activity
+  }
+  return { xp, streak, badges: [...badges], lastActivityDate: last }
+}
+
 export async function upsertProgress(
   userId: string,
   campaignId: string,
