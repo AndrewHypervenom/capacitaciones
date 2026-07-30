@@ -100,7 +100,7 @@ export default function ModulePage() {
   const targetUserId = userId; 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const { markModule, earnXP, updateStreak } = useProgressStore();
+  const { markModule, updateStreak } = useProgressStore();
   const isModuleDone = useModuleDone();
   const { modules, loading } = useModules();
   const { courses } = useLearnerCourses();
@@ -451,7 +451,7 @@ export default function ModulePage() {
 
   const handleComplete = () => {
     if (!moduleGate.canComplete) return; // compuerta: no aprobó las actividades
-    earnXP(100);
+    // El XP del módulo lo otorga `markModule` (ver XP_REWARDS): aquí duplicaba.
     updateStreak();
     markModule(keyOfModule(module), siblings.map(keyOfModule));
     toast.success(t('module.completed_toast', { title: module.title[language] }));

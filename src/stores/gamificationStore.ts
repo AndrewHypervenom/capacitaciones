@@ -138,11 +138,19 @@ export const DEFAULT_BADGE_DEFS: BadgeDef[] = [
   { id: 'world-conqueror', category: 'optional',      metric: 'worlds_completed',       threshold: 1,  emoji: '👑', builtin: true, enabled: true, sort: 160, rare: true, requires: 'world', label: 'Conquistador',     label_en: 'Conqueror',       label_pt: 'Conquistador',      description: 'Completa un mundo entero',             description_en: 'Complete a whole world',            description_pt: 'Complete um mundo inteiro' },
 ];
 
+/**
+ * Curva de niveles de fábrica. Está calibrada contra `XP_REWARDS` (progressStore):
+ * un curso típico de ~8 módulos con quizzes y certificación deja ~1.500-1.800 XP,
+ * así que terminar un curso completo sube ~1 nivel y "Maestro" exige varios cursos.
+ * El superadmin puede reescribirla entera en /admin/gamification.
+ */
 export const DEFAULT_XP_LEVELS: XPLevel[] = [
-  { level: 1, label: 'Novato',   label_en: 'Novice',     label_pt: 'Novato',       minXP: 0,    maxXP: 300,  color: '#888' },
-  { level: 2, label: 'Aprendiz', label_en: 'Apprentice', label_pt: 'Aprendiz',     minXP: 300,  maxXP: 800,  color: '#10D451' },
-  { level: 3, label: 'Experto',  label_en: 'Expert',     label_pt: 'Especialista', minXP: 800,  maxXP: 1500, color: '#7c3aed' },
-  { level: 4, label: 'Maestro',  label_en: 'Master',     label_pt: 'Mestre',       minXP: 1500, maxXP: 9999, color: '#f59e0b' },
+  { level: 1, label: 'Novato',     label_en: 'Novice',     label_pt: 'Novato',       minXP: 0,     maxXP: 600,   color: '#888' },
+  { level: 2, label: 'Aprendiz',   label_en: 'Apprentice', label_pt: 'Aprendiz',     minXP: 600,   maxXP: 1800,  color: '#10D451' },
+  { level: 3, label: 'Practicante', label_en: 'Practitioner', label_pt: 'Praticante', minXP: 1800, maxXP: 4000, color: '#0ea5e9' },
+  { level: 4, label: 'Experto',    label_en: 'Expert',     label_pt: 'Especialista', minXP: 4000,  maxXP: 8000,  color: '#7c3aed' },
+  { level: 5, label: 'Maestro',    label_en: 'Master',     label_pt: 'Mestre',       minXP: 8000,  maxXP: 14000, color: '#f59e0b' },
+  { level: 6, label: 'Leyenda',    label_en: 'Legend',     label_pt: 'Lenda',        minXP: 14000, maxXP: 99999, color: '#B33D9E' },
 ];
 
 // ─── Resolvers de texto por idioma ────────────────────────────────────────────

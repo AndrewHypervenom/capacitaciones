@@ -202,6 +202,38 @@ function bestSimScore(attempts: SimulatorAttempt[]): number {
   return attempts.reduce((m, a) => Math.max(m, a.score), 0);
 }
 
+/**
+ * Economía de XP. Antes el único origen era completar un módulo (100 XP), así que
+ * el nivel medía "módulos vistos" y se disparaba en pocas sesiones. Ahora premia
+ * también acertar, mejorar en el simulador, certificarse, avanzar en mundos y
+ * volver cada día.
+ *
+ * Regla de oro: **todo XP se otorga dentro de las acciones del store**, detrás del
+ * mismo candado que evita duplicar el logro/contador correspondiente. Nada de
+ * `earnXP` suelto en componentes: un re-render o un "volver a hacerlo" lo farmea.
+ * `earnXP` queda solo para casos puntuales fuera de este catálogo.
+ */
+export const XP_REWARDS = {
+  /** Completar un módulo por primera vez. */
+  module: 100,
+  /** Cada respuesta correcta de quiz/knowledge-check. */
+  quizCorrect: 15,
+  /** Extra por acertar una pregunta que antes se falló (redención). */
+  quizRedeemed: 10,
+  /** Primer día de racha y cada día seguido que vuelve (×día, tope aparte). */
+  dailyStreak: 25,
+  /** Tope de XP por racha en un mismo día (evita farmear con rachas largas). */
+  dailyStreakMax: 150,
+  /** Por punto porcentual de MEJORA sobre el mejor puntaje previo del simulador. */
+  simulatorPerPoint: 3,
+  /** Certificarse en un curso (solo la primera vez por curso). */
+  certification: 300,
+  /** Cada nivel de mundo nuevo. */
+  worldLevel: 60,
+  /** Cada mundo completado por entero. */
+  worldComplete: 400,
+} as const;
+
 export const useProgressStore = create<ProgressState>()(
   persist(
     (set, get) => ({
@@ -253,6 +285,9 @@ export const useProgressStore = create<ProgressState>()(
         set({
           completedModuleIds: ids,
           completedModules: slugs,
+          // El XP del módulo vive aquí, después del candado de arriba: así vale
+          // una sola vez aunque la pantalla llame a completar dos veces.
+          xp: s.xp + XP_REWARDS.module,
           ...(key.uuid ? { moduleSlugToId: { ...s.moduleSlugToId, [key.slug]: key.uuid } } : {}),
         });
 
@@ -316,8 +351,12 @@ export const useProgressStore = create<ProgressState>()(
         }),
 
       addAttempt: (attempt) => {
+        const prevBest = bestSimScore(get().attempts);
         const attempts = [attempt, ...get().attempts].slice(0, 40);
-        set({ attempts });
+        // Se paga la MEJORA, no el intento: repetir la misma simulación con el
+        // mismo puntaje no da nada, superarse sí.
+        const gain = Math.max(0, Math.round(attempt.score - prevBest)) * XP_REWARDS.simulatorPerPoint;
+        set({ attempts, ...(gain > 0 ? { xp: get().xp + gain } : {}) });
         return get().evaluateBadges({ best_simulator_score: bestSimScore(attempts) });
       },
 
@@ -337,7 +376,10 @@ export const useProgressStore = create<ProgressState>()(
           );
           newStreak = diffDays === 1 ? get().streak + 1 : 1;
         }
-        set({ streak: newStreak, lastActivityDate: today });
+        // Una sola vez al día (arriba se sale si `last === today`) y creciente con
+        // la racha, hasta un tope: la constancia paga, pero no sustituye estudiar.
+        const gain = Math.min(XP_REWARDS.dailyStreak * newStreak, XP_REWARDS.dailyStreakMax);
+        set({ streak: newStreak, lastActivityDate: today, xp: get().xp + gain });
         return get().evaluateBadges({ streak_days: newStreak });
       },
 
@@ -357,7 +399,14 @@ export const useProgressStore = create<ProgressState>()(
         const streak = get().quizStreak + 1;
         const best = Math.max(get().quizBestStreak, streak);
         const redeemedCount = get().redeemedCount + (redeemed ? 1 : 0);
-        set({ quizCorrectCount: total, quizStreak: streak, quizBestStreak: best, redeemedCount });
+        const gain = XP_REWARDS.quizCorrect + (redeemed ? XP_REWARDS.quizRedeemed : 0);
+        set({
+          quizCorrectCount: total,
+          quizStreak: streak,
+          quizBestStreak: best,
+          redeemedCount,
+          xp: get().xp + gain,
+        });
 
         return get().evaluateBadges({
           quiz_correct_total: total,
@@ -367,11 +416,16 @@ export const useProgressStore = create<ProgressState>()(
       },
 
       recordCertification: (courseId, score) => {
-        const ids = get().certifiedCourseIds.includes(courseId)
-          ? get().certifiedCourseIds
-          : [...get().certifiedCourseIds, courseId];
+        // Certificate.tsx llama a esto en cada visita al certificado: el XP solo
+        // se paga si el curso no estaba ya en la lista.
+        const isNew = !get().certifiedCourseIds.includes(courseId);
+        const ids = isNew ? [...get().certifiedCourseIds, courseId] : get().certifiedCourseIds;
         const best = Math.max(get().bestCertScore, score ?? 0);
-        set({ certifiedCourseIds: ids, bestCertScore: best });
+        set({
+          certifiedCourseIds: ids,
+          bestCertScore: best,
+          ...(isNew ? { xp: get().xp + XP_REWARDS.certification } : {}),
+        });
         return get().evaluateBadges({
           certifications: ids.length,
           best_cert_score: best,
@@ -379,9 +433,20 @@ export const useProgressStore = create<ProgressState>()(
       },
 
       recordWorldProgress: (levelsCompleted, worldsCompleted) => {
-        const levels = Math.max(get().worldLevelsCompleted, levelsCompleted);
-        const worlds = Math.max(get().worldsCompleted, worldsCompleted ?? 0);
-        set({ worldLevelsCompleted: levels, worldsCompleted: worlds });
+        const prevLevels = get().worldLevelsCompleted;
+        const prevWorlds = get().worldsCompleted;
+        const levels = Math.max(prevLevels, levelsCompleted);
+        const worlds = Math.max(prevWorlds, worldsCompleted ?? 0);
+        // WorldMap/LearnerDashboard reportan el máximo observado en cada carga:
+        // se paga solo el DELTA, así reabrir el mapa no regala XP.
+        const gain =
+          (levels - prevLevels) * XP_REWARDS.worldLevel +
+          (worlds - prevWorlds) * XP_REWARDS.worldComplete;
+        set({
+          worldLevelsCompleted: levels,
+          worldsCompleted: worlds,
+          ...(gain > 0 ? { xp: get().xp + gain } : {}),
+        });
         return get().evaluateBadges({
           world_levels_completed: levels,
           worlds_completed: worlds,
@@ -530,7 +595,7 @@ export const useProgressStore = create<ProgressState>()(
     }),
     {
       name: 'learningai.progress',
-      version: 6,
+      version: 7,
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState as Partial<ProgressState>) ?? {};
         if (version < 2) {
@@ -574,6 +639,26 @@ export const useProgressStore = create<ProgressState>()(
             completedModuleIds: [],
             moduleSlugToId: {},
           } as Partial<ProgressState>;
+        }
+        // v7: economía de XP ampliada + curva de niveles más larga. Sin esto, un
+        // aprendiz veterano bajaría de nivel de golpe: su XP viejo solo contaba
+        // módulos (100 c/u) y los umbrales nuevos son mucho más altos. Se le
+        // re-acredita lo que ya había hecho con las tarifas nuevas y se toma el
+        // máximo, nunca menos de lo que tenía.
+        if (version < 7) {
+          const s = state;
+          const modules = Math.max(
+            s.completedModuleIds?.length ?? 0,
+            s.completedModules?.length ?? 0,
+          );
+          const rebaselined =
+            modules * XP_REWARDS.module +
+            (s.quizCorrectCount ?? 0) * XP_REWARDS.quizCorrect +
+            (s.redeemedCount ?? 0) * XP_REWARDS.quizRedeemed +
+            (s.certifiedCourseIds?.length ?? 0) * XP_REWARDS.certification +
+            (s.worldLevelsCompleted ?? 0) * XP_REWARDS.worldLevel +
+            (s.worldsCompleted ?? 0) * XP_REWARDS.worldComplete;
+          return { ...s, xp: Math.max(s.xp ?? 0, rebaselined) } as Partial<ProgressState>;
         }
         return state as Partial<ProgressState>;
       },

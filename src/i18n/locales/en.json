@@ -765,6 +765,7 @@
   "confirm": {
     "title": "Are you sure?",
     "cancel": "Cancel",
+    "accept": "Continue",
     "delete": "Delete",
     "remove": "Remove",
     "irreversible": "This action cannot be undone.",
@@ -1077,6 +1078,7 @@
       "rare": "Rare (⭐)",
       "enabled": "Active",
       "restore": "Restore factory defaults",
+      "restore_confirm": "Restore",
       "restore_desc": "The original achievements and levels will be recreated. Your custom achievements are kept.",
       "restored": "Factory defaults restored",
       "xp_levels": "Experience (XP) levels",

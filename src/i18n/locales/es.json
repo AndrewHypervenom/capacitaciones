@@ -765,6 +765,7 @@
   "confirm": {
     "title": "¿Estás seguro?",
     "cancel": "Cancelar",
+    "accept": "Continuar",
     "delete": "Eliminar",
     "remove": "Quitar",
     "irreversible": "Esta acción no se puede deshacer.",
@@ -1077,6 +1078,7 @@
       "rare": "Poco común (⭐)",
       "enabled": "Activo",
       "restore": "Restaurar valores de fábrica",
+      "restore_confirm": "Restaurar",
       "restore_desc": "Se re-crearán los logros y niveles originales. Tus logros personalizados no se borran.",
       "restored": "Valores de fábrica restaurados",
       "xp_levels": "Niveles de experiencia (XP)",

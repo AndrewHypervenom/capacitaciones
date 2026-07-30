@@ -90,7 +90,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         open={!!opts}
         title={opts?.title ?? t('confirm.title')}
         description={opts?.description}
-        confirmLabel={opts?.confirmLabel ?? t('confirm.delete')}
+        /* El default sigue el tono: en un confirm 'default' (guardar, restaurar)
+           el botón NO puede decir "Eliminar" — miente sobre lo que va a pasar. */
+        confirmLabel={
+          opts?.confirmLabel ??
+          (opts?.tone === 'default' ? t('confirm.accept', 'Continuar') : t('confirm.delete'))
+        }
         cancelLabel={opts?.cancelLabel ?? t('confirm.cancel')}
         tone={opts?.tone ?? 'danger'}
         onConfirm={() => close(true)}

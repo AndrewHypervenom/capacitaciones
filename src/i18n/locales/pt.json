@@ -765,6 +765,7 @@
   "confirm": {
     "title": "Tem certeza?",
     "cancel": "Cancelar",
+    "accept": "Continuar",
     "delete": "Excluir",
     "remove": "Remover",
     "irreversible": "Esta ação não pode ser desfeita.",
@@ -1077,6 +1078,7 @@
       "rare": "Rara (⭐)",
       "enabled": "Ativa",
       "restore": "Restaurar padrões de fábrica",
+      "restore_confirm": "Restaurar",
       "restore_desc": "As conquistas e níveis originais serão recriados. Suas conquistas personalizadas são mantidas.",
       "restored": "Padrões de fábrica restaurados",
       "xp_levels": "Níveis de experiência (XP)",

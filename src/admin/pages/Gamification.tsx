@@ -16,6 +16,8 @@ import {
   metricMeta,
   metricLabel,
   badgeLabel,
+  getXPLevel,
+  xpLevelLabel,
   type BadgeDef,
   type BadgeCategory,
   type BadgeMetric,
@@ -30,6 +32,7 @@ import {
   deleteLevel,
   seedDefaults,
 } from '@/services/gamification.service'
+import { XP_REWARDS } from '@/stores/progressStore'
 
 const CATEGORIES: BadgeCategory[] = ['progress', 'streak', 'excellence', 'certification', 'optional']
 
@@ -117,6 +120,7 @@ export default function Gamification() {
         'admin.gamification.restore_desc',
         'Se re-crearán los logros y niveles originales. Tus logros personalizados no se borran.',
       ),
+      confirmLabel: t('admin.gamification.restore_confirm', 'Restaurar'),
       tone: 'default',
     })
     if (!ok) return
@@ -207,6 +211,9 @@ export default function Gamification() {
 
       {/* ── Niveles de XP ── */}
       <XPLevelsEditor levels={xpLevels} busy={busy} setBusy={setBusy} />
+
+      {/* ── De dónde sale el XP (solo lectura: vive en código) ── */}
+      <XPSourcesCard levels={xpLevels} lang={lang} />
 
       {editing && (
         <BadgeModal
@@ -486,6 +493,31 @@ function BadgeModal({
   )
 }
 
+/**
+ * Huella de la tabla de niveles para decidir si hay cambios sin guardar.
+ *
+ * Normaliza lo que NO es un cambio real y si no ensuciaría la tabla en falso:
+ * espacios al teclear, un nombre opcional vacío vs. ausente (`undefined` vs `''`)
+ * y el hex corto que el selector de color expande solo (`#888` → `#888888`).
+ */
+function levelsFingerprint(rows: XPLevel[]): string {
+  const hex = (c: string) => {
+    const v = c.trim().toLowerCase()
+    return /^#[0-9a-f]{3}$/.test(v) ? `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}` : v
+  }
+  return JSON.stringify(
+    rows.map((r) => [
+      r.level,
+      r.label.trim(),
+      (r.label_en ?? '').trim(),
+      (r.label_pt ?? '').trim(),
+      r.minXP,
+      r.maxXP,
+      hex(r.color),
+    ]),
+  )
+}
+
 function XPLevelsEditor({
   levels, busy, setBusy,
 }: {
@@ -496,13 +528,19 @@ function XPLevelsEditor({
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [rows, setRows] = useState<XPLevel[]>(levels)
-  const [dirty, setDirty] = useState(false)
 
-  useEffect(() => { setRows(levels); setDirty(false) }, [levels])
+  useEffect(() => { setRows(levels) }, [levels])
+
+  // "Sucio" se COMPARA contra lo guardado, no es una bandera que se prende al
+  // primer tecleo: si dejas 200, lo bajas a 199 y lo vuelves a 200, no hay nada
+  // que guardar y el botón desaparece solo.
+  const dirty = useMemo(
+    () => levelsFingerprint(rows) !== levelsFingerprint(levels),
+    [rows, levels],
+  )
 
   const update = (idx: number, patch: Partial<XPLevel>) => {
     setRows((r) => r.map((row, i) => (i === idx ? { ...row, ...patch } : row)))
-    setDirty(true)
   }
 
   const addLevel = () => {
@@ -512,12 +550,10 @@ function XPLevelsEditor({
       ...r,
       { level: nextLevel, label: '', minXP: lastMax, maxXP: lastMax + 500, color: '#888' },
     ])
-    setDirty(true)
   }
 
   const removeRow = (idx: number) => {
     setRows((r) => r.filter((_, i) => i !== idx))
-    setDirty(true)
   }
 
   const saveAll = async () => {
@@ -528,6 +564,7 @@ function XPLevelsEditor({
     const ok = await confirm({
       title: t('admin.gamification.save_levels', 'Guardar niveles'),
       description: t('admin.gamification.save_levels_desc', 'Se aplicará a todos los aprendices.'),
+      confirmLabel: t('common.save', 'Guardar'),
       tone: 'default',
     })
     if (!ok) return
@@ -628,6 +665,129 @@ function XPLevelsEditor({
           </button>
         </div>
       )}
+    </section>
+  )
+}
+
+/**
+ * Catálogo de XP + simulador de curva.
+ *
+ * Los niveles de arriba son datos editables, pero **las recompensas de XP viven
+ * en código** (`XP_REWARDS`, progressStore): cada una necesita que el motor sepa
+ * medir el evento. Sin esta tarjeta el superadmin editaba umbrales a ciegas, sin
+ * saber cuánto XP produce realmente un curso. El simulador de abajo traduce
+ * "tantos módulos y tantas preguntas" al nivel que alcanzaría el aprendiz.
+ */
+function XPSourcesCard({ levels, lang }: { levels: XPLevel[]; lang: Lang }) {
+  const { t } = useTranslation()
+  const [sim, setSim] = useState({ modules: 8, questions: 32, certs: 1, worldLevels: 0, days: 5 })
+
+  const sources = [
+    { key: 'module', label: t('admin.gamification.src_module', 'Completar un módulo'), xp: `+${XP_REWARDS.module}` },
+    { key: 'quiz', label: t('admin.gamification.src_quiz', 'Respuesta correcta en un quiz'), xp: `+${XP_REWARDS.quizCorrect}` },
+    { key: 'redeem', label: t('admin.gamification.src_redeem', 'Redención (fallar y luego acertar)'), xp: `+${XP_REWARDS.quizRedeemed}` },
+    { key: 'streak', label: t('admin.gamification.src_streak', 'Volver un día más (racha)'), xp: `+${XP_REWARDS.dailyStreak} × día (máx. ${XP_REWARDS.dailyStreakMax})` },
+    { key: 'sim', label: t('admin.gamification.src_sim', 'Simulador: por punto de mejora sobre tu mejor puntaje'), xp: `+${XP_REWARDS.simulatorPerPoint}` },
+    { key: 'cert', label: t('admin.gamification.src_cert', 'Certificarse en un curso'), xp: `+${XP_REWARDS.certification}` },
+    { key: 'wlevel', label: t('admin.gamification.src_world_level', 'Completar un nivel de mundo'), xp: `+${XP_REWARDS.worldLevel}` },
+    { key: 'world', label: t('admin.gamification.src_world', 'Completar un mundo entero'), xp: `+${XP_REWARDS.worldComplete}` },
+  ]
+
+  // Racha: creciente por día hasta el tope, igual que updateStreak().
+  const streakXP = Array.from({ length: Math.max(0, sim.days) }, (_, i) =>
+    Math.min(XP_REWARDS.dailyStreak * (i + 1), XP_REWARDS.dailyStreakMax),
+  ).reduce((a, b) => a + b, 0)
+
+  const total =
+    sim.modules * XP_REWARDS.module +
+    sim.questions * XP_REWARDS.quizCorrect +
+    sim.certs * XP_REWARDS.certification +
+    sim.worldLevels * XP_REWARDS.worldLevel +
+    streakXP
+
+  const reached = getXPLevel(total, levels)
+  const field = 'w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-[13px] text-text outline-none focus:border-primary'
+  const num = (k: keyof typeof sim) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setSim((s) => ({ ...s, [k]: Math.max(0, Number(e.target.value) || 0) }))
+
+  return (
+    <section>
+      <div className="mb-4">
+        <h2 className="text-[16px] font-semibold text-text">
+          {t('admin.gamification.xp_sources', 'De dónde sale el XP')}
+        </h2>
+        <p className="text-[12px] text-text-muted">
+          {t(
+            'admin.gamification.xp_sources_hint',
+            'Estas cantidades viven en el código (cada una requiere que el sistema sepa medir el evento). Úsalas para calibrar los rangos de arriba.',
+          )}
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-line">
+          <table className="w-full text-[13px]">
+            <tbody className="divide-y divide-line">
+              {sources.map((s) => (
+                <tr key={s.key}>
+                  <td className="px-3 py-2.5 text-text">{s.label}</td>
+                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-primary whitespace-nowrap">
+                    {s.xp} XP
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Simulador: ¿a qué nivel llega un aprendiz con este esfuerzo? */}
+        <div className="rounded-2xl border border-line bg-surface p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Gauge className="h-4 w-4 text-text-muted" />
+            <h3 className="text-[13px] font-semibold text-text">
+              {t('admin.gamification.xp_sim', 'Simular un aprendiz')}
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="text-[11px] text-text-muted">
+              {t('admin.gamification.sim_modules', 'Módulos completados')}
+              <input type="number" min={0} value={sim.modules} onChange={num('modules')} className={cn(field, 'mt-1')} />
+            </label>
+            <label className="text-[11px] text-text-muted">
+              {t('admin.gamification.sim_questions', 'Preguntas acertadas')}
+              <input type="number" min={0} value={sim.questions} onChange={num('questions')} className={cn(field, 'mt-1')} />
+            </label>
+            <label className="text-[11px] text-text-muted">
+              {t('admin.gamification.sim_certs', 'Certificaciones')}
+              <input type="number" min={0} value={sim.certs} onChange={num('certs')} className={cn(field, 'mt-1')} />
+            </label>
+            <label className="text-[11px] text-text-muted">
+              {t('admin.gamification.sim_world_levels', 'Niveles de mundo')}
+              <input type="number" min={0} value={sim.worldLevels} onChange={num('worldLevels')} className={cn(field, 'mt-1')} />
+            </label>
+            <label className="col-span-2 text-[11px] text-text-muted">
+              {t('admin.gamification.sim_days', 'Días seguidos de racha')}
+              <input type="number" min={0} value={sim.days} onChange={num('days')} className={cn(field, 'mt-1')} />
+            </label>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-subtle px-3 py-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-text-subtle">
+                {t('admin.gamification.sim_result', 'Quedaría en')}
+              </div>
+              <div className="text-[15px] font-semibold" style={{ color: reached.color }}>
+                Nv. {reached.level} · {xpLevelLabel(reached, lang)}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-wider text-text-subtle">XP</div>
+              <div className="text-[15px] font-semibold tabular-nums text-text">{total.toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   )
 }
