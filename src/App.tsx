@@ -36,6 +36,7 @@ import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
 import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
 
 // Admin CMS — lazy loaded (code-split, no se carga para learners)
 const AdminRouter = lazy(() => import('@/admin/AdminRouter'));
@@ -85,6 +86,9 @@ function PresenceSync() {
   const location = useLocation();
 
   useEffect(() => {
+    // La vista previa no es una sesión de verdad: no debe aparecer en "en línea"
+    // ni duplicar al capacitador que ya está en el editor (ver previewMode.ts).
+    if (IS_LEARNER_PREVIEW) return;
     if (!profile) {
       usePresenceStore.getState().disconnect();
       return;
@@ -217,11 +221,14 @@ export default function App() {
       </Routes>
       {/* Opiniones del sitio: vive en la raíz para estar en TODAS las vistas
           (aprendiz, mundos, panel de gestión) y para que lo escrito a medias no
-          se pierda al navegar. Él decide dónde no debe aparecer. */}
-      <FeedbackWidget />
+          se pierda al navegar. Él decide dónde no debe aparecer.
+          Dentro de la vista previa se ocultan los avisos de plataforma (opiniones,
+          tareas en 2º plano, "hay versión nueva"): son del panel, no del curso, y
+          en un modal solo estorban. */}
+      {!IS_LEARNER_PREVIEW && <FeedbackWidget />}
       <Toaster />
-      <BgTaskIndicator />
-      <UpdatePrompt />
+      {!IS_LEARNER_PREVIEW && <BgTaskIndicator />}
+      {!IS_LEARNER_PREVIEW && <UpdatePrompt />}
       </ConfirmProvider>
     </BrowserRouter>
   );

@@ -1,18 +1,30 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { LearningModule } from '@/data/modules'
-import { getVisibleModules, getAllPublishedModules } from '@/services/modules.service'
+import { getVisibleModules, getAllPublishedModules, getPreviewModules } from '@/services/modules.service'
 import { useAuth } from '@/hooks/useAuth'
+import { useAuthStore } from '@/stores/authStore'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
 const cache = new Map<string, LearningModule[]>()
 
 // Clave de caché para superadmin: ve todos los módulos publicados, sin campaña
 const ALL_KEY = '__all__'
+// Vista previa del staff: incluye borradores (lo que se está armando)
+const PREVIEW_KEY = '__preview__'
 
 export function useModules() {
   const { campaignId: profileCampaignId, isSuperAdmin, loading: authLoading } = useAuth()
+  // Rol REAL (useAuth lo reporta como 'learner' dentro de la vista previa).
+  const realRole = useAuthStore((s) => s.profile?.role ?? null)
+  const previewMode =
+    IS_LEARNER_PREVIEW && (realRole === 'superadmin' || realRole === 'capacitador')
 
   // Superadmin no depende de campaña: carga todo lo publicado
-  const cacheKey = authLoading ? null : isSuperAdmin ? ALL_KEY : profileCampaignId
+  const cacheKey = authLoading
+    ? null
+    : previewMode
+      ? PREVIEW_KEY
+      : isSuperAdmin ? ALL_KEY : profileCampaignId
 
   const [modules, setModules] = useState<LearningModule[]>(() =>
     cacheKey ? (cache.get(cacheKey) ?? []) : [],
@@ -36,7 +48,12 @@ export function useModules() {
     }
 
     setLoading(true)
-    const fetcher = cacheKey === ALL_KEY ? getAllPublishedModules() : getVisibleModules(cacheKey)
+    const fetcher =
+      cacheKey === PREVIEW_KEY
+        ? getPreviewModules()
+        : cacheKey === ALL_KEY
+          ? getAllPublishedModules()
+          : getVisibleModules(cacheKey)
     fetcher
       .then((data) => {
         cache.set(cacheKey, data)

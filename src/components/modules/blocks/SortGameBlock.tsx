@@ -1,8 +1,27 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, RefreshCcw, Trophy, Timer, AlertCircle } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { CheckCircle2, GripVertical, RefreshCcw, Trophy, Timer, AlertCircle } from 'lucide-react';
 import { saveActivityAttempt } from '@/services/activity.service';
+import { beginDragUx, endDragUx, withNoSelectDrag } from '@/lib/dragUx';
 import { CompletedActivityBanner } from './CompletedActivityBanner';
 import type { GameSortBlock, GameSortProcess } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
@@ -82,6 +101,54 @@ function playSound(type: 'success' | 'error' | 'complete' | 'final') {
 
 type Phase = 'playing' | 'error' | 'success' | 'final';
 
+/**
+ * Un paso arrastrable. Funciona con ratón (arrastrar), con el dedo (mantener
+ * pulsado y arrastrar) y con teclado (Tab, Espacio y flechas): antes usaba el
+ * arrastre HTML5, que NO existe en pantallas táctiles — en un celular el juego
+ * era imposible de resolver.
+ */
+function SortableStep({
+  id,
+  index,
+  text,
+}: {
+  id: string;
+  index: number;
+  text: string;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        position: 'relative',
+        zIndex: isDragging ? 20 : undefined,
+      }}
+      {...attributes}
+      {...withNoSelectDrag(listeners)}
+      onContextMenu={(e) => e.preventDefault()}
+      className={cn(
+        'flex items-center gap-0 rounded-xl border transition-colors duration-200 select-none overflow-hidden',
+        'cursor-grab active:cursor-grabbing outline-none',
+        'border-neon-green/30 hover:border-neon-green/60',
+        'focus-visible:border-neon-green focus-visible:ring-2 focus-visible:ring-neon-green/30',
+        isDragging && 'opacity-60 shadow-lg',
+      )}
+    >
+      <span className="text-[13px] font-bold text-text-subtle w-9 text-center shrink-0 py-3">
+        {index + 1}
+      </span>
+      <div className="flex-1 glass border-l border-neon-green/20 px-4 py-3 flex items-center gap-2">
+        <span className="text-[14px] text-text flex-1 min-w-0">{text}</span>
+        <GripVertical className="h-4 w-4 shrink-0 text-text-subtle/40" aria-hidden />
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   block: GameSortBlock;
   language: Language;
@@ -111,7 +178,6 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   // ESTADOS INTERNOS
   const [processIdx, setProcessIdx] = useState(0);
   const [items, setItems] = useState(() => (processes[0] ? shuffled(processes[0].steps) : []));
-  const [dragId, setDragId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('playing');
   const [usedHelp, setUsedHelp] = useState<boolean[]>(() => new Array(processes.length).fill(false));
   const [elapsed, setElapsed] = useState(0);
@@ -119,6 +185,16 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   const [showBlockedPop, setShowBlockedPop] = useState(false);
 
   const timerRef = useRef<any>(null);
+
+  // Sensores de arrastre. Ratón: arrastra tras 6 px (un clic simple no cuenta).
+  // Dedo: mantener pulsado 180 ms y arrastrar — el retardo es lo que deja que un
+  // deslizamiento normal siga haciendo scroll de la página en el celular.
+  // Teclado: Espacio para tomar el paso, flechas para moverlo, Espacio para soltar.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Si el bloque llega (o cambia) después del primer render —contenido que se
   // carga tarde, o el capacitador editando en vivo— hay que rearmar la baraja:
@@ -194,6 +270,10 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
     }
   }, [phase, userId, campaignId, block, elapsed, moduleId, sectionId, processes, usedHelp, language]);
 
+  // Si el bloque se desmonta a mitad de un arrastre (cerrar el modal de vista
+  // previa, cambiar de sección), el <body> se quedaría sin poder seleccionar.
+  useEffect(() => endDragUx, []);
+
   // ─── EFFECTS DE TEMPORIZADOR Y CONTROL DE FASES ───
   useEffect(() => {
     if (phase === 'playing') {
@@ -227,20 +307,17 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   const feedbackWrong = currentProcess.feedback_wrong?.[language] || currentProcess.feedback_wrong?.es || t('module.blocks.sort.default_wrong');
 
   // MANEJADORES DE ACCIONES
-  const handleDragStart = (id: string) => setDragId(id);
-
-  const handleDrop = (targetId: string) => {
-    if (!dragId || dragId === targetId) return;
+  const handleDragEnd = (event: DragEndEvent) => {
+    endDragUx();
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
     setInteracted(true);
     setItems((prev) => {
-      const next = [...prev];
-      const from = next.findIndex((s) => s.id === dragId);
-      const to   = next.findIndex((s) => s.id === targetId);
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
+      const from = prev.findIndex((s) => s.id === active.id);
+      const to   = prev.findIndex((s) => s.id === over.id);
+      if (from < 0 || to < 0) return prev;
+      return arrayMove(prev, from, to);
     });
-    setDragId(null);
   };
 
   const handleVerify = async () => {
@@ -364,29 +441,32 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
             <AnimatePresence mode="wait">
               {phase === 'playing' && (
                 <motion.div key={`playing-${processIdx}`} {...fadeSlide} className="space-y-2">
-                  {items.map((step, index) => (
-                    <div
-                      key={step.id}
-                      draggable
-                      onDragStart={() => handleDragStart(step.id)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => handleDrop(step.id)}
-                      className={cn(
-                        'flex items-center gap-0 rounded-xl border transition-all duration-200 select-none cursor-grab active:cursor-grabbing overflow-hidden',
-                        'border-neon-green/30 hover:border-neon-green/60',
-                        dragId === step.id && 'opacity-40 scale-95',
-                      )}
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={beginDragUx}
+                    onDragEnd={handleDragEnd}
+                    onDragCancel={endDragUx}
+                  >
+                    <SortableContext
+                      items={items.map((s) => s.id)}
+                      strategy={verticalListSortingStrategy}
                     >
-                      <span className="text-[13px] font-bold text-text-subtle w-9 text-center shrink-0 py-3">
-                        {index + 1}
-                      </span>
-                      <div className="flex-1 glass border-l border-neon-green/20 px-4 py-3">
-                        <span className="text-[14px] text-text">
-                          {step.text[language] || step.text.es}
-                        </span>
+                      <div className="space-y-2">
+                        {items.map((step, index) => (
+                          <SortableStep
+                            key={step.id}
+                            id={step.id}
+                            index={index}
+                            text={step.text[language] || step.text.es}
+                          />
+                        ))}
                       </div>
-                    </div>
-                  ))}
+                    </SortableContext>
+                  </DndContext>
+                  <p className="text-[11px] text-text-subtle/70 text-center pt-1">
+                    {t('module.blocks.sort.drag_hint')}
+                  </p>
                   <button
                     onClick={handleVerify}
                     className="w-full mt-1 py-2.5 rounded-xl bg-neon-green/10 border border-neon-green/20 text-neon-green text-[13.5px] font-semibold hover:bg-neon-green/20 transition-colors"

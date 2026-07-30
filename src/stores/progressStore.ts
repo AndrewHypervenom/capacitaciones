@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
 import {
   activeBadgeDefs,
   getXPLevel,
@@ -233,6 +234,19 @@ export const XP_REWARDS = {
   /** Cada mundo completado por entero. */
   worldComplete: 400,
 } as const;
+
+/** Almacén volátil para la vista previa: se comporta como localStorage pero no persiste. */
+const memoryStorage: Storage = (() => {
+  const map = new Map<string, string>();
+  return {
+    get length() { return map.size },
+    clear: () => map.clear(),
+    getItem: (k: string) => map.get(k) ?? null,
+    key: (i: number) => Array.from(map.keys())[i] ?? null,
+    removeItem: (k: string) => { map.delete(k) },
+    setItem: (k: string, v: string) => { map.set(k, v) },
+  } as Storage;
+})();
 
 export const useProgressStore = create<ProgressState>()(
   persist(
@@ -595,6 +609,11 @@ export const useProgressStore = create<ProgressState>()(
     }),
     {
       name: 'learningai.progress',
+      // Vista previa del capacitador: el progreso vive en memoria y muere al
+      // cerrar el modal. El iframe comparte el localStorage de la pestaña, así
+      // que sin esto responder un quiz en la vista previa le sumaba XP de verdad
+      // al capacitador (y useProgressSync lo espejaba a BD). Ver previewMode.ts.
+      ...(IS_LEARNER_PREVIEW ? { storage: createJSONStorage(() => memoryStorage) } : {}),
       version: 7,
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState as Partial<ProgressState>) ?? {};

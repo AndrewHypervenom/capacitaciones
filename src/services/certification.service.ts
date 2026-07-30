@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/services/audit.service'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 import type {
   CourseCertStatus,
   Certification,
@@ -32,6 +33,10 @@ export interface NewSimulatorAttempt {
 
 /** Persiste un intento del simulador en BD (auditable, visible al capacitador). */
 export async function saveSimulatorAttempt(userId: string, a: NewSimulatorAttempt): Promise<void> {
+  // Vista previa del capacitador: el simulador se puede probar entero, pero el
+  // intento no queda registrado a su nombre (ver src/lib/previewMode.ts).
+  if (IS_LEARNER_PREVIEW) return
+
   const { error } = await supabase.from('simulator_attempts').insert({
     user_id: userId,
     course_id: a.courseId,

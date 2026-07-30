@@ -333,6 +333,29 @@ export async function getVisibleModules(campaignId: string): Promise<LearningMod
   return (data ?? []).map((row: any) => dbRowToLearningModule(row))
 }
 
+/**
+ * Módulos para la VISTA PREVIA del staff: sin filtrar por `is_published` y sin
+ * filtrar por campaña (manda la RLS). Es lo que permite revisar un módulo que
+ * todavía está en borrador exactamente como lo verá el aprendiz.
+ * Solo se usa dentro del iframe de vista previa y solo si el rol real es staff.
+ */
+export async function getPreviewModules(): Promise<LearningModule[]> {
+  const { data, error } = await supabase
+    .from('modules')
+    .select(`
+      *,
+      module_sections (
+        *,
+        section_quizzes (*)
+      )
+    `)
+    .order('sort_order')
+
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => dbRowToLearningModule(row))
+}
+
 /** Todos los módulos publicados de todas las campañas (superadmin ve todo). */
 export async function getAllPublishedModules(): Promise<LearningModule[]> {
   const { data, error } = await supabase

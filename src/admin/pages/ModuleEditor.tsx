@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Loader2,
   Menu,
+  Monitor,
   Plus,
   Save,
   Sparkle,
@@ -72,7 +73,6 @@ import { Button } from '@/components/ui/Button'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
 import { QUIZ_SOUND_THEMES, playQuizSound } from '@/lib/sound'
-import { vimeoEmbedUrl } from '@/lib/vimeo'
 import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
@@ -83,6 +83,7 @@ import { useEditingPresence } from '@/hooks/usePresence'
 import { usePresenceStore } from '@/stores/presenceStore'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
+import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import type { GameClassifyBlock } from '@/types/blocks' // Importamos el tipo del bloque nuevo
 import type { BlockWithId, ContentBlock, GameSortBlock } from '@/types/blocks'
 import { toast } from '@/stores/toastStore'
@@ -278,7 +279,7 @@ interface SectionEditorPanelProps {
   moduleTitle?: string
   onSaved: (updated: DbSectionRow) => void
   onDirty: (dirty: boolean) => void
-  onRegisterSave: (fn: (() => void) | null) => void
+  onRegisterSave: (fn: (() => void | Promise<void>) | null) => void
 }
 
 function GameSortEditorWrapper({
@@ -1136,7 +1137,7 @@ interface MetaEditorPanelProps {
   mod: DbModuleRow
   onSaved: (updates: Partial<DbModuleWithSections>) => void
   onDirty: (dirty: boolean) => void
-  onRegisterSave: (fn: (() => void) | null) => void
+  onRegisterSave: (fn: (() => void | Promise<void>) | null) => void
 }
 
 function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPanelProps) {
@@ -1378,11 +1379,13 @@ export default function ModuleEditor() {
   const [isDirty, setIsDirty] = useState(false)
   const [publishingMod, setPublishingMod] = useState(false)
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null)
-  const [splitView, setSplitView] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [translateOpen, setTranslateOpen] = useState(false)
+  // Vista previa en modal: `null` = cerrada. Guarda la ruta del aprendiz.
+  const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const [openingPreview, setOpeningPreview] = useState(false)
 
-  const saveFnRef = useRef<(() => void) | null>(null)
+  const saveFnRef = useRef<(() => void | Promise<void>) | null>(null)
 
   // ¿El módulo sigue solo en español? Se deduce comparando es/en/pt: no hay
   // columna nueva en la base para esto.
@@ -1592,6 +1595,36 @@ export default function ModuleEditor() {
     handleReorder(reordered)
   }
 
+  // Vista previa en modal: primero guarda (así lo que se ve es lo que acabas de
+  // escribir, no lo último guardado) y luego abre la ruta REAL del aprendiz,
+  // posicionada en la sección que está abierta en el editor.
+  const handleOpenPreview = async () => {
+    if (!mod) return
+    if (!mod.slug) {
+      toast.error(t('admin.preview.no_slug'))
+      return
+    }
+    setOpeningPreview(true)
+    try {
+      await saveFnRef.current?.()
+    } catch {
+      toast.error(t('admin.preview.save_failed'))
+    } finally {
+      setOpeningPreview(false)
+    }
+    const idx = sections.findIndex((s) => s.id === selectedSectionId)
+    setPreviewPath(`/modules/${mod.slug}${idx >= 0 ? `#section-${idx}` : ''}`)
+  }
+
+  const previewContext = (() => {
+    const idx = sections.findIndex((s) => s.id === selectedSectionId)
+    if (idx < 0) return t('admin.preview.module_context')
+    return t('admin.preview.section_context', {
+      n: idx + 1,
+      name: sections[idx].heading_es || t('common.untitled'),
+    })
+  })()
+
   const handleSelectSection = (id: string | null) => {
     setSelectedSectionId(id)
     setFocusedSectionId(id)
@@ -1617,68 +1650,6 @@ export default function ModuleEditor() {
       </div>
     )
   }
-
-  const previewContent = (
-    <>
-      {selectedSectionId ? (
-        (() => {
-          const s = sections.find((sec) => sec.id === selectedSectionId)
-          if (!s) return <p className="text-[12px] text-text-subtle text-center pt-10">{t('admin.modules.ed_select_section')}</p>
-          return (
-            <div className="space-y-4">
-              <p className="text-[10px] text-text-subtle uppercase tracking-widest font-medium">
-                {s.heading_es || t('common.untitled')}
-              </p>
-              {s.body_es?.map((p: string, i: number) => (
-                <p key={i} className="text-[14px] leading-relaxed text-text-muted">{p}</p>
-              ))}
-              {s.callout_kind && s.callout_es && (
-                <div className="glass rounded-2xl px-4 py-3 border-l-2 border-neon-green/40">
-                  <p className="text-[12px] text-text-muted">{s.callout_es}</p>
-                </div>
-              )}
-              {s.media_url && s.media_type === 'image' && (
-                <img src={s.media_url} alt="" className="w-full rounded-2xl border border-line" />
-              )}
-              {s.media_url && (s.media_type === 'youtube' || s.media_type === 'vimeo') && (
-                <div className="relative rounded-2xl overflow-hidden" style={{ paddingTop: '56.25%' }}>
-                  <iframe
-                    src={s.media_type === 'youtube'
-                      ? `https://www.youtube.com/embed/${s.media_url}?rel=0`
-                      : vimeoEmbedUrl(s.media_url)}
-                    className="absolute inset-0 w-full h-full border-0"
-                    allowFullScreen
-                  />
-                </div>
-              )}
-              {(s.section_quizzes?.length ?? 0) > 0 && (
-                <div className="glass rounded-2xl px-4 py-3">
-                  <p className="text-[11px] text-text-subtle mb-2">{t('admin.modules.ed_quiz_badge')}</p>
-                  <p className="text-[13px] font-medium text-text">{s.section_quizzes![0].question_es}</p>
-                  <div className="space-y-1.5 mt-3">
-                    {s.section_quizzes![0].options_es?.map((o: string, i: number) => (
-                      <div key={i} className={cn(
-                        'px-3 py-2 rounded-xl text-[12px] border',
-                        i === s.section_quizzes![0].correct_index
-                          ? 'border-neon-green/30 text-neon-green bg-neon-green/5'
-                          : 'border-glass-border/10 text-text-muted',
-                      )}>
-                        {o}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })()
-      ) : (
-        <p className="text-[12px] text-text-subtle text-center pt-10">
-          Selecciona una sección para ver preview
-        </p>
-      )}
-    </>
-  )
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
@@ -1820,16 +1791,21 @@ export default function ModuleEditor() {
                 <PresenceStack peers={coeditors} size={30} />
               </div>
             )}
-            <button
-              onClick={() => setSplitView((v) => !v)}
-              title={splitView ? 'Ocultar preview' : 'Ver preview en vivo'}
-              className={cn(
-                'h-8 w-8 rounded-lg flex items-center justify-center transition-colors',
-                splitView ? 'bg-neon-green/12 text-neon-green border border-neon-green/20' : 'glass text-text-muted hover:text-text',
-              )}
+            {/* Vista previa real: abre la pantalla del aprendiz en un modal, sin
+                salir del editor. Reemplazó al viejo "preview en vivo" lateral,
+                que era una maqueta y no mostraba bloques ni juegos. */}
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={handleOpenPreview}
+              disabled={openingPreview}
+              title={t('admin.preview.button_hint')}
             >
-              <Columns2 className="h-3.5 w-3.5" />
-            </button>
+              {openingPreview
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Monitor className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{t('admin.preview.button')}</span>
+            </Button>
             {/* Traducir a EN/PT: el módulo nace en español y se traduce cuando
                 el capacitador lo da por terminado (ahorro de IA). "Terminado" =
                 el curso ya está publicado; hasta entonces el botón se bloquea. */}
@@ -1903,42 +1879,12 @@ export default function ModuleEditor() {
         </div>
       </div>
 
-      {/* ── PANEL DERECHO: Preview — side panel en desktop, fullscreen overlay en mobile ── */}
-      {splitView && (
-        <>
-          {/* Desktop: side panel */}
-          <div className="hidden md:flex w-96 xl:w-[480px] flex-col glass-md border-l border-glass-border/8 shrink-0 overflow-hidden">
-            <div className="flex items-center gap-2 px-4 h-14 border-b border-glass-border/8 shrink-0">
-              <div className="h-2 w-2 rounded-full bg-neon-green animate-[glow-pulse_2s_ease-in-out_infinite]" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
-                Preview en vivo
-              </span>
-              <span className="ml-auto text-[10px] text-text-subtle">{t('admin.modules.ed_learner_preview')}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-6">
-              {previewContent}
-            </div>
-          </div>
-
-          {/* Mobile: fullscreen overlay */}
-          <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-bg">
-            <div className="flex items-center gap-2 px-4 h-14 border-b border-glass-border/8 shrink-0 glass-md">
-              <div className="h-2 w-2 rounded-full bg-neon-green animate-[glow-pulse_2s_ease-in-out_infinite]" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
-                Preview en vivo
-              </span>
-              <button
-                onClick={() => setSplitView(false)}
-                className="ml-auto h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-6">
-              {previewContent}
-            </div>
-          </div>
-        </>
+      {previewPath && (
+        <LearnerPreviewModal
+          path={previewPath}
+          context={previewContext}
+          onClose={() => setPreviewPath(null)}
+        />
       )}
 
       <SectionTemplateGallery

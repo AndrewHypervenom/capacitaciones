@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeftRight, BookOpen, ChevronRight, Eye, EyeOff, ExternalLink, GraduationCap, Loader2, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Loader2, Monitor, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -29,6 +29,7 @@ import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
 import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
+import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 
 // Marca de que el staff ya usó la vista previa (apaga el pulso de la fila).
 const PREVIEW_HINT_KEY = 'module-preview-hint-seen'
@@ -60,6 +61,9 @@ export default function ModuleList() {
 
   // Mover un módulo suelto a otra campaña (los módulos dentro de un curso se
   // mueven con el curso). moveModule = módulo elegido; el resto es el diálogo.
+  // Vista previa en modal: el módulo que se está mirando como aprendiz.
+  const [previewModule, setPreviewModule] = useState<DbModuleRow | null>(null)
+
   const [moveModule, setMoveModule] = useState<DbModuleRow | null>(null)
   const [moveTargetId, setMoveTargetId] = useState('')
   const [movingModule, setMovingModule] = useState(false)
@@ -265,14 +269,14 @@ export default function ModuleList() {
             vista previa es la principal; eliminar va al final y separada. */}
         <div className="flex items-center gap-1.5 sm:shrink-0 flex-wrap opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
           <PulseHint active={!previewHintSeen}>
-            <Link
-              to={`/admin/modules/${mod.id}/preview`}
-              onClick={markPreviewHintSeen}
+            <button
+              onClick={() => { markPreviewHintSeen(); setPreviewModule(mod) }}
+              title={t('admin.preview.button_hint')}
               className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 rounded-xl text-[13px] font-semibold text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 transition-colors"
             >
-              <ExternalLink className="h-3.5 w-3.5" />
+              <Monitor className="h-3.5 w-3.5" />
               {t('admin.modules.preview')}
-            </Link>
+            </button>
           </PulseHint>
 
           <button
@@ -448,8 +452,16 @@ export default function ModuleList() {
 
       {modules.length > 0 && (
         <p className="text-[11px] text-text-subtle mt-4 text-center">
-          Usa el ícono <ExternalLink className="h-3 w-3 inline" /> para previsualizar cómo verá el aprendiz cada módulo
+          Usa <Monitor className="h-3 w-3 inline" /> Vista previa para ver cada módulo tal como lo ve el aprendiz, sin salir de esta pantalla
         </p>
+      )}
+
+      {previewModule && (
+        <LearnerPreviewModal
+          path={`/modules/${previewModule.slug}`}
+          context={previewModule.title_es}
+          onClose={() => setPreviewModule(null)}
+        />
       )}
 
       {/* Mover un módulo suelto a otra campaña */}

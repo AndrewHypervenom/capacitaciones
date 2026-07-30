@@ -1,8 +1,14 @@
 import { useAuthStore } from '@/stores/authStore'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
 export function useAuth() {
   const { session, profile, loading } = useAuthStore()
-  const role = profile?.role ?? null
+  // Dentro de la vista previa la app trata a quien mira como aprendiz: si no,
+  // las pantallas del aprendiz muestran sus atajos de staff (el mundo del CMS,
+  // el ViewSwitcher…) y la "vista previa" no sería lo que ve el aprendiz.
+  // El rol REAL sigue disponible en useAuthStore para quien lo necesite
+  // (p. ej. `useModules`, que solo al staff le muestra borradores).
+  const role = IS_LEARNER_PREVIEW ? 'learner' : (profile?.role ?? null)
 
   return {
     user: session?.user ?? null,

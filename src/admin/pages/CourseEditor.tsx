@@ -24,6 +24,7 @@ import {
   Loader2,
   Lock,
   Map as MapIcon,
+  Monitor,
   PhoneCall,
   Plus,
   Rocket,
@@ -65,6 +66,7 @@ import {
 } from '@/services/courses.service'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
+import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { getCourseTranslationState } from '@/services/translation.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
@@ -186,6 +188,9 @@ export default function CourseEditor() {
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
   const [openingWorld, setOpeningWorld] = useState(false)
+  // Vista previa del curso en modal (la página real del aprendiz en un iframe).
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [openingPreview, setOpeningPreview] = useState(false)
   // Traducción diferida: cuántas piezas del curso siguen solo en español.
   const [transPending, setTransPending] = useState(0)
   const [translateOpen, setTranslateOpen] = useState(false)
@@ -621,6 +626,18 @@ export default function CourseEditor() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Vista previa del curso: guarda la ficha (para que el modal muestre lo que
+  // acabas de escribir) y abre la página real del aprendiz en el modal.
+  const handleOpenPreview = async () => {
+    setOpeningPreview(true)
+    try {
+      await handleSaveInfo()
+    } finally {
+      setOpeningPreview(false)
+    }
+    setPreviewOpen(true)
   }
 
   // Mueve el curso (y todo su contenido: módulos, mundo, simuladores) a otra
@@ -1145,6 +1162,22 @@ export default function CourseEditor() {
               <PresenceStack peers={coeditors} size={30} />
             </div>
           )}
+          {/* Vista previa: la página del curso del aprendiz, en un modal, sin
+              salir del editor. Funciona aunque el curso siga en borrador. */}
+          <Button
+            variant="glass"
+            size="sm"
+            onClick={handleOpenPreview}
+            disabled={openingPreview}
+            title={t('admin.preview.button_hint')}
+            className="flex items-center gap-1.5"
+          >
+            {openingPreview
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Monitor className="h-3.5 w-3.5" />}
+            {t('admin.preview.button')}
+          </Button>
+
           <Button
             variant="glass"
             size="sm"
@@ -1989,6 +2022,14 @@ export default function CourseEditor() {
           campaignId={course.campaign_id}
           onClose={() => setTranslateOpen(false)}
           onDone={refreshTranslationState}
+        />
+      )}
+
+      {previewOpen && (
+        <LearnerPreviewModal
+          path={`/courses/${course.slug}`}
+          context={course.title_es}
+          onClose={() => setPreviewOpen(false)}
         />
       )}
 

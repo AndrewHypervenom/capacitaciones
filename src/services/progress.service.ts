@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 import type { SimulatorAttempt } from '@/stores/progressStore'
 
 export interface ProgressData {
@@ -89,6 +90,9 @@ export async function upsertProgress(
   campaignId: string,
   progress: ProgressData,
 ) {
+  // Vista previa del capacitador: no se espeja nada a BD (ver previewMode.ts).
+  if (IS_LEARNER_PREVIEW) return
+
   // IMPORTANTE: NO escribir `attempts` ni `check_answers` aquí.
   // La columna `user_progress.attempts` es propiedad exclusiva de
   // `saveActivityAttempt` (intentos de quizzes/juegos). El store local guarda en

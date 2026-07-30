@@ -153,6 +153,25 @@ export default function ModulePage() {
   // Usamos dbId (UUID real) porque module.id es el slug y el FK apunta a modules.id.
   const { label: activeTimeLabel } = useModuleTimer(module?.dbId ?? module?.id, userId, completed);
 
+  // Enlace directo a una sección: `/modules/:slug#section-2`. Lo usa la vista
+  // previa del panel ("ver esta sección como la ve el aprendiz"), pero sirve
+  // para cualquier enlace. Se reintenta porque la sección puede montarse después
+  // (media, bloques) y el ancla todavía no existe en el primer pintado.
+  useEffect(() => {
+    if (loading || !module) return;
+    const hash = window.location.hash;
+    if (!/^#section-\d+$/.test(hash)) return;
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const el = document.getElementById(hash.slice(1));
+      if (el) { el.scrollIntoView({ block: 'start' }); return; }
+      if (tries++ < 20) timer = setTimeout(tick, 100);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [loading, module?.id]);
+
   const [attemptsFeedback, setAttemptsFeedback] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [apprenticeComment, setApprenticeComment] = useState('');

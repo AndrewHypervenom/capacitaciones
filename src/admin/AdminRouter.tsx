@@ -1,6 +1,6 @@
 
 import { useRef, useLayoutEffect, useState } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FolderX, Plus } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -23,7 +23,6 @@ import ModuleList from './pages/ModuleList'
 import ModuleEditor from './pages/ModuleEditor'
 import CourseList from './pages/CourseList'
 import CourseEditor from './pages/CourseEditor'
-import ModulePreview from './pages/ModulePreview'
 import SimulationList from './pages/SimulationList'
 import SimulationEditor from './pages/SimulationEditor'
 import ChoiceSimEditor from './pages/ChoiceSimEditor'
@@ -39,6 +38,12 @@ import ActivityLog from './pages/ActivityLog'
 import DeletionApprovals from './pages/DeletionApprovals'
 import SiteFeedback from './pages/SiteFeedback'
 import { HelpWidget } from '@/components/help/HelpWidget'
+
+/** Enlace viejo a la vista previa de página completa → editor del módulo. */
+function LegacyPreviewRedirect() {
+  const { moduleId } = useParams<{ moduleId: string }>()
+  return <Navigate to={`/admin/modules/${moduleId}`} replace />
+}
 
 export default function AdminRouter() {
   const { loading, isAuthenticated, isCapacitador, isSuperAdmin } = useAuth()
@@ -106,7 +111,11 @@ export default function AdminRouter() {
           <Route path="modules" element={<ModuleList />} />
           <Route path="modules/new" element={<NewModulePage />} />
           <Route path="modules/:moduleId" element={<ModuleEditor />} />
-          <Route path="modules/:moduleId/preview" element={<ModulePreview />} />
+          {/* La vista previa dejó de ser una página aparte: ahora es un modal con
+              la ruta REAL del aprendiz (LearnerPreviewModal). La página anterior
+              era una segunda copia del render y se desincronizaba del aprendiz.
+              La ruta se conserva para enlaces viejos y lleva al editor. */}
+          <Route path="modules/:moduleId/preview" element={<LegacyPreviewRedirect />} />
           {/* Usuarios: superadmin (todo) y capacitador (solo su campaña, lectura + asignar cursos) */}
           <Route path="users" element={isSuperAdmin || isCapacitador ? <UserList /> : <Navigate to="/admin" replace />} />
           <Route path="users/:id" element={isSuperAdmin || isCapacitador ? <UserProfile /> : <Navigate to="/admin" replace />} />

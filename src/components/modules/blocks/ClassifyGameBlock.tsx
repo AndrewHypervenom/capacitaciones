@@ -1,9 +1,23 @@
 // src/components/modules/blocks/ClassifyGameBlock.tsx
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { saveActivityAttempt } from '@/services/activity.service';
 import { CompletedActivityBanner } from './CompletedActivityBanner';
+import { beginDragUx, endDragUx, withNoSelectDrag } from '@/lib/dragUx';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
 import { CheckCircle2, XCircle, Trophy, RefreshCcw } from 'lucide-react';
 import type { GameClassifyBlock, ClassifyCase } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
@@ -63,6 +77,69 @@ function playSound(type: 'success' | 'error' | 'final') {
   } catch { /* silencio */ }
 }
 
+/** Prefijo de las zonas donde se puede soltar (evita chocar con los ids de caso). */
+const ZONE = 'zone-';
+const UNASSIGNED_ZONE = `${ZONE}unassigned`;
+
+const chipClass =
+  'px-3 py-2 rounded-lg glass border border-glass-border/20 text-[13px] text-text select-none';
+
+/**
+ * Caso arrastrable: ratón, dedo (mantener pulsado) y teclado. Antes usaba el
+ * arrastre HTML5, que no existe en pantallas táctiles: en el celular no había
+ * forma de clasificar nada.
+ */
+function DraggableCase({
+  id,
+  fromCategory,
+  children,
+}: {
+  id: string;
+  fromCategory: string | null;
+  children: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id,
+    data: { fromCategory },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...withNoSelectDrag(listeners)}
+      onContextMenu={(e) => e.preventDefault()}
+      className={cn(
+        chipClass,
+        'cursor-grab active:cursor-grabbing outline-none transition-colors hover:border-neon-green/30',
+        'focus-visible:border-neon-green focus-visible:ring-2 focus-visible:ring-neon-green/30',
+        isDragging && 'opacity-40',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Zona donde se sueltan los casos (la bandeja y cada categoría). */
+function DropZone({
+  id,
+  className,
+  activeClassName,
+  children,
+}: {
+  id: string;
+  className?: string;
+  activeClassName?: string;
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={cn(className, isOver && activeClassName)}>
+      {children}
+    </div>
+  );
+}
+
 export function ClassifyGameBlockRenderer({ block, language, userId, campaignId, moduleId, sectionId, savedAttempt }: Props) {
   const { t } = useTranslation();
   // Vista "ya completado": si hay intento en la base y el aprendiz no ha vuelto a
@@ -73,7 +150,17 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
   );
   const [unassigned, setUnassigned] = useState<ClassifyCase[]>(() => [...block.cases].sort(() => Math.random() - 0.5));
   const [submitted, setSubmitted] = useState(false);
-  const dragCase = useRef<{ caseId: string; fromCategory: string | null } | null>(null);
+  // Caso que se está arrastrando ahora mismo (para pintar el "fantasma" que
+  // sigue al dedo o al cursor).
+  const [activeCase, setActiveCase] = useState<ClassifyCase | null>(null);
+
+  // Ratón: arrastra tras 6 px. Dedo: mantener pulsado 180 ms (así un deslizamiento
+  // normal sigue haciendo scroll). Teclado: Espacio + flechas.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   // SEGUIMIENTO EN TIEMPO REAL: Controladores de tiempo y fallas analíticas
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -91,15 +178,44 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [submitted]);
 
-  const handleDragStart = (caseId: string, fromCategory: string | null) => {
+  // Si el bloque se desmonta a mitad de un arrastre, el <body> se quedaría sin
+  // poder seleccionar texto.
+  useEffect(() => endDragUx, []);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    beginDragUx();
     setInteracted(true);
-    dragCase.current = { caseId, fromCategory };
+    setActiveCase(block.cases.find((c) => c.id === event.active.id) ?? null);
   };
 
-  const handleDropOnCategory = (toCategoryId: string) => {
-    if (!dragCase.current) return;
-    const { caseId, fromCategory } = dragCase.current;
+  const handleDragCancel = () => {
+    endDragUx();
+    setActiveCase(null);
+  };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    endDragUx();
+    setActiveCase(null);
+    const { active, over } = event;
+    if (!over || submitted) return;
+    const caseId = String(active.id);
+    const fromCategory =
+      (active.data.current as { fromCategory?: string | null } | undefined)?.fromCategory ?? null;
+    const zone = String(over.id);
+    if (zone === UNASSIGNED_ZONE) {
+      handleDropOnUnassigned(caseId, fromCategory);
+    } else if (zone.startsWith(ZONE)) {
+      const toCategoryId = zone.slice(ZONE.length);
+      if (toCategoryId === fromCategory) return;
+      handleDropOnCategory(toCategoryId, caseId, fromCategory);
+    }
+  };
+
+  const handleDropOnCategory = (
+    toCategoryId: string,
+    caseId: string,
+    fromCategory: string | null,
+  ) => {
     setAssigned((prev) => {
       const next = { ...prev };
       if (fromCategory) {
@@ -117,13 +233,9 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
     if (!fromCategory) {
       setUnassigned((prev) => prev.filter((c) => c.id !== caseId));
     }
-
-    dragCase.current = null;
   };
 
-  const handleDropOnUnassigned = () => {
-    if (!dragCase.current) return;
-    const { caseId, fromCategory } = dragCase.current;
+  const handleDropOnUnassigned = (caseId: string, fromCategory: string | null) => {
     if (!fromCategory) return;
 
     const found = block.cases.find((c) => c.id === caseId);
@@ -134,7 +246,6 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
       [fromCategory]: prev[fromCategory].filter((c) => c.id !== caseId),
     }));
     setUnassigned((prev) => [...prev, found]);
-    dragCase.current = null;
   };
 
   const handleSubmit = () => {
@@ -241,85 +352,107 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
         </p>
       )}
 
-      {!submitted && (
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDropOnUnassigned}
-          className={cn(
-            'min-h-[64px] rounded-xl border border-dashed border-glass-border/30 p-3 flex flex-wrap gap-2',
-            'transition-colors',
-            unassigned.length === 0 && 'border-neon-green/20 bg-neon-green/3',
-          )}
-        >
-          {unassigned.length === 0 ? (
-            <p className="text-[12px] text-neon-green/50 w-full text-center py-2">
-              {t('module.blocks.classify.all_assigned')}
-            </p>
-          ) : (
-            unassigned.map((c) => (
-              <div
-                key={c.id}
-                draggable
-                onDragStart={() => handleDragStart(c.id, null)}
-                className="px-3 py-2 rounded-lg glass border border-glass-border/20 text-[13px] text-text cursor-grab active:cursor-grabbing select-none hover:border-neon-green/30 transition-colors"
-              >
-                {c.text[language] || c.text.es}
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {block.categories.map((cat) => {
-          const style = getStyle(cat.color);
-          const casesInCat = assigned[cat.id] ?? [];
-          return (
-            <div
-              key={cat.id}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => !submitted && handleDropOnCategory(cat.id)}
-              className={cn(
-                'rounded-xl border-2 border-dashed p-3 min-h-[100px] transition-all duration-200',
-                style.border,
-                submitted ? style.bg : 'bg-transparent hover:' + style.bg,
-              )}
-            >
-              <p className={cn('text-[11px] font-bold uppercase tracking-widest mb-2', style.text)}>
-                {cat.name[language] || cat.name.es}
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        {!submitted && (
+          <DropZone
+            id={UNASSIGNED_ZONE}
+            className={cn(
+              'min-h-[64px] rounded-xl border border-dashed border-glass-border/30 p-3 flex flex-wrap gap-2',
+              'transition-colors',
+              unassigned.length === 0 && 'border-neon-green/20 bg-neon-green/3',
+            )}
+            activeClassName="border-neon-green/50 bg-neon-green/5"
+          >
+            {unassigned.length === 0 ? (
+              <p className="text-[12px] text-neon-green/50 w-full text-center py-2">
+                {t('module.blocks.classify.all_assigned')}
               </p>
-              <div className="flex flex-wrap gap-2">
-                {casesInCat.length === 0 && !submitted && (
-                  <p className="text-[11px] text-text-subtle/40 w-full text-center py-2">
-                    {t('module.blocks.classify.drop_here')}
-                  </p>
+            ) : (
+              unassigned.map((c) => (
+                <DraggableCase key={c.id} id={c.id} fromCategory={null}>
+                  {c.text[language] || c.text.es}
+                </DraggableCase>
+              ))
+            )}
+          </DropZone>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-5">
+          {block.categories.map((cat) => {
+            const style = getStyle(cat.color);
+            const casesInCat = assigned[cat.id] ?? [];
+            return (
+              <DropZone
+                key={cat.id}
+                id={`${ZONE}${cat.id}`}
+                className={cn(
+                  'rounded-xl border-2 border-dashed p-3 min-h-[100px] transition-all duration-200',
+                  style.border,
+                  submitted && style.bg,
                 )}
-                {casesInCat.map((c) => {
-                  const isCorrect = submitted && c.correctCategoryId === cat.id;
-                  const isWrong   = submitted && c.correctCategoryId !== cat.id;
-                  return (
-                    <div
-                      key={c.id}
-                      draggable={!submitted}
-                      onDragStart={() => handleDragStart(c.id, cat.id)}
-                      className={cn(
-                        'px-3 py-2 rounded-lg text-[13px] select-none transition-all duration-200 flex items-center gap-2',
-                        !submitted && 'cursor-grab active:cursor-grabbing glass border border-glass-border/20 text-text hover:border-neon-green/30',
-                        isCorrect && 'bg-neon-green/10 border border-neon-green/30 text-neon-green cursor-default',
-                        isWrong   && 'bg-red-500/10 border border-red-500/30 text-red-400 cursor-default',
-                      )}
-                    >
-                      {c.text[language] || c.text.es}
-                      {isCorrect && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
-                      {isWrong   && <XCircle className="h-3.5 w-3.5 shrink-0" />}
-                    </div>
-                  );
-                })}
-              </div>
+                activeClassName={cn('scale-[1.01]', style.bg)}
+              >
+                <p className={cn('text-[11px] font-bold uppercase tracking-widest mb-2', style.text)}>
+                  {cat.name[language] || cat.name.es}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {casesInCat.length === 0 && !submitted && (
+                    <p className="text-[11px] text-text-subtle/40 w-full text-center py-2">
+                      {t('module.blocks.classify.drop_here')}
+                    </p>
+                  )}
+                  {casesInCat.map((c) => {
+                    const isCorrect = submitted && c.correctCategoryId === cat.id;
+                    const isWrong   = submitted && c.correctCategoryId !== cat.id;
+                    if (submitted) {
+                      return (
+                        <div
+                          key={c.id}
+                          className={cn(
+                            'px-3 py-2 rounded-lg text-[13px] select-none flex items-center gap-2 cursor-default',
+                            isCorrect && 'bg-neon-green/10 border border-neon-green/30 text-neon-green',
+                            isWrong   && 'bg-red-500/10 border border-red-500/30 text-red-400',
+                          )}
+                        >
+                          {c.text[language] || c.text.es}
+                          {isCorrect && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                          {isWrong   && <XCircle className="h-3.5 w-3.5 shrink-0" />}
+                        </div>
+                      );
+                    }
+                    return (
+                      <DraggableCase key={c.id} id={c.id} fromCategory={cat.id}>
+                        {c.text[language] || c.text.es}
+                      </DraggableCase>
+                    );
+                  })}
+                </div>
+              </DropZone>
+            );
+          })}
+        </div>
+
+        {/* Fantasma que sigue al dedo/cursor: en táctil es lo que hace evidente
+            que el caso se está moviendo, porque el original se queda en su sitio. */}
+        <DragOverlay dropAnimation={null}>
+          {activeCase ? (
+            <div className={cn(chipClass, 'border-neon-green/50 shadow-xl cursor-grabbing')}>
+              {activeCase.text[language] || activeCase.text.es}
             </div>
-          );
-        })}
-      </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      {!submitted && (
+        <p className="text-[11px] text-text-subtle/70 text-center">
+          {t('module.blocks.classify.drag_hint')}
+        </p>
+      )}
 
       {!submitted && (
         <button

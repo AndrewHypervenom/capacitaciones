@@ -3,6 +3,7 @@ import { useProgressStore } from '@/stores/progressStore'
 import { getProgress, upsertProgress } from '@/services/progress.service'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
 /**
  * Sincroniza el progreso local (localStorage) hacia `user_progress` en Supabase.
@@ -54,6 +55,10 @@ export function useProgressSync() {
   const [hydratedKey, setHydratedKey] = useState<string | null>(null)
   const syncKey = user?.id && campaignId ? `${user.id}:${campaignId}` : null
   useEffect(() => {
+    // Vista previa: ni hidrata ni espeja. El capacitador ve el curso como lo ve
+    // alguien que empieza —con sus candados—, y nada de lo que haga ahí toca su
+    // progreso real ni el de nadie (ver src/lib/previewMode.ts).
+    if (IS_LEARNER_PREVIEW) return
     if (!user?.id || !campaignId) return
     const key = `${user.id}:${campaignId}`
     let active = true
@@ -74,6 +79,7 @@ export function useProgressSync() {
   }, [user?.id, campaignId])
 
   useEffect(() => {
+    if (IS_LEARNER_PREVIEW) return
     if (!user?.id || !campaignId || hydratedKey !== syncKey) return
     const payload = JSON.stringify({
       completedModuleIds,

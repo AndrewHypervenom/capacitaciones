@@ -419,6 +419,17 @@
   }
 }
 
+/* Arrastre en curso (juegos de ordenar/clasificar).
+   Sin esto, al arrastrar con el ratón el navegador iba seleccionando el texto
+   de la página por donde pasaba el cursor: quedaba todo azul y feo. La clase la
+   pone y la quita el propio juego al empezar y terminar el arrastre. */
+body.is-dragging,
+body.is-dragging * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  cursor: grabbing !important;
+}
+
 @media print {
   body {
     background: #fff !important;

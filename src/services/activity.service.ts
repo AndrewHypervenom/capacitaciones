@@ -1,5 +1,6 @@
 // src/services/activity.service.ts
 import { supabase } from "../lib/supabase";
+import { IS_LEARNER_PREVIEW } from "../lib/previewMode";
 import type { Database } from "../types/database";
 
 // ==========================================
@@ -22,6 +23,14 @@ export interface FeedbackPayload {
  * Si el usuario todavía no tiene fila en user_progress para esa campaña, la crea.
  */
 export const saveActivityAttempt = async (attemptData: any) => {
+  // Vista previa del capacitador: el juego funciona igual, pero el intento no se
+  // registra. Si no, revisar el propio curso dejaba intentos y notas a nombre de
+  // quien lo está armando. Ver src/lib/previewMode.ts.
+  if (IS_LEARNER_PREVIEW) {
+    console.log("Vista previa: el intento NO se guarda.");
+    return { data: null, error: null };
+  }
+
   console.log("================================");
   console.log("INTENTANDO GUARDAR EN USER_PROGRESS:");
   console.log("Datos:", JSON.stringify(attemptData, null, 2));

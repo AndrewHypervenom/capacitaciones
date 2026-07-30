@@ -10,7 +10,6 @@ import {
   updateCourse,
   deleteCourse,
   getShareableCourses,
-  previewEnrollSelf,
   previewUnenrollSelf,
   getSelfEnrolledCourseIds,
   type CourseWithModules,
@@ -45,6 +44,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
+import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { toast } from '@/stores/toastStore'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
@@ -64,6 +64,8 @@ export default function CourseList() {
   // es real (cuenta en `course_assignments`), así que la pantalla ofrece salir
   // en vez de dejarla ahí sumando gente que no es alumna del curso.
   const [previewEnrolled, setPreviewEnrolled] = useState<Set<string>>(new Set())
+  // Curso abierto en la vista previa (modal con la página del aprendiz).
+  const [previewCourse, setPreviewCourse] = useState<AdminCourse | null>(null)
   // El pulso que señala "Ver como aprendiz" late hasta que se usa una vez y
   // luego no vuelve: es una ayuda de descubrimiento, no un adorno permanente.
   const [previewHintSeen, setPreviewHintSeen] = useState(() => {
@@ -314,30 +316,16 @@ export default function CourseList() {
     }
   }
 
-  // "Ver como aprendiz": auto-inscribe al staff en su propio curso y salta a la
-  // vista de aprendiz, donde el curso ya aparece en "Mis cursos". Solo tiene sentido
-  // con el curso publicado: el panel de aprendiz solo lista cursos publicados.
-  const handleViewAsLearner = async (course: CourseWithModules) => {
-    if (!course.is_published) {
-      toast.error(t('admin.courses.view_as_learner_publish_first'))
-      return
-    }
-    if (!user?.id) return
+  // "Ver como aprendiz": abre la página real del curso —la del aprendiz— en un
+  // modal, sin salir del panel. Antes esto auto-inscribía al staff y saltaba al
+  // panel del aprendiz: había que volver a mano y la matrícula quedaba contando
+  // como alumno. El modal no inscribe a nadie y funciona con el curso en
+  // borrador, así se puede revisar ANTES de publicar.
+  const handleViewAsLearner = (course: AdminCourse) => {
     // Ya la descubrió: el pulso de la tarjeta se apaga para siempre.
     setPreviewHintSeen(true)
     try { localStorage.setItem(PREVIEW_HINT_KEY, '1') } catch { /* modo privado */ }
-    setPreviewingId(course.id)
-    try {
-      await previewEnrollSelf(course.id)
-      setPreviewEnrolled((prev) => new Set(prev).add(course.id))
-      invalidateLearnerCoursesCache()
-      toast.success(t('admin.courses.view_as_learner_ok'))
-      navigate('/dashboard')
-    } catch {
-      toast.error(t('admin.courses.view_as_learner_error'))
-    } finally {
-      setPreviewingId(null)
-    }
+    setPreviewCourse(course)
   }
 
   // Deshace la previsualización: quita al staff de la matrícula del curso para
@@ -715,23 +703,13 @@ export default function CourseList() {
                   más discretas y con la destructiva separada a la derecha. */}
               <div className="border-t border-line/70 px-4 py-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <PulseHint active={course.is_published && !previewHintSeen} className="flex-1 min-w-0">
+                  <PulseHint active={!previewHintSeen} className="flex-1 min-w-0">
                     <button
                       onClick={() => handleViewAsLearner(course)}
-                      disabled={previewingId === course.id || !course.is_published}
-                      title={course.is_published ? undefined : t('admin.courses.view_as_learner_publish_first')}
-                      className={cn(
-                        'w-full min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200',
-                        course.is_published
-                          ? 'text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 hover:border-primary/40 active:scale-[0.98]'
-                          : 'text-text-subtle/60 border border-line cursor-not-allowed',
-                      )}
+                      title={t('admin.preview.button_hint')}
+                      className="w-full min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 hover:border-primary/40 active:scale-[0.98]"
                     >
-                      {previewingId === course.id ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                      ) : (
-                        <GraduationCap className="h-4 w-4 shrink-0" />
-                      )}
+                      <GraduationCap className="h-4 w-4 shrink-0" />
                       <span className="truncate">{t('admin.courses.view_as_learner')}</span>
                     </button>
                   </PulseHint>
@@ -965,6 +943,14 @@ export default function CourseList() {
             </div>
           </div>
         </div>
+      )}
+
+      {previewCourse && (
+        <LearnerPreviewModal
+          path={`/courses/${previewCourse.slug}`}
+          context={previewCourse.title_es}
+          onClose={() => setPreviewCourse(null)}
+        />
       )}
     </div>
   )

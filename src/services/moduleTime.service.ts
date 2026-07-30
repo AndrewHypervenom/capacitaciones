@@ -1,5 +1,6 @@
 // src/services/moduleTime.service.ts
 import { supabase } from '@/lib/supabase';
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
 
 /**
  * Persistencia en BD del tiempo activo por (usuario, módulo).
@@ -46,6 +47,10 @@ export async function upsertModuleTime(
   moduleId: string,
   value: { elapsedMs: number; completedAt: string | null },
 ): Promise<void> {
+  // Vista previa del capacitador: el cronómetro corre en pantalla pero no se
+  // persiste (ver previewMode.ts).
+  if (IS_LEARNER_PREVIEW) return;
+
   const payload: Record<string, unknown> = {
     user_id: userId,
     module_id: moduleId,

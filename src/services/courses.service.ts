@@ -3,6 +3,7 @@ import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { requestDeletion } from '@/services/audit.service'
 import { onlyActive } from '@/lib/activeUsers'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
 // ─── Tipos ───────────────────────────────────────────────────────
 
@@ -76,14 +77,20 @@ function sortCourseModules<T extends { modules: CourseModuleSummary[] }>(course:
 export async function getLearnerCourses(
   campaignId: string | null,
   userId: string,
+  opts: { preview?: boolean } = {},
 ): Promise<LearnerCourse[]> {
+  // `preview`: vista previa del staff dentro del modal del panel. Ve su curso
+  // aunque esté en borrador y sin estar matriculado —así puede revisarlo ANTES
+  // de publicarlo—; la RLS sigue mandando sobre qué cursos puede leer.
+  const { preview = false } = opts
+  const coursesQuery = supabase
+    .from('courses')
+    // Embed del nombre de la campaña dueña (FK directa courses.campaign_id).
+    .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
+    .order('sort_order')
+
   const [coursesRes, ccRes, caRes] = await Promise.all([
-    supabase
-      .from('courses')
-      // Embed del nombre de la campaña dueña (FK directa courses.campaign_id).
-      .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
-      .eq('is_published', true)
-      .order('sort_order'),
+    preview ? coursesQuery : coursesQuery.eq('is_published', true),
     campaignId
       ? supabase
           .from('course_campaigns')
@@ -113,13 +120,13 @@ export async function getLearnerCourses(
     // campaña NO debe aparecer: el RPC self_enroll_course lo rechazaría
     // ("Curso no disponible para auto-inscripción") y el botón Inscribirme
     // fallaría con 400.
-    .filter((c) => byCampaign.has(c.id) || byUser.has(c.id) || c.visibility === 'catalog')
+    .filter((c) => preview || byCampaign.has(c.id) || byUser.has(c.id) || c.visibility === 'catalog')
     .map((c) => {
       const cc = byCampaign.get(c.id)
       const ca = byUser.get(c.id)
       return {
         ...c,
-        modules: c.modules.filter((m) => m.is_published),
+        modules: preview ? c.modules : c.modules.filter((m) => m.is_published),
         isAssigned: !!cc || !!ca,
         isMandatory: (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false),
         // Auto-inscrito: existe asignación directa creada por él mismo.
@@ -169,6 +176,10 @@ export async function getCampaignLearners(
 
 /** Auto-inscripción del aprendiz en un curso abierto (catálogo/compartido). */
 export async function selfEnroll(courseId: string): Promise<void> {
+  // En la vista previa el botón "Inscribirme" se ve (es parte de lo que ve el
+  // aprendiz) pero no matricula a nadie: si no, cada revisión del capacitador
+  // dejaba una matrícula suya inflando el contador del curso.
+  if (IS_LEARNER_PREVIEW) return
   const { error } = await supabase.rpc('self_enroll_course', { p_course_id: courseId })
   if (error) throw error
 }
@@ -186,6 +197,7 @@ export async function previewEnrollSelf(courseId: string): Promise<void> {
 
 /** Salir de un curso en el que el aprendiz se auto-inscribió. */
 export async function unenrollSelf(courseId: string): Promise<void> {
+  if (IS_LEARNER_PREVIEW) return
   const { error } = await supabase.rpc('unenroll_self', { p_course_id: courseId })
   if (error) throw error
 }

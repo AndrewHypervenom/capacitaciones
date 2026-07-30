@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getLearnerCourses, type LearnerCourse } from '@/services/courses.service'
 import { useAuth } from '@/hooks/useAuth'
+import { useAuthStore } from '@/stores/authStore'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
 let cache: { key: string; data: LearnerCourse[] } | null = null
 
 /** Cursos visibles para el usuario actual (asignados + catálogo abierto). */
 export function useLearnerCourses() {
   const { user, campaignId } = useAuth()
-  const key = `${user?.id ?? ''}:${campaignId ?? ''}`
+  // Rol REAL: dentro de la vista previa useAuth reporta 'learner' a propósito.
+  const realRole = useAuthStore((s) => s.profile?.role ?? null)
+  const preview =
+    IS_LEARNER_PREVIEW && (realRole === 'superadmin' || realRole === 'capacitador')
+  const key = `${user?.id ?? ''}:${campaignId ?? ''}:${preview ? 'preview' : 'live'}`
   const [courses, setCourses] = useState<LearnerCourse[]>(() =>
     cache?.key === key ? cache.data : [],
   )
@@ -26,7 +32,7 @@ export function useLearnerCourses() {
         return
       }
       setLoading(true)
-      getLearnerCourses(campaignId, user.id)
+      getLearnerCourses(campaignId, user.id, { preview })
         .then((data) => {
           cache = { key, data }
           setCourses(data)
@@ -38,7 +44,7 @@ export function useLearnerCourses() {
         })
         .finally(() => setLoading(false))
     },
-    [key, user?.id, campaignId],
+    [key, user?.id, campaignId, preview],
   )
 
   useEffect(() => {

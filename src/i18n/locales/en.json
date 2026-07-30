@@ -512,7 +512,8 @@
         "needs_review": "Review Protocol",
         "all_first_try": "Perfect! You completed all processes on the first try.",
         "default_correct": "Correct! That's the exact order.",
-        "default_wrong": "The order is not correct. Review the steps and try again."
+        "default_wrong": "The order is not correct. Review the steps and try again.",
+        "drag_hint": "Drag the steps to reorder them. On a phone, press and hold a step, then drag it."
       },
       "classify": {
         "all_assigned": "All cases have been assigned",
@@ -526,7 +527,8 @@
         "of_classification": "of classification",
         "perfect": "Perfect! You classified all cases correctly.",
         "good_try": "Good try. Review the cases marked in red and try again.",
-        "review_material": "Review the material and try again."
+        "review_material": "Review the material and try again.",
+        "drag_hint": "Drag each case to its category. On a phone, press and hold the case, then drag it."
       }
     },
     "view_feedback_progress": "View Feedback and Progress"
@@ -865,6 +867,22 @@
     "review_info": "Rewatch the video"
   },
   "admin": {
+    "preview": {
+      "title": "Preview",
+      "subtitle": "This is what the learner sees",
+      "nothing_saved": "This is what the learner sees · nothing you do here is saved",
+      "loading": "Loading the learner view…",
+      "reload": "Reload",
+      "open_tab": "Open in a new tab",
+      "close": "Close",
+      "button": "Preview",
+      "button_hint": "See this screen exactly as the learner does, without leaving the editor",
+      "saving": "Saving changes…",
+      "section_context": "Section {{n}}: {{name}}",
+      "module_context": "Full module",
+      "no_slug": "This module has no address yet; save it once to preview it.",
+      "save_failed": "Changes could not be saved; showing the last saved version."
+    },
     "no_campaigns": {
       "title": "You don't have any campaign yet",
       "desc": "Create your first campaign to start organizing and publishing your content. You'll automatically become its manager.",

@@ -512,7 +512,8 @@
         "needs_review": "Revisar Protocolo",
         "all_first_try": "Perfeito! Você concluiu todos os processos na primeira tentativa.",
         "default_correct": "Correto! Essa é a ordem exata.",
-        "default_wrong": "A ordem não está correta. Revise os passos e tente novamente."
+        "default_wrong": "A ordem não está correta. Revise os passos e tente novamente.",
+        "drag_hint": "Arraste os passos para ordená-los. No celular, mantenha pressionado um passo e arraste."
       },
       "classify": {
         "all_assigned": "Todos os casos foram atribuídos",
@@ -526,7 +527,8 @@
         "of_classification": "de classificação",
         "perfect": "Perfeito! Você classificou todos os casos corretamente.",
         "good_try": "Boa tentativa. Revise os casos marcados em vermelho e tente novamente.",
-        "review_material": "Revise o material e tente novamente."
+        "review_material": "Revise o material e tente novamente.",
+        "drag_hint": "Arraste cada caso para sua categoria. No celular, mantenha pressionado o caso e arraste."
       }
     },
     "view_feedback_progress": "Ver Feedback e Progresso"
@@ -865,6 +867,22 @@
     "review_info": "Rever o vídeo"
   },
   "admin": {
+    "preview": {
+      "title": "Pré-visualização",
+      "subtitle": "É assim que o aprendiz vê",
+      "nothing_saved": "É assim que o aprendiz vê · nada do que você fizer aqui é salvo",
+      "loading": "Carregando a visão do aprendiz…",
+      "reload": "Recarregar",
+      "open_tab": "Abrir em outra aba",
+      "close": "Fechar",
+      "button": "Pré-visualizar",
+      "button_hint": "Veja esta tela exatamente como o aprendiz vê, sem sair do editor",
+      "saving": "Salvando alterações…",
+      "section_context": "Seção {{n}}: {{name}}",
+      "module_context": "Módulo completo",
+      "no_slug": "Este módulo ainda não tem endereço; salve-o uma vez para pré-visualizar.",
+      "save_failed": "Não foi possível salvar as alterações; mostrando a última versão salva."
+    },
     "no_campaigns": {
       "title": "Você ainda não tem nenhuma campanha",
       "desc": "Crie sua primeira campanha para começar a organizar e publicar seu conteúdo. Você se tornará o gestor dela automaticamente.",
