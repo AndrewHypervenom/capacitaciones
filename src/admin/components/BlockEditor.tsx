@@ -27,6 +27,7 @@ import { extractVimeoId } from '@/lib/vimeo';
 import type { VideoMarkerRaw } from '@/types/blocks';
 import { FilterDropdown } from './FilterDropdown';
 import { Select } from '@/components/ui/Select';
+import { RichTextArea } from '@/components/ui/RichTextArea';
 import { cn } from '@/lib/cn';
 import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import i18n from '@/i18n';
@@ -53,26 +54,16 @@ const LANG_LABELS: Record<Lang, string> = { es: 'ES', en: 'EN', pt: 'PT' };
 
 // ─── Inline text field for multilingual blocks ─────────────────
 
+// Campo de una línea. Todo lo que es texto de varias líneas usa RichTextArea,
+// que además da negrita, cursiva, viñetas y espaciado.
 function MLInput({
-  value, onChange, placeholder, multiline, lang,
+  value, onChange, placeholder, lang,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  multiline?: boolean;
   lang: Lang;
 }) {
-  if (multiline) {
-    return (
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder ?? i18n.t('admin.modules.be.ph_text_lang', { lang })}
-        rows={3}
-        className="w-full bg-transparent text-[14px] text-text placeholder:text-text-subtle outline-none resize-none leading-relaxed"
-      />
-    );
-  }
   return (
     <input
       type="text"
@@ -86,13 +77,16 @@ function MLInput({
 
 // ─── Individual block editors ──────────────────────────────────
 
+// El párrafo es el bloque de texto por excelencia: barra completa (negrita,
+// cursiva, título, viñetas, márgenes e interlineado). Lo que se ve aquí es
+// exactamente lo que verá el aprendiz, saltos de línea incluidos.
 function ParagraphEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'paragraph' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   return (
-    <MLInput
+    <RichTextArea
       value={block.text[lang]}
       onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
-      multiline
-      lang={lang}
+      rows={4}
+      placeholder={i18n.t('admin.modules.be.ph_text_lang', { lang })}
     />
   );
 }
@@ -178,10 +172,10 @@ function CalloutEditor({ block, onChange, lang }: { block: ContentBlock & { type
           </button>
         ))}
       </div>
-      <MLInput
+      <RichTextArea
         value={block.text[lang]}
         onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
-        multiline lang={lang}
+        rows={3}
         placeholder={i18n.t('admin.modules.be.ph_callout')}
       />
     </div>
@@ -576,14 +570,15 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
             }}
             placeholder={i18n.t('admin.modules.be.ph_question', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none" />
-          <textarea value={item.answer[lang]}
-            onChange={(e) => {
-              const next = block.items.map((it, j) => j === i ? { ...it, answer: { ...it.answer, [lang]: e.target.value } } : it);
+          <RichTextArea
+            value={item.answer[lang]}
+            onChange={(v) => {
+              const next = block.items.map((it, j) => j === i ? { ...it, answer: { ...it.answer, [lang]: v } } : it);
               onChange({ ...block, items: next });
             }}
+            rows={3}
             placeholder={i18n.t('admin.modules.be.ph_answer', { lang })}
-            rows={2}
-            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none" />
+          />
         </div>
       ))}
       <button onClick={() => onChange({ ...block, items: [...block.items, { question: { es: '', en: '', pt: '' }, answer: { es: '', en: '', pt: '' } }] })}
@@ -619,15 +614,14 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
             placeholder={i18n.t('admin.modules.be.ph_tab_name', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none border-b border-glass-border/10 pb-1"
           />
-          <textarea
+          <RichTextArea
             value={tab.content[lang]}
-            onChange={(e) => {
-              const next = block.tabs.map((t, j) => j === i ? { ...t, content: { ...t.content, [lang]: e.target.value } } : t);
+            onChange={(v) => {
+              const next = block.tabs.map((t, j) => j === i ? { ...t, content: { ...t.content, [lang]: v } } : t);
               onChange({ ...block, tabs: next });
             }}
-            placeholder={i18n.t('admin.modules.be.ph_content', { lang })}
             rows={3}
-            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
+            placeholder={i18n.t('admin.modules.be.ph_content', { lang })}
           />
         </div>
       ))}
@@ -683,15 +677,16 @@ function TimelineEditor({ block, onChange, lang }: { block: ContentBlock & { typ
             placeholder={i18n.t('admin.modules.be.ph_event_title_lang', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none"
           />
-          <textarea
+          <RichTextArea
             value={item.description[lang]}
-            onChange={(e) => {
-              const next = block.items.map((it, j) => j === i ? { ...it, description: { ...it.description, [lang]: e.target.value } } : it);
+            onChange={(v) => {
+              const next = block.items.map((it, j) => j === i ? { ...it, description: { ...it.description, [lang]: v } } : it);
               onChange({ ...block, items: next });
             }}
-            placeholder={i18n.t('admin.modules.be.ph_description', { lang })}
             rows={2}
-            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
+            inlineOnly
+            showSpacing={false}
+            placeholder={i18n.t('admin.modules.be.ph_description', { lang })}
           />
         </div>
       ))}
@@ -906,7 +901,16 @@ function CodeEditorBlock({ block, onChange }: { block: ContentBlock & { type: 'c
 function QuoteEditorBlock({ block, onChange, lang }: { block: ContentBlock & { type: 'quote' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   return (
     <div className="space-y-2">
-      <MLInput value={block.text[lang]} onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })} multiline lang={lang} placeholder={i18n.t('admin.modules.be.ph_quote')} />
+      {/* La cita se muestra entre comillas y en cursiva: títulos y viñetas no
+          aplican, así que solo formato en línea. */}
+      <RichTextArea
+        value={block.text[lang]}
+        onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
+        rows={3}
+        inlineOnly
+        showSpacing={false}
+        placeholder={i18n.t('admin.modules.be.ph_quote')}
+      />
       <input type="text" value={block.author?.[lang] ?? ''}
         onChange={(e) => onChange({ ...block, author: { ...(block.author ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
         placeholder={i18n.t('admin.modules.be.ph_author', { lang })}
@@ -1259,12 +1263,13 @@ function CardsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 
             placeholder={i18n.t('admin.modules.be.ph_title_lang', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none"
           />
-          <textarea
+          <RichTextArea
             value={card.text[lang]}
-            onChange={(e) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, text: { ...c.text, [lang]: e.target.value } } : c) })}
+            onChange={(v) => onChange({ ...block, items: block.items.map((c, j) => j === i ? { ...c, text: { ...c.text, [lang]: v } } : c) })}
             placeholder={i18n.t('admin.modules.be.ph_text_lang', { lang })}
             rows={2}
-            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none"
+            inlineOnly
+            showSpacing={false}
           />
         </div>
       ))}
@@ -1397,11 +1402,14 @@ function HotspotEditor({
             onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, title: { ...p.title, [lang]: e.target.value } } : p) })}
             placeholder={i18n.t('admin.modules.be.ph_point_title_lang', { lang })}
             className="w-full bg-transparent text-[13px] font-medium text-text placeholder:text-text-subtle outline-none" />
-          <textarea value={pt.text[lang]}
-            onChange={(e) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, text: { ...p.text, [lang]: e.target.value } } : p) })}
+          <RichTextArea
+            value={pt.text[lang]}
+            onChange={(v) => onChange({ ...block, points: block.points.map((p, j) => j === i ? { ...p, text: { ...p.text, [lang]: v } } : p) })}
             placeholder={i18n.t('admin.modules.be.ph_description', { lang })}
             rows={2}
-            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none resize-none" />
+            inlineOnly
+            showSpacing={false}
+          />
         </div>
       ))}
 

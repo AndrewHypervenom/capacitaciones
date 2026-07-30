@@ -713,8 +713,10 @@
     "rich": {
       "bold": "Bold",
       "bold_hint": "Highlight what matters",
+      "bold_off_hint": "Click again to remove it",
       "italic": "Italic",
       "italic_hint": "Add subtle emphasis",
+      "italic_off_hint": "Click again to remove it",
       "heading": "Heading",
       "heading_hint": "Break the text into sections",
       "list": "List",

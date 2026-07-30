@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { HotspotImageBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
+import { RichTextInline } from '@/components/ui/RichText';
 
 interface Props {
   block: HotspotImageBlock;
@@ -77,8 +78,8 @@ export function HotspotImageBlockRenderer({ block, language }: Props) {
                   <p className="text-[13px] font-semibold text-text mb-1">
                     {pt.title[language] || pt.title.es}
                   </p>
-                  <p className="text-[12.5px] text-text-muted leading-relaxed">
-                    {pt.text[language] || pt.text.es}
+                  <p className="text-[12.5px] text-text-muted leading-relaxed whitespace-pre-line">
+                    <RichTextInline text={pt.text[language] || pt.text.es} />
                   </p>
                 </motion.div>
               )}

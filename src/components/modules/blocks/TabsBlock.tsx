@@ -3,6 +3,7 @@ import { motion, LayoutGroup } from 'framer-motion';
 import type { TabsBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
+import { RichText } from '@/components/ui/RichText';
 
 interface Props {
   block: TabsBlock;
@@ -62,15 +63,7 @@ export function TabsBlockRenderer({ block, language }: Props) {
         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
         className="px-1"
       >
-        {content.split('\n').map((line, i) =>
-          line.trim() === '' ? (
-            <div key={i} className="h-3" />
-          ) : (
-            <p key={i} className="text-[15px] text-text-muted leading-relaxed">
-              {line}
-            </p>
-          ),
-        )}
+        <RichText text={content} className="text-[15px] text-text-muted" />
       </motion.div>
     </div>
   );

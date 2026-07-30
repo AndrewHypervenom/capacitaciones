@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
 import { RichText, parseSpacing, withSpacing, type Spacing } from './RichText'
 import { Tooltip } from './Tooltip'
+import { marksAtSelection, toggleInlineMark, type MarkName, type Marks } from '@/lib/inlineMarkdown'
 
 /**
  * Editor de texto enriquecido con barra de formato (negrita, cursiva, título,
@@ -27,6 +28,7 @@ export function RichTextArea({
   placeholder,
   className,
   showSpacing = true,
+  inlineOnly = false,
 }: {
   value: string
   onChange: (v: string) => void
@@ -39,33 +41,57 @@ export function RichTextArea({
    * de párrafos): ahí el marcador invisible no sobreviviría y se vería literal.
    */
   showSpacing?: boolean
+  /**
+   * Oculta título y lista. Para campos cortos cuya vista final solo entiende
+   * formato en línea (citas, tarjetas, hitos): ahí un `# ` o un `- ` se vería
+   * literal, así que mejor no ofrecerlos.
+   */
+  inlineOnly?: boolean
 }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLTextAreaElement>(null)
   const [preview, setPreview] = useState(false)
+  // Marcas de lo que está seleccionado ahora mismo: encienden los botones para
+  // que se vea de un vistazo si el texto ya está en negrita o cursiva.
+  const [active, setActive] = useState<Marks>({ b: false, i: false })
 
   const { spacing, body } = parseSpacing(value)
   const emit = (nextBody: string, nextSpacing: Spacing = spacing) => onChange(withSpacing(nextSpacing, nextBody))
 
-  const restoreCursor = (from: number, to: number) => {
+  const syncActive = (source?: string) => {
+    const el = ref.current
+    if (!el) return
+    setActive(marksAtSelection(source ?? body, el.selectionStart, el.selectionEnd))
+  }
+
+  const restoreCursor = (from: number, to: number, source?: string) => {
     requestAnimationFrame(() => {
       const el = ref.current
       if (!el) return
       el.focus()
       el.setSelectionRange(from, to)
+      syncActive(source)
     })
   }
 
-  /** Envuelve la selección con marcadores (**, *). Sin selección, cursor entre ellos. */
-  const wrap = (marker: string) => {
+  /**
+   * Alterna negrita/cursiva sobre lo seleccionado: si ya lo está, se quita; si
+   * no, se pone (y convive con la otra marca). Solo afecta a la selección, sin
+   * arrastrar palabras vecinas, y al terminar la deja seleccionada igual que
+   * antes para poder encadenar negrita + cursiva.
+   */
+  const toggle = (mark: MarkName) => {
     const el = ref.current
     if (!el) return
-    const start = el.selectionStart
-    const end = el.selectionEnd
-    const selected = body.slice(start, end)
-    const inner = selected || t('common.rich.sample_bold', { defaultValue: 'texto' })
-    emit(body.slice(0, start) + marker + inner + marker + body.slice(end))
-    restoreCursor(start + marker.length, start + marker.length + inner.length)
+    const next = toggleInlineMark(
+      body,
+      el.selectionStart,
+      el.selectionEnd,
+      mark,
+      t('common.rich.sample_bold', { defaultValue: 'texto' }),
+    )
+    emit(next.value)
+    restoreCursor(next.start, next.end, next.value)
   }
 
   /** Antepone un prefijo (# , - ) al inicio de la línea actual. */
@@ -100,48 +126,55 @@ export function RichTextArea({
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!(e.ctrlKey || e.metaKey)) return
     const k = e.key.toLowerCase()
-    if (k === 'b') { e.preventDefault(); wrap('**') }
-    else if (k === 'i') { e.preventDefault(); wrap('*') }
+    if (k === 'b') { e.preventDefault(); toggle('b') }
+    else if (k === 'i') { e.preventDefault(); toggle('i') }
   }
 
   const btnCls =
     'flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-glass/10 hover:text-text transition-colors'
+  const activeCls = 'bg-primary/12 text-primary hover:bg-primary/15 hover:text-primary'
 
   return (
     <div className="rounded-xl border border-line bg-surface overflow-hidden focus-within:border-primary/50 transition-colors">
       <div className="flex items-center gap-0.5 border-b border-line px-1.5 py-1">
         <ToolBtn
-          className={btnCls}
+          className={cn(btnCls, active.b && activeCls)}
+          pressed={active.b}
           label={t('common.rich.bold', { defaultValue: 'Negrita' })}
-          onClick={() => wrap('**')}
-          tip={<Tip title={t('common.rich.bold', { defaultValue: 'Negrita' })} hint={t('common.rich.bold_hint', { defaultValue: 'Resalta lo importante' })} keys="Ctrl B" />}
+          onClick={() => toggle('b')}
+          tip={<Tip title={t('common.rich.bold', { defaultValue: 'Negrita' })} hint={active.b ? t('common.rich.bold_off_hint', { defaultValue: 'Clic de nuevo para quitarla' }) : t('common.rich.bold_hint', { defaultValue: 'Resalta lo importante' })} keys="Ctrl B" />}
         >
           <Bold className="h-4 w-4" />
         </ToolBtn>
         <ToolBtn
-          className={btnCls}
+          className={cn(btnCls, active.i && activeCls)}
+          pressed={active.i}
           label={t('common.rich.italic', { defaultValue: 'Cursiva' })}
-          onClick={() => wrap('*')}
-          tip={<Tip title={t('common.rich.italic', { defaultValue: 'Cursiva' })} hint={t('common.rich.italic_hint', { defaultValue: 'Da énfasis sutil' })} keys="Ctrl I" />}
+          onClick={() => toggle('i')}
+          tip={<Tip title={t('common.rich.italic', { defaultValue: 'Cursiva' })} hint={active.i ? t('common.rich.italic_off_hint', { defaultValue: 'Clic de nuevo para quitarla' }) : t('common.rich.italic_hint', { defaultValue: 'Da énfasis sutil' })} keys="Ctrl I" />}
         >
           <Italic className="h-4 w-4" />
         </ToolBtn>
-        <ToolBtn
-          className={btnCls}
-          label={t('common.rich.heading', { defaultValue: 'Título' })}
-          onClick={() => prefixLine('# ')}
-          tip={<Tip title={t('common.rich.heading', { defaultValue: 'Título' })} hint={t('common.rich.heading_hint', { defaultValue: 'Separa secciones del texto' })} />}
-        >
-          <Heading className="h-4 w-4" />
-        </ToolBtn>
-        <ToolBtn
-          className={btnCls}
-          label={t('common.rich.list', { defaultValue: 'Lista' })}
-          onClick={() => prefixLine('- ')}
-          tip={<Tip title={t('common.rich.list', { defaultValue: 'Lista' })} hint={t('common.rich.list_hint', { defaultValue: 'Enumera puntos con viñetas' })} />}
-        >
-          <List className="h-4 w-4" />
-        </ToolBtn>
+        {!inlineOnly && (
+          <>
+            <ToolBtn
+              className={btnCls}
+              label={t('common.rich.heading', { defaultValue: 'Título' })}
+              onClick={() => prefixLine('# ')}
+              tip={<Tip title={t('common.rich.heading', { defaultValue: 'Título' })} hint={t('common.rich.heading_hint', { defaultValue: 'Separa secciones del texto' })} />}
+            >
+              <Heading className="h-4 w-4" />
+            </ToolBtn>
+            <ToolBtn
+              className={btnCls}
+              label={t('common.rich.list', { defaultValue: 'Lista' })}
+              onClick={() => prefixLine('- ')}
+              tip={<Tip title={t('common.rich.list', { defaultValue: 'Lista' })} hint={t('common.rich.list_hint', { defaultValue: 'Enumera puntos con viñetas' })} />}
+            >
+              <List className="h-4 w-4" />
+            </ToolBtn>
+          </>
+        )}
 
         <span className="mx-1 h-5 w-px bg-line" aria-hidden />
 
@@ -193,8 +226,10 @@ export function RichTextArea({
               transition={{ duration: 0.16 }}
               ref={ref}
               value={body}
-              onChange={(e) => emit(e.target.value)}
+              onChange={(e) => { emit(e.target.value); syncActive(e.target.value) }}
               onKeyDown={onKeyDown}
+              onSelect={() => syncActive()}
+              onBlur={() => setActive({ b: false, i: false })}
               rows={rows}
               placeholder={placeholder}
               className={cn(
@@ -411,12 +446,13 @@ function Tip({ title, hint, keys }: { title: string; hint?: string; keys?: strin
   )
 }
 
-function ToolBtn({ tip, label, onClick, className, children }: { tip: ReactNode; label: string; onClick: () => void; className: string; children: ReactNode }) {
+function ToolBtn({ tip, label, onClick, className, pressed, children }: { tip: ReactNode; label: string; onClick: () => void; className: string; pressed?: boolean; children: ReactNode }) {
   return (
     <Tooltip label={tip}>
       <motion.button
         type="button"
         aria-label={label}
+        aria-pressed={pressed}
         whileTap={{ scale: 0.9 }}
         onMouseDown={(e) => e.preventDefault()}
         onClick={onClick}

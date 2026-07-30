@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import type { CardsBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
+import { RichTextInline } from '@/components/ui/RichText';
 
 interface Props {
   block: CardsBlock;
@@ -29,8 +30,8 @@ export function CardsBlockRenderer({ block, language }: Props) {
           <h3 className="text-[15px] font-semibold text-text leading-snug mb-1.5">
             {card.title[language] || card.title.es}
           </h3>
-          <p className="text-[13.5px] text-text-muted leading-relaxed">
-            {card.text[language] || card.text.es}
+          <p className="text-[13.5px] text-text-muted leading-relaxed whitespace-pre-line">
+            <RichTextInline text={card.text[language] || card.text.es} />
           </p>
         </motion.div>
       ))}

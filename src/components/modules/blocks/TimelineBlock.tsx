@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import type { TimelineBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
+import { RichTextInline } from '@/components/ui/RichText';
 
 interface Props {
   block: TimelineBlock;
@@ -35,8 +36,8 @@ export function TimelineBlockRenderer({ block, language }: Props) {
             <p className="text-[14px] font-semibold text-text leading-snug mb-1">
               {item.label[language] || item.label.es}
             </p>
-            <p className="text-[13.5px] text-text-muted leading-relaxed">
-              {item.description[language] || item.description.es}
+            <p className="text-[13.5px] text-text-muted leading-relaxed whitespace-pre-line">
+              <RichTextInline text={item.description[language] || item.description.es} />
             </p>
           </div>
         </motion.div>

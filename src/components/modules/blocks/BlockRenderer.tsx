@@ -21,6 +21,7 @@ import type { ModuleSection } from '@/data/modules';
 import { extractYouTubeId } from '@/lib/youtube';
 import { extractVimeoId, vimeoEmbedUrl } from '@/lib/vimeo';
 import { cn } from '@/lib/cn';
+import { RichText, RichTextInline } from '@/components/ui/RichText';
 
 
 interface CustomBaseBlock {
@@ -41,11 +42,16 @@ interface Props {
 }
 function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex, campaignId, savedAttempts }: Omit<Props, 'noAnimate'>) {
   switch (block.type) {
+    // El párrafo se escribe con formato enriquecido (negrita, cursiva, saltos de
+    // línea, viñetas, espacio extra): se renderiza con RichText conservando la
+    // tipografía del cuerpo del módulo.
     case 'paragraph':
       return (
-        <p className="text-[16px] leading-[1.8] text-text/92 max-w-[68ch]">
-          {block.text[language] || block.text.es}
-        </p>
+        <RichText
+          text={block.text[language] || block.text.es}
+          baseLeading="leading-[1.8]"
+          className="text-[16px] text-text/92 max-w-[68ch]"
+        />
       );
 
     case 'heading':
@@ -72,7 +78,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
               {!block.ordered && (
                 <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-neon-green shrink-0 transition-transform duration-200 group-hover/li:scale-150" />
               )}
-              <span>{item}</span>
+              <span className="whitespace-pre-line"><RichTextInline text={item} /></span>
             </li>
           ))}
         </Tag>
@@ -97,8 +103,8 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
             className="w-full object-cover block"
           />
           {block.caption?.[language] && (
-            <figcaption className="px-5 py-3 text-[12.5px] text-text-subtle border-t border-line bg-subtle">
-              {block.caption[language]}
+            <figcaption className="px-5 py-3 text-[12.5px] text-text-subtle border-t border-line bg-subtle whitespace-pre-line">
+              <RichTextInline text={block.caption[language]} />
             </figcaption>
           )}
         </figure>
@@ -228,12 +234,12 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
     case 'quote':
       return (
         <blockquote className="border-l-2 border-neon-green/40 pl-5 py-1">
-          <p className="text-[16px] italic text-text/80 leading-relaxed">
-            "{block.text[language] || block.text.es}"
+          <p className="text-[16px] italic text-text/80 leading-relaxed whitespace-pre-line">
+            "<RichTextInline text={block.text[language] || block.text.es} />"
           </p>
           {block.author && (
             <cite className="mt-2 block text-[12.5px] text-text-subtle not-italic">
-              — {block.author[language] || block.author.es}
+              — <RichTextInline text={block.author[language] || block.author.es} />
             </cite>
           )}
         </blockquote>

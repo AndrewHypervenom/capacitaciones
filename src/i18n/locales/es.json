@@ -713,8 +713,10 @@
     "rich": {
       "bold": "Negrita",
       "bold_hint": "Resalta lo importante",
+      "bold_off_hint": "Clic de nuevo para quitarla",
       "italic": "Cursiva",
       "italic_hint": "Da énfasis sutil",
+      "italic_off_hint": "Clic de nuevo para quitarla",
       "heading": "Título",
       "heading_hint": "Separa secciones del texto",
       "list": "Lista",

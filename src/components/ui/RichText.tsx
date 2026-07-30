@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+import { parseInline, plainInline, type InlineNode } from '@/lib/inlineMarkdown'
 
 /**
  * Renderizador de Markdown ligero para textos editables del sitio
@@ -16,12 +17,25 @@ import { cn } from '@/lib/cn'
  *
  * Es tolerante a fallos: asteriscos sueltos se limpian en vez de mostrarse.
  */
-export function RichText({ text, className }: { text: string; className?: string }) {
+export function RichText({
+  text,
+  className,
+  baseLeading,
+}: {
+  text: string
+  className?: string
+  /**
+   * Interlineado propio del contexto (p. ej. `leading-[1.8]` del cuerpo de un
+   * módulo). Se usa mientras el autor no elija un interlineado explícito, así
+   * el texto sigue viéndose igual que antes de tener formato enriquecido.
+   */
+  baseLeading?: string
+}) {
   const { spacing, body } = parseSpacing(text)
   const blocks = parseBlocks(body)
   if (!blocks.length) return null
   return (
-    <div className={cn('space-y-2', leadingClass(spacing), className)}>
+    <div className={cn('space-y-2', spacing === 'normal' && baseLeading ? baseLeading : leadingClass(spacing), className)}>
       {blocks.map((b, i) => {
         if (b.type === 'spacer') {
           return <div key={i} aria-hidden style={{ height: `${b.size * 0.7}rem` }} />
@@ -158,34 +172,19 @@ function parseBlocks(text: string): Block[] {
   return blocks
 }
 
-/** Quita asteriscos sueltos (negrita/cursiva mal cerrada) sin tocar el resto. */
-function stripStrayStars(s: string): string {
-  return s.replace(/\*+/g, '')
-}
-
-// Parser inline: **negrita**, *cursiva*. Cualquier `*` que sobre se limpia.
+/**
+ * Formato en línea: **negrita**, *cursiva* y ***ambas***, anidables entre sí
+ * (`**negrita con *cursiva* dentro**`). El parser vive en lib/inlineMarkdown
+ * para que el editor y esta vista entiendan exactamente lo mismo.
+ */
 function renderInline(text: string): ReactNode[] {
-  const tokens: ReactNode[] = []
-  // Colapsa ***x*** → **x** para que la negrita-cursiva no deje strays.
-  const src = text.replace(/\*\*\*([^*]+)\*\*\*/g, '**$1**')
-  const regex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/g
-  let last = 0
-  let key = 0
-  let match: RegExpExecArray | null
-
-  while ((match = regex.exec(src)) !== null) {
-    if (match.index > last) {
-      tokens.push(<Fragment key={key++}>{stripStrayStars(src.slice(last, match.index))}</Fragment>)
-    }
-    if (match[1]) {
-      tokens.push(<strong key={key++} className="font-bold text-text">{match[2]}</strong>)
-    } else if (match[3]) {
-      tokens.push(<em key={key++} className="italic">{match[4]}</em>)
-    }
-    last = regex.lastIndex
-  }
-  if (last < src.length) tokens.push(<Fragment key={key++}>{stripStrayStars(src.slice(last))}</Fragment>)
-  return tokens
+  const toNodes = (nodes: InlineNode[]): ReactNode[] =>
+    nodes.map((n, i) => {
+      if (n.type === 'text') return <Fragment key={i}>{n.value}</Fragment>
+      if (n.type === 'strong') return <strong key={i} className="font-bold text-text">{toNodes(n.children)}</strong>
+      return <em key={i} className="italic">{toNodes(n.children)}</em>
+    })
+  return toNodes(parseInline(text))
 }
 
 /**
@@ -194,14 +193,12 @@ function renderInline(text: string): ReactNode[] {
  */
 export function stripMarkdown(text: string | null | undefined): string {
   if (!text) return ''
-  return text
+  const withoutBlocks = text
     .replace(/\r/g, '')
     .replace(SPACING_RE, '')          // marcador de interlineado
     .replace(/^\s*#{1,6}\s+/gm, '')   // títulos
     .replace(/^\s*[-*•]\s+/gm, '')    // viñetas
-    .replace(/\*\*([^*]+)\*\*/g, '$1') // negrita
-    .replace(/\*([^*]+)\*/g, '$1')     // cursiva
-    .replace(/\*+/g, '')               // strays
+  return plainInline(withoutBlocks)   // negrita/cursiva (y asteriscos sueltos)
     .replace(/\n{2,}/g, ' · ')         // saltos dobles → separador visible
     .replace(/\n/g, ' ')
     .replace(/\s{2,}/g, ' ')

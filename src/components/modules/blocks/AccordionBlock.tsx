@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react';
 import type { AccordionBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
+import { RichText } from '@/components/ui/RichText';
 
 interface Props {
   block: AccordionBlock;
@@ -53,9 +54,10 @@ export function AccordionBlockRenderer({ block, language }: Props) {
                 >
                   <div className="px-5 pb-5 pt-1">
                     <div className="h-px w-full bg-glass-border/10 mb-4" />
-                    <p className="text-[14px] text-text-muted leading-relaxed">
-                      {item.answer[language] || item.answer.es}
-                    </p>
+                    <RichText
+                      text={item.answer[language] || item.answer.es}
+                      className="text-[14px] text-text-muted"
+                    />
                   </div>
                 </motion.div>
               )}
