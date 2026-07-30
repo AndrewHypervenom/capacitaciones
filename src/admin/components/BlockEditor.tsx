@@ -927,7 +927,20 @@ function SortGameEditor({
 }) {
   const title = block.title?.[lang] ?? '';
   const instructions = block.instructions?.[lang] ?? '';
-  const steps = block.steps ?? [];
+
+  // El aprendiz lee los pasos desde `processes`; este editor rápido históricamente
+  // los guardaba en `block.steps`, así que la sección se veía vacía en el curso.
+  // Ahora se escriben en los dos sitios: `processes[0].steps` (canónico) y
+  // `steps` (compatibilidad con bloques antiguos).
+  const firstProcess = block.processes?.[0];
+  const steps = (firstProcess?.steps?.length ? firstProcess.steps : block.steps) ?? [];
+
+  const commitSteps = (updatedSteps: any[]) => {
+    const processes = block.processes?.length
+      ? block.processes.map((p: any, i: number) => (i === 0 ? { ...p, steps: updatedSteps } : p))
+      : [{ id: 'process-1', steps: updatedSteps }];
+    onChange({ ...block, processes, steps: updatedSteps });
+  };
 
   // 1. Función para añadir un paso nuevo vacío a la lista
   const handleAddStep = () => {
@@ -935,24 +948,19 @@ function SortGameEditor({
       id: crypto.randomUUID(), // Le da un código único al paso
       text: { es: '', en: '', pt: '' } // Espacio libre para los idiomas
     };
-    onChange({ ...block, steps: [...steps, newStep] });
+    commitSteps([...steps, newStep]);
   };
 
   // 2. Función para editar el texto de un paso en tiempo real
   const handleEditStep = (id: string, value: string) => {
-    const updatedSteps = steps.map((step: any) => {
-      if (step.id === id) {
-        return { ...step, text: { ...step.text, [lang]: value } };
-      }
-      return step;
-    });
-    onChange({ ...block, steps: updatedSteps });
+    commitSteps(steps.map((step: any) => (
+      step.id === id ? { ...step, text: { ...step.text, [lang]: value } } : step
+    )));
   };
 
   // 3. Función para eliminar un paso de la lista cuando presionas la ✕
   const handleDeleteStep = (id: string) => {
-    const updatedSteps = steps.filter((step: any) => step.id !== id);
-    onChange({ ...block, steps: updatedSteps });
+    commitSteps(steps.filter((step: any) => step.id !== id));
   };
 
   return (

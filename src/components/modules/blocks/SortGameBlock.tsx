@@ -9,11 +9,21 @@ import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
 
 function normalizeProcesses(block: GameSortBlock): GameSortProcess[] {
-  if (block.processes && block.processes.length > 0) return block.processes;
+  // Solo cuentan los procesos que realmente tienen pasos. El editor rápido de
+  // bloques guarda los pasos en `block.steps` y deja `processes[0]` vacío, así
+  // que sin este filtro el aprendiz veía el título y el botón "Verificar orden"
+  // pero ningún paso que arrastrar.
+  const withSteps = (block.processes ?? []).filter((p) => (p.steps?.length ?? 0) > 0);
+  if (withSteps.length > 0) return withSteps;
   if (block.steps && block.steps.length > 0) {
     return [{ id: 'legacy-process', steps: block.steps }];
   }
   return [];
+}
+
+/** Firma estable del contenido: cambia solo si cambian los pasos de verdad. */
+function signature(processes: GameSortProcess[]): string {
+  return processes.map((p) => `${p.id}:${p.steps.map((s) => s.id).join(',')}`).join('|');
 }
 
 function shuffled<T>(arr: T[]): T[] {
@@ -109,6 +119,23 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   const [showBlockedPop, setShowBlockedPop] = useState(false);
 
   const timerRef = useRef<any>(null);
+
+  // Si el bloque llega (o cambia) después del primer render —contenido que se
+  // carga tarde, o el capacitador editando en vivo— hay que rearmar la baraja:
+  // el useState inicial solo corre una vez y dejaría la lista vacía.
+  const sig = signature(processes);
+  const sigRef = useRef(sig);
+  useEffect(() => {
+    if (sigRef.current === sig) return;
+    sigRef.current = sig;
+    setProcessIdx(0);
+    setItems(processes[0] ? shuffled(processes[0].steps) : []);
+    setUsedHelp(new Array(processes.length).fill(false));
+    setElapsed(0);
+    setPhase('playing');
+    // `processes` se recalcula en cada render; `sig` es la dependencia real.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
 
   // ─── 1. EFFECT DE GUARDADO EN SUPABASE  ───
   useEffect(() => {
