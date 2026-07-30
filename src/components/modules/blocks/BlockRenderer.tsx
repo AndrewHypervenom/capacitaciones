@@ -50,7 +50,8 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
         <RichText
           text={block.text[language] || block.text.es}
           baseLeading="leading-[1.8]"
-          className="text-[16px] text-text/92 max-w-[68ch]"
+          baseMaxWidth="max-w-[68ch]"
+          className="text-[16px] text-text/92"
         />
       );
 

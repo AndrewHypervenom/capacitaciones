@@ -4,10 +4,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   Bold, Italic, Heading, List, Eye, Pencil, Check,
   AlignVerticalSpaceAround, ArrowUpToLine, ArrowDownToLine, MoveVertical,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify, WrapText, Maximize2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
-import { RichText, parseSpacing, withSpacing, type Spacing } from './RichText'
+import { RichText, parseAttrs, withAttrs, type Spacing, type Align, type Width, type TextAttrs } from './RichText'
 import { Tooltip } from './Tooltip'
 import { marksAtSelection, toggleInlineMark, type MarkName, type Marks } from '@/lib/inlineMarkdown'
 
@@ -28,6 +29,7 @@ export function RichTextArea({
   placeholder,
   className,
   showSpacing = true,
+  showWidth = false,
   inlineOnly = false,
 }: {
   value: string
@@ -42,6 +44,11 @@ export function RichTextArea({
    */
   showSpacing?: boolean
   /**
+   * Ofrece "ancho completo". Solo tiene sentido donde la vista final limita el
+   * ancho de lectura (hoy: el bloque de párrafo del módulo, `max-w-[68ch]`).
+   */
+  showWidth?: boolean
+  /**
    * Oculta título y lista. Para campos cortos cuya vista final solo entiende
    * formato en línea (citas, tarjetas, hitos): ahí un `# ` o un `- ` se vería
    * literal, así que mejor no ofrecerlos.
@@ -55,8 +62,8 @@ export function RichTextArea({
   // que se vea de un vistazo si el texto ya está en negrita o cursiva.
   const [active, setActive] = useState<Marks>({ b: false, i: false })
 
-  const { spacing, body } = parseSpacing(value)
-  const emit = (nextBody: string, nextSpacing: Spacing = spacing) => onChange(withSpacing(nextSpacing, nextBody))
+  const { attrs, body } = parseAttrs(value)
+  const emit = (nextBody: string, nextAttrs: TextAttrs = attrs) => onChange(withAttrs(nextAttrs, nextBody))
 
   const syncActive = (source?: string) => {
     const el = ref.current
@@ -179,7 +186,19 @@ export function RichTextArea({
         <span className="mx-1 h-5 w-px bg-line" aria-hidden />
 
         <SpaceMenu btnCls={btnCls} onAdd={addMargin} />
-        {showSpacing && <SpacingMenu value={spacing} onSelect={(s) => emit(body, s)} btnCls={btnCls} />}
+        {showSpacing && (
+          <>
+            <SpacingMenu value={attrs.spacing} onSelect={(s) => emit(body, { ...attrs, spacing: s })} btnCls={btnCls} />
+            <AlignMenu
+              align={attrs.align}
+              width={attrs.width}
+              showWidth={showWidth}
+              onAlign={(a) => emit(body, { ...attrs, align: a })}
+              onWidth={(w) => emit(body, { ...attrs, width: w })}
+              btnCls={btnCls}
+            />
+          </>
+        )}
 
         <div className="ml-auto">
           <Tooltip label={<Tip title={preview ? t('common.rich.edit', { defaultValue: 'Editar' }) : t('common.rich.preview', { defaultValue: 'Vista previa' })} hint={preview ? t('common.rich.edit_hint', { defaultValue: 'Volver a escribir' }) : t('common.rich.preview_hint', { defaultValue: 'Míralo como el aprendiz' })} />}>
@@ -294,6 +313,120 @@ function SpaceMenu({ btnCls, onAdd }: { btnCls: string; onAdd: (where: 'above' |
         <div className="px-2 pt-1 pb-0.5 text-[10.5px] text-text-subtle">
           {t('common.rich.space_repeat_hint', { defaultValue: 'Repite para más espacio.' })}
         </div>
+      </PortalMenu>
+    </>
+  )
+}
+
+/* ── Menú: alineación y ancho ────────────────────────────────────────────
+ * "Automático" hereda del contenedor: hay secciones (estilo "feature") que
+ * centran todo su contenido a propósito, y ese sigue siendo el comportamiento
+ * por defecto. Elegir una alineación explícita la impone sobre la sección. */
+function AlignMenu({
+  align, width, showWidth, onAlign, onWidth, btnCls,
+}: {
+  align?: Align
+  width: Width
+  showWidth: boolean
+  onAlign: (a: Align | undefined) => void
+  onWidth: (w: Width) => void
+  btnCls: string
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const anchorRef = useRef<HTMLButtonElement>(null)
+
+  const options: { id: Align | undefined; icon: typeof AlignLeft; label: string }[] = [
+    { id: undefined, icon: WrapText, label: t('common.rich.align_auto', { defaultValue: 'Automático' }) },
+    { id: 'left', icon: AlignLeft, label: t('common.rich.align_left', { defaultValue: 'Izquierda' }) },
+    { id: 'center', icon: AlignCenter, label: t('common.rich.align_center', { defaultValue: 'Centro' }) },
+    { id: 'right', icon: AlignRight, label: t('common.rich.align_right', { defaultValue: 'Derecha' }) },
+    { id: 'justify', icon: AlignJustify, label: t('common.rich.align_justify', { defaultValue: 'Justificado' }) },
+  ]
+
+  const CurrentIcon = options.find((o) => o.id === align)?.icon ?? WrapText
+
+  return (
+    <>
+      <Tooltip label={<Tip title={t('common.rich.align', { defaultValue: 'Alineación' })} hint={t('common.rich.align_hint', { defaultValue: 'Izquierda, centro, justificado o ancho completo' })} />}>
+        <motion.button
+          ref={anchorRef}
+          type="button"
+          aria-label={t('common.rich.align', { defaultValue: 'Alineación' })}
+          whileTap={{ scale: 0.9 }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className={cn(btnCls, (open || align || width === 'full') && 'bg-glass/10 text-text')}
+        >
+          <CurrentIcon className="h-4 w-4" />
+        </motion.button>
+      </Tooltip>
+
+      <PortalMenu anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} width={224}>
+        <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+          {t('common.rich.align', { defaultValue: 'Alineación' })}
+        </div>
+        {options.map((o) => {
+          const active = o.id === align
+          return (
+            <button
+              key={o.id ?? 'auto'}
+              type="button"
+              role="menuitemradio"
+              aria-checked={active}
+              onClick={() => { onAlign(o.id); setOpen(false) }}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors',
+                active ? 'bg-primary/10 text-primary' : 'text-text hover:bg-glass/8',
+              )}
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <o.icon className="h-4 w-4" />
+              </span>
+              <span className="flex-1 text-[13px] font-medium">{o.label}</span>
+              {active && <Check className="h-4 w-4" />}
+            </button>
+          )
+        })}
+
+        {showWidth && (
+          <>
+            <div className="my-1 h-px bg-line" aria-hidden />
+            <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+              {t('common.rich.width', { defaultValue: 'Ancho' })}
+            </div>
+            {([
+              { id: 'normal' as const, icon: WrapText, label: t('common.rich.width_reading', { defaultValue: 'Ancho de lectura' }), hint: t('common.rich.width_reading_hint', { defaultValue: 'Renglones cortos, más fáciles de leer' }) },
+              { id: 'full' as const, icon: Maximize2, label: t('common.rich.width_full', { defaultValue: 'Ancho completo' }), hint: t('common.rich.width_full_hint', { defaultValue: 'Aprovecha todo el espacio disponible' }) },
+            ]).map((o) => {
+              const active = o.id === width
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  onClick={() => { onWidth(o.id); setOpen(false) }}
+                  className={cn(
+                    'flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors',
+                    active ? 'bg-primary/10 text-primary' : 'text-text hover:bg-glass/8',
+                  )}
+                >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                    <o.icon className="h-4 w-4" />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block text-[13px] font-medium">{o.label}</span>
+                    <span className="block text-[10.5px] text-text-subtle">{o.hint}</span>
+                  </span>
+                  {active && <Check className="mt-0.5 h-4 w-4" />}
+                </button>
+              )
+            })}
+          </>
+        )}
       </PortalMenu>
     </>
   )

@@ -21,6 +21,7 @@ export function RichText({
   text,
   className,
   baseLeading,
+  baseMaxWidth,
 }: {
   text: string
   className?: string
@@ -30,12 +31,24 @@ export function RichText({
    * el texto sigue viéndose igual que antes de tener formato enriquecido.
    */
   baseLeading?: string
+  /**
+   * Ancho de lectura propio del contexto (p. ej. `max-w-[68ch]` del cuerpo de
+   * un módulo). Se aplica salvo que el autor elija "ancho completo"; por eso lo
+   * decide RichText y no el `className` del que llama.
+   */
+  baseMaxWidth?: string
 }) {
-  const { spacing, body } = parseSpacing(text)
+  const { attrs, body } = parseAttrs(text)
   const blocks = parseBlocks(body)
   if (!blocks.length) return null
   return (
-    <div className={cn('space-y-2', spacing === 'normal' && baseLeading ? baseLeading : leadingClass(spacing), className)}>
+    <div className={cn(
+      'space-y-2',
+      attrs.spacing === 'normal' && baseLeading ? baseLeading : leadingClass(attrs.spacing),
+      attrs.align && ALIGN_CLASS[attrs.align],
+      attrs.width === 'normal' && baseMaxWidth,
+      className,
+    )}>
       {blocks.map((b, i) => {
         if (b.type === 'spacer') {
           return <div key={i} aria-hidden style={{ height: `${b.size * 0.7}rem` }} />
@@ -76,34 +89,61 @@ export function RichText({
  */
 export function RichTextInline({ text }: { text: string | null | undefined }) {
   if (!text) return null
-  // Defensivo: si algún marcador de interlineado se coló, no debe verse.
-  const { body } = parseSpacing(text)
+  // Defensivo: si algún marcador de presentación se coló, no debe verse.
+  const { body } = parseAttrs(text)
   return <>{renderInline(body)}</>
 }
 
-/* ── Interlineado por campo ──────────────────────────────────────────────
- * Se guarda como un marcador invisible al inicio del texto: `{{lh:amplio}}`.
- * "normal" no escribe marcador (queda limpio y compatible con lo existente).
- * Todas las vistas pasan por RichText o stripMarkdown, que lo retiran. */
+/* ── Presentación por campo ──────────────────────────────────────────────
+ * Interlineado, alineación y ancho se guardan como marcadores invisibles al
+ * inicio del texto: `{{lh:amplio}}{{al:justify}}{{w:full}}`. Los valores por
+ * defecto (normal / heredar / ancho de lectura) NO escriben marcador, así el
+ * contenido existente queda intacto. Todas las vistas pasan por RichText,
+ * RichTextInline o stripMarkdown, que los retiran. */
 export type Spacing = 'compact' | 'normal' | 'amplio'
-const SPACING_RE = /^\s*\{\{lh:(compact|normal|amplio)\}\}\r?\n?/
+/** `undefined` = hereda del contenedor (p. ej. secciones "feature" centradas). */
+export type Align = 'left' | 'center' | 'right' | 'justify'
+export type Width = 'normal' | 'full'
+export type TextAttrs = { spacing: Spacing; align?: Align; width: Width }
+
+const DEFAULT_ATTRS: TextAttrs = { spacing: 'normal', width: 'normal' }
+
+const ATTR_RE = /^\{\{(lh|al|w):([a-z]+)\}\}/
+const ALIGN_CLASS: Record<Align, string> = {
+  left: 'text-left',
+  center: 'text-center',
+  right: 'text-right',
+  justify: 'text-justify',
+}
 
 function leadingClass(s: Spacing): string {
   return s === 'compact' ? 'leading-snug' : s === 'amplio' ? 'leading-loose' : 'leading-relaxed'
 }
 
-/** Separa el marcador de interlineado del cuerpo del texto. */
-export function parseSpacing(text: string | null | undefined): { spacing: Spacing; body: string } {
-  const raw = text ?? ''
-  const m = raw.match(SPACING_RE)
-  if (m) return { spacing: m[1] as Spacing, body: raw.slice(m[0].length) }
-  return { spacing: 'normal', body: raw }
+/** Separa los marcadores de presentación del cuerpo del texto. */
+export function parseAttrs(text: string | null | undefined): { attrs: TextAttrs; body: string } {
+  let raw = (text ?? '').replace(/^\s+(?=\{\{(?:lh|al|w):)/, '')
+  const attrs: TextAttrs = { ...DEFAULT_ATTRS }
+  for (;;) {
+    const m = raw.match(ATTR_RE)
+    if (!m) break
+    const [, key, value] = m
+    if (key === 'lh' && (value === 'compact' || value === 'amplio')) attrs.spacing = value
+    if (key === 'al' && value in ALIGN_CLASS) attrs.align = value as Align
+    if (key === 'w' && value === 'full') attrs.width = 'full'
+    raw = raw.slice(m[0].length)
+  }
+  return { attrs, body: raw.replace(/^\r?\n/, '') }
 }
 
-/** Reescribe el texto con el marcador de interlineado (o sin él si es normal/vacío). */
-export function withSpacing(spacing: Spacing, body: string): string {
-  if (spacing === 'normal' || !body.trim()) return body
-  return `{{lh:${spacing}}}\n${body}`
+/** Reescribe el texto con sus marcadores (omite los que están en su valor por defecto). */
+export function withAttrs(attrs: TextAttrs, body: string): string {
+  if (!body.trim()) return body
+  let head = ''
+  if (attrs.spacing !== 'normal') head += `{{lh:${attrs.spacing}}}`
+  if (attrs.align) head += `{{al:${attrs.align}}}`
+  if (attrs.width === 'full') head += '{{w:full}}'
+  return head ? `${head}\n${body}` : body
 }
 
 type Block =
@@ -193,9 +233,7 @@ function renderInline(text: string): ReactNode[] {
  */
 export function stripMarkdown(text: string | null | undefined): string {
   if (!text) return ''
-  const withoutBlocks = text
-    .replace(/\r/g, '')
-    .replace(SPACING_RE, '')          // marcador de interlineado
+  const withoutBlocks = parseAttrs(text.replace(/\r/g, '')).body  // marcadores de presentación
     .replace(/^\s*#{1,6}\s+/gm, '')   // títulos
     .replace(/^\s*[-*•]\s+/gm, '')    // viñetas
   return plainInline(withoutBlocks)   // negrita/cursiva (y asteriscos sueltos)

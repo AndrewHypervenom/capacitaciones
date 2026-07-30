@@ -86,6 +86,7 @@ function ParagraphEditor({ block, onChange, lang }: { block: ContentBlock & { ty
       value={block.text[lang]}
       onChange={(v) => onChange({ ...block, text: { ...block.text, [lang]: v } })}
       rows={4}
+      showWidth
       placeholder={i18n.t('admin.modules.be.ph_text_lang', { lang })}
     />
   );
