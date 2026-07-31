@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
 import { getDefaultPassword } from '@/services/appSettings.service'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { toast } from '@/stores/toastStore'
 import {
   readGrids, analyzeGrid, extractRows, finalDisplayName,
@@ -76,11 +77,19 @@ function normalizeRole(value: string): string | null {
  * con qué contraseña nace), marca las que ya tienen cuenta consultando al
  * servidor sin crear nada, y deja corregir a mano el mapeo de columnas cuando el
  * archivo no viene con la plantilla. La creación la hace la Edge Function
- * `create-users-bulk`, que es quien impone la autorización (solo superadmin).
+ * `create-users-bulk`, que es quien impone la autorización: el superadmin crea
+ * cualquier rol en cualquier campaña; el capacitador SOLO aprendices y solo en
+ * las campañas que son suyas.
  */
 export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = false, onClose, onImported }: BulkImportUsersProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // El rol solo lo elige el superadmin; la campaña la elige cualquiera que
+  // tenga más de una, y para el capacitador es obligatoria (el servidor rechaza
+  // un alta sin campaña).
+  const canChooseRole = isSuperAdmin
+  const campaignRequired = !isSuperAdmin
 
   const [step, setStep] = useState<Step>('file')
   const [fileName, setFileName] = useState('')
@@ -95,9 +104,12 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [headerRow, setHeaderRow] = useState(0)
   const [mapping, setMapping] = useState<ColumnMapping>({ email: NONE, name: NONE, role: NONE, campaign: NONE })
 
-  // Ajustes que aplican a las filas sin valor propio
+  // Ajustes que aplican a las filas sin valor propio. El capacitador arranca en
+  // la campaña donde está parado el panel, y solo puede moverse entre las suyas.
   const [roleDefault, setRoleDefault] = useState('learner')
-  const [campaignDefault, setCampaignDefault] = useState('')
+  const [campaignDefault, setCampaignDefault] = useState(() =>
+    isSuperAdmin ? '' : resolveCreationCampaignId(null, campaigns.map((c) => c.id)),
+  )
 
   // Correcciones manuales del usuario en la tabla de revisión
   const [nameEdits, setNameEdits] = useState<Record<string, string>>({})
@@ -268,10 +280,11 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         : 'new'
       const editedName = nameEdits[key]
       const nameFromFile = editedName !== undefined ? editedName.trim() !== '' : r.name.trim() !== ''
-      const rowRole = isSuperAdmin ? (normalizeRole(r.role) ?? roleDefault) : 'learner'
-      const rowCampaign = isSuperAdmin
-        ? (campaignByName.get(r.campaign.trim().toLowerCase()) ?? (campaignDefault || null))
-        : null
+      const rowRole = canChooseRole ? (normalizeRole(r.role) ?? roleDefault) : 'learner'
+      // La campaña del archivo solo vale si es una de las accesibles: para el
+      // capacitador, `campaignByName` ya son únicamente las suyas.
+      const rowCampaign =
+        campaignByName.get(r.campaign.trim().toLowerCase()) ?? (campaignDefault || null)
       return {
         key,
         sourceLine: r.sourceLine,
@@ -282,10 +295,12 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         role: rowRole,
         campaignId: rowCampaign,
         status,
-        include: status === 'new' && !excluded[key],
+        // Sin campaña, el servidor rechazaría el alta del capacitador: se marca
+        // como no incluible en vez de dejar que falle fila por fila.
+        include: status === 'new' && !excluded[key] && !(campaignRequired && !rowCampaign),
       }
     })
-  }, [extracted, existing, nameEdits, excluded, isSuperAdmin, roleDefault, campaignDefault, campaignByName])
+  }, [extracted, existing, nameEdits, excluded, canChooseRole, campaignRequired, roleDefault, campaignDefault, campaignByName])
 
   const counts = useMemo(() => {
     const c = { new: 0, exists: 0, duplicate: 0, invalid: 0, excluded: 0 }
@@ -573,32 +588,36 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                           options={columnOptions}
                         />
                       </Field>
-                      {isSuperAdmin && (
-                        <>
-                          <Field label={t('admin.users.bulk_role_all')}>
-                            <Select
-                              compact
-                              value={roleDefault}
-                              onChange={setRoleDefault}
-                              options={[
-                                { value: 'learner', label: t('roles.learner') },
-                                { value: 'capacitador', label: t('roles.capacitador') },
-                                { value: 'superadmin', label: t('roles.superadmin') },
-                              ]}
-                            />
-                          </Field>
-                          <Field label={t('admin.users.bulk_campaign_all')}>
-                            <Select
-                              compact
-                              value={campaignDefault}
-                              onChange={setCampaignDefault}
-                              options={[
-                                { value: '', label: t('admin.users.bulk_campaign_none') },
-                                ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-                              ]}
-                            />
-                          </Field>
-                        </>
+                      {canChooseRole && (
+                        <Field label={t('admin.users.bulk_role_all')}>
+                          <Select
+                            compact
+                            value={roleDefault}
+                            onChange={setRoleDefault}
+                            options={[
+                              { value: 'learner', label: t('roles.learner') },
+                              { value: 'capacitador', label: t('roles.capacitador') },
+                              { value: 'superadmin', label: t('roles.superadmin') },
+                            ]}
+                          />
+                        </Field>
+                      )}
+                      {campaigns.length > 0 && (
+                        <Field label={t('admin.users.bulk_campaign_all')} required={campaignRequired}>
+                          <Select
+                            compact
+                            value={campaignDefault}
+                            onChange={setCampaignDefault}
+                            placeholder={t('admin.users.pick_campaign')}
+                            options={[
+                              // El capacitador no puede dejarla vacía.
+                              ...(campaignRequired
+                                ? []
+                                : [{ value: '', label: t('admin.users.bulk_campaign_none') }]),
+                              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+                            ]}
+                          />
+                        </Field>
                       )}
                     </div>
 
@@ -679,10 +698,10 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                 <th className="w-10 px-1 py-2 text-right font-normal">#</th>
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_email')}</th>
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_name')}</th>
-                                {isSuperAdmin && (
+                                {canChooseRole && (
                                   <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_role')}</th>
                                 )}
-                                {isSuperAdmin && (
+                                {campaigns.length > 0 && (
                                   <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_campaign')}</th>
                                 )}
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_password')}</th>
@@ -734,14 +753,20 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                       <span className="text-text-subtle">—</span>
                                     )}
                                   </td>
-                                  {isSuperAdmin && (
+                                  {canChooseRole && (
                                     <td className="px-3 py-2 text-text-muted">{t(`roles.${r.role}`)}</td>
                                   )}
-                                  {isSuperAdmin && (
+                                  {campaigns.length > 0 && (
                                     <td className="max-w-[140px] truncate px-3 py-2 text-text-muted">
-                                      {r.campaignId
-                                        ? campaignNameById.get(r.campaignId) ?? '—'
-                                        : t('admin.users.bulk_campaign_none')}
+                                      {r.campaignId ? (
+                                        campaignNameById.get(r.campaignId) ?? '—'
+                                      ) : campaignRequired ? (
+                                        <span className="text-amber-500">
+                                          {t('admin.users.bulk_campaign_missing')}
+                                        </span>
+                                      ) : (
+                                        t('admin.users.bulk_campaign_none')
+                                      )}
                                     </td>
                                   )}
                                   <td className="px-3 py-2 font-mono text-text-muted">
@@ -758,6 +783,13 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                           </table>
                         </div>
                       </div>
+
+                      {campaignRequired && !campaignDefault && (
+                        <p className="flex items-center gap-2 text-[12px] text-amber-500">
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          {t('admin.users.bulk_campaign_required')}
+                        </p>
+                      )}
 
                       {tooMany && (
                         <p className="flex items-center gap-2 text-[12px] text-red-500">

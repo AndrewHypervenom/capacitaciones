@@ -25,6 +25,7 @@ import { HrRosterSyncModal } from '@/admin/components/HrRosterSyncModal'
 import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
 import { getDefaultPassword } from '@/services/appSettings.service'
 import { setUsersActive } from '@/services/hrSync.service'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import type { Profile, Campaign } from '@/types/database'
 
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
@@ -123,6 +124,15 @@ export default function UserList() {
 
   const inactiveCount = useMemo(() => users.filter((u) => u.is_active === false).length, [users])
 
+  // El capacitador da de alta aprendices (nada más) en sus propias campañas. Las
+  // BAJAS siguen siendo solo del superadmin: ese es el punto de control del
+  // proceso de Talento Humano y no se delega.
+  const canCreateUsers = isSuperAdmin || campaigns.length > 0
+  // Sin campaña elegida el servidor rechaza el alta, así que el formulario la
+  // exige antes de dejar crear.
+  const needsCampaign = !isSuperAdmin
+  const missingCampaign = needsCampaign && !inviteCampaign
+
   useEffect(() => {
     async function load() {
       // El capacitador ve las personas de sus campañas (casa + colaboraciones) y
@@ -143,7 +153,8 @@ export default function UserList() {
       }
       const [profiles, creds] = await Promise.all([
         profilesQuery,
-        // Solo el superadmin recibe filas (RLS); para el resto vuelve vacío.
+        // La RLS decide qué filas llegan: el superadmin las ve todas y el
+        // capacitador solo las de la gente de sus campañas.
         supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
       ])
       const rows = profiles.data ?? []
@@ -165,8 +176,18 @@ export default function UserList() {
   }, [isSuperAdmin])
 
   const refreshData = async () => {
+    // Mismo alcance que la carga inicial: el capacitador ve solo su gente y
+    // nunca a los superadmin (si no, tras crear un usuario la lista se le
+    // ensancharía sola con lo que la RLS deje pasar).
+    let profilesQuery = supabase.from('profiles').select('*').order('created_at')
+    if (!isSuperAdmin) {
+      const ids = campaigns.map((c) => c.id)
+      profilesQuery = profilesQuery
+        .in('campaign_id', ids.length ? ids : [''])
+        .neq('role', 'superadmin')
+    }
     const [{ data: updated }, { data: creds }] = await Promise.all([
-      supabase.from('profiles').select('*').order('created_at'),
+      profilesQuery,
       supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
     ])
     const rows = updated ?? []
@@ -209,8 +230,26 @@ export default function UserList() {
     setTimeout(() => setCopiedId((k) => (k === userId ? null : k)), 2000)
   }
 
+  /**
+   * Abre el formulario de alta arrancando en la campaña donde el panel está
+   * parado: un capacitador con varias campañas crea en la que está mirando, no
+   * en su casa. Sigue pudiendo cambiarla antes de crear.
+   */
+  const openInvite = () => {
+    if (!isSuperAdmin) {
+      // El capacitador no elige rol: siempre crea aprendices.
+      setInviteRole('learner')
+      setInviteCampaign((current) =>
+        current || resolveCreationCampaignId(null, campaigns.map((c) => c.id)),
+      )
+    }
+    setInviteSuccess(false)
+    setInviteError(null)
+    setInviting(true)
+  }
+
   const handleInvite = async () => {
-    if (!inviteEmail.trim()) return
+    if (!inviteEmail.trim() || missingCampaign) return
     setInviteLoading(true)
     setInviteError(null)
 
@@ -443,8 +482,10 @@ export default function UserList() {
   // más botones que otra (p. ej. "copiar credenciales").
   const gridCols = isSuperAdmin
     ? 'minmax(280px,1fr) 150px 210px 549px 48px'
-    : 'minmax(280px,1fr) 150px 350px'
-  const tableMinWidth = isSuperAdmin ? 1289 : 800
+    // El capacitador también puede copiar credenciales de su gente: la columna
+    // de acciones necesita espacio para ese botón.
+    : 'minmax(280px,1fr) 150px 490px'
+  const tableMinWidth = isSuperAdmin ? 1289 : 940
 
   return (
     <div className="p-4 sm:p-8">
@@ -455,8 +496,9 @@ export default function UserList() {
             {isSuperAdmin ? t('admin.users.subtitle') : t('admin.users.subtitle_campaign')}
           </p>
         </div>
-        {isSuperAdmin && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          {isSuperAdmin && (
+            <>
             <button
               onClick={handleRecompress}
               disabled={optimizing}
@@ -494,23 +536,28 @@ export default function UserList() {
               <Users className="h-4 w-4" />
               {t('admin.hr.button')}
             </button>
-            <button
-              onClick={() => setBulkOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
-            >
-              <Upload className="h-4 w-4" />
-              {t('admin.users.bulk_import')}
-            </button>
-            <button
-              onClick={() => setInviting(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]"
-              style={{ background: '#10D451' }}
-            >
-              <UserPlus className="h-4 w-4" />
-              {t('admin.users.create_user')}
-            </button>
-          </div>
-        )}
+            </>
+          )}
+          {canCreateUsers && (
+            <>
+              <button
+                onClick={() => setBulkOpen(true)}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
+              >
+                <Upload className="h-4 w-4" />
+                {t('admin.users.bulk_import')}
+              </button>
+              <button
+                onClick={openInvite}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]"
+                style={{ background: '#10D451' }}
+              >
+                <UserPlus className="h-4 w-4" />
+                {isSuperAdmin ? t('admin.users.create_user') : t('admin.users.create_learner')}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {inviting && (
@@ -572,31 +619,56 @@ export default function UserList() {
                 onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null) }}
                 className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none min-h-[44px]"
               />
-              {isSuperAdmin && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
+                  {isSuperAdmin ? (
                     <Select
                       value={inviteRole}
                       onChange={(v) => setInviteRole(v as Profile['role'])}
                       options={roleOptions}
                     />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">{i18n.t('admin.users.col_campaign')}</label>
-                    <Select
-                      value={inviteCampaign}
-                      onChange={setInviteCampaign}
-                      options={campaignOptions(i18n.t('admin.worlds.no_campaign'))}
-                    />
-                  </div>
+                  ) : (
+                    // El capacitador solo da de alta aprendices: se muestra el rol
+                    // resultante en vez de un selector con una sola opción.
+                    <div className="flex items-center gap-2 min-h-[44px]">
+                      <span
+                        className="rounded-lg px-2.5 py-1 text-[12px] font-medium"
+                        style={{ background: roleColors.learner, color: roleText.learner }}
+                      >
+                        {roleLabel.learner}
+                      </span>
+                      <span className="text-[11px] text-text-subtle">
+                        {t('admin.users.role_locked_learner')}
+                      </span>
+                    </div>
+                  )}
                 </div>
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
+                    {i18n.t('admin.users.col_campaign')}
+                    {needsCampaign && <span className="ml-0.5 text-[#10D451]">*</span>}
+                  </label>
+                  <Select
+                    value={inviteCampaign}
+                    onChange={setInviteCampaign}
+                    options={
+                      needsCampaign
+                        ? campaigns.map((c) => ({ value: c.id, label: c.name }))
+                        : campaignOptions(i18n.t('admin.worlds.no_campaign'))
+                    }
+                    placeholder={t('admin.users.pick_campaign')}
+                  />
+                </div>
+              </div>
+              {missingCampaign && (
+                <p className="text-[12px] text-text-muted">{t('admin.users.pick_campaign_hint')}</p>
               )}
               {inviteError && <p className="text-red-500 text-[12px]">{inviteError}</p>}
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleInvite}
-                  disabled={inviteLoading || !inviteEmail}
+                  disabled={inviteLoading || !inviteEmail || missingCampaign}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
                   style={{ background: '#10D451' }}
                 >
@@ -836,7 +908,7 @@ export default function UserList() {
                     <IdCard className="h-4 w-4 shrink-0" />
                     <span className="truncate">{t('admin.users.view_profile')}</span>
                   </button>
-                  {isSuperAdmin && tempCreds[user.id] && (
+                  {tempCreds[user.id] && (
                     <button
                       onClick={() => copyCreds(user.id, tempCreds[user.id].email, tempCreds[user.id].temp_password)}
                       className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors min-w-0"
