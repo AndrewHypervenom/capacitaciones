@@ -67,6 +67,34 @@ function sortCourseModules<T extends { modules: CourseModuleSummary[] }>(course:
   return course
 }
 
+/**
+ * Nombres de campaña por id, a través de un RPC SECURITY DEFINER.
+ *
+ * El embed `campaigns!courses_campaign_id_fkey(name)` solo trae el nombre de las
+ * campañas que la RLS deja leer, así que en el catálogo compartido —donde hay
+ * cursos de otras campañas— casi todas las tarjetas se quedaban sin cápsula.
+ * El RPC devuelve únicamente id + nombre (nada sensible) sin abrir la tabla.
+ *
+ * No es fatal: si el SQL todavía no se corrió, se queda con lo que trajo el
+ * embed y las tarjetas ajenas simplemente no muestran cápsula.
+ */
+async function fetchCampaignNames(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (ids.length === 0) return out
+  const { data, error } = await supabase.rpc('get_campaign_names', { p_ids: ids })
+  if (error) {
+    // 42883/PGRST202 = la función aún no existe (SQL pendiente).
+    if (error.code !== '42883' && error.code !== 'PGRST202') {
+      console.warn('[courses] get_campaign_names', error.message)
+    }
+    return out
+  }
+  for (const row of (data ?? []) as Array<{ id: string; name: string }>) {
+    out.set(row.id, row.name)
+  }
+  return out
+}
+
 // ─── Aprendiz ────────────────────────────────────────────────────
 
 /**
@@ -111,7 +139,7 @@ export async function getLearnerCourses(
     ((caRes.data ?? []) as CourseAssignmentRow[]).map((r) => [r.course_id, r]),
   )
 
-  return ((coursesRes.data ?? []) as unknown as (CourseWithModules & {
+  const rows = ((coursesRes.data ?? []) as unknown as (CourseWithModules & {
     campaigns: { name: string } | null
   })[])
     .map(sortCourseModules)
@@ -121,19 +149,24 @@ export async function getLearnerCourses(
     // ("Curso no disponible para auto-inscripción") y el botón Inscribirme
     // fallaría con 400.
     .filter((c) => preview || byCampaign.has(c.id) || byUser.has(c.id) || c.visibility === 'catalog')
-    .map((c) => {
-      const cc = byCampaign.get(c.id)
-      const ca = byUser.get(c.id)
-      return {
-        ...c,
-        modules: preview ? c.modules : c.modules.filter((m) => m.is_published),
-        isAssigned: !!cc || !!ca,
-        isMandatory: (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false),
-        // Auto-inscrito: existe asignación directa creada por él mismo.
-        selfEnrolled: !!ca && ca.assigned_by === userId,
-        campaign_name: c.campaigns?.name ?? null,
-      }
-    })
+
+  // Completamos los nombres que la RLS no dejó traer en el embed.
+  const missing = [...new Set(rows.filter((c) => !c.campaigns?.name).map((c) => c.campaign_id))]
+  const names = await fetchCampaignNames(missing)
+
+  return rows.map((c) => {
+    const cc = byCampaign.get(c.id)
+    const ca = byUser.get(c.id)
+    return {
+      ...c,
+      modules: preview ? c.modules : c.modules.filter((m) => m.is_published),
+      isAssigned: !!cc || !!ca,
+      isMandatory: (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false),
+      // Auto-inscrito: existe asignación directa creada por él mismo.
+      selfEnrolled: !!ca && ca.assigned_by === userId,
+      campaign_name: c.campaigns?.name ?? names.get(c.campaign_id) ?? null,
+    }
+  })
 }
 
 // ─── Catálogo compartido + matrícula viva ────────────────────────

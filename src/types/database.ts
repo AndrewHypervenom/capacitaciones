@@ -1739,6 +1739,16 @@ export interface Database {
           created_at: string
         }[]
       }
+      // Nombre de las campañas indicadas (solo id + nombre). SECURITY DEFINER:
+      // el catálogo mezcla cursos de varias campañas y la RLS de `campaigns`
+      // solo deja leer la propia, así que el embed volvía null.
+      get_campaign_names: {
+        Args: { p_ids: string[] }
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
     }
     Enums: Record<string, never>
   }

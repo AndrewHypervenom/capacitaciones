@@ -1,16 +1,18 @@
 import { useCallback, useMemo, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, Clock, Compass, GraduationCap, Loader2, Plus, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Building2, Clock, Compass, GraduationCap, Loader2, Plus, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useModuleDone, keyOfCourseModule, type ModuleKey } from '@/stores/progressStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { selfEnroll, type LearnerCourse } from '@/services/courses.service';
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { Select } from '@/components/ui/Select';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { stripMarkdown } from '@/components/ui/RichText';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { cn } from '@/lib/cn';
@@ -46,6 +48,11 @@ function CourseCard({
   const { t } = useTranslation();
   const reduce = useReducedMotion();
   const language = useUserStore((s) => s.language);
+  // Rol REAL (no el de useAuth, que en la vista previa finge ser aprendiz): al
+  // capacitador/superadmin le sirve saber de qué campaña es cada curso incluso
+  // mirando el panel del aprendiz, donde el catálogo mezcla varias campañas.
+  const realRole = useAuthStore((s) => s.profile?.role);
+  const isStaff = realRole === 'superadmin' || realRole === 'capacitador';
   const isModuleDone = useModuleDone();
   const { total, done, pct } = courseProgress(course, isModuleDone);
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
@@ -104,13 +111,13 @@ function CourseCard({
           >
             <GraduationCap className="h-5 w-5" />
           </div>
-          <div className="absolute top-3 right-3 z-10 flex gap-1.5">
+          <div className="absolute top-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap justify-end gap-1.5">
             {course.isMandatory && (
               <span className="rounded-full bg-danger/90 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
                 {t('courses.mandatory')}
               </span>
             )}
-            {course.isAssigned ? (
+            {course.isAssigned && (
               // Mis cursos: el estado del aprendiz (completado / en proceso / sin empezar).
               <span
                 className={cn(
@@ -124,13 +131,18 @@ function CourseCard({
                     ? t('courses.status_in_progress')
                     : t('courses.status_not_started')}
               </span>
-            ) : (
-              // Catálogo: la campaña dueña del curso (más útil que decir "Catálogo").
-              course.campaign_name && (
-                <span className="max-w-[10rem] truncate rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
-                  {course.campaign_name}
+            )}
+            {/* La campaña dueña del curso: en el catálogo la ve todo el mundo
+                (es más útil que decir "Catálogo") y el staff la ve también en
+                "Mis cursos", junto al estado. El Tooltip vive en un portal, así
+                que el nombre completo no lo recorta el overflow de la portada. */}
+            {course.campaign_name && (!course.isAssigned || isStaff) && (
+              <Tooltip label={course.campaign_name}>
+                <span className="inline-flex max-w-[10rem] items-center gap-1 rounded-full bg-black/55 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-sm">
+                  {isStaff && <Building2 className="h-3 w-3 shrink-0" aria-hidden />}
+                  <span className="truncate">{course.campaign_name}</span>
                 </span>
-              )
+              </Tooltip>
             )}
           </div>
         </div>
