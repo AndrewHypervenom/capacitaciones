@@ -1451,6 +1451,7 @@
       "default_pwd_on": "Enabled",
       "default_pwd_off": "Disabled",
       "created_with_default_pwd": "The site's default password was used.",
+      "default_pwd_ignored": "Heads up: the default password is enabled, but the server issued a random temporary one. Share the password shown above (the default will NOT work for this account) and tell support: the user-creation function is out of date.",
       "reset_pwd": "Reset password",
       "reset_pwd_confirm_default": "{{name}} will be sent back to the site's default password and will have to set a new one on their next sign-in. Continue?",
       "reset_pwd_confirm_temp": "{{name}} will get a new temporary password (the default one is disabled) and will have to set a new one on their next sign-in. Continue?",

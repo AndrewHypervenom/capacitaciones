@@ -1451,6 +1451,7 @@
       "default_pwd_on": "Activada",
       "default_pwd_off": "Desactivada",
       "created_with_default_pwd": "Se usó la contraseña predeterminada del sitio.",
+      "default_pwd_ignored": "Ojo: la contraseña predeterminada está activada, pero el servidor entregó una temporal aleatoria. Reparte la que aparece arriba (la predeterminada NO funciona para esta cuenta) y avisa a soporte: la función de altas está desactualizada.",
       "reset_pwd": "Restablecer contraseña",
       "reset_pwd_confirm_default": "Se devolverá a {{name}} a la contraseña predeterminada del sitio y tendrá que definir una nueva la próxima vez que entre. ¿Continuar?",
       "reset_pwd_confirm_temp": "Se le asignará a {{name}} una contraseña temporal nueva (la predeterminada está desactivada) y tendrá que definir una nueva la próxima vez que entre. ¿Continuar?",

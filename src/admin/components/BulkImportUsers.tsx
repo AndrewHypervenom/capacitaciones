@@ -833,6 +833,16 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                       {usedDefaultPwd ? t('admin.users.bulk_creds_hint_default') : t('admin.users.bulk_creds_hint')}
                     </p>
                   )}
+                  {/* La vista previa PROMETE la predeterminada (columna de la
+                      tabla), así que si el servidor no la aplicó hay que decirlo
+                      aquí y ahora: si no, se anuncia una contraseña que ninguna
+                      de estas cuentas tiene. */}
+                  {createdCount > 0 && defaultPasswordOn && !usedDefaultPwd && (
+                    <p className="flex items-start gap-2 text-[12px] text-amber-500">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      {t('admin.users.default_pwd_ignored')}
+                    </p>
+                  )}
                   <div className="overflow-hidden rounded-xl border border-line">
                     <div className="grid grid-cols-[1fr_auto] gap-3 bg-subtle px-3 py-2 text-[11px] uppercase tracking-wider text-text-muted">
                       <span>{t('admin.users.bulk_col_email')}</span>

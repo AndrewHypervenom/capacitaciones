@@ -1451,6 +1451,7 @@
       "default_pwd_on": "Ativada",
       "default_pwd_off": "Desativada",
       "created_with_default_pwd": "Foi usada a senha padrão do site.",
+      "default_pwd_ignored": "Atenção: a senha padrão está ativada, mas o servidor entregou uma temporária aleatória. Distribua a senha exibida acima (a padrão NÃO funciona para esta conta) e avise o suporte: a função de criação de usuários está desatualizada.",
       "reset_pwd": "Redefinir senha",
       "reset_pwd_confirm_default": "{{name}} voltará para a senha padrão do site e terá que definir uma nova no próximo acesso. Continuar?",
       "reset_pwd_confirm_temp": "{{name}} receberá uma nova senha temporária (a padrão está desativada) e terá que definir uma nova no próximo acesso. Continuar?",

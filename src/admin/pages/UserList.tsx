@@ -586,6 +586,16 @@ export default function UserList() {
                   {t('admin.users.created_with_default_pwd')}
                 </p>
               )}
+              {/* El ajuste está activado pero el servidor devolvió una temporal
+                  aleatoria (típicamente: la Edge Function desplegada es anterior
+                  al soporte de contraseña predeterminada). Antes esto fallaba en
+                  SILENCIO y se repartía la predeterminada a gente que nunca la
+                  tuvo: 50 personas sin poder entrar. */}
+              {defaultPwdOn && !createdWithDefaultPwd && (
+                <p className="text-[12px] text-amber-500 mt-2">
+                  {t('admin.users.default_pwd_ignored')}
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-3">
                 <button
                   onClick={() => copyCreds('__new__', createdEmail, createdPassword)}
