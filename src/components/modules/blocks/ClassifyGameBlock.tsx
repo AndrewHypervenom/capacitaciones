@@ -1,5 +1,6 @@
 // src/components/modules/blocks/ClassifyGameBlock.tsx
 import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { saveActivityAttempt } from '@/services/activity.service';
 import { CompletedActivityBanner } from './CompletedActivityBanner';
@@ -438,14 +439,25 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
         </div>
 
         {/* Fantasma que sigue al dedo/cursor: en táctil es lo que hace evidente
-            que el caso se está moviendo, porque el original se queda en su sitio. */}
-        <DragOverlay dropAnimation={null}>
-          {activeCase ? (
-            <div className={cn(chipClass, 'border-neon-green/50 shadow-xl cursor-grabbing')}>
-              {activeCase.text[language] || activeCase.text.es}
-            </div>
-          ) : null}
-        </DragOverlay>
+            que el caso se está moviendo, porque el original se queda en su sitio.
+
+            VA EN UN PORTAL A <body> A PROPÓSITO: el DragOverlay se posiciona con
+            `position: fixed`, y cada sección del módulo está envuelta en <Reveal>,
+            cuya clase .reveal-in deja un `transform: translateY(0)`. Un transform
+            distinto de `none` convierte a ese elemento en el bloque contenedor de
+            sus descendientes fijos, así que el fantasma quedaba desplazado respecto
+            al cursor tanto como lo estuviera la sección en la página. El portal lo
+            saca de ese contenedor; el contexto de DndContext viaja por el portal. */}
+        {createPortal(
+          <DragOverlay dropAnimation={null} zIndex={9999}>
+            {activeCase ? (
+              <div className={cn(chipClass, 'border-neon-green/50 shadow-xl cursor-grabbing')}>
+                {activeCase.text[language] || activeCase.text.es}
+              </div>
+            ) : null}
+          </DragOverlay>,
+          document.body,
+        )}
       </DndContext>
 
       {!submitted && (

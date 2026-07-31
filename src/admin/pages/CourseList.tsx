@@ -10,6 +10,7 @@ import {
   updateCourse,
   deleteCourse,
   getShareableCourses,
+  previewEnrollSelf,
   previewUnenrollSelf,
   getSelfEnrolledCourseIds,
   type CourseWithModules,
@@ -316,15 +317,49 @@ export default function CourseList() {
     }
   }
 
-  // "Ver como aprendiz": abre la página real del curso —la del aprendiz— en un
-  // modal, sin salir del panel. Antes esto auto-inscribía al staff y saltaba al
-  // panel del aprendiz: había que volver a mano y la matrícula quedaba contando
-  // como alumno. El modal no inscribe a nadie y funciona con el curso en
-  // borrador, así se puede revisar ANTES de publicar.
-  const handleViewAsLearner = (course: AdminCourse) => {
-    // Ya la descubrió: el pulso de la tarjeta se apaga para siempre.
+  // Apaga para siempre el pulso que señala "Ver como aprendiz".
+  const markPreviewHintSeen = () => {
     setPreviewHintSeen(true)
     try { localStorage.setItem(PREVIEW_HINT_KEY, '1') } catch { /* modo privado */ }
+  }
+
+  // "Ver como aprendiz": matricula al staff en el curso y lo lleva a la RUTA
+  // REAL del aprendiz, fuera del panel. Es la vista de verdad —sin `?preview=1`,
+  // sin iframe—, así que sirve para reproducir fallos que solo aparecen (o que
+  // se sospecha que solo aparecen) en la experiencia real. La matrícula es real
+  // y cuenta en los contadores: por eso la tarjeta muestra después el aviso con
+  // "Salir", que la deshace.
+  //
+  // El curso en BORRADOR no se puede matricular (el RPC exige publicado): en ese
+  // caso cae a la vista previa en modal, que sí funciona sin publicar.
+  const handleViewAsLearner = async (course: AdminCourse) => {
+    markPreviewHintSeen()
+
+    if (!course.is_published) {
+      toast.info(t('admin.courses.view_as_learner_publish_first'))
+      setPreviewCourse(course)
+      return
+    }
+
+    setPreviewingId(course.id)
+    try {
+      await previewEnrollSelf(course.id)
+      setPreviewEnrolled((prev) => new Set(prev).add(course.id))
+      invalidateLearnerCoursesCache()
+      toast.success(t('admin.courses.view_as_learner_ok'))
+      navigate(`/courses/${course.slug}`)
+    } catch {
+      toast.error(t('admin.courses.view_as_learner_error'))
+    } finally {
+      setPreviewingId(null)
+    }
+  }
+
+  // Vista previa en modal: la página real del aprendiz dentro de un <iframe>
+  // marcado como vista previa. No matricula a nadie y nada de lo que se haga ahí
+  // se guarda, así que es la forma de revisar un curso ANTES de publicarlo.
+  const handleQuickPreview = (course: AdminCourse) => {
+    markPreviewHintSeen()
     setPreviewCourse(course)
   }
 
@@ -706,13 +741,26 @@ export default function CourseList() {
                   <PulseHint active={!previewHintSeen} className="flex-1 min-w-0">
                     <button
                       onClick={() => handleViewAsLearner(course)}
-                      title={t('admin.preview.button_hint')}
-                      className="w-full min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 hover:border-primary/40 active:scale-[0.98]"
+                      disabled={previewingId === course.id}
+                      title={t('admin.courses.exit_preview_hint')}
+                      className="w-full min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 hover:border-primary/40 active:scale-[0.98] disabled:opacity-60"
                     >
-                      <GraduationCap className="h-4 w-4 shrink-0" />
+                      {previewingId === course.id
+                        ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        : <GraduationCap className="h-4 w-4 shrink-0" />}
                       <span className="truncate">{t('admin.courses.view_as_learner')}</span>
                     </button>
                   </PulseHint>
+                  {/* Vista previa en modal: sigue siendo la única forma de revisar
+                      un curso en borrador (matricularse exige publicado). */}
+                  <button
+                    onClick={() => handleQuickPreview(course)}
+                    title={t('admin.preview.button_hint')}
+                    aria-label={t('admin.preview.button')}
+                    className="min-h-[44px] w-11 shrink-0 flex items-center justify-center rounded-xl text-text-muted border border-line hover:text-text hover:bg-glass/8 hover:border-glass-border/25 transition-colors"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
                   <Link
                     to={`/admin/courses/${course.id}`}
                     className="min-h-[44px] shrink-0 flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-semibold text-text-muted border border-line hover:text-text hover:bg-glass/8 hover:border-glass-border/25 transition-colors"
