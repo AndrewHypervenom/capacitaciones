@@ -313,9 +313,16 @@ export async function getModulesForCampaign(campaignId: string): Promise<Learnin
  * Módulos visibles para el usuario: los de su campaña + los de cursos
  * visibles (asignados o de catálogo, incluso de otras campañas).
  * RLS se encarga de filtrar los cursos a los que no tiene acceso.
+ *
+ * `campaignId` puede venir en null: un aprendiz al que todavía no le asignaron
+ * campaña igual debe poder abrir los cursos del catálogo (si no, la lista salía
+ * vacía y el módulo respondía "Módulo no encontrado"). En ese caso pedimos solo
+ * los módulos que pertenecen a algún curso; cuáles de esos cursos puede leer lo
+ * decide la RLS. Ojo: su progreso sí necesita campaña (user_progress.campaign_id
+ * es NOT NULL), así que esto es una red de seguridad, no el modo normal.
  */
-export async function getVisibleModules(campaignId: string): Promise<LearningModule[]> {
-  const { data, error } = await supabase
+export async function getVisibleModules(campaignId: string | null): Promise<LearningModule[]> {
+  const query = supabase
     .from('modules')
     .select(`
       *,
@@ -324,7 +331,10 @@ export async function getVisibleModules(campaignId: string): Promise<LearningMod
         section_quizzes (*)
       )
     `)
-    .or(`campaign_id.eq.${campaignId},course_id.not.is.null`)
+
+  const { data, error } = await (campaignId
+    ? query.or(`campaign_id.eq.${campaignId},course_id.not.is.null`)
+    : query.not('course_id', 'is', null))
     .eq('is_published', true)
     .order('sort_order')
 

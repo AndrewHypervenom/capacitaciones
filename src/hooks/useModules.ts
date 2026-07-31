@@ -11,6 +11,11 @@ const cache = new Map<string, LearningModule[]>()
 const ALL_KEY = '__all__'
 // Vista previa del staff: incluye borradores (lo que se está armando)
 const PREVIEW_KEY = '__preview__'
+// Aprendiz sin campaña asignada: solo los módulos que cuelgan de un curso que la
+// RLS le deje leer (catálogo abierto). Antes la clave quedaba en null y no se
+// consultaba nada: el catálogo se veía, pero al entrar decía "Módulo no
+// encontrado".
+const NO_CAMPAIGN_KEY = '__no_campaign__'
 
 export function useModules() {
   const { campaignId: profileCampaignId, isSuperAdmin, loading: authLoading } = useAuth()
@@ -24,7 +29,7 @@ export function useModules() {
     ? null
     : previewMode
       ? PREVIEW_KEY
-      : isSuperAdmin ? ALL_KEY : profileCampaignId
+      : isSuperAdmin ? ALL_KEY : (profileCampaignId ?? NO_CAMPAIGN_KEY)
 
   const [modules, setModules] = useState<LearningModule[]>(() =>
     cacheKey ? (cache.get(cacheKey) ?? []) : [],
@@ -53,7 +58,7 @@ export function useModules() {
         ? getPreviewModules()
         : cacheKey === ALL_KEY
           ? getAllPublishedModules()
-          : getVisibleModules(cacheKey)
+          : getVisibleModules(cacheKey === NO_CAMPAIGN_KEY ? null : cacheKey)
     fetcher
       .then((data) => {
         cache.set(cacheKey, data)
@@ -78,6 +83,8 @@ export function invalidateModulesCache(campaignId?: string) {
   if (campaignId) {
     cache.delete(campaignId)
     cache.delete(ALL_KEY)
+    // Publicar/despublicar un curso también cambia lo que ve quien no tiene campaña.
+    cache.delete(NO_CAMPAIGN_KEY)
   } else {
     cache.clear()
   }
