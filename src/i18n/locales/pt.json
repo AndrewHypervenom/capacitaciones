@@ -18,6 +18,12 @@
       "title": "Algo deu errado",
       "description": "Ocorreu um erro ao carregar esta tela. Recarregue a página para continuar.",
       "reload": "Recarregar"
+    },
+    "session": {
+      "title": "Não foi possível carregar seu perfil",
+      "description": "Sua sessão continua ativa, mas não conseguimos ler seus dados. Normalmente é a conexão: tente novamente em instantes.",
+      "retry": "Tentar novamente",
+      "sign_out": "Sair"
     }
   },
   "ai_credits": {

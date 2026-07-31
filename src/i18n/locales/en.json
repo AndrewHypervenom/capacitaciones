@@ -18,6 +18,12 @@
       "title": "Something went wrong",
       "description": "There was an error loading this view. Reload the page to continue.",
       "reload": "Reload"
+    },
+    "session": {
+      "title": "We couldn't load your profile",
+      "description": "Your session is still active, but we couldn't read your data. It's usually the connection: try again in a moment.",
+      "retry": "Try again",
+      "sign_out": "Sign out"
     }
   },
   "ai_credits": {

@@ -3,7 +3,9 @@ import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Navbar } from './Navbar';
 import { HelpWidget } from '@/components/help/HelpWidget';
+import { SessionRecovery } from './SessionRecovery';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/stores/authStore';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useProgressSync } from '@/hooks/useProgressSync';
 import { useResetNotifications } from '@/hooks/useResetNotifications';
@@ -21,6 +23,9 @@ function ScrollToTop() {
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
   const { isAuthenticated, loading, profile } = useAuth();
+  // Sesión buena, perfil ilegible (red/servidor): se ofrece reintentar en vez de
+  // dejar la pantalla en blanco — y sobre todo en vez de cerrar la sesión.
+  const profileUnavailable = useAuthStore((s) => s.profileUnavailable);
   const reducedMotion = useReducedMotion();
   useProgressSync();
   useResetNotifications();
@@ -39,7 +44,9 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (requireAuth && isAuthenticated && !profile) return blank;
+  if (requireAuth && isAuthenticated && !profile) {
+    return profileUnavailable ? <SessionRecovery /> : blank;
+  }
 
   if (requireAuth && profile && !profile.onboarded) {
     return <Onboarding />;

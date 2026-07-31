@@ -18,6 +18,12 @@
       "title": "Algo salió mal",
       "description": "Ocurrió un error al cargar esta vista. Recarga la página para continuar.",
       "reload": "Recargar"
+    },
+    "session": {
+      "title": "No pudimos cargar tu perfil",
+      "description": "Tu sesión sigue activa, pero no logramos leer tus datos. Suele ser la conexión: reintenta en un momento.",
+      "retry": "Reintentar",
+      "sign_out": "Cerrar sesión"
     }
   },
   "ai_credits": {
