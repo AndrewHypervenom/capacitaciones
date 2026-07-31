@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import type { FlashcardBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
+import { RichTextInline } from '@/components/ui/RichText';
 
 interface Props {
   block: FlashcardBlock;
@@ -91,8 +92,8 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
               >
                 <p className="text-[10px] uppercase tracking-widest text-text-subtle mb-3 font-medium">{t('module.blocks.flashcard_question')}</p>
                 <div className="overflow-y-auto max-h-[130px] w-full flex items-center justify-center">
-                  <p className="text-[17px] font-semibold text-text leading-snug">
-                    {card.front[language] || card.front.es}
+                  <p className="text-[17px] font-semibold text-text leading-snug whitespace-pre-line">
+                    <RichTextInline text={card.front[language] || card.front.es} />
                   </p>
                 </div>
                 <p className="text-[11px] text-text-subtle mt-4 shrink-0">{t('module.blocks.flashcard_reveal')}</p>
@@ -105,8 +106,8 @@ export function FlashcardBlockRenderer({ block, language }: Props) {
               >
                 <p className="text-[10px] uppercase tracking-widest text-neon-green mb-3 font-medium">{t('module.blocks.flashcard_answer')}</p>
                 <div className="overflow-y-auto max-h-[150px] w-full flex items-center justify-center">
-                  <p className="text-[17px] font-semibold text-text leading-snug">
-                    {card.back[language] || card.back.es}
+                  <p className="text-[17px] font-semibold text-text leading-snug whitespace-pre-line">
+                    <RichTextInline text={card.back[language] || card.back.es} />
                   </p>
                 </div>
               </div>

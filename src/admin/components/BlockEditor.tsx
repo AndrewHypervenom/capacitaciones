@@ -529,21 +529,30 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
               <Trash2 className="h-3 w-3" />
             </button>
           </div>
-          <input type="text" value={card.front[lang]}
-            onChange={(e) => {
-              const next = block.cards.map((c, j) => j === i ? { ...c, front: { ...c.front, [lang]: e.target.value } } : c);
+          {/* La tarjeta se muestra centrada en su cara: títulos y viñetas no
+              aplican, así que solo formato en línea (negrita/cursiva). */}
+          <RichTextArea
+            value={card.front[lang]}
+            onChange={(v) => {
+              const next = block.cards.map((c, j) => j === i ? { ...c, front: { ...c.front, [lang]: v } } : c);
               onChange({ ...block, cards: next });
             }}
+            rows={2}
+            inlineOnly
+            showSpacing={false}
             placeholder={i18n.t('admin.modules.be.ph_front', { lang })}
-            className="w-full bg-transparent text-[13px] text-text placeholder:text-text-subtle outline-none" />
-          <div className="h-px bg-glass-border/10" />
-          <input type="text" value={card.back[lang]}
-            onChange={(e) => {
-              const next = block.cards.map((c, j) => j === i ? { ...c, back: { ...c.back, [lang]: e.target.value } } : c);
+          />
+          <RichTextArea
+            value={card.back[lang]}
+            onChange={(v) => {
+              const next = block.cards.map((c, j) => j === i ? { ...c, back: { ...c.back, [lang]: v } } : c);
               onChange({ ...block, cards: next });
             }}
+            rows={2}
+            inlineOnly
+            showSpacing={false}
             placeholder={i18n.t('admin.modules.be.ph_back', { lang })}
-            className="w-full bg-transparent text-[13px] text-text-muted placeholder:text-text-subtle outline-none" />
+          />
         </div>
       ))}
       <button onClick={() => onChange({ ...block, cards: [...block.cards, { front: { es: '', en: '', pt: '' }, back: { es: '', en: '', pt: '' } }] })}
