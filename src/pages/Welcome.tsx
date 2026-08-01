@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, ArrowLeft, Eye, EyeOff, Loader2, BookOpen, Sparkles, Gamepad2,
@@ -16,6 +16,8 @@ import { signInWithEmail, requestPasswordReset } from '@/services/auth.service';
 import { supabase } from '@/lib/supabase';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
+import { PasskeyButton } from '@/components/auth/PasskeyButton';
+import { usePasskeyAutofill } from '@/hooks/usePasskeyAutofill';
 
 const GREEN = '#10D451';
 const MAGENTA = '#B33D9E';
@@ -277,6 +279,12 @@ export default function Welcome() {
       setResetBusy(false);
     }
   };
+
+  // Ingreso con huella por autocompletado: se queda esperando mientras el panel
+  // de login esté abierto. `useCallback` no es cosmético aquí — si la función
+  // cambiara en cada render, el efecto reabriría la ceremonia sin parar.
+  const onPasskeyIn = useCallback(() => { setLoginError(null); }, []);
+  usePasskeyAutofill(showLogin && mode === 'login', onPasskeyIn);
 
   const handleStart = () => {
     setRippling(true);
@@ -894,7 +902,9 @@ export default function Welcome() {
                         value={email}
                         onChange={(e) => { setEmail(e.target.value); setLoginError(null); }}
                         placeholder={t('welcome.email_placeholder')}
-                        autoComplete="email"
+                        // `webauthn` es lo que habilita el autocompletado con
+                        // huella dentro de este campo (ver usePasskeyAutofill).
+                        autoComplete="username webauthn"
                         required
                         style={inputBase}
                         className="placeholder:text-text-subtle"
@@ -984,6 +994,10 @@ export default function Welcome() {
                       </motion.button>
                     </motion.div>
                   </form>
+
+                  <motion.div variants={panel.item}>
+                    <PasskeyButton email={email} onError={setLoginError} />
+                  </motion.div>
 
                   <motion.div variants={panel.item} className="flex justify-center mt-6">
                     <button

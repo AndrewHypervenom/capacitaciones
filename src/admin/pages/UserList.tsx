@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users } from 'lucide-react'
+import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { recompressAllAvatars, type RecompressProgress } from '@/services/avatarMaintenance'
+import { passkeyCounts } from '@/services/passkeys.service'
 import {
   getAccessibleCampaigns,
   getCampaignIdsByUser,
@@ -95,6 +96,8 @@ export default function UserList() {
   // Credenciales temporales pendientes por usuario (solo el superadmin las recibe
   // vía RLS). Permite copiar el bloque de credenciales de cualquier pendiente.
   const [tempCreds, setTempCreds] = useState<Record<string, TempCred>>({})
+  // Dispositivos con ingreso biométrico por persona (solo informativo).
+  const [passkeys, setPasskeys] = useState<Record<string, { count: number; lastUsedAt: string | null }>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
   // Recompresión masiva de avatares existentes (mantenimiento superadmin).
   const [optimizing, setOptimizing] = useState(false)
@@ -162,6 +165,9 @@ export default function UserList() {
       setUserCampaigns(await getCampaignIdsByUser(rows))
       setTempCreds(mapCreds(creds.data))
       setLoading(false)
+      // Quién entra con huella. Va después de pintar la lista y en una sola
+      // consulta agregada: es un adorno informativo, no debe retrasar nada.
+      passkeyCounts(rows.map((r) => r.id)).then(setPasskeys).catch(() => {})
     }
     load()
   }, [isSuperAdmin, campaignId, authUser?.id])
@@ -811,6 +817,16 @@ export default function UserList() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
+                        )}
+                        {(passkeys[user.id]?.count ?? 0) > 0 && (
+                          <span
+                            className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{ background: 'rgba(16,212,81,0.14)', color: '#0ca23e' }}
+                            title={t('passkey.admin_count', { count: passkeys[user.id].count })}
+                          >
+                            <Fingerprint className="h-3 w-3" />
+                            {passkeys[user.id].count}
+                          </span>
                         )}
                         {user.is_active === false && (
                           <span

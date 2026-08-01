@@ -1526,6 +1526,32 @@ export interface Database {
         }
         Relationships: []
       }
+      // Ingreso biométrico (huella / Face ID / Windows Hello). Guarda SOLO la
+      // clave pública: la privada nunca sale del dispositivo. Sin Insert desde
+      // el cliente a propósito — solo la Edge Function `passkey-register-verify`
+      // puede dar de alta una credencial, y únicamente tras validar la firma.
+      user_passkeys: {
+        Row: {
+          id: string
+          user_id: string
+          credential_id: string
+          public_key: string
+          counter: number
+          transports: string[]
+          device_name: string | null
+          aaguid: string | null
+          device_type: string | null
+          backed_up: boolean
+          created_at: string
+          last_used_at: string | null
+          created_ua: string | null
+        }
+        Insert: never
+        Update: {
+          device_name?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -1749,6 +1775,16 @@ export interface Database {
           name: string
         }[]
       }
+      // Cuántos dispositivos biométricos tiene cada persona, para el listado de
+      // usuarios. Devuelve solo lo propio salvo que quien pregunte sea superadmin.
+      get_passkey_counts: {
+        Args: { user_ids: string[] }
+        Returns: {
+          user_id: string
+          passkeys: number
+          last_used_at: string | null
+        }[]
+      }
     }
     Enums: Record<string, never>
   }
@@ -1833,6 +1869,8 @@ export const DEFAULT_CERT_CONDITIONS: CertConditions = {
   valid_months: null,
 }
 export type Profile = Database['public']['Tables']['profiles']['Row']
+/** Dispositivo con ingreso biométrico registrado (huella / Face ID / Hello). */
+export type UserPasskey = Database['public']['Tables']['user_passkeys']['Row']
 export type UserProgress = Database['public']['Tables']['user_progress']['Row']
 
 /**

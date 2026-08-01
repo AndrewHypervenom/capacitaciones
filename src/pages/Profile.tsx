@@ -23,6 +23,8 @@ import { ProfileHero, type HeroStat } from '@/components/profile/ProfileHero';
 import { ProfileTabs, type ProfileTab } from '@/components/profile/ProfileTabs';
 import { CertificateWall } from '@/components/profile/CertificateWall';
 import { AchievementsPanel } from '@/components/profile/AchievementsPanel';
+import { PasskeyManager } from '@/components/profile/PasskeyManager';
+import { PasskeySetupCard } from '@/components/auth/PasskeySetupCard';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { toast } from '@/stores/toastStore';
 import type { Lang } from '@/stores/gamificationStore';
@@ -77,6 +79,9 @@ export default function Profile() {
   const [pwd, setPwd] = useState('');
   const [pwd2, setPwd2] = useState('');
   const [savingPwd, setSavingPwd] = useState(false);
+  // Cambia al activar la huella desde la tarjeta superior: remonta la sección
+  // de dispositivos para que aparezca el recién añadido sin recargar la página.
+  const [passkeyNonce, setPasskeyNonce] = useState(0);
 
   // ── Trayectoria: certificados, cursos, gamificación ──
   const [certs, setCerts] = useState<UserCertificate[]>([]);
@@ -263,6 +268,19 @@ export default function Profile() {
       />
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
 
+      {/* Puerta visible para activar la huella. La invitación post-login se
+          ofrece una sola vez; quien la descartó necesita poder volver, y
+          buscarla dentro de una pestaña no cuenta como "poder volver".
+          `passkeyNonce` fuerza a la sección de Seguridad a releer la lista
+          cuando se activa desde aquí. */}
+      {user?.id && (
+        <PasskeySetupCard
+          userId={user.id}
+          email={user.email}
+          onActivated={() => setPasskeyNonce((n) => n + 1)}
+        />
+      )}
+
       <div className="my-6">
         <ProfileTabs tabs={tabs} active={tab} onChange={changeTab} layoutGroup="my-profile" />
       </div>
@@ -374,6 +392,12 @@ export default function Profile() {
           )}
 
           {tab === 'seguridad' && (
+            <div className="space-y-6">
+            {/* La biometría va primero: es lo que la persona usará a diario.
+                La contraseña queda debajo, sin desaparecer nunca — es la red
+                que sostiene el día en que se pierde el dispositivo. */}
+            {user?.id && <PasskeyManager key={passkeyNonce} userId={user.id} email={user.email} />}
+
             <div className={card}>
               <h2 className="mb-1 flex items-center gap-2 text-[16px] font-semibold text-text">
                 <Lock className="h-4 w-4 text-text-muted" />
@@ -403,6 +427,7 @@ export default function Profile() {
                   {t('profile.update_password', 'Actualizar contraseña')}
                 </Button>
               </div>
+            </div>
             </div>
           )}
       </motion.div>

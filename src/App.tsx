@@ -35,6 +35,7 @@ import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
 import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
+import { PasskeyInvite } from '@/components/auth/PasskeyInvite';
 import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
 
@@ -229,6 +230,9 @@ export default function App() {
       <Toaster />
       {!IS_LEARNER_PREVIEW && <BgTaskIndicator />}
       {!IS_LEARNER_PREVIEW && <UpdatePrompt />}
+      {/* "¿Quieres entrar con tu huella la próxima vez?" — se ofrece una sola
+          vez, ya con la sesión abierta y solo si el equipo tiene sensor. */}
+      {!IS_LEARNER_PREVIEW && <PasskeyInvite />}
       </ConfirmProvider>
     </BrowserRouter>
   );

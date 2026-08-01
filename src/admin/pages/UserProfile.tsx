@@ -18,6 +18,7 @@ import { ProfileHero, type HeroStat } from '@/components/profile/ProfileHero'
 import { ProfileTabs, type ProfileTab } from '@/components/profile/ProfileTabs'
 import { CertificateWall } from '@/components/profile/CertificateWall'
 import { AchievementsPanel } from '@/components/profile/AchievementsPanel'
+import { PasskeyManager } from '@/components/profile/PasskeyManager'
 import { updateProfile, uploadAvatar } from '@/services/auth.service'
 import { getUserCoursesAdmin, type AdminUserCourse } from '@/services/courses.service'
 import { getUserCertificates, type UserCertificate } from '@/services/certification.service'
@@ -404,6 +405,7 @@ export default function UserProfile() {
         )}
 
         {tab === 'datos' && (
+          <div className="space-y-6">
           <div className="rounded-3xl border border-line bg-surface p-6">
             <h2 className="mb-4 text-[15px] font-semibold text-text">{t('profile.personal_info')}</h2>
 
@@ -491,6 +493,13 @@ export default function UserProfile() {
                 )}
               </>
             )}
+          </div>
+
+          {/* Revocar el ingreso biométrico de otra persona es cosa del
+              superadmin: la RLS de `user_passkeys` no se lo permite a nadie
+              más, así que mostrarlo a un capacitador sería enseñar un botón
+              que siempre falla. */}
+          {isSuperAdmin && <PasskeyManager userId={profile.id} manageOnly />}
           </div>
         )}
       </motion.div>
