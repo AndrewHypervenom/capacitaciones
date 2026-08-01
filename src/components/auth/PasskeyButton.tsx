@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { Fingerprint, Loader2, ShieldCheck } from 'lucide-react';
@@ -16,6 +16,13 @@ interface Props {
   onSuccess?: () => void;
   /** El motivo del fallo, ya traducido, para mostrarlo donde convenga. */
   onError?: (message: string | null) => void;
+  /**
+   * Pide la huella sola, sin esperar el clic, cuando este dispositivo ya tiene
+   * una registrada. Es la diferencia entre "entrar" y "pedir permiso para
+   * entrar": si la persona ya dijo que confía en este equipo, volver a
+   * obligarla a pulsar un botón es hacerle repetir una decisión que ya tomó.
+   */
+  autoStart?: boolean;
 }
 
 /**
@@ -26,12 +33,17 @@ interface Props {
  * opción, es una frustración. Cuando este dispositivo ya registró una passkey
  * (pista local) el botón toma el papel protagonista; si no, se ofrece discreto.
  */
-export function PasskeyButton({ email, onSuccess, onError }: Props) {
+export function PasskeyButton({ email, onSuccess, onError, autoStart = false }: Props) {
   const { t } = useTranslation();
   const reduce = !!useReducedMotion();
   const [available, setAvailable] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Arranca en "ocupado" cuando va a pedirse sola: así no se ve un parpadeo del
+  // botón en reposo justo antes de que el sistema abra su diálogo.
+  const [busy, setBusy] = useState(autoStart && !!passkeyHint());
   const hint = passkeyHint();
+  const autoRan = useRef(false);
+  /** Ceremonia realmente en curso (distinto de lo que muestra el botón). */
+  const running = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -39,8 +51,6 @@ export function PasskeyButton({ email, onSuccess, onError }: Props) {
     hasBiometricSensor().then((ok) => { if (alive) setAvailable(ok); });
     return () => { alive = false; };
   }, []);
-
-  if (!available) return null;
 
   // El botón destaca cuando sabemos que aquí hay una huella registrada; en
   // cualquier otro equipo se ofrece como alternativa, sin robarle protagonismo
@@ -64,7 +74,13 @@ export function PasskeyButton({ email, onSuccess, onError }: Props) {
   };
 
   const handle = async () => {
-    if (busy) return;
+    // El guardia NO puede ser `busy`: esa bandera nace en true a propósito
+    // (para que el botón no parpadee antes del arranque automático), así que
+    // usarla aquí hacía que la primera llamada se bloqueara a sí misma y la
+    // pantalla se quedara para siempre en "Esperando tu huella…" sin pedir
+    // nada. Lo que manda es si hay una ceremonia de verdad en curso.
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     onError?.(null);
     try {
@@ -74,9 +90,26 @@ export function PasskeyButton({ email, onSuccess, onError }: Props) {
       const code = err instanceof PasskeyError ? err.code : 'failed';
       onError?.(messageFor(code));
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
+
+  // Arranque automático: una sola vez, y solo si este equipo ya tiene una
+  // huella registrada. `autoRan` es lo que impide el bucle infernal —cancelar
+  // el diálogo y que vuelva a abrirse— que convertiría la pantalla de ingreso
+  // en una trampa de la que no se puede salir.
+  useEffect(() => {
+    if (!autoStart || !available || !hint || autoRan.current) return;
+    autoRan.current = true;
+    handle();
+    // `handle` se recrea en cada render; el guard de arriba es quien manda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, available, hint]);
+
+  if (!available) {
+    return null;
+  }
 
   return (
     <div className="w-full">

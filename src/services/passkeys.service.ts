@@ -245,6 +245,68 @@ interface AuthVerifyResponse {
   error?: string
 }
 
+/* ── Reto adelantado ──────────────────────────────────────────────────────
+ *
+ * Pedir el reto cuesta un viaje al servidor, y ese viaje ocurre justo entre
+ * "quiero entrar" y "aparece el diálogo del sistema": es exactamente el momento
+ * en el que la pantalla parece congelada. Si además la Edge Function estaba
+ * dormida, son un par de segundos de nada.
+ *
+ * La solución es pedirlo ANTES, mientras la persona todavía está mirando la
+ * portada. Cuando pulsa, el reto ya está aquí y el lector se abre en seco.
+ *
+ * Solo se adelanta en dispositivos que ya tienen una passkey (hay pista local),
+ * para no gastar una llamada por cada visitante anónimo.
+ */
+interface CachedOptions {
+  options: PublicKeyCredentialRequestOptionsJSON
+  email: string
+  at: number
+}
+let cached: CachedOptions | null = null
+let inFlight: Promise<void> | null = null
+
+/** El reto del servidor vive 2 minutos; se descarta antes para no apurar. */
+const PREFETCH_TTL_MS = 90_000
+
+async function fetchAuthOptions(
+  email: string,
+  /** En el modo autocompletado manda la lista del navegador: no forzamos nada. */
+  platformHint = true,
+): Promise<PublicKeyCredentialRequestOptionsJSON> {
+  const platform = platformHint ? await hasBiometricSensor() : false
+  const { data, error } = await supabase.functions.invoke<{
+    options: PublicKeyCredentialRequestOptionsJSON
+    error?: string
+  }>('passkey-auth-options', { body: { ...(email ? { email } : {}), platform } })
+  if (error || !data?.options) throw await fromServer(error, data)
+  return data.options
+}
+
+/**
+ * Adelanta el reto para el correo recordado en este dispositivo. Silencioso: si
+ * falla, el camino normal lo volverá a pedir.
+ */
+export function prefetchAuthOptions() {
+  const email = passkeyHint()
+  if (!email || !browserSupportsWebAuthn() || inFlight) return
+  if (cached && cached.email === email && Date.now() - cached.at < PREFETCH_TTL_MS) return
+
+  inFlight = fetchAuthOptions(email)
+    .then((options) => { cached = { options, email, at: Date.now() } })
+    .catch(() => { cached = null })
+    .finally(() => { inFlight = null })
+}
+
+/** Devuelve el reto adelantado si sigue fresco. Se consume: es de un solo uso. */
+function takeCached(email: string): PublicKeyCredentialRequestOptionsJSON | null {
+  if (!cached || cached.email !== email) return null
+  const fresh = Date.now() - cached.at < PREFETCH_TTL_MS
+  const options = cached.options
+  cached = null
+  return fresh ? options : null
+}
+
 /**
  * Entra con huella / Face ID / Windows Hello y deja la sesión abierta.
  *
@@ -262,22 +324,22 @@ export async function signInWithPasskey(
   const { email, useAutofill = false } = options
   if (!browserSupportsWebAuthn()) throw new PasskeyError('unsupported')
 
-  // Mismo motivo que en el registro: con sensor propio y una credencial local,
-  // el servidor marca las opciones para que el navegador vaya derecho al
-  // lector, sin el paso intermedio de "elige una clave de paso".
-  // En el modo autocompletado no aplica: ahí manda la lista del navegador.
-  const platform = useAutofill ? false : await hasBiometricSensor()
+  // El reto adelantado solo sirve para el diálogo normal: el autocompletado
+  // exige una lista vacía de credenciales y necesita el suyo propio.
+  const ready = !useAutofill && email ? takeCached(email) : null
 
-  const { data: opt, error: optErr } = await supabase.functions.invoke<{
-    options: PublicKeyCredentialRequestOptionsJSON
-    error?: string
-  }>('passkey-auth-options', { body: { ...(email ? { email } : {}), platform } })
-  if (optErr || !opt?.options) throw await fromServer(optErr, opt)
+  // Si otro adelanto está en vuelo, se espera: pedir un segundo reto en
+  // paralelo no acelera nada y ensucia la tabla.
+  if (!ready && inFlight) await inFlight.catch(() => {})
+
+  const authOptions = ready
+    ?? (!useAutofill && email ? takeCached(email) : null)
+    ?? await fetchAuthOptions(useAutofill ? '' : (email ?? ''), !useAutofill)
 
   let assertion
   try {
     assertion = await startAuthentication({
-      optionsJSON: opt.options,
+      optionsJSON: authOptions,
       useBrowserAutofill: useAutofill,
     })
   } catch (err) {

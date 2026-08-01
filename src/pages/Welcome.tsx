@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
 import { PasskeyButton } from '@/components/auth/PasskeyButton';
+import { passkeyHint, prefetchAuthOptions } from '@/services/passkeys.service';
 import { usePasskeyAutofill } from '@/hooks/usePasskeyAutofill';
 
 const GREEN = '#10D451';
@@ -179,7 +180,9 @@ export default function Welcome() {
   /* ── Estado del login y transición ──────────────────────────────────── */
   const [showLogin, setShowLogin] = useState(false);
   const [rippling, setRippling] = useState(false);
-  const [email, setEmail] = useState('');
+  // Si este equipo ya entró con huella, el correo llega escrito: quien vuelve a
+  // su propio computador no debería teclear lo mismo cada mañana.
+  const [email, setEmail] = useState(passkeyHint() ?? '');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -280,11 +283,20 @@ export default function Welcome() {
     }
   };
 
-  // Ingreso con huella por autocompletado: se queda esperando mientras el panel
-  // de login esté abierto. `useCallback` no es cosmético aquí — si la función
-  // cambiara en cada render, el efecto reabriría la ceremonia sin parar.
+  // Ingreso con huella. Dos caminos que NO pueden convivir: si aquí ya hay una
+  // passkey, se pide directamente (diálogo del sistema); si no, se ofrece por
+  // el autocompletado del campo de correo. Lanzar los dos a la vez haría que
+  // una ceremonia cancelara a la otra.
+  const knownDevice = !!passkeyHint();
   const onPasskeyIn = useCallback(() => { setLoginError(null); }, []);
-  usePasskeyAutofill(showLogin && mode === 'login', onPasskeyIn);
+  usePasskeyAutofill(showLogin && mode === 'login' && !knownDevice, onPasskeyIn);
+
+  // El reto se pide mientras la persona mira la portada, no cuando ya quiere
+  // entrar: así el lector de huellas se abre sin la pausa del viaje al
+  // servidor (que con la función dormida son un par de segundos).
+  useEffect(() => {
+    if (knownDevice) prefetchAuthOptions();
+  }, [knownDevice]);
 
   const handleStart = () => {
     setRippling(true);
@@ -996,7 +1008,7 @@ export default function Welcome() {
                   </form>
 
                   <motion.div variants={panel.item}>
-                    <PasskeyButton email={email} onError={setLoginError} />
+                    <PasskeyButton email={email} onError={setLoginError} autoStart />
                   </motion.div>
 
                   <motion.div variants={panel.item} className="flex justify-center mt-6">
