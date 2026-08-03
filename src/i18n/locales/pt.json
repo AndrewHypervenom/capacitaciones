@@ -40,6 +40,21 @@
     "toggle_saved": "Status atualizado",
     "toggle_error": "Não foi possível salvar a alteração"
   },
+  "service_status": {
+    "retry": "Tentar novamente",
+    "slow": {
+      "title": "O serviço está respondendo devagar",
+      "description": "Não é a sua conexão: nosso provedor está lento neste momento. As telas podem demorar mais que o normal. Seu progresso continua sendo salvo."
+    },
+    "down": {
+      "title": "Estamos com problemas de conexão",
+      "description": "Nosso provedor de serviços está apresentando falhas. Algumas coisas podem não carregar ou não ser salvas. Tente novamente em alguns minutos."
+    },
+    "offline": {
+      "title": "Sem conexão com a internet",
+      "description": "Seu dispositivo perdeu a conexão. Verifique sua rede e tente novamente."
+    }
+  },
   "update": {
     "title": "Nova versão disponível",
     "description": "Atualize para ver as últimas mudanças do site.",

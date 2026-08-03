@@ -33,6 +33,7 @@ import { loadGamification } from '@/services/gamification.service';
 import { loadAiCreditsSetting } from '@/lib/aiCredits';
 import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
+import { ServiceStatusBanner } from '@/components/ui/ServiceStatusBanner';
 import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { PasskeyInvite } from '@/components/auth/PasskeyInvite';
@@ -230,6 +231,10 @@ export default function App() {
       <Toaster />
       {!IS_LEARNER_PREVIEW && <BgTaskIndicator />}
       {!IS_LEARNER_PREVIEW && <UpdatePrompt />}
+      {/* "Los servicios están lentos / fallando": vive en la raíz porque la
+          degradación se nota en cualquier vista, y aplica a todos los roles
+          (incluido el aprendiz, que es quien más la sufre sin saber por qué). */}
+      {!IS_LEARNER_PREVIEW && <ServiceStatusBanner />}
       {/* "¿Quieres entrar con tu huella la próxima vez?" — se ofrece una sola
           vez, ya con la sesión abierta y solo si el equipo tiene sensor. */}
       {!IS_LEARNER_PREVIEW && <PasskeyInvite />}

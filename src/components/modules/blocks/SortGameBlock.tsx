@@ -186,6 +186,18 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
 
   const timerRef = useRef<any>(null);
 
+  // Candado de guardado: qué finalización YA se registró en la base.
+  //
+  // Sin él, el efecto de guardado entraba en bucle: guardar emite el evento
+  // 'activity_attempt_saved' → ModulePage sube su refreshKey → nuevo render →
+  // `processes`/`block` cambian de identidad (se recalculan en cada render) →
+  // el efecto se vuelve a disparar porque `phase` sigue en 'final' → guarda otra
+  // vez. Se repetía cada ~350 ms (lo que tarda el viaje a Supabase) hasta que el
+  // aprendiz salía de la página, dejando decenas de intentos idénticos dentro de
+  // `user_progress.attempts`. Ese jsonb creciendo sin techo es lo que reventaba
+  // las consultas con "57014 statement timeout".
+  const savedKeyRef = useRef<string | null>(null);
+
   // Sensores de arrastre. Ratón: arrastra tras 6 px (un clic simple no cuenta).
   // Dedo: mantener pulsado 180 ms y arrastrar — el retardo es lo que deja que un
   // deslizamiento normal siga haciendo scroll de la página en el celular.
@@ -204,6 +216,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   useEffect(() => {
     if (sigRef.current === sig) return;
     sigRef.current = sig;
+    savedKeyRef.current = null; // contenido distinto → es otro juego, otra finalización
     setProcessIdx(0);
     setItems(processes[0] ? shuffled(processes[0].steps) : []);
     setUsedHelp(new Array(processes.length).fill(false));
@@ -215,11 +228,23 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
 
   // ─── 1. EFFECT DE GUARDADO EN SUPABASE  ───
   useEffect(() => {
-    if (phase === 'final' && userId && campaignId) {
+    // Fuera de la fase final se suelta el candado: si el aprendiz vuelve a jugar
+    // y termina otra vez, esa nueva finalización sí debe quedar registrada.
+    if (phase !== 'final') {
+      savedKeyRef.current = null;
+      return;
+    }
+    if (userId && campaignId) {
+      const sId = sectionId || (block as any).id || '';
+      const saveKey = `${sId}::${userId}::${campaignId}`;
+      // Se marca ANTES de la llamada, no después: entre el disparo y la respuesta
+      // de Supabase caben varios renders, y todos verían el candado abierto.
+      if (savedKeyRef.current === saveKey) return;
+      savedKeyRef.current = saveKey;
+
       const guardarProgresoEnSupabase = async () => {
         try {
           console.log("Sincronizando juego interactivo...");
-          const sId = sectionId || (block as any).id || '';
           const mId = moduleId || '';
 
           const scoreFirstTryLocal = processes.length - usedHelp.filter(Boolean).length;

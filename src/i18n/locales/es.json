@@ -40,6 +40,21 @@
     "toggle_saved": "Estado actualizado",
     "toggle_error": "No se pudo guardar el cambio"
   },
+  "service_status": {
+    "retry": "Reintentar",
+    "slow": {
+      "title": "El servicio está respondiendo lento",
+      "description": "No es tu conexión: nuestro proveedor está lento en este momento. Las pantallas pueden tardar más de lo normal. Tu progreso se sigue guardando."
+    },
+    "down": {
+      "title": "Estamos teniendo problemas de conexión",
+      "description": "Nuestro proveedor de servicios presenta fallas. Algunas cosas pueden no cargar o no guardarse. Vuelve a intentarlo en unos minutos."
+    },
+    "offline": {
+      "title": "Sin conexión a internet",
+      "description": "Tu equipo perdió la conexión. Revisa tu red y vuelve a intentarlo."
+    }
+  },
   "update": {
     "title": "Nueva versión disponible",
     "description": "Actualiza para ver los últimos cambios del sitio.",

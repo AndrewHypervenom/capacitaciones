@@ -112,13 +112,18 @@ export default function Welcome() {
   const [counts, setCounts] = useState({ lessons: 0, questions: 0, scenarios: 0 });
 
   useEffect(() => {
+    // Solo para visitantes sin sesión. Quien ya entró se va a /admin o /dashboard
+    // en el efecto de arriba, así que pedir estos números era un viaje de ida y
+    // vuelta para una pantalla que no llega a verse. Además el rol `anon` corre
+    // con statement_timeout de 3s (no 8s): conviene no gastarlo de gratis.
+    if (authLoading || isAuthenticated) return;
     // Aggregate counts come from a SECURITY DEFINER function so the logged-out
     // (anon) landing page can read them despite RLS hiding the content tables.
     supabase.rpc('public_landing_stats').then(({ data }) => {
       const s = (data ?? {}) as { lessons?: number; questions?: number; scenarios?: number };
       setCounts({ lessons: s.lessons ?? 0, questions: s.questions ?? 0, scenarios: s.scenarios ?? 0 });
     });
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   const stats = [
     { id: 'lessons', value: counts.lessons, label: t('welcome.stat_lessons') },
