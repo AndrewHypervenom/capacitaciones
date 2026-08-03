@@ -43,12 +43,12 @@
   "service_status": {
     "retry": "Tentar novamente",
     "slow": {
-      "title": "O serviço está respondendo devagar",
-      "description": "Não é a sua conexão: nosso provedor está lento neste momento. As telas podem demorar mais que o normal. Seu progresso continua sendo salvo."
+      "title": "Problemas mundiais: o serviço está lento",
+      "description": "Não é a sua conexão nem o seu equipamento: nosso provedor está com uma instabilidade mundial neste momento. As telas podem demorar mais que o normal. Seu progresso continua sendo salvo."
     },
     "down": {
-      "title": "Estamos com problemas de conexão",
-      "description": "Nosso provedor de serviços está apresentando falhas. Algumas coisas podem não carregar ou não ser salvas. Tente novamente em alguns minutos."
+      "title": "Problemas mundiais no serviço",
+      "description": "Não é a sua conexão nem o seu equipamento: nosso provedor está com uma falha mundial. Algumas coisas podem não carregar ou não ser salvas. Tente novamente em alguns minutos."
     },
     "offline": {
       "title": "Sem conexão com a internet",

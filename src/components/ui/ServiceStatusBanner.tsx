@@ -41,13 +41,15 @@ export function ServiceStatusBanner() {
     <AnimatePresence>
       {show && (
         <motion.div
-          initial={{ opacity: 0, y: -24, scale: 0.96 }}
+          initial={{ opacity: 0, y: 24, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -24, scale: 0.96 }}
+          exit={{ opacity: 0, y: 24, scale: 0.96 }}
           transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           role="status"
           aria-live="polite"
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] w-[calc(100%-2rem)] max-w-lg"
+          // La posición la pone el contenedor (BottomBannerStack): así este aviso
+          // y el de "hay versión nueva" se apilan en vez de superponerse.
+          className="pointer-events-auto w-full"
         >
           <div className="glass-strong relative flex items-center gap-3 overflow-hidden rounded-2xl border border-glass-border/10 px-4 py-3.5 shadow-2xl shadow-black/30">
             <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-full ${accentBg}`} />

@@ -43,12 +43,12 @@
   "service_status": {
     "retry": "Try again",
     "slow": {
-      "title": "The service is responding slowly",
-      "description": "It's not your connection: our provider is slow right now. Screens may take longer than usual. Your progress is still being saved."
+      "title": "Worldwide issues: the service is slow",
+      "description": "It's not your connection or your device: our provider is having a worldwide disruption right now. Screens may take longer than usual. Your progress is still being saved."
     },
     "down": {
-      "title": "We're having connection problems",
-      "description": "Our service provider is experiencing issues. Some things may not load or save. Please try again in a few minutes."
+      "title": "Worldwide issues with the service",
+      "description": "It's not your connection or your device: our provider is having a worldwide outage. Some things may not load or save. Please try again in a few minutes."
     },
     "offline": {
       "title": "No internet connection",

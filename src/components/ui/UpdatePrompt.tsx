@@ -39,7 +39,8 @@ export function UpdatePrompt() {
           exit={{ opacity: 0, y: 24, scale: 0.96 }}
           transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           role="alert"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] w-[calc(100%-2rem)] max-w-md"
+          // La posición la pone el contenedor (BottomBannerStack).
+          className="pointer-events-auto w-full"
         >
           <div className="glass-strong relative flex items-center gap-3 rounded-2xl border border-glass-border/10 px-4 py-3.5 shadow-2xl shadow-black/30 overflow-hidden">
             <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-full bg-neon-cyan" />
