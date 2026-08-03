@@ -146,74 +146,130 @@ export const getModuleFeedbackForUser = async (moduleId: string, userId: string)
 // ==========================================
 // 3. FUNCIONES DEL FORMADOR (ADMIN/CAPACITADOR)
 // ==========================================
+/**
+ * Techo de filas de progreso que se traen de una vez. No es paginación real (el
+ * panel arma el árbol Campaña→Curso→Módulo→Aprendiz en memoria y necesita el
+ * conjunto completo para agrupar), sino una red de seguridad: si la tabla crece
+ * mucho, esto falla de forma visible en vez de intentar bajarla entera.
+ */
+const MAX_PROGRESS_ROWS = 500;
+
+/** Trae filas por id en tandas, para no armar una URL kilométrica con .in(). */
+const fetchByIds = async <T>(
+  table: string,
+  columns: string,
+  ids: string[],
+): Promise<T[]> => {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return [];
+  const CHUNK = 200;
+  const out: T[] = [];
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const { data, error } = await supabase
+      .from(table as any)
+      .select(columns)
+      .in('id', unique.slice(i, i + CHUNK));
+    if (error) throw error;
+    out.push(...((data ?? []) as unknown as T[]));
+  }
+  return out;
+};
+
 export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }) => {
   try {
-    console.log("DEBUG: Iniciando descarga desde user_progress...");
+    // Antes esto era `.select('*')` sin filtro sobre user_progress, más las
+    // tablas de perfiles, secciones, módulos, cursos y campañas COMPLETAS. Cinco
+    // descargas que no dependían de cuántas evaluaciones hubiera que revisar,
+    // sino del tamaño total del sitio. Ahora: solo las columnas que se usan, y
+    // de las tablas de apoyo solo las filas que los intentos mencionan.
     const { data: progressRows, error: progressError } = await supabase
       .from('user_progress')
-      .select('*');
+      .select('id, user_id, campaign_id, attempts, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(MAX_PROGRESS_ROWS);
 
     if (progressError) throw progressError;
     if (!progressRows || progressRows.length === 0) {
-      console.log("DEBUG: La tabla user_progress está completamente vacía.");
       return { data: [], error: null };
     }
 
-    const userIds = progressRows.map(row => row.user_id).filter(Boolean);
+    // Perfiles: solo los de quienes tienen progreso (la RLS ya limita el alcance
+    // del capacitador a su campaña).
+    const profiles = await fetchByIds<{ id: string; display_name: string | null; role: string }>(
+      'profiles',
+      'id, display_name, role',
+      progressRows.map((row) => row.user_id),
+    );
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
 
-    // Traemos perfiles relacionales
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, display_name, role');
+    // El panel del capacitador nunca debe mostrar resultados de un superadmin.
+    // Se descartan ANTES de resolver nombres de sección/módulo/curso: así esas
+    // consultas tampoco cargan con contenido que no se va a pintar.
+    const visibleRows = opts?.excludeSuperadmins
+      ? progressRows.filter((row) => profileById.get(row.user_id)?.role !== 'superadmin')
+      : progressRows;
 
-    // Traemos las secciones (para nombre real + estilo del desafío)
-    const { data: sections } = await supabase
-      .from('module_sections')
-      .select('id, module_id, heading_es, section_style');
-
-    // Módulos con su curso, para armar la jerarquía Campaña→Curso→Módulo.
-    const { data: modules } = await supabase
-      .from('modules')
-      .select('id, title_es, course_id');
-
-    // Cursos y campañas: para agrupar las evaluaciones por contexto y escalar a
-    // muchos aprendices sin volcar todo en una lista plana.
-    const { data: courses } = await supabase
-      .from('courses')
-      .select('id, title_es, slug, campaign_id');
-
-    const { data: campaigns } = await supabase
-      .from('campaigns')
-      .select('id, name');
-
-    const courseById = new Map((courses ?? []).map((c) => [c.id, c]));
-    const campaignById = new Map((campaigns ?? []).map((c) => [c.id, c]));
-
-    const allFormattedAttempts: any[] = [];
-
-    progressRows.forEach(row => {
-      const studentProfile = profiles?.find(p => p.id === row.user_id) || null;
-
-      // El panel del capacitador nunca debe mostrar resultados de un superadmin.
-      if (opts?.excludeSuperadmins && studentProfile?.role === 'superadmin') return;
-
-      const rawAttempts = Array.isArray(row.attempts)
+    const attemptsOf = (row: (typeof progressRows)[number]): any[] =>
+      Array.isArray(row.attempts)
         ? row.attempts
         : typeof row.attempts === 'string'
           ? JSON.parse(row.attempts)
           : [];
 
-      console.log(`DEBUG: Usuario ${row.user_id} tiene ${rawAttempts.length} intentos en su JSON.`);
+    // Ids que los intentos mencionan de verdad. Es lo único que hay que resolver.
+    const sectionIds: string[] = [];
+    const attemptModuleIds: string[] = [];
+    for (const row of visibleRows) {
+      for (const attempt of attemptsOf(row)) {
+        if (attempt?.section_id) sectionIds.push(attempt.section_id);
+        if (attempt?.module_id) attemptModuleIds.push(attempt.module_id);
+      }
+    }
+
+    // Secciones (nombre real + estilo del desafío). De ellas sale el módulo de
+    // los intentos antiguos, que no guardaban module_id.
+    const sections = await fetchByIds<{
+      id: string; module_id: string; heading_es: string; section_style: string | null;
+    }>('module_sections', 'id, module_id, heading_es, section_style', sectionIds);
+    const sectionById = new Map(sections.map((s) => [s.id, s]));
+
+    // Módulos con su curso, para armar la jerarquía Campaña→Curso→Módulo.
+    const modules = await fetchByIds<{ id: string; title_es: string; course_id: string | null }>(
+      'modules',
+      'id, title_es, course_id',
+      [...attemptModuleIds, ...sections.map((s) => s.module_id)],
+    );
+    const moduleById = new Map(modules.map((m) => [m.id, m]));
+
+    // Cursos y campañas: para agrupar las evaluaciones por contexto y escalar a
+    // muchos aprendices sin volcar todo en una lista plana.
+    const courses = await fetchByIds<{
+      id: string; title_es: string; slug: string; campaign_id: string;
+    }>('courses', 'id, title_es, slug, campaign_id', modules.map((m) => m.course_id ?? ''));
+    const courseById = new Map(courses.map((c) => [c.id, c]));
+
+    const campaigns = await fetchByIds<{ id: string; name: string }>(
+      'campaigns',
+      'id, name',
+      [...visibleRows.map((r) => r.campaign_id ?? ''), ...courses.map((c) => c.campaign_id)],
+    );
+    const campaignById = new Map(campaigns.map((c) => [c.id, c]));
+
+    const allFormattedAttempts: any[] = [];
+
+    visibleRows.forEach(row => {
+      const studentProfile = profileById.get(row.user_id) ?? null;
+      const rawAttempts = attemptsOf(row);
 
       // Campaña de INSCRIPCIÓN del aprendiz (contexto en el que hizo el curso).
       const campaignId = row.campaign_id || null;
       const campaignName = campaignId ? campaignById.get(campaignId)?.name || 'Campaña' : null;
 
       rawAttempts.forEach((attempt: any) => {
-        const sectionData = sections?.find(s => s.id === attempt.section_id) || null;
+        const sectionData = attempt.section_id ? sectionById.get(attempt.section_id) ?? null : null;
         // El módulo real: primero por el module_id del intento, si no por el de la sección
         const moduleId = attempt.module_id || sectionData?.module_id || null;
-        const moduleData = moduleId ? modules?.find(m => m.id === moduleId) || null : null;
+        const moduleData = moduleId ? moduleById.get(moduleId) ?? null : null;
         // Curso al que pertenece el módulo (para la jerarquía).
         const courseId = moduleData?.course_id || null;
         const courseData = courseId ? courseById.get(courseId) || null : null;
