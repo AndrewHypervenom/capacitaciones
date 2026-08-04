@@ -875,6 +875,10 @@ export interface Database {
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
+          /** Solo para capacitadores: el superadmin lo habilitó para dar de alta
+           *  aprendices en sus campañas. No viene con el rol, se concede uno por
+           *  uno. */
+          can_create_learners: boolean
           /** Última nómina de Talento Humano en la que apareció la persona. */
           hr_last_seen_at: string | null
           created_at: string
@@ -897,6 +901,7 @@ export interface Database {
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
+          can_create_learners?: boolean
           hr_last_seen_at?: string | null
           created_at?: string
           updated_at?: string
@@ -917,6 +922,7 @@ export interface Database {
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
+          can_create_learners?: boolean
           hr_last_seen_at?: string | null
           updated_at?: string
         }

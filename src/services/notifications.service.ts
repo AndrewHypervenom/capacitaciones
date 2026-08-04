@@ -32,12 +32,34 @@ export interface ResetPayload {
   section_heading?: string | null
 }
 
+/**
+ * Datos del aviso "alguien escribió al chat de ayuda" (kind = 'help_chat'), que
+ * solo reciben los superadmin. Lo arma el RPC notify_superadmins_help_chat con
+ * los datos de quien pregunta, para que el aviso se pinte completo (avatar,
+ * nombre, campaña) sin una consulta extra.
+ */
+export interface HelpChatPayload {
+  from_user_id?: string
+  from_name?: string
+  from_role?: string
+  from_avatar?: string | null
+  campaign_name?: string | null
+  question?: string
+  page?: string | null
+  lang?: string
+  /** Preguntas agrupadas en este mismo aviso (ver el SQL: ventana de 10 min). */
+  count?: number
+}
+
+/** Todo lo que puede venir en `payload`, según el `kind` de la notificación. */
+export type NotificationPayload = ResetPayload & HelpChatPayload
+
 export interface AppNotification {
   id: string
   scope: ResetScope
   kind: string
   course_id: string | null
-  payload: ResetPayload
+  payload: NotificationPayload
   created_at: string
   read_at: string | null
 }
@@ -104,6 +126,33 @@ export async function notifyLearnerFeedback(params: {
     },
   })
   if (error) throw error
+}
+
+// ─── Aviso al superadmin: alguien escribió al chat de ayuda ─────────────────
+
+/**
+ * Avisa a los superadmin que esta persona acaba de mandar una pregunta al chat
+ * de ayuda. Va por RPC SECURITY DEFINER porque quien pregunta no puede escribir
+ * en las notificaciones de otro usuario (la campana es estrictamente personal).
+ *
+ * Nunca lanza: es un aviso, no puede estropear el chat de quien pide ayuda. El
+ * RPC aún no está en los tipos generados de la BD → se llama con cast.
+ */
+export async function notifySuperadminsHelpChat(params: {
+  question: string
+  page?: string | null
+  lang?: string
+}): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).rpc('notify_superadmins_help_chat', {
+      p_question: params.question,
+      p_page: params.page ?? null,
+      p_lang: params.lang ?? 'es',
+    })
+  } catch {
+    // Silencioso a propósito (igual que el registro del chat).
+  }
 }
 
 // ─── Superadmin: restablecimientos granulares ───────────────────────────────

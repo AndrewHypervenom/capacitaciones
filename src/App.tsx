@@ -39,6 +39,8 @@ import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { PasskeyInvite } from '@/components/auth/PasskeyInvite';
 import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
+import { NotificationsSync } from '@/components/notifications/NotificationsSync';
+import { HelpChatPing } from '@/components/notifications/HelpChatPing';
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
 
 // Admin CMS — lazy loaded (code-split, no se carga para learners)
@@ -180,6 +182,8 @@ export default function App() {
       <AuthInit />
       <NavigationBridge />
       <PresenceSync />
+      {/* Campana y avisos en vivo para TODOS los roles, dentro y fuera del panel. */}
+      <NotificationsSync />
       <LanguageSync />
       <GamificationInit />
       <AiCreditsInit />
@@ -229,6 +233,8 @@ export default function App() {
           tareas en 2º plano, "hay versión nueva"): son del panel, no del curso, y
           en un modal solo estorban. */}
       {!IS_LEARNER_PREVIEW && <FeedbackWidget />}
+      {/* "Alguien está pidiendo ayuda": aviso en vivo del chat, solo superadmin. */}
+      <HelpChatPing />
       <Toaster />
       {!IS_LEARNER_PREVIEW && <BgTaskIndicator />}
       {/* Avisos flotantes de abajo, apilados en una sola columna para que no se

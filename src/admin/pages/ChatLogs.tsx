@@ -7,6 +7,7 @@ import {
   type HelpKpis, type HelpLogRow, type HelpLogSource,
 } from '@/services/helpLog.service'
 import { FadeIn } from '@/components/ui/motion'
+import { useNotificationsStore } from '@/stores/notificationsStore'
 
 const SOURCE_META: Record<HelpLogSource, { labelKey: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
   faq:      { labelKey: 'admin.chat_logs.src_faq',      color: '#22c55e', icon: Zap },
@@ -42,6 +43,16 @@ export default function ChatLogs() {
       .catch((e) => console.error('help kpis error:', e))
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
+  }, [])
+
+  // Estar aquí ES haber atendido el aviso: los pendientes de "alguien escribió
+  // al chat" se dan por leídos al abrir esta pantalla, para que la campana y el
+  // contador del menú no queden pidiendo algo que ya se está mirando.
+  useEffect(() => {
+    const { items, markRead } = useNotificationsStore.getState()
+    for (const n of items) {
+      if (n.kind === 'help_chat' && !n.read_at) void markRead(n.id)
+    }
   }, [])
 
   // Feed: recarga al cambiar filtro/búsqueda.

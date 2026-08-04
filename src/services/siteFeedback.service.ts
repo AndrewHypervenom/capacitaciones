@@ -5,6 +5,21 @@ import { supabase } from '@/lib/supabase'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const table = () => (supabase as any).from('site_feedback')
 
+/**
+ * Una captura adjunta a una opinión. Se guarda el `path` además de la `url`
+ * porque borrar el archivo del bucket necesita la ruta, no el enlace público.
+ */
+export interface FeedbackShot {
+  path: string
+  url: string
+  name: string
+  size: number
+  w: number
+  h: number
+  /** ISO de cuándo se adjuntó: distingue lo original de lo añadido después. */
+  at: string
+}
+
 export type FeedbackKind = 'bug' | 'idea' | 'praise' | 'question'
 export type FeedbackStatus = 'new' | 'in_review' | 'planned' | 'done' | 'archived'
 export type ContactPref = 'email' | 'whatsapp' | 'call'
@@ -25,6 +40,8 @@ export interface SiteFeedbackInput {
   lang: string
   page: string
   pageLabel: string
+  /** Capturas ya subidas al bucket (ver `uploadFeedbackShot`). */
+  shots?: FeedbackShot[]
 }
 
 export interface SiteFeedbackRow {
@@ -48,6 +65,7 @@ export interface SiteFeedbackRow {
   contact_pref: ContactPref | null
   contact_note: string | null
   meta: Record<string, unknown> | null
+  shots: FeedbackShot[] | null
   status: FeedbackStatus
   staff_note: string | null
   handled_by: string | null
@@ -60,7 +78,7 @@ export interface SiteFeedbackRow {
 
 const COLUMNS =
   'id,created_at,user_id,role,campaign_id,lang,page,page_label,kind,mood,ease,areas,answers,message,' +
-  'contact_ok,contact_email,contact_phone,contact_pref,contact_note,meta,status,staff_note,handled_by,handled_at'
+  'contact_ok,contact_email,contact_phone,contact_pref,contact_note,meta,shots,status,staff_note,handled_by,handled_at'
 
 /** Contexto técnico del navegador: sirve para reproducir un error reportado. */
 function browserMeta(): Record<string, unknown> {
@@ -107,8 +125,108 @@ export async function submitSiteFeedback(input: SiteFeedbackInput): Promise<void
     contact_pref: input.contactOk ? input.contactPref ?? null : null,
     contact_note: input.contactOk ? input.contactNote?.trim().slice(0, 500) || null : null,
     meta: browserMeta(),
+    shots: input.shots ?? [],
   })
   if (error) throw error
+}
+
+/* ══════════════════════ Capturas de pantalla ══════════════════════ */
+
+export const SHOTS_BUCKET = 'feedback-shots'
+/** Tope por opinión: suficiente para explicar un error, no para un álbum. */
+export const MAX_SHOTS = 5
+/** Peso máximo del archivo original que aceptamos leer (antes de comprimir). */
+export const MAX_SHOT_BYTES = 12 * 1024 * 1024
+/** Lado mayor tras comprimir: legible a pantalla completa sin pesar de más. */
+const SHOT_MAX_PX = 1800
+const SHOT_QUALITY = 0.82
+
+export function isAcceptedShot(file: File): boolean {
+  return file.type.startsWith('image/') && file.size <= MAX_SHOT_BYTES
+}
+
+/**
+ * Reescala a 1800px de lado mayor y recomprime a JPEG. Una captura de un
+ * portátil moderno son 3–8 MB en PNG; así viaja en menos de 300 KB sin que se
+ * deje de leer el texto de la pantalla, que es justo lo que hay que ver.
+ * Devuelve también el tamaño final para poder pintar el hueco sin saltos.
+ */
+async function prepareShot(file: File): Promise<{ blob: Blob; w: number; h: number }> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  const scale = Math.min(1, SHOT_MAX_PX / Math.max(bitmap.width, bitmap.height))
+  const w = Math.max(1, Math.round(bitmap.width * scale))
+  const h = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) { bitmap.close?.(); return { blob: file, w: bitmap.width, h: bitmap.height } }
+  ctx.drawImage(bitmap, 0, 0, w, h)
+  bitmap.close?.()
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', SHOT_QUALITY))
+  // Si comprimir no ayuda (capturas diminutas), nos quedamos con el original.
+  return { blob: blob && blob.size < file.size ? blob : file, w, h }
+}
+
+/**
+ * Sube una captura al bucket y devuelve su ficha. La carpeta es
+ * `<uid>/<folder>/...`: el primer segmento es el dueño, que es lo que miran las
+ * políticas del Storage, y el segundo agrupa las de una misma opinión.
+ */
+export async function uploadFeedbackShot(folder: string, file: File): Promise<FeedbackShot> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('NOT_AUTHENTICATED')
+
+  const { blob, w, h } = await prepareShot(file)
+  const ext = blob.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'png').toLowerCase()
+  const path = `${session.user.id}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+  const { error } = await supabase.storage.from(SHOTS_BUCKET).upload(path, blob, {
+    contentType: blob.type || file.type,
+    cacheControl: '31536000', // el nombre es único: la imagen nunca cambia
+    upsert: false,
+  })
+  if (error) throw error
+
+  return {
+    path,
+    url: supabase.storage.from(SHOTS_BUCKET).getPublicUrl(path).data.publicUrl,
+    name: file.name.slice(0, 120),
+    size: blob.size,
+    w,
+    h,
+    at: new Date().toISOString(),
+  }
+}
+
+/** Borra el archivo del bucket. Se usa al quitar una captura antes de enviar. */
+export async function removeShotFile(path: string): Promise<void> {
+  await supabase.storage.from(SHOTS_BUCKET).remove([path])
+}
+
+/**
+ * Añade capturas a una opinión YA enviada (desde "Mis sugerencias"). Va por RPC
+ * y no por UPDATE directo a propósito: abrir el UPDATE de la fila al autor le
+ * dejaría cambiar también su estado o la nota interna del staff.
+ */
+export async function addShotsToFeedback(id: string, shots: FeedbackShot[]): Promise<FeedbackShot[]> {
+  const { data, error } = await supabase.rpc('add_site_feedback_shots' as never, {
+    p_id: id,
+    p_shots: shots,
+  } as never)
+  if (error) throw error
+  return (data ?? []) as unknown as FeedbackShot[]
+}
+
+/** Quita una captura de una opinión enviada (y su archivo del bucket). */
+export async function removeShotFromFeedback(id: string, path: string): Promise<FeedbackShot[]> {
+  const { data, error } = await supabase.rpc('remove_site_feedback_shot' as never, {
+    p_id: id,
+    p_path: path,
+  } as never)
+  if (error) throw error
+  await removeShotFile(path)
+  return (data ?? []) as unknown as FeedbackShot[]
 }
 
 /** Lo que YO he enviado (vista permanente del aprendiz). */
@@ -213,6 +331,23 @@ export function computeStats(rows: SiteFeedbackRow[]): FeedbackStats {
     contactPending,
     avgMood: moodCount ? Math.round((moodSum / moodCount) * 10) / 10 : null,
     byKind,
+  }
+}
+
+/**
+ * Borra una opinión definitivamente. Solo el superadmin puede (lo impone la RLS,
+ * no la interfaz): archivar es la vía normal, esto es para basura y pruebas.
+ */
+export async function deleteSiteFeedback(id: string, shots?: FeedbackShot[] | null): Promise<void> {
+  // Sin política de DELETE la RLS no da error: filtra la fila y devuelve 0
+  // borradas. Por eso pedimos el id de vuelta y tratamos el vacío como fallo.
+  const { data, error } = await table().delete().eq('id', id).select('id')
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error('DELETE_NOT_ALLOWED')
+  // Los archivos no se van con la fila: si quedan, son basura invisible que
+  // nadie volverá a borrar. Que falle esto no invalida el borrado.
+  if (shots?.length) {
+    await supabase.storage.from(SHOTS_BUCKET).remove(shots.map((s) => s.path)).catch(() => {})
   }
 }
 

@@ -2,11 +2,20 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useAnimation } from 'framer-motion'
-import { Bell, BellRing, RotateCcw, Check, CheckCheck, MessageSquare, Inbox } from 'lucide-react'
+import {
+  Bell, BellRing, RotateCcw, Check, CheckCheck, MessageSquare, Inbox,
+  LifeBuoy, Settings2, Volume2, VolumeX, Play,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { notificationText } from '@/lib/notificationText'
+import {
+  useNotificationPrefs,
+  mutedMinutesLeft,
+  type NotificationVolume,
+} from '@/stores/notificationPrefsStore'
+import { previewNotificationSound } from '@/lib/notificationSound'
 import type { AppNotification } from '@/services/notifications.service'
 
 type Filter = 'all' | 'unread'
@@ -45,6 +54,7 @@ export function NotificationBell({ className }: { className?: string }) {
   const markAllRead = useNotificationsStore((s) => s.markAllRead)
 
   const [open, setOpen] = useState(false)
+  const [showPrefs, setShowPrefs] = useState(false)
   const [filter, setFilter] = useState<Filter>('all')
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -192,20 +202,41 @@ export function NotificationBell({ className }: { className?: string }) {
                     )}
                   </AnimatePresence>
                 </div>
-                <AnimatePresence>
-                  {unread > 0 && (
-                    <motion.button
-                      initial={{ opacity: 0, x: 6 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 6 }}
-                      onClick={() => void markAllRead()}
-                      className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] font-medium text-primary transition-colors hover:bg-primary/10"
-                    >
-                      <CheckCheck className="h-3.5 w-3.5" /> {t('notifications.mark_all_read')}
-                    </motion.button>
-                  )}
-                </AnimatePresence>
+                <div className="flex items-center gap-0.5">
+                  <AnimatePresence>
+                    {unread > 0 && (
+                      <motion.button
+                        initial={{ opacity: 0, x: 6 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 6 }}
+                        onClick={() => void markAllRead()}
+                        className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] font-medium text-primary transition-colors hover:bg-primary/10"
+                      >
+                        <CheckCheck className="h-3.5 w-3.5" /> {t('notifications.mark_all_read')}
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                  <button
+                    onClick={() => setShowPrefs((v) => !v)}
+                    aria-label={t('notifications.prefs.title', 'Preferencias de aviso')}
+                    title={t('notifications.prefs.title', 'Preferencias de aviso')}
+                    aria-expanded={showPrefs}
+                    className={cn(
+                      'flex h-7 w-7 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-subtle hover:text-text',
+                      showPrefs && 'bg-subtle text-text',
+                    )}
+                  >
+                    <motion.span animate={{ rotate: showPrefs ? 90 : 0 }} transition={{ duration: 0.25, ease: EASE }}>
+                      <Settings2 className="h-3.5 w-3.5" />
+                    </motion.span>
+                  </button>
+                </div>
               </div>
+
+              {/* Preferencias de aviso (sonido, volumen, chat de ayuda) */}
+              <AnimatePresence initial={false}>
+                {showPrefs && <PrefsPanel key="prefs" />}
+              </AnimatePresence>
 
               {/* Filtros con indicador deslizante */}
               <div className="flex items-center gap-1 border-b border-line px-3 py-2">
@@ -264,6 +295,8 @@ export function NotificationBell({ className }: { className?: string }) {
                           flatIndex += 1
                           const { title, body } = notificationText(n)
                           const isFeedback = n.kind === 'feedback'
+                          const isHelp = n.kind === 'help_chat'
+                          const Icon = isHelp ? LifeBuoy : isFeedback ? MessageSquare : RotateCcw
                           return (
                             <motion.div
                               key={n.id}
@@ -281,9 +314,12 @@ export function NotificationBell({ className }: { className?: string }) {
                               <button
                                 onClick={() => {
                                   void markRead(n.id)
-                                  if (isFeedback) {
+                                  // Cada aviso lleva a donde se resuelve: la
+                                  // retroalimentación a la del aprendiz, el del
+                                  // chat de ayuda a su historial.
+                                  if (isFeedback || isHelp) {
                                     setOpen(false)
-                                    navigate('/feedback')
+                                    navigate(isHelp ? '/admin/chat' : '/feedback')
                                   }
                                 }}
                                 className={cn(
@@ -301,16 +337,14 @@ export function NotificationBell({ className }: { className?: string }) {
                                 <span
                                   className={cn(
                                     'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                                    isFeedback
-                                      ? 'bg-violet-500/12 text-violet-500'
-                                      : 'bg-amber-500/12 text-amber-500',
+                                    isHelp
+                                      ? 'bg-neon-green/12 text-neon-green'
+                                      : isFeedback
+                                        ? 'bg-violet-500/12 text-violet-500'
+                                        : 'bg-amber-500/12 text-amber-500',
                                   )}
                                 >
-                                  {isFeedback ? (
-                                    <MessageSquare className="h-4 w-4" />
-                                  ) : (
-                                    <RotateCcw className="h-4 w-4" />
-                                  )}
+                                  <Icon className="h-4 w-4" />
                                 </span>
                                 <span className="min-w-0 flex-1">
                                   <span className="flex items-center gap-2">
@@ -357,5 +391,169 @@ export function NotificationBell({ className }: { className?: string }) {
         document.body,
       )}
     </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Preferencias de aviso: viven aquí, junto a lo que gobiernan, y no en una
+// pantalla de ajustes aparte — quien quiere bajarle al ruido lo quiere hacer en
+// el momento en que el ruido le molesta. Se guardan por navegador.
+// ─────────────────────────────────────────────────────────────
+function PrefsPanel() {
+  const { t } = useTranslation()
+  const { sound, volume, helpAlerts, mutedUntil, setSound, setVolume, setHelpAlerts, muteFor } =
+    useNotificationPrefs()
+  const mutedLeft = mutedMinutesLeft(mutedUntil)
+
+  return (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ duration: 0.28, ease: EASE }}
+      className="overflow-hidden border-b border-line bg-subtle/25"
+    >
+      <div className="space-y-2.5 px-4 py-3">
+        <PrefRow
+          label={t('notifications.prefs.sound', 'Sonido al llegar un aviso')}
+          checked={sound}
+          onChange={setSound}
+          icon={sound ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+          extra={
+            sound ? (
+              <button
+                onClick={previewNotificationSound}
+                aria-label={t('notifications.prefs.test', 'Probar')}
+                title={t('notifications.prefs.test', 'Probar')}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-primary/10 hover:text-primary"
+              >
+                <Play className="h-3 w-3" />
+              </button>
+            ) : null
+          }
+        />
+
+        {/* Volumen: tres pasos bastan; un deslizador aquí sería precisión falsa. */}
+        <AnimatePresence initial={false}>
+          {sound && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: EASE }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-1 pl-6">
+                {(['soft', 'normal', 'loud'] as NotificationVolume[]).map((v) => {
+                  const active = volume === v
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => {
+                        setVolume(v)
+                        previewNotificationSound()
+                      }}
+                      className={cn(
+                        'relative rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors',
+                        active ? 'text-text' : 'text-text-subtle hover:text-text',
+                      )}
+                    >
+                      {active && (
+                        <motion.span
+                          layoutId="notif-volume-pill"
+                          className="absolute inset-0 rounded-lg bg-primary/12 ring-1 ring-primary/25"
+                          transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                        />
+                      )}
+                      <span className="relative">{t(`notifications.prefs.volume_${v}`)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <PrefRow
+          label={t('notifications.prefs.help_alerts', 'Avisar cuando escriben al chat de ayuda')}
+          checked={helpAlerts}
+          onChange={setHelpAlerts}
+          icon={<LifeBuoy className="h-3.5 w-3.5" />}
+        />
+
+        {/* Silencio temporal: la salida de emergencia para una reunión. */}
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <span className="text-[11.5px] text-text-muted">
+            {mutedLeft > 0
+              ? t('notifications.prefs.muted_left', { count: mutedLeft, defaultValue: 'En silencio {{count}} min más' })
+              : t('notifications.prefs.not_muted', 'Sin silencio temporal')}
+          </span>
+          {mutedLeft > 0 ? (
+            <button
+              onClick={() => muteFor(0)}
+              className="rounded-lg px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              {t('notifications.prefs.unmute', 'Reactivar')}
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              {[15, 30, 60].map((m) => (
+                <button
+                  key={m}
+                  onClick={() => muteFor(m)}
+                  className="rounded-lg border border-line px-2 py-0.5 text-[11px] text-text-muted transition-colors hover:border-amber-500/40 hover:text-amber-500"
+                >
+                  {m}m
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+/** Fila de preferencia con interruptor deslizante. */
+function PrefRow({
+  label,
+  checked,
+  onChange,
+  icon,
+  extra,
+}: {
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  icon: React.ReactNode
+  extra?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={cn('shrink-0 transition-colors', checked ? 'text-primary' : 'text-text-subtle')}>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 text-[11.5px] leading-tight text-text-muted">{label}</span>
+      {extra}
+      <button
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+          checked ? 'bg-primary/80' : 'bg-line',
+        )}
+      >
+        <motion.span
+          layout
+          transition={{ type: 'spring', stiffness: 620, damping: 32 }}
+          className={cn(
+            'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm',
+            checked ? 'left-[18px]' : 'left-0.5',
+          )}
+        />
+      </button>
+    </div>
   )
 }

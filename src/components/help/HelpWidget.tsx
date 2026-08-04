@@ -9,6 +9,8 @@ import { useHelpChatStore } from '@/stores/helpChatStore'
 import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
 import { sendHelpMessage } from '@/services/help.service'
 import { logHelpInteraction } from '@/services/helpLog.service'
+import { notifySuperadminsHelpChat } from '@/services/notifications.service'
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 import { getSuggestionKeys } from './suggestions'
 import { matchFaq } from './faq'
 import { aiDailyLimit, todayKey } from './config'
@@ -84,6 +86,14 @@ export function HelpWidget() {
     addMessage({ id: nextId(), role: 'user', content: trimmed })
 
     const logBase = { role, campaignId, lang, page: location.pathname }
+
+    // Aviso en vivo al superadmin: alguien está pidiendo ayuda. Va antes de la
+    // respuesta (y sin esperar) porque lo valioso es enterarse EN EL MOMENTO, no
+    // cuando la IA termine. Desde la vista previa no se avisa: ahí el staff está
+    // revisando contenido, no pidiendo ayuda de verdad.
+    if (!IS_LEARNER_PREVIEW) {
+      void notifySuperadminsHelpChat({ question: trimmed, page: location.pathname, lang })
+    }
 
     // Cupo diario agotado → intenta la base local antes de rendirse.
     if (aiUsedToday() >= dailyLimit) {

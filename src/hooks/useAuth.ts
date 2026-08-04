@@ -20,6 +20,11 @@ export function useAuth() {
     campaignId: profile?.campaign_id ?? null,
     isSuperAdmin: role === 'superadmin',
     isCapacitador: role === 'capacitador',
+    // Dar de alta aprendices NO viene con el rol de capacitador: el superadmin
+    // lo concede persona por persona. Sin el permiso, el panel no ofrece los
+    // botones de alta (y las Edge Functions rechazan igual a quien insista).
+    canCreateLearners:
+      role === 'superadmin' || (role === 'capacitador' && profile?.can_create_learners === true),
     // Puede acceder al panel admin (aunque con permisos restringidos)
     isAdminOrCapacitador: role === 'superadmin' || role === 'capacitador',
     displayName: profile?.display_name ?? session?.user?.email ?? '',

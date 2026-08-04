@@ -3,15 +3,17 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import {
   ChevronDown, ChevronRight, Inbox, Loader2, Mail, MessageCircle, Monitor,
-  Phone, Search, Copy, Check,
+  Phone, Search, Copy, Check, Trash2, Image as ImageIcon,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  computeStats, fetchSiteFeedback, updateSiteFeedback,
+  computeStats, deleteSiteFeedback, fetchSiteFeedback, updateSiteFeedback,
   type FeedbackKind, type FeedbackStatus, type SiteFeedbackRow,
 } from '@/services/siteFeedback.service'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { KINDS, MOODS, kindMeta, questionsFor } from '@/components/feedback/config'
 import { STATUSES, StatusPill, STATUS_COLOR } from '@/components/feedback/StatusPill'
+import { ShotGallery } from '@/components/feedback/ShotGallery'
 import { FadeIn } from '@/components/ui/motion'
 import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
@@ -36,6 +38,7 @@ export default function SiteFeedback() {
   // El capacitador viene a atender personas; el superadmin, además, a depurar.
   // Esa es la única diferencia entre lo que ve uno y otro en esta pantalla.
   const { isSuperAdmin } = useAuth()
+  const confirm = useConfirm()
   const [rows, setRows] = useState<SiteFeedbackRow[]>([])
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<StatusFilter>('open')
@@ -69,6 +72,28 @@ export default function SiteFeedback() {
     } catch (e) {
       console.error(e)
       toast.error(t('admin.site_feedback.save_error', 'No se pudo guardar'))
+    }
+  }
+
+  /** Borrado definitivo (solo superadmin): pruebas y basura que nadie debe leer. */
+  async function remove(r: SiteFeedbackRow) {
+    const ok = await confirm({
+      title: t('admin.site_feedback.delete_title', 'Borrar esta opinión'),
+      description: t(
+        'admin.site_feedback.delete_desc',
+        'Se elimina para siempre, junto con su nota interna. Si solo quieres sacarla de la bandeja, márcala como Archivada.',
+      ),
+      confirmLabel: t('admin.site_feedback.delete_confirm', 'Borrar'),
+    })
+    if (!ok) return
+    try {
+      await deleteSiteFeedback(r.id, r.shots)
+      setRows((cur) => cur.filter((x) => x.id !== r.id))
+      setExpanded((cur) => (cur === r.id ? null : cur))
+      toast.success(t('admin.site_feedback.deleted', 'Opinión borrada'))
+    } catch (e) {
+      console.error(e)
+      toast.error(t('admin.site_feedback.delete_error', 'No se pudo borrar la opinión'))
     }
   }
 
@@ -185,6 +210,7 @@ export default function SiteFeedback() {
               open={expanded === r.id}
               onToggle={() => setExpanded(expanded === r.id ? null : r.id)}
               onPatch={patch}
+              onDelete={remove}
             />
           ))}
         </div>
@@ -194,12 +220,13 @@ export default function SiteFeedback() {
 }
 
 // ─────────────────────────────────────────────────────────────
-function Row({ row: r, open, isSuperAdmin, onToggle, onPatch }: {
+function Row({ row: r, open, isSuperAdmin, onToggle, onPatch, onDelete }: {
   row: SiteFeedbackRow
   open: boolean
   isSuperAdmin: boolean
   onToggle: () => void
   onPatch: (id: string, p: { status?: FeedbackStatus; staff_note?: string | null }) => Promise<void>
+  onDelete: (row: SiteFeedbackRow) => Promise<void>
 }) {
   const { t } = useTranslation()
   const meta = kindMeta(r.kind)
@@ -242,6 +269,16 @@ function Row({ row: r, open, isSuperAdmin, onToggle, onPatch }: {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* Que traiga capturas cambia la prioridad: se ve sin desplegar. */}
+          {r.shots && r.shots.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-1 text-[10.5px] font-medium text-text-muted"
+              title={t('admin.site_feedback.has_shots', '{{n}} captura(s) adjunta(s)', { n: r.shots.length })}
+            >
+              <ImageIcon className="h-3 w-3" />
+              {r.shots.length}
+            </span>
+          )}
           {r.contact_ok && (
             <span className="hidden items-center gap-1 rounded-full bg-red-500/12 px-2 py-1 text-[10.5px] font-medium text-red-400 sm:inline-flex">
               <Phone className="h-3 w-3" />
@@ -290,6 +327,14 @@ function Row({ row: r, open, isSuperAdmin, onToggle, onPatch }: {
               {r.message || t('admin.site_feedback.no_message', 'Sin comentario escrito')}
             </p>
           </Section>
+
+          {/* Las capturas van pegadas al comentario: son la misma explicación,
+              y en un error valen más que cualquier campo del formulario. */}
+          {r.shots && r.shots.length > 0 && (
+            <Section title={t('admin.site_feedback.sec_shots', 'Lo que nos mostró')}>
+              <ShotGallery shots={r.shots} size="md" />
+            </Section>
+          )}
 
           {/* ── Cómo se sintió: las tres medidas, en lenguaje de persona ── */}
           <Section title={t('admin.site_feedback.sec_felt', 'Cómo se sintió')}>
@@ -402,12 +447,24 @@ function Row({ row: r, open, isSuperAdmin, onToggle, onPatch }: {
               placeholder={t('admin.site_feedback.note_ph', 'Nota interna: qué se hizo con esto…')}
               className="w-full resize-none rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] text-text placeholder:text-text-muted/60 focus:outline-none"
             />
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-[11px] text-text-subtle">
-                {r.handled_by_name
-                  ? t('admin.site_feedback.handled_by', 'Última gestión: {{name}}', { name: r.handled_by_name })
-                  : ''}
-              </span>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {/* Borrar es del superadmin: el capacitador archiva, no destruye. */}
+                {isSuperAdmin && (
+                  <button
+                    onClick={() => void onDelete(r)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-[12px] font-medium text-red-400 transition-colors hover:bg-red-500/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t('admin.site_feedback.delete', 'Borrar')}
+                  </button>
+                )}
+                <span className="text-[11px] text-text-subtle">
+                  {r.handled_by_name
+                    ? t('admin.site_feedback.handled_by', 'Última gestión: {{name}}', { name: r.handled_by_name })
+                    : ''}
+                </span>
+              </div>
               <button
                 onClick={async () => {
                   setSavingNote(true)

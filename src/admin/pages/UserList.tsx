@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -18,6 +18,7 @@ import {
 import { Avatar } from '@/components/ui/Avatar'
 import { FadeIn } from '@/components/ui/motion'
 import { Select } from '@/components/ui/Select'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { MultiSelect } from '@/components/ui/MultiSelect'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
@@ -51,7 +52,7 @@ function mapCreds(rows: { user_id: string; email: string; temp_password: string 
 }
 
 export default function UserList() {
-  const { isSuperAdmin, campaignId, user: authUser } = useAuth()
+  const { isSuperAdmin, canCreateLearners, campaignId, user: authUser } = useAuth()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -62,6 +63,8 @@ export default function UserList() {
   // Sincronización de altas y bajas contra la base de Talento Humano.
   const [hrOpen, setHrOpen] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  // Permiso de "puede crear aprendices" guardándose para un capacitador.
+  const [togglingPermFor, setTogglingPermFor] = useState<string | null>(null)
   // Contraseña predeterminada para usuarios nuevos (ajuste global de superadmin).
   const [pwdOpen, setPwdOpen] = useState(false)
   const [defaultPwdOn, setDefaultPwdOn] = useState(false)
@@ -127,10 +130,14 @@ export default function UserList() {
 
   const inactiveCount = useMemo(() => users.filter((u) => u.is_active === false).length, [users])
 
-  // El capacitador da de alta aprendices (nada más) en sus propias campañas. Las
-  // BAJAS siguen siendo solo del superadmin: ese es el punto de control del
-  // proceso de Talento Humano y no se delega.
-  const canCreateUsers = isSuperAdmin || campaigns.length > 0
+  // El capacitador da de alta aprendices (nada más) en sus propias campañas, y
+  // SOLO si el superadmin lo habilitó: el permiso se concede uno por uno, no
+  // viene con el rol. Las BAJAS siguen siendo solo del superadmin: ese es el
+  // punto de control del proceso de Talento Humano y no se delega.
+  const canCreateUsers = isSuperAdmin || (canCreateLearners && campaigns.length > 0)
+  // Capacitador sin el permiso: se le explica por qué no ve los botones, en vez
+  // de dejar la pantalla muda.
+  const showNoPermissionHint = !isSuperAdmin && !canCreateLearners
   // Sin campaña elegida el servidor rechaza el alta, así que el formulario la
   // exige antes de dejar crear.
   const needsCampaign = !isSuperAdmin
@@ -316,8 +323,43 @@ export default function UserList() {
   }
 
   const handleRoleChange = async (userId: string, newRole: Profile['role']) => {
-    await supabase.from('profiles').update({ role: newRole }).eq('id', userId)
-    setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, role: newRole } : u))
+    // Al dejar de ser capacitador se retira el permiso de altas: si mañana
+    // vuelve a serlo, no debe recuperarlo solo por un permiso viejo colgado.
+    const patch = newRole === 'capacitador'
+      ? { role: newRole }
+      : { role: newRole, can_create_learners: false }
+    await supabase.from('profiles').update(patch).eq('id', userId)
+    setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, ...patch } : u))
+  }
+
+  /**
+   * Concede (o retira) a un capacitador el permiso de dar de alta aprendices en
+   * sus campañas. Solo el superadmin lo mueve: la interfaz lo esconde y un
+   * trigger en la base impide que nadie más lo cambie por su cuenta.
+   */
+  const handleToggleCanCreate = async (user: ProfileWithEmail) => {
+    const next = user.can_create_learners !== true
+    const name = user.display_name ?? user.email ?? user.id.slice(0, 8)
+    // Optimista: el interruptor responde ya y se revierte si la BD rechaza.
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_create_learners: next } : u)))
+    setTogglingPermFor(user.id)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ can_create_learners: next })
+        .eq('id', user.id)
+      if (error) throw error
+      toast.success(
+        next ? t('admin.users.can_create_granted', { name }) : t('admin.users.can_create_revoked', { name }),
+      )
+    } catch (err) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, can_create_learners: !next } : u)),
+      )
+      toast.error(t('admin.users.can_create_error'), (err as Error).message)
+    } finally {
+      setTogglingPermFor(null)
+    }
   }
 
   /**
@@ -487,11 +529,14 @@ export default function UserList() {
   // para que encabezado y filas queden siempre alineados aunque una fila tenga
   // más botones que otra (p. ej. "copiar credenciales").
   const gridCols = isSuperAdmin
-    ? 'minmax(280px,1fr) 150px 210px 549px 48px'
+    // 589px = 549 de antes + 40 del interruptor de "puede crear aprendices"
+    // (solo aparece en filas de capacitador, pero la columna es fija para que
+    // encabezado y filas queden alineados).
+    ? 'minmax(280px,1fr) 150px 210px 589px 48px'
     // El capacitador también puede copiar credenciales de su gente: la columna
     // de acciones necesita espacio para ese botón.
     : 'minmax(280px,1fr) 150px 490px'
-  const tableMinWidth = isSuperAdmin ? 1289 : 940
+  const tableMinWidth = isSuperAdmin ? 1329 : 940
 
   return (
     <div className="p-4 sm:p-8">
@@ -501,14 +546,19 @@ export default function UserList() {
           <p className="text-text-muted text-[13px] mt-1">
             {isSuperAdmin ? t('admin.users.subtitle') : t('admin.users.subtitle_campaign')}
           </p>
+          {showNoPermissionHint && (
+            <p className="text-text-subtle text-[12px] mt-1">
+              {t('admin.users.no_create_permission')}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {isSuperAdmin && (
             <>
+            <Tooltip label={t('admin.users.optimize_photos_hint')} maxWidth={260}>
             <button
               onClick={handleRecompress}
               disabled={optimizing}
-              title={t('admin.users.optimize_photos_hint')}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px] disabled:opacity-70"
             >
               {optimizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageDown className="h-4 w-4" />}
@@ -516,9 +566,10 @@ export default function UserList() {
                 ? `${optProgress.done}/${optProgress.total}`
                 : t('admin.users.optimize_photos')}
             </button>
+            </Tooltip>
+            <Tooltip label={t('admin.users.default_pwd_hint')} maxWidth={260}>
             <button
               onClick={() => setPwdOpen(true)}
-              title={t('admin.users.default_pwd_hint')}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
             >
               <KeyRound className="h-4 w-4" />
@@ -534,14 +585,16 @@ export default function UserList() {
                 {defaultPwdOn ? t('admin.users.default_pwd_on') : t('admin.users.default_pwd_off')}
               </span>
             </button>
+            </Tooltip>
+            <Tooltip label={t('admin.hr.button_hint')} maxWidth={260}>
             <button
               onClick={() => setHrOpen(true)}
-              title={t('admin.hr.button_hint')}
               className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
             >
               <Users className="h-4 w-4" />
               {t('admin.hr.button')}
             </button>
+            </Tooltip>
             </>
           )}
           {canCreateUsers && (
@@ -784,21 +837,25 @@ export default function UserList() {
                           placeholder={t('admin.users.ph_name')}
                           className="min-w-0 flex-1 rounded-lg px-2 py-1 text-[13px] text-text bg-subtle border border-line outline-none focus:border-primary"
                         />
+                        <Tooltip label={t('admin.courses.save')} className="shrink-0">
                         <button
                           onClick={() => handleSaveName(user.id)}
                           disabled={savingName}
                           className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-green-600 hover:bg-green-500/10 disabled:opacity-50 transition-colors"
-                          title={t('admin.courses.save')}
+                          aria-label={t('admin.courses.save')}
                         >
                           {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-4 w-4" />}
                         </button>
+                        </Tooltip>
+                        <Tooltip label={t('admin.courses.cancel')} className="shrink-0">
                         <button
                           onClick={() => setEditingId(null)}
                           className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
-                          title={t('admin.courses.cancel')}
+                          aria-label={t('admin.courses.cancel')}
                         >
                           <X className="h-4 w-4" />
                         </button>
+                        </Tooltip>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 min-w-0 group">
@@ -810,29 +867,34 @@ export default function UserList() {
                           {user.display_name ?? 'Sin nombre'}
                         </button>
                         {isSuperAdmin && (
-                          <button
-                            onClick={() => startEditName(user)}
-                            className="shrink-0 h-6 w-6 flex items-center justify-center rounded-md text-text-subtle hover:text-text hover:bg-glass/6 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
-                            title={t('admin.users.edit_name')}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
+                          <Tooltip label={t('admin.users.edit_name')} className="shrink-0">
+                            <button
+                              onClick={() => startEditName(user)}
+                              className="shrink-0 h-6 w-6 flex items-center justify-center rounded-md text-text-subtle hover:text-text hover:bg-glass/6 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
+                              aria-label={t('admin.users.edit_name')}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          </Tooltip>
                         )}
                         {(passkeys[user.id]?.count ?? 0) > 0 && (
-                          <span
-                            className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
-                            style={{ background: 'rgba(16,212,81,0.14)', color: '#0ca23e' }}
-                            title={t('passkey.admin_count', { count: passkeys[user.id].count })}
+                          <Tooltip
+                            label={t('passkey.admin_count', { count: passkeys[user.id].count })}
+                            className="shrink-0"
+                            maxWidth={240}
                           >
-                            <Fingerprint className="h-3 w-3" />
-                            {passkeys[user.id].count}
-                          </span>
+                            <span
+                              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{ background: 'rgba(16,212,81,0.14)', color: '#0ca23e' }}
+                            >
+                              <Fingerprint className="h-3 w-3" />
+                              {passkeys[user.id].count}
+                            </span>
+                          </Tooltip>
                         )}
                         {user.is_active === false && (
-                          <span
-                            className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
-                            style={{ background: 'rgba(239,68,68,0.15)', color: '#dc2626' }}
-                            title={
+                          <Tooltip
+                            label={
                               user.deactivated_at
                                 ? t('admin.users.inactive_since', {
                                     date: new Date(user.deactivated_at).toLocaleDateString(),
@@ -840,20 +902,28 @@ export default function UserList() {
                                   })
                                 : t('admin.users.inactive_hint')
                             }
+                            className="shrink-0"
+                            maxWidth={260}
                           >
-                            <UserMinus className="h-3 w-3" />
-                            {t('admin.users.inactive')}
-                          </span>
+                            <span
+                              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{ background: 'rgba(239,68,68,0.15)', color: '#dc2626' }}
+                            >
+                              <UserMinus className="h-3 w-3" />
+                              {t('admin.users.inactive')}
+                            </span>
+                          </Tooltip>
                         )}
                         {!user.onboarded && (
-                          <span
-                            className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
-                            style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}
-                            title={t('admin.users.pending_hint')}
-                          >
-                            <Clock className="h-3 w-3" />
-                            {t('admin.users.pending')}
-                          </span>
+                          <Tooltip label={t('admin.users.pending_hint')} className="shrink-0" maxWidth={240}>
+                            <span
+                              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}
+                            >
+                              <Clock className="h-3 w-3" />
+                              {t('admin.users.pending')}
+                            </span>
+                          </Tooltip>
                         )}
                       </div>
                     )}
@@ -925,90 +995,141 @@ export default function UserList() {
                     )}
                   </div>
                 )}
+                {/* Cada acción explica QUÉ hace al pasar el mouse: los iconos
+                    solos no se adivinan, y el `title` del navegador tarda un
+                    segundo largo en salir y se ve distinto en cada sistema. */}
                 <div className="flex items-center gap-1 min-w-0">
-                  <button
-                    onClick={() => navigate(`/admin/users/${user.id}`)}
-                    className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors min-w-0"
-                    title={t('admin.users.view_profile')}
-                  >
-                    <IdCard className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{t('admin.users.view_profile')}</span>
-                  </button>
+                  {/* `min-w-0` en el envoltorio: ahora el elemento flex es él, y
+                      sin eso el botón deja de encogerse y desborda la columna. */}
+                  <Tooltip label={t('admin.users.view_profile_hint')} className="min-w-0" maxWidth={240}>
+                    <button
+                      onClick={() => navigate(`/admin/users/${user.id}`)}
+                      className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors min-w-0"
+                    >
+                      <IdCard className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{t('admin.users.view_profile')}</span>
+                    </button>
+                  </Tooltip>
                   {tempCreds[user.id] && (
-                    <button
-                      onClick={() => copyCreds(user.id, tempCreds[user.id].email, tempCreds[user.id].temp_password)}
-                      className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors min-w-0"
-                      style={{ color: copiedId === user.id ? '#16a34a' : '#d97706' }}
-                      title={t('admin.users.copy_creds')}
-                    >
-                      {copiedId === user.id ? <Check className="h-4 w-4 shrink-0" /> : <Copy className="h-4 w-4 shrink-0" />}
-                      <span className="truncate">{t('admin.users.copy_creds')}</span>
-                    </button>
+                    <Tooltip label={t('admin.users.copy_creds_hint')} className="min-w-0" maxWidth={240}>
+                      <button
+                        onClick={() => copyCreds(user.id, tempCreds[user.id].email, tempCreds[user.id].temp_password)}
+                        className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors min-w-0"
+                        style={{ color: copiedId === user.id ? '#16a34a' : '#d97706' }}
+                      >
+                        {copiedId === user.id ? <Check className="h-4 w-4 shrink-0" /> : <Copy className="h-4 w-4 shrink-0" />}
+                        <span className="truncate">{t('admin.users.copy_creds')}</span>
+                      </button>
+                    </Tooltip>
                   )}
-                  <button
-                    onClick={() => setAssignUser(user)}
-                    className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors min-w-0"
-                    title={t('admin.users.assign_courses')}
-                  >
-                    <BookOpen className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{t('admin.users.assign_courses')}</span>
-                  </button>
-                  <button
-                    onClick={() => navigate(`/admin/progress?view=worlds&user=${user.id}`)}
-                    className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
-                    title={t('admin.users.view_progress')}
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                  </button>
-                  {isSuperAdmin && (
+                  <Tooltip label={t('admin.users.assign_courses_hint')} className="min-w-0" maxWidth={240}>
                     <button
-                      onClick={() => setResetUser(user)}
-                      className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
-                      title={t('admin.users.manage_courses')}
+                      onClick={() => setAssignUser(user)}
+                      className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors min-w-0"
                     >
-                      <RotateCcw className="h-4 w-4" />
+                      <BookOpen className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{t('admin.users.assign_courses')}</span>
                     </button>
+                  </Tooltip>
+                  <Tooltip label={t('admin.users.view_progress_hint')} className="shrink-0" maxWidth={240}>
+                    <button
+                      onClick={() => navigate(`/admin/progress?view=worlds&user=${user.id}`)}
+                      className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                      aria-label={t('admin.users.view_progress')}
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
+                  {isSuperAdmin && (
+                    <Tooltip label={t('admin.users.manage_courses_hint')} className="shrink-0" maxWidth={240}>
+                      <button
+                        onClick={() => setResetUser(user)}
+                        className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                        aria-label={t('admin.users.manage_courses')}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {/* Permiso de altas: solo tiene sentido en un capacitador
+                      (el superadmin ya puede y el aprendiz nunca podrá). */}
+                  {isSuperAdmin && user.role === 'capacitador' && (
+                    <Tooltip
+                      label={
+                        user.can_create_learners
+                          ? t('admin.users.can_create_on_hint')
+                          : t('admin.users.can_create_off_hint')
+                      }
+                      className="shrink-0"
+                      maxWidth={250}
+                    >
+                      <button
+                        onClick={() => handleToggleCanCreate(user)}
+                        disabled={togglingPermFor === user.id}
+                        className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+                          user.can_create_learners
+                            ? 'text-green-600 hover:bg-green-500/10'
+                            : 'text-text-subtle hover:text-text hover:bg-glass/6'
+                        }`}
+                        aria-label={t('admin.users.can_create_label')}
+                        aria-pressed={user.can_create_learners === true}
+                      >
+                        {togglingPermFor === user.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <UserRoundPlus className="h-4 w-4" />}
+                      </button>
+                    </Tooltip>
                   )}
                   {isSuperAdmin && user.role === 'learner' && (
-                    <button
-                      onClick={() => handleToggleActive(user)}
-                      disabled={togglingId === user.id}
-                      className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
-                        user.is_active === false
-                          ? 'text-green-600 hover:bg-green-500/10'
-                          : 'text-text-subtle hover:text-amber-600 hover:bg-amber-500/10'
-                      }`}
-                      title={user.is_active === false ? t('admin.users.reactivate') : t('admin.users.deactivate')}
+                    <Tooltip
+                      label={user.is_active === false ? t('admin.users.reactivate_hint') : t('admin.users.deactivate_hint')}
+                      className="shrink-0"
+                      maxWidth={250}
                     >
-                      {togglingId === user.id
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : user.is_active === false
-                          ? <UserCheck className="h-4 w-4" />
-                          : <UserMinus className="h-4 w-4" />}
-                    </button>
+                      <button
+                        onClick={() => handleToggleActive(user)}
+                        disabled={togglingId === user.id}
+                        className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+                          user.is_active === false
+                            ? 'text-green-600 hover:bg-green-500/10'
+                            : 'text-text-subtle hover:text-amber-600 hover:bg-amber-500/10'
+                        }`}
+                        aria-label={user.is_active === false ? t('admin.users.reactivate') : t('admin.users.deactivate')}
+                      >
+                        {togglingId === user.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : user.is_active === false
+                            ? <UserCheck className="h-4 w-4" />
+                            : <UserMinus className="h-4 w-4" />}
+                      </button>
+                    </Tooltip>
                   )}
                   {isSuperAdmin && (
-                    <button
-                      onClick={() => handleResetPassword(user)}
-                      disabled={resettingPwdFor === user.id}
-                      className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 disabled:opacity-50 transition-colors"
-                      title={t('admin.users.reset_pwd')}
-                    >
-                      {resettingPwdFor === user.id
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : <KeyRound className="h-4 w-4" />}
-                    </button>
+                    <Tooltip label={t('admin.users.reset_pwd_hint')} className="shrink-0" maxWidth={250}>
+                      <button
+                        onClick={() => handleResetPassword(user)}
+                        disabled={resettingPwdFor === user.id}
+                        className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 disabled:opacity-50 transition-colors"
+                        aria-label={t('admin.users.reset_pwd')}
+                      >
+                        {resettingPwdFor === user.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <KeyRound className="h-4 w-4" />}
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
                 {isSuperAdmin && (
-                  <button
-                    onClick={() => handleDelete(user)}
-                    disabled={deletingId === user.id}
-                    className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
-                    title={i18n.t('admin.users.delete_user')}
-                  >
-                    {deletingId === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </button>
+                  <Tooltip label={t('admin.users.delete_user_hint')} maxWidth={240}>
+                    <button
+                      onClick={() => handleDelete(user)}
+                      disabled={deletingId === user.id}
+                      className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+                      aria-label={i18n.t('admin.users.delete_user')}
+                    >
+                      {deletingId === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             ))}

@@ -10,7 +10,11 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useHelpChatStore } from '@/stores/helpChatStore'
 import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
-import { submitSiteFeedback, type ContactPref, type FeedbackKind } from '@/services/siteFeedback.service'
+import {
+  submitSiteFeedback,
+  type ContactPref, type FeedbackKind, type FeedbackShot,
+} from '@/services/siteFeedback.service'
+import { ShotUploader } from './ShotUploader'
 import {
   AREAS, KINDS, MOODS, TEAM_CONTACTS, areaFromPath, guessDevice, kindMeta, pageLabelFor,
   questionsFor, shouldShowFeedbackFab, type AreaKey,
@@ -53,6 +57,13 @@ export function FeedbackWidget() {
   const [areas, setAreas] = useState<AreaKey[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
+  const [shots, setShots] = useState<FeedbackShot[]>([])
+  /**
+   * Carpeta de las capturas de ESTE borrador. Se genera una nueva por envío:
+   * así las de una opinión no se mezclan con las de la siguiente, aunque la
+   * persona escriba dos seguidas sin cerrar el panel.
+   */
+  const [shotFolder, setShotFolder] = useState(() => crypto.randomUUID())
   const [contactOk, setContactOk] = useState(false)
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -119,10 +130,13 @@ export function FeedbackWidget() {
     setOpen(true)
   }
 
+  // Solo se llama después de enviar: las capturas ya viajaron con la opinión,
+  // así que aquí se sueltan (no se borran) y se estrena carpeta para la próxima.
   function reset() {
     setStep(0); setDir(1); setMood(null); setKind(null); setEase(null)
     setAreas([]); setAnswers({}); setMessage(''); setContactOk(false)
     setNote(''); setDone(false); setError(false)
+    setShots([]); setShotFolder(crypto.randomUUID())
   }
 
   const go = (next: Step) => { setDir(next > step ? 1 : -1); setStep(next) }
@@ -142,7 +156,7 @@ export function FeedbackWidget() {
     setError(false)
     try {
       await submitSiteFeedback({
-        kind, mood, ease, areas: [...areas], answers, message,
+        kind, mood, ease, areas: [...areas], answers, message, shots,
         contactOk,
         contactEmail: email, contactPhone: phone, contactPref: pref, contactNote: note,
         lang: i18n.resolvedLanguage ?? 'es',
@@ -436,6 +450,26 @@ export function FeedbackWidget() {
                         <span>{t('site_feedback.message_optional', 'Opcional, pero se agradece muchísimo')}</span>
                         <span className="tabular-nums">{message.length}/1500</span>
                       </div>
+                      {/* Capturas: en un reporte de error valen más que el
+                          texto, y aquí caen justo donde se está describiendo. */}
+                      <div className="mt-5">
+                        <p className="mb-2 text-[12.5px] font-medium text-text">
+                          {kind === 'bug'
+                            ? t('site_feedback.shots.title_bug', 'Muéstranos el error')
+                            : t('site_feedback.shots.title', '¿Nos muestras una captura?')}
+                          <span className="ml-1.5 font-normal text-text-subtle">
+                            · {t('site_feedback.shots.optional', 'opcional')}
+                          </span>
+                        </p>
+                        <ShotUploader
+                          folder={shotFolder}
+                          shots={shots}
+                          onChange={setShots}
+                          accent={accent}
+                          captureGlobalPaste
+                        />
+                      </div>
+
                       <p className="mt-4 rounded-xl border border-line bg-subtle/30 px-3 py-2 text-[11.5px] text-text-muted">
                         {t('site_feedback.page_context', 'Enviado desde: {{page}}', { page: originRef.current.label })}
                       </p>

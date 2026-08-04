@@ -8,7 +8,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useProgressSync } from '@/hooks/useProgressSync';
-import { useResetNotifications } from '@/hooks/useResetNotifications';
 import { Onboarding } from '@/pages/Onboarding';
 
 // Al cambiar de ruta, volver arriba antes del primer pintado de la vista nueva.
@@ -28,7 +27,8 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const profileUnavailable = useAuthStore((s) => s.profileUnavailable);
   const reducedMotion = useReducedMotion();
   useProgressSync();
-  useResetNotifications();
+  // Las notificaciones se sincronizan a nivel de toda la app (NotificationsSync
+  // en App.tsx): /admin/* no pasa por aquí y el superadmin vive allí.
 
   // El panel del aprendiz trae su propio shell (sidebar con idioma, tema y
   // cierre de sesión), así que ahí el Navbar global sobra. También aplica cuando

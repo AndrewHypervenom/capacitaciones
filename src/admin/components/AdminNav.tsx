@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Users, LogOut, BookOpen, Menu, X, ChevronDown, Trophy, Sparkles, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -10,6 +11,8 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher'
 import { Avatar } from '@/components/ui/Avatar'
 import { WorkspacePresenceBar } from '@/components/presence/WorkspacePresenceBar'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
+import { useNotificationsStore } from '@/stores/notificationsStore'
 import { cn } from '@/lib/cn'
 
 type NeonColor = 'green' | 'violet' | 'cyan' | 'magenta' | 'amber' | 'neutral'
@@ -34,6 +37,13 @@ export function AdminNav() {
   const [isOpen, setIsOpen] = useState(false)
 
   const [openCategories, setOpenCategories] = useState<string[]>([])
+
+  // Preguntas al chat de ayuda pendientes de mirar: se marcan en el propio menú
+  // para que se vean sin abrir la campana (es el trabajo que espera, no un aviso
+  // que se pueda perder al cerrarlo).
+  const helpUnread = useNotificationsStore((s) =>
+    s.items.filter((n) => n.kind === 'help_chat' && !n.read_at).length,
+  )
 
   const toggleCategory = (title: string) => {
     setOpenCategories(prev =>
@@ -176,13 +186,18 @@ export function AdminNav() {
                 <div className="text-[10px] text-text-subtle">LearningAI CMS</div>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="md:hidden h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
-              aria-label={t('admin.nav.close_menu')}
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center">
+              {/* La campana también vive en el panel: los avisos del chat de
+                  ayuda llegan mientras se trabaja aquí, no en /dashboard. */}
+              <NotificationBell className="h-9 w-9" />
+              <button
+                onClick={() => setIsOpen(false)}
+                className="md:hidden h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+                aria-label={t('admin.nav.close_menu')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
           {/* Perfil: avatar + nombre; lleva a la vista de perfil editable. */}
           <NavLink
@@ -289,8 +304,22 @@ export function AdminNav() {
                             : 'text-text-muted/80 hover:text-text hover:bg-glass/3',
                         )}
                       >
-                        <div className="flex items-center w-full pl-9 py-2">
+                        <div className="flex items-center w-full pl-9 pr-3 py-2">
                           <span className="font-medium">{label}</span>
+                          <AnimatePresence>
+                            {to === '/admin/chat' && helpUnread > 0 && (
+                              <motion.span
+                                key={helpUnread}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ type: 'spring', stiffness: 600, damping: 20 }}
+                                className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-neon-green px-1 text-[10px] font-bold leading-none text-black"
+                              >
+                                {helpUnread > 9 ? '9+' : helpUnread}
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
                         </div>
                       </NavLink>
                     ))}

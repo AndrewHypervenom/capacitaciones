@@ -13,6 +13,19 @@ export function notificationText(n: AppNotification): { title: string; body: str
   const mod = p.module_title ?? ''
   const section = p.section_heading ?? ''
 
+  // Aviso al superadmin: alguien escribió al chat de ayuda (no es un reset).
+  if (n.kind === 'help_chat') {
+    const who = p.from_name?.trim() || t('notifications.help_chat.someone')
+    const count = Number(p.count) > 1 ? Number(p.count) : 1
+    return {
+      title:
+        count > 1
+          ? t('notifications.help_chat.title_many', { name: who, count })
+          : t('notifications.help_chat.title', { name: who }),
+      body: p.question ? `“${p.question}”` : t('notifications.help_chat.body'),
+    }
+  }
+
   // Aviso de retroalimentación del capacitador (no es un reset).
   if (n.kind === 'feedback') {
     return {
