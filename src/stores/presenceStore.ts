@@ -22,11 +22,12 @@ import { supabase } from '@/lib/supabase'
 //      SUS campañas, así que la presencia de un capacitador sin campañas en
 //      común nunca le llega. El superadmin escucha todos los canales de campaña
 //      pero no publica su ubicación en ellos.
-//   2. Capa de pantalla (`canSeePeer`): filtra lo que sí llega. El aprendiz
-//      emite (para que el superadmin lo vea) pero no ve a nadie.
+//   2. Capa de pantalla (`canSeePeer` + `redactForViewer`): filtra lo que sí
+//      llega y, cuando corresponde, lo recorta.
 //
 // Reglas: superadmin ve a todos · capacitador ve capacitadores con campaña
-// compartida · aprendiz no ve a nadie.
+// compartida · aprendiz ve a otros aprendices de su campaña, pero SOLO su
+// identidad ("está en línea"), nunca dónde están ni qué estudian.
 //
 // El superadmin es el caso fino: los capacitadores lo ven "en línea" pero sin
 // ubicación, porque su panel tiene vistas que no les corresponden. La excepción
@@ -194,8 +195,10 @@ export function campaignChannel(campaignId: string): string {
  * - capacitador: emite y escucha en los canales de sus campañas. Si no comparte
  *   campaña con nadie, no coincide con nadie ahí. Escucha además el canal
  *   redactado del superadmin.
- * - aprendiz: emite en el de su campaña para que el superadmin lo vea; lo que
- *   reciba lo descarta `canSeePeer`.
+ * - aprendiz: emite en el de su campaña para que el superadmin lo vea, y ahí
+ *   mismo se encuentra con los demás aprendices de su campaña. De lo que reciba,
+ *   `canSeePeer` descarta al staff y `redactForViewer` le quita la ubicación al
+ *   resto: le queda "estas personas están en línea" y nada más.
  *
  * Un capacitador sin campañas no emite ni recibe presencia de nadie salvo el
  * "en línea" del superadmin. Es coherente con que el panel le muestre "No tienes
@@ -254,7 +257,45 @@ export function canSeePeer(myRole: string | null | undefined, peerRole: string |
   // compartida) y al superadmin, que llega sin ubicación salvo que esté editando
   // algo de esta campaña. No ve aprendices.
   if (myRole === 'capacitador') return peerRole === 'capacitador' || peerRole === 'superadmin'
+  // El aprendiz ve SOLO a otros aprendices de su campaña (comparten el canal),
+  // y únicamente como compañía: nunca dónde están (ver `redactForViewer`).
+  // Al staff no lo ve: quién está gestionando qué no es asunto suyo.
+  if (myRole === 'learner') return peerRole === 'learner'
   return false
+}
+
+/**
+ * Qué puede ver en pantalla quien mira. El aprendiz recibe compañeros por el
+ * canal de su campaña con su ubicación dentro (todos emiten completo ahí para
+ * que el superadmin los vea), pero para él eso es dato ajeno: saber qué módulo
+ * está estudiando otra persona no le aporta nada y sí revela su desempeño.
+ *
+ * Aquí se recorta a lo mínimo que hace falta para sentirse acompañado: quién es
+ * (nombre y foto, que ya son públicos en la plataforma) y que está en línea.
+ * Sin ruta, sin recurso, sin campaña.
+ *
+ * Es la razón por la que la barra del aprendiz no muestra "En: ..." nunca:
+ * sencillamente no tiene el dato, ni siquiera en memoria.
+ */
+export function redactForViewer(myRole: string | null | undefined, peer: Peer): Peer {
+  if (myRole !== 'learner') return peer
+  return { ...peer, activity: null, route: '', campaign_id: null }
+}
+
+/**
+ * Nombre corto para mostrar a un compañero: nombre de pila + inicial del
+ * siguiente ("Andres Felipe Fajardo Pachon" → "Andres F.").
+ *
+ * El nombre de pila solo no basta: en una misma campaña es normal que haya dos
+ * Andrés, y verlos como dos filas idénticas no distingue a nadie. La inicial
+ * desambigua sin llegar a revelar el apellido completo, que es exactamente el
+ * dato que no tiene por qué circular entre compañeros.
+ */
+export function shortName(name: string): string {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return name || ''
+  if (parts.length === 1) return parts[0]
+  return `${parts[0]} ${parts[1].charAt(0).toUpperCase()}.`
 }
 
 interface PresenceState {
@@ -446,7 +487,10 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
         seen.set(latest.user_id, latest)
       }
     }
-    set({ peers: Array.from(seen.values()) })
+    // La redacción va al final, después de deduplicar: la regla de "gana el
+    // anuncio con ubicación" necesita ver la ubicación para elegir, aunque quien
+    // mira no vaya a recibirla.
+    set({ peers: Array.from(seen.values()).map((p) => redactForViewer(me?.role, p)) })
   }
 
   const teardown = () => {

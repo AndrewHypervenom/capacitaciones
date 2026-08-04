@@ -12,6 +12,7 @@ import { ProgressRing } from '@/components/ui/ProgressRing';
 import { ViewSwitcher } from './ViewSwitcher';
 import { Avatar } from '@/components/ui/Avatar';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { LearnerPresence } from '@/components/presence/LearnerPresence';
 import { cn } from '@/lib/cn';
 
 export function Navbar() {
@@ -67,6 +68,10 @@ export function Navbar() {
         )}
 
         <div className="flex items-center gap-1 sm:gap-2">
+          {/* Compañía: quiénes más están estudiando ahora mismo. Solo para el
+              aprendiz (el staff ya tiene su propia barra de presencia, con
+              ubicación) y solo aparece si hay alguien más en línea. */}
+          {!isAdminOrCapacitador && <LearnerPresence />}
           {/* "Ver como": salto instantáneo a la vista de aprendiz y de vuelta. */}
           {isAdminOrCapacitador && <ViewSwitcher variant="inline" />}
           <Link

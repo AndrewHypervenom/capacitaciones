@@ -4,6 +4,8 @@ import {
   usePresenceStore,
   peersForResource,
   viewKeyForRoute,
+  STALE_AFTER_MS,
+  secondsSinceSeen,
   type PresenceActivity,
   type PresenceResourceType,
   type Peer,
@@ -95,6 +97,25 @@ export function usePeersForResource(
 /** Todos los compañeros presentes en el espacio de trabajo (excluye al propio). */
 export function useWorkspacePeers(): Peer[] {
   return usePresenceStore((s) => s.peers)
+}
+
+/**
+ * Compañeros aprendices en línea ahora mismo, para la vista del aprendiz.
+ *
+ * Llegan ya recortados desde el store (`redactForViewer`): identidad y nada más.
+ * Aquí solo se descartan los fantasmas — pestañas que se cerraron sin avisar y
+ * cuyo último latido es viejo — y se ordena por nombre para que la lista no
+ * baile en cada sincronización.
+ */
+export function useOnlineLearners(): Peer[] {
+  const peers = usePresenceStore((s) => s.peers)
+  return useMemo(
+    () =>
+      peers
+        .filter((p) => p.role === 'learner' && secondsSinceSeen(p) * 1000 < STALE_AFTER_MS)
+        .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
+    [peers],
+  )
 }
 
 /**

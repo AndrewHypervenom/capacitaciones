@@ -4080,7 +4080,17 @@
     "in_this_view_one": "{{name}} também está aqui",
     "in_this_view_other": "{{count}} pessoas também estão aqui",
     "here_in_view": "{{name}} está aqui, em toda a vista «{{view}}»",
-    "detail_preview": "Pré-visualização"
+    "detail_preview": "Pré-visualização",
+    "learners": {
+      "title": "Estudando agora",
+      "subtitle_one": "Há 1 colega on-line",
+      "subtitle_other": "Há {{count}} colegas on-line",
+      "aria_one": "1 colega on-line",
+      "aria_other": "{{count}} colegas on-line",
+      "more_one": "e mais 1 pessoa",
+      "more_other": "e mais {{count}} pessoas",
+      "privacy": "Mostramos apenas quem está on-line, nunca o que cada um está fazendo."
+    }
   },
   "my_suggestions": {
     "title": "Minhas sugestões",

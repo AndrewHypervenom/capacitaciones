@@ -4080,7 +4080,17 @@
     "in_this_view_one": "{{name}} is also here",
     "in_this_view_other": "{{count}} others are also here",
     "here_in_view": "{{name}} is here, across the whole «{{view}}» view",
-    "detail_preview": "Preview"
+    "detail_preview": "Preview",
+    "learners": {
+      "title": "Studying now",
+      "subtitle_one": "1 classmate is online",
+      "subtitle_other": "{{count}} classmates are online",
+      "aria_one": "1 classmate online",
+      "aria_other": "{{count}} classmates online",
+      "more_one": "and 1 more person",
+      "more_other": "and {{count}} more people",
+      "privacy": "Only who is online is shown — never what anyone is working on."
+    }
   },
   "my_suggestions": {
     "title": "My suggestions",
