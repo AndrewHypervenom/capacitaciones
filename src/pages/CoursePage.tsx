@@ -7,7 +7,16 @@ import { supabase } from '@/lib/supabase';
 import type { Scenario } from '@/data/scenarios';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
-import { useProgressStore, useModuleDone, keyOfCourseModule } from '@/stores/progressStore';
+import {
+  useProgressStore,
+  useModuleDone,
+  keyOfCourseModule,
+  reviewValue,
+  XP_REWARDS,
+} from '@/stores/progressStore';
+import { useActiveXPEvent } from '@/stores/xpEventStore';
+import { XPBoostCard } from '@/components/gamification/XPBoostBanner';
+import type { Lang } from '@/stores/gamificationStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { useViewingPresence } from '@/hooks/usePresence';
 import { selfEnroll, unenrollSelf, previewUnenrollSelf } from '@/services/courses.service';
@@ -48,6 +57,15 @@ export default function CoursePage() {
   // El mundo es solo para staff (preview del CMS); el aprendiz ya no lo ve.
   const { isAdminOrCapacitador } = useAuth();
   const isModuleDone = useModuleDone();
+
+  // Repaso: qué paga hoy cada módulo terminado y cuáles ya se cobraron.
+  const reviewedAt = useProgressStore((s) => s.reviewedAt);
+  const courseReviewCount = useProgressStore((s) => s.courseReviewCount);
+  const boostMultiplier = useActiveXPEvent()?.multiplier ?? 1;
+  const reviewedTodayIn = (m: { id: string; slug: string }) => {
+    const today = new Date().toISOString().split('T')[0];
+    return [m.id, m.slug].some((k) => !!k && reviewedAt[k] === today);
+  };
   const { courses, loading, reload } = useLearnerCourses();
   const [enrollBusy, setEnrollBusy] = useState(false);
 
@@ -472,6 +490,41 @@ export default function CoursePage() {
         </div>
       </Reveal>
 
+      {/* Día de XP multiplicado (si lo hay): también aquí, porque es donde se
+          decide entrar a un módulo. */}
+      <XPBoostCard lang={language as Lang} className="mb-8" />
+
+      {/* Curso terminado → invitación explícita a repasar. Sin esto, el aprendiz
+          que ya se certificó no tiene ninguna razón visible para volver. */}
+      {completed && (
+        <Reveal className="mb-8">
+          <div className="flex flex-col gap-3 rounded-3xl border border-primary/25 bg-primary/[0.04] p-5 sm:flex-row sm:items-center">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <RefreshCw className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[15px] font-semibold text-text">
+                {t('courses.review_title', 'Repasa y sigue sumando')}
+              </h3>
+              <p className="text-[13px] text-text-muted">
+                {t('courses.review_desc', {
+                  xp: Math.round(reviewValue(XP_REWARDS.module) * boostMultiplier),
+                  bonus: Math.round(reviewValue(XP_REWARDS.certification) * boostMultiplier),
+                  defaultValue:
+                    'Tu certificado no se toca. Cada módulo que repases suma {{xp}} XP (una vez al día) y, al repasar el curso entero, {{bonus}} XP extra.',
+                })}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1.5 text-[12px] font-bold tabular-nums text-primary">
+              {t('courses.review_round', {
+                n: courseReviewCount[course.id] ?? 0,
+                defaultValue: 'Vueltas: {{n}}',
+              })}
+            </span>
+          </div>
+        </Reveal>
+      )}
+
       {/* Módulos */}
       <Reveal className="mb-6">
         <h2 className="text-xl font-semibold tracking-tight text-text mb-1">
@@ -536,9 +589,26 @@ export default function CoursePage() {
                     {module.duration_min} min
                   </span>
                   {status === 'completed' && (
-                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                      {t('dashboard.status_completed')}
-                    </span>
+                    <>
+                      {/* El módulo terminado deja de ser un callejón sin salida:
+                          dice qué se lleva por volver, o que ya lo cobró hoy. */}
+                      {reviewedTodayIn(module) ? (
+                        <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-subtle">
+                          {t('courses.review_done_today', 'Repasado hoy')}
+                        </span>
+                      ) : (
+                        <span
+                          className={cn(
+                            'rounded-full px-2.5 py-0.5 text-[10px] font-bold tabular-nums',
+                            boostMultiplier > 1
+                              ? 'bg-neon-magenta/15 text-neon-magenta'
+                              : 'bg-primary/10 text-primary',
+                          )}
+                        >
+                          +{Math.round(reviewValue(XP_REWARDS.module) * boostMultiplier)} XP
+                        </span>
+                      )}
+                    </>
                   )}
                   {status === 'available' && (
                     <span className="rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-on-primary">

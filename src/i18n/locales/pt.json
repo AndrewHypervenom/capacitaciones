@@ -363,7 +363,11 @@
     "enrolled_ok": "Você se inscreveu no curso",
     "enroll_error": "Não foi possível concluir a ação",
     "leave": "Sair do curso",
-    "left_ok": "Você saiu do curso"
+    "left_ok": "Você saiu do curso",
+    "review_title": "Revise e continue somando",
+    "review_desc": "Seu certificado não muda. Cada módulo revisado soma {{xp}} XP (uma vez por dia) e, ao revisar o curso inteiro, {{bonus}} XP extras.",
+    "review_round": "Voltas: {{n}}",
+    "review_done_today": "Revisado hoje"
   },
   "course_practice": {
     "title": "Pratique a chamada",
@@ -579,7 +583,13 @@
         "drag_hint": "Arraste cada caso para sua categoria. No celular, mantenha pressionado o caso e arraste."
       }
     },
-    "view_feedback_progress": "Ver Feedback e Progresso"
+    "view_feedback_progress": "Ver Feedback e Progresso",
+    "review_cta": "Revisar",
+    "review_done_today": "Revisão de hoje feita",
+    "review_toast": "Revisão registrada! +{{xp}} XP",
+    "review_course_toast": "Curso revisado por inteiro! +{{xp}} XP",
+    "review_already_today": "Você já ganhou a revisão deste módulo hoje. Volte amanhã e mantenha a sequência.",
+    "review_capped": "Você atingiu o limite diário de XP por revisão. Amanhã ele reinicia."
   },
   "simulator": {
     "difficulty": "Dificuldade",
@@ -1212,7 +1222,32 @@
         "none": "Nenhuma",
         "world": "Mundo",
         "simulator": "Simulador"
-      }
+      },
+      "events": "Dias de XP multiplicado",
+      "events_hint": "Programe janelas ×2, ×5… Enquanto estão ativas, TODO o XP do aprendiz é multiplicado: módulos, quizzes, revisões, certificações e sequência.",
+      "events_empty": "Ainda não há eventos. Crie um para anunciar um dia de XP em dobro.",
+      "add_event": "Novo evento",
+      "edit_event": "Editar evento",
+      "delete_event": "Excluir evento",
+      "delete_event_desc": "Excluir o evento \"{{name}}\"?",
+      "event_saved": "Evento salvo",
+      "event_deleted": "Evento excluído",
+      "event_untitled": "Sem nome",
+      "event_bad_range": "O fim deve ser depois do início",
+      "event_on": "Sim, pode pagar",
+      "event_off": "Não (desligado)",
+      "multiplier": "Multiplicador",
+      "multiplier_preview": "Módulo {{module}} XP · acerto {{quiz}} XP · revisão {{review}} XP",
+      "starts_at": "Começa",
+      "ends_at": "Termina",
+      "status_active": "Ao vivo",
+      "status_scheduled": "Programado",
+      "status_ended": "Terminado",
+      "status_off": "Desligado",
+      "src_review": "Revisar um módulo já concluído (1×dia)",
+      "src_review_quiz": "Acerto ao revisar",
+      "src_review_course": "Revisar um curso inteiro (todos os módulos)",
+      "src_review_cap": "Limite diário de revisão"
     },
     "overview": {
       "title": "Visão global",
@@ -2382,7 +2417,12 @@
       "type_classify": "Classificação de Casos",
       "type_sort": "Sequenciamento de Processos",
       "type_knowledge": "Avaliação de Compreensão",
-      "type_video": "Quiz de Vídeo"
+      "type_video": "Quiz de Vídeo",
+      "filter_review_exclude": "Sem revisões",
+      "filter_review_only": "Só revisões",
+      "filter_review_all": "Entregas e revisões",
+      "review_badge": "Revisão",
+      "review_note": "Prática em um módulo que já estava concluído. Não substitui a entrega original nem afeta o certificado."
     },
     "arena": {
       "no_quizzes": "Ainda não há quizzes",
@@ -4340,5 +4380,14 @@
     "admin_desc": "Se esta pessoa perdeu o aparelho, revogue aqui o acesso biométrico. Ela poderá ativar de novo em um novo dispositivo.",
     "admin_count_one": "{{count}} dispositivo",
     "admin_count_other": "{{count}} dispositivos"
+  },
+  "xp": {
+    "gain_review": "revisão",
+    "gain_review_course": "revisão do curso",
+    "boost_live": "XP multiplicado ativo",
+    "boost_soon": "Em breve",
+    "boost_ends_in": "Termina em {{time}}",
+    "boost_starts_in": "Começa em {{time}}",
+    "boost_default_desc": "Todo o XP que você ganhar conta ×{{x}}: módulos, quizzes, revisões e certificações."
   }
 }

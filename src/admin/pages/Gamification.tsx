@@ -32,7 +32,8 @@ import {
   deleteLevel,
   seedDefaults,
 } from '@/services/gamification.service'
-import { XP_REWARDS } from '@/stores/progressStore'
+import { XP_REWARDS, reviewValue } from '@/stores/progressStore'
+import { XPEventsEditor } from '@/admin/components/XPEventsEditor'
 
 const CATEGORIES: BadgeCategory[] = ['progress', 'streak', 'excellence', 'certification', 'optional']
 
@@ -211,6 +212,9 @@ export default function Gamification() {
 
       {/* ── Niveles de XP ── */}
       <XPLevelsEditor levels={xpLevels} busy={busy} setBusy={setBusy} />
+
+      {/* ── Días de XP multiplicado (×2, ×5…) ── */}
+      <XPEventsEditor lang={lang} />
 
       {/* ── De dónde sale el XP (solo lectura: vive en código) ── */}
       <XPSourcesCard levels={xpLevels} lang={lang} />
@@ -691,6 +695,12 @@ function XPSourcesCard({ levels, lang }: { levels: XPLevel[]; lang: Lang }) {
     { key: 'cert', label: t('admin.gamification.src_cert', 'Certificarse en un curso'), xp: `+${XP_REWARDS.certification}` },
     { key: 'wlevel', label: t('admin.gamification.src_world_level', 'Completar un nivel de mundo'), xp: `+${XP_REWARDS.worldLevel}` },
     { key: 'world', label: t('admin.gamification.src_world', 'Completar un mundo entero'), xp: `+${XP_REWARDS.worldComplete}` },
+    // Repaso: la economía "de vuelta". Se lista aparte para que se vea que un
+    // curso terminado sigue produciendo, pero a tarifa reducida y con techo.
+    { key: 'review', label: t('admin.gamification.src_review', 'Repasar un módulo ya completado (1×día)'), xp: `+${reviewValue(XP_REWARDS.module)}` },
+    { key: 'review_quiz', label: t('admin.gamification.src_review_quiz', 'Acierto al repasar'), xp: `+${reviewValue(XP_REWARDS.quizCorrect)}` },
+    { key: 'review_course', label: t('admin.gamification.src_review_course', 'Repasar un curso entero (todos sus módulos)'), xp: `+${reviewValue(XP_REWARDS.certification)}` },
+    { key: 'review_cap', label: t('admin.gamification.src_review_cap', 'Tope diario de repaso'), xp: `${XP_REWARDS.reviewDailyCap}` },
   ]
 
   // Racha: creciente por día hasta el tope, igual que updateStreak().

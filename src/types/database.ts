@@ -928,6 +928,58 @@ export interface Database {
         }
         Relationships: []
       }
+      xp_events: {
+        Row: {
+          id: string
+          emoji: string
+          multiplier: number
+          starts_at: string
+          ends_at: string
+          enabled: boolean
+          color: string
+          label_es: string
+          label_en: string | null
+          label_pt: string | null
+          description_es: string | null
+          description_en: string | null
+          description_pt: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          emoji?: string
+          multiplier: number
+          starts_at: string
+          ends_at: string
+          enabled?: boolean
+          color?: string
+          label_es: string
+          label_en?: string | null
+          label_pt?: string | null
+          description_es?: string | null
+          description_en?: string | null
+          description_pt?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          emoji?: string
+          multiplier?: number
+          starts_at?: string
+          ends_at?: string
+          enabled?: boolean
+          color?: string
+          label_es?: string
+          label_en?: string | null
+          label_pt?: string | null
+          description_es?: string | null
+          description_en?: string | null
+          description_pt?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       achievement_defs: {
         Row: {
           id: string

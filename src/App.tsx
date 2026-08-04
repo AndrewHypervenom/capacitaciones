@@ -30,6 +30,8 @@ import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { initAuth } from '@/stores/authStore';
 import { loadGamification } from '@/services/gamification.service';
+import { loadXPEvents } from '@/services/xpEvents.service';
+import { XPGainLayer } from '@/components/gamification/XPGainLayer';
 import { loadAiCreditsSetting } from '@/lib/aiCredits';
 import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
@@ -64,6 +66,23 @@ function GamificationInit() {
   const { isAuthenticated } = useAuth();
   useEffect(() => {
     if (isAuthenticated) void loadGamification();
+  }, [isAuthenticated]);
+  return null;
+}
+
+/**
+ * Eventos de XP multiplicado. Se recargan cada 10 min además de al entrar: si el
+ * superadmin programa un ×2 a media mañana, las pestañas ya abiertas se enteran
+ * sin que nadie recargue (el encendido/apagado dentro de la ventana ya lo maneja
+ * el reloj del store).
+ */
+function XPEventsInit() {
+  const { isAuthenticated } = useAuth();
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void loadXPEvents();
+    const id = setInterval(() => void loadXPEvents(), 10 * 60_000);
+    return () => clearInterval(id);
   }, [isAuthenticated]);
   return null;
 }
@@ -186,6 +205,7 @@ export default function App() {
       <NotificationsSync />
       <LanguageSync />
       <GamificationInit />
+      <XPEventsInit />
       <AiCreditsInit />
       <ConfirmProvider>
       <Routes>
@@ -236,6 +256,9 @@ export default function App() {
       {/* "Alguien está pidiendo ayuda": aviso en vivo del chat, solo superadmin. */}
       <HelpChatPing />
       <Toaster />
+      {/* "+XP" flotante: cada acreditación del store se ve al instante, en
+          cualquier vista y para cualquier rol (incluido el staff probando). */}
+      <XPGainLayer />
       {!IS_LEARNER_PREVIEW && <BgTaskIndicator />}
       {/* Avisos flotantes de abajo, apilados en una sola columna para que no se
           tapen entre sí. El de servicio va último (más cerca del borde) porque

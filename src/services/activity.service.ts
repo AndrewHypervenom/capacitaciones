@@ -1,7 +1,24 @@
 // src/services/activity.service.ts
 import { supabase } from "../lib/supabase";
 import { IS_LEARNER_PREVIEW } from "../lib/previewMode";
+import { useProgressStore, selectModuleDone } from "../stores/progressStore";
 import type { Database } from "../types/database";
+
+/**
+ * ¿Este intento es un REPASO? Lo es cuando el módulo ya estaba completado antes
+ * de responder: el aprendiz volvió a practicar, no está entregando por primera vez.
+ *
+ * Se decide aquí, en el único punto por el que pasan TODOS los juegos y quizzes,
+ * en vez de pasar una prop por cinco componentes: cualquier actividad futura
+ * queda marcada sin acordarse de nada.
+ *
+ * `module_id` es el UUID real; `selectModuleDone` mira las dos claves (UUID y
+ * slug), así que sirve igual si algún día llega el slug.
+ */
+function isReviewAttempt(moduleId: string | null | undefined): boolean {
+  if (!moduleId) return false;
+  return selectModuleDone(useProgressStore.getState(), { uuid: moduleId, slug: moduleId });
+}
 
 // ==========================================
 // 1. ADAPTACIÓN DE TIPOS PARA EL CMS
@@ -66,6 +83,10 @@ export const saveActivityAttempt = async (attemptData: any) => {
       score: attemptData.score,
       status: attemptData.status || 'completed',
       started_at: new Date().toISOString(),
+      // Repaso: práctica sobre un módulo YA completado. El panel del capacitador
+      // los separa para que un fallo repasando no desplace ni ensucie la entrega
+      // real que ya evaluó (ver getPendingAttempts).
+      is_review: attemptData.is_review === true || isReviewAttempt(attemptData.module_id),
       submitted_answers: attemptData.submitted_answers || {},
       trainer_comment: null,
       feedback_date: null
@@ -301,6 +322,8 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
           trainer_comment: attempt.trainer_comment || null,
           feedback_date: attempt.feedback_date || null,
           is_evaluated: isEvaluated,
+          // Práctica de repaso (módulo ya completado), no una entrega nueva.
+          is_review: attempt.is_review === true,
 
           student: {
             id: row.user_id,
@@ -331,11 +354,17 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
     // Nos quedamos solo con el intento MÁS RECIENTE de cada actividad por aprendiz.
     // Así, si el primer intento salió mal y el segundo bien, solo el segundo queda
     // disponible para retroalimentar (el fallido superado ya no aparece).
+    //
+    // Los REPASOS compiten aparte: la entrega real y la práctica posterior son dos
+    // cosas distintas. Sin esto, un aprendiz que vuelve a un módulo terminado y
+    // falla una pregunta borraba del panel su entrega buena —ya evaluada— y la
+    // reemplazaba por un fallo que no significa nada.
     const latestByActivity = new Map<string, any>();
     for (const att of allFormattedAttempts) {
-      const prev = latestByActivity.get(att._activityKey);
+      const key = att.is_review ? `review::${att._activityKey}` : att._activityKey;
+      const prev = latestByActivity.get(key);
       if (!prev || new Date(att.started_at).getTime() > new Date(prev.started_at).getTime()) {
-        latestByActivity.set(att._activityKey, att);
+        latestByActivity.set(key, att);
       }
     }
     const latestAttempts = [...latestByActivity.values()].map(({ _activityKey, ...rest }) => rest);

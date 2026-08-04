@@ -363,7 +363,11 @@
     "enrolled_ok": "You enrolled in the course",
     "enroll_error": "The action could not be completed",
     "leave": "Leave course",
-    "left_ok": "You left the course"
+    "left_ok": "You left the course",
+    "review_title": "Review and keep earning",
+    "review_desc": "Your certificate stays untouched. Each module you review adds {{xp}} XP (once a day), plus {{bonus}} XP for reviewing the whole course.",
+    "review_round": "Rounds: {{n}}",
+    "review_done_today": "Reviewed today"
   },
   "course_practice": {
     "title": "Practice the call",
@@ -579,7 +583,13 @@
         "drag_hint": "Drag each case to its category. On a phone, press and hold the case, then drag it."
       }
     },
-    "view_feedback_progress": "View Feedback and Progress"
+    "view_feedback_progress": "View Feedback and Progress",
+    "review_cta": "Review",
+    "review_done_today": "Today's review done",
+    "review_toast": "Review logged! +{{xp}} XP",
+    "review_course_toast": "Whole course reviewed! +{{xp}} XP",
+    "review_already_today": "You already earned this module’s review today. Come back tomorrow and keep your streak.",
+    "review_capped": "You hit today’s review XP cap. It resets tomorrow."
   },
   "simulator": {
     "difficulty": "Difficulty",
@@ -1212,7 +1222,32 @@
         "none": "None",
         "world": "World",
         "simulator": "Simulator"
-      }
+      },
+      "events": "XP boost days",
+      "events_hint": "Schedule ×2, ×5… windows. While one is live, ALL learner XP is multiplied: modules, quizzes, reviews, certifications and streak.",
+      "events_empty": "No events yet. Create one to announce a double XP day.",
+      "add_event": "New event",
+      "edit_event": "Edit event",
+      "delete_event": "Delete event",
+      "delete_event_desc": "Delete the event \"{{name}}\"?",
+      "event_saved": "Event saved",
+      "event_deleted": "Event deleted",
+      "event_untitled": "Untitled",
+      "event_bad_range": "The end must be after the start",
+      "event_on": "Yes, it can pay",
+      "event_off": "No (off)",
+      "multiplier": "Multiplier",
+      "multiplier_preview": "Module {{module}} XP · correct answer {{quiz}} XP · review {{review}} XP",
+      "starts_at": "Starts",
+      "ends_at": "Ends",
+      "status_active": "Live",
+      "status_scheduled": "Scheduled",
+      "status_ended": "Ended",
+      "status_off": "Off",
+      "src_review": "Review a completed module (1×day)",
+      "src_review_quiz": "Correct answer while reviewing",
+      "src_review_course": "Review a whole course (all its modules)",
+      "src_review_cap": "Daily review cap"
     },
     "overview": {
       "title": "Global view",
@@ -2382,7 +2417,12 @@
       "type_classify": "Case Classification",
       "type_sort": "Process Sequencing",
       "type_knowledge": "Comprehension Assessment",
-      "type_video": "Video Quiz"
+      "type_video": "Video Quiz",
+      "filter_review_exclude": "No reviews",
+      "filter_review_only": "Reviews only",
+      "filter_review_all": "Submissions and reviews",
+      "review_badge": "Review",
+      "review_note": "Practice on a module they had already completed. It does not replace their original submission or affect their certificate."
     },
     "arena": {
       "no_quizzes": "No quizzes yet",
@@ -4340,5 +4380,14 @@
     "admin_desc": "If this person lost their device, revoke their biometric access here. They can enable it again from a new one.",
     "admin_count_one": "{{count}} device",
     "admin_count_other": "{{count}} devices"
+  },
+  "xp": {
+    "gain_review": "review",
+    "gain_review_course": "course review",
+    "boost_live": "XP boost active",
+    "boost_soon": "Coming up",
+    "boost_ends_in": "Ends in {{time}}",
+    "boost_starts_in": "Starts in {{time}}",
+    "boost_default_desc": "Everything you earn counts ×{{x}}: modules, quizzes, reviews and certifications."
   }
 }

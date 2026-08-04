@@ -11,7 +11,7 @@ import {
   Code, LayoutTemplate, CheckCircle2, XCircle, Info, MessageSquare, Search,
   SlidersHorizontal, ChevronDown, ArrowDownUp, Clock, Send, Sparkles,
   ClipboardCheck, Award, ChevronRight, GraduationCap, Gamepad2, Video, HelpCircle,
-  ArrowLeft, Building2, BookOpen, Layers, Users, ChevronLeft,
+  ArrowLeft, Building2, BookOpen, Layers, Users, ChevronLeft, RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
@@ -46,6 +46,12 @@ interface PendingAttempt {
   trainer_comment?: string | null;
   feedback_date?: string | null;
   is_evaluated?: boolean;
+  /**
+   * El aprendiz volvió sobre un módulo que YA tenía completado. Es práctica, no
+   * una entrega: por defecto el panel la oculta para no mezclarla con lo que sí
+   * hay que evaluar (ver `reviewFilter`).
+   */
+  is_review?: boolean;
   student?: { id: string; name: string; email: string | null; } | null;
   campaign?: { title_es: string; } | null;
   module?: { title_es: string; } | null;
@@ -112,6 +118,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const [scoreFilter, setScoreFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  // Repasos: fuera por defecto. El capacitador entra aquí a evaluar entregas; la
+  // práctica sobre módulos ya terminados solo estorbaría (y falsearía los
+  // contadores de pendientes). Se puede ver aparte o mezclada a voluntad.
+  const [reviewFilter, setReviewFilter] = useState<string>('exclude');
   const [sortKey, setSortKey] = useState<SortKey>('recent');
   // Navegación jerárquica: Campaña → Curso → Módulo → Aprendiz. El nivel actual se
   // deduce de qué segmentos están puestos (ver `level`), pensado para no volcar
@@ -125,6 +135,12 @@ export const TrainerFeedbackPanel: React.FC = () => {
     { value: 'pending', label: t('admin.trainer_panel.filter_status_pending') },
     { value: 'evaluated', label: t('admin.trainer_panel.filter_status_evaluated') },
     { value: 'all', label: t('admin.trainer_panel.filter_status_all') },
+  ];
+
+  const reviewOptions = [
+    { value: 'exclude', label: t('admin.trainer_panel.filter_review_exclude', 'Sin repasos') },
+    { value: 'only', label: t('admin.trainer_panel.filter_review_only', 'Solo repasos') },
+    { value: 'all', label: t('admin.trainer_panel.filter_review_all', 'Entregas y repasos') },
   ];
 
   const scoreOptions = [
@@ -295,7 +311,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
     setSubmitting(false);
   };
 
-  // Pozo base: filtra por nota y tipo (afecta contadores de toda la jerarquía).
+  // Pozo base: filtra por nota, tipo y repaso (afecta contadores de toda la
+  // jerarquía, por eso el filtro de repaso vive aquí y no solo en la lista hoja).
   const pool = useMemo(() => {
     return attempts.filter((a) => {
       let matchesScore = true;
@@ -303,9 +320,11 @@ export const TrainerFeedbackPanel: React.FC = () => {
       else if (scoreFilter === 'passed') matchesScore = a.score >= 70 && a.score < 100;
       else if (scoreFilter === 'failed') matchesScore = a.score < 70;
       const matchesType = typeFilter === 'all' || a.game_type === typeFilter;
-      return matchesScore && matchesType;
+      const matchesReview =
+        reviewFilter === 'all' ? true : reviewFilter === 'only' ? !!a.is_review : !a.is_review;
+      return matchesScore && matchesType && matchesReview;
     });
-  }, [attempts, scoreFilter, typeFilter]);
+  }, [attempts, scoreFilter, typeFilter, reviewFilter]);
 
   // Nivel actual de la navegación según los segmentos puestos.
   const level: NavLevel = !path.campaign
@@ -418,6 +437,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
   };
 
   const selectedStatusLabel = statusOptions.find((opt) => opt.value === statusFilter)?.label || '';
+  const selectedReviewLabel = reviewOptions.find((opt) => opt.value === reviewFilter)?.label || '';
   const selectedScoreLabel = scoreOptions.find((opt) => opt.value === scoreFilter)?.label || '';
   const selectedTypeLabel = typeOptions.find((opt) => opt.value === typeFilter)?.label || '';
   const selectedSortLabel = sortOptions.find((opt) => opt.value === sortKey)?.label || '';
@@ -685,6 +705,19 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 selected={typeFilter}
                 onSelect={(v) => { setTypeFilter(v); setOpenMenu(null); }}
               />
+              {/* Entregas vs. repasos: vive en todos los niveles porque cambia
+                  los contadores de pendientes, no solo la lista. */}
+              <div className="col-span-2">
+                <Dropdown
+                  open={openMenu === 'review'}
+                  onToggle={() => setOpenMenu(openMenu === 'review' ? null : 'review')}
+                  icon={<RotateCcw className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                  label={selectedReviewLabel}
+                  options={reviewOptions}
+                  selected={reviewFilter}
+                  onSelect={(v) => { setReviewFilter(v); setOpenMenu(null); }}
+                />
+              </div>
               {level === 'attempt' && (
                 <div className="col-span-2">
                   <Dropdown
@@ -818,6 +851,12 @@ export const TrainerFeedbackPanel: React.FC = () => {
                             {t('admin.trainer_panel.evaluated_badge')}
                           </span>
                         )}
+                        {attempt.is_review && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[9px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                            <RotateCcw className="w-3 h-3" />
+                            {t('admin.trainer_panel.review_badge', 'Repaso')}
+                          </span>
+                        )}
                         <span className="flex items-center gap-1 text-[10px] text-text-muted/70">
                           <Clock className="w-3 h-3" />
                           {relativeTime(attempt.started_at)}
@@ -875,7 +914,23 @@ export const TrainerFeedbackPanel: React.FC = () => {
                               </span>
                             );
                           })()}
+                          {selectedAttempt.is_review && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                              <RotateCcw className="w-3 h-3" />
+                              {t('admin.trainer_panel.review_badge', 'Repaso')}
+                            </span>
+                          )}
                         </div>
+                        {/* Un repaso no es una entrega: se avisa explícito para que
+                            nadie evalúe (ni castigue) una práctica voluntaria. */}
+                        {selectedAttempt.is_review && (
+                          <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                            {t(
+                              'admin.trainer_panel.review_note',
+                              'Práctica sobre un módulo que ya tenía completado. No reemplaza su entrega original ni afecta su certificado.',
+                            )}
+                          </p>
+                        )}
                         <div className="flex items-center gap-1.5 text-xs text-text-muted mt-1 min-w-0">
                           <GraduationCap className="w-3.5 h-3.5 shrink-0" />
                           <span className="truncate">{selectedAttempt.module?.title_es || t('admin.trainer_panel.module_fallback')}</span>

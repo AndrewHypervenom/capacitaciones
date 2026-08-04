@@ -363,7 +363,11 @@
     "enrolled_ok": "Te inscribiste en el curso",
     "enroll_error": "No se pudo completar la acción",
     "leave": "Salir del curso",
-    "left_ok": "Saliste del curso"
+    "left_ok": "Saliste del curso",
+    "review_title": "Repasa y sigue sumando",
+    "review_desc": "Tu certificado no se toca. Cada módulo que repases suma {{xp}} XP (una vez al día) y, al repasar el curso entero, {{bonus}} XP extra.",
+    "review_round": "Vueltas: {{n}}",
+    "review_done_today": "Repasado hoy"
   },
   "course_practice": {
     "title": "Practica la llamada",
@@ -579,7 +583,13 @@
         "drag_hint": "Arrastra cada caso a su categoría. En el celular, mantén pulsado el caso y arrástralo."
       }
     },
-    "view_feedback_progress": "Ver Feedback y Progreso"
+    "view_feedback_progress": "Ver Feedback y Progreso",
+    "review_cta": "Repasar",
+    "review_done_today": "Repaso de hoy hecho",
+    "review_toast": "¡Repaso registrado! +{{xp}} XP",
+    "review_course_toast": "¡Curso repasado entero! +{{xp}} XP",
+    "review_already_today": "Ya cobraste el repaso de este módulo hoy. Vuelve mañana y sigue sumando racha.",
+    "review_capped": "Llegaste al tope de XP por repaso de hoy. Mañana se reinicia."
   },
   "simulator": {
     "difficulty": "Dificultad",
@@ -1212,7 +1222,32 @@
         "none": "Ninguna",
         "world": "Mundo",
         "simulator": "Simulador"
-      }
+      },
+      "events": "Días de XP multiplicado",
+      "events_hint": "Programa ventanas ×2, ×5… Mientras están vigentes, TODO el XP del aprendiz se multiplica: módulos, quizzes, repasos, certificaciones y racha.",
+      "events_empty": "Aún no hay eventos. Crea uno para anunciar un día de XP doble.",
+      "add_event": "Nuevo evento",
+      "edit_event": "Editar evento",
+      "delete_event": "Eliminar evento",
+      "delete_event_desc": "¿Eliminar el evento \"{{name}}\"?",
+      "event_saved": "Evento guardado",
+      "event_deleted": "Evento eliminado",
+      "event_untitled": "Sin nombre",
+      "event_bad_range": "El fin debe ser posterior al inicio",
+      "event_on": "Sí, puede pagar",
+      "event_off": "No (apagado)",
+      "multiplier": "Multiplicador",
+      "multiplier_preview": "Módulo {{module}} XP · acierto {{quiz}} XP · repaso {{review}} XP",
+      "starts_at": "Empieza",
+      "ends_at": "Termina",
+      "status_active": "En vivo",
+      "status_scheduled": "Programado",
+      "status_ended": "Terminado",
+      "status_off": "Apagado",
+      "src_review": "Repasar un módulo ya completado (1×día)",
+      "src_review_quiz": "Acierto al repasar",
+      "src_review_course": "Repasar un curso entero (todos sus módulos)",
+      "src_review_cap": "Tope diario de repaso"
     },
     "overview": {
       "title": "Vista global",
@@ -2382,7 +2417,12 @@
       "type_classify": "Clasificación de Casos",
       "type_sort": "Secuenciación de Procesos",
       "type_knowledge": "Evaluación de Comprensión",
-      "type_video": "Quiz de Video"
+      "type_video": "Quiz de Video",
+      "filter_review_exclude": "Sin repasos",
+      "filter_review_only": "Solo repasos",
+      "filter_review_all": "Entregas y repasos",
+      "review_badge": "Repaso",
+      "review_note": "Práctica sobre un módulo que ya tenía completado. No reemplaza su entrega original ni afecta su certificado."
     },
     "arena": {
       "no_quizzes": "Todavía no hay quizzes",
@@ -4340,5 +4380,14 @@
     "admin_desc": "Si esta persona perdió su equipo, quita aquí su acceso biométrico. Podrá volver a activarlo desde un dispositivo nuevo.",
     "admin_count_one": "{{count}} dispositivo",
     "admin_count_other": "{{count}} dispositivos"
+  },
+  "xp": {
+    "gain_review": "repaso",
+    "gain_review_course": "repaso del curso",
+    "boost_live": "XP multiplicado activo",
+    "boost_soon": "Próximamente",
+    "boost_ends_in": "Termina en {{time}}",
+    "boost_starts_in": "Empieza en {{time}}",
+    "boost_default_desc": "Todo el XP que ganes cuenta ×{{x}}: módulos, quizzes, repasos y certificaciones."
   }
 }

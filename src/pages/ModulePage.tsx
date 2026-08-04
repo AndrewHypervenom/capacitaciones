@@ -19,7 +19,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
 import { useViewingPresence } from '@/hooks/usePresence';
-import { useProgressStore, useModuleDone, keyOfModule } from '@/stores/progressStore';
+import {
+  useProgressStore,
+  useModuleDone,
+  keyOfModule,
+  reviewValue,
+  XP_REWARDS,
+} from '@/stores/progressStore';
+import { useActiveXPEvent } from '@/stores/xpEventStore';
+import { ReviewButton } from '@/components/gamification/ReviewButton';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { RichText, RichTextInline } from '@/components/ui/RichText';
@@ -100,7 +108,12 @@ export default function ModulePage() {
   const targetUserId = userId; 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const { markModule, updateStreak } = useProgressStore();
+  const { markModule, updateStreak, reviewModule } = useProgressStore();
+  // Se lee del store (no de un estado local) para que el botón se apague solo en
+  // cuanto el repaso se cobra, incluso desde otra pestaña del mismo navegador.
+  const reviewedAt = useProgressStore((s) => s.reviewedAt);
+  const boostEvent = useActiveXPEvent();
+  const boostMultiplier = boostEvent?.multiplier ?? 1;
   const isModuleDone = useModuleDone();
   const { modules, loading } = useModules();
   const { courses } = useLearnerCourses();
@@ -147,6 +160,15 @@ export default function ModulePage() {
   const moduleIndex = useMemo(() => siblings.findIndex((m) => m.id === id), [id, siblings]);
   const nextModule = moduleIndex >= 0 ? siblings[moduleIndex + 1] : undefined;
   const completed = module ? isModuleDone(keyOfModule(module)) : false;
+
+  // Repaso: cuánto pagaría ahora (con el evento del día aplicado) y si ya se
+  // cobró hoy. Se calcula aquí para que el botón lo anuncie ANTES de pulsarlo.
+  const reviewXPPreview = Math.round(reviewValue(XP_REWARDS.module) * boostMultiplier);
+  const reviewedToday = useMemo(() => {
+    if (!module) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return [module.dbId, module.id].some((k) => !!k && reviewedAt[k] === today);
+  }, [module, reviewedAt]);
 
   // Cronómetro real de tiempo activo en el módulo (se pausa al cambiar de
   // pestaña, sobrevive recargas, se persiste en BD y se congela al completar).
@@ -477,6 +499,33 @@ export default function ModulePage() {
     if (nextModule) setTimeout(() => nav(`/modules/${nextModule.id}`), 600);
   };
 
+  /**
+   * Repaso: el módulo ya estaba completado y el aprendiz vuelve sobre él. Suma
+   * racha y XP reducido (una vez al día por módulo, con tope diario); NO toca el
+   * completado ni la certificación — repasar nunca quita nada de lo ganado.
+   */
+  const handleReview = () => {
+    // La racha primero: volver un día más cuenta aunque el repaso ya se hubiera
+    // cobrado hoy (es constancia, no producción).
+    updateStreak();
+    const result = reviewModule(keyOfModule(module), {
+      courseModules: siblings.map(keyOfModule),
+      courseId: module.courseId ?? null,
+    });
+    if (result.status === 'granted') {
+      const total = result.xp + result.courseBonus;
+      toast.success(
+        result.courseBonus > 0
+          ? t('module.review_course_toast', { xp: total })
+          : t('module.review_toast', { xp: result.xp }),
+      );
+    } else if (result.status === 'already-today') {
+      toast.info(t('module.review_already_today'));
+    } else if (result.status === 'capped') {
+      toast.info(t('module.review_capped'));
+    }
+  };
+
   return (
     <>
       <div className={cn('mx-auto px-5 pt-12 pb-28 transition-all duration-500', readingMode ? 'max-w-2xl' : 'max-w-6xl')}>
@@ -706,6 +755,14 @@ export default function ModulePage() {
                 <Button variant="neon" size="md" onClick={handleComplete} disabled={!moduleGate.canComplete}>
                   <Check className="h-4 w-4" strokeWidth={3} /> {t('module.mark_complete')}
                 </Button>
+              )}
+              {completed && (
+                <ReviewButton
+                  done={reviewedToday}
+                  xp={reviewXPPreview}
+                  multiplier={boostMultiplier}
+                  onClick={handleReview}
+                />
               )}
               {nextModule && (
                 <Button variant={completed ? 'neon' : 'glass'} size="md" onClick={() => nav(`/modules/${nextModule.id}`)}>

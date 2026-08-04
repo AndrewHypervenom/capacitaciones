@@ -170,7 +170,10 @@ export function KnowledgeCheck({
     // Alimentar los logros de desempeño: aciertos totales, racha de aciertos y
     // redención (fallar y luego acertar la misma pregunta). Un fallo reinicia la
     // racha dentro del store.
-    recordQuizResult(isCorrectAnswer, isCorrectAnswer && failedBefore);
+    // `moduleId` va al store para que distinga repaso de primera vez: si el
+    // módulo ya está completado, el acierto paga tarifa de repaso (ver
+    // XP_REWARDS.reviewRate) en vez del precio completo.
+    recordQuizResult(isCorrectAnswer, isCorrectAnswer && failedBefore, moduleId);
     if (!isCorrectAnswer) setFailedBefore(true);
 
     // 2. Guardar intento en backend (solo si tenemos los ids necesarios)

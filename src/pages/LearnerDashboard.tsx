@@ -33,7 +33,9 @@ import {
   badgeLabel,
   badgeDescription,
   xpLevelLabel,
+  type Lang,
 } from '@/stores/gamificationStore';
+import { XPBoostCard, XPBoostPill } from '@/components/gamification/XPBoostBanner';
 import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
 import { useHasWorld } from '@/hooks/useHasWorld';
@@ -429,6 +431,11 @@ export default function LearnerDashboard() {
             </div>
           </Reveal>
 
+          {/* Día de XP multiplicado: va arriba del todo porque cambia QUÉ
+              conviene hacer hoy. Si no hay evento vigente ni próximo, no pinta
+              nada (el componente devuelve null). */}
+          <XPBoostCard lang={language as Lang} className="mb-12 md:mb-16" />
+
           {/* Cursos — navegación principal: Campaña → Curso → Módulo */}
           <section id="cursos" className="mb-16 md:mb-20 scroll-mt-16">
             <Reveal className="mb-8">
@@ -609,7 +616,10 @@ export default function LearnerDashboard() {
                       Nv. {xpLevel.level} · {xpLevelLabel(xpLevel, language)}
                     </span>
                   </span>
-                  <span className="text-[13px] font-bold tabular-nums text-text">
+                  <span className="flex items-center gap-2 text-[13px] font-bold tabular-nums text-text">
+                    {/* Si hoy hay evento, se dice justo al lado del contador: es
+                        donde el aprendiz mira para saber cuánto lleva. */}
+                    <XPBoostPill lang={language as Lang} />
                     {xp.toLocaleString()} XP
                   </span>
                 </div>

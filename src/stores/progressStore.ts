@@ -2,6 +2,8 @@ import { useCallback } from 'react';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
+import { currentXPMultiplier } from '@/stores/xpEventStore';
+import { pushXPGain, type XPReason } from '@/stores/xpFeedStore';
 import {
   activeBadgeDefs,
   getXPLevel,
@@ -130,6 +132,26 @@ interface ProgressState {
   /** Mundos completados por entero (máximo observado). */
   worldsCompleted: number;
 
+  // ── Repaso ──────────────────────────────────────────────────────────────────
+  /**
+   * Última fecha (YYYY-MM-DD) en que CADA módulo pagó repaso. Se guarda bajo las
+   * dos claves (UUID y slug) por la misma razón que `completedModules`: si solo
+   * guardáramos una, el mismo módulo cobraría dos veces según por dónde llegue.
+   */
+  reviewedAt: Record<string, string>;
+  /** Día al que corresponde `reviewXPToday` (se reinicia solo al cambiar de fecha). */
+  reviewXPDate: string | null;
+  /** XP base de repaso ya cobrado hoy (contra `XP_REWARDS.reviewDailyCap`). */
+  reviewXPToday: number;
+  /**
+   * Vuelta en curso por curso: módulos repasados desde el último bono. Cuando
+   * están todos, se paga el bono de re-certificación y la lista se vacía — para
+   * cobrarlo otra vez hay que repasar el curso entero de nuevo.
+   */
+  courseReviewRound: Record<string, string[]>;
+  /** Cursos repasados por completo al menos una vez (para la UI y las métricas). */
+  courseReviewCount: Record<string, number>;
+
   markModule: (key: ModuleKey, courseModules?: ModuleKey[]) => string[];
   unmarkModule: (key: ModuleKey) => void;
   /**
@@ -139,6 +161,17 @@ interface ProgressState {
    * legada en el parque de navegadores sin pedirle nada al aprendiz.
    */
   reconcileModuleKeys: (keys: ModuleKey[]) => void;
+  /**
+   * Cobra el repaso de un módulo YA completado: paga `reviewRate` del XP del
+   * módulo, una vez por día por módulo y hasta el tope diario. No toca el estado
+   * de completado ni la certificación: repasar nunca quita nada.
+   */
+  reviewModule: (
+    key: ModuleKey,
+    opts?: { courseModules?: ModuleKey[]; courseId?: string | null },
+  ) => ReviewOutcome;
+  /** ¿Este módulo ya cobró repaso hoy? (para pintar el botón sin intentarlo). */
+  reviewedToday: (key: ModuleKey) => boolean;
   recordCheck: (moduleId: string, quizKey: string, optionIdx: number) => void;
   addAttempt: (attempt: SimulatorAttempt) => string[];
   earnXP: (amount: number) => void;
@@ -150,7 +183,7 @@ interface ProgressState {
    * Registra el resultado de una pregunta. `redeemed` indica que el aprendiz
    * había fallado esta misma pregunta y ahora la acertó al reintentar → redención.
    */
-  recordQuizResult: (correct: boolean, redeemed?: boolean) => string[];
+  recordQuizResult: (correct: boolean, redeemed?: boolean, moduleId?: string) => string[];
   /** Registra una certificación de curso (con su puntaje) y evalúa logros. */
   recordCertification: (courseId: string, score?: number | null) => string[];
   /** Registra avance de mundo (niveles y mundos completados) y evalúa logros. */
@@ -233,7 +266,62 @@ export const XP_REWARDS = {
   worldLevel: 60,
   /** Cada mundo completado por entero. */
   worldComplete: 400,
+  /**
+   * Fracción del XP original que paga REPASAR algo ya completado. Repasar suma —
+   * si no, el aprendiz que ya terminó todo no tiene nada que ganar y desaparece —
+   * pero nunca tanto como la primera vez.
+   */
+  reviewRate: 0.25,
+  /**
+   * Tope de XP de repaso por día (medido ANTES del multiplicador: en un día ×2 el
+   * repaso puede rendir el doble, que es justo la gracia del evento). Sin tope,
+   * un curso de 40 módulos se convierte en una máquina de XP.
+   */
+  reviewDailyCap: 300,
 } as const;
+
+/** XP de repaso para una recompensa base, redondeado a entero. */
+export function reviewValue(base: number): number {
+  return Math.max(1, Math.round(base * XP_REWARDS.reviewRate));
+}
+
+/**
+ * Aplica el multiplicador del evento vigente y anuncia la ganancia a la capa de
+ * animación. TODO el XP del store pasa por aquí: es el único punto donde existe
+ * el ×2/×5, así que no hay forma de que una fuente se quede sin evento (ni de
+ * que una animación muestre XP que no se acreditó).
+ */
+function boosted(base: number, reason: XPReason): number {
+  if (base <= 0) return 0;
+  const multiplier = currentXPMultiplier();
+  const amount = Math.round(base * multiplier);
+  pushXPGain({ amount, multiplier, reason });
+  return amount;
+}
+
+/** Estado inicial del subsistema de repaso (reutilizado por reset y migraciones). */
+const REVIEW_INITIAL = {
+  reviewedAt: {} as Record<string, string>,
+  reviewXPDate: null as string | null,
+  reviewXPToday: 0,
+  courseReviewRound: {} as Record<string, string[]>,
+  courseReviewCount: {} as Record<string, number>,
+};
+
+/** Resultado de intentar cobrar un repaso (lo consume la UI para animar/avisar). */
+export interface ReviewOutcome {
+  /** XP realmente acreditado (0 si no aplicaba). */
+  xp: number;
+  /** Multiplicador con el que se pagó. */
+  multiplier: number;
+  /** Bono extra por completar la vuelta entera al curso. */
+  courseBonus: number;
+  status:
+    | 'granted'      // se pagó
+    | 'not-completed'// no es repaso: el módulo aún no estaba completado
+    | 'already-today'// ya se cobró hoy este módulo
+    | 'capped';      // se agotó el tope diario de repaso
+}
 
 /** Almacén volátil para la vista previa: se comporta como localStorage pero no persiste. */
 const memoryStorage: Storage = (() => {
@@ -268,6 +356,11 @@ export const useProgressStore = create<ProgressState>()(
       bestCertScore: 0,
       worldLevelsCompleted: 0,
       worldsCompleted: 0,
+      reviewedAt: {},
+      reviewXPDate: null,
+      reviewXPToday: 0,
+      courseReviewRound: {},
+      courseReviewCount: {},
 
       // Núcleo del motor: recorre las defs habilitadas y otorga las que cumplen.
       evaluateBadges: (metrics) => {
@@ -301,7 +394,7 @@ export const useProgressStore = create<ProgressState>()(
           completedModules: slugs,
           // El XP del módulo vive aquí, después del candado de arriba: así vale
           // una sola vez aunque la pantalla llame a completar dos veces.
-          xp: s.xp + XP_REWARDS.module,
+          xp: s.xp + boosted(XP_REWARDS.module, 'module'),
           ...(key.uuid ? { moduleSlugToId: { ...s.moduleSlugToId, [key.slug]: key.uuid } } : {}),
         });
 
@@ -353,6 +446,85 @@ export const useProgressStore = create<ProgressState>()(
         }
       },
 
+      reviewedToday: (key) => {
+        const s = get();
+        const today = todayISO();
+        return [key.uuid, key.slug].some((k) => !!k && s.reviewedAt[k] === today);
+      },
+
+      reviewModule: (key, opts) => {
+        const s = get();
+        const multiplier = currentXPMultiplier();
+        const nil = (status: ReviewOutcome['status']): ReviewOutcome => ({
+          xp: 0, multiplier, courseBonus: 0, status,
+        });
+
+        // Repaso es, por definición, volver sobre algo ya completado. Si no lo
+        // está, esto no es un repaso: lo suyo es completarlo (markModule).
+        if (!doneIn(s.completedModuleIds, s.completedModules, key)) return nil('not-completed');
+
+        const today = todayISO();
+        const keys = [key.uuid, key.slug].filter(Boolean) as string[];
+        if (keys.some((k) => s.reviewedAt[k] === today)) return nil('already-today');
+
+        // El tope se mide en XP BASE (sin evento): así un día ×2 rinde el doble
+        // en vez de tocar el techo a la mitad de los módulos.
+        const spent = s.reviewXPDate === today ? s.reviewXPToday : 0;
+        const base = Math.min(reviewValue(XP_REWARDS.module), XP_REWARDS.reviewDailyCap - spent);
+        if (base <= 0) return nil('capped');
+
+        const gained = boosted(base, 'review');
+
+        // Vuelta al curso: se acumulan los módulos repasados desde el último bono.
+        const courseId = opts?.courseId ?? null;
+        const courseModules = opts?.courseModules ?? [];
+        let round = { ...s.courseReviewRound };
+        let counts = s.courseReviewCount;
+        let courseBonus = 0;
+        let bonusBase = 0;
+        if (courseId && courseModules.length > 0) {
+          const seen = new Set(round[courseId] ?? []);
+          for (const k of keys) seen.add(k);
+          const allReviewed = courseModules.every((m) =>
+            [m.uuid, m.slug].some((k) => !!k && seen.has(k)),
+          );
+          if (allReviewed) {
+            // Curso repasado entero: se paga el equivalente a re-certificarse y
+            // arranca una vuelta nueva. Para volver a cobrarlo hay que repasar
+            // todos los módulos otra vez, no solo el último.
+            //
+            // El bono también consume el tope diario: si no, un curso de un solo
+            // módulo pagaría el bono entero todos los días por un clic.
+            bonusBase = Math.max(
+              0,
+              Math.min(
+                reviewValue(XP_REWARDS.certification),
+                XP_REWARDS.reviewDailyCap - spent - base,
+              ),
+            );
+            courseBonus = boosted(bonusBase, 'review-course');
+            round = { ...round, [courseId]: [] };
+            counts = { ...counts, [courseId]: (counts[courseId] ?? 0) + 1 };
+          } else {
+            round = { ...round, [courseId]: [...seen] };
+          }
+        }
+
+        const reviewedAt = { ...s.reviewedAt };
+        for (const k of keys) reviewedAt[k] = today;
+
+        set({
+          reviewedAt,
+          reviewXPDate: today,
+          reviewXPToday: spent + base + bonusBase,
+          courseReviewRound: round,
+          courseReviewCount: counts,
+          xp: s.xp + gained + courseBonus,
+        });
+
+        return { xp: gained, multiplier, courseBonus, status: 'granted' };
+      },
+
       recordCheck: (moduleId, quizKey, optionIdx) =>
         set({
           checkAnswers: {
@@ -369,7 +541,10 @@ export const useProgressStore = create<ProgressState>()(
         const attempts = [attempt, ...get().attempts].slice(0, 40);
         // Se paga la MEJORA, no el intento: repetir la misma simulación con el
         // mismo puntaje no da nada, superarse sí.
-        const gain = Math.max(0, Math.round(attempt.score - prevBest)) * XP_REWARDS.simulatorPerPoint;
+        const gain = boosted(
+          Math.max(0, Math.round(attempt.score - prevBest)) * XP_REWARDS.simulatorPerPoint,
+          'simulator',
+        );
         set({ attempts, ...(gain > 0 ? { xp: get().xp + gain } : {}) });
         return get().evaluateBadges({ best_simulator_score: bestSimScore(attempts) });
       },
@@ -392,7 +567,10 @@ export const useProgressStore = create<ProgressState>()(
         }
         // Una sola vez al día (arriba se sale si `last === today`) y creciente con
         // la racha, hasta un tope: la constancia paga, pero no sustituye estudiar.
-        const gain = Math.min(XP_REWARDS.dailyStreak * newStreak, XP_REWARDS.dailyStreakMax);
+        const gain = boosted(
+          Math.min(XP_REWARDS.dailyStreak * newStreak, XP_REWARDS.dailyStreakMax),
+          'streak',
+        );
         set({ streak: newStreak, lastActivityDate: today, xp: get().xp + gain });
         return get().evaluateBadges({ streak_days: newStreak });
       },
@@ -403,23 +581,49 @@ export const useProgressStore = create<ProgressState>()(
         return true;
       },
 
-      recordQuizResult: (correct, redeemed) => {
+      recordQuizResult: (correct, redeemed, moduleId) => {
         if (!correct) {
           // Un fallo reinicia la racha de aciertos; no otorga nada.
           set({ quizStreak: 0 });
           return [];
         }
-        const total = get().quizCorrectCount + 1;
-        const streak = get().quizStreak + 1;
-        const best = Math.max(get().quizBestStreak, streak);
-        const redeemedCount = get().redeemedCount + (redeemed ? 1 : 0);
-        const gain = XP_REWARDS.quizCorrect + (redeemed ? XP_REWARDS.quizRedeemed : 0);
+        const s = get();
+        const total = s.quizCorrectCount + 1;
+        const streak = s.quizStreak + 1;
+        const best = Math.max(s.quizBestStreak, streak);
+        const redeemedCount = s.redeemedCount + (redeemed ? 1 : 0);
+
+        // Si el módulo ya estaba completado, responder es REPASAR: tarifa
+        // reducida y contra el mismo tope diario que el resto del repaso. Sin
+        // esto, un módulo terminado seguía pagando aciertos a precio completo
+        // cada vez que se abría — el agujero más grande de la economía.
+        // `moduleId` puede ser UUID o slug: `doneIn` mira las dos listas.
+        const isReview =
+          !!moduleId && doneIn(s.completedModuleIds, s.completedModules, { uuid: moduleId, slug: moduleId });
+
+        let gain: number;
+        let reviewSpent = s.reviewXPToday;
+        let reviewDate = s.reviewXPDate;
+        if (isReview) {
+          const today = todayISO();
+          const spent = s.reviewXPDate === today ? s.reviewXPToday : 0;
+          const wanted =
+            reviewValue(XP_REWARDS.quizCorrect) + (redeemed ? reviewValue(XP_REWARDS.quizRedeemed) : 0);
+          const base = Math.max(0, Math.min(wanted, XP_REWARDS.reviewDailyCap - spent));
+          gain = boosted(base, 'review');
+          reviewSpent = spent + base;
+          reviewDate = today;
+        } else {
+          gain = boosted(XP_REWARDS.quizCorrect + (redeemed ? XP_REWARDS.quizRedeemed : 0), 'quiz');
+        }
+
         set({
           quizCorrectCount: total,
           quizStreak: streak,
           quizBestStreak: best,
           redeemedCount,
-          xp: get().xp + gain,
+          xp: s.xp + gain,
+          ...(isReview ? { reviewXPDate: reviewDate, reviewXPToday: reviewSpent } : {}),
         });
 
         return get().evaluateBadges({
@@ -438,7 +642,7 @@ export const useProgressStore = create<ProgressState>()(
         set({
           certifiedCourseIds: ids,
           bestCertScore: best,
-          ...(isNew ? { xp: get().xp + XP_REWARDS.certification } : {}),
+          ...(isNew ? { xp: get().xp + boosted(XP_REWARDS.certification, 'certification') } : {}),
         });
         return get().evaluateBadges({
           certifications: ids.length,
@@ -453,9 +657,11 @@ export const useProgressStore = create<ProgressState>()(
         const worlds = Math.max(prevWorlds, worldsCompleted ?? 0);
         // WorldMap/LearnerDashboard reportan el máximo observado en cada carga:
         // se paga solo el DELTA, así reabrir el mapa no regala XP.
-        const gain =
+        const gain = boosted(
           (levels - prevLevels) * XP_REWARDS.worldLevel +
-          (worlds - prevWorlds) * XP_REWARDS.worldComplete;
+            (worlds - prevWorlds) * XP_REWARDS.worldComplete,
+          'world',
+        );
         set({
           worldLevelsCompleted: levels,
           worldsCompleted: worlds,
@@ -528,6 +734,11 @@ export const useProgressStore = create<ProgressState>()(
           bestCertScore: 0,
           worldLevelsCompleted: 0,
           worldsCompleted: 0,
+          reviewedAt: {},
+          reviewXPDate: null,
+          reviewXPToday: 0,
+          courseReviewRound: {},
+          courseReviewCount: {},
         }),
 
       hydrateFromServer: (data) => {
@@ -614,7 +825,7 @@ export const useProgressStore = create<ProgressState>()(
       // que sin esto responder un quiz en la vista previa le sumaba XP de verdad
       // al capacitador (y useProgressSync lo espejaba a BD). Ver previewMode.ts.
       ...(IS_LEARNER_PREVIEW ? { storage: createJSONStorage(() => memoryStorage) } : {}),
-      version: 7,
+      version: 8,
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState as Partial<ProgressState>) ?? {};
         if (version < 2) {
@@ -677,7 +888,18 @@ export const useProgressStore = create<ProgressState>()(
             (s.certifiedCourseIds?.length ?? 0) * XP_REWARDS.certification +
             (s.worldLevelsCompleted ?? 0) * XP_REWARDS.worldLevel +
             (s.worldsCompleted ?? 0) * XP_REWARDS.worldComplete;
-          return { ...s, xp: Math.max(s.xp ?? 0, rebaselined) } as Partial<ProgressState>;
+          return {
+            ...s,
+            xp: Math.max(s.xp ?? 0, rebaselined),
+            ...REVIEW_INITIAL,
+          } as Partial<ProgressState>;
+        }
+        // v8: repaso con XP. Los contadores nacen vacíos a propósito: el primer
+        // repaso después de actualizar paga, aunque el aprendiz ya hubiera vuelto
+        // al módulo antes (no hay historia que reconstruir y regalar un cobro es
+        // mejor que castigar por actualizar).
+        if (version < 8) {
+          return { ...state, ...REVIEW_INITIAL } as Partial<ProgressState>;
         }
         return state as Partial<ProgressState>;
       },
