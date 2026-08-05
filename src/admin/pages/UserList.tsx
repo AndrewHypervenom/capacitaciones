@@ -23,6 +23,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { MultiSelect } from '@/components/ui/MultiSelect'
 import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
+import { UserProgressDrawer } from '@/admin/components/UserProgressDrawer'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
 import { HrRosterSyncModal } from '@/admin/components/HrRosterSyncModal'
 import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
@@ -60,6 +61,8 @@ export default function UserList() {
   const [assignUser, setAssignUser] = useState<ProfileWithEmail | null>(null)
   // Vista superadmin de cursos + restablecer progreso de una persona.
   const [resetUser, setResetUser] = useState<ProfileWithEmail | null>(null)
+  // Panel lateral con el avance (cursos → módulos → actividades) sin salir de la lista.
+  const [progressUser, setProgressUser] = useState<ProfileWithEmail | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   // Sincronización de altas y bajas contra la base de Talento Humano.
   const [hrOpen, setHrOpen] = useState(false)
@@ -1052,7 +1055,7 @@ export default function UserList() {
                   </Tooltip>
                   <Tooltip label={t('admin.users.view_progress_hint')} className="shrink-0" maxWidth={240}>
                     <button
-                      onClick={() => navigate(`/admin/progress?view=worlds&user=${user.id}`)}
+                      onClick={() => setProgressUser(user)}
                       className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
                       aria-label={t('admin.users.view_progress')}
                     >
@@ -1164,6 +1167,14 @@ export default function UserList() {
 
       {assignUser && (
         <UserCoursesModal user={assignUser} onClose={() => setAssignUser(null)} />
+      )}
+
+      {progressUser && (
+        <UserProgressDrawer
+          user={progressUser}
+          campaignName={campaigns.find((c) => c.id === progressUser.campaign_id)?.name ?? null}
+          onClose={() => setProgressUser(null)}
+        />
       )}
 
       {resetUser && (

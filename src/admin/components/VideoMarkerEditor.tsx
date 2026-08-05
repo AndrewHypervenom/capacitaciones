@@ -50,11 +50,17 @@ function formatTime(s: number): string {
   return `${m}:${String(sec).padStart(2, '0')}`
 }
 
-function parseTimeInput(val: string): number {
-  const parts = val.split(':').map(Number)
+// Devuelve null si el texto no es un tiempo válido: así el que llama conserva
+// el valor anterior en vez de mandar el marcador a 0:00.
+function parseTimeInput(val: string): number | null {
+  const raw = val.trim()
+  if (!raw) return null
+  const parts = raw.split(':').map((p) => Number(p.trim()))
+  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null
   if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
   if (parts.length === 2) return (parts[0] * 60) + parts[1]
-  return Number(val) || 0
+  if (parts.length === 1) return parts[0]
+  return null
 }
 
 function newMarkerId() {
@@ -206,12 +212,14 @@ function MarkerEditForm({
   marker,
   lang,
   videoDuration,
+  getCurrentTime,
   onSave,
   onCancel,
 }: {
   marker: VideoMarkerRaw
   lang: Lang
   videoDuration: number
+  getCurrentTime: () => number
   onSave: (m: VideoMarkerRaw) => void
   onCancel: () => void
 }) {
@@ -262,8 +270,27 @@ function MarkerEditForm({
   const titleField = `title_${lang}` as 'title_es' | 'title_en' | 'title_pt'
   const [timeInput, setTimeInput] = useState(formatTime(draft.timeSeconds))
 
+  // Tope: la duración real si ya se conoce (los videos embebidos la reportan
+  // tarde), si no un techo alto para no recortar videos largos.
+  const clampTime = (secs: number) =>
+    Math.max(0, Math.min(Math.round(secs), videoDuration > 0 ? Math.floor(videoDuration) : 99999))
+
+  // Lee el tiempo del cuadro de texto. Es la única fuente de verdad al guardar:
+  // no se puede depender del onBlur, porque en varios navegadores el clic en
+  // "Guardar" no quita el foco del input y el marcador se guardaba en 0:00.
+  const timeFromInput = () => {
+    const parsed = parseTimeInput(timeInput)
+    return parsed === null ? draft.timeSeconds : clampTime(parsed)
+  }
+
+  const handleTimeChange = (val: string) => {
+    setTimeInput(val)
+    const parsed = parseTimeInput(val)
+    if (parsed !== null) setDraft((p) => ({ ...p, timeSeconds: clampTime(parsed) }))
+  }
+
   const handleTimeBlur = () => {
-    const secs = Math.max(0, Math.min(parseTimeInput(timeInput), videoDuration || 9999))
+    const secs = timeFromInput()
     setDraft((p) => ({ ...p, timeSeconds: secs }))
     setTimeInput(formatTime(secs))
   }
@@ -291,16 +318,28 @@ function MarkerEditForm({
 
   return (
     <div className="mt-2 p-4 rounded-2xl border border-blue-400/20 bg-blue-400/4 space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <div>
           <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">{t('admin.modules.vme.time')}</label>
           <input
             value={timeInput}
-            onChange={(e) => setTimeInput(e.target.value)}
+            onChange={(e) => handleTimeChange(e.target.value)}
             onBlur={handleTimeBlur}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTimeBlur() } }}
             className="w-24 rounded-lg px-2.5 py-1.5 text-[13px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none font-mono"
             placeholder="0:00"
           />
+          <button
+            type="button"
+            onClick={() => {
+              const secs = clampTime(getCurrentTime())
+              setDraft((p) => ({ ...p, timeSeconds: secs }))
+              setTimeInput(formatTime(secs))
+            }}
+            className="mt-1 w-24 rounded-lg px-2 py-1 text-[10px] font-medium text-blue-400 border border-blue-400/20 hover:bg-blue-400/8 transition-colors"
+          >
+            {t('admin.modules.vme.use_current_time')}
+          </button>
         </div>
         <div className="flex-1">
           <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
@@ -401,7 +440,7 @@ function MarkerEditForm({
         </button>
         <button
           type="button"
-          onClick={() => onSave(draft)}
+          onClick={() => onSave({ ...draft, timeSeconds: timeFromInput() })}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-neon-green bg-neon-green/8 border border-neon-green/20 hover:bg-neon-green/12 transition-colors"
         >
           <Check className="h-3.5 w-3.5" /> {t('common.save')}
@@ -874,6 +913,7 @@ export function VideoMarkerEditor({
                       marker={m}
                       lang={lang}
                       videoDuration={videoDuration}
+                      getCurrentTime={getCurrentTime}
                       onSave={handleSaveMarker}
                       onCancel={() => setEditingId(null)}
                     />

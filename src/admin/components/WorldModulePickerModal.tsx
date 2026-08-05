@@ -12,6 +12,7 @@ import { cn } from '@/lib/cn'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { EntityIcon } from '@/components/ui/EntityIcon'
 import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import type { WorldGenOptions } from '@/services/worlds.service'
@@ -362,7 +363,7 @@ export function WorldModulePickerModal({
                                     >
                                       {on ? order : <Check className="h-3.5 w-3.5" />}
                                     </span>
-                                    <span className="text-[15px]">{m.icon || '📘'}</span>
+                                    <EntityIcon value={m.icon} size={15} className="text-text-muted" />
                                     <span className="min-w-0 flex-1">
                                       <span className="block truncate text-[13.5px] text-text">{m.title_es}</span>
                                       <span className="block text-[11px] text-text-subtle">

@@ -10,6 +10,7 @@ import type { UserCertificate } from '@/services/certification.service';
 import { CertificateSheet } from '@/components/certificate/CertificateSheet';
 import { CertificateFrame, downloadCertificatePdf } from '@/components/certificate/CertificateFrame';
 import { Button } from '@/components/ui/Button';
+import { EntityIcon } from '@/components/ui/EntityIcon';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { backdropDismiss } from '@/lib/backdropDismiss';
 
@@ -155,8 +156,8 @@ function CertificateCard({
       )}
 
       <div className="relative flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[rgba(16,212,81,0.12)] text-2xl">
-          {cert.icon || '🎓'}
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[rgba(16,212,81,0.12)] text-[#0ca23e]">
+          <EntityIcon value={cert.icon} fallback="🎓" size={24} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="mb-1 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#0ca23e]">
