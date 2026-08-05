@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
+import { unloopScenario } from '@/lib/scenarioFlow'
 import type { ContentBlock } from '@/types/blocks'
 
 export interface CacheUsage {
@@ -158,6 +159,26 @@ export interface OutlineBeat {
 const SIM_NODE_BATCH = 6
 
 /**
+ * Baraja las opciones de un momento (Fisher-Yates).
+ *
+ * La IA las escribe SIEMPRE en el mismo orden (óptima, aceptable, incorrecta),
+ * así que sin esto la respuesta correcta es siempre la "A" y el aprendiz aprende
+ * la posición en vez del procedimiento. Se baraja acá, en el ensamblado, y no se
+ * confía en pedírselo al modelo: el orden queda garantizado.
+ *
+ * Cada opción es autónoma (lleva su `nextId`, `points` y `feedback`), por eso
+ * cambiar el orden no altera el grafo ni el puntaje.
+ */
+function shuffleOptions(options: Record<string, unknown>[]): Record<string, unknown>[] {
+  const out = [...options]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+/**
  * Junta el esqueleto con los diálogos escritos y DEJA EL GRAFO SANO. Es la red de
  * seguridad de la generación por partes: si un lote falló o la IA inventó un destino
  * que no existe, el escenario igual queda navegable en vez de romperse a mitad de
@@ -215,12 +236,17 @@ function assembleScenario(
           node.endType = node.endType ?? 'good'
         }
       }
-      node.options = kept
+      node.options = shuffleOptions(kept)
     }
   }
 
   // 3. El nodo de arranque existe de verdad.
   const start = exists(plan.start_node_id) ? plan.start_node_id : (outline[0]?.id ?? 'start')
+
+  // 4. La conversación siempre avanza: ninguna respuesta devuelve al aprendiz al
+  //    mismo momento ni a uno anterior. El orden del esqueleto ES el orden
+  //    narrativo, así que acá el antibucle sabe exactamente qué es "adelante".
+  unloopScenario(nodes, start, type, outline.map((b) => b.id))
 
   return { metadata: plan.metadata, start_node_id: start, nodes } as unknown as GeneratedScenario
 }

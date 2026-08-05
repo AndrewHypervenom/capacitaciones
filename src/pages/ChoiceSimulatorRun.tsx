@@ -9,6 +9,7 @@ import { saveSimulatorAttempt, type AiFeedback } from '@/services/certification.
 import { choiceFeedback, SimAiError, type SimAiErrorKind } from '@/services/simGroq.service';
 import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import { RichText } from '@/components/ui/RichText';
+import { unloopScenario } from '@/lib/scenarioFlow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
 import type { Language } from '@/stores/userStore';
@@ -41,6 +42,19 @@ function formatTime(s: number) {
 function toScorePct(points: number, max: number) {
   if (max <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((points / max) * 100)));
+}
+
+/**
+ * Endereza el escenario antes de jugarlo: toda opción lleva hacia adelante, nunca
+ * de vuelta al mismo paso ni a uno anterior. Hace falta acá (y no solo al generar)
+ * porque las simulaciones ya guardadas arrastran esos ciclos, y era lo que hacía
+ * que al elegir mal el cliente repitiera lo mismo hasta que la llamada se cortaba
+ * sola. Se trabaja sobre una copia: los escenarios estáticos son del módulo.
+ */
+function flowFixed(scn: ChoiceScenario): ChoiceScenario {
+  const copy = structuredClone(scn);
+  unloopScenario(copy.nodes as unknown as Record<string, Record<string, unknown>>, copy.startId, 'choice');
+  return copy;
 }
 
 function getClockTime() {
@@ -187,12 +201,12 @@ export default function ChoiceSimulatorRun() {
     // (escenarios creados por el capacitador en Simulaciones).
     const local = getChoiceScenario(id);
     if (local) {
-      setScenario(local);
+      setScenario(flowFixed(local));
       return;
     }
     let active = true;
     getChoiceScenarioBySlug(id)
-      .then((s) => { if (active) setScenario(s); })
+      .then((s) => { if (active) setScenario(s ? flowFixed(s) : s); })
       .catch(() => { if (active) setScenario(null); });
     return () => { active = false; };
   }, [id]);
