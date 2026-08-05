@@ -45,6 +45,43 @@ export async function getAccessibleCampaigns(opts: {
 }
 
 /**
+ * Campañas a las que se puede ASIGNAR una persona al darla de alta.
+ *
+ * Ojo: no es lo mismo que `getAccessibleCampaigns`. Gestionar contenido sigue
+ * acotado a las campañas propias, pero al crear un usuario el capacitador
+ * habilitado (`profiles.can_create_learners`) puede mandarlo a cualquier
+ * campaña: quien da de alta suele ser quien recibe el reporte de Talento
+ * Humano, y la gente nueva no siempre cae en sus campañas.
+ *
+ * La RLS de `campaigns` solo deja ver las propias, así que la lista completa
+ * llega por el RPC SECURITY DEFINER `get_assignable_campaigns`, que valida el
+ * permiso en la base (id, nombre y poco más: nada sensible).
+ *
+ * No es fatal: si el SQL todavía no se corrió, se cae a las campañas propias y
+ * el selector se comporta como antes.
+ */
+export async function getAssignableCampaigns(opts: {
+  isSuperAdmin: boolean
+  homeCampaignId: string | null
+  userId: string | null
+}): Promise<Campaign[]> {
+  if (opts.isSuperAdmin) return getAccessibleCampaigns(opts)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.rpc as any)('get_assignable_campaigns')
+  if (error) {
+    // 42883/PGRST202 = la función aún no existe (SQL pendiente).
+    if (error.code !== '42883' && error.code !== 'PGRST202') {
+      console.warn('[campaigns] get_assignable_campaigns', error.message)
+    }
+    return getAccessibleCampaigns(opts)
+  }
+  const rows = (data ?? []) as Campaign[]
+  // Sin permiso el RPC devuelve vacío: en ese caso vale lo de siempre.
+  return rows.length > 0 ? rows : getAccessibleCampaigns(opts)
+}
+
+/**
  * Campañas de cada usuario (casa + colaboraciones), en una sola consulta.
  * Devuelve un mapa user_id → ids de campaña, ya deduplicado. La casa va
  * primero: /admin/users la marca como principal.

@@ -12,6 +12,7 @@ import { recompressAllAvatars, type RecompressProgress } from '@/services/avatar
 import { passkeyCounts } from '@/services/passkeys.service'
 import {
   getAccessibleCampaigns,
+  getAssignableCampaigns,
   getCampaignIdsByUser,
   setUserCampaigns as saveUserCampaigns,
 } from '@/services/campaigns.service'
@@ -78,6 +79,12 @@ export default function UserList() {
   const [userCampaigns, setUserCampaigns] = useState<Record<string, string[]>>({})
   const [savingCampaignsFor, setSavingCampaignsFor] = useState<string | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  // Campañas a las que se puede ASIGNAR a alguien recién creado. Para el
+  // capacitador habilitado son TODAS (no solo las suyas): da de alta gente que
+  // luego trabaja en otra campaña. Se mantiene aparte de `campaigns` a
+  // propósito: la lista, el filtro y la edición de campañas siguen acotados a
+  // lo suyo.
+  const [assignableCampaigns, setAssignableCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
   const [inviting, setInviting] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -134,7 +141,7 @@ export default function UserList() {
   // SOLO si el superadmin lo habilitó: el permiso se concede uno por uno, no
   // viene con el rol. Las BAJAS siguen siendo solo del superadmin: ese es el
   // punto de control del proceso de Talento Humano y no se delega.
-  const canCreateUsers = isSuperAdmin || (canCreateLearners && campaigns.length > 0)
+  const canCreateUsers = isSuperAdmin || (canCreateLearners && assignableCampaigns.length > 0)
   // Capacitador sin el permiso: se le explica por qué no ve los botones, en vez
   // de dejar la pantalla muda.
   const showNoPermissionHint = !isSuperAdmin && !canCreateLearners
@@ -153,6 +160,18 @@ export default function UserList() {
         userId: authUser?.id ?? null,
       }).catch(() => [] as Campaign[])
       setCampaigns(camps)
+
+      // Las campañas del selector de alta van por su propio camino: el
+      // capacitador habilitado puede asignar a cualquiera. Se arranca con las
+      // suyas (así los botones no parpadean) y se amplía al llegar el RPC.
+      setAssignableCampaigns(camps)
+      getAssignableCampaigns({
+        isSuperAdmin,
+        homeCampaignId: campaignId,
+        userId: authUser?.id ?? null,
+      })
+        .then(setAssignableCampaigns)
+        .catch(() => setAssignableCampaigns(camps))
 
       let profilesQuery = supabase.from('profiles').select('*').order('created_at')
       if (!isSuperAdmin) {
@@ -723,7 +742,7 @@ export default function UserList() {
                     onChange={setInviteCampaign}
                     options={
                       needsCampaign
-                        ? campaigns.map((c) => ({ value: c.id, label: c.name }))
+                        ? assignableCampaigns.map((c) => ({ value: c.id, label: c.name }))
                         : campaignOptions(i18n.t('admin.worlds.no_campaign'))
                     }
                     placeholder={t('admin.users.pick_campaign')}
@@ -1154,7 +1173,7 @@ export default function UserList() {
       {bulkOpen && (
         <BulkImportUsers
           isSuperAdmin={isSuperAdmin}
-          campaigns={campaigns}
+          campaigns={assignableCampaigns}
           defaultPasswordOn={defaultPwdOn}
           onClose={() => setBulkOpen(false)}
           onImported={refreshData}
