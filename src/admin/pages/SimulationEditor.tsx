@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import {
-  ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Plus, Save, Trash2, X,
+  ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, PhoneIncoming, PhoneOutgoing, Plus, Save, Trash2, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
@@ -40,6 +40,8 @@ interface MetaState {
   customer_name: string; customer_phone: string
   customer_reason_es: string; customer_reason_en: string; customer_reason_pt: string
   avatar_seed: number; max_turns: number
+  /** Quién llama a quién: cambia quién abre la conversación y qué se evalúa. */
+  call_type: 'inbound' | 'outbound'
   empathy_keywords: string[]
   start_node_id: string
   is_published: boolean
@@ -68,6 +70,7 @@ const defaultMeta = (): MetaState => ({
   customer_reason_es: '', customer_reason_en: '', customer_reason_pt: '',
   avatar_seed: Math.floor(Math.random() * 99) + 1,
   max_turns: 10,
+  call_type: 'inbound',
   empathy_keywords: ['entiendo', 'comprendo', 'lamento', 'disculpa', 'sorry', 'understand', 'entendo'],
   start_node_id: 'start',
   is_published: false,
@@ -107,6 +110,7 @@ function rowToState(row: ScenarioRow): { meta: MetaState; nodes: NodesMap; check
       customer_reason_pt: row.customer_reason_pt ?? '',
       avatar_seed: row.avatar_seed ?? 1,
       max_turns: row.max_turns ?? 10,
+      call_type: row.call_type === 'outbound' ? 'outbound' : 'inbound',
       empathy_keywords: row.empathy_keywords ?? [],
       start_node_id: row.start_node_id,
       is_published: row.is_published,
@@ -279,6 +283,7 @@ export default function SimulationEditor() {
         customer_reason_pt: meta.customer_reason_pt || null,
         avatar_seed: meta.avatar_seed,
         max_turns: meta.max_turns,
+        call_type: meta.call_type,
         empathy_keywords: meta.empathy_keywords,
         start_node_id: meta.start_node_id,
         course_id: meta.course_id,
@@ -312,6 +317,8 @@ export default function SimulationEditor() {
       title_es: m.title_es, title_en: m.title_en, title_pt: m.title_pt,
       summary_es: m.summary_es, summary_en: m.summary_en, summary_pt: m.summary_pt,
       country: m.country, difficulty: m.difficulty,
+      // Lo que la IA detectó (o lo que se le pidió). Si no vino, se respeta lo actual.
+      call_type: m.call_type === 'outbound' ? 'outbound' : m.call_type === 'inbound' ? 'inbound' : prev.call_type,
       customer_name: m.customer_name, customer_phone: m.customer_phone,
       customer_reason_es: m.customer_reason_es, customer_reason_en: m.customer_reason_en, customer_reason_pt: m.customer_reason_pt,
       avatar_seed: m.avatar_seed ?? prev.avatar_seed,
@@ -501,6 +508,46 @@ export default function SimulationEditor() {
                   ]}
                 />
               </div>
+            </div>
+            {/* Entrante/saliente: define quién abre la llamada, así que se explica acá
+                mismo en vez de dejarlo como un dato suelto. */}
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">
+                {t('admin.simulations.ai_gen.call_type_label')}
+              </label>
+              <div className="flex gap-2">
+                {(['inbound', 'outbound'] as const).map((ct) => {
+                  const active = meta.call_type === ct
+                  const Icon = ct === 'outbound' ? PhoneOutgoing : PhoneIncoming
+                  return (
+                    <button
+                      key={ct}
+                      type="button"
+                      onClick={() => setMeta((m) => ({ ...m, call_type: ct }))}
+                      aria-pressed={active}
+                      className={cn(
+                        'flex-1 flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors',
+                        active
+                          ? 'border-neon-green/45 bg-neon-green/8'
+                          : 'border-glass-border/20 hover:border-glass-border/40',
+                      )}
+                    >
+                      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-neon-green' : 'text-text-subtle')} />
+                      <span className="min-w-0">
+                        <span className={cn('block text-xs font-medium', active ? 'text-text' : 'text-text-muted')}>
+                          {t(`admin.simulations.ai_gen.call_type_${ct}`)}
+                        </span>
+                        <span className="block text-[11px] text-text-subtle truncate">
+                          {t(`admin.simulations.ai_gen.call_type_${ct}_who`)}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-text-subtle mt-1 leading-relaxed">
+                {t(`admin.simulations.ai_gen.call_type_${meta.call_type}_first`)}
+              </p>
             </div>
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.max_turns')}</label>

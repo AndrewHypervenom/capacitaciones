@@ -629,6 +629,7 @@ export interface Database {
           checklist_items: Json
           empathy_keywords: string[] | null
           max_turns: number | null
+          call_type: 'inbound' | 'outbound' | null
           start_node_id: string
           nodes: Json
           is_published: boolean
@@ -660,6 +661,7 @@ export interface Database {
           checklist_items?: Json
           empathy_keywords?: string[] | null
           max_turns?: number | null
+          call_type?: 'inbound' | 'outbound' | null
           start_node_id?: string
           nodes?: Json
           is_published?: boolean
@@ -691,6 +693,7 @@ export interface Database {
           checklist_items?: Json
           empathy_keywords?: string[] | null
           max_turns?: number | null
+          call_type?: 'inbound' | 'outbound' | null
           start_node_id?: string
           nodes?: Json
           is_published?: boolean

@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Sparkles, ChevronDown, ChevronUp, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2, Languages, FileText, Upload, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Sparkles, ChevronDown, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2, Languages, FileText, Upload, Loader2, PhoneIncoming, PhoneOutgoing, Radar } from 'lucide-react'
 import {
   GenerationProgress, type GenerationStep,
-  SIM_STEP_READ_MODULE, SIM_STEP_CONDENSE_DOC, SIM_STEP_WRITE, SIM_STEP_IMPROVE, SIM_STEP_TRANSLATE, SIM_STEP_FINALIZE,
+  SIM_STEP_READ_MODULE, SIM_STEP_CONDENSE_DOC, SIM_STEP_OUTLINE, SIM_STEP_WRITE, SIM_STEP_IMPROVE, SIM_STEP_TRANSLATE, SIM_STEP_FINALIZE,
 } from '@/admin/components/GenerationProgress'
+import { ease, Stagger, StaggerItem, Magnetic } from '@/components/ui/motion'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import {
   generateSimulation, translateScenario, getModuleContextText, SCENARIO_LENGTH_NODES,
   simDocNeedsCondense, estimateDocPages,
   type CacheUsage, type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario,
-  type ScenarioLength, type SimProgress,
+  type ScenarioLength, type SimProgress, type CallType,
 } from '@/services/ai.service'
 import { extractDocumentText, ACCEPTED_DOC_EXTENSIONS } from '@/lib/documentExtract'
 import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
@@ -62,6 +65,104 @@ function useCacheTimer() {
 
 interface Module { id: string; title_es: string }
 
+const CALL_TYPES = [
+  { id: 'inbound' as const, Icon: PhoneIncoming },
+  { id: 'outbound' as const, Icon: PhoneOutgoing },
+  { id: 'auto' as const, Icon: Radar },
+]
+
+/**
+ * Elegir entrante/saliente. Es la decisión que más cambia el guion (quién habla
+ * primero, quién trae el problema, qué se evalúa), así que cada opción dice en una
+ * línea qué significa y debajo se explica quién abre la llamada.
+ */
+function CallTypePicker({ value, onChange }: { value: CallType; onChange: (v: CallType) => void }) {
+  return (
+    <div>
+      <label className="text-xs font-medium text-text-muted mb-1.5 block">
+        {i18n.t('admin.simulations.ai_gen.call_type_label')}
+      </label>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        {CALL_TYPES.map(({ id, Icon }) => {
+          const active = value === id
+          return (
+            <motion.button
+              key={id}
+              type="button"
+              onClick={() => onChange(id)}
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              aria-pressed={active}
+              className={cn(
+                'relative overflow-hidden rounded-xl border px-3 py-2.5 text-left transition-colors',
+                active ? 'border-neon-green/45' : 'border-glass-border/20 hover:border-glass-border/40',
+              )}
+            >
+              {/* El resplandor viaja de una tarjeta a otra en vez de encenderse y apagarse. */}
+              {active && (
+                <motion.span
+                  layoutId="call-type-glow"
+                  className="absolute inset-0 bg-neon-green/10"
+                  transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                />
+              )}
+              <span className="relative flex items-center gap-2">
+                <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-neon-green' : 'text-text-subtle')} />
+                <span className={cn('text-xs font-medium', active ? 'text-text' : 'text-text-muted')}>
+                  {i18n.t(`admin.simulations.ai_gen.call_type_${id}`)}
+                </span>
+              </span>
+              <span className="relative mt-1 block text-[11px] leading-snug text-text-subtle">
+                {i18n.t(`admin.simulations.ai_gen.call_type_${id}_who`)}
+              </span>
+            </motion.button>
+          )
+        })}
+      </div>
+
+      {/* Quién habla primero: lo que el capacitador necesita entender antes de generar. */}
+      <div className="mt-2 overflow-hidden">
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.p
+            key={value}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.28, ease }}
+            className="text-[11px] leading-relaxed text-text-subtle"
+          >
+            {i18n.t(`admin.simulations.ai_gen.call_type_${value}_first`)}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+/** Insignia de qué tipo de llamada quedó (la elegida, o la que Claude detectó). */
+function CallTypeBadge({ callType }: { callType: string }) {
+  const outbound = callType === 'outbound'
+  const Icon = outbound ? PhoneOutgoing : PhoneIncoming
+  return (
+    <motion.span
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-medium border',
+        outbound
+          ? 'bg-brand-magenta/10 border-brand-magenta/25 text-brand-magenta'
+          : 'bg-brand-green/10 border-brand-green/25 text-brand-green',
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {i18n.t(`admin.simulations.ai_gen.call_type_badge_${outbound ? 'outbound' : 'inbound'}`)}
+    </motion.span>
+  )
+}
+
 interface Props {
   type: 'dialogue' | 'choice'
   onApply: (generated: GeneratedDialogue | GeneratedChoice) => void
@@ -86,7 +187,12 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<GeneratedDialogue | GeneratedChoice | null>(null)
-  const [length, setLength] = useState<ScenarioLength>('long')
+  // Media por defecto: 'long' son ~28 momentos y con un documento largo se iba hasta
+  // los 7 minutos. Quien quiera el escenario más extenso lo elige a propósito.
+  const [length, setLength] = useState<ScenarioLength>('medium')
+  // Inbound/outbound cambia por completo quién abre la llamada y qué se evalúa. Por
+  // defecto 'auto': con un guion cargado, Claude lo deduce mejor que una corazonada.
+  const [callType, setCallType] = useState<CallType>('auto')
   // Por defecto la IA escribe solo en español: es bastante más rápido y el capacitador
   // primero quiere ver el escenario. La traducción se pide después con "Traducir".
   const [translateNow, setTranslateNow] = useState(false)
@@ -96,7 +202,9 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const [doc, setDoc] = useState<{ name: string; text: string } | null>(null)
   const [docReading, setDocReading] = useState<string | null>(null)
   const [docError, setDocError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const reduce = useReducedMotion()
   // Recuerda si el último preview vino de "Generar" o "Mejorar" para que
   // Regenerar repita la misma acción.
   const lastModeRef = useRef<'generate' | 'improve'>('generate')
@@ -107,6 +215,8 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const [runSteps, setRunSteps] = useState<GenerationStep[]>([])
   const [stepIdx, setStepIdx] = useState(0)
   const [note, setNote] = useState<string | undefined>()
+  /** Momentos ya escritos / totales: alimenta el contador y la barra del indicador. */
+  const [subProgress, setSubProgress] = useState<{ done: number; total: number } | undefined>()
   const [runTitle, setRunTitle] = useState<string>(i18n.t('admin.simulations.ai_gen.title_generating'))
 
   useEffect(() => {
@@ -123,6 +233,17 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (fileRef.current) fileRef.current.value = ''
+    await readDoc(file)
+  }
+
+  /** Soltar el archivo sobre la zona: mismo camino que el selector. */
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragging(false)
+    await readDoc(e.dataTransfer.files?.[0])
+  }
+
+  const readDoc = async (file: File | undefined) => {
     if (!file) return
     setDocError(null)
     setDocReading(file.name)
@@ -130,7 +251,16 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
       // Solo texto: las figuras no aportan al guion y encarecen la petición.
       const extracted = await extractDocumentText(file)
       const text = extracted.text.trim()
-      if (!text) throw new Error(i18n.t('admin.simulations.ai_gen.doc_error'))
+      if (!text) {
+        // Un PDF escaneado sí trae páginas rasterizadas, pero acá NO se usan: la
+        // simulación viaja como texto (a diferencia de "Generar contenido", que sí
+        // las lee con visión). Sin este caso el capacitador veía "No se pudo leer
+        // el documento" y creía que el archivo estaba dañado.
+        const scanned = extracted.kind === 'pdf' && extracted.contextImages.length > 0
+        throw new Error(i18n.t(scanned
+          ? 'admin.simulations.ai_gen.doc_scanned_pdf'
+          : 'admin.simulations.ai_gen.doc_error'))
+      }
       setDoc({ name: extracted.fileName, text })
     } catch (err) {
       setDoc(null)
@@ -154,7 +284,11 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     const steps: GenerationStep[] = []
     if (usesModule) steps.push(SIM_STEP_READ_MODULE)
     if (condenses) steps.push(SIM_STEP_CONDENSE_DOC)
-    if (mode !== 'translate') steps.push(mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE)
+    if (mode !== 'translate') {
+      // Ahora son dos etapas de verdad: primero el mapa, después los diálogos por lotes.
+      steps.push(SIM_STEP_OUTLINE)
+      steps.push(mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE)
+    }
     if (willTranslate) steps.push(SIM_STEP_TRANSLATE)
     steps.push(SIM_STEP_FINALIZE)
     const idxOf = (s: GenerationStep) => steps.indexOf(s)
@@ -164,6 +298,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     setRunSteps(steps)
     setStepIdx(0)
     setNote(undefined)
+    setSubProgress(undefined)
     setRunTitle(i18n.t(mode === 'translate'
       ? 'admin.simulations.ai_gen.title_translating'
       : 'admin.simulations.ai_gen.title_generating'))
@@ -174,10 +309,12 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     const onProgress = (p: SimProgress) => {
       const step = p.stage === 'translating' ? SIM_STEP_TRANSLATE
         : p.stage === 'document' ? SIM_STEP_CONDENSE_DOC
+        : p.stage === 'outline' ? SIM_STEP_OUTLINE
         : mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE
       const i = idxOf(step)
       if (i >= 0) setStepIdx(i)
       setNote(p.detail)
+      setSubProgress(p.total ? { done: p.done ?? 0, total: p.total } : undefined)
     }
 
     try {
@@ -208,6 +345,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
           documentContext: usesDoc ? doc!.text : undefined,
           documentName: usesDoc ? doc!.name : undefined,
           length,
+          callType,
           translate: translateNow,
           existing: mode === 'improve' ? currentContent ?? undefined : undefined,
         }, controller.signal, onProgress)
@@ -242,35 +380,81 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   }
 
   return (
-    <div className={cn(
-      'mb-6 rounded-2xl border transition-all overflow-hidden',
-      open ? 'bg-neon-green/4 border-neon-green/20' : 'bg-glass/4 border-glass-border/10 hover:border-glass-border/20',
-    )}>
+    <motion.div
+      layout={reduce ? false : 'position'}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      className={cn(
+        'mb-6 rounded-2xl border overflow-hidden relative',
+        open ? 'bg-neon-green/4 border-neon-green/20' : 'bg-glass/4 border-glass-border/10 hover:border-glass-border/20',
+      )}
+    >
+      {/* Barra de vida: mientras la IA trabaja, el panel entero respira. */}
+      <AnimatePresence>
+        {loading && !reduce && (
+          <motion.span
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-x-0 top-0 h-px overflow-hidden"
+          >
+            <motion.span
+              className="block h-px w-1/3 bg-gradient-to-r from-transparent via-neon-green to-transparent"
+              animate={{ x: ['-100%', '400%'] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+            />
+          </motion.span>
+        )}
+      </AnimatePresence>
+
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left">
-        <div className="flex items-center gap-2 flex-1">
-          <span className="relative shrink-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <motion.span
+            className="relative shrink-0"
+            animate={loading && !reduce ? { rotate: [0, 12, -8, 0], scale: [1, 1.12, 1] } : { rotate: 0, scale: 1 }}
+            transition={loading ? { duration: 2.2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
+          >
             <Sparkles className="h-4 w-4 text-neon-green" />
             <AiCreditsDot className="absolute -top-1 -right-1" />
-          </span>
+          </motion.span>
           <span className="text-sm font-medium text-text">{i18n.t('admin.simulations.ai_gen.generate_ai')}</span>
-          <span className="text-xs text-text-subtle">
+          <span className="text-xs text-text-subtle truncate">
             {i18n.t(doc ? 'admin.simulations.ai_gen.generate_ai_sub_doc' : 'admin.simulations.ai_gen.generate_ai_sub')}
           </span>
         </div>
-        {remaining > 0 && (
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-green/8 border border-brand-green/20 text-brand-green text-[10px] font-medium">
-            <Clock className="h-3 w-3" />
-            {formatMs(remaining)}
-          </div>
-        )}
-        {open ? <ChevronUp className="h-4 w-4 text-text-muted" /> : <ChevronDown className="h-4 w-4 text-text-muted" />}
+        <AnimatePresence>
+          {remaining > 0 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-green/8 border border-brand-green/20 text-brand-green text-[10px] font-medium shrink-0"
+            >
+              <Clock className="h-3 w-3" />
+              {formatMs(remaining)}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {/* Un solo chevron que gira: cambiar de icono se sentía como un salto. */}
+        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.3, ease }} className="shrink-0">
+          <ChevronDown className="h-4 w-4 text-text-muted" />
+        </motion.span>
       </button>
 
+      <AnimatePresence initial={false}>
       {open && (
-        <div className="px-5 pb-5 space-y-4 border-t border-glass-border/10">
+        <motion.div
+          key="body"
+          initial={reduce ? undefined : { height: 0, opacity: 0 }}
+          animate={reduce ? undefined : { height: 'auto', opacity: 1 }}
+          exit={reduce ? undefined : { height: 0, opacity: 0 }}
+          transition={{ duration: 0.38, ease }}
+          className="overflow-hidden"
+        >
+        <Stagger gap={0.05} className="px-5 pb-5 space-y-4 border-t border-glass-border/10">
           <AiCreditsNotice className="mt-4" />
           <AiQuotaNotice className="mt-4" />
-          <div className="pt-4">
+          <StaggerItem className="pt-4">
             <label className="text-xs font-medium text-text-muted mb-1.5 block">
               {i18n.t('admin.simulations.ai_gen.what_scenario_about')}
             </label>
@@ -282,113 +466,200 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
               className="w-full glass border border-glass-border/20 rounded-xl px-3 py-2.5 text-sm text-text bg-transparent resize-none focus:outline-none focus:border-neon-green/40 placeholder:text-text-subtle"
             />
             <p className="text-[11px] text-text-subtle mt-1">{i18n.t('admin.simulations.ai_gen.prompt_hint')}</p>
-          </div>
+          </StaggerItem>
+
+          <StaggerItem>
+            <CallTypePicker value={callType} onChange={setCallType} />
+          </StaggerItem>
 
           {/* Extensión: la IA se quedaba en el mínimo y salían escenarios de 4 pasos. */}
-          <div>
+          <StaggerItem>
             <label className="text-xs font-medium text-text-muted mb-1.5 block">
               {i18n.t('admin.simulations.ai_gen.length_label')}
             </label>
             <div className="flex gap-1 p-0.5 rounded-xl glass w-fit">
               {(['short', 'medium', 'long'] as ScenarioLength[]).map((l) => (
-                <button
+                <motion.button
                   key={l}
                   onClick={() => setLength(l)}
+                  whileTap={reduce ? undefined : { scale: 0.96 }}
                   className={cn(
-                    'px-3 py-2 rounded-lg text-[11px] font-medium transition-colors',
-                    length === l ? 'bg-neon-green/12 text-neon-green' : 'text-text-subtle hover:text-text-muted',
+                    'relative px-3 py-2 rounded-lg text-[11px] font-medium transition-colors',
+                    length === l ? 'text-neon-green' : 'text-text-subtle hover:text-text-muted',
                   )}
                 >
-                  {i18n.t(`admin.simulations.ai_gen.length_${l}`)}
-                  <span className="ml-1 text-[10px] opacity-70">~{SCENARIO_LENGTH_NODES[l]}</span>
-                </button>
+                  {/* La píldora se DESLIZA entre opciones en vez de saltar. */}
+                  {length === l && (
+                    <motion.span
+                      layoutId="sim-length-pill"
+                      className="absolute inset-0 rounded-lg bg-neon-green/12"
+                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    />
+                  )}
+                  <span className="relative block">
+                    {i18n.t(`admin.simulations.ai_gen.length_${l}`)}
+                    <span className="ml-1 text-[10px] opacity-70">~{SCENARIO_LENGTH_NODES[l]}</span>
+                    {/* El tiempo esperado va junto a la opción: es la mitad de la decisión. */}
+                    <span className="block text-[10px] opacity-60 tabular-nums">
+                      {i18n.t(`admin.simulations.ai_gen.length_eta_${l}`)}
+                    </span>
+                  </span>
+                </motion.button>
               ))}
             </div>
             <p className="text-[11px] text-text-subtle mt-1">{i18n.t('admin.simulations.ai_gen.length_hint')}</p>
-          </div>
+            <AnimatePresence>
+              {doc && length === 'long' && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="text-[11px] text-brand-violet/90 mt-1 leading-relaxed overflow-hidden"
+                >
+                  {i18n.t('admin.simulations.ai_gen.length_eta_doc')}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </StaggerItem>
 
           {/* Idiomas: por defecto solo español; traducir después es más rápido y evita rehacer. */}
-          <div>
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={translateNow}
-                onChange={(e) => setTranslateNow(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-brand-green"
-              />
+          <StaggerItem>
+            <button
+              type="button"
+              onClick={() => setTranslateNow((v) => !v)}
+              aria-pressed={translateNow}
+              className="flex items-start gap-2.5 text-left w-full group"
+            >
+              {/* Interruptor real: el check nativo se veía de formulario de 2005. */}
+              <span
+                className={cn(
+                  'mt-0.5 relative h-5 w-9 shrink-0 rounded-full border transition-colors',
+                  translateNow ? 'bg-brand-green/25 border-brand-green/50' : 'bg-glass/10 border-glass-border/25',
+                )}
+              >
+                <motion.span
+                  layout
+                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                  className={cn(
+                    'absolute top-[2px] h-3.5 w-3.5 rounded-full',
+                    translateNow ? 'left-[18px] bg-brand-green' : 'left-[2px] bg-text-subtle',
+                  )}
+                />
+              </span>
               <span className="text-xs text-text-muted">
                 {i18n.t('admin.simulations.ai_gen.translate_now')}
                 <span className="block text-[11px] text-text-subtle mt-0.5">
                   {i18n.t('admin.simulations.ai_gen.translate_now_hint')}
                 </span>
               </span>
-            </label>
-          </div>
+            </button>
+          </StaggerItem>
 
           {/* Documento de apoyo: lo que hace que la simulación se sienta del negocio
               real (banca, seguros, telco) y no una llamada de call center genérica. */}
-          <div>
+          <StaggerItem>
             <label className="text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
               <FileText className="h-3.5 w-3.5" />
               {i18n.t('admin.simulations.ai_gen.doc_label')} <span className="text-text-subtle font-normal">{i18n.t('admin.simulations.ai_gen.optional')}</span>
             </label>
             <input ref={fileRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleFile} />
 
-            {docReading ? (
-              <div className="flex items-center gap-2 rounded-xl glass border border-glass-border/20 px-3 py-2.5 text-xs text-text-muted">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-neon-green" />
-                {i18n.t('admin.simulations.ai_gen.doc_reading', { name: docReading })}
-              </div>
-            ) : doc ? (
-              <div className="rounded-xl glass border border-neon-green/25 px-3 py-2.5 space-y-2">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-neon-green shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-text font-medium truncate">{doc.name}</p>
-                    <p className="text-[11px] text-text-subtle">
-                      {i18n.t('admin.simulations.ai_gen.doc_ready', { pages: estimateDocPages(doc.text) })}
-                    </p>
+            {/* Los tres estados (vacío / leyendo / listo) se relevan con transición:
+                antes el bloque cambiaba de golpe y parecía un parpadeo. */}
+            <AnimatePresence mode="wait" initial={false}>
+              {docReading ? (
+                <motion.div
+                  key="reading"
+                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.24, ease }}
+                  className="flex items-center gap-2 rounded-xl glass border border-glass-border/20 px-3 py-2.5 text-xs text-text-muted"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-neon-green" />
+                  {i18n.t('admin.simulations.ai_gen.doc_reading', { name: docReading })}
+                </motion.div>
+              ) : doc ? (
+                <motion.div
+                  key="ready"
+                  initial={{ opacity: 0, y: 6, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6 }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  className="rounded-xl glass border border-neon-green/25 px-3 py-2.5 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-neon-green shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-text font-medium truncate">{doc.name}</p>
+                      <p className="text-[11px] text-text-subtle">
+                        {i18n.t('admin.simulations.ai_gen.doc_ready', { pages: estimateDocPages(doc.text) })}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => fileRef.current?.click()}
+                      className="text-[11px] text-text-muted hover:text-text px-2 py-1 rounded-lg hover:bg-glass/8 transition-colors"
+                    >
+                      {i18n.t('admin.simulations.ai_gen.doc_replace')}
+                    </button>
+                    <motion.button
+                      onClick={() => setDoc(null)}
+                      whileHover={reduce ? undefined : { rotate: 90 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                      aria-label={i18n.t('admin.simulations.ai_gen.doc_remove')}
+                      className="text-text-subtle hover:text-danger p-1 rounded-lg hover:bg-glass/8 transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </motion.button>
                   </div>
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    className="text-[11px] text-text-muted hover:text-text px-2 py-1 rounded-lg hover:bg-glass/8 transition-colors"
+                  {simDocNeedsCondense(doc.text) && (
+                    <p className="text-[11px] text-text-subtle leading-relaxed border-t border-glass-border/10 pt-2">
+                      {i18n.t('admin.simulations.ai_gen.doc_long_notice')}
+                    </p>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.button
+                  key="empty"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => fileRef.current?.click()}
+                  // Soltar el archivo encima también funciona: es lo primero que
+                  // intenta cualquiera con un manual abierto en el escritorio.
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={handleDrop}
+                  className={cn(
+                    'w-full flex items-center justify-center gap-2 rounded-xl border border-dashed px-3 py-4 text-xs transition-colors',
+                    dragging
+                      ? 'border-neon-green/60 bg-neon-green/8 text-neon-green'
+                      : 'border-glass-border/30 text-text-muted hover:text-text hover:border-neon-green/40',
+                  )}
+                >
+                  <motion.span
+                    animate={dragging && !reduce ? { y: [-2, 2, -2] } : { y: 0 }}
+                    transition={dragging ? { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
                   >
-                    {i18n.t('admin.simulations.ai_gen.doc_replace')}
-                  </button>
-                  <button
-                    onClick={() => setDoc(null)}
-                    aria-label={i18n.t('admin.simulations.ai_gen.doc_remove')}
-                    className="text-text-subtle hover:text-danger p-1 rounded-lg hover:bg-glass/8 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                {simDocNeedsCondense(doc.text) && (
-                  <p className="text-[11px] text-text-subtle leading-relaxed border-t border-glass-border/10 pt-2">
-                    {i18n.t('admin.simulations.ai_gen.doc_long_notice')}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-glass-border/30 px-3 py-3 text-xs text-text-muted hover:text-text hover:border-neon-green/40 transition-colors"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                {i18n.t('admin.simulations.ai_gen.doc_upload')}
-              </button>
-            )}
+                    <Upload className="h-3.5 w-3.5" />
+                  </motion.span>
+                  {i18n.t(dragging ? 'admin.simulations.ai_gen.doc_drop' : 'admin.simulations.ai_gen.doc_upload')}
+                </motion.button>
+              )}
+            </AnimatePresence>
 
-            {docError && (
-              <p className="text-[11px] text-danger mt-1.5">{docError}</p>
-            )}
+            <AnimatePresence>
+              {docError && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  className="text-[11px] text-danger mt-1.5 leading-relaxed overflow-hidden"
+                >
+                  {docError}
+                </motion.p>
+              )}
+            </AnimatePresence>
             <p className="text-[11px] text-text-subtle mt-1 leading-relaxed">
               {i18n.t('admin.simulations.ai_gen.doc_hint')}
             </p>
-          </div>
+          </StaggerItem>
 
           {modules.length > 0 && (
-            <div>
+            <StaggerItem>
               <label className="text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1.5">
                 <BookOpen className="h-3.5 w-3.5" />
                 {i18n.t('admin.simulations.ai_gen.base_on_module')} <span className="text-text-subtle font-normal">{i18n.t('admin.simulations.ai_gen.optional')}</span>
@@ -401,65 +672,106 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
                   ...modules.map((m) => ({ value: m.id, label: m.title_es })),
                 ]}
               />
-            </div>
+            </StaggerItem>
           )}
 
-          {error && (
-            <div className="flex items-start gap-2 text-sm text-danger p-3 rounded-xl bg-danger/8 border border-danger/20">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.28, ease }}
+                className="overflow-hidden"
+              >
+                <div className="flex items-start gap-2 text-sm text-danger p-3 rounded-xl bg-danger/8 border border-danger/20">
+                  <motion.span
+                    initial={reduce ? undefined : { rotate: -12 }}
+                    animate={{ rotate: 0 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 12 }}
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  </motion.span>
+                  <span>{error}</span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <GenerationProgress
             steps={runSteps}
             active={loading}
             stepIndex={stepIdx}
             note={note}
+            subProgress={subProgress}
             title={runTitle}
+            // La espera se anuncia desde el principio; el aviso tardío suena a excusa.
+            hint={i18n.t(`admin.simulations.ai_gen.length_eta_${length}`) + (doc ? ` · ${i18n.t('admin.simulations.ai_gen.length_eta_doc')}` : '')}
           />
 
-          {loading && (
-            <div className="flex justify-end">
-              <button
-                onClick={handleCancel}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text hover:border-glass-border/40 transition-colors"
+          <AnimatePresence>
+            {loading && (
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="flex justify-end"
               >
-                <X className="h-3.5 w-3.5" /> {i18n.t('bgtask.cancel')}
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={handleCancel}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text hover:border-glass-border/40 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" /> {i18n.t('bgtask.cancel')}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {preview && !loading && (
-            <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleRegenerate} />
-          )}
-
-          {!preview && !loading && (
-            <div className="flex flex-wrap justify-end gap-2">
-              {canImprove && (
-                <Button onClick={handleTranslate} variant="ghost" size="sm">
-                  <Languages className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.translate_current')}
-                </Button>
-              )}
-              {canImprove && (
-                <Button onClick={handleImprove} variant="secondary" size="sm">
-                  <Wand2 className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.improve_current')}
-                </Button>
-              )}
-              <Button onClick={handleGenerate} disabled={!description.trim() && !doc} size="sm">
-                <Sparkles className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.generate_scenario')}
-              </Button>
-            </div>
-          )}
-          {canImprove && !preview && !loading && (
-            <div className="text-[11px] text-text-subtle text-right -mt-2 space-y-0.5">
-              <p>{i18n.t('admin.simulations.ai_gen.improve_hint')}</p>
-              <p>{i18n.t('admin.simulations.ai_gen.translate_hint')}</p>
-            </div>
-          )}
-        </div>
+          <AnimatePresence mode="wait" initial={false}>
+            {preview && !loading ? (
+              <motion.div
+                key="preview"
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+              >
+                <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleRegenerate} />
+              </motion.div>
+            ) : !loading ? (
+              <motion.div
+                key="actions"
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25, ease }}
+              >
+                <div className="flex flex-wrap justify-end gap-2">
+                  {canImprove && (
+                    <Button onClick={handleTranslate} variant="ghost" size="sm">
+                      <Languages className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.translate_current')}
+                    </Button>
+                  )}
+                  {canImprove && (
+                    <Button onClick={handleImprove} variant="secondary" size="sm">
+                      <Wand2 className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.improve_current')}
+                    </Button>
+                  )}
+                  {/* La acción principal se imanta al cursor: es la que queremos que se toque. */}
+                  <Magnetic strength={0.25}>
+                    <Button onClick={handleGenerate} disabled={!description.trim() && !doc} size="sm">
+                      <Sparkles className="h-4 w-4" /> {i18n.t('admin.simulations.ai_gen.generate_scenario')}
+                    </Button>
+                  </Magnetic>
+                </div>
+                {canImprove && (
+                  <div className="text-[11px] text-text-subtle text-right mt-1.5 space-y-0.5">
+                    <p>{i18n.t('admin.simulations.ai_gen.improve_hint')}</p>
+                    <p>{i18n.t('admin.simulations.ai_gen.translate_hint')}</p>
+                  </div>
+                )}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </Stagger>
+        </motion.div>
       )}
-    </div>
+      </AnimatePresence>
+    </motion.div>
   )
 }
 
@@ -475,25 +787,52 @@ function PreviewBox({
   const nodeEntries = Object.entries(nodes as Record<string, Record<string, unknown>>)
   const meta = metadata as unknown as Record<string, unknown>
 
+  const reduce = useReducedMotion()
+
   return (
-    <div className="bg-glass/6 border border-neon-green/20 rounded-xl p-4 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-brand-green" />
+    <div className="relative bg-glass/6 border border-neon-green/20 rounded-xl p-4 space-y-4 overflow-hidden">
+      {/* Un barrido de luz que cruza la tarjeta una sola vez: celebra el resultado
+          sin convertirse en un adorno permanente. */}
+      {!reduce && (
+        <motion.span
+          aria-hidden
+          initial={{ x: '-120%' }}
+          animate={{ x: '120%' }}
+          transition={{ duration: 1.1, ease, delay: 0.15 }}
+          className="pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-neon-green/8 to-transparent"
+        />
+      )}
+
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <motion.span
+            initial={reduce ? undefined : { scale: 0, rotate: -90 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 18 }}
+          >
+            <CheckCircle2 className="h-4 w-4 text-brand-green" />
+          </motion.span>
           <span className="text-sm font-medium text-text">{i18n.t('admin.simulations.ai_gen.scenario_generated')}</span>
+          {/* Con "Detectar sola" esto es la respuesta: qué decidió Claude leyendo el guion. */}
+          {typeof meta.call_type === 'string' && <CallTypeBadge callType={meta.call_type} />}
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <motion.button
             onClick={onRegenerate}
-            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors px-2 py-1 rounded-lg hover:bg-glass/8"
+            whileHover={reduce ? undefined : { rotate: -180 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            aria-label="Regenerar"
+            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors p-1.5 rounded-lg hover:bg-glass/8"
           >
-            <RotateCcw className="h-3 w-3" /> Regenerar
-          </button>
-          <Button size="sm" onClick={onApply}>{i18n.t('admin.simulations.ai_gen.load_in_editor')}</Button>
+            <RotateCcw className="h-3.5 w-3.5" />
+          </motion.button>
+          <Magnetic strength={0.25}>
+            <Button size="sm" onClick={onApply}>{i18n.t('admin.simulations.ai_gen.load_in_editor')}</Button>
+          </Magnetic>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+      <div className="relative grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
         <div>
           <div className="text-text-subtle mb-0.5">{i18n.t('admin.simulations.ai_gen.field_title')}</div>
           <div className="text-text font-medium">{String(meta.title_es ?? '')}</div>
@@ -526,9 +865,11 @@ function PreviewBox({
         </div>
       </div>
 
-      <div>
+      <div className="relative">
         <div className="text-[11px] font-medium text-text-subtle uppercase tracking-wide mb-2">{i18n.t('admin.simulations.ai_gen.conversation_flow')}</div>
-        <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+        {/* El flujo se revela momento a momento: se lee como una conversación que
+            se va armando, no como un volcado de datos. */}
+        <Stagger gap={0.035} className="space-y-2 max-h-52 overflow-y-auto pr-1">
           {nodeEntries.map(([nid, node]) => {
             const line = type === 'dialogue'
               ? String((node.customerLine as Record<string, string>)?.es ?? '')
@@ -536,7 +877,7 @@ function PreviewBox({
             const isStart = nid === generated.start_node_id
             const isTerminal = Boolean(node.terminal || node.isEnd)
             return (
-              <div key={nid} className="flex items-start gap-2 text-xs">
+              <StaggerItem key={nid} className="flex items-start gap-2 text-xs">
                 <span className={cn(
                   'shrink-0 w-1.5 h-1.5 rounded-full mt-[5px]',
                   isStart ? 'bg-brand-green' : isTerminal ? 'bg-brand-magenta' : 'bg-glass-border/40',
@@ -549,10 +890,10 @@ function PreviewBox({
                     </p>
                   )}
                 </div>
-              </div>
+              </StaggerItem>
             )
           })}
-        </div>
+        </Stagger>
         <div className="flex gap-4 mt-2 text-[10px] text-text-subtle">
           <span className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-green inline-block" /> Inicio
