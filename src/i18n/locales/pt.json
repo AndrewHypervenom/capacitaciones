@@ -2164,6 +2164,8 @@
         "campaign": "Campanha",
         "no_sims": "Não há simulações nesta campanha",
         "create_new": "Criar nova",
+        "created_by": "Criado por {{name}}",
+        "created_by_unknown": "Autor sem registro",
         "tab_mine": "Minhas simulações",
         "tab_shared": "Catálogo compartilhado",
         "shared_badge": "Compartilhada",

@@ -638,6 +638,8 @@ export interface Database {
           counts_for_cert: boolean
           is_shareable: boolean
           copied_from: string | null
+          /** Perfil que la creó (o que la copió del catálogo). Ver RPC get_simulation_authors. */
+          created_by: string | null
           created_at: string
         }
         Insert: {
@@ -670,6 +672,8 @@ export interface Database {
           counts_for_cert?: boolean
           is_shareable?: boolean
           copied_from?: string | null
+          /** Lo pone el DEFAULT auth.uid() de la BD; no hace falta enviarlo. */
+          created_by?: string | null
           created_at?: string
         }
         Update: {
@@ -813,6 +817,8 @@ export interface Database {
           pass_score: number
           is_shareable: boolean
           copied_from: string | null
+          /** Perfil que la creó (o que la copió del catálogo). Ver RPC get_simulation_authors. */
+          created_by: string | null
           created_at: string
         }
         Insert: {
@@ -834,6 +840,8 @@ export interface Database {
           pass_score?: number
           is_shareable?: boolean
           copied_from?: string | null
+          /** Lo pone el DEFAULT auth.uid() de la BD; no hace falta enviarlo. */
+          created_by?: string | null
           created_at?: string
         }
         Update: {
@@ -1668,6 +1676,17 @@ export interface Database {
       clone_choice_scenario: {
         Args: { p_scenario_id: string; p_target_campaign_id: string }
         Returns: string
+      }
+      // Autor de cada simulación: el nombre puede vivir en otra campaña, así que
+      // va por RPC SECURITY DEFINER en vez de un join a profiles.
+      get_simulation_authors: {
+        Args: { p_ids: string[] }
+        Returns: {
+          simulation_id: string
+          author_id: string | null
+          author_name: string | null
+          author_role: string | null
+        }[]
       }
       self_enroll_course: {
         Args: { p_course_id: string }

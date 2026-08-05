@@ -88,6 +88,36 @@ export async function getShareableScenarios(ownCampaignId: string): Promise<Shar
     .map(({ campaigns, ...row }) => ({ ...row, campaign_name: campaigns?.name ?? null }))
 }
 
+/** Autor de una simulación (llamada u opción múltiple). */
+export interface SimulationAuthor {
+  id: string | null
+  name: string | null
+  role: string | null
+}
+
+/**
+ * Quién creó cada simulación, por id. Sirve para ambos tipos (llamada y opción
+ * múltiple): el RPC busca en las dos tablas.
+ *
+ * Va por RPC SECURITY DEFINER porque el autor puede pertenecer a otra campaña
+ * (una simulación copiada del catálogo compartido) y la RLS de `profiles` no
+ * dejaría leer su nombre con un join normal.
+ */
+export async function getSimulationAuthors(ids: string[]): Promise<Map<string, SimulationAuthor>> {
+  const map = new Map<string, SimulationAuthor>()
+  if (ids.length === 0) return map
+  const { data, error } = await supabase.rpc('get_simulation_authors', { p_ids: ids })
+  if (error) throw error
+  for (const row of data ?? []) {
+    map.set(row.simulation_id, {
+      id: row.author_id,
+      name: row.author_name,
+      role: row.author_role,
+    })
+  }
+  return map
+}
+
 /**
  * Copia una simulación compartida a la campaña indicada (deep-copy de nodos y
  * checklist). El RPC `clone_scenario` corre con SECURITY DEFINER y valida

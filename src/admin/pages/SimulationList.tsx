@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import {
   Eye, EyeOff, MessageSquare, PhoneCall, Plus, Trash2, Pencil,
   Loader2, Flame, AlertTriangle, Share2, Copy, Search, Check, Globe2, Building2, Library,
+  UserRound,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import {
   getAllScenariosAdmin, deleteScenario, toggleScenarioPublished,
-  setScenarioShareable, getShareableScenarios, cloneScenario,
-  type ScenarioRow, type ShareableScenario,
+  setScenarioShareable, getShareableScenarios, cloneScenario, getSimulationAuthors,
+  type ScenarioRow, type ShareableScenario, type SimulationAuthor,
 } from '@/services/scenarios.admin.service'
 import {
   getAllChoiceScenariosAdmin, deleteChoiceScenario, toggleChoiceScenarioPublished,
@@ -68,6 +69,10 @@ export default function SimulationList() {
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // Quién creó cada simulación. Se pide aparte (RPC) porque el autor puede ser
+  // de otra campaña y la RLS de profiles no deja leer su nombre por join.
+  const [authors, setAuthors] = useState<Map<string, SimulationAuthor>>(new Map())
+
   // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
     getAccessibleCampaigns({
@@ -110,6 +115,23 @@ export default function SimulationList() {
       .catch(() => setError(t('admin.simulations.list.shared_error')))
       .finally(() => setSharedLoading(false))
   }, [view, selectedCampaignId, t])
+
+  // Autores de todo lo que hay en pantalla (propias + catálogo compartido). Si
+  // el RPC aún no existe en la BD no rompemos la lista: se queda sin autor.
+  useEffect(() => {
+    const ids = [
+      ...dialogueRows.map((r) => r.id),
+      ...choiceRows.map((r) => r.id),
+      ...sharedDialogue.map((r) => r.id),
+      ...sharedChoice.map((r) => r.id),
+    ]
+    if (ids.length === 0) return
+    let alive = true
+    getSimulationAuthors([...new Set(ids)])
+      .then((map) => { if (alive) setAuthors(map) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [dialogueRows, choiceRows, sharedDialogue, sharedChoice])
 
   // Simulaciones del catálogo que esta campaña ya copió: evita duplicados por
   // descuido (la copia guarda su origen en copied_from).
@@ -366,6 +388,7 @@ export default function SimulationList() {
           copyingId={copyingId}
           copiedSourceIds={copiedSourceIds}
           onCopy={handleCopyShared}
+          authors={authors}
         />
       )}
 
@@ -398,6 +421,8 @@ export default function SimulationList() {
                           <Flame key={d} className={cn('h-3 w-3', d <= row.difficulty ? DIFFICULTY_COLORS[row.difficulty as 1 | 2 | 3] : 'text-line')} fill={d <= row.difficulty ? 'currentColor' : 'none'} />
                         ))}
                       </span>
+                      <span>·</span>
+                      <AuthorLine author={authors.get(row.id)} />
                     </div>
                     <ShareState shareable={row.is_shareable} published={row.is_published} />
                   </div>
@@ -452,6 +477,8 @@ export default function SimulationList() {
                     <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
                       <span className="font-mono">{row.slug}</span>
                       {row.client_name && <><span>·</span><span>{row.client_name}</span></>}
+                      <span>·</span>
+                      <AuthorLine author={authors.get(row.id)} />
                     </div>
                     <ShareState shareable={row.is_shareable} published={row.is_published} />
                   </div>
@@ -525,6 +552,24 @@ function ShareToggle({ on, published, onClick }: { on: boolean; published: boole
   )
 }
 
+/**
+ * Quién creó la simulación. No se inventa: si no hay autor (simulaciones
+ * anteriores a que se registrara el dato) se dice que no hay registro, en vez
+ * de dejar el hueco o atribuirla a alguien.
+ */
+function AuthorLine({ author }: { author?: SimulationAuthor }) {
+  const { t } = useTranslation()
+  const name = author?.name
+  return (
+    <span className="flex items-center gap-1 text-text-subtle">
+      <UserRound className="h-3.5 w-3.5 shrink-0" />
+      {name
+        ? t('admin.simulations.list.created_by', { name })
+        : t('admin.simulations.list.created_by_unknown')}
+    </span>
+  )
+}
+
 /** Aviso en la fila: compartida pero sin publicar = nadie la ve todavía. */
 function ShareState({ shareable, published }: { shareable: boolean; published: boolean }) {
   const { t } = useTranslation()
@@ -569,7 +614,7 @@ function IconAction({
  * Por eso la cabecera explica el trato en tres puntos antes de que nadie copie.
  */
 function SharedCatalog({
-  tab, loading, search, onSearch, dialogue, choice, copyingId, copiedSourceIds, onCopy,
+  tab, loading, search, onSearch, dialogue, choice, copyingId, copiedSourceIds, onCopy, authors,
 }: {
   tab: Tab
   loading: boolean
@@ -580,6 +625,7 @@ function SharedCatalog({
   copyingId: string | null
   copiedSourceIds: Set<string>
   onCopy: (row: ShareableScenario | ShareableChoiceScenario, kind: Tab) => void
+  authors: Map<string, SimulationAuthor>
 }) {
   const { t } = useTranslation()
   const rows: Array<{
@@ -705,6 +751,7 @@ function SharedCatalog({
 
                 <div className="flex items-center gap-2 text-[11.5px] text-text-subtle flex-wrap [&>span]:flex [&>span]:items-center [&>span]:gap-1">
                   {item.meta}
+                  <AuthorLine author={authors.get(item.id)} />
                 </div>
 
                 <div className="flex items-center justify-between gap-3 pt-1 mt-auto border-t border-glass-border/8">
