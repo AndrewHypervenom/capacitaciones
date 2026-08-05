@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
-import { unloopScenario } from '@/lib/scenarioFlow'
+import { unloopScenario, deferEndings, collapseEndings, minTurnsFor, isEndNode } from '@/lib/scenarioFlow'
 import type { ContentBlock } from '@/types/blocks'
 
 export interface CacheUsage {
@@ -184,11 +184,18 @@ function shuffleOptions(options: Record<string, unknown>[]): Record<string, unkn
  * que no existe, el escenario igual queda navegable en vez de romperse a mitad de
  * la simulación (que es lo que vería el aprendiz).
  */
+/**
+ * Intercambios mínimos antes de un final, por longitud del escenario. Es el mismo
+ * número que el prompt le exige a la IA: acá se hace cumplir de verdad.
+ */
+const MIN_TURNS_BEFORE_END: Record<ScenarioLength, number> = { short: 4, medium: 6, long: 8 }
+
 function assembleScenario(
   plan: { metadata: unknown; start_node_id?: string },
   outline: OutlineBeat[],
   written: Record<string, unknown>,
   type: 'dialogue' | 'choice',
+  minTurns: number,
 ): GeneratedScenario {
   const beatById = new Map(outline.map((b) => [b.id, b]))
   const nodes: Record<string, Record<string, unknown>> = {}
@@ -246,7 +253,21 @@ function assembleScenario(
   // 4. La conversación siempre avanza: ninguna respuesta devuelve al aprendiz al
   //    mismo momento ni a uno anterior. El orden del esqueleto ES el orden
   //    narrativo, así que acá el antibucle sabe exactamente qué es "adelante".
-  unloopScenario(nodes, start, type, outline.map((b) => b.id))
+  const order = outline.map((b) => b.id)
+  unloopScenario(nodes, start, type, order)
+
+  // 5. Un arranque y un cierre. Con varios finales, elegir mal una vez mandaba al
+  //    aprendiz directo a la pantalla de resultado sin haber hecho la gestión.
+  collapseEndings(nodes, start, type, order)
+
+  // 6. Y ese cierre único queda detrás de una conversación de verdad: equivocarse
+  //    al saludar molesta al cliente, no termina la llamada. El orden narrativo se
+  //    recalcula porque el colapso pudo dejar el cierre a mitad del esqueleto.
+  const finalOrder = [
+    ...order.filter((id) => id in nodes && !isEndNode(nodes[id], type)),
+    ...order.filter((id) => id in nodes && isEndNode(nodes[id], type)),
+  ]
+  deferEndings(nodes, start, type, Math.min(minTurns, minTurnsFor(nodes, type)), finalOrder)
 
   return { metadata: plan.metadata, start_node_id: start, nodes } as unknown as GeneratedScenario
 }
@@ -385,7 +406,7 @@ export async function generateSimulation(opts: {
     }
   }
 
-  const scenario = assembleScenario(plan, outline, writtenNodes, opts.type)
+  const scenario = assembleScenario(plan, outline, writtenNodes, opts.type, MIN_TURNS_BEFORE_END[length])
 
   if (!opts.translate) {
     // Sin traducción: en/pt quedan con el español (mejor que un hueco) hasta que el

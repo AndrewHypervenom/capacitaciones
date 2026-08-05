@@ -81,6 +81,10 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const lastTimeRef = useRef(0)
 
   const [playing, setPlaying] = useState(false)
+  // "Se pidió reproducir pero el reproductor aún no confirma". Mientras dure, ocultamos
+  // el botón grande de play para no tapar la ruedita de carga de YouTube/Vimeo.
+  const [pending, setPending] = useState(false)
+  const pendingTimeout = useRef<ReturnType<typeof setTimeout>>()
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
@@ -165,7 +169,35 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   }, [playing])
 
   useEffect(() => {
-    return () => clearTimeout(controlsTimeout.current)
+    return () => {
+      clearTimeout(controlsTimeout.current)
+      clearTimeout(pendingTimeout.current)
+    }
+  }, [])
+
+  // Pide reproducir y marca el estado "arrancando". Con YouTube/Vimeo el arranque no es
+  // inmediato (buffer + handshake del iframe), así que esperamos al evento `play` real;
+  // el temporizador devuelve el botón si nunca arranca (autoplay bloqueado, red caída).
+  const requestPlay = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    setPending(true)
+    clearTimeout(pendingTimeout.current)
+    pendingTimeout.current = setTimeout(() => setPending(false), 8000)
+    v.play()
+  }, [])
+
+  // Confirmaciones del reproductor: cierran el estado "arrancando".
+  const handlePlayEvent = useCallback(() => {
+    clearTimeout(pendingTimeout.current)
+    setPending(false)
+    setPlaying(true)
+  }, [])
+
+  const handlePauseEvent = useCallback(() => {
+    clearTimeout(pendingTimeout.current)
+    setPending(false)
+    setPlaying(false)
   }, [])
 
   // Listener de cambio de pantalla completa
@@ -211,7 +243,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOverlay, playing])
+  }, [showOverlay, playing, pending])
 
   const handleTimeUpdate = useCallback(() => {
     const v = videoRef.current
@@ -251,10 +283,13 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const togglePlay = () => {
     const v = videoRef.current
     if (!v) return
-    if (playing) {
+    // `pending` cuenta como "va a reproducir": un segundo clic cancela el arranque.
+    if (playing || pending) {
+      clearTimeout(pendingTimeout.current)
+      setPending(false)
       v.pause()
     } else {
-      v.play()
+      requestPlay()
     }
   }
 
@@ -388,8 +423,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const handleOverlayComplete = () => {
     setShowOverlay(false)
     setActiveMarker(null)
-    videoRef.current?.play()
-    setPlaying(true)
+    requestPlay()
   }
 
   // "Repasar el video": cierra el quiz sin responderlo y regresa al inicio del
@@ -404,8 +438,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     setActiveMarker(null)
     const prev = sortedMarkers.filter((m) => m.timeSeconds < markerTime).pop()
     seekTo(prev ? prev.timeSeconds : Math.max(0, markerTime - 20))
-    videoRef.current?.play()
-    setPlaying(true)
+    requestPlay()
   }
 
   const handleRetryQuiz = (markerId: string) => {
@@ -413,8 +446,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     const marker = sortedMarkers.find((m) => m.id === markerId) as VideoQuizMarker | undefined
     if (!marker) return
     seekTo(marker.timeSeconds - 1)
-    videoRef.current?.play()
-    setPlaying(true)
+    requestPlay()
   }
 
   const handleLoadedMetadata = () => {
@@ -503,8 +535,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                 onClick={() => {
                   if (isLocked) { handleLockedClick(m.id); return }
                   seekTo(m.timeSeconds)
-                  videoRef.current?.play()
-                  setPlaying(true)
+                  requestPlay()
                   if (fullscreen) setShowFsChapters(false)
                 }}
                 className={cn(
@@ -635,22 +666,22 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
           <YouTubePlayer
             videoId={videoUrl}
             playerRef={videoRef}
-            className="absolute inset-0 w-full h-full [&_iframe]:pointer-events-auto"
+            className="absolute inset-0 w-full h-full"
             onReady={handleLoadedMetadata}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onEnded={() => setPlaying(false)}
+            onPlay={handlePlayEvent}
+            onPause={handlePauseEvent}
+            onEnded={handlePauseEvent}
             onTimeUpdate={handleTimeUpdate}
           />
         ) : isVimeo && videoUrl ? (
           <VimeoPlayer
             videoId={videoUrl}
             playerRef={videoRef}
-            className="absolute inset-0 w-full h-full [&_iframe]:pointer-events-auto"
+            className="absolute inset-0 w-full h-full"
             onReady={handleLoadedMetadata}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onEnded={() => setPlaying(false)}
+            onPlay={handlePlayEvent}
+            onPause={handlePauseEvent}
+            onEnded={handlePauseEvent}
             onTimeUpdate={handleTimeUpdate}
           />
         ) : (
@@ -660,11 +691,24 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
             className="absolute inset-0 w-full h-full object-contain cursor-pointer"
             preload="metadata"
             onClick={togglePlay}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
+            onPlay={handlePlayEvent}
+            onPause={handlePauseEvent}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
-            onEnded={() => setPlaying(false)}
+            onEnded={handlePauseEvent}
+          />
+        )}
+
+        {/* Capa de clic para los embeds. El iframe de Vimeo no reacciona al clic central
+            (y el de YouTube lo hace con su propia lógica), así que interceptamos toda el
+            área del video y usamos SIEMPRE nuestro play/pausa. Va por debajo de los
+            controles (z-20) para no robarles los clics. */}
+        {isEmbed && !showOverlay && (
+          <button
+            type="button"
+            aria-label={playing ? 'Pausar' : 'Reproducir'}
+            onClick={togglePlay}
+            className="absolute inset-0 z-10 w-full h-full cursor-pointer bg-transparent"
           />
         )}
 
@@ -697,17 +741,39 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
           )}
         </AnimatePresence>
 
-        {/* Botón grande de play cuando está pausado */}
+        {/* Botón grande de play cuando está pausado. Desaparece en cuanto se pide
+            reproducir (`pending`) para dejar ver la ruedita de carga del reproductor. */}
         <AnimatePresence>
-          {!playing && !showOverlay && (
-            <div
-              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          {!playing && !pending && !showOverlay && (
+            <motion.div
+              className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
               key="big-play"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             >
               <div className="h-16 w-16 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20">
                 <Play className="h-7 w-7 text-white ml-1" />
               </div>
-            </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Ruedita propia solo para el <video> nativo: YouTube y Vimeo muestran la suya
+            y no queremos dos indicadores encima del mismo punto. */}
+        <AnimatePresence>
+          {pending && !isEmbed && !showOverlay && (
+            <motion.div
+              key="loading"
+              className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <span className="h-10 w-10 rounded-full border-2 border-white/25 border-t-white/90 animate-spin" />
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -769,7 +835,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                       transition={{ duration: 0.5, ease: 'easeInOut' }}
                       onClick={() => {
                         if (isLocked) { handleLockedClick(m.id); return }
-                        seekTo(m.timeSeconds); videoRef.current?.play(); setPlaying(true); setShowFsChapters(false)
+                        seekTo(m.timeSeconds); requestPlay(); setShowFsChapters(false)
                       }}
                       className={cn(
                         'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors',
@@ -814,7 +880,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
         {/* Controles */}
         <div
           className={cn(
-            'absolute bottom-0 left-0 right-0 transition-opacity duration-300',
+            'absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-300',
             showControls || !playing || seeking ? 'opacity-100' : 'opacity-0 pointer-events-none',
           )}
         >

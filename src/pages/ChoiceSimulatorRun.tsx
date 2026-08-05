@@ -9,7 +9,7 @@ import { saveSimulatorAttempt, type AiFeedback } from '@/services/certification.
 import { choiceFeedback, SimAiError, type SimAiErrorKind } from '@/services/simGroq.service';
 import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import { RichText } from '@/components/ui/RichText';
-import { unloopScenario } from '@/lib/scenarioFlow';
+import { unloopScenario, deferEndings, collapseEndings } from '@/lib/scenarioFlow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
 import type { Language } from '@/stores/userStore';
@@ -53,7 +53,14 @@ function toScorePct(points: number, max: number) {
  */
 function flowFixed(scn: ChoiceScenario): ChoiceScenario {
   const copy = structuredClone(scn);
-  unloopScenario(copy.nodes as unknown as Record<string, Record<string, unknown>>, copy.startId, 'choice');
+  const nodes = copy.nodes as unknown as Record<string, Record<string, unknown>>;
+  unloopScenario(nodes, copy.startId, 'choice');
+  // Un arranque y un cierre: los escenarios ya guardados traían el final "poor"
+  // colgado del segundo momento, así que elegir mal una vez sacaba al aprendiz a
+  // la pantalla de resultado sin haber hecho la gestión.
+  collapseEndings(nodes, copy.startId, 'choice');
+  // Y ese cierre queda detrás de una conversación de verdad.
+  deferEndings(nodes, copy.startId, 'choice');
   return copy;
 }
 

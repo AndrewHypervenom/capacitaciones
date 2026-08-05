@@ -9,7 +9,7 @@ import { useScenarios } from '@/hooks/useScenarios';
 import { useUserStore } from '@/stores/userStore';
 import { useSimStore } from '@/stores/simStore';
 import { applyTurn, endSim, startSim, stepSim, type SimState } from '@/lib/simulator';
-import { unloopScenario } from '@/lib/scenarioFlow';
+import { unloopScenario, deferEndings, collapseEndings } from '@/lib/scenarioFlow';
 import { callTurn } from '@/services/simGroq.service';
 import { CallTimer } from '@/components/simulator/CallTimer';
 import { CustomerPanel } from '@/components/simulator/CustomerPanel';
@@ -57,7 +57,14 @@ export default function SimulatorRun() {
     // uno anterior) hacía que el cliente repitiera la misma línea sin fin. Se
     // endereza sobre una copia, sin tocar lo guardado.
     const copy = structuredClone(found);
-    unloopScenario(copy.nodes as unknown as Record<string, Record<string, unknown>>, copy.start, 'dialogue');
+    const nodes = copy.nodes as unknown as Record<string, Record<string, unknown>>;
+    unloopScenario(nodes, copy.start, 'dialogue');
+    // Un arranque y un cierre: varios finales hacían que un desliz temprano
+    // cortara la llamada y saltara al resultado.
+    collapseEndings(nodes, copy.start, 'dialogue');
+    // Y ese cierre no se alcanza a los dos pasos: el desliz lleva a un momento
+    // donde el cliente reacciona, nunca directo al final.
+    deferEndings(nodes, copy.start, 'dialogue');
     return copy;
   }, [id, dbScenarios, fetchedScenario]);
 
