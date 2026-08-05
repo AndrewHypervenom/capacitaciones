@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft, Award, BookOpen, Briefcase, CalendarDays, CheckCircle2, IdCard,
-  Loader2, Lock, MapPin, Phone, Save, Sparkles, Trophy, User as UserIcon, Zap,
+  Loader2, Lock, Mail, MapPin, Pencil, Phone, Save, Sparkles, Trophy,
+  User as UserIcon, Zap,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -18,6 +19,7 @@ import { Input } from '@/components/ui/Input';
 import { PasswordStrength } from '@/components/auth/PasswordStrength';
 import { evaluatePassword } from '@/lib/password';
 import { Select } from '@/components/ui/Select';
+import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries';
 import { Button } from '@/components/ui/Button';
 import { ProfileHero, type HeroStat } from '@/components/profile/ProfileHero';
 import { ProfileTabs, type ProfileTab } from '@/components/profile/ProfileTabs';
@@ -31,13 +33,10 @@ import type { Lang } from '@/stores/gamificationStore';
 
 const MAX_AVATAR_BYTES = 3 * 1024 * 1024; // 3 MB: sobra para una foto y cuida el storage Free.
 
-const COUNTRY_LABEL: Record<string, string> = {
-  CO: 'simulator.countries.CO',
-  MX: 'simulator.countries.MX',
-  AR: 'simulator.countries.AR',
-};
-
 type TabId = 'trayectoria' | 'certificados' | 'datos' | 'seguridad';
+
+/** Campos que cuentan para "perfil completo" (la foto va aparte, en el hero). */
+const COMPLETABLE = ['display_name', 'job_title', 'national_id', 'phone', 'country'] as const;
 
 export default function Profile() {
   const { t, i18n } = useTranslation();
@@ -63,14 +62,26 @@ export default function Profile() {
   };
 
   // ── Datos personales ──
-  const [form, setForm] = useState({
+  const formFromProfile = () => ({
     display_name: profile?.display_name ?? '',
     job_title: profile?.job_title ?? '',
     national_id: profile?.national_id ?? '',
     phone: profile?.phone ?? '',
-    country: (profile?.country ?? 'CO') as string,
+    country: (profile?.country ?? '') as string,
     bio: profile?.bio ?? '',
   });
+  const [form, setForm] = useState(formFromProfile);
+  // Si el perfil llega o cambia después (sesión que se rehidrata, edición desde
+  // otra pestaña), el formulario se pone al día en vez de quedarse en blanco y
+  // borrar datos buenos al guardar.
+  const profileStamp = `${profile?.id ?? ''}|${profile?.updated_at ?? ''}`;
+  const lastStamp = useRef(profileStamp);
+  useEffect(() => {
+    if (lastStamp.current === profileStamp) return;
+    lastStamp.current = profileStamp;
+    setForm(formFromProfile());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileStamp]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [localAvatar, setLocalAvatar] = useState<string | null>(avatarUrl);
@@ -210,6 +221,27 @@ export default function Profile() {
     }
   };
 
+  // Ir a "Mis datos" y dejar el cursor en el campo que se pidió completar:
+  // el objetivo es que llenar el dato cueste un clic, no una búsqueda.
+  const goToData = (field?: string) => {
+    changeTab('datos');
+    setTimeout(() => {
+      const el = field ? document.getElementById(`pf-${field}`) : null;
+      if (el) {
+        (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (el as HTMLInputElement).focus?.();
+      } else {
+        document.getElementById('pf-datos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 80);
+  };
+
+  const missing = COMPLETABLE.filter((k) => !String(form[k] ?? '').trim());
+  const completion = Math.round(((COMPLETABLE.length - missing.length) / COMPLETABLE.length) * 100);
+  const dirty = (Object.keys(form) as (keyof typeof form)[]).some(
+    (k) => form[k].trim() !== (formFromProfile()[k] ?? '').trim(),
+  );
+
   const label = 'mb-1.5 block text-[12px] font-semibold uppercase tracking-wide text-text-subtle';
   const card = 'rounded-3xl border border-line bg-surface p-6 sm:p-8';
 
@@ -253,20 +285,77 @@ export default function Profile() {
         onPickPhoto={() => fileRef.current?.click()}
         photoLabel={t('profile.change_photo', 'Cambiar foto')}
         stats={stats}
+        actions={
+          <Button variant="secondary" size="sm" onClick={() => goToData()}>
+            <Pencil className="h-4 w-4" />
+            {t('profile.edit_data', 'Editar mis datos')}
+          </Button>
+        }
         meta={[
-          { id: 'job', icon: Briefcase, label: t('profile.job_title'), value: profile?.job_title ?? null },
-          { id: 'id', icon: IdCard, label: t('profile.national_id'), value: profile?.national_id ?? null },
-          { id: 'phone', icon: Phone, label: t('profile.phone'), value: profile?.phone ?? null },
+          {
+            id: 'job', icon: Briefcase, label: t('profile.job_title'),
+            value: profile?.job_title ?? null,
+            onFill: () => goToData('job_title'),
+            fillLabel: t('profile.add_data', 'Completar'),
+          },
+          {
+            id: 'id', icon: IdCard, label: t('profile.national_id'),
+            value: profile?.national_id ?? null,
+            onFill: () => goToData('national_id'),
+            fillLabel: t('profile.add_data', 'Completar'),
+          },
+          {
+            id: 'phone', icon: Phone, label: t('profile.phone'),
+            value: profile?.phone ?? null,
+            onFill: () => goToData('phone'),
+            fillLabel: t('profile.add_data', 'Completar'),
+          },
           {
             id: 'country', icon: MapPin, label: t('profile.country'),
-            value: profile?.country
-              ? (COUNTRY_LABEL[profile.country] ? t(COUNTRY_LABEL[profile.country]) : profile.country)
-              : null,
+            value: countryLabelWithFlag(profile?.country),
+            onFill: () => goToData('country'),
+            fillLabel: t('profile.add_data', 'Completar'),
           },
           { id: 'since', icon: CalendarDays, label: t('admin.users.member_since', 'Miembro desde'), value: fmtDate(profile?.created_at) },
         ]}
       />
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
+
+      {/* Perfil incompleto: se avisa una vez, arriba, con el atajo para llenarlo.
+          Los datos de la ficha (cargo, cédula, país) salen en el certificado y
+          en los reportes, así que vale la pena pedirlos de frente. */}
+      {missing.length > 0 && (
+        <button
+          type="button"
+          onClick={() => goToData(missing[0])}
+          className="mt-4 flex w-full items-center gap-4 rounded-2xl border border-line bg-surface p-4 text-left transition-colors hover:border-brand-green"
+        >
+          <div className="relative h-10 w-10 shrink-0">
+            <svg viewBox="0 0 36 36" className="h-10 w-10 -rotate-90">
+              <circle cx="18" cy="18" r="15" fill="none" strokeWidth="4" className="stroke-line" />
+              <circle
+                cx="18" cy="18" r="15" fill="none" strokeWidth="4" strokeLinecap="round"
+                stroke="#10D451"
+                strokeDasharray={`${(completion / 100) * 94.2} 94.2`}
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold tabular-nums text-text">
+              {completion}%
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[14px] font-semibold text-text">
+              {t('profile.incomplete_title', 'Completa tu perfil')}
+            </div>
+            <div className="truncate text-[13px] text-text-muted">
+              {t('profile.incomplete_hint', 'Falta: {{fields}}', {
+                fields: missing.map((k) => t(`profile.${k === 'display_name' ? 'full_name' : k}`)).join(' · '),
+              })}
+            </div>
+          </div>
+          <Pencil className="h-4 w-4 shrink-0 text-text-subtle" />
+        </button>
+      )}
 
       {/* Puerta visible para activar la huella. La invitación post-login se
           ofrece una sola vez; quien la descartó necesita poder volver, y
@@ -337,43 +426,58 @@ export default function Profile() {
           )}
 
           {tab === 'datos' && (
-            <div className={card}>
-              <h2 className="mb-5 text-[16px] font-semibold text-text">
+            <div id="pf-datos" className={card}>
+              <h2 className="text-[16px] font-semibold text-text">
                 {t('profile.personal_info', 'Información personal')}
               </h2>
+              <p className="mb-5 mt-1 text-[13px] text-text-muted">
+                {t('profile.personal_info_hint', 'Estos datos aparecen en tu certificado y en los reportes de tu capacitador. Puedes cambiarlos cuando quieras.')}
+              </p>
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <label className={label}>{t('profile.full_name', 'Nombre completo')}</label>
-                  <Input value={form.display_name} onChange={set('display_name')} placeholder={t('profile.full_name', 'Nombre completo')} />
+                  <label className={label} htmlFor="pf-display_name">{t('profile.full_name', 'Nombre completo')}</label>
+                  <Input id="pf-display_name" value={form.display_name} onChange={set('display_name')} autoComplete="name" placeholder={t('profile.full_name', 'Nombre completo')} />
                 </div>
                 <div>
-                  <label className={label}>{t('profile.job_title', 'Cargo')}</label>
-                  <Input value={form.job_title} onChange={set('job_title')} placeholder={t('profile.job_title_ph', 'Ej. Asesor comercial')} />
+                  <label className={label} htmlFor="pf-job_title">{t('profile.job_title', 'Cargo')}</label>
+                  <Input id="pf-job_title" value={form.job_title} onChange={set('job_title')} autoComplete="organization-title" placeholder={t('profile.job_title_ph', 'Ej. Asesor comercial')} />
                 </div>
                 <div>
-                  <label className={label}>{t('profile.national_id', 'Cédula / Documento')}</label>
-                  <Input value={form.national_id} onChange={set('national_id')} inputMode="numeric" placeholder="123456789" />
+                  <label className={label} htmlFor="pf-national_id">{t('profile.national_id', 'Cédula / Documento')}</label>
+                  <Input id="pf-national_id" value={form.national_id} onChange={set('national_id')} inputMode="numeric" placeholder="123456789" />
                 </div>
                 <div>
-                  <label className={label}>{t('profile.phone', 'Teléfono')}</label>
-                  <Input value={form.phone} onChange={set('phone')} inputMode="tel" placeholder="+57 300 000 0000" />
+                  <label className={label} htmlFor="pf-phone">{t('profile.phone', 'Teléfono')}</label>
+                  <Input id="pf-phone" value={form.phone} onChange={set('phone')} inputMode="tel" autoComplete="tel" placeholder="+57 300 000 0000" />
                 </div>
                 <div>
-                  <label className={label}>{t('profile.country', 'País')}</label>
+                  <label className={label} htmlFor="pf-country">{t('profile.country', 'País')}</label>
                   <Select
+                    id="pf-country"
                     value={form.country}
                     onChange={(v) => setForm((f) => ({ ...f, country: v }))}
+                    placeholder={t('profile.country_ph', 'Elige tu país')}
+                    aria-label={t('profile.country', 'País')}
                     className="[&>button]:h-12 [&>button]:rounded-2xl [&>button]:px-4 [&>button]:text-[15px]"
-                    options={[
-                      { value: 'CO', label: t('simulator.countries.CO') },
-                      { value: 'MX', label: t('simulator.countries.MX') },
-                      { value: 'AR', label: t('simulator.countries.AR') },
-                    ]}
+                    options={COUNTRY_OPTIONS}
                   />
                 </div>
+                {/* El correo es la llave de la cuenta: se muestra para que la
+                    ficha esté completa, pero no se cambia desde aquí. */}
                 <div className="sm:col-span-2">
-                  <label className={label}>{t('profile.bio', 'Acerca de mí')}</label>
+                  <label className={label}>{t('profile.email', 'Correo')}</label>
+                  <div className="flex h-12 items-center gap-2 rounded-2xl border border-line bg-subtle/40 px-4 text-[15px] text-text-muted">
+                    <Mail className="h-4 w-4 shrink-0 text-text-subtle" />
+                    <span className="truncate">{user?.email}</span>
+                  </div>
+                  <p className="mt-1.5 text-[12px] text-text-subtle">
+                    {t('profile.email_locked', 'Para cambiar tu correo, escríbele a tu capacitador.')}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={label} htmlFor="pf-bio">{t('profile.bio', 'Acerca de mí')}</label>
                   <textarea
+                    id="pf-bio"
                     value={form.bio}
                     onChange={set('bio')}
                     rows={3}
@@ -382,8 +486,17 @@ export default function Profile() {
                   />
                 </div>
               </div>
-              <div className="mt-6 flex justify-end">
-                <Button onClick={handleSave} disabled={saving}>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                {dirty && !saving && (
+                  <button
+                    type="button"
+                    onClick={() => setForm(formFromProfile())}
+                    className="text-[13px] text-text-muted transition-colors hover:text-text"
+                  >
+                    {t('profile.discard', 'Descartar cambios')}
+                  </button>
+                )}
+                <Button onClick={handleSave} disabled={saving || !dirty}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {t('profile.save', 'Guardar cambios')}
                 </Button>

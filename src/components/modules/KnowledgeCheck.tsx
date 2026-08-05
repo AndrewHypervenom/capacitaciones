@@ -197,6 +197,8 @@ export function KnowledgeCheck({
           pregunta: quiz.question[language],
           opcion_elegida: quiz.options[language][i],
           opcion_correcta: quiz.options[language][quiz.correct],
+          // Explícito para el panel del capacitador (no deducirlo del puntaje).
+          correcta: isCorrect,
           mensaje_detalle: isCorrect
             ? null
             : `Respondió "${quiz.options[language][i]}" — correcto era "${quiz.options[language][quiz.correct]}"`,

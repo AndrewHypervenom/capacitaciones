@@ -288,6 +288,23 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
       mensajeDetalle = `${erroresEnEsteIntento} de ${total} casos mal ubicados: ${nombresFallidos}${extra}.`;
     }
 
+    // Detalle caso por caso: dónde lo puso el aprendiz y dónde iba. Es lo que el
+    // capacitador necesita para ver si entendió el criterio o solo tuvo suerte.
+    const nombreCategoria = (id: string | null) => {
+      if (!id) return null;
+      const cat = block.categories.find((c) => c.id === id);
+      return cat ? cat.name[language] || cat.name.es : null;
+    };
+    const detalle = block.cases.map((c) => {
+      const catElegida = block.categories.find((cat) => assigned[cat.id]?.some((a) => a.id === c.id))?.id ?? null;
+      return {
+        caso: c.text[language] || c.text.es,
+        categoria_elegida: nombreCategoria(catElegida),
+        categoria_correcta: nombreCategoria(c.correctCategoryId),
+        correcta: catElegida === c.correctCategoryId,
+      };
+    });
+
     // ── GUARDADO EN SUPABASE ──
     if (userId && campaignId) {
       void saveActivityAttempt({
@@ -306,6 +323,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
           errores: erroresEnEsteIntento,
           mensaje: 'Juego de clasificar casos completado',
           mensaje_detalle: mensajeDetalle,
+          detalle,
         },
       });
     } else {

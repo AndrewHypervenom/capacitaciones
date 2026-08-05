@@ -29,7 +29,7 @@ import type { Profile } from '@/types/database'
 import type { Lang } from '@/stores/gamificationStore'
 import { cn } from '@/lib/cn'
 
-const COUNTRY_LABEL: Record<string, string> = { CO: 'simulator.countries.CO', MX: 'simulator.countries.MX', AR: 'simulator.countries.AR' }
+import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries'
 
 interface EditForm {
   display_name: string
@@ -281,9 +281,7 @@ export default function UserProfile() {
           { id: 'phone', icon: Phone, label: t('profile.phone'), value: profile.phone },
           {
             id: 'country', icon: MapPin, label: t('profile.country'),
-            value: profile.country
-              ? (COUNTRY_LABEL[profile.country] ? t(COUNTRY_LABEL[profile.country]) : profile.country)
-              : null,
+            value: countryLabelWithFlag(profile.country),
           },
           { id: 'member_since', icon: CalendarDays, label: t('admin.users.member_since'), value: fmtDate(profile.created_at) },
         ]}
@@ -433,12 +431,9 @@ export default function UserProfile() {
                     <Select
                       value={form.country}
                       onChange={(v) => setForm((f) => ({ ...f, country: v }))}
+                      placeholder={t('profile.country_ph', 'Elige tu país')}
                       className="[&>button]:h-12 [&>button]:rounded-2xl [&>button]:px-4 [&>button]:text-[15px]"
-                      options={[
-                        { value: 'CO', label: t('simulator.countries.CO') },
-                        { value: 'MX', label: t('simulator.countries.MX') },
-                        { value: 'AR', label: t('simulator.countries.AR') },
-                      ]}
+                      options={COUNTRY_OPTIONS}
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -470,9 +465,7 @@ export default function UserProfile() {
                     { id: 'phone', icon: Phone, label: t('profile.phone'), value: profile.phone },
                     {
                       id: 'country', icon: MapPin, label: t('profile.country'),
-                      value: profile.country
-                        ? (COUNTRY_LABEL[profile.country] ? t(COUNTRY_LABEL[profile.country]) : profile.country)
-                        : null,
+                      value: countryLabelWithFlag(profile.country),
                     },
                     { id: 'member_since', icon: CalendarDays, label: t('admin.users.member_since'), value: fmtDate(profile.created_at) },
                   ].map(({ id, icon: Icon, label, value }) => (

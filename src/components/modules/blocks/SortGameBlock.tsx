@@ -198,6 +198,11 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   // las consultas con "57014 statement timeout".
   const savedKeyRef = useRef<string | null>(null);
 
+  // Primer orden equivocado de cada proceso. El juego obliga a corregir para
+  // avanzar, así que el orden final SIEMPRE es el correcto: sin esto el panel del
+  // capacitador no tendría forma de saber qué respondió realmente el aprendiz.
+  const firstWrongRef = useRef<Record<number, string[]>>({});
+
   // Sensores de arrastre. Ratón: arrastra tras 6 px (un clic simple no cuenta).
   // Dedo: mantener pulsado 180 ms y arrastrar — el retardo es lo que deja que un
   // deslizamiento normal siga haciendo scroll de la página en el celular.
@@ -217,6 +222,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
     if (sigRef.current === sig) return;
     sigRef.current = sig;
     savedKeyRef.current = null; // contenido distinto → es otro juego, otra finalización
+    firstWrongRef.current = {};
     setProcessIdx(0);
     setItems(processes[0] ? shuffled(processes[0].steps) : []);
     setUsedHelp(new Array(processes.length).fill(false));
@@ -259,7 +265,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
             const nombresRepasar = processes
               .filter((_, i) => usedHelp[i])
               .slice(0, 3)
-              .map((p) => p.title?.[language] || p.title?.es || 'Proceso sin título')
+              .map((p) => p.title?.[language] || p.title?.es || (block as any).title?.[language] || (block as any).title?.es || 'la secuencia')
               .join(', ');
             const extra = scoreWithHelpLocal > 3 ? ` y ${scoreWithHelpLocal - 3} más` : '';
             mensajeDetalle = `${scoreWithHelpLocal} de ${processes.length} procesos necesitaron repaso: ${nombresRepasar}${extra}.`;
@@ -282,6 +288,20 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
               total: processes.length,
               errores: scoreWithHelpLocal,
               mensaje_detalle: mensajeDetalle,
+              // Proceso por proceso: el orden correcto y, si se equivocó, el orden
+              // que envió en su primer intento.
+              detalle: processes.map((p, i) => ({
+                // Muchos bloques tienen un solo proceso sin título propio: en ese
+                // caso el nombre útil es el del bloque (la consigna que leyó el
+                // aprendiz), no un "Proceso sin título" que no le dice nada a nadie.
+                proceso:
+                  p.title?.[language] || p.title?.es ||
+                  (block as any).title?.[language] || (block as any).title?.es ||
+                  `${processes.length > 1 ? `Proceso ${i + 1}` : 'Secuencia'}`,
+                orden_correcto: p.steps.map((s) => s.text[language] || s.text.es),
+                primer_intento: firstWrongRef.current[i] ?? null,
+                correcta: !usedHelp[i],
+              })),
             }
           });
 
@@ -352,6 +372,9 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
       setPhase('success');
       playSound('success');
     } else {
+      if (!firstWrongRef.current[processIdx]) {
+        firstWrongRef.current[processIdx] = items.map((s) => s.text[language] || s.text.es);
+      }
       setUsedHelp((prev) => {
         const next = [...prev]; next[processIdx] = true; return next;
       });
@@ -393,6 +416,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
     setInteracted(true);
     setProcessIdx(0);
     setItems(shuffled(processes[0].steps));
+    firstWrongRef.current = {};
     setUsedHelp(new Array(processes.length).fill(false));
     setElapsed(0);
     setPhase('playing');

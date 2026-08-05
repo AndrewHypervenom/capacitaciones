@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { VideoQuizOverlay } from './VideoQuizOverlay'
+import { VideoQuizOverlay, type QuizAnswerDetail } from './VideoQuizOverlay'
 import { YouTubePlayer } from './YouTubePlayer'
 import { VimeoPlayer } from './VimeoPlayer'
 import type { PlayerLike } from '@/lib/youtube'
@@ -354,7 +354,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   // Se dispara al terminar de responder (pantalla de resultados del overlay).
   // Marca el quiz como hecho y persiste el intento aunque el aprendiz cierre sin
   // pulsar "Continuar". Con el quiz ya hecho, se libera el avance del video.
-  const handleQuizGraded = (score: number, total: number) => {
+  const handleQuizGraded = (score: number, total: number, detail: QuizAnswerDetail[]) => {
     if (!activeMarker) return
     setCompletedQuizzes((prev) => ({ ...prev, [activeMarker.id]: { score, total } }))
 
@@ -378,6 +378,8 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
           total,
           errores: total - score,
           tema: activeMarker.title[lang],
+          // Pregunta por pregunta: qué eligió y qué era lo correcto.
+          detalle: detail,
         },
       })
     }

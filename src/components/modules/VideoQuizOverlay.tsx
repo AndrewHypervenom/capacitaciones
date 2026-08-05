@@ -7,12 +7,25 @@ import { playQuizSound } from '@/lib/sound'
 import type { VideoQuizMarker, VideoQuizQuestion } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
+/** Respuesta a una pregunta, tal como se guarda en el intento. */
+export interface QuizAnswerDetail {
+  pregunta: string
+  opcion_elegida: string | null
+  opcion_correcta: string
+  correcta: boolean
+}
+
 interface VideoQuizOverlayProps {
   marker: VideoQuizMarker
   language: Language
   /** Se dispara al terminar de responder (pantalla de resultados). Persiste el intento
    *  aunque el aprendiz cierre sin pulsar "Continuar". */
-  onGraded: (score: number, total: number) => void
+  /**
+   * Se llama al terminar de responder. `detail` lleva pregunta por pregunta lo
+   * que eligió el aprendiz y cuál era la correcta, para que el capacitador vea
+   * en el panel QUÉ respondió y no solo cuántas acertó.
+   */
+  onGraded: (score: number, total: number, detail: QuizAnswerDetail[]) => void
   /** Se dispara al pulsar "Continuar video": cierra el overlay y reanuda la reproducción. */
   onComplete: (score: number, total: number) => void
   /** Cierra el overlay y regresa al segmento anterior para repasar la información;
@@ -96,9 +109,20 @@ export function VideoQuizOverlay({ marker, language, onGraded, onComplete, onRev
       setTimeout(() => setShowConfetti(false), 1500)
       playQuizSound('complete')
     }
+    // Detalle pregunta a pregunta: es lo que el capacitador revisa después.
+    const detail: QuizAnswerDetail[] = questions.map((question, idx) => {
+      const opts = question.options[lang]?.length ? question.options[lang] : question.options.es
+      const choice = answered[idx]
+      return {
+        pregunta: question.question[lang] || question.question.es,
+        opcion_elegida: choice != null ? opts[choice] ?? null : null,
+        opcion_correcta: opts[question.correct] ?? '',
+        correcta: choice === question.correct,
+      }
+    })
     // Persistir el resultado en cuanto se termina de responder, sin depender de
     // que el aprendiz pulse "Continuar" (podría cerrar la página antes).
-    onGraded(finalScore, questions.length)
+    onGraded(finalScore, questions.length, detail)
     setPhase('summary')
   }
 

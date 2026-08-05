@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getPendingAttempts, saveTrainerFeedback, FeedbackPayload } from '@/services/activity.service';
 import { notifyLearnerFeedback } from '@/services/notifications.service';
 import { getModuleTimesForUsers, type ModuleTimeRow } from '@/services/moduleTime.service';
@@ -8,12 +9,18 @@ import { useAuth } from '@/hooks/useAuth';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/stores/toastStore';
 import {
-  Code, LayoutTemplate, CheckCircle2, XCircle, Info, MessageSquare, Search,
+  Code, LayoutTemplate, CheckCircle2, MessageSquare, Search,
   SlidersHorizontal, ChevronDown, ArrowDownUp, Clock, Send, Sparkles,
   ClipboardCheck, Award, ChevronRight, GraduationCap, Gamepad2, Video, HelpCircle,
   ArrowLeft, Building2, BookOpen, Layers, Users, ChevronLeft, RotateCcw,
+  UserRound, TrendingUp, Zap, X, CornerDownLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import {
+  CountUp, ProgressBar, ScoreDistribution, ScoreRing, StatTile, Highlight, useSearchHotkey,
+  scoreHex, scoreTextTone, initials, tint,
+} from './progress/ModulesChrome';
+import { AttemptAnswers } from './progress/AttemptAnswers';
 
 const MIN_FEEDBACK_CHARS = 8;
 
@@ -81,24 +88,27 @@ interface HierNode {
   total: number;
   learners: Set<string>;
   lastAt: number;
+  /** Suma de notas para calcular el promedio del nodo. */
+  scoreSum: number;
+  /** Distribución de notas para la barra de 3 tramos. */
+  perfect: number;
+  passed: number;
+  failed: number;
 }
 
-/** Clases de color de texto según la nota (verde / ámbar / rojo). */
-const scoreTextTone = (score: number) => {
-  if (score >= 90) return 'text-green-600 dark:text-green-400';
-  if (score >= 70) return 'text-amber-500 dark:text-amber-400';
-  return 'text-red-500 dark:text-red-400';
-};
-
-/** Color base (hex) usado para anillos y acentos. */
-const scoreHex = (score: number) => {
-  if (score >= 90) return '#22c55e';
-  if (score >= 70) return '#f59e0b';
-  return '#ef4444';
-};
-
-const initials = (name: string) =>
-  name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+/** Una persona encontrada por la búsqueda global, con su resumen de avance. */
+interface PersonHit {
+  id: string;
+  name: string;
+  email: string | null;
+  total: number;
+  pending: number;
+  avg: number;
+  /** Cuántos cursos y módulos distintos ha tocado (lo primero que se pregunta). */
+  courses: number;
+  modules: number;
+  lastAt: number;
+}
 
 export const TrainerFeedbackPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -129,7 +139,14 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const [path, setPath] = useState<NavPath>({});
   // Un único menú abierto a la vez (status/score/type/sort).
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  // Los filtros viven plegados: en el 90% de los casos se entra a evaluar con los
+  // valores por defecto, y cinco desplegables permanentes le robaban la pantalla
+  // a lo que importa (la lista de actividades). Lo que esté fuera de lo normal se
+  // ve igual como "chip" debajo del buscador, aunque el cajón esté cerrado.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersRef = useRef<HTMLDivElement>(null);
+  // ⌘K / Ctrl+K / "/" enfocan la búsqueda: el panel se maneja sin soltar el teclado.
+  const searchRef = useSearchHotkey();
 
   const statusOptions = [
     { value: 'pending', label: t('admin.trainer_panel.filter_status_pending') },
@@ -326,16 +343,21 @@ export const TrainerFeedbackPanel: React.FC = () => {
     });
   }, [attempts, scoreFilter, typeFilter, reviewFilter]);
 
-  // Nivel actual de la navegación según los segmentos puestos.
-  const level: NavLevel = !path.campaign
-    ? 'campaign'
-    : !path.course
-      ? 'course'
-      : !path.module
-        ? 'module'
-        : !path.learner
-          ? 'learner'
-          : 'attempt';
+  // Nivel actual de la navegación según los segmentos puestos. El aprendiz manda:
+  // si hay una persona enfocada (por búsqueda global) mostramos TODAS sus entregas
+  // aunque no se haya bajado por campaña → curso → módulo.
+  const level: NavLevel = path.learner
+    ? 'attempt'
+    : !path.campaign
+      ? 'campaign'
+      : !path.course
+        ? 'course'
+        : !path.module
+          ? 'module'
+          : 'learner';
+
+  /** ¿Se llegó a la persona por búsqueda global (sin bajar por la jerarquía)? */
+  const personFocus = !!path.learner && !path.module;
 
   // ¿El intento cae dentro del prefijo de navegación actual?
   const inPrefix = (a: PendingAttempt) =>
@@ -357,9 +379,16 @@ export const TrainerFeedbackPanel: React.FC = () => {
       else if (level === 'module') { key = a.module_id ?? NONE_KEY; name = a.module?.title_es || t('admin.trainer_panel.module_fallback'); }
       else { key = a.user_id; name = a.student?.name || t('admin.trainer_panel.student_fallback'); }
       let node = map.get(key);
-      if (!node) { node = { key, name, pending: 0, total: 0, learners: new Set(), lastAt: 0 }; map.set(key, node); }
+      if (!node) {
+        node = { key, name, pending: 0, total: 0, learners: new Set(), lastAt: 0, scoreSum: 0, perfect: 0, passed: 0, failed: 0 };
+        map.set(key, node);
+      }
       node.total++;
       if (!a.is_evaluated) node.pending++;
+      node.scoreSum += a.score;
+      if (a.score === 100) node.perfect++;
+      else if (a.score >= 70) node.passed++;
+      else node.failed++;
       node.learners.add(a.user_id);
       const at = new Date(a.started_at).getTime();
       if (at > node.lastAt) node.lastAt = at;
@@ -386,7 +415,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
       if (!s) return true;
       return (
         formatGameType(a.game_type).toLowerCase().includes(s) ||
-        (a.section?.heading_es || '').toLowerCase().includes(s)
+        (a.section?.heading_es || '').toLowerCase().includes(s) ||
+        (a.module?.title_es || '').toLowerCase().includes(s) ||
+        (a.course_title || '').toLowerCase().includes(s)
       );
     });
     const sorted = [...filtered];
@@ -403,7 +434,49 @@ export const TrainerFeedbackPanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pool, path, level, statusFilter, searchTerm, sortKey, i18n.language]);
 
-  // Estadísticas globales sobre las entregas PENDIENTES del pozo filtrado.
+  // Búsqueda global de PERSONAS: no importa en qué nivel estemos, si se escribe un
+  // nombre (o correo) aparecen arriba las personas que coinciden, con su avance, y
+  // un clic salta directo a todas sus entregas. Es el atajo que pidió el equipo:
+  // "quiero buscar por persona", sin tener que adivinar campaña → curso → módulo.
+  const peopleMatches = useMemo<PersonHit[]>(() => {
+    const s = searchTerm.trim().toLowerCase();
+    if (s.length < 2) return [];
+    const map = new Map<string, PersonHit & { courseIds: Set<string>; moduleIds: Set<string> }>();
+    for (const a of pool) {
+      const name = a.student?.name || t('admin.trainer_panel.student_fallback');
+      const email = a.student?.email ?? null;
+      if (!name.toLowerCase().includes(s) && !(email || '').toLowerCase().includes(s)) continue;
+      let hit = map.get(a.user_id);
+      if (!hit) {
+        hit = {
+          id: a.user_id, name, email, total: 0, pending: 0, avg: 0,
+          courses: 0, modules: 0, lastAt: 0,
+          courseIds: new Set(), moduleIds: new Set(),
+        };
+        map.set(a.user_id, hit);
+      }
+      hit.total++;
+      if (!a.is_evaluated) hit.pending++;
+      hit.avg += a.score;
+      hit.courseIds.add(a.course_id ?? NONE_KEY);
+      hit.moduleIds.add(a.module_id ?? NONE_KEY);
+      const at = new Date(a.started_at).getTime();
+      if (at > hit.lastAt) hit.lastAt = at;
+    }
+    return [...map.values()]
+      .map(({ courseIds, moduleIds, ...hit }) => ({
+        ...hit,
+        avg: hit.total ? Math.round(hit.avg / hit.total) : 0,
+        courses: courseIds.size,
+        modules: moduleIds.size,
+      }))
+      .sort((a, b) => b.pending - a.pending || b.lastAt - a.lastAt || a.name.localeCompare(b.name))
+      .slice(0, 6);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pool, searchTerm, i18n.language]);
+
+  // Estadísticas globales del pozo filtrado: pendientes, evaluadas y avance de
+  // revisión (lo que de verdad quiere saber el capacitador de un vistazo).
   const stats = useMemo(() => {
     const pending = pool.filter((a) => !a.is_evaluated);
     const total = pending.length;
@@ -411,8 +484,90 @@ export const TrainerFeedbackPanel: React.FC = () => {
     const perfect = pending.filter((a) => a.score === 100).length;
     const passed = pending.filter((a) => a.score >= 70 && a.score < 100).length;
     const failed = pending.filter((a) => a.score < 70).length;
-    return { total, avg, perfect, passed, failed };
+    const evaluated = pool.length - total;
+    const reviewPct = pool.length === 0 ? 100 : Math.round((evaluated / pool.length) * 100);
+    const learners = new Set(pool.map((a) => a.user_id)).size;
+    // Personas con alguna entrega reprobada pendiente: el foco de atención.
+    const atRisk = new Set(pending.filter((a) => a.score < 70).map((a) => a.user_id)).size;
+    return { total, avg, perfect, passed, failed, evaluated, reviewPct, learners, atRisk };
   }, [pool]);
+
+  // Ficha de la persona enfocada. Se arma en dos niveles —curso → módulo— porque
+  // la pregunta real del capacitador es "¿cuántos cursos y módulos lleva?", no
+  // "¿cuántas filas hay?". Cada módulo cuenta como completado cuando el
+  // cronómetro registró su finalización (misma señal que ve el aprendiz).
+  const personSummary = useMemo(() => {
+    if (!path.learner) return null;
+    const mine = pool.filter((a) => a.user_id === path.learner!.id);
+    if (mine.length === 0) return null;
+
+    interface PMod { key: string; title: string; total: number; done: number; scoreSum: number; timeMs: number; completed: boolean }
+    interface PCourse { key: string; title: string; modules: Map<string, PMod>; total: number; done: number; scoreSum: number }
+    const byCourse = new Map<string, PCourse>();
+
+    for (const a of mine) {
+      const cKey = a.course_id ?? NONE_KEY;
+      let course = byCourse.get(cKey);
+      if (!course) {
+        course = { key: cKey, title: a.course_title || t('admin.trainer_panel.no_course'), modules: new Map(), total: 0, done: 0, scoreSum: 0 };
+        byCourse.set(cKey, course);
+      }
+      const mKey = a.module_id ?? NONE_KEY;
+      let mod = course.modules.get(mKey);
+      if (!mod) {
+        const mt = a.module_id ? moduleTimes[`${a.user_id}:${a.module_id}`] : undefined;
+        mod = {
+          key: mKey,
+          title: a.module?.title_es || t('admin.trainer_panel.module_fallback'),
+          total: 0, done: 0, scoreSum: 0,
+          timeMs: mt?.elapsedMs ?? 0,
+          completed: !!mt?.completedAt,
+        };
+        course.modules.set(mKey, mod);
+      }
+      mod.total++; course.total++;
+      if (a.is_evaluated) { mod.done++; course.done++; }
+      mod.scoreSum += a.score; course.scoreSum += a.score;
+    }
+
+    const courses = [...byCourse.values()]
+      .map((c) => {
+        const modules = [...c.modules.values()]
+          .map((m) => ({ ...m, avg: Math.round(m.scoreSum / m.total) }))
+          .sort((a, b) => (b.total - b.done) - (a.total - a.done) || a.title.localeCompare(b.title));
+        return {
+          key: c.key,
+          title: c.title,
+          modules,
+          total: c.total,
+          done: c.done,
+          avg: Math.round(c.scoreSum / c.total),
+          modulesDone: modules.filter((m) => m.completed).length,
+          timeMs: modules.reduce((s, m) => s + m.timeMs, 0),
+        };
+      })
+      .sort((a, b) => (b.total - b.done) - (a.total - a.done) || a.title.localeCompare(b.title));
+
+    const allModules = courses.flatMap((c) => c.modules);
+    const pending = mine.filter((a) => !a.is_evaluated).length;
+    return {
+      name: path.learner.name,
+      email: mine.find((a) => a.student?.email)?.student?.email ?? null,
+      total: mine.length,
+      pending,
+      evaluated: mine.length - pending,
+      avg: Math.round(mine.reduce((s, a) => s + a.score, 0) / mine.length),
+      perfect: mine.filter((a) => a.score === 100).length,
+      passed: mine.filter((a) => a.score >= 70 && a.score < 100).length,
+      failed: mine.filter((a) => a.score < 70).length,
+      courses,
+      coursesCount: courses.length,
+      modulesCount: allModules.length,
+      modulesDone: allModules.filter((m) => m.completed).length,
+      totalTimeMs: allModules.reduce((s, m) => s + m.timeMs, 0),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pool, path.learner, moduleTimes, i18n.language]);
 
   // ── Navegación por la jerarquía ──
   const enterNode = (node: HierNode) => {
@@ -422,6 +577,16 @@ export const TrainerFeedbackPanel: React.FC = () => {
     else if (level === 'learner') setPath((p) => ({ ...p, learner: { id: node.key, name: node.name } }));
     setSelectedAttempt(null);
     setSearchTerm('');
+  };
+
+  // Salto directo a una persona desde la búsqueda global: se limpian los demás
+  // segmentos para ver TODAS sus entregas, de cualquier campaña o curso.
+  const focusPerson = (hit: PersonHit) => {
+    setPath({ learner: { id: hit.id, name: hit.name } });
+    setSelectedAttempt(null);
+    setSearchTerm('');
+    // Al mirar a una persona interesa su historia completa, no solo lo pendiente.
+    setStatusFilter('all');
   };
 
   // Retrocede a una profundidad del breadcrumb (0=raíz, 1=campaña … 4=aprendiz).
@@ -442,126 +607,23 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const selectedTypeLabel = typeOptions.find((opt) => opt.value === typeFilter)?.label || '';
   const selectedSortLabel = sortOptions.find((opt) => opt.value === sortKey)?.label || '';
 
-  // Vista analítica (dona + tarjetas detalladas)
-  const renderAnalyticsView = (answers: any, generalScore: number) => {
-    const aciertos = Number(answers.aciertos || answers.correctas || 0);
-    const errores = Number(answers.errores || answers.incorrectas || 0);
+  // Filtros que se apartan del valor por defecto: se muestran como chips y dan
+  // el contador del botón "Filtros". Cada uno sabe cómo volver a su defecto.
+  const activeFilters: { key: string; label: string; reset: () => void }[] = [
+    ...(level === 'attempt' && statusFilter !== 'pending'
+      ? [{ key: 'status', label: selectedStatusLabel, reset: () => setStatusFilter('pending') }] : []),
+    ...(scoreFilter !== 'all' ? [{ key: 'score', label: selectedScoreLabel, reset: () => setScoreFilter('all') }] : []),
+    ...(typeFilter !== 'all' ? [{ key: 'type', label: selectedTypeLabel, reset: () => setTypeFilter('all') }] : []),
+    ...(reviewFilter !== 'exclude' ? [{ key: 'review', label: selectedReviewLabel, reset: () => setReviewFilter('exclude') }] : []),
+    ...(level === 'attempt' && sortKey !== 'recent'
+      ? [{ key: 'sort', label: selectedSortLabel, reset: () => setSortKey('recent') }] : []),
+  ];
 
-    // Datos tipo quiz (pregunta / opción elegida / correcta)
-    const pregunta = answers.pregunta ? String(answers.pregunta) : null;
-    const elegida = answers.opcion_elegida != null ? String(answers.opcion_elegida) : null;
-    const correcta = answers.opcion_correcta != null ? String(answers.opcion_correcta) : null;
-    const isQuizAnswer = elegida != null || correcta != null;
-    const acerto = elegida != null && correcta != null ? elegida === correcta : generalScore >= 70;
-
-    const reservedKeys = [
-      'total', 'aciertos', 'errores', 'total_preguntas', 'correctas', 'incorrectas', 'total_cases',
-      'pregunta', 'opcion_elegida', 'opcion_correcta', 'mensaje_detalle',
-    ];
-    const infoKeys = Object.entries(answers).filter(([key]) => !reservedKeys.includes(key));
-
-    return (
-      <div className="space-y-6">
-      {/* Lectura legible de la pregunta y la respuesta (quizzes) */}
-      {isQuizAnswer && (
-        <div className="border border-line rounded-2xl overflow-hidden">
-          {pregunta && (
-            <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-950/40 border-b border-line">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted mb-1">{t('admin.trainer_panel.q_question')}</p>
-              <p className="text-sm font-medium text-text">{pregunta}</p>
-            </div>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-line">
-            <div className={cn('px-4 py-3', acerto ? 'bg-green-50/40 dark:bg-green-950/10' : 'bg-red-50/40 dark:bg-red-950/10')}>
-              <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted mb-1.5">{t('admin.trainer_panel.q_your_answer')}</p>
-              <div className={cn('flex items-center gap-2 text-sm font-semibold', acerto ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400')}>
-                {acerto ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
-                <span>{elegida ?? '—'}</span>
-              </div>
-            </div>
-            <div className="px-4 py-3">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted mb-1.5">{t('admin.trainer_panel.q_correct_answer')}</p>
-              <div className="flex items-center gap-2 text-sm font-semibold text-green-600 dark:text-green-400">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{correcta ?? '—'}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Dona de aciertos / errores */}
-        <div className="bg-zinc-50/60 dark:bg-zinc-950/40 border border-line rounded-2xl p-5 flex flex-col items-center justify-center text-center">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-4">{t('admin.trainer_panel.answer_ratio')}</span>
-          <div
-            className="relative w-28 h-28 rounded-full flex items-center justify-center border border-line shadow-inner"
-            style={{ background: `conic-gradient(#22c55e 0% ${generalScore}%, #ef4444 ${generalScore}% 100%)` }}
-          >
-            <div className="absolute w-24 h-24 bg-white dark:bg-[#0d0e12] rounded-full flex flex-col items-center justify-center shadow-md">
-              <span className={cn('text-xl font-mono font-bold', scoreTextTone(generalScore))}>{generalScore}%</span>
-              <span className="text-[9px] text-text-muted uppercase font-semibold">{t('admin.trainer_panel.effectiveness')}</span>
-            </div>
-          </div>
-          <div className="flex gap-4 mt-4 w-full justify-center">
-            {aciertos > 0 || errores > 0 ? (
-              <>
-                <div className="flex items-center gap-1.5 text-xs">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                  <span className="text-text-muted font-medium">{t('admin.trainer_panel.hits')} ({aciertos})</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                  <span className="text-text-muted font-medium">{t('admin.trainer_panel.misses')} ({errores})</span>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center gap-1.5 text-xs text-text-muted italic">
-                {t('admin.trainer_panel.score_based')}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Tarjetas de variables */}
-        <div className="md:col-span-2 space-y-3 flex flex-col justify-center">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">{t('admin.trainer_panel.submission_details')}</span>
-          {infoKeys.length === 0 ? (
-            <p className="text-xs text-text-muted italic">{t('admin.trainer_panel.no_extra_vars')}</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {infoKeys.map(([key, value]) => {
-                const keyStr = String(key).toLowerCase();
-                const isCorrectOption = keyStr.includes('correcta');
-                const isChosenOption = keyStr.includes('elegida') || keyStr.includes('enviada');
-                const displayValue = value !== null && value !== undefined ? String(value) : 'Nulo';
-
-                let VariableIcon = Info;
-                if (keyStr.includes('mensaje')) VariableIcon = MessageSquare;
-                else if (keyStr.includes('proceso') || keyStr.includes('finalizado')) VariableIcon = CheckCircle2;
-                else if (isCorrectOption) VariableIcon = CheckCircle2;
-
-                let dynamicClasses = 'bg-zinc-50 dark:bg-[#14151b] border-line text-text';
-                if (isCorrectOption) dynamicClasses = 'bg-green-50/30 dark:bg-green-950/10 border-green-500/20 text-green-600 dark:text-green-400';
-                else if (isChosenOption) dynamicClasses = 'bg-blue-50/30 dark:bg-blue-950/10 border-blue-500/20 text-blue-600 dark:text-blue-400';
-
-                return (
-                  <div key={key} className={cn('p-3 rounded-xl border flex flex-col justify-between transition-all', dynamicClasses)}>
-                    <span className="text-[9px] font-bold uppercase tracking-wider opacity-70 block mb-1">{key.replace(/_/g, ' ')}</span>
-                    <div className="flex items-center gap-2">
-                      <VariableIcon className="w-4 h-4 shrink-0 opacity-80" />
-                      <span className="text-xs font-semibold truncate" title={displayValue}>{displayValue}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-      </div>
-    );
+  const resetFilters = () => {
+    setStatusFilter('pending'); setScoreFilter('all'); setTypeFilter('all');
+    setReviewFilter('exclude'); setSortKey('recent');
   };
+
 
   if (loading) return <div className="flex h-full min-h-[60vh] items-center justify-center bg-bg text-text font-medium text-sm">{t('admin.trainer_panel.loading')}</div>;
   if (error) return <div className="flex h-full min-h-[60vh] items-center justify-center bg-bg text-red-500 font-medium text-sm">{error}</div>;
@@ -572,28 +634,63 @@ export const TrainerFeedbackPanel: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-bg text-text overflow-hidden font-sans">
 
-      {/* ===== Barra superior con resumen global ===== */}
-      <header className="relative shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sm:gap-4">
+      {/* ===== Barra superior: identidad del panel + pulso del avance ===== */}
+      <header className="relative shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-3 sm:py-4">
         <div aria-hidden className="absolute inset-x-0 top-0 h-0.5" style={{ background: 'linear-gradient(90deg, rgb(var(--brand-magenta)), transparent)' }} />
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-lg"
-            style={{ background: 'linear-gradient(135deg, rgb(var(--brand-magenta)), color-mix(in srgb, rgb(var(--brand-magenta)) 72%, #000))', boxShadow: '0 8px 22px -8px color-mix(in srgb, rgb(var(--brand-magenta)) 55%, transparent)' }}
-          >
-            <ClipboardCheck className="w-5 h-5" />
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+              className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-lg"
+              style={{ background: 'linear-gradient(135deg, rgb(var(--brand-magenta)), color-mix(in srgb, rgb(var(--brand-magenta)) 72%, #000))', boxShadow: '0 8px 22px -8px color-mix(in srgb, rgb(var(--brand-magenta)) 55%, transparent)' }}
+            >
+              <ClipboardCheck className="w-5 h-5" />
+            </motion.div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold tracking-tight truncate">{t('admin.trainer_panel.pending_evals')}</h1>
+              {/* Avance de revisión: cuánto de lo que hay ya quedó evaluado. */}
+              <div className="mt-1.5 flex items-center gap-2 max-w-[320px]">
+                <ProgressBar pct={stats.reviewPct} accent="rgb(var(--brand-magenta))" height={5} className="min-w-[110px]" />
+                <span className="text-[11px] font-semibold tabular-nums text-text-muted shrink-0">
+                  <CountUp value={stats.reviewPct} suffix="%" /> {t('admin.trainer_panel.reviewed_label', 'revisado')}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="text-lg font-bold tracking-tight truncate">{t('admin.trainer_panel.pending_evals')}</h1>
-            <p className="text-xs text-text-muted truncate">{t('admin.trainer_panel.select_prompt')}</p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <StatChip icon={<ClipboardCheck className="w-3.5 h-3.5" />} label={t('admin.trainer_panel.stat_pending')} value={String(stats.total)} />
-          <StatChip icon={<Award className="w-3.5 h-3.5" />} label={t('admin.trainer_panel.stat_average')} value={`${stats.avg}%`} valueClass={scoreTextTone(stats.avg)} />
-          <div className="hidden lg:flex items-center gap-1.5 pl-2 ml-1 border-l border-line">
-            <Dot color="#22c55e" n={stats.perfect + stats.passed} title={t('admin.trainer_panel.filter_passed')} />
-            <Dot color="#ef4444" n={stats.failed} title={t('admin.trainer_panel.filter_failed')} />
+          {/* KPIs: los dos primeros filtran (menos clics para llegar a lo urgente) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 w-full sm:w-auto">
+            <StatTile
+              icon={<ClipboardCheck className="w-4 h-4" />}
+              label={t('admin.trainer_panel.stat_pending')}
+              value={stats.total}
+              accent="#f59e0b"
+              active={statusFilter === 'pending'}
+            />
+            <StatTile
+              icon={<Award className="w-4 h-4" />}
+              label={t('admin.trainer_panel.stat_average')}
+              value={stats.avg}
+              suffix="%"
+              accent={scoreHex(stats.avg)}
+              sub={<ScoreDistribution perfect={stats.perfect} passed={stats.passed} failed={stats.failed} />}
+            />
+            <StatTile
+              icon={<Users className="w-4 h-4" />}
+              label={t('admin.trainer_panel.stat_learners', 'Aprendices')}
+              value={stats.learners}
+              accent="rgb(var(--brand-green))"
+            />
+            <StatTile
+              icon={<TrendingUp className="w-4 h-4" />}
+              label={t('admin.trainer_panel.stat_at_risk', 'En riesgo')}
+              value={stats.atRisk}
+              accent="#ef4444"
+              active={scoreFilter === 'failed'}
+              onClick={() => setScoreFilter(scoreFilter === 'failed' ? 'all' : 'failed')}
+            />
           </div>
         </div>
       </header>
@@ -605,12 +702,31 @@ export const TrainerFeedbackPanel: React.FC = () => {
           'w-full md:w-[360px] xl:w-[400px] md:shrink-0 border-r border-line flex-col h-full bg-bg',
           selectedAttempt ? 'hidden md:flex' : 'flex',
         )}>
-          <div className="p-4 border-b border-line shrink-0 space-y-2" ref={filtersRef}>
-            {/* Migas de pan: Campañas › Campaña › Curso › Módulo › Aprendiz */}
+          <div className="p-3.5 border-b border-line shrink-0 space-y-2" ref={filtersRef}>
+            {/* Migas de pan: Campañas › Campaña › Curso › Módulo › Aprendiz.
+                El "subir un nivel" va como flecha a la izquierda de las migas:
+                una sola fila de navegación en vez de dos. */}
             <div className="flex items-center gap-1 flex-wrap text-[11px]">
+              {level !== 'campaign' && (
+                <button
+                  type="button"
+                  onClick={() => goToDepth(
+                    level === 'attempt' ? 3 : level === 'learner' ? 2 : level === 'module' ? 1 : 0,
+                  )}
+                  title={t('admin.trainer_panel.go_up')}
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-line text-text-muted hover:text-text hover:border-green-500/40 transition-colors mr-0.5"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+              )}
               {(() => {
                 const crumbs: { label: string; depth: number }[] = [
-                  { label: t('admin.trainer_panel.crumb_root'), depth: 0 },
+                  {
+                    label: personFocus
+                      ? t('admin.trainer_panel.crumb_people', 'Personas')
+                      : t('admin.trainer_panel.crumb_root'),
+                    depth: 0,
+                  },
                 ];
                 if (path.campaign) crumbs.push({ label: path.campaign.name, depth: 1 });
                 if (path.course) crumbs.push({ label: path.course.title, depth: 2 });
@@ -641,26 +757,15 @@ export const TrainerFeedbackPanel: React.FC = () => {
               })()}
             </div>
 
-            {/* Botón "subir un nivel" cuando no estamos en la raíz */}
-            {level !== 'campaign' && (
-              <button
-                type="button"
-                onClick={() => goToDepth(
-                  level === 'attempt' ? 3 : level === 'learner' ? 2 : level === 'module' ? 1 : 0,
-                )}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-text-muted hover:text-text transition-colors"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                {t('admin.trainer_panel.go_up')}
-              </button>
-            )}
-
+            {/* Buscador universal: filtra el nivel actual Y encuentra personas en
+                toda la jerarquía (ver bloque "Personas" de la lista). */}
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted/60" />
               <input
+                ref={searchRef}
                 type="text"
                 placeholder={
-                  level === 'campaign' ? t('admin.trainer_panel.ph_search_campaign')
+                  level === 'campaign' ? t('admin.trainer_panel.ph_search_any', 'Buscar persona, campaña…')
                     : level === 'course' ? t('admin.trainer_panel.ph_search_course')
                     : level === 'module' ? t('admin.trainer_panel.ph_search_module')
                     : level === 'learner' ? t('admin.trainer_panel.ph_search_learner')
@@ -668,70 +773,148 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-line rounded-xl pl-9 pr-4 py-2 text-xs text-text placeholder:text-text-muted/50 outline-none focus:border-green-500/40 transition-colors"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setSearchTerm('');
+                  // Enter con una sola persona encontrada = saltar a ella.
+                  if (e.key === 'Enter' && peopleMatches.length === 1) focusPerson(peopleMatches[0]);
+                }}
+                className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-line rounded-xl pl-9 pr-16 py-2 text-xs text-text placeholder:text-text-muted/50 outline-none focus:border-green-500/40 transition-colors"
               />
+              {searchTerm ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  title={t('admin.trainer_panel.clear_search', 'Limpiar')}
+                  className="absolute right-2.5 top-2 grid h-5 w-5 place-items-center rounded-md text-text-muted/60 hover:text-text hover:bg-zinc-200/60 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <kbd className="pointer-events-none absolute right-2.5 top-2 hidden sm:inline-flex items-center rounded-md border border-line bg-surface px-1.5 py-0.5 text-[9.5px] font-semibold text-text-muted/70">
+                  ⌘K
+                </kbd>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {/* Estado y orden solo importan en el nivel hoja (lista de intentos) */}
-              {level === 'attempt' && (
-                <Dropdown
-                  open={openMenu === 'status'}
-                  onToggle={() => setOpenMenu(openMenu === 'status' ? null : 'status')}
-                  icon={<ClipboardCheck className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
-                  label={selectedStatusLabel}
-                  options={statusOptions}
-                  selected={statusFilter}
-                  onSelect={(v) => { setStatusFilter(v); setOpenMenu(null); }}
-                />
-              )}
-              {/* Filtro por nota (afecta contadores de toda la jerarquía) */}
-              <Dropdown
-                open={openMenu === 'score'}
-                onToggle={() => setOpenMenu(openMenu === 'score' ? null : 'score')}
-                icon={<SlidersHorizontal className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
-                label={selectedScoreLabel}
-                options={scoreOptions}
-                selected={scoreFilter}
-                onSelect={(v) => { setScoreFilter(v); setOpenMenu(null); }}
-              />
-              {/* Filtro por tipo de actividad */}
-              <Dropdown
-                open={openMenu === 'type'}
-                onToggle={() => setOpenMenu(openMenu === 'type' ? null : 'type')}
-                icon={<Gamepad2 className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
-                label={selectedTypeLabel}
-                options={typeOptions}
-                selected={typeFilter}
-                onSelect={(v) => { setTypeFilter(v); setOpenMenu(null); }}
-              />
-              {/* Entregas vs. repasos: vive en todos los niveles porque cambia
-                  los contadores de pendientes, no solo la lista. */}
-              <div className="col-span-2">
-                <Dropdown
-                  open={openMenu === 'review'}
-                  onToggle={() => setOpenMenu(openMenu === 'review' ? null : 'review')}
-                  icon={<RotateCcw className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
-                  label={selectedReviewLabel}
-                  options={reviewOptions}
-                  selected={reviewFilter}
-                  onSelect={(v) => { setReviewFilter(v); setOpenMenu(null); }}
-                />
-              </div>
-              {level === 'attempt' && (
-                <div className="col-span-2">
-                  <Dropdown
-                    open={openMenu === 'sort'}
-                    onToggle={() => setOpenMenu(openMenu === 'sort' ? null : 'sort')}
-                    icon={<ArrowDownUp className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
-                    label={selectedSortLabel}
-                    options={sortOptions}
-                    selected={sortKey}
-                    onSelect={(v) => { setSortKey(v as SortKey); setOpenMenu(null); }}
-                  />
-                </div>
+            {/* Barra de filtros: un botón + los chips de lo que esté activo */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                  filtersOpen || activeFilters.length > 0
+                    ? 'border-green-500/40 text-green-600 dark:text-green-400 bg-green-500/5'
+                    : 'border-line text-text-muted hover:text-text',
+                )}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {t('admin.trainer_panel.filters', 'Filtros')}
+                {activeFilters.length > 0 && (
+                  <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-green-500/20 px-1 text-[9.5px] font-bold">
+                    {activeFilters.length}
+                  </span>
+                )}
+                <ChevronDown className={cn('h-3 w-3 transition-transform duration-200', filtersOpen && 'rotate-180')} />
+              </button>
+
+              {activeFilters.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={f.reset}
+                  title={t('admin.trainer_panel.remove_filter', 'Quitar filtro')}
+                  className="inline-flex max-w-[150px] items-center gap-1 rounded-lg border border-line bg-subtle/60 px-2 py-1 text-[10.5px] text-text-muted hover:text-text hover:border-red-500/30 transition-colors"
+                >
+                  <span className="truncate">{f.label}</span>
+                  <X className="h-3 w-3 shrink-0" />
+                </button>
+              ))}
+
+              {activeFilters.length > 1 && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="text-[10.5px] font-semibold text-text-muted hover:text-text underline underline-offset-2 transition-colors"
+                >
+                  {t('admin.trainer_panel.clear_filters', 'Limpiar')}
+                </button>
               )}
             </div>
+
+            {/* Cajón de filtros (plegado por defecto) */}
+            <AnimatePresence initial={false}>
+              {filtersOpen && (
+                <motion.div
+                  key="filters"
+                  // Sin animar la altura: los desplegables son absolutos y un
+                  // contenedor con overflow recortado se los comería al abrirse.
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {/* Estado y orden solo importan en el nivel hoja (lista de intentos) */}
+                    {level === 'attempt' && (
+                      <Dropdown
+                        open={openMenu === 'status'}
+                        onToggle={() => setOpenMenu(openMenu === 'status' ? null : 'status')}
+                        icon={<ClipboardCheck className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                        label={selectedStatusLabel}
+                        options={statusOptions}
+                        selected={statusFilter}
+                        onSelect={(v) => { setStatusFilter(v); setOpenMenu(null); }}
+                      />
+                    )}
+                    {/* Filtro por nota (afecta contadores de toda la jerarquía) */}
+                    <Dropdown
+                      open={openMenu === 'score'}
+                      onToggle={() => setOpenMenu(openMenu === 'score' ? null : 'score')}
+                      icon={<Award className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                      label={selectedScoreLabel}
+                      options={scoreOptions}
+                      selected={scoreFilter}
+                      onSelect={(v) => { setScoreFilter(v); setOpenMenu(null); }}
+                    />
+                    {/* Filtro por tipo de actividad */}
+                    <Dropdown
+                      open={openMenu === 'type'}
+                      onToggle={() => setOpenMenu(openMenu === 'type' ? null : 'type')}
+                      icon={<Gamepad2 className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                      label={selectedTypeLabel}
+                      options={typeOptions}
+                      selected={typeFilter}
+                      onSelect={(v) => { setTypeFilter(v); setOpenMenu(null); }}
+                    />
+                    {/* Entregas vs. repasos: vive en todos los niveles porque cambia
+                        los contadores de pendientes, no solo la lista. */}
+                    <Dropdown
+                      open={openMenu === 'review'}
+                      onToggle={() => setOpenMenu(openMenu === 'review' ? null : 'review')}
+                      icon={<RotateCcw className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                      label={selectedReviewLabel}
+                      options={reviewOptions}
+                      selected={reviewFilter}
+                      onSelect={(v) => { setReviewFilter(v); setOpenMenu(null); }}
+                    />
+                    {level === 'attempt' && (
+                      <div className="col-span-2">
+                        <Dropdown
+                          open={openMenu === 'sort'}
+                          onToggle={() => setOpenMenu(openMenu === 'sort' ? null : 'sort')}
+                          icon={<ArrowDownUp className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                          label={selectedSortLabel}
+                          options={sortOptions}
+                          selected={sortKey}
+                          onSelect={(v) => { setSortKey(v as SortKey); setOpenMenu(null); }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Encabezado del nivel actual */}
@@ -748,32 +931,121 @@ export const TrainerFeedbackPanel: React.FC = () => {
             </span>
           </div>
 
-          {/* Lista (nodos intermedios o entregas hoja) */}
+          {/* Lista (personas encontradas + nodos intermedios o entregas hoja) */}
           <div className="flex-1 overflow-y-auto p-3 pt-0 space-y-2 custom-scrollbar">
+
+            {/* ── Personas encontradas (búsqueda global, en cualquier nivel) ── */}
+            <AnimatePresence initial={false}>
+              {peopleMatches.length > 0 && (
+                <motion.div
+                  key="people"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="mb-1.5 flex items-center gap-1.5 px-1 pt-1">
+                    <UserRound className="h-3 w-3 text-[rgb(var(--brand-green))]" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                      {t('admin.trainer_panel.people_results', 'Personas')}
+                    </span>
+                    <span className="text-[10px] font-mono text-text-muted/60">{peopleMatches.length}</span>
+                    {peopleMatches.length === 1 && (
+                      <span className="ml-auto hidden sm:inline-flex items-center gap-1 text-[9.5px] text-text-muted/60">
+                        <CornerDownLeft className="h-3 w-3" />
+                        {t('admin.trainer_panel.enter_to_open', 'Enter para abrir')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2 pb-2 mb-1 border-b border-line">
+                    {peopleMatches.map((hit, i) => (
+                      <motion.button
+                        key={hit.id}
+                        onClick={() => focusPerson(hit)}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
+                        whileHover={{ x: 3 }}
+                        className="group w-full text-left p-3 rounded-2xl border border-[rgb(var(--brand-green))]/25 bg-[rgb(var(--brand-green))]/[0.06] hover:border-[rgb(var(--brand-green))]/50 transition-colors flex items-center gap-3"
+                      >
+                        <div
+                          className="shrink-0 w-10 h-10 rounded-xl grid place-items-center text-[13px] font-bold border"
+                          style={{ background: tint(scoreHex(hit.avg), 12), color: scoreHex(hit.avg), borderColor: tint(scoreHex(hit.avg), 28) }}
+                        >
+                          {initials(hit.name)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] font-semibold text-text truncate">
+                              <Highlight text={hit.name} term={searchTerm} />
+                            </span>
+                            {hit.pending > 0 && (
+                              <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                                {hit.pending}
+                              </span>
+                            )}
+                          </div>
+                          {/* Cursos · módulos · actividades: la respuesta directa a
+                              "¿cuánto ha hecho esta persona?" sin abrir nada. */}
+                          <div className="mt-1 flex items-center gap-2.5 text-[10.5px] text-text-muted/85">
+                            <span className="inline-flex items-center gap-1">
+                              <BookOpen className="h-3 w-3" />
+                              {t('admin.trainer_panel.sub_courses', { count: hit.courses })}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Layers className="h-3 w-3" />
+                              {t('admin.trainer_panel.sub_modules', { count: hit.modules })}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className={cn('text-[10px] font-bold tabular-nums', scoreTextTone(hit.avg))}>{hit.avg}%</span>
+                            <span className="text-[10px] text-text-muted/70">
+                              {t('admin.trainer_panel.sub_activities', { count: hit.total })}
+                            </span>
+                          </div>
+                        </div>
+                        <Zap className="h-4 w-4 shrink-0 text-[rgb(var(--brand-green))]/40 group-hover:text-[rgb(var(--brand-green))] transition-colors" />
+                      </motion.button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {level !== 'attempt' ? (
               nodes.length === 0 ? (
-                <EmptyState attemptsEmpty={attempts.length === 0} t={t} />
+                peopleMatches.length === 0 && <EmptyState attemptsEmpty={attempts.length === 0} t={t} />
               ) : (
-                nodes.map((node) => {
+                nodes.map((node, i) => {
                   const LevelIcon = level === 'campaign' ? Building2 : level === 'course' ? BookOpen : level === 'module' ? Layers : null;
+                  const avg = node.total ? Math.round(node.scoreSum / node.total) : 0;
+                  const donePct = node.total ? ((node.total - node.pending) / node.total) * 100 : 100;
                   return (
-                    <button
+                    <motion.button
                       key={node.key}
+                      layout="position"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.35, delay: Math.min(i, 12) * 0.03, ease: [0.16, 1, 0.3, 1] }}
+                      whileHover={{ y: -2 }}
                       onClick={() => enterNode(node)}
-                      className="group w-full text-left p-3 rounded-2xl cursor-pointer border border-line bg-zinc-50/60 dark:bg-zinc-900/40 hover:border-green-500/40 transition-all duration-200 select-none flex items-center gap-3"
+                      className="group w-full text-left p-3 rounded-2xl cursor-pointer border border-line bg-zinc-50/60 dark:bg-zinc-900/40 hover:border-green-500/40 hover:shadow-card-hover transition-[border-color,box-shadow] duration-200 select-none flex items-center gap-3"
                     >
                       {LevelIcon ? (
-                        <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center border bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400">
+                        <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center border bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400 transition-transform duration-300 group-hover:scale-105">
                           <LevelIcon className="w-5 h-5" />
                         </div>
                       ) : (
-                        <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-bold border bg-zinc-200/50 dark:bg-zinc-800 border-line text-text-muted">
-                          {initials(node.name)}
-                        </div>
+                        // A nivel de aprendiz el avatar cede su lugar al anillo de nota:
+                        // de un vistazo se ve cómo va la persona, no solo cómo se llama.
+                        <ScoreRing score={avg} size={40} stroke={4} />
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[13px] font-semibold text-text truncate">{node.name}</span>
+                          <span className="text-[13px] font-semibold text-text truncate">
+                            <Highlight text={node.name} term={searchTerm} />
+                          </span>
                           {node.pending > 0 ? (
                             <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
                               {node.pending}
@@ -782,7 +1054,19 @@ export const TrainerFeedbackPanel: React.FC = () => {
                             <CheckCircle2 className="w-4 h-4 shrink-0 text-green-500" />
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted/80">
+                        {/* Avance de revisión del nodo + distribución de notas */}
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <ProgressBar
+                            pct={donePct}
+                            accent={node.pending > 0 ? '#f59e0b' : '#22c55e'}
+                            height={4}
+                            delay={Math.min(i, 12) * 0.03}
+                          />
+                          <span className="shrink-0 text-[9.5px] font-semibold tabular-nums text-text-muted/70">
+                            {node.total - node.pending}/{node.total}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-text-muted/80">
                           {level === 'learner' ? (
                             <span className="inline-flex items-center gap-1">
                               <ClipboardCheck className="w-3 h-3" />
@@ -795,27 +1079,38 @@ export const TrainerFeedbackPanel: React.FC = () => {
                             </span>
                           )}
                           <span className="text-text-muted/50">·</span>
-                          <span>{t('admin.trainer_panel.sub_pending', { count: node.pending })}</span>
+                          <span className={cn('font-semibold tabular-nums', scoreTextTone(avg))}>{avg}%</span>
+                          {node.lastAt > 0 && (
+                            <>
+                              <span className="text-text-muted/50">·</span>
+                              <span className="truncate">{relativeTime(new Date(node.lastAt).toISOString())}</span>
+                            </>
+                          )}
                         </div>
                       </div>
-                      <ChevronRight className="w-4 h-4 shrink-0 text-text-muted/30 group-hover:text-green-500 transition-colors" />
-                    </button>
+                      <ChevronRight className="w-4 h-4 shrink-0 text-text-muted/30 group-hover:text-green-500 group-hover:translate-x-0.5 transition-all" />
+                    </motion.button>
                   );
                 })
               )
             ) : leafAttempts.length === 0 ? (
-              <EmptyState attemptsEmpty={attempts.length === 0} t={t} />
+              peopleMatches.length === 0 && <EmptyState attemptsEmpty={attempts.length === 0} t={t} />
             ) : (
-              leafAttempts.map((attempt) => {
+              leafAttempts.map((attempt, i) => {
                 const isActive = selectedAttempt?.id === attempt.id;
                 const studentName = attempt.student?.name || t('admin.trainer_panel.student_fallback');
                 const meta = activityMeta(attempt.game_type);
                 return (
-                  <button
+                  <motion.button
                     key={attempt.id}
+                    layout="position"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, delay: Math.min(i, 12) * 0.03, ease: [0.16, 1, 0.3, 1] }}
+                    whileHover={{ y: -2 }}
                     onClick={() => setSelectedAttempt(attempt)}
                     className={cn(
-                      'group w-full text-left p-3 rounded-2xl cursor-pointer border transition-all duration-200 select-none flex items-center gap-3 relative overflow-hidden',
+                      'group w-full text-left p-3 rounded-2xl cursor-pointer border transition-[border-color,box-shadow] duration-200 select-none flex items-center gap-3 relative overflow-hidden',
                       isActive
                         ? 'bg-white dark:bg-zinc-900 border-green-500 shadow-lg shadow-green-500/5'
                         : 'bg-zinc-50/60 dark:bg-zinc-900/40 border-line hover:border-zinc-300 dark:hover:border-zinc-700'
@@ -824,12 +1119,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
                     {/* Acento lateral según prioridad */}
                     <span className="absolute left-0 top-0 bottom-0 w-1 rounded-r" style={{ background: scoreHex(attempt.score), opacity: isActive ? 1 : 0.35 }} />
 
-                    {/* Avatar */}
-                    <div
-                      className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-bold border ml-1"
-                      style={{ background: `${scoreHex(attempt.score)}1a`, color: scoreHex(attempt.score), borderColor: `${scoreHex(attempt.score)}33` }}
-                    >
-                      {initials(studentName)}
+                    {/* Anillo de nota: la señal más útil de la fila */}
+                    <div className="ml-1 shrink-0">
+                      <ScoreRing score={attempt.score} size={40} stroke={4} />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -837,20 +1129,25 @@ export const TrainerFeedbackPanel: React.FC = () => {
                         <span className="text-[13px] font-semibold text-text truncate">
                           {attempt.section?.heading_es || studentName}
                         </span>
-                        <span className={cn('text-xs font-mono font-bold shrink-0', scoreTextTone(attempt.score))}>{attempt.score}%</span>
+                        {attempt.is_evaluated ? (
+                          <CheckCircle2 className="w-4 h-4 shrink-0 text-green-500" />
+                        ) : (
+                          <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                            {t('admin.trainer_panel.filter_status_pending')}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-[11px] text-text-muted truncate mt-0.5">{formatGameType(attempt.game_type)}</p>
-                      <div className="flex items-center gap-2 mt-1.5">
+                      <p className="text-[11px] text-text-muted truncate mt-0.5">
+                        {/* Al mirar a una persona, el módulo importa más que el tipo de juego */}
+                        {personFocus
+                          ? attempt.module?.title_es || t('admin.trainer_panel.module_fallback')
+                          : formatGameType(attempt.game_type)}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/70 border border-line text-[9px] font-bold uppercase tracking-wide text-text-muted">
                           <meta.Icon className="w-3 h-3" />
                           {meta.label}
                         </span>
-                        {attempt.is_evaluated && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-green-500/10 border border-green-500/20 text-[9px] font-bold uppercase tracking-wide text-green-600 dark:text-green-400">
-                            <CheckCircle2 className="w-3 h-3" />
-                            {t('admin.trainer_panel.evaluated_badge')}
-                          </span>
-                        )}
                         {attempt.is_review && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[9px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
                             <RotateCcw className="w-3 h-3" />
@@ -864,7 +1161,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                       </div>
                     </div>
                     <ChevronRight className={cn('w-4 h-4 shrink-0 transition-colors', isActive ? 'text-green-500' : 'text-text-muted/30 group-hover:text-text-muted/60')} />
-                  </button>
+                  </motion.button>
                 );
               })
             )}
@@ -886,7 +1183,15 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 <ArrowLeft className="w-4 h-4" />
                 {t('admin.trainer_panel.back_to_list', 'Volver a la lista')}
               </button>
-              <div className="p-4 sm:p-8 space-y-6 max-w-4xl w-full mx-auto">
+              <motion.div
+                // `key` por entrega: al saltar a la siguiente pendiente el detalle
+                // vuelve a entrar, lo que hace evidente que cambió de aprendiz.
+                key={selectedAttempt.id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                className="p-4 sm:p-8 space-y-6 max-w-4xl w-full mx-auto"
+              >
 
                 {/* Hero del alumno */}
                 <div className="bg-white dark:bg-zinc-900/50 rounded-2xl border border-line shadow-sm p-6">
@@ -1011,7 +1316,14 @@ export const TrainerFeedbackPanel: React.FC = () => {
                   <div>
                     {selectedAttempt.submitted_answers && Object.keys(selectedAttempt.submitted_answers).length > 0 ? (
                       <>
-                        {viewMode === 'graphic' && renderAnalyticsView(selectedAttempt.submitted_answers, selectedAttempt.score)}
+                        {viewMode === 'graphic' && (
+                          <AttemptAnswers
+                            gameType={selectedAttempt.game_type}
+                            answers={selectedAttempt.submitted_answers}
+                            score={selectedAttempt.score}
+                            sectionId={selectedAttempt.section_id}
+                          />
+                        )}
                         {viewMode === 'json' && (
                           <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-line shadow-inner max-h-80 overflow-y-auto custom-scrollbar">
                             <pre className="font-mono text-[11px] text-text whitespace-pre-wrap word-break leading-relaxed">
@@ -1076,15 +1388,157 @@ export const TrainerFeedbackPanel: React.FC = () => {
                   </div>
                 </form>
 
+              </motion.div>
+            </div>
+          ) : personSummary ? (
+            /* Ficha de la persona: su avance completo antes de abrir una entrega */
+            <div className="h-full overflow-y-auto custom-scrollbar p-4 sm:p-8">
+              <div className="max-w-3xl mx-auto space-y-5">
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  className="relative overflow-hidden rounded-2xl border border-line bg-white dark:bg-zinc-900/50 p-6 shadow-sm"
+                >
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full opacity-[0.12] blur-3xl"
+                    style={{ background: scoreHex(personSummary.avg) }}
+                  />
+                  <div className="relative flex items-center gap-4 flex-wrap">
+                    <div
+                      className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border text-xl font-bold"
+                      style={{
+                        background: tint(scoreHex(personSummary.avg), 12),
+                        color: scoreHex(personSummary.avg),
+                        borderColor: tint(scoreHex(personSummary.avg), 30),
+                      }}
+                    >
+                      {initials(personSummary.name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="truncate text-xl font-bold tracking-tight text-text">{personSummary.name}</h2>
+                      {personSummary.email && <p className="truncate text-xs text-text-muted">{personSummary.email}</p>}
+                      <div className="mt-2 flex items-center gap-2">
+                        <ScoreDistribution
+                          perfect={personSummary.perfect}
+                          passed={personSummary.passed}
+                          failed={personSummary.failed}
+                          className="max-w-[220px]"
+                          height={6}
+                        />
+                        <span className="shrink-0 text-[11px] text-text-muted">
+                          {t('admin.trainer_panel.sub_activities', { count: personSummary.total })}
+                        </span>
+                      </div>
+                    </div>
+                    <ScoreRing score={personSummary.avg} size={72} stroke={6} />
+                  </div>
+
+                  {/* Las 4 cifras que responden "¿cuánto lleva?" de un vistazo */}
+                  <div className="relative mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <MiniStat
+                      icon={<BookOpen className="h-3.5 w-3.5" />}
+                      label={t('admin.trainer_panel.lvl_courses')}
+                      value={personSummary.coursesCount}
+                      accent="rgb(var(--brand-green))"
+                    />
+                    <MiniStat
+                      icon={<Layers className="h-3.5 w-3.5" />}
+                      label={t('admin.trainer_panel.lvl_modules')}
+                      value={personSummary.modulesCount}
+                      accent="rgb(var(--brand-magenta))"
+                      note={t('admin.trainer_panel.n_completed', '{{count}} completados', { count: personSummary.modulesDone })}
+                    />
+                    <MiniStat
+                      icon={<ClipboardCheck className="h-3.5 w-3.5" />}
+                      label={t('admin.trainer_panel.lvl_activities')}
+                      value={personSummary.total}
+                      accent="#f59e0b"
+                      note={t('admin.trainer_panel.n_pending_short', '{{count}} por evaluar', { count: personSummary.pending })}
+                    />
+                    <MiniStat
+                      icon={<Clock className="h-3.5 w-3.5" />}
+                      label={t('admin.trainer_panel.module_time_label')}
+                      text={personSummary.totalTimeMs > 0 ? formatElapsed(personSummary.totalTimeMs) : '—'}
+                      accent="#3b82f6"
+                    />
+                  </div>
+                </motion.div>
+
+                {/* Avance curso por curso, con sus módulos dentro */}
+                <div className="space-y-3">
+                  {personSummary.courses.map((c, ci) => (
+                    <motion.div
+                      key={c.key}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.06 + ci * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                      className="rounded-2xl border border-line bg-white dark:bg-[#0d0e12] p-5 shadow-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[rgb(var(--brand-green))]/10 text-[rgb(var(--brand-green))]">
+                          <BookOpen className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="truncate text-[15px] font-bold text-text">{c.title}</h3>
+                          <p className="mt-0.5 text-[11.5px] text-text-muted">
+                            {t('admin.trainer_panel.sub_modules', { count: c.modules.length })}
+                            {' · '}
+                            {t('admin.trainer_panel.sub_activities', { count: c.total })}
+                            {c.timeMs > 0 && ` · ${formatElapsed(c.timeMs)}`}
+                          </p>
+                        </div>
+                        <ScoreRing score={c.avg} size={44} stroke={4} />
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        {c.modules.map((m, i) => (
+                          <div key={m.key}>
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                {m.completed && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />}
+                                <span className="truncate text-[12.5px] font-medium text-text">{m.title}</span>
+                              </span>
+                              <span className={cn('shrink-0 text-[12px] font-bold tabular-nums', scoreTextTone(m.avg))}>{m.avg}%</span>
+                            </div>
+                            <div className="mt-1.5 flex items-center gap-2">
+                              <ProgressBar
+                                pct={(m.done / m.total) * 100}
+                                accent={m.done === m.total ? '#22c55e' : '#f59e0b'}
+                                height={4}
+                                delay={0.06 + ci * 0.06 + i * 0.04}
+                              />
+                              <span className="shrink-0 text-[10px] tabular-nums text-text-muted/80">
+                                {m.done}/{m.total}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                <p className="text-center text-xs text-text-muted/60">{t('admin.trainer_panel.select_side')}</p>
               </div>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-text-muted space-y-3 select-none px-6 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-zinc-900/60 border border-line flex items-center justify-center">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 240, damping: 20 }}
+                className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-zinc-900/60 border border-line flex items-center justify-center"
+              >
                 <ClipboardCheck className="w-7 h-7 text-text-muted/50" />
-              </div>
+              </motion.div>
               <p className="text-sm font-medium text-text">{t('admin.trainer_panel.select_side')}</p>
               <p className="text-xs text-text-muted/60 max-w-xs">{t('admin.trainer_panel.review_before')}</p>
+              <p className="inline-flex items-center gap-1.5 text-[11px] text-text-muted/60">
+                <Search className="h-3 w-3" />
+                {t('admin.trainer_panel.hint_people_search', 'Escribe un nombre en el buscador para saltar directo a una persona')}
+              </p>
             </div>
           )}
         </main>
@@ -1112,21 +1566,27 @@ const EmptyState: React.FC<{ attemptsEmpty: boolean; t: (k: string) => string }>
     </div>
   );
 
-const StatChip: React.FC<{ icon: React.ReactNode; label: string; value: string; valueClass?: string }> = ({ icon, label, value, valueClass }) => (
-  <div className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-900/60 border border-line rounded-xl px-3 py-1.5">
-    <span className="text-text-muted/70">{icon}</span>
-    <div className="leading-none">
-      <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{label}</p>
-      <p className={cn('text-sm font-bold font-mono mt-0.5', valueClass || 'text-text')}>{value}</p>
-    </div>
+/** Dato compacto de la ficha de persona: ícono + cifra grande + nota opcional.
+ *  Acepta `value` (número, cuenta al aparecer) o `text` (ya formateado). */
+const MiniStat: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  value?: number;
+  text?: string;
+  suffix?: string;
+  note?: string;
+  accent: string;
+}> = ({ icon, label, value, text, suffix, note, accent }) => (
+  <div className="rounded-xl border border-line bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2.5">
+    <p className="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-wider text-text-muted">
+      <span style={{ color: accent }}>{icon}</span>
+      <span className="truncate">{label}</span>
+    </p>
+    <p className="mt-1 text-[20px] font-bold leading-none tabular-nums text-text">
+      {text ?? <CountUp value={value ?? 0} suffix={suffix} />}
+    </p>
+    {note && <p className="mt-1 truncate text-[10px] text-text-muted/80">{note}</p>}
   </div>
-);
-
-const Dot: React.FC<{ color: string; n: number; title: string }> = ({ color, n, title }) => (
-  <span className="flex items-center gap-1 text-[11px] text-text-muted font-semibold" title={title}>
-    <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-    {n}
-  </span>
 );
 
 interface DropdownProps {

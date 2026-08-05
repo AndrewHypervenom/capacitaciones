@@ -1,6 +1,6 @@
 import { type ReactNode, type ElementType } from 'react';
 import { motion } from 'framer-motion';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Loader2, Plus } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -27,6 +27,10 @@ export interface HeroMeta {
   icon: ElementType;
   label: string;
   value: string | null;
+  /** Si el dato se puede llenar desde aquí: el vacío se vuelve un botón. */
+  onFill?: () => void;
+  /** Texto del botón cuando el dato está vacío (p. ej. "Completar"). */
+  fillLabel?: string;
 }
 
 export interface HeroStat {
@@ -77,7 +81,10 @@ export function ProfileHero({
 }: ProfileHeroProps) {
   const reduce = useReducedMotion();
   const tone = toneMap[roleTone];
-  const shownMeta = meta.filter((m) => m.value);
+  // En la vista propia los datos vacíos NO se esconden: se muestran como una
+  // invitación a completarlos. Escondiéndolos, la única cosa editable a la
+  // vista era la foto y nadie encontraba dónde llenar cargo, país o teléfono.
+  const shownMeta = meta.filter((m) => m.value || m.onFill);
 
   return (
     <motion.section
@@ -161,12 +168,23 @@ export function ProfileHero({
 
             {shownMeta.length > 0 && (
               <div className="mt-5 flex flex-wrap justify-center gap-x-6 gap-y-3 sm:justify-start">
-                {shownMeta.map(({ id, icon: Icon, label, value }) => (
+                {shownMeta.map(({ id, icon: Icon, label, value, onFill, fillLabel }) => (
                   <div key={id} className="flex items-center gap-2 text-left">
                     <Icon className="h-4 w-4 shrink-0 text-text-subtle" />
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase tracking-wider text-text-subtle">{label}</div>
-                      <div className="truncate text-[13px] font-medium text-text">{value}</div>
+                      {value ? (
+                        <div className="truncate text-[13px] font-medium text-text">{value}</div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={onFill}
+                          className="flex items-center gap-1 text-[13px] font-medium text-text-subtle underline decoration-dotted underline-offset-4 transition-colors hover:text-primary"
+                        >
+                          <Plus className="h-3 w-3" />
+                          {fillLabel}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

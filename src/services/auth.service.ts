@@ -49,8 +49,11 @@ export async function updateProfile(
     .update(updates)
     .eq('id', userId)
     .select()
-    .single()
+    .maybeSingle()
   if (error) throw error
+  // Sin error y sin fila = la RLS dejó pasar la orden pero no actualizó nada.
+  // Devolver `null` haría creer que se guardó: mejor decirlo con claridad.
+  if (!data) throw new Error('No se pudo actualizar el perfil: no tienes permiso sobre esta cuenta.')
   return data
 }
 
