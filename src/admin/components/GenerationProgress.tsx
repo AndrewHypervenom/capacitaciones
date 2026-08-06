@@ -28,6 +28,12 @@ interface Props {
   subProgress?: { done: number; total: number }
   /** Expectativa de tiempo, visible desde el arranque (no una sorpresa a los 5 min). */
   hint?: string
+  /**
+   * Mensajes de paciencia propios (claves i18n, en el mismo orden de los tiempos).
+   * Los de por defecto hablan de documentos largos y extensión "Larga": eso solo
+   * aplica cuando se genera un escenario desde cero, y confunde en un ajuste.
+   */
+  patienceKeys?: string[]
 }
 
 /** mm:ss — a los 3 minutos, "184s" deja de significar algo. */
@@ -62,7 +68,7 @@ function PulsingDots() {
   )
 }
 
-export function GenerationProgress({ steps, active, title = 'Generando con Claude...', stepIndex, note, subProgress, hint }: Props) {
+export function GenerationProgress({ steps, active, title = 'Generando con Claude...', stepIndex, note, subProgress, hint, patienceKeys }: Props) {
   const controlled = stepIndex != null
   const [timedStep, setTimedStep] = useState(0)
   const [elapsed, setElapsed] = useState(0)
@@ -117,8 +123,11 @@ export function GenerationProgress({ steps, active, title = 'Generando con Claud
       ? Math.min(97, ((currentStep + inStep) / steps.length) * 100)
       : Math.min(95, (elapsed / totalDuration) * 100)
 
+  const patienceSteps = patienceKeys?.length
+    ? PATIENCE_AT.map((p, i) => ({ ...p, key: patienceKeys[i] ?? p.key })).slice(0, patienceKeys.length)
+    : PATIENCE_AT
   const patience = phase === 'running'
-    ? [...PATIENCE_AT].reverse().find((p) => elapsed >= p.afterMs)?.key
+    ? [...patienceSteps].reverse().find((p) => elapsed >= p.afterMs)?.key
     : undefined
 
   return (

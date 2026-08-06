@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Wrench, ChevronDown, X, CheckCircle2, AlertTriangle, Undo2, Target } from 'lucide-react'
+import { Wrench, ChevronDown, X, CheckCircle2, AlertTriangle, Undo2, Target, MessageSquarePlus } from 'lucide-react'
 import { GenerationProgress } from '@/admin/components/GenerationProgress'
 import { ease, Stagger, StaggerItem, Magnetic } from '@/components/ui/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario } from '@/services/ai.service'
 import { useSimAiStore, type SimAiInput } from '@/stores/simAiStore'
+import { ScenarioDiff } from './ScenarioDiff'
 import { Button } from '@/components/ui/Button'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
@@ -40,12 +41,25 @@ function momentText(node: unknown, type: 'dialogue' | 'choice'): string {
  */
 export function SimulationEditPanel({ type, current, onApply, campaignId }: Props) {
   const reduce = useReducedMotion()
-  const [open, setOpen] = useState(false)
+  // Con una corrida viva (o con su propuesta esperando) el panel arranca abierto: es
+  // exactamente lo que se viene a buscar al volver a esta pantalla.
+  const [open, setOpen] = useState(
+    () => !!useSimAiStore.getState().runs[`${type}-edit:${window.location.pathname}`],
+  )
   const [instructions, setInstructions] = useState('')
   const [focusIds, setFocusIds] = useState<string[]>([])
   const [showMoments, setShowMoments] = useState(false)
   /** Escenario previo al último ajuste aplicado: lo que restaura "Deshacer". */
   const [undoSnapshot, setUndoSnapshot] = useState<GeneratedScenario | null>(null)
+  /** Corrección sobre la propuesta que está en pantalla ("no, más corto"). */
+  const [refineOpen, setRefineOpen] = useState(false)
+  const [refineText, setRefineText] = useState('')
+  /**
+   * Lo que se pidió la PRIMERA vez. Las correcciones se apilan sobre la propuesta,
+   * pero la instrucción original sigue viajando: si no, a la segunda vuelta la IA
+   * olvida para qué se estaba ajustando el momento.
+   */
+  const [firstInstructions, setFirstInstructions] = useState('')
 
   // Corrida propia, separada de la del generador: se puede estar ajustando aquí sin
   // pisar (ni ser pisado por) un "Generar escenario". Vive en el store global, así
@@ -55,6 +69,7 @@ export function SimulationEditPanel({ type, current, onApply, campaignId }: Prop
   const startRun = useSimAiStore((s) => s.start)
   const cancelRun = useSimAiStore((s) => s.cancel)
   const clearRun = useSimAiStore((s) => s.clear)
+  const appliedRun = useSimAiStore((s) => s.applied)
 
   const loading = run?.status === 'running'
   const result = run?.status === 'done' ? run.result : null
@@ -92,6 +107,38 @@ export function SimulationEditPanel({ type, current, onApply, campaignId }: Prop
       campaignId,
     }
     setUndoSnapshot(null)
+    setFirstInstructions(instructions.trim())
+    setRefineOpen(false)
+    setRefineText('')
+    startRun(runKey, window.location.pathname, input)
+  }
+
+  /**
+   * "Pídele que lo mejore": en vez de descartar y volver a escribir todo, la
+   * corrección se aplica SOBRE la propuesta que está en pantalla. Lo que ya quedó
+   * bien no se vuelve a jugar, y el "antes y después" se sigue midiendo contra lo
+   * que hay hoy en el editor (que es lo que importa antes de aplicar).
+   */
+  const handleRefine = () => {
+    if (!result || !refineText.trim()) return
+    const original = firstInstructions || run?.input.instructions?.trim() || ''
+    const input: SimAiInput = {
+      type,
+      mode: 'edit',
+      description: '',
+      length: 'medium',
+      callType: 'auto',
+      translateNow: false,
+      existing: result,
+      instructions: i18n.t('admin.simulations.ai_edit.refine_prompt', {
+        original,
+        correction: refineText.trim(),
+      }),
+      focusIds,
+      campaignId,
+    }
+    setRefineOpen(false)
+    setRefineText('')
     startRun(runKey, window.location.pathname, input)
   }
 
@@ -99,10 +146,14 @@ export function SimulationEditPanel({ type, current, onApply, campaignId }: Prop
     if (!result) return
     setUndoSnapshot(current)
     onApply(result as GeneratedDialogue | GeneratedChoice)
-    clearRun(runKey)
+    // Cargar en el editor no es guardar: el respaldo en la base espera al Guardar.
+    appliedRun(runKey)
     // La instrucción se limpia, los momentos elegidos no: es normal encadenar dos
     // ajustes seguidos sobre la misma parte del escenario.
     setInstructions('')
+    setFirstInstructions('')
+    setRefineOpen(false)
+    setRefineText('')
   }
 
   const handleUndo = () => {
@@ -236,20 +287,47 @@ export function SimulationEditPanel({ type, current, onApply, campaignId }: Prop
                                   onClick={() => toggleFocus(m.id)}
                                   aria-pressed={active}
                                   className={cn(
-                                    'w-full text-left rounded-lg border px-2.5 py-1.5 transition-colors',
+                                    'relative w-full text-left rounded-lg border py-1.5 pr-8 transition-all duration-200',
+                                    // El elegido tiene que cantar también en modo claro:
+                                    // barra de acento + fondo + anillo + check, no solo un borde.
                                     active
-                                      ? 'border-brand-violet/45 bg-brand-violet/8'
-                                      : 'border-glass-border/15 hover:border-glass-border/35',
+                                      ? 'border-brand-violet/60 bg-brand-violet/10 ring-1 ring-brand-violet/25 shadow-sm pl-4'
+                                      : 'border-glass-border/15 hover:border-glass-border/40 hover:bg-glass/5 pl-2.5',
                                   )}
                                 >
-                                  <span className={cn('text-[11px] font-medium', active ? 'text-brand-violet' : 'text-text-muted')}>
+                                  {active && (
+                                    <motion.span
+                                      layoutId={reduce ? undefined : `focus-bar-${m.id}`}
+                                      initial={reduce ? undefined : { scaleY: 0 }}
+                                      animate={{ scaleY: 1 }}
+                                      transition={{ duration: 0.22, ease }}
+                                      className="absolute left-1 inset-y-1.5 w-1 rounded-full bg-brand-violet"
+                                    />
+                                  )}
+                                  <span className={cn('text-[11px] font-medium', active ? 'text-brand-violet font-semibold' : 'text-text-muted')}>
                                     {i18n.t('admin.simulations.step_n', { n: m.n })}
                                   </span>
                                   {m.text && (
-                                    <span className="block text-[11px] text-text-subtle leading-snug truncate">
+                                    <span className={cn(
+                                      'block text-[11px] leading-snug truncate',
+                                      active ? 'text-text' : 'text-text-subtle',
+                                    )}>
                                       {m.text.slice(0, 80)}{m.text.length > 80 ? '…' : ''}
                                     </span>
                                   )}
+                                  <AnimatePresence>
+                                    {active && (
+                                      <motion.span
+                                        initial={reduce ? undefined : { opacity: 0, scale: 0.6 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={reduce ? undefined : { opacity: 0, scale: 0.6 }}
+                                        transition={{ duration: 0.18, ease }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-brand-violet"
+                                      >
+                                        <CheckCircle2 className="h-4 w-4" />
+                                      </motion.span>
+                                    )}
+                                  </AnimatePresence>
                                 </button>
                               )
                             })}
@@ -298,6 +376,7 @@ export function SimulationEditPanel({ type, current, onApply, campaignId }: Prop
                 subProgress={run?.subProgress}
                 title={run?.title ?? i18n.t('admin.simulations.ai_edit.title_editing')}
                 hint={i18n.t('admin.simulations.ai_edit.eta')}
+                patienceKeys={['admin.gen.edit_patience_1', 'admin.gen.edit_patience_2']}
               />
 
               <AnimatePresence>
@@ -376,21 +455,71 @@ export function SimulationEditPanel({ type, current, onApply, campaignId }: Prop
                       </ul>
                     ) : null}
 
+                    {/* Lo de arriba es lo que la IA DICE que hizo; esto es lo que
+                        de verdad va a cambiar si aplicas. */}
+                    <ScenarioDiff before={current} after={result as GeneratedScenario} type={type} />
+
                     {touched === 0 && (
                       <p className="text-xs text-text-subtle leading-relaxed">
                         {i18n.t('admin.simulations.ai_edit.nothing_changed')}
                       </p>
                     )}
 
-                    <div className="flex justify-end gap-2 pt-1">
+                    {/* Corregir sin perder lo propuesto: la alternativa a descartar
+                        y volver a escribir la instrucción desde cero. */}
+                    <AnimatePresence initial={false}>
+                      {refineOpen && (
+                        <motion.div
+                          initial={reduce ? undefined : { height: 0, opacity: 0 }}
+                          animate={reduce ? undefined : { height: 'auto', opacity: 1 }}
+                          exit={reduce ? undefined : { height: 0, opacity: 0 }}
+                          transition={{ duration: 0.28, ease }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pt-1">
+                            <textarea
+                              value={refineText}
+                              onChange={(e) => setRefineText(e.target.value)}
+                              placeholder={i18n.t('admin.simulations.ai_edit.refine_ph')}
+                              rows={3}
+                              autoFocus
+                              className="w-full glass border border-brand-violet/25 rounded-xl px-3 py-2.5 text-sm text-text bg-transparent resize-none focus:outline-none focus:border-brand-violet/60 placeholder:text-text-subtle"
+                            />
+                            <p className="text-[11px] text-text-subtle mt-1 leading-relaxed">
+                              {i18n.t('admin.simulations.ai_edit.refine_hint')}
+                            </p>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="flex flex-wrap justify-end gap-2 pt-1">
                       <Button variant="ghost" size="sm" onClick={() => clearRun(runKey)}>
                         {i18n.t('admin.simulations.ai_edit.discard')}
                       </Button>
-                      <Magnetic strength={0.25}>
-                        <Button size="sm" onClick={handleApply} disabled={touched === 0}>
-                          {i18n.t('admin.simulations.ai_edit.apply')}
-                        </Button>
-                      </Magnetic>
+                      {refineOpen ? (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => setRefineOpen(false)}>
+                            {i18n.t('admin.simulations.ai_edit.refine_cancel')}
+                          </Button>
+                          <Magnetic strength={0.25}>
+                            <Button size="sm" onClick={handleRefine} disabled={!refineText.trim()}>
+                              <Wrench className="h-4 w-4" /> {i18n.t('admin.simulations.ai_edit.refine_send')}
+                            </Button>
+                          </Magnetic>
+                        </>
+                      ) : (
+                        <>
+                          <Button variant="secondary" size="sm" onClick={() => setRefineOpen(true)}>
+                            <MessageSquarePlus className="h-4 w-4" /> {i18n.t('admin.simulations.ai_edit.refine')}
+                          </Button>
+                          <Magnetic strength={0.25}>
+                            <Button size="sm" onClick={handleApply} disabled={touched === 0}>
+                              {i18n.t('admin.simulations.ai_edit.apply')}
+                            </Button>
+                          </Magnetic>
+                        </>
+                      )}
                     </div>
                   </motion.div>
                 ) : !loading && current ? (

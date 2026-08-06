@@ -18,6 +18,7 @@ import {
   type ChoiceScenarioRow, type ShareableChoiceScenario,
 } from '@/services/choiceScenarios.admin.service'
 import { NewSimulationModal } from '@/admin/components/simulation/NewSimulationModal'
+import { AiDraftsPanel } from '@/admin/components/simulation/AiDraftsPanel'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { FadeIn } from '@/components/ui/motion'
@@ -290,6 +291,10 @@ export default function SimulationList() {
           <Plus className="h-4 w-4" /> {t('admin.simulations.list.create_new')}
         </Button>
       </div>
+
+      {/* Escenarios generados por IA que todavía nadie cargó en el editor. Van arriba
+          del todo: son trabajo ya pagado en tokens esperando dos clics. */}
+      <AiDraftsPanel />
 
       {showNewModal && (
         <NewSimulationModal

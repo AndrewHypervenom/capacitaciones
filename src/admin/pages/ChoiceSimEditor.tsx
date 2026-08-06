@@ -9,6 +9,7 @@ import {
   getChoiceScenarioAdmin, createChoiceScenario, updateChoiceScenario, type ChoiceScenarioRow,
 } from '@/services/choiceScenarios.admin.service'
 import { type GeneratedChoice, type GeneratedDialogue, type GeneratedScenario } from '@/services/ai.service'
+import { useSimAiStore } from '@/stores/simAiStore'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
 import { SimulationEditPanel } from '@/admin/components/simulation/SimulationEditPanel'
 import { ChoiceNodeForm, type ChoiceNodeData } from '@/admin/components/simulation/ChoiceNodeForm'
@@ -117,6 +118,11 @@ export default function ChoiceSimEditor() {
   const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false)
   const [manualGuide, setManualGuide] = useState(isNew && isManualMode)
 
+  // Ruta con la que se montó el editor. Los paneles de IA arman su clave de corrida
+  // con esta misma ruta, y al guardar la URL ya puede haber cambiado de /new a /:id.
+  const mountPathRef = useRef(window.location.pathname)
+  const flushAppliedDrafts = useSimAiStore((s) => s.flushAppliedDrafts)
+
   const slugManualRef = useRef(!isNew)
   // El paso inicial siempre va primero (Paso 1), sin importar el orden en que se
   // hayan creado los pasos, para que el flujo se lea de arriba hacia abajo.
@@ -223,6 +229,9 @@ export default function ChoiceSimEditor() {
         nav(`/admin/simulations/choice/${row.id}`, { replace: true })
         toast.success('Creado')
       }
+      // Recién ahora el escenario está a salvo en su propia tabla: el borrador de IA
+      // que lo trajo hasta acá ya no hace falta.
+      flushAppliedDrafts(mountPathRef.current)
     } catch (e) {
       toast.error(`Error: ${(e as Error).message}`)
     } finally {

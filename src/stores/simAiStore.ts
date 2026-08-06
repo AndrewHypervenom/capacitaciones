@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import i18n from '@/i18n'
 import { globalNavigate } from '@/lib/nav'
 import { bgTask, useBgTaskStore } from '@/stores/bgTaskStore'
@@ -9,6 +10,9 @@ import {
   type ScenarioEditSummary,
 } from '@/services/ai.service'
 import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
+import {
+  saveAiDraft, deleteAiDraftByRunKey, type AiScenarioDraft,
+} from '@/services/aiDrafts.service'
 import {
   type GenerationStep,
   SIM_STEP_READ_MODULE, SIM_STEP_CONDENSE_DOC, SIM_STEP_OUTLINE,
@@ -57,14 +61,43 @@ export interface SimAiRun {
   result?: GeneratedScenario
   /** Solo en modo 'edit': qué tocó la IA, para revisarlo antes de aplicar. */
   summary?: ScenarioEditSummary
+  /**
+   * Rescatada del almacenamiento tras recargar la página. El resultado está
+   * completo, pero el contexto pesado de la corrida (el documento de apoyo y el
+   * escenario de partida) NO se guarda, así que "Regenerar" no puede repetirla
+   * igual y se oculta.
+   */
+  restored?: boolean
+  /** Cuándo terminó (ms). Ordena y fecha los borradores en la lista de simulaciones. */
+  finishedAt?: number
+  /** Fila en ai_scenario_drafts. Si falta, el borrador solo vive en este navegador. */
+  draftId?: string
+  /** Nombre real del escenario, en cuanto la IA lo decide (al armar el esqueleto). */
+  resolvedTitle?: string
 }
 
 interface SimAiState {
   runs: Record<string, SimAiRun>
+  /**
+   * Borradores que YA se cargaron en un editor pero cuya simulación todavía no se
+   * ha guardado (clave de la corrida → ruta del editor). Su fila en la base sigue
+   * viva a propósito: cargar en el editor no es guardar, y si el capacitador se va
+   * sin guardar el escenario tiene que seguir estando.
+   */
+  appliedKeys: Record<string, string>
   start: (key: string, returnPath: string, input: SimAiInput) => void
+  /**
+   * Mete en el store un borrador que venía de la base (generado en otro navegador
+   * u otra sesión), para que el editor lo encuentre igual que si acabara de salir.
+   */
+  adopt: (draft: AiScenarioDraft) => void
   cancel: (key: string) => void
-  /** Olvida la corrida (al aplicar el resultado o descartar el error). */
+  /** Descarta la corrida A PROPÓSITO: se va del navegador y de la base. */
   clear: (key: string) => void
+  /** El resultado se cargó en el editor. El respaldo en la base se conserva. */
+  applied: (key: string) => void
+  /** El editor guardó de verdad: recién ahí sobran los borradores que cargó. */
+  flushAppliedDrafts: (returnPath: string) => void
 }
 
 /** Pasos REALES de esta corrida: se arman con lo que de verdad va a ocurrir. */
@@ -95,15 +128,40 @@ function runTitle(mode: SimAiMode): string {
   )
 }
 
-/** Título corto para el indicador global (se ve desde cualquier pantalla). */
-function bgTitle(input: SimAiInput): string {
-  const name = (input.mode === 'edit' ? input.existing?.metadata?.title_es : input.description.trim().slice(0, 40))
-    || input.existing?.metadata?.title_es
+/**
+ * Cómo se llama esto mientras se genera. En orden de qué tan fiel es al resultado:
+ * el título que la IA ya decidió, el del escenario de partida, lo que pidió el
+ * capacitador, o el nombre del documento que subió. "Sin título" es el último
+ * recurso, no el primero: una tarjeta que dice "sin título" durante cinco minutos
+ * no deja saber qué se está generando.
+ */
+function bgTitle(input: SimAiInput, resolved?: string): string {
+  const name = resolved?.trim()
+    || input.existing?.metadata?.title_es?.trim()
+    || (input.mode !== 'edit' ? input.description.trim().slice(0, 48) : '')
+    || input.doc?.name?.replace(/\.[^.]+$/, '')
     || i18n.t('admin.simulations.ai_gen.bg_untitled')
   return i18n.t(`admin.simulations.ai_gen.bg_title_${input.mode}`, { name })
 }
 
-export const useSimAiStore = create<SimAiState>()((set, get) => {
+/** Cuántas corridas terminadas se conservan entre recargas (las más recientes). */
+const MAX_PERSISTED = 6
+
+/**
+ * Copia ligera para guardar en el navegador. Se tira lo pesado y NO reutilizable:
+ * el texto del documento de apoyo y el escenario de partida pueden pesar cientos
+ * de kB y llenar el localStorage. El resultado (lo que costó tokens) sí se guarda
+ * entero.
+ */
+function slim(run: SimAiRun): SimAiRun {
+  const { doc, existing: _existing, ...input } = run.input
+  return {
+    ...run,
+    input: { ...input, doc: doc ? { name: doc.name, text: '' } : null, existing: null },
+  }
+}
+
+export const useSimAiStore = create<SimAiState>()(persist((set, get) => {
   /** Parche sobre la corrida SOLO si sigue siendo la misma (no pisa una nueva). */
   const patch = (key: string, taskId: string, p: Partial<SimAiRun>) => {
     const run = get().runs[key]
@@ -113,10 +171,15 @@ export const useSimAiStore = create<SimAiState>()((set, get) => {
 
   return {
     runs: {},
+    appliedKeys: {},
 
     start: (key, returnPath, input) => {
       // Una corrida por editor: la nueva reemplaza (y cancela) a la anterior.
+      const previous = get().runs[key]
       get().cancel(key)
+      // Si la anterior ya había terminado, su tarjeta pegajosa se queda para siempre
+      // apuntando a un resultado que esta corrida está por reemplazar.
+      if (previous && previous.status !== 'running') bgTask.dismiss(previous.taskId)
 
       const steps = buildSteps(input)
       const idxOf = (s: GenerationStep) => steps.indexOf(s)
@@ -142,6 +205,13 @@ export const useSimAiStore = create<SimAiState>()((set, get) => {
       }
 
       const onProgress = (p: SimProgress) => {
+        // Aviso de "ya sé cómo se llama": solo renombra, no toca el paso ni el
+        // detalle (si no, borraría el "escribiendo el momento 8 de 24" en curso).
+        if (p.title && !p.detail && p.total === undefined) {
+          patch(key, taskId, { resolvedTitle: p.title })
+          bgTask.update(taskId, { title: bgTitle(input, p.title) })
+          return
+        }
         const step = p.stage === 'translating' ? SIM_STEP_TRANSLATE
           : p.stage === 'document' ? SIM_STEP_CONDENSE_DOC
           : p.stage === 'outline' ? SIM_STEP_OUTLINE
@@ -217,10 +287,47 @@ export const useSimAiStore = create<SimAiState>()((set, get) => {
             status: 'done',
             result,
             summary,
+            finishedAt: Date.now(),
             stepIdx: steps.length - 1,
             note: undefined,
             subProgress: undefined,
           })
+
+          // El nombre definitivo (la IA pudo afinarlo al escribir los diálogos).
+          const finalTitle = String(
+            (result.metadata as unknown as Record<string, unknown>).title_es ?? '',
+          ).trim()
+          if (finalTitle) patch(key, taskId, { resolvedTitle: finalTitle })
+          bgTask.update(taskId, {
+            title: i18n.t(
+              input.mode === 'edit'
+                ? 'admin.simulations.ai_edit.bg_title_ready'
+                : 'admin.simulations.ai_gen.bg_title_ready',
+              { name: finalTitle || i18n.t('admin.simulations.ai_gen.bg_untitled') },
+            ),
+          })
+
+          // A la base ANTES de cantar victoria: desde aquí el escenario ya no depende
+          // de que este navegador siga vivo. Si la base falla NO se convierte en un
+          // error de generación — el escenario está bien y sigue guardado en local;
+          // solo se pierde el respaldo entre dispositivos.
+          try {
+            const draft = await saveAiDraft({
+              runKey: key,
+              returnPath,
+              type: input.type,
+              mode: input.mode,
+              title: finalTitle,
+              campaignId: input.campaignId,
+              payload: result,
+            })
+            patch(key, taskId, { draftId: draft.id })
+          } catch (err) {
+            console.warn('[simAi] no se pudo respaldar el borrador en la base', err)
+          }
+          // sticky: el escenario está esperando a que alguien lo cargue en el editor.
+          // Si la tarjeta se auto-ocultara (8 s) mientras el capacitador anda en otra
+          // pantalla, el resultado quedaría sin rastro visible y los tokens tirados.
           bgTask.succeed(taskId, {
             detail: summary
               ? i18n.t('admin.simulations.ai_edit.bg_done', {
@@ -228,6 +335,8 @@ export const useSimAiStore = create<SimAiState>()((set, get) => {
                 })
               : i18n.t('admin.simulations.ai_gen.bg_done'),
             action,
+            sticky: true,
+            dismissHint: i18n.t('admin.simulations.ai_gen.kept_as_draft'),
           })
         } catch (e) {
           // Cancelación: la corrida desaparece, el editor queda como estaba. Ojo: se
@@ -242,9 +351,41 @@ export const useSimAiStore = create<SimAiState>()((set, get) => {
             ? i18n.t('admin.ai_limits.blocked_task')
             : (e as Error).message
           patch(key, taskId, { status: 'error', error: message, note: undefined, subProgress: undefined })
-          bgTask.fail(taskId, message)
+          // También pegajosa: el error se lee cuando el capacitador vuelve, no antes.
+          bgTask.fail(taskId, { detail: message, action, sticky: true })
         }
       })()
+    },
+
+    adopt: (draft) => {
+      // Una corrida viva manda sobre el respaldo: nunca se pisa trabajo en curso.
+      const existing = get().runs[draft.runKey]
+      if (existing?.status === 'running') return
+      set({
+        runs: {
+          ...get().runs,
+          [draft.runKey]: {
+            key: draft.runKey,
+            returnPath: draft.returnPath,
+            taskId: '',
+            input: {
+              type: draft.type, mode: draft.mode, description: '',
+              length: 'medium', callType: 'auto', translateNow: false,
+              existing: null, campaignId: draft.campaignId,
+            },
+            status: 'done',
+            steps: [], stepIdx: 0,
+            title: runTitle(draft.mode),
+            result: draft.payload,
+            // Sin el documento ni el escenario de partida no se puede repetir la
+            // corrida: el editor oculta "Regenerar".
+            restored: true,
+            finishedAt: new Date(draft.createdAt).getTime(),
+            draftId: draft.id,
+            resolvedTitle: draft.title || undefined,
+          },
+        },
+      })
     },
 
     cancel: (key) => {
@@ -255,8 +396,115 @@ export const useSimAiStore = create<SimAiState>()((set, get) => {
     },
 
     clear: (key) => {
-      const { [key]: _gone, ...rest } = get().runs
+      const { [key]: gone, ...rest } = get().runs
       set({ runs: rest })
+      if (!gone) return
+      // El resultado ya se aplicó (o se descartó): la tarjeta pegajosa se va con él.
+      bgTask.dismiss(gone.taskId)
+      // Y el respaldo también, si llegó a haberlo. Un fallo acá solo deja un
+      // borrador de más en la lista: nunca hace perder trabajo.
+      if (gone.draftId || gone.status === 'done') {
+        void deleteAiDraftByRunKey(key).catch(() => {})
+      }
+      const { [key]: _dropped, ...keys } = get().appliedKeys
+      set({ appliedKeys: keys })
+    },
+
+    applied: (key) => {
+      const run = get().runs[key]
+      const { [key]: _gone, ...rest } = get().runs
+      set({
+        runs: rest,
+        // Cargar en el editor NO es guardar: el respaldo se anota como pendiente y
+        // sigue apareciendo en "Borradores" hasta que la simulación se guarde.
+        appliedKeys: run ? { ...get().appliedKeys, [key]: run.returnPath } : get().appliedKeys,
+      })
+      if (run) bgTask.dismiss(run.taskId)
+    },
+
+    flushAppliedDrafts: (returnPath) => {
+      const entries = Object.entries(get().appliedKeys).filter(([, p]) => p === returnPath)
+      if (!entries.length) return
+      set({
+        appliedKeys: Object.fromEntries(
+          Object.entries(get().appliedKeys).filter(([, p]) => p !== returnPath),
+        ),
+      })
+      for (const [key] of entries) void deleteAiDraftByRunKey(key).catch(() => {})
     },
   }
-})
+}, {
+  name: 'sim-ai-runs',
+  storage: createJSONStorage(() => localStorage),
+  // Sobrevivir a un F5 es el punto: una simulación generada cuesta tokens y no se
+  // puede recuperar del servidor, así que el resultado vive en el navegador hasta
+  // que alguien lo aplica o lo descarta.
+  partialize: (state) => ({
+    runs: Object.fromEntries(
+      Object.entries(state.runs).slice(-MAX_PERSISTED).map(([k, r]) => [k, slim(r)]),
+    ),
+    // Si se recarga entre "cargar en el editor" y "guardar", el borrador sigue
+    // pendiente de limpiar: sin esto quedaría para siempre en la base.
+    appliedKeys: state.appliedKeys,
+  }),
+}))
+
+/** Ya se rescataron las corridas de la sesión anterior (una sola vez por carga). */
+let recovered = false
+
+/**
+ * Vuelve a poner en el indicador las corridas que quedaron guardadas. Se llama al
+ * montar la app, no al rehidratar el store, porque necesita i18n ya cargado.
+ *
+ * Una corrida que estaba 'running' cuando se recargó la página está muerta: la
+ * petición viajaba desde este navegador y no hay forma de retomarla. Se marca como
+ * error explícito en vez de dejarla girando para siempre.
+ */
+export function recoverSimAiRuns() {
+  if (recovered) return
+  recovered = true
+  const runs = useSimAiStore.getState().runs
+  if (!Object.keys(runs).length) return
+
+  const next: Record<string, SimAiRun> = {}
+  for (const [key, entry] of Object.entries(runs)) {
+    // El nombre puede venir del resultado guardado aunque no se anotara aparte.
+    const saved: SimAiRun = {
+      ...entry,
+      resolvedTitle:
+        entry.resolvedTitle
+        || String((entry.result?.metadata as unknown as Record<string, unknown>)?.title_es ?? '').trim()
+        || undefined,
+    }
+    const run: SimAiRun = saved.status === 'running'
+      ? {
+          ...saved,
+          status: 'error',
+          error: i18n.t('admin.simulations.ai_gen.interrupted'),
+          note: undefined,
+          subProgress: undefined,
+        }
+      : saved
+    const done = run.status === 'done'
+    const taskId = bgTask.restore({
+      title: done
+        ? i18n.t(
+            run.input.mode === 'edit'
+              ? 'admin.simulations.ai_edit.bg_title_ready'
+              : 'admin.simulations.ai_gen.bg_title_ready',
+            { name: run.resolvedTitle || i18n.t('admin.simulations.ai_gen.bg_untitled') },
+          )
+        : bgTitle(run.input, run.resolvedTitle),
+      detail: done ? i18n.t('admin.simulations.ai_gen.bg_waiting') : run.error,
+      status: done ? 'success' : 'error',
+      sticky: true,
+      dismissHint: done ? i18n.t('admin.simulations.ai_gen.kept_as_draft') : undefined,
+      action: {
+        label: i18n.t('admin.simulations.ai_gen.bg_open_editor'),
+        run: () => globalNavigate(run.returnPath),
+      },
+    })
+    next[key] = { ...run, restored: true, taskId }
+  }
+  useSimAiStore.setState({ runs: next })
+}

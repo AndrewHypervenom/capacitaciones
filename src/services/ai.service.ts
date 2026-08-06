@@ -92,6 +92,12 @@ export interface SimProgress {
   /** Solo en 'translating': lotes de nodos ya traducidos / totales. */
   done?: number
   total?: number
+  /**
+   * Título del escenario, en cuanto la IA lo decide (al terminar el esqueleto). El
+   * indicador global deja de decir "sin título" a mitad del proceso, sin esperar a
+   * que estén escritos todos los diálogos.
+   */
+  title?: string
 }
 
 /**
@@ -362,11 +368,21 @@ export async function generateSimulation(opts: {
         total: nodes,
       })
     },
+    (attempt, attempts) => onProgress?.({
+      stage: 'outline',
+      detail: `La conexión se cortó antes de terminar. Reintentando (intento ${attempt} de ${attempts})…`,
+    }),
   )
 
   const plan = outlineData as { metadata: unknown; start_node_id?: string; outline?: OutlineBeat[] }
   const outline = (plan.outline ?? []).filter((b) => b && typeof b.id === 'string')
   if (outline.length === 0) throw new Error('La IA no devolvió un esqueleto válido para el escenario. Inténtalo de nuevo.')
+
+  // El esqueleto ya trae la ficha: desde acá la simulación tiene nombre propio y el
+  // indicador global puede dejar de llamarla "sin título" — falta lo más largo
+  // (escribir los diálogos) y es justo cuando conviene saber qué se está generando.
+  const planTitle = String((plan.metadata as Record<string, unknown> | undefined)?.title_es ?? '').trim()
+  if (planTitle) onProgress?.({ stage: 'outline', title: planTitle })
 
   // ETAPA 2 — los diálogos, de a pocos momentos por petición. Acá está la clave: el
   // escenario puede tener 12 o 34 momentos y ninguna petición se alarga por eso.
@@ -398,6 +414,10 @@ export async function generateSimulation(opts: {
           total: ids.length,
         })
       },
+      (attempt, attempts) => onProgress?.({
+        stage: 'writing',
+        detail: `La conexión se cortó antes de terminar. Reintentando el lote (intento ${attempt} de ${attempts})…`,
+      }),
     )
 
     Object.assign(writtenNodes, (nodeData as { nodes?: Record<string, unknown> })?.nodes ?? {})
@@ -493,11 +513,15 @@ export async function editSimulation(opts: {
   documentName?: string
 }, signal?: AbortSignal, onProgress?: (p: SimProgress) => void): Promise<{ patch: ScenarioPatch; usage: CacheUsage }> {
   const total = opts.focusIds?.length || undefined
+  /** Máximo de momentos escritos visto: si baja, la función volvió a preguntar. */
+  let peak = 0
   onProgress?.({
     stage: 'editing',
-    detail: total
-      ? `Claude está leyendo la simulación completa y reescribiendo los ${total} momentos que elegiste.`
-      : 'Claude está leyendo la simulación completa para decidir qué momentos hay que tocar.',
+    detail: total === 1
+      ? 'Claude está leyendo la simulación y reescribiendo el momento que elegiste.'
+      : total
+        ? `Claude está leyendo la simulación y reescribiendo los ${total} momentos que elegiste.`
+        : 'Claude está leyendo la simulación completa para decidir qué momentos hay que tocar.',
   })
 
   // El tipo de llamada ya está decidido en la ficha: se manda explícito para que la
@@ -521,11 +545,24 @@ export async function editSimulation(opts: {
     documentName: opts.documentName,
   }, signal, ({ nodes: written }) => {
     if (written <= 0) return
+    // OJO: esto cuenta los momentos que la IA va escribiendo, que NO es lo mismo que
+    // los que elegiste. Mostrarlo como "8/1" hacía pensar que se estaba pasando de la
+    // raya; y si el conteo baja es que la función volvió a preguntar (segunda
+    // oportunidad cuando la respuesta no trajo el JSON), no que empezó de cero.
+    if (written < peak) {
+      onProgress?.({ stage: 'editing', detail: 'La IA se salió del formato. Se lo estamos pidiendo de nuevo…' })
+      peak = written
+      return
+    }
+    peak = written
     onProgress?.({
       stage: 'editing',
-      detail: `Reescribiendo los momentos afectados: ${written} listo${written === 1 ? '' : 's'}.`,
-      done: written,
-      ...(total ? { total } : {}),
+      detail: `Reescribiendo: ${written} momento${written === 1 ? '' : 's'} escrito${written === 1 ? '' : 's'}.`,
+    })
+  }, (attempt, attempts) => {
+    onProgress?.({
+      stage: 'editing',
+      detail: `La conexión se cortó antes de terminar. Reintentando (intento ${attempt} de ${attempts})…`,
     })
   })
 
@@ -704,6 +741,19 @@ function edgeInfraError(status: number): string | null {
 type SimStreamTick = (p: { nodes: number; chars: number }) => void
 
 /**
+ * El stream se cortó a mitad de camino: no llegó el evento 'done' ni un 'error'.
+ * No es un fallo de la IA sino de la conexión (el gateway de Supabase cierra la
+ * conexión inactiva, o el worker se quedó sin recursos), así que se distingue del
+ * resto de errores para poder REINTENTARLO en vez de mostrárselo al capacitador.
+ */
+class SimStreamTruncated extends Error {
+  constructor() {
+    super('La conexión se interrumpió mientras se generaba el escenario.')
+    this.name = 'SimStreamTruncated'
+  }
+}
+
+/**
  * Lee la respuesta en streaming de `generate-simulation` (eventos SSE `data: {...}`).
  * El escenario final llega en el evento `done`; los errores que ocurren DESPUÉS de
  * que salieron los headers viajan como evento `error`, no como status HTTP.
@@ -744,11 +794,43 @@ async function readSimulationStream(
   }
 
   // El stream terminó sin 'done': la conexión se cayó a mitad de la escritura.
-  if (!done) throw new Error('La conexión se interrumpió mientras se generaba el escenario. Vuelve a intentarlo.')
+  if (!done) throw new SimStreamTruncated()
   return done
 }
 
+/** Intentos totales cuando la conexión se corta sola (el primero + 2 reintentos). */
+const SIM_STREAM_ATTEMPTS = 3
+
+/**
+ * Reintenta solo cuando la conexión se cortó (no cuando la IA falló de verdad).
+ * Nada se guarda antes del evento 'done', así que volver a pedirlo es seguro: el
+ * capacitador ve "reintentando" en vez de un error que lo obliga a empezar de cero.
+ */
 async function postGenerateSimulation(
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+  onTick?: SimStreamTick,
+  onRetry?: (attempt: number, total: number) => void,
+): Promise<{ data: unknown; usage: CacheUsage }> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await runGenerateSimulation(body, signal, onTick)
+    } catch (err) {
+      const truncated = err instanceof SimStreamTruncated
+      if (!truncated) throw err
+      if (attempt >= SIM_STREAM_ATTEMPTS || signal?.aborted) {
+        throw new Error(
+          'La conexión con el servidor de IA se cortó varias veces seguidas. Vuelve a intentarlo en un minuto; si sigue pasando, pide el ajuste por partes (menos momentos a la vez).',
+        )
+      }
+      onRetry?.(attempt + 1, SIM_STREAM_ATTEMPTS)
+      await new Promise((r) => setTimeout(r, 1500 * attempt))
+      if (signal?.aborted) throw err
+    }
+  }
+}
+
+async function runGenerateSimulation(
   body: Record<string, unknown>,
   signal?: AbortSignal,
   onTick?: SimStreamTick,

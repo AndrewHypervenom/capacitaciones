@@ -30,6 +30,14 @@ export default {
           green: 'rgb(var(--brand-green) / <alpha-value>)',
           'green-soft': 'rgb(var(--brand-green-soft) / <alpha-value>)',
           magenta: 'rgb(var(--brand-magenta) / <alpha-value>)',
+          /**
+           * Acento de los paneles de IA. Estaba USADO en 7 archivos pero nunca
+           * definido acá: `bg-brand-violet/8` no generaba ninguna regla, así que
+           * el momento seleccionado y las tarjetas de generación se veían planas
+           * (peor en modo claro, donde no hay contraste que las salve).
+           * Apunta al magenta corporativo, que ya tiene su variante por tema.
+           */
+          violet: 'rgb(var(--neon-violet) / <alpha-value>)',
         },
         success: 'rgb(var(--success) / <alpha-value>)',
         danger: 'rgb(var(--danger) / <alpha-value>)',

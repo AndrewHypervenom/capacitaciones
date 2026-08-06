@@ -21,6 +21,20 @@ export interface BgTask {
   incomplete?: boolean;
   /** Acción destacada disponible al terminar. */
   action?: BgTaskAction;
+  /**
+   * El resultado exige que alguien haga algo (p. ej. aplicar una simulación recién
+   * generada). La tarjeta NO se auto-oculta: se queda hasta que el usuario abre el
+   * resultado o la cierra a mano. Sin esto, un proceso que termina mientras se está
+   * en otra pantalla se desvanece a los 8 segundos y el trabajo (y los tokens) se
+   * dan por perdidos.
+   */
+  sticky?: boolean;
+  /**
+   * Qué decirle al usuario si cierra la tarjeta con la X. Cerrar NO tira el
+   * resultado, pero eso no se adivina: sin este aviso, un clic sin querer parece
+   * haber borrado el trabajo.
+   */
+  dismissHint?: string;
   /** No se serializa; sirve para abortar el trabajo en curso. */
   controller?: AbortController;
 }
@@ -29,6 +43,8 @@ interface FinishOpts {
   detail?: string;
   action?: BgTaskAction;
   incomplete?: boolean;
+  sticky?: boolean;
+  dismissHint?: string;
 }
 
 interface BgTaskState {
@@ -36,12 +52,17 @@ interface BgTaskState {
   start: (title: string, detail?: string, opts?: { cancelable?: boolean }) => string;
   update: (id: string, patch: Partial<Pick<BgTask, 'title' | 'detail'>>) => void;
   succeed: (id: string, arg?: string | FinishOpts) => void;
-  fail: (id: string, detail?: string) => void;
+  fail: (id: string, arg?: string | FinishOpts) => void;
   /** Finaliza como cancelado (sin contenido guardado). */
   markCanceled: (id: string, arg?: string | FinishOpts) => void;
   /** Solicita cancelar: aborta el controller y marca la tarea como "cancelando". */
   requestCancel: (id: string) => void;
   dismiss: (id: string) => void;
+  /**
+   * Vuelve a mostrar una tarea YA terminada (tras recargar la página). Devuelve el
+   * id nuevo: los ids son de esta sesión, así que no se reutiliza el viejo.
+   */
+  restore: (task: Omit<BgTask, 'id' | 'cancelable' | 'canceling' | 'controller'>) => string;
 }
 
 let seq = 0;
@@ -67,10 +88,14 @@ export const useBgTaskStore = create<BgTaskState>()((set, get) => {
               detail: opts.detail ?? t.detail,
               action: opts.action ?? t.action,
               incomplete: opts.incomplete ?? t.incomplete,
+              sticky: opts.sticky ?? t.sticky,
+              dismissHint: opts.dismissHint ?? t.dismissHint,
             }
           : t,
       ),
     });
+    // Una tarea "sticky" espera al usuario: nunca se auto-oculta.
+    if (opts.sticky) return;
     const ttl = status === 'error' ? ERROR_TTL : status === 'canceled' ? CANCELED_TTL : SUCCESS_TTL;
     setTimeout(() => get().dismiss(id), ttl);
   };
@@ -91,7 +116,7 @@ export const useBgTaskStore = create<BgTaskState>()((set, get) => {
     update: (id, patch) =>
       set({ tasks: get().tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }),
     succeed: (id, arg) => finish(id, 'success', normalize(arg)),
-    fail: (id, detail) => finish(id, 'error', { detail }),
+    fail: (id, arg) => finish(id, 'error', normalize(arg)),
     markCanceled: (id, arg) => finish(id, 'canceled', normalize(arg)),
     requestCancel: (id) => {
       const task = get().tasks.find((t) => t.id === id);
@@ -102,6 +127,11 @@ export const useBgTaskStore = create<BgTaskState>()((set, get) => {
       });
     },
     dismiss: (id) => set({ tasks: get().tasks.filter((t) => t.id !== id) }),
+    restore: (task) => {
+      const id = `bgtask-${++seq}`;
+      set({ tasks: [...get().tasks, { ...task, id, cancelable: false, canceling: false }] });
+      return id;
+    },
   };
 });
 
@@ -118,9 +148,13 @@ export const bgTask = {
   update: (id: string, patch: Partial<Pick<BgTask, 'title' | 'detail'>>) =>
     useBgTaskStore.getState().update(id, patch),
   succeed: (id: string, arg?: string | FinishOpts) => useBgTaskStore.getState().succeed(id, arg),
-  fail: (id: string, detail?: string) => useBgTaskStore.getState().fail(id, detail),
+  fail: (id: string, arg?: string | FinishOpts) => useBgTaskStore.getState().fail(id, arg),
   markCanceled: (id: string, arg?: string | FinishOpts) =>
     useBgTaskStore.getState().markCanceled(id, arg),
+  dismiss: (id: string) => useBgTaskStore.getState().dismiss(id),
+  /** Reaparece una tarea terminada tras recargar. Devuelve el id nuevo. */
+  restore: (task: Omit<BgTask, 'id' | 'cancelable' | 'canceling' | 'controller'>) =>
+    useBgTaskStore.getState().restore(task),
   /** ¿Se pidió cancelar esta tarea? (el AbortSignal ya fue abortado). */
   aborted: (id: string) => {
     const t = useBgTaskStore.getState().tasks.find((x) => x.id === id);

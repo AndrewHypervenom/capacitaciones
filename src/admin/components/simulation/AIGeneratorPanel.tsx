@@ -205,6 +205,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const startRun = useSimAiStore((s) => s.start)
   const cancelRun = useSimAiStore((s) => s.cancel)
   const clearRun = useSimAiStore((s) => s.clear)
+  const appliedRun = useSimAiStore((s) => s.applied)
 
   const loading = run?.status === 'running'
   const preview = (run?.status === 'done' ? run.result : null) as GeneratedDialogue | GeneratedChoice | null
@@ -215,7 +216,11 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const stepIdx = run?.stepIdx ?? 0
   const note = run?.note
   const subProgress = run?.subProgress
-  const runTitle = run?.title ?? i18n.t('admin.simulations.ai_gen.title_generating')
+  // En cuanto la IA decide cómo se llama el escenario, el progreso lo dice por su
+  // nombre en vez de un genérico "Generando escenario…".
+  const runTitle = run?.resolvedTitle
+    ? i18n.t('admin.simulations.ai_gen.title_named', { name: run.resolvedTitle })
+    : run?.title ?? i18n.t('admin.simulations.ai_gen.title_generating')
 
   useEffect(() => {
     if (!campaignId) return
@@ -300,7 +305,9 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const handleApply = () => {
     if (preview) {
       onApply(preview)
-      clearRun(runKey)
+      // `applied`, no `clear`: cargar en el editor no es guardar. El respaldo en la
+      // base se borra recién cuando la simulación se guarda de verdad.
+      appliedRun(runKey)
       setOpen(false)
     }
   }
@@ -619,7 +626,15 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
                   >
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                   </motion.span>
-                  <span>{error}</span>
+                  <span className="flex-1">{error}</span>
+                  {/* Sin esto el fallo queda guardado y vuelve a saludar en cada recarga. */}
+                  <button
+                    onClick={() => clearRun(runKey)}
+                    aria-label={i18n.t('bgtask.dismiss')}
+                    className="shrink-0 text-danger/60 hover:text-danger transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </motion.div>
             )}
@@ -663,7 +678,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 28 }}
               >
-                <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleRegenerate} />
+                <PreviewBox generated={preview} type={type} onApply={handleApply} onRegenerate={handleRegenerate} restored={run?.restored} />
               </motion.div>
             ) : !loading ? (
               <motion.div
@@ -707,12 +722,14 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
 }
 
 function PreviewBox({
-  generated, type, onApply, onRegenerate,
+  generated, type, onApply, onRegenerate, restored,
 }: {
   generated: GeneratedDialogue | GeneratedChoice
   type: 'dialogue' | 'choice'
   onApply: () => void
   onRegenerate: () => void
+  /** Rescatado tras recargar: sin el contexto original no se puede repetir la corrida. */
+  restored?: boolean
 }) {
   const { metadata, nodes } = generated
   const nodeEntries = Object.entries(nodes as Record<string, Record<string, unknown>>)
@@ -748,20 +765,30 @@ function PreviewBox({
           {typeof meta.call_type === 'string' && <CallTypeBadge callType={meta.call_type} />}
         </div>
         <div className="flex items-center gap-2">
-          <motion.button
-            onClick={onRegenerate}
-            whileHover={reduce ? undefined : { rotate: -180 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-            aria-label="Regenerar"
-            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors p-1.5 rounded-lg hover:bg-glass/8"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </motion.button>
+          {/* Rescatado de una sesión anterior: el documento y el escenario de partida
+              no se guardan, así que "Regenerar" no podría repetir la misma corrida. */}
+          {!restored && (
+            <motion.button
+              onClick={onRegenerate}
+              whileHover={reduce ? undefined : { rotate: -180 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+              aria-label="Regenerar"
+              className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors p-1.5 rounded-lg hover:bg-glass/8"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </motion.button>
+          )}
           <Magnetic strength={0.25}>
             <Button size="sm" onClick={onApply}>{i18n.t('admin.simulations.ai_gen.load_in_editor')}</Button>
           </Magnetic>
         </div>
       </div>
+
+      {restored && (
+        <p className="relative rounded-lg bg-neon-cyan/8 border border-neon-cyan/20 px-3 py-2 text-[11.5px] text-text-muted leading-snug">
+          {i18n.t('admin.simulations.ai_gen.restored_hint')}
+        </p>
+      )}
 
       <div className="relative grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
         <div>
