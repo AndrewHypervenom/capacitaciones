@@ -10,6 +10,7 @@ import {
 } from '@/services/choiceScenarios.admin.service'
 import { type GeneratedChoice, type GeneratedDialogue, type GeneratedScenario } from '@/services/ai.service'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
+import { SimulationEditPanel } from '@/admin/components/simulation/SimulationEditPanel'
 import { ChoiceNodeForm, type ChoiceNodeData } from '@/admin/components/simulation/ChoiceNodeForm'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -317,6 +318,12 @@ export default function ChoiceSimEditor() {
 
       {/* AI Generator — abierto por defecto salvo en modo manual */}
       <AIGeneratorPanel type="choice" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} currentContent={currentContent} />
+
+      {/* Ajustar con IA: cambiar UNA parte sin rehacer la simulación entera. Solo
+          tiene sentido cuando ya hay algo escrito. */}
+      {currentContent && (
+        <SimulationEditPanel type="choice" current={currentContent} onApply={handleApplyGenerated} campaignId={campaignId} />
+      )}
 
       {/* Guía rápida para creación manual */}
       {manualGuide && (

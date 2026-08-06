@@ -13,6 +13,7 @@ import {
 import { getCoursesForCampaign } from '@/services/courses.service'
 import { type GeneratedDialogue, type GeneratedScenario } from '@/services/ai.service'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
+import { SimulationEditPanel } from '@/admin/components/simulation/SimulationEditPanel'
 import {
   DialogueNodeForm, type DialogueNodeData,
 } from '@/admin/components/simulation/DialogueNodeForm'
@@ -423,6 +424,12 @@ export default function SimulationEditor() {
 
       {/* AI Generator — abierto por defecto salvo en modo manual */}
       <AIGeneratorPanel type="dialogue" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} currentContent={currentContent} />
+
+      {/* Ajustar con IA: cambiar UNA parte sin rehacer la simulación entera. Solo
+          tiene sentido cuando ya hay algo escrito. */}
+      {currentContent && (
+        <SimulationEditPanel type="dialogue" current={currentContent} onApply={handleApplyGenerated} campaignId={campaignId} />
+      )}
 
       {/* Guía rápida para creación manual */}
       {manualGuide && (

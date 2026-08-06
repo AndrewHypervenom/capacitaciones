@@ -1,22 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, ChevronDown, BookOpen, AlertTriangle, CheckCircle2, RotateCcw, Clock, X, Wand2, Languages, FileText, Upload, Loader2, PhoneIncoming, PhoneOutgoing, Radar } from 'lucide-react'
-import {
-  GenerationProgress, type GenerationStep,
-  SIM_STEP_READ_MODULE, SIM_STEP_CONDENSE_DOC, SIM_STEP_OUTLINE, SIM_STEP_WRITE, SIM_STEP_IMPROVE, SIM_STEP_TRANSLATE, SIM_STEP_FINALIZE,
-} from '@/admin/components/GenerationProgress'
+import { GenerationProgress } from '@/admin/components/GenerationProgress'
 import { ease, Stagger, StaggerItem, Magnetic } from '@/components/ui/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  generateSimulation, translateScenario, getModuleContextText, SCENARIO_LENGTH_NODES,
-  simDocNeedsCondense, estimateDocPages,
-  type CacheUsage, type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario,
-  type ScenarioLength, type SimProgress, type CallType,
+  SCENARIO_LENGTH_NODES, simDocNeedsCondense, estimateDocPages,
+  type GeneratedDialogue, type GeneratedChoice, type GeneratedScenario,
+  type ScenarioLength, type CallType,
 } from '@/services/ai.service'
 import { extractDocumentText, ACCEPTED_DOC_EXTENSIONS } from '@/lib/documentExtract'
-import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
+import { useSimAiStore, SIM_CACHE_KEY, type SimAiInput } from '@/stores/simAiStore'
 import { Button } from '@/components/ui/Button'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
@@ -24,9 +20,6 @@ import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
-
-const SIM_CACHE_KEY = 'ai_sim_cache_expires'
-const CACHE_DURATION_MS = 5 * 60 * 1000
 
 function formatMs(ms: number) {
   const s = Math.ceil(ms / 1000)
@@ -36,12 +29,6 @@ function formatMs(ms: number) {
 function useCacheTimer() {
   const [remaining, setRemaining] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const notifyCache = useCallback((usage: CacheUsage) => {
-    if (usage.cache_creation_input_tokens > 0) {
-      localStorage.setItem(SIM_CACHE_KEY, String(Date.now() + CACHE_DURATION_MS))
-    }
-  }, [])
 
   useEffect(() => {
     const tick = () => {
@@ -61,7 +48,7 @@ function useCacheTimer() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [])
 
-  return { remaining, notifyCache }
+  return remaining
 }
 
 interface Module { id: string; title_es: string }
@@ -180,14 +167,21 @@ interface Props {
 export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignId: campaignIdProp, currentContent }: Props) {
   const { campaignId: authCampaignId } = useAuth()
   const campaignId = campaignIdProp || authCampaignId
-  const { remaining, notifyCache } = useCacheTimer()
-  const [open, setOpen] = useState(defaultOpen)
+  const remaining = useCacheTimer()
+  // La corrida NO vive en este componente: vive en el store global. Así el proceso
+  // sigue aunque el capacitador se vaya a otra vista (igual que crear un curso con
+  // IA), el indicador de abajo a la izquierda lo acompaña por todo el sitio y al
+  // volver acá el resultado lo está esperando.
+  //
+  // La clave se fija en el primer render: al guardar, la URL pasa de `/new` a
+  // `/:id` sin desmontar el editor y la corrida en vuelo no se puede perder.
+  const [runKey] = useState(() => `${type}:${window.location.pathname}`)
+  // Al volver a esta pantalla con una corrida viva (o con su resultado esperando),
+  // el panel arranca abierto: es exactamente lo que se viene a buscar.
+  const [open, setOpen] = useState<boolean>(() => defaultOpen || !!useSimAiStore.getState().runs[runKey])
   const [description, setDescription] = useState('')
   const [modules, setModules] = useState<Module[]>([])
   const [selectedModuleId, setSelectedModuleId] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<GeneratedDialogue | GeneratedChoice | null>(null)
   // Media por defecto: 'long' son ~28 momentos y con un documento largo se iba hasta
   // los 7 minutos. Quien quiera el escenario más extenso lo elige a propósito.
   const [length, setLength] = useState<ScenarioLength>('medium')
@@ -197,7 +191,6 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   // Por defecto la IA escribe solo en español: es bastante más rápido y el capacitador
   // primero quiere ver el escenario. La traducción se pide después con "Traducir".
   const [translateNow, setTranslateNow] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
   // Documento de apoyo: se lee en el navegador (mismo extractor que "Generar
   // contenido") y viaja solo como contexto del prompt; no se guarda en la base.
   const [doc, setDoc] = useState<{ name: string; text: string } | null>(null)
@@ -206,19 +199,23 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const reduce = useReducedMotion()
-  // Recuerda si el último preview vino de "Generar" o "Mejorar" para que
-  // Regenerar repita la misma acción.
-  const lastModeRef = useRef<'generate' | 'improve'>('generate')
   const canImprove = !!currentContent
 
+  const run = useSimAiStore((s) => s.runs[runKey])
+  const startRun = useSimAiStore((s) => s.start)
+  const cancelRun = useSimAiStore((s) => s.cancel)
+  const clearRun = useSimAiStore((s) => s.clear)
+
+  const loading = run?.status === 'running'
+  const preview = (run?.status === 'done' ? run.result : null) as GeneratedDialogue | GeneratedChoice | null
+  const error = run?.status === 'error' ? run.error ?? null : null
   // Progreso REAL: los pasos se arman según lo que de verdad va a ocurrir y avanzan
   // con el proceso, en vez de correr un temporizador de mentiras.
-  const [runSteps, setRunSteps] = useState<GenerationStep[]>([])
-  const [stepIdx, setStepIdx] = useState(0)
-  const [note, setNote] = useState<string | undefined>()
-  /** Momentos ya escritos / totales: alimenta el contador y la barra del indicador. */
-  const [subProgress, setSubProgress] = useState<{ done: number; total: number } | undefined>()
-  const [runTitle, setRunTitle] = useState<string>(i18n.t('admin.simulations.ai_gen.title_generating'))
+  const runSteps = run?.steps ?? []
+  const stepIdx = run?.stepIdx ?? 0
+  const note = run?.note
+  const subProgress = run?.subProgress
+  const runTitle = run?.title ?? i18n.t('admin.simulations.ai_gen.title_generating')
 
   useEffect(() => {
     if (!campaignId) return
@@ -271,111 +268,39 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     }
   }
 
-  const runAi = async (mode: 'generate' | 'improve' | 'translate') => {
+  const runAi = (mode: 'generate' | 'improve' | 'translate') => {
     // Con documento la descripción es opcional: el escenario puede salir del material.
     if (mode === 'generate' && !description.trim() && !doc) return
     if (mode !== 'generate' && !currentContent) return
-    if (mode !== 'translate') lastModeRef.current = mode
 
-    // Pasos reales de ESTA corrida.
-    const usesModule = mode !== 'translate' && !!selectedModuleId
-    const usesDoc = mode !== 'translate' && !!doc
-    const condenses = usesDoc && simDocNeedsCondense(doc!.text)
-    const willTranslate = mode === 'translate' || translateNow
-    const steps: GenerationStep[] = []
-    if (usesModule) steps.push(SIM_STEP_READ_MODULE)
-    if (condenses) steps.push(SIM_STEP_CONDENSE_DOC)
-    if (mode !== 'translate') {
-      // Ahora son dos etapas de verdad: primero el mapa, después los diálogos por lotes.
-      steps.push(SIM_STEP_OUTLINE)
-      steps.push(mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE)
+    const input: SimAiInput = {
+      type, mode, description,
+      moduleId: selectedModuleId || undefined,
+      doc,
+      length, callType,
+      translateNow,
+      existing: mode === 'generate' ? null : currentContent,
+      campaignId,
     }
-    if (willTranslate) steps.push(SIM_STEP_TRANSLATE)
-    steps.push(SIM_STEP_FINALIZE)
-    const idxOf = (s: GenerationStep) => steps.indexOf(s)
-
-    const controller = new AbortController()
-    abortRef.current = controller
-    setRunSteps(steps)
-    setStepIdx(0)
-    setNote(undefined)
-    setSubProgress(undefined)
-    setRunTitle(i18n.t(mode === 'translate'
-      ? 'admin.simulations.ai_gen.title_translating'
-      : 'admin.simulations.ai_gen.title_generating'))
-    setLoading(true)
-    setError(null)
-    setPreview(null)
-
-    const onProgress = (p: SimProgress) => {
-      const step = p.stage === 'translating' ? SIM_STEP_TRANSLATE
-        : p.stage === 'document' ? SIM_STEP_CONDENSE_DOC
-        : p.stage === 'outline' ? SIM_STEP_OUTLINE
-        : mode === 'improve' ? SIM_STEP_IMPROVE : SIM_STEP_WRITE
-      const i = idxOf(step)
-      if (i >= 0) setStepIdx(i)
-      setNote(p.detail)
-      setSubProgress(p.total ? { done: p.done ?? 0, total: p.total } : undefined)
-    }
-
-    try {
-      // Cupo diario: generar, mejorar o traducir un escenario cuenta como UNA
-      // operación. Se descuenta antes de llamar a la IA.
-      await consumeAiOperation(
-        mode === 'translate' ? 'translation' : 'simulation',
-        description.slice(0, 80) || i18n.t('admin.simulations.ai_gen.title_generating'),
-        campaignId,
-      )
-
-      let moduleContext: string | undefined
-      if (usesModule) {
-        setNote(i18n.t('admin.simulations.ai_gen.note_reading_module'))
-        moduleContext = await getModuleContextText(selectedModuleId)
-        setStepIdx(idxOf(SIM_STEP_READ_MODULE) + 1)
-      }
-
-      if (mode === 'translate') {
-        const translated = await translateScenario(currentContent!, controller.signal, onProgress)
-        setStepIdx(steps.length - 1)
-        setPreview(translated as GeneratedDialogue | GeneratedChoice)
-      } else {
-        const result = await generateSimulation({
-          type,
-          description,
-          moduleContext,
-          documentContext: usesDoc ? doc!.text : undefined,
-          documentName: usesDoc ? doc!.name : undefined,
-          length,
-          callType,
-          translate: translateNow,
-          existing: mode === 'improve' ? currentContent ?? undefined : undefined,
-        }, controller.signal, onProgress)
-        setStepIdx(steps.length - 1)
-        setPreview(result.data)
-        notifyCache(result.usage)
-      }
-    } catch (e) {
-      // Cancelación del usuario: no es un error, se descarta en silencio.
-      if (controller.signal.aborted || (e as Error)?.name === 'AbortError') return
-      setError(isQuotaExceeded(e) ? i18n.t('admin.ai_limits.blocked_task') : (e as Error).message)
-    } finally {
-      abortRef.current = null
-      setLoading(false)
-      setNote(undefined)
-    }
+    startRun(runKey, window.location.pathname, input)
   }
 
   const handleGenerate = () => runAi('generate')
   const handleImprove = () => runAi('improve')
   const handleTranslate = () => runAi('translate')
-  const handleRegenerate = () => runAi(lastModeRef.current)
 
-  const handleCancel = () => abortRef.current?.abort()
+  /** Regenerar repite EXACTAMENTE la corrida anterior (con su documento y sus opciones). */
+  const handleRegenerate = () => {
+    if (!run) return
+    startRun(runKey, run.returnPath, run.input)
+  }
+
+  const handleCancel = () => cancelRun(runKey)
 
   const handleApply = () => {
     if (preview) {
       onApply(preview)
-      setPreview(null)
+      clearRun(runKey)
       setOpen(false)
     }
   }
@@ -715,8 +640,12 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
             {loading && (
               <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="flex justify-end"
+                className="flex flex-wrap items-center justify-between gap-2"
               >
+                {/* Irse de la pantalla ya no cancela nada: hay que decirlo. */}
+                <p className="text-[11px] leading-relaxed text-text-subtle flex-1 min-w-[12rem]">
+                  {i18n.t('admin.simulations.ai_gen.bg_hint')}
+                </p>
                 <button
                   onClick={handleCancel}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border/20 px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text hover:border-glass-border/40 transition-colors"

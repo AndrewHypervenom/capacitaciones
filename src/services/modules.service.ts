@@ -483,7 +483,7 @@ export async function moveModuleToCampaign(
  * la completitud. Si la RLS de borrado suave los oculta, el insert choca con el
  * índice único y el reintento 23505 de `createModule` resuelve con sufijo.
  */
-async function freeSlugInCampaign(campaignId: string, base: string): Promise<string> {
+export async function freeSlugInCampaign(campaignId: string, base: string): Promise<string> {
   const { data } = await supabase
     .from('modules')
     .select('slug')

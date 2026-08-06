@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
   RefreshCw,
@@ -11,6 +12,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  Combine,
   Copy,
   Eye,
   FolderOpen,
@@ -30,6 +32,7 @@ import {
   Rocket,
   Flag,
   Save,
+  Scissors,
   Search,
   Share2,
   Sparkles,
@@ -68,6 +71,10 @@ import {
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
 import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
+import { ModuleSplitModal } from '@/admin/components/ModuleSplitModal'
+import { ModuleMergeModal } from '@/admin/components/ModuleMergeModal'
+import { SurgeryUndoBar } from '@/admin/components/SurgeryUndoBar'
+import type { PendingSurgery } from '@/services/moduleSurgery.service'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { getCourseTranslationState } from '@/services/translation.service'
@@ -89,6 +96,7 @@ import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/Cour
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Select } from '@/components/ui/Select'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { Button } from '@/components/ui/Button'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
@@ -224,6 +232,17 @@ export default function CourseEditor() {
 
   // Módulos
   const [campaignModules, setCampaignModules] = useState<DbModuleRow[]>([])
+
+  // Cirugía de módulos: unir varios en uno o separar uno largo en dos.
+  // `pendingSurgery` sostiene la operación mientras corre la ventana de Deshacer.
+  const [selectedForMerge, setSelectedForMerge] = useState<string[]>([])
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [splitModuleId, setSplitModuleId] = useState<string | null>(null)
+  const [pendingSurgery, setPendingSurgery] = useState<{
+    key: number
+    label: string
+    pending: PendingSurgery
+  } | null>(null)
 
   // Asignaciones — `*Base` = lo que hay en BD; `draft*` = edición local pendiente de guardar
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -586,6 +605,36 @@ export default function CourseEditor() {
   )
   const pendingRecert = useMemo(() => recert.filter((r) => r.needs_recert), [recert])
 
+  // ── Cirugía de módulos ────────────────────────────────────────────────────
+  // También ANTES del early return, por lo mismo que los dos de arriba.
+
+  // Cuántas secciones tiene cada módulo. Sale de la biblioteca de la campaña
+  // (que trae `module_sections(id)`), porque el embed del curso no las lista y
+  // sin ese número no se sabe si un módulo se puede separar.
+  const sectionCountById = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const m of campaignModules) out[m.id] = m.module_sections?.length ?? 0
+    return out
+  }, [campaignModules])
+
+  /**
+   * Los módulos elegidos SIEMPRE se unen en el orden del curso, no en el orden
+   * en que se marcaron: es lo que el aprendiz va a leer y lo que el capacitador
+   * ve en pantalla.
+   */
+  const mergeOrder = useMemo(
+    () => (course?.modules ?? []).filter((m) => selectedForMerge.includes(m.id)).map((m) => m.id),
+    [course, selectedForMerge],
+  )
+
+  /** Cierra la operación: refresca el curso y limpia la selección. */
+  const afterSurgery = useCallback(async () => {
+    setSelectedForMerge([])
+    invalidateModulesCache()
+    invalidateLearnerCoursesCache()
+    await Promise.all([reload(), reloadModules()])
+  }, [reload, reloadModules])
+
   if (loading || !course) {
     return (
       <div className="p-4 sm:p-8 space-y-3">
@@ -946,6 +995,12 @@ export default function CourseEditor() {
     }
   }
 
+  const toggleMergeSelection = (moduleId: string) => {
+    setSelectedForMerge((prev) =>
+      prev.includes(moduleId) ? prev.filter((id) => id !== moduleId) : [...prev, moduleId],
+    )
+  }
+
   // ── Asignación: edición local (los cambios se persisten con "Guardar asignaciones") ──
 
   const handleToggleCampaign = (campaignId: string) => {
@@ -1177,51 +1232,65 @@ export default function CourseEditor() {
           )}
           {/* Vista previa: la página del curso del aprendiz, en un modal, sin
               salir del editor. Funciona aunque el curso siga en borrador. */}
-          <Button
-            variant="glass"
-            size="sm"
-            onClick={handleOpenPreview}
-            disabled={openingPreview}
-            title={t('admin.preview.button_hint')}
-            className="flex items-center gap-1.5"
-          >
-            {openingPreview
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Monitor className="h-3.5 w-3.5" />}
-            {t('admin.preview.button')}
-          </Button>
+          <Tooltip label={t('admin.preview.button_hint')} className="shrink-0" maxWidth={230}>
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={handleOpenPreview}
+              disabled={openingPreview}
+              className="flex items-center gap-1.5 disabled:pointer-events-none"
+            >
+              {openingPreview
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Monitor className="h-3.5 w-3.5" />}
+              {t('admin.preview.button')}
+            </Button>
+          </Tooltip>
 
-          <Button
-            variant="glass"
-            size="sm"
-            onClick={handleViewWorld}
-            disabled={openingWorld}
-            className="flex items-center gap-1.5"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            {openingWorld ? t('admin.courses.opening_world') : t('admin.courses.view_world')}
-          </Button>
+          <Tooltip label={t('admin.courses.tip_view_world')} className="shrink-0" maxWidth={230}>
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={handleViewWorld}
+              disabled={openingWorld}
+              className="flex items-center gap-1.5 disabled:pointer-events-none"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              {openingWorld ? t('admin.courses.opening_world') : t('admin.courses.view_world')}
+            </Button>
+          </Tooltip>
 
           {/* Traducción diferida: el contenido nace en español y se traduce una
               sola vez, cuando el capacitador da el curso por terminado. Publicar
               el curso ES esa señal de "terminado": mientras esté en borrador el
               botón queda bloqueado para no pagar traducciones que se reescriben. */}
-          <Button
-            variant="glass"
-            size="sm"
-            onClick={() => setTranslateOpen(true)}
-            disabled={!course.is_published}
-            title={course.is_published ? t('admin.translate.button') : t('admin.translate.locked_hint')}
-            className="flex items-center gap-1.5"
+          <Tooltip
+            label={
+              !course.is_published
+                ? t('admin.translate.locked_hint')
+                : transPending > 0
+                  ? t('admin.translate.pending_hint', { n: transPending })
+                  : t('admin.translate.ready_hint')
+            }
+            className="shrink-0"
+            maxWidth={260}
           >
-            <Languages className="h-3.5 w-3.5" />
-            {t('admin.translate.button')}
-            {course.is_published && transPending > 0 && (
-              <span className="ml-0.5 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
-                {transPending}
-              </span>
-            )}
-          </Button>
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={() => setTranslateOpen(true)}
+              disabled={!course.is_published}
+              className="flex items-center gap-1.5 disabled:pointer-events-none"
+            >
+              <Languages className="h-3.5 w-3.5" />
+              {t('admin.translate.button')}
+              {course.is_published && transPending > 0 && (
+                <span className="ml-0.5 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
+                  {transPending}
+                </span>
+              )}
+            </Button>
+          </Tooltip>
         </div>
       </div>
 
@@ -1248,21 +1317,22 @@ export default function CourseEditor() {
         return (
           <div className="rounded-2xl border border-line bg-surface px-4 py-3 mb-6">
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-text-subtle"
-                title={t('admin.courses.publish_panel_hint')}
-              >
-                {t('admin.courses.publish_panel_title')}
-              </span>
+              <Tooltip label={t('admin.courses.publish_panel_hint')} maxWidth={250}>
+                <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+                  {t('admin.courses.publish_panel_title')}
+                </span>
+              </Tooltip>
 
               {/* Chip: Curso */}
               <div className="flex items-center gap-2 rounded-xl border border-line px-3 py-1.5">
                 <GraduationCap className="h-4 w-4 text-text-muted shrink-0" />
                 <span className="text-[13px] font-medium text-text">{t('admin.courses.publish_course')}</span>
-                <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                  course.is_published ? 'bg-primary/10 text-primary' : 'bg-glass/8 text-text-muted')}>
-                  {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
-                </span>
+                <Tooltip label={t('admin.courses.tip_publish_course')} maxWidth={250}>
+                  <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                    course.is_published ? 'bg-primary/10 text-primary' : 'bg-glass/8 text-text-muted')}>
+                    {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
+                  </span>
+                </Tooltip>
                 <Toggle on={course.is_published} onClick={handleTogglePublished} label={t('admin.courses.publish_course')} />
               </div>
 
@@ -1338,14 +1408,16 @@ export default function CourseEditor() {
                     >
                       <MapIcon className="h-3 w-3" /> {t('admin.courses.world_open', { defaultValue: 'Abrir mundo' })}
                     </button>
-                    <button
-                      onClick={handleUnlinkWorld}
-                      disabled={linkingWorld}
-                      title={t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' })}
-                      className="flex items-center justify-center h-6 w-6 rounded-lg text-text-muted border border-line transition-colors hover:text-danger hover:border-danger/40 disabled:opacity-50"
-                    >
-                      <Unlink className="h-3 w-3" />
-                    </button>
+                    <Tooltip label={t('admin.courses.tip_unlink_world')} className="shrink-0" maxWidth={230}>
+                      <button
+                        onClick={handleUnlinkWorld}
+                        disabled={linkingWorld}
+                        aria-label={t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' })}
+                        className="flex items-center justify-center h-6 w-6 rounded-lg text-text-muted border border-line transition-colors hover:text-danger hover:border-danger/40 disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        <Unlink className="h-3 w-3" />
+                      </button>
+                    </Tooltip>
                   </>
                 ) : (
                   <>
@@ -1366,14 +1438,16 @@ export default function CourseEditor() {
                     >
                       <Eye className="h-3 w-3" /> {t('admin.courses.world_publish')}
                     </button>
-                    <button
-                      onClick={handleUnlinkWorld}
-                      disabled={linkingWorld}
-                      title={t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' })}
-                      className="flex items-center justify-center h-6 w-6 rounded-lg text-text-muted border border-line transition-colors hover:text-danger hover:border-danger/40 disabled:opacity-50"
-                    >
-                      <Unlink className="h-3 w-3" />
-                    </button>
+                    <Tooltip label={t('admin.courses.tip_unlink_world')} className="shrink-0" maxWidth={230}>
+                      <button
+                        onClick={handleUnlinkWorld}
+                        disabled={linkingWorld}
+                        aria-label={t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' })}
+                        className="flex items-center justify-center h-6 w-6 rounded-lg text-text-muted border border-line transition-colors hover:text-danger hover:border-danger/40 disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        <Unlink className="h-3 w-3" />
+                      </button>
+                    </Tooltip>
                   </>
                 )}
               </div>
@@ -1611,14 +1685,16 @@ export default function CourseEditor() {
                         {url ? t('admin.courses.cover_replace') : t('admin.courses.upload_cover')}
                       </Button>
                       {url && (
-                        <button
-                          type="button"
-                          onClick={() => handleCoverRemove(slot)}
-                          className="rounded-md border border-line px-1.5 text-text-muted hover:text-danger hover:border-danger/40 transition-colors"
-                          title={t('common.remove')}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        <Tooltip label={t('common.remove')} className="shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleCoverRemove(slot)}
+                            className="rounded-md border border-line px-1.5 text-text-muted hover:text-danger hover:border-danger/40 transition-colors"
+                            aria-label={t('common.remove')}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
                       )}
                     </div>
                   </div>
@@ -1889,9 +1965,41 @@ export default function CourseEditor() {
               </GlassCard>
             ) : (
               <div className="space-y-2">
-                {course.modules.map((mod, idx) => (
-                  <GlassCard key={mod.id} intensity="subtle" rounded="2xl" padding="none">
+                {course.modules.map((mod, idx) => {
+                  const picked = selectedForMerge.includes(mod.id)
+                  const sectionCount = sectionCountById[mod.id] ?? 0
+                  return (
+                  <GlassCard
+                    key={mod.id}
+                    intensity="subtle"
+                    rounded="2xl"
+                    padding="none"
+                    className={cn(
+                      'transition-colors',
+                      picked && 'border-brand-green/45 bg-brand-green/[0.06]',
+                    )}
+                  >
                     <div className="flex items-center gap-3 px-4 py-3">
+                      {/* Marcar dos o más módulos hace aparecer la barra de unir.
+                          Sin modos ni menús: la casilla está siempre a la vista. */}
+                      {course.modules.length > 1 && (
+                        <Tooltip label={t('admin.courses.tip_select_merge')} className="shrink-0">
+                          <button
+                            onClick={() => toggleMergeSelection(mod.id)}
+                            role="checkbox"
+                            aria-checked={picked}
+                            aria-label={t('admin.surgery.select_for_merge')}
+                            className={cn(
+                              'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                              picked
+                                ? 'border-brand-green bg-brand-green/20 text-brand-green'
+                                : 'border-line text-transparent hover:border-brand-green/50',
+                            )}
+                          >
+                            <Check className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                      )}
                       <span className="text-[11px] font-mono text-text-subtle w-5 text-right shrink-0">
                         {idx + 1}
                       </span>
@@ -1917,72 +2025,149 @@ export default function CourseEditor() {
                         </div>
                         <span className="text-[11px] text-text-subtle">{mod.duration_min} min</span>
                       </div>
+                      {/* Fila de acciones: casi todo son iconos sueltos, así que
+                          cada uno lleva su globo explicando QUÉ pasa al pulsarlo.
+                          Los deshabilitados llevan `disabled:pointer-events-none`
+                          a propósito: sin eso el navegador se traga el hover del
+                          botón inerte y el globo —que es justo el que explica por
+                          qué está apagado— no llegaría a salir nunca. */}
                       <div className="flex items-center gap-0.5 shrink-0">
                         {mod.is_published ? (
-                          <button
-                            onClick={() => handleToggleModulePublished(mod.id, false)}
-                            title={t('admin.modules.unpublish')}
-                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
+                          <Tooltip label={t('admin.courses.tip_unpublish_module')} className="shrink-0">
+                            <button
+                              onClick={() => handleToggleModulePublished(mod.id, false)}
+                              aria-label={t('admin.modules.unpublish')}
+                              className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </Tooltip>
                         ) : (
-                          <button
-                            onClick={() => handleToggleModulePublished(mod.id, true)}
-                            className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12px] font-medium transition-colors"
-                            style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
-                          >
-                            <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish')}
-                          </button>
+                          <Tooltip label={t('admin.courses.tip_publish_module')} className="shrink-0">
+                            <button
+                              onClick={() => handleToggleModulePublished(mod.id, true)}
+                              className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12px] font-medium transition-colors"
+                              style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}
+                            >
+                              <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish')}
+                            </button>
+                          </Tooltip>
                         )}
-                        <button
-                          onClick={() => handleMoveModule(idx, -1)}
-                          disabled={idx === 0}
-                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
-                          aria-label={t('admin.courses.move_up')}
+                        <Tooltip label={t('admin.courses.tip_move_up')} className="shrink-0">
+                          <button
+                            onClick={() => handleMoveModule(idx, -1)}
+                            disabled={idx === 0}
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                            aria-label={t('admin.courses.move_up')}
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={t('admin.courses.tip_move_down')} className="shrink-0">
+                          <button
+                            onClick={() => handleMoveModule(idx, 1)}
+                            disabled={idx === course.modules.length - 1}
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                            aria-label={t('admin.courses.move_down')}
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
+                        {/* Separar: solo tiene sentido con 2+ secciones — con una
+                            sola no hay por dónde cortar, y el globo lo dice. */}
+                        <Tooltip
+                          label={
+                            sectionCount < 2
+                              ? t('admin.surgery.too_short')
+                              : t('admin.surgery.split_action_hint')
+                          }
+                          className="shrink-0"
+                          maxWidth={220}
                         >
-                          <ArrowUp className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleMoveModule(idx, 1)}
-                          disabled={idx === course.modules.length - 1}
-                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
-                          aria-label={t('admin.courses.move_down')}
+                          <button
+                            onClick={() => setSplitModuleId(mod.id)}
+                            disabled={sectionCount < 2}
+                            aria-label={t('admin.surgery.split_action')}
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-brand-magenta hover:bg-brand-magenta/8 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                          >
+                            <Scissors className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip
+                          label={t('admin.courses.library.duplicate_hint')}
+                          className="shrink-0"
+                          maxWidth={220}
                         >
-                          <ArrowDown className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDuplicateModule(mod.id, mod.title_es)}
-                          disabled={duplicatingId !== null}
-                          title={t('admin.courses.library.duplicate_hint')}
-                          aria-label={t('admin.courses.library.duplicate')}
-                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 transition-colors"
-                        >
-                          {duplicatingId === mod.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </button>
-                        <Link
-                          to={`/admin/modules/${mod.id}`}
-                          className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-                        >
-                          {t('admin.courses.edit')}
-                        </Link>
-                        <button
-                          onClick={() => handleRemoveModule(mod.id)}
-                          title={t('admin.courses.remove_from_course')}
-                          className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
+                          <button
+                            onClick={() => handleDuplicateModule(mod.id, mod.title_es)}
+                            disabled={duplicatingId !== null}
+                            aria-label={t('admin.courses.library.duplicate')}
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                          >
+                            {duplicatingId === mod.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={t('admin.courses.tip_edit_module')} className="shrink-0" maxWidth={220}>
+                          <Link
+                            to={`/admin/modules/${mod.id}`}
+                            className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
+                          >
+                            {t('admin.courses.edit')}
+                          </Link>
+                        </Tooltip>
+                        <Tooltip label={t('admin.courses.tip_remove_module')} className="shrink-0" maxWidth={230}>
+                          <button
+                            onClick={() => handleRemoveModule(mod.id)}
+                            aria-label={t('admin.courses.remove_from_course')}
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
                       </div>
                     </div>
                   </GlassCard>
-                ))}
+                  )
+                })}
               </div>
             )}
+
+            {/* Barra de unir: sube desde abajo en cuanto hay 2 marcados. Es el
+                único momento en que la acción existe, así que no hay que
+                explicarla — aparece justo cuando aplica. */}
+            <AnimatePresence>
+              {selectedForMerge.length >= 2 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
+                  transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                  className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-brand-green/35 bg-brand-green/[0.07] px-4 py-3"
+                >
+                  <Combine className="h-4 w-4 shrink-0 text-brand-green" />
+                  <p className="flex-1 text-[12.5px] text-text">
+                    {t('admin.surgery.selected_count', { n: selectedForMerge.length })}
+                  </p>
+                  <button
+                    onClick={() => setSelectedForMerge([])}
+                    className="h-9 rounded-xl px-3 text-[12px] font-medium text-text-muted transition-colors hover:bg-glass/8 hover:text-text"
+                  >
+                    {t('admin.surgery.clear_selection')}
+                  </button>
+                  <button
+                    onClick={() => setMergeOpen(true)}
+                    className="flex h-9 items-center gap-2 rounded-xl border border-brand-green/40 bg-brand-green/15 px-3.5 text-[12px] font-semibold text-brand-green transition-colors hover:bg-brand-green/25"
+                  >
+                    <Combine className="h-3.5 w-3.5" />
+                    {t('admin.surgery.merge_action', { n: selectedForMerge.length })}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Dos formas de sumar contenido: traerlo de la biblioteca de la campaña
@@ -2046,6 +2231,55 @@ export default function CourseEditor() {
           path={`/courses/${course.slug}`}
           context={course.title_es}
           onClose={() => setPreviewOpen(false)}
+        />
+      )}
+
+      {/* ── Separar un módulo en dos ── */}
+      {splitModuleId && (
+        <ModuleSplitModal
+          moduleId={splitModuleId}
+          campaignId={course.campaign_id}
+          onClose={() => setSplitModuleId(null)}
+          onApplied={async ({ pending }) => {
+            setSplitModuleId(null)
+            setPendingSurgery({ key: Date.now(), label: t('admin.surgery.split_done'), pending })
+            await afterSurgery()
+          }}
+        />
+      )}
+
+      {/* ── Unir módulos ── */}
+      {mergeOpen && mergeOrder.length >= 2 && (
+        <ModuleMergeModal
+          moduleIds={mergeOrder}
+          campaignId={course.campaign_id}
+          onClose={() => setMergeOpen(false)}
+          onApplied={async ({ pending }) => {
+            setMergeOpen(false)
+            setPendingSurgery({
+              key: Date.now(),
+              label: t('admin.surgery.merge_done', { n: mergeOrder.length }),
+              pending,
+            })
+            await afterSurgery()
+          }}
+        />
+      )}
+
+      {/* La franja de Deshacer se remonta con `key` para que cada operación
+          arranque su propio contador desde cero. */}
+      {pendingSurgery && (
+        <SurgeryUndoBar
+          key={pendingSurgery.key}
+          label={pendingSurgery.label}
+          onUndo={async () => {
+            await pendingSurgery.pending.undo()
+            await afterSurgery()
+          }}
+          onFinalize={async () => {
+            await pendingSurgery.pending.finalize()
+          }}
+          onDone={() => setPendingSurgery(null)}
         />
       )}
 
@@ -2653,12 +2887,11 @@ export default function CourseEditor() {
                           <span className="flex-1 min-w-0 text-[13px] text-text truncate">
                             {s.title_es}
                             {!s.is_published && (
-                              <span
-                                title={t('admin.courses.sim_unpublished_hint')}
-                                className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
-                              >
-                                {t('admin.courses.sim_unpublished_badge')}
-                              </span>
+                              <Tooltip label={t('admin.courses.sim_unpublished_hint')} maxWidth={250}>
+                                <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                  {t('admin.courses.sim_unpublished_badge')}
+                                </span>
+                              </Tooltip>
                             )}
                           </span>
                           {!s.is_published && (
@@ -2681,13 +2914,15 @@ export default function CourseEditor() {
                               className="w-14 rounded-lg border border-line bg-surface px-2 py-1 text-[12px] text-text"
                             />
                           </div>
-                          <button
-                            onClick={() => handleToggleScenarioCourse(s, false)}
-                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
-                            title={t('admin.courses.remove_from_course')}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
+                          <Tooltip label={t('admin.courses.tip_remove_sim')} className="shrink-0" maxWidth={230}>
+                            <button
+                              onClick={() => handleToggleScenarioCourse(s, false)}
+                              className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
+                              aria-label={t('admin.courses.remove_from_course')}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </Tooltip>
                         </div>
                       ))}
                       {courseChoiceScenarios.map((s) => (
@@ -2705,12 +2940,11 @@ export default function CourseEditor() {
                               {t('admin.courses.sim_type_choice')}
                             </span>
                             {!s.is_published && (
-                              <span
-                                title={t('admin.courses.sim_unpublished_hint')}
-                                className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
-                              >
-                                {t('admin.courses.sim_unpublished_badge')}
-                              </span>
+                              <Tooltip label={t('admin.courses.sim_unpublished_hint')} maxWidth={250}>
+                                <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                  {t('admin.courses.sim_unpublished_badge')}
+                                </span>
+                              </Tooltip>
                             )}
                           </span>
                           {!s.is_published && (
@@ -2733,13 +2967,15 @@ export default function CourseEditor() {
                               className="w-14 rounded-lg border border-line bg-surface px-2 py-1 text-[12px] text-text"
                             />
                           </div>
-                          <button
-                            onClick={() => handleToggleChoiceScenarioCourse(s, false)}
-                            className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
-                            title={t('admin.courses.remove_from_course')}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
+                          <Tooltip label={t('admin.courses.tip_remove_sim')} className="shrink-0" maxWidth={230}>
+                            <button
+                              onClick={() => handleToggleChoiceScenarioCourse(s, false)}
+                              className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8"
+                              aria-label={t('admin.courses.remove_from_course')}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </Tooltip>
                         </div>
                       ))}
                     </div>

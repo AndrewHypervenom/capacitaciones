@@ -332,6 +332,8 @@ export const SIM_STEP_CONDENSE_DOC: GenerationStep = { label: 'admin.gen.condens
 export const SIM_STEP_OUTLINE: GenerationStep = { label: 'admin.gen.outlining_scenario', durationMs: 1 }
 export const SIM_STEP_WRITE: GenerationStep = { label: 'admin.gen.writing_scenario', durationMs: 1 }
 export const SIM_STEP_IMPROVE: GenerationStep = { label: 'admin.gen.improving_scenario', durationMs: 1 }
+/** Ajuste dirigido: la IA solo reescribe los momentos que el capacitador pidió cambiar. */
+export const SIM_STEP_EDIT: GenerationStep = { label: 'admin.gen.editing_scenario', durationMs: 1 }
 export const SIM_STEP_TRANSLATE: GenerationStep = { label: 'admin.gen.translating_langs', durationMs: 1 }
 export const SIM_STEP_FINALIZE: GenerationStep = { label: 'admin.gen.finalizing_scenario', durationMs: 1 }
 

@@ -1668,6 +1668,20 @@ export interface Database {
         Args: { p_module_id: string; p_course_id: string }
         Returns: string
       }
+      // Cirugía de módulos (separar/unir): migran el progreso de OTRAS personas,
+      // que la RLS de user_progress no deja tocar desde el cliente.
+      get_module_surgery_impact: {
+        Args: { p_module_ids: string[] }
+        Returns: { module_id: string; completed_count: number; started_count: number }[]
+      }
+      split_module_progress: {
+        Args: { p_source: string; p_new: string; p_new_slug: string }
+        Returns: number
+      }
+      merge_module_progress: {
+        Args: { p_keep: string; p_absorbed: string; p_absorbed_slug: string }
+        Returns: number
+      }
       // Copian una simulación compartida a otra campaña (SECURITY DEFINER).
       clone_scenario: {
         Args: { p_scenario_id: string; p_target_campaign_id: string }

@@ -86,7 +86,7 @@ export const SCENARIO_LENGTH_NODES: Record<ScenarioLength, number> = { short: 12
  * en qué está la IA y por qué se está demorando.
  */
 export interface SimProgress {
-  stage: 'module' | 'document' | 'outline' | 'writing' | 'translating'
+  stage: 'module' | 'document' | 'outline' | 'writing' | 'translating' | 'editing'
   /** Detalle humano de lo que está pasando ahora mismo. */
   detail?: string
   /** Solo en 'translating': lotes de nodos ya traducidos / totales. */
@@ -415,6 +415,189 @@ export async function generateSimulation(opts: {
   }
 
   return { data: await translateScenario(scenario, signal, onProgress), usage }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * EDICIÓN DIRIGIDA ("Ajustar con IA")
+ *
+ * El capacitador ya tiene su simulación y quiere cambiar UNA parte ("que el
+ * cliente exija un supervisor en la objeción", "cambia el motivo por un cobro
+ * duplicado"). Antes la única salida era regenerar todo y perder lo que ya
+ * estaba bien, o borrar la simulación y empezar de cero hasta que saliera.
+ *
+ * Acá la IA devuelve un PARCHE: solo los momentos que tocó. Todo lo demás queda
+ * exactamente como lo escribió el capacitador.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Lo que devuelve la IA en modo edición: el diff, no el escenario. */
+export interface ScenarioPatch {
+  /** Momentos reescritos o nuevos, completos. Reemplazan al actual con ese id. */
+  nodes?: Record<string, unknown>
+  /** Momentos a eliminar. */
+  removed?: string[]
+  /** Solo los campos de la ficha que cambian. */
+  metadata?: Record<string, unknown>
+  start_node_id?: string
+  /** Qué cambió, en palabras del propio modelo. Es lo que lee el capacitador. */
+  changes?: string[]
+}
+
+/** Resumen de un ajuste ya aplicado, para mostrarlo antes de aceptar. */
+export interface ScenarioEditSummary {
+  changed: string[]
+  added: string[]
+  removed: string[]
+  /** La ficha del escenario (cliente, motivo, título…) también cambió. */
+  metadata: boolean
+  /** Las transiciones que hubo que reencaminar para no dejar destinos rotos. */
+  rewired: number
+  changes: string[]
+}
+
+/**
+ * Quita inglés y portugués antes de mandar el escenario a editar. La IA solo
+ * necesita el español para entender qué hay y qué cambiar, y así el escenario
+ * actual ocupa la mitad del prompt (un escenario largo son 30 momentos × 3
+ * idiomas: mandarlo entero era pagar dos tercios de tokens por nada).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function stripTranslations(value: any): any {
+  if (Array.isArray(value)) return value.map(stripTranslations)
+  if (value && typeof value === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const o: any = {}
+    for (const k of Object.keys(value)) {
+      if (k.endsWith('_en') || k.endsWith('_pt') || k === 'en' || k === 'pt') continue
+      o[k] = stripTranslations(value[k])
+    }
+    return o
+  }
+  return value
+}
+
+/**
+ * Pide un ajuste dirigido sobre un escenario existente. Devuelve el PARCHE tal
+ * como lo mandó la IA: aplicarlo (y sanearlo) es cosa de `applyScenarioPatch`,
+ * para que el capacitador pueda ver primero qué va a cambiar.
+ */
+export async function editSimulation(opts: {
+  type: 'dialogue' | 'choice'
+  /** El escenario tal como está hoy en el editor. */
+  current: GeneratedScenario
+  /** Qué quiere cambiar, en sus palabras. */
+  instructions: string
+  /** Momentos elegidos. Vacío = la IA decide dónde tocar. */
+  focusIds?: string[]
+  moduleContext?: string
+  documentContext?: string
+  documentName?: string
+}, signal?: AbortSignal, onProgress?: (p: SimProgress) => void): Promise<{ patch: ScenarioPatch; usage: CacheUsage }> {
+  const total = opts.focusIds?.length || undefined
+  onProgress?.({
+    stage: 'editing',
+    detail: total
+      ? `Claude está leyendo la simulación completa y reescribiendo los ${total} momentos que elegiste.`
+      : 'Claude está leyendo la simulación completa para decidir qué momentos hay que tocar.',
+  })
+
+  // El tipo de llamada ya está decidido en la ficha: se manda explícito para que la
+  // guía del prompt no sea la de "dedúcelo del material" (que le pide reescribir todo
+  // el escenario coherente con su decisión — justo lo contrario de un ajuste puntual).
+  const callType = (opts.current.metadata as { call_type?: string }).call_type === 'outbound'
+    ? 'outbound' as const
+    : 'inbound' as const
+
+  const { data, usage } = await postGenerateSimulation({
+    mode: 'edit',
+    type: opts.type,
+    description: '',
+    callType,
+    esOnly: true,
+    current: stripTranslations(opts.current),
+    instructions: opts.instructions,
+    focusIds: opts.focusIds ?? [],
+    moduleContext: opts.moduleContext,
+    documentContext: opts.documentContext,
+    documentName: opts.documentName,
+  }, signal, ({ nodes: written }) => {
+    if (written <= 0) return
+    onProgress?.({
+      stage: 'editing',
+      detail: `Reescribiendo los momentos afectados: ${written} listo${written === 1 ? '' : 's'}.`,
+      done: written,
+      ...(total ? { total } : {}),
+    })
+  })
+
+  const patch = (data ?? {}) as ScenarioPatch
+  if (!patch.nodes && !patch.removed?.length && !patch.metadata) {
+    throw new Error('La IA no devolvió ningún cambio. Prueba a decirlo de otra forma o a elegir los momentos a ajustar.')
+  }
+  return { patch, usage }
+}
+
+/**
+ * Aplica un parche sobre el escenario actual y lo deja consistente.
+ *
+ * Lo importante es lo que NO hace: no vuelve a escribir nada que la IA no haya
+ * mandado. Lo único que se toca de más son las transiciones que quedarían
+ * apuntando a un momento eliminado — de eso se encarga `unloopScenario`, el
+ * mismo saneador que ya corre al generar y al reproducir.
+ */
+export function applyScenarioPatch(
+  current: GeneratedScenario,
+  patch: ScenarioPatch,
+  type: 'dialogue' | 'choice',
+): { scenario: GeneratedScenario; summary: ScenarioEditSummary } {
+  const nodes: Record<string, unknown> = { ...(current.nodes ?? {}) }
+  const startBefore = current.start_node_id
+
+  const changed: string[] = []
+  const added: string[] = []
+  for (const [id, node] of Object.entries(patch.nodes ?? {})) {
+    if (!node || typeof node !== 'object') continue
+    ;(id in nodes ? changed : added).push(id)
+    nodes[id] = node
+  }
+
+  // Eliminar nunca puede dejar el escenario sin arranque ni sin cierre: si la IA
+  // se pasa de entusiasta, ese borrado se ignora en silencio (el resto se aplica).
+  const removed: string[] = []
+  for (const id of patch.removed ?? []) {
+    if (!(id in nodes)) continue
+    if (id === startBefore || id === patch.start_node_id) continue
+    if (Object.keys(nodes).length <= 2) break
+    delete nodes[id]
+    removed.push(id)
+  }
+
+  const start = patch.start_node_id && patch.start_node_id in nodes
+    ? patch.start_node_id
+    : startBefore in nodes ? startBefore : Object.keys(nodes)[0]
+
+  // Destinos rotos (por lo eliminado) y transiciones que retroceden: se reencaminan.
+  const rewired = unloopScenario(nodes as Record<string, Record<string, unknown>>, start, type)
+
+  const metadata = patch.metadata
+    ? { ...(current.metadata as unknown as Record<string, unknown>), ...patch.metadata }
+    : current.metadata
+
+  // La IA edita en español; en/pt de lo tocado se rellenan con el español para que
+  // nada quede en blanco. El capacitador traduce de verdad con "Traducir a EN/PT".
+  const scenario = deepFillTranslations({
+    metadata,
+    start_node_id: start,
+    nodes,
+  }) as GeneratedScenario
+
+  return {
+    scenario,
+    summary: {
+      changed, added, removed, rewired,
+      metadata: !!patch.metadata && Object.keys(patch.metadata).length > 0,
+      changes: (patch.changes ?? []).filter((c) => typeof c === 'string' && c.trim()),
+    },
+  }
 }
 
 /** Nodos por llamada de traducción (Haiku): suficientes para ir rápido, sin cortar el JSON. */
@@ -806,12 +989,27 @@ export async function analyzeDocument(opts: {
 }
 
 export interface AssistRequest {
-  action: 'translate' | 'improve'
+  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan'
   contentType: 'section' | 'meta'
   sourceLang: string
   targetLangs?: string[]
   fields: Record<string, string>
   moduleTitle?: string
+  /**
+   * Cirugía de módulos (separar/unir). `want` es lo que el capacitador marcó en
+   * los interruptores del modal: la IA solo produce lo pedido.
+   */
+  surgery?: {
+    want: Array<'cut' | 'meta' | 'bridge'>
+    cutIndex?: number
+    modules: Array<{
+      title_es: string
+      subtitle_es?: string | null
+      objectives_es?: string[]
+      key_takeaways_es?: string[]
+      sections: Array<{ heading_es: string; excerpt_es: string }>
+    }>
+  }
 }
 
 export async function moduleAiAssist(opts: AssistRequest): Promise<{ data: Record<string, unknown>; usage: CacheUsage }> {
