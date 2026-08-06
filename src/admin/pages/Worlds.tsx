@@ -19,6 +19,7 @@ import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { Stagger, StaggerItem } from '@/components/ui/motion'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { stripMarkdown } from '@/components/ui/RichText'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/cn'
 
@@ -741,7 +742,9 @@ export default function Worlds() {
 
             {/* Footer */}
             <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
-              <div className="flex-1" />
+              {pickedModules.length > 0
+                ? <AiReviewNotice variant="inline" className="flex-1 min-w-0" />
+                : <div className="flex-1" />}
               <button onClick={closeWizard} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors border border-line">
                 {i18n.t('common.cancel')}
               </button>

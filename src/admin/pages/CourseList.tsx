@@ -40,6 +40,7 @@ import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
@@ -879,6 +880,7 @@ export default function CourseList() {
 
             <AiCreditsNotice className="mb-4" />
             <AiQuotaNotice className="mb-4" />
+            <AiReviewNotice className="mb-4" />
 
             {/* Título */}
             <label className="block text-[12px] font-medium text-text-muted mb-1.5">

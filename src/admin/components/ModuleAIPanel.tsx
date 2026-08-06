@@ -15,6 +15,7 @@ import { moduleAiAssist, type CacheUsage } from '@/services/ai.service'
 import type { VideoMarkerRaw } from '@/services/modules.service'
 import { Button } from '@/components/ui/Button'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
 
@@ -334,6 +335,7 @@ export function ModuleAIPanel({
       {open && (
         <div className="px-4 pb-4 pt-3 border-t border-glass-border/10 space-y-3">
           <AiCreditsNotice />
+          <AiReviewNotice />
           {error && (
             <div className="flex items-start gap-2 text-xs text-danger p-2.5 rounded-xl bg-danger/8 border border-danger/20">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />

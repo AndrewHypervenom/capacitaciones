@@ -20,6 +20,7 @@ import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
 import { Button } from '@/components/ui/Button'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
@@ -454,6 +455,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
         <Stagger gap={0.05} className="px-5 pb-5 space-y-4 border-t border-glass-border/10">
           <AiCreditsNotice className="mt-4" />
           <AiQuotaNotice className="mt-4" />
+          <AiReviewNotice className="mt-4" />
           <StaggerItem className="pt-4">
             <label className="text-xs font-medium text-text-muted mb-1.5 block">
               {i18n.t('admin.simulations.ai_gen.what_scenario_about')}

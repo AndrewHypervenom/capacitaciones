@@ -846,6 +846,7 @@
     "no_results": "No results",
     "use": "Use",
     "translate_error": "Translation failed. Please try again.",
+    "ai_review_notice": "AI can make mistakes. Check the information before publishing or deleting.",
     "save_changes": "Save changes",
     "optional_paren": "(optional)",
     "question_n": "Question {{n}}",

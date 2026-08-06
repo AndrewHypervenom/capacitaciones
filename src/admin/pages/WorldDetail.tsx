@@ -21,6 +21,7 @@ import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
 import { Stagger, StaggerItem } from '@/components/ui/motion'
 import { LevelTransition } from '@/components/worlds/LevelTransition'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/cn'
 
@@ -1150,6 +1151,7 @@ export default function WorldDetail() {
                 </div>
                 <p className="text-[11px] text-text-muted mt-1">{i18n.t('admin.worlds.gen_min_score_hint')}</p>
               </div>
+              <AiReviewNotice />
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => setAiRegion(null)}
@@ -1231,6 +1233,7 @@ export default function WorldDetail() {
                 </div>
               </div>
               <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_sections_hint', { total: (bulkSections === '' ? 2 : Number(bulkSections)) * (bulkPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(bulkPerSection)) })}</p>
+              <AiReviewNotice />
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => setBulkOpen(false)}

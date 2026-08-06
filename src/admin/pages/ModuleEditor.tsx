@@ -76,6 +76,7 @@ import { QUIZ_SOUND_THEMES, playQuizSound } from '@/lib/sound'
 import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { isUntranslated } from '@/services/translation.service'
 import { ClassifyGameEditor } from '@/components/modules/blocks/ClassifyGameEditor'
@@ -1848,6 +1849,9 @@ export default function ModuleEditor() {
         </div>
 
         <EditingBanner coeditors={coeditors} />
+
+        {/* Recordatorio permanente: lo generado con IA se revisa antes de publicar. */}
+        <AiReviewNotice variant="inline" className="mx-3 md:mx-5 mt-2 shrink-0" />
 
         {error && (
           <div className="mx-3 md:mx-5 mt-4 px-4 py-2.5 rounded-xl glass border border-danger/20 text-danger text-[13px] shrink-0">

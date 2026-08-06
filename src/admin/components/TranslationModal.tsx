@@ -15,6 +15,7 @@ import {
   type TranslateProgress,
 } from '@/services/translation.service'
 import { consumeAiOperation, getAiQuota, isQuotaExceeded, refundAiOperation, type AiQuota } from '@/services/aiQuota.service'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 
 type Phase = 'review' | 'running' | 'done' | 'error'
 
@@ -267,7 +268,9 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
 
             {/* ── Pie: cupo + acción ── */}
             {!running && phase !== 'done' && (
-              <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3.5">
+              <div className="border-t border-line px-5 py-3.5">
+                <AiReviewNotice className="mb-3" />
+                <div className="flex items-center justify-between gap-3">
                 <QuotaHint quota={quota} t={t} />
                 <button
                   onClick={start}
@@ -283,6 +286,7 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
                     ? t('admin.translate.nothing_pending')
                     : t('admin.translate.start', { count: targets.length })}
                 </button>
+                </div>
               </div>
             )}
 

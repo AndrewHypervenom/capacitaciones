@@ -846,6 +846,7 @@
     "no_results": "Sin resultados",
     "use": "Usar",
     "translate_error": "Error al traducir. Intenta de nuevo.",
+    "ai_review_notice": "La IA puede cometer errores. Verifica la información antes de publicar o eliminar.",
     "save_changes": "Guardar cambios",
     "optional_paren": "(opcional)",
     "question_n": "Pregunta {{n}}",

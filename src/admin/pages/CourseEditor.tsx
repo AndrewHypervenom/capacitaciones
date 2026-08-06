@@ -43,6 +43,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useEditingPresence } from '@/hooks/usePresence'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
+import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
@@ -1212,9 +1213,12 @@ export default function CourseEditor() {
         </div>
       </div>
 
-      <div className="mb-6 -mt-2">
+      <div className="mb-3 -mt-2">
         <EditingBanner coeditors={coeditors} />
       </div>
+
+      {/* Recordatorio permanente: lo generado con IA se revisa antes de publicar. */}
+      <AiReviewNotice variant="inline" className="mb-4" />
 
       {/* Barra compacta de publicación: estado del curso + módulos + acción única.
           El mundo (gamificación) se gestiona aparte, en el botón "Ver mundo" del header. */}
