@@ -3135,6 +3135,10 @@
         "add_quiz": "+ Agregar quiz",
         "current_time": "Tiempo actual:",
         "use_current_time": "Usar el actual",
+        "quiz_time_zero_warning": "Ojo: un quiz tan al principio no se le muestra al aprendiz. Ponlo en {{s}}s o más.",
+        "quiz_time_zero_fix": "Mover a {{s}}s",
+        "quiz_time_zero_banner_one": "Hay 1 quiz al inicio del video que no se le mostrará al aprendiz.",
+        "quiz_time_zero_banner_other": "Hay {{count}} quiz al inicio del video que no se le mostrarán al aprendiz.",
         "markers_count": "Marcadores ({{count}})",
         "no_markers": "Sin marcadores. Usa los botones para agregar capítulos o quizzes."
       },

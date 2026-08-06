@@ -8,7 +8,7 @@ import { requestDeletion } from '@/services/audit.service'
 // Definidos en @/types/blocks (para poder embeberlos en el bloque de video sin
 // acoplar con servicios); se re-exportan aquí para conservar los imports actuales.
 export type { VideoMarkerRaw, VideoQuestionRaw } from '@/types/blocks'
-import type { VideoMarkerRaw } from '@/types/blocks'
+import { clampQuizTime, type VideoMarkerRaw } from '@/types/blocks'
 
 export function mapVideoMarkersFromDb(raw: unknown): VideoMarker[] {
   if (!raw || !Array.isArray(raw)) return []
@@ -21,6 +21,9 @@ export function mapVideoMarkersFromDb(raw: unknown): VideoMarker[] {
     if (m.type === 'quiz') {
       const qm: VideoQuizMarker = {
         ...base,
+        // Un quiz guardado en 0:00 (o casi) jamás se dispararía y dejaría el video
+        // bloqueado; lo corremos al mínimo para no romper contenido ya publicado.
+        timeSeconds: clampQuizTime(base.timeSeconds),
         type: 'quiz',
         questions: (m.questions ?? []).map((q) => ({
           id: q.id,
@@ -927,7 +930,8 @@ export async function seedCampaignContent(campaignId: string): Promise<{ modules
             ? s.videoMarkers.map((m) => {
                 const base = {
                   id: m.id,
-                  timeSeconds: m.timeSeconds,
+                  // Los quiz nunca se guardan en 0:00: ahí no se disparan.
+                  timeSeconds: m.type === 'quiz' ? clampQuizTime(m.timeSeconds) : m.timeSeconds,
                   type: m.type,
                   title_es: m.title.es,
                   title_en: m.title.en,

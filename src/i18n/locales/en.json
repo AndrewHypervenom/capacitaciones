@@ -3135,6 +3135,10 @@
         "add_quiz": "+ Add quiz",
         "current_time": "Current time:",
         "use_current_time": "Use current",
+        "quiz_time_zero_warning": "Heads up: a quiz this early never shows up for the learner. Set it to {{s}}s or later.",
+        "quiz_time_zero_fix": "Move to {{s}}s",
+        "quiz_time_zero_banner_one": "1 quiz sits at the very start of the video and won't be shown to the learner.",
+        "quiz_time_zero_banner_other": "{{count}} quizzes sit at the very start of the video and won't be shown to the learner.",
         "markers_count": "Markers ({{count}})",
         "no_markers": "No markers. Use the buttons to add chapters or quizzes."
       },

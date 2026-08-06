@@ -88,6 +88,18 @@ export interface VideoMarkerRaw {
   questions?: VideoQuestionRaw[];
 }
 
+/** Segundo mínimo para un quiz DENTRO del video. Un quiz en 0:00 nunca se dispara:
+ *  la detección es por cruce (prev < t && cur >= t) y el video arranca en 0, así que
+ *  el aprendiz se queda con el video bloqueado y sin ver la pregunta. */
+export const MIN_VIDEO_QUIZ_SECONDS = 3;
+
+/** Sube a `MIN_VIDEO_QUIZ_SECONDS` los quiz puestos demasiado al principio, sin
+ *  pasarse de la duración cuando esta se conoce (0 = desconocida). */
+export function clampQuizTime(seconds: number, duration = 0): number {
+  const min = duration > 0 ? Math.min(MIN_VIDEO_QUIZ_SECONDS, Math.max(1, Math.floor(duration) - 1)) : MIN_VIDEO_QUIZ_SECONDS;
+  return Math.max(min, Math.round(seconds));
+}
+
 export interface VideoBlock {
   type: 'video';
   kind: 'youtube' | 'vimeo' | 'upload' | 'interactive';

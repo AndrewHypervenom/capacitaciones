@@ -15,10 +15,12 @@ import {
   Youtube,
   Languages,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { uploadSectionMedia } from '@/services/modules.service'
 import type { VideoMarkerRaw, VideoQuestionRaw } from '@/services/modules.service'
+import { MIN_VIDEO_QUIZ_SECONDS, clampQuizTime } from '@/types/blocks'
 import { moduleAiAssist } from '@/services/ai.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
@@ -275,6 +277,12 @@ function MarkerEditForm({
   const clampTime = (secs: number) =>
     Math.max(0, Math.min(Math.round(secs), videoDuration > 0 ? Math.floor(videoDuration) : 99999))
 
+  // Un quiz demasiado al principio no se dispara (la detección es por cruce y el
+  // video arranca en 0). No lo corregimos a la fuerza: se avisa aquí para que no
+  // pase inadvertido, y el reproductor lo corre al mínimo como red de seguridad.
+  const isQuiz = draft.type === 'quiz'
+  const timeTooEarly = isQuiz && draft.timeSeconds < MIN_VIDEO_QUIZ_SECONDS
+
   // Lee el tiempo del cuadro de texto. Es la única fuente de verdad al guardar:
   // no se puede depender del onBlur, porque en varios navegadores el clic en
   // "Guardar" no quita el foco del input y el marcador se guardaba en 0:00.
@@ -326,7 +334,12 @@ function MarkerEditForm({
             onChange={(e) => handleTimeChange(e.target.value)}
             onBlur={handleTimeBlur}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTimeBlur() } }}
-            className="w-24 rounded-lg px-2.5 py-1.5 text-[13px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none font-mono"
+            className={cn(
+              'w-24 rounded-lg px-2.5 py-1.5 text-[13px] text-text bg-glass/5 border outline-none font-mono',
+              timeTooEarly
+                ? 'border-amber-400/50 focus:border-amber-400'
+                : 'border-glass-border/10 focus:border-neon-green/30',
+            )}
             placeholder="0:00"
           />
           <button
@@ -353,6 +366,29 @@ function MarkerEditForm({
           />
         </div>
       </div>
+
+      {/* Aviso: quiz demasiado al principio (no se le mostraría al aprendiz) */}
+      {timeTooEarly && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/8 px-3 py-2.5">
+          <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-[12px] text-amber-300 leading-snug">
+              {t('admin.modules.vme.quiz_time_zero_warning', { s: MIN_VIDEO_QUIZ_SECONDS })}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const secs = clampQuizTime(draft.timeSeconds, videoDuration)
+                setDraft((p) => ({ ...p, timeSeconds: secs }))
+                setTimeInput(formatTime(secs))
+              }}
+              className="mt-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-amber-300 border border-amber-400/30 hover:bg-amber-400/12 transition-colors"
+            >
+              {t('admin.modules.vme.quiz_time_zero_fix', { s: MIN_VIDEO_QUIZ_SECONDS })}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Títulos en los otros dos idiomas */}
       <div className="space-y-2">
@@ -529,6 +565,16 @@ export function VideoMarkerEditor({
   }
 
   const sortedMarkers = [...markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
+
+  // Quiz demasiado al principio: no se dispara y el aprendiz no ve la pregunta.
+  const isTooEarly = (m: VideoMarkerRaw) => m.type === 'quiz' && m.timeSeconds < MIN_VIDEO_QUIZ_SECONDS
+  const tooEarlyCount = markers.filter(isTooEarly).length
+
+  const fixTooEarlyMarkers = () => {
+    onMarkersChange(markers.map((m) => (
+      isTooEarly(m) ? { ...m, timeSeconds: clampQuizTime(m.timeSeconds, videoDuration) } : m
+    )))
+  }
 
   const handleFileSelect = async (file: File) => {
     if (!sectionId) {
@@ -862,6 +908,21 @@ export function VideoMarkerEditor({
           {translateAllError && (
             <p className="text-[11px] text-danger mb-2">{translateAllError}</p>
           )}
+          {tooEarlyCount > 0 && (
+            <div className="flex items-center gap-2.5 mb-2 rounded-xl border border-amber-400/30 bg-amber-400/8 px-3 py-2">
+              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+              <p className="flex-1 text-[12px] text-amber-300 leading-snug">
+                {t('admin.modules.vme.quiz_time_zero_banner', { count: tooEarlyCount })}
+              </p>
+              <button
+                type="button"
+                onClick={fixTooEarlyMarkers}
+                className="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-medium text-amber-300 border border-amber-400/30 hover:bg-amber-400/12 transition-colors"
+              >
+                {t('admin.modules.vme.quiz_time_zero_fix', { s: MIN_VIDEO_QUIZ_SECONDS })}
+              </button>
+            </div>
+          )}
           <div className="space-y-2">
             {sortedMarkers.map((m) => (
               <div key={m.id} className="rounded-xl border border-glass-border/8 bg-glass/3 overflow-visible">
@@ -873,9 +934,18 @@ export function VideoMarkerEditor({
                   )}>
                     {m.type === 'chapter' ? <BookOpen className="h-3 w-3" /> : <ClipboardList className="h-3 w-3" />}
                   </div>
-                  <span className="text-[11px] font-mono text-text-subtle shrink-0 w-10">
+                  <span
+                    className={cn(
+                      'text-[11px] font-mono shrink-0 w-10',
+                      isTooEarly(m) ? 'text-amber-400 font-semibold' : 'text-text-subtle',
+                    )}
+                    title={isTooEarly(m) ? t('admin.modules.vme.quiz_time_zero_warning', { s: MIN_VIDEO_QUIZ_SECONDS }) : undefined}
+                  >
                     {formatTime(m.timeSeconds)}
                   </span>
+                  {isTooEarly(m) && (
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 -ml-1" />
+                  )}
                   <span className="flex-1 text-[13px] text-text truncate">
                     {markerTitle(m, lang) || <span className="text-text-subtle italic">—</span>}
                   </span>
