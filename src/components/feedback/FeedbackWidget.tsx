@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Link, useLocation } from 'react-router-dom'
@@ -10,6 +10,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useHelpChatStore } from '@/stores/helpChatStore'
 import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
+import { useFloatingDockStore } from '@/stores/floatingDockStore'
 import {
   submitSiteFeedback,
   type ContactPref, type FeedbackKind, type FeedbackShot,
@@ -34,6 +35,9 @@ export function FeedbackWidget() {
   const reduce = useReducedMotion()
   const helpOpen = useHelpChatStore((s) => s.isOpen)
   const closeHelp = useHelpChatStore((s) => s.close)
+  /** El botón vive en el rincón compartido: de ahí salen lado y visibilidad. */
+  const dockSide = useFloatingDockStore((s) => s.side)
+  const dockHidden = useFloatingDockStore((s) => s.hidden)
 
   // El panel se abre desde el botón flotante, desde el menú o desde "Mis
   // sugerencias": por eso su estado vive en un store compartido.
@@ -84,7 +88,7 @@ export function FeedbackWidget() {
 
   // Invitación sutil la primera vez, ya con el usuario ubicado en el sitio.
   useEffect(() => {
-    if (!visible || open) return
+    if (!visible || open || dockHidden) return
     if (localStorage.getItem(INVITE_KEY)) return
     const id = setTimeout(() => setShowInvite(true), 6000)
     return () => clearTimeout(id)
@@ -178,15 +182,17 @@ export function FeedbackWidget() {
     <>
       {/* ── Invitación (una sola vez) ───────────────────────────── */}
       <AnimatePresence>
-        {showInvite && !open && (
+        {showInvite && !open && !dockHidden && (
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.97 }}
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            // Corona la columna de flotantes: chat, opinión y "volver arriba"
-            // (que termina en 12.5rem) quedan debajo.
-            className="fixed bottom-[13.25rem] right-4 z-[9991] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-border/10 glass-strong p-4 shadow-2xl shadow-black/30"
+            // Justo encima del rincón flotante, del lado donde esté.
+            className={cn(
+              'fixed bottom-[4.75rem] z-[9991] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-border/10 glass-strong p-4 shadow-2xl shadow-black/30',
+              dockSide === 'left' ? 'left-4 sm:left-5' : 'right-4 sm:right-5',
+            )}
           >
             <button
               onClick={dismissInvite}
@@ -219,46 +225,9 @@ export function FeedbackWidget() {
         )}
       </AnimatePresence>
 
-      {/* ── Botón flotante (justo encima del chat de ayuda) ─────── */}
-      {/* Columna derecha, de abajo hacia arriba: chat de ayuda (bottom-5,
-          h-14) → este botón → "volver arriba". */}
-      <motion.button
-        onClick={() => (open ? setOpen(false) : openPanel())}
-        aria-label={t('site_feedback.fab_label', 'Dar mi opinión del sitio')}
-        aria-expanded={open}
-        className="group fixed bottom-[5.5rem] right-5 z-[9991] h-14 w-14 rounded-full"
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.55, type: 'spring', stiffness: 260, damping: 20 }}
-        whileHover={{ scale: 1.06 }}
-        whileTap={{ scale: 0.92 }}
-      >
-        <span className="relative flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-500 text-white shadow-xl shadow-fuchsia-500/30">
-          {!open && !reduce && (
-            <motion.span
-              className="absolute inset-0 rounded-full bg-fuchsia-500/40"
-              animate={{ scale: [1, 1.5], opacity: [0.45, 0] }}
-              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut', delay: 1 }}
-            />
-          )}
-          <AnimatePresence mode="wait" initial={false}>
-            {open ? (
-              <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}>
-                <X className="h-6 w-6" />
-              </motion.span>
-            ) : (
-              <motion.span key="fb" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }}>
-                <MessageSquarePlus className="h-6 w-6" />
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </span>
-        {/* Etiqueta al pasar el mouse (solo escritorio). Va a la izquierda:
-            arriba y abajo del botón ya hay otros flotantes. */}
-        <span className="pointer-events-none absolute right-full top-1/2 mr-2 hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-text px-2 py-1 text-[11px] font-medium text-bg opacity-0 transition-opacity group-hover:opacity-100 sm:block">
-          {t('site_feedback.fab_short', 'Tu opinión')}
-        </span>
-      </motion.button>
+      {/* El botón que abre este panel ya no vive aquí: es una acción del rincón
+          flotante compartido (CornerDock). Antes eran dos burbujas apiladas más
+          la flecha de "volver arriba", y entre las tres tapaban el contenido. */}
 
       {/* ── Panel ───────────────────────────────────────────────── */}
       <AnimatePresence>
@@ -290,7 +259,10 @@ export function FeedbackWidget() {
                 // dejaba los textos lavados y los chips ilegibles.
                 'bg-surface border border-line shadow-2xl shadow-black/40',
                 'bottom-0 right-0 left-0 h-[90vh] max-h-[calc(100dvh-2rem)] rounded-t-[28px]',
-                'sm:bottom-24 sm:right-5 sm:left-auto sm:h-[640px] sm:max-h-[80vh] sm:w-[26rem] sm:rounded-[28px]',
+                // En escritorio se abre encima del rincón flotante, del lado
+                // donde el usuario lo haya dejado.
+                'sm:bottom-[4.75rem] sm:h-[640px] sm:max-h-[80vh] sm:w-[26rem] sm:rounded-[28px]',
+                dockSide === 'left' ? 'sm:left-5 sm:right-auto' : 'sm:right-5 sm:left-auto',
               )}
             >
               {/* Asa de arrastre visual (móvil) */}

@@ -31,7 +31,6 @@ import { SimulatorPickerModal, type SimPick } from '@/components/simulator/Simul
 import { toast } from '@/stores/toastStore';
 import { Reveal } from '@/components/ui/Reveal';
 import { RichText, stripMarkdown } from '@/components/ui/RichText';
-import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { cn } from '@/lib/cn';
 
@@ -920,7 +919,6 @@ export default function CoursePage() {
         </Reveal>
       )}
     </div>
-    <ScrollToTopButton />
     {pickerOpen && (
       <SimulatorPickerModal
         scenarios={scenarios}

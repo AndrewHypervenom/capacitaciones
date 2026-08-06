@@ -16,6 +16,7 @@ import { STATUSES, StatusPill, STATUS_COLOR } from '@/components/feedback/Status
 import { ShotGallery } from '@/components/feedback/ShotGallery'
 import { FadeIn } from '@/components/ui/motion'
 import { toast } from '@/stores/toastStore'
+import { useNotificationsStore } from '@/stores/notificationsStore'
 import { cn } from '@/lib/cn'
 
 type StatusFilter = FeedbackStatus | 'all' | 'open'
@@ -60,6 +61,16 @@ export default function SiteFeedback() {
   }, [status, kind, contactOnly, search, t])
 
   useEffect(() => { void load() }, [load])
+
+  // Los avisos de "llegó una opinión" se dan por leídos al abrir la bandeja: la
+  // campana y el contador del menú no deben seguir pidiendo algo que ya se está
+  // mirando (mismo criterio que el chat de ayuda en ChatLogs).
+  useEffect(() => {
+    const { items, markRead } = useNotificationsStore.getState()
+    for (const n of items) {
+      if (n.kind === 'site_feedback' && !n.read_at) void markRead(n.id)
+    }
+  }, [])
 
   const stats = useMemo(() => computeStats(rows), [rows])
 

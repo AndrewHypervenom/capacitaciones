@@ -26,6 +26,22 @@ export function notificationText(n: AppNotification): { title: string; body: str
     }
   }
 
+  // Aviso al staff: llegó una opinión del sitio (no es un reset).
+  if (n.kind === 'site_feedback') {
+    const who = p.from_name?.trim() || t('notifications.site_feedback.someone')
+    const count = Number(p.count) > 1 ? Number(p.count) : 1
+    const kindLabel = t(`site_feedback.kind.${p.feedback_kind ?? 'idea'}.label`)
+    return {
+      title:
+        count > 1
+          ? t('notifications.site_feedback.title_many', { name: who, count })
+          : t('notifications.site_feedback.title', { name: who }),
+      body: p.message
+        ? `“${p.message}”`
+        : t('notifications.site_feedback.body', { kind: kindLabel }),
+    }
+  }
+
   // Aviso de retroalimentación del capacitador (no es un reset).
   if (n.kind === 'feedback') {
     return {

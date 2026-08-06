@@ -221,6 +221,17 @@
       "from_page": "De",
       "open": "Ver a conversa"
     },
+    "site_feedback": {
+      "someone": "Alguém",
+      "title": "{{name}} deixou uma opinião",
+      "title_many_one": "{{name}} deixou {{count}} opinião",
+      "title_many_other": "{{name}} deixou {{count}} opiniões",
+      "body": "Escreveu uma opinião do site ({{kind}}).",
+      "sent_one": "deixou uma opinião do site",
+      "sent_many_one": "deixou {{count}} opinião do site",
+      "sent_many_other": "deixou {{count}} opiniões do site",
+      "open": "Ver a opinião"
+    },
     "prefs": {
       "title": "Preferências de aviso",
       "sound": "Som ao chegar um aviso",
@@ -229,6 +240,7 @@
       "volume_normal": "Normal",
       "volume_loud": "Alto",
       "help_alerts": "Avisar quando escreverem no chat de ajuda",
+      "feedback_alerts": "Avisar quando deixarem uma opinião do site",
       "mute_for_one": "Silenciar {{count}} min",
       "mute_for_other": "Silenciar {{count}} min",
       "muted_left_one": "Em silêncio por mais {{count}} min",
@@ -4212,6 +4224,14 @@
       "callout_title": "Nota Importante",
       "status_read": "Lido"
     }
+  },
+  "dock": {
+    "open": "Ajuda e opiniões",
+    "help": "Chat de ajuda",
+    "feedback": "Sua opinião",
+    "switch_side": "Passar para o outro lado",
+    "hide": "Ocultar por enquanto",
+    "show": "Mostrar ajuda e opiniões"
   },
   "help": {
     "title": "Assistente de ajuda",

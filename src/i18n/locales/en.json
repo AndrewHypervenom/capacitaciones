@@ -221,6 +221,17 @@
       "from_page": "From",
       "open": "Open the conversation"
     },
+    "site_feedback": {
+      "someone": "Someone",
+      "title": "{{name}} left feedback",
+      "title_many_one": "{{name}} left {{count}} piece of feedback",
+      "title_many_other": "{{name}} left {{count}} pieces of feedback",
+      "body": "They wrote site feedback ({{kind}}).",
+      "sent_one": "left feedback about the site",
+      "sent_many_one": "left {{count}} piece of feedback about the site",
+      "sent_many_other": "left {{count}} pieces of feedback about the site",
+      "open": "Open the feedback"
+    },
     "prefs": {
       "title": "Alert preferences",
       "sound": "Sound when an alert arrives",
@@ -229,6 +240,7 @@
       "volume_normal": "Normal",
       "volume_loud": "Loud",
       "help_alerts": "Alert me when someone writes to the help chat",
+      "feedback_alerts": "Alert me when someone leaves site feedback",
       "mute_for_one": "Mute {{count}} min",
       "mute_for_other": "Mute {{count}} min",
       "muted_left_one": "Muted for {{count}} more min",
@@ -4212,6 +4224,14 @@
       "callout_title": "Important Note",
       "status_read": "Read"
     }
+  },
+  "dock": {
+    "open": "Help and feedback",
+    "help": "Help chat",
+    "feedback": "Your feedback",
+    "switch_side": "Move to the other side",
+    "hide": "Hide for now",
+    "show": "Show help and feedback"
   },
   "help": {
     "title": "Help assistant",

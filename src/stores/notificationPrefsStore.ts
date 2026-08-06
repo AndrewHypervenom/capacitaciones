@@ -21,12 +21,19 @@ interface NotificationPrefsState {
   volume: NotificationVolume
   /** Aviso emergente cuando alguien escribe al chat de ayuda (solo superadmin). */
   helpAlerts: boolean
+  /**
+   * Aviso emergente cuando llega una opinión del sitio (superadmin y
+   * capacitadores). Va aparte del chat de ayuda porque son dos ritmos
+   * distintos: el chat es urgente, la opinión se atiende cuando se puede.
+   */
+  feedbackAlerts: boolean
   /** Silencio temporal: epoch ms hasta el que no suena nada ("Silenciar 30 min"). */
   mutedUntil: number | null
 
   setSound: (on: boolean) => void
   setVolume: (v: NotificationVolume) => void
   setHelpAlerts: (on: boolean) => void
+  setFeedbackAlerts: (on: boolean) => void
   /** Silencia por N minutos; 0 lo cancela. */
   muteFor: (minutes: number) => void
 }
@@ -37,11 +44,13 @@ export const useNotificationPrefs = create<NotificationPrefsState>()(
       sound: true,
       volume: 'normal',
       helpAlerts: true,
+      feedbackAlerts: true,
       mutedUntil: null,
 
       setSound: (on) => set({ sound: on }),
       setVolume: (volume) => set({ volume }),
       setHelpAlerts: (on) => set({ helpAlerts: on }),
+      setFeedbackAlerts: (on) => set({ feedbackAlerts: on }),
       muteFor: (minutes) =>
         set({ mutedUntil: minutes > 0 ? Date.now() + minutes * 60_000 : null }),
     }),

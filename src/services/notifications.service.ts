@@ -51,8 +51,28 @@ export interface HelpChatPayload {
   count?: number
 }
 
+/**
+ * Datos del aviso "alguien escribió una opinión del sitio" (kind =
+ * 'site_feedback'), que reciben los superadmin y los capacitadores de la
+ * campaña de quien opina. Lo arma el RPC notify_staff_site_feedback.
+ *
+ * Comparte los campos `from_*` y `count` con el aviso del chat de ayuda: las
+ * dos tarjetas se pintan con el mismo componente.
+ */
+export interface SiteFeedbackNotificationPayload {
+  /** Id de la fila en site_feedback (para abrirla directamente en la bandeja). */
+  feedback_id?: string
+  /** bug | idea | praise | question. */
+  feedback_kind?: string
+  /** Lo que escribió, recortado a 400 caracteres por el RPC. */
+  message?: string
+  page_label?: string | null
+}
+
 /** Todo lo que puede venir en `payload`, según el `kind` de la notificación. */
-export type NotificationPayload = ResetPayload & HelpChatPayload
+export type NotificationPayload = ResetPayload &
+  HelpChatPayload &
+  SiteFeedbackNotificationPayload
 
 export interface AppNotification {
   id: string
@@ -152,6 +172,26 @@ export async function notifySuperadminsHelpChat(params: {
     })
   } catch {
     // Silencioso a propósito (igual que el registro del chat).
+  }
+}
+
+// ─── Aviso al staff: llegó una opinión del sitio ────────────────────────────
+
+/**
+ * Avisa a los superadmin y a los capacitadores de la campaña que acaba de
+ * entrar una opinión. Igual que el del chat de ayuda, va por RPC SECURITY
+ * DEFINER (quien opina no puede escribir en la campana de nadie) y el RPC
+ * decide a quién le toca: aquí no se manda ninguna lista de destinatarios.
+ *
+ * Nunca lanza: la opinión YA está guardada cuando esto corre, y que falle el
+ * aviso no puede convertirse en un error delante de quien acaba de opinar.
+ */
+export async function notifyStaffSiteFeedback(feedbackId: string): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).rpc('notify_staff_site_feedback', { p_id: feedbackId })
+  } catch {
+    // Silencioso a propósito.
   }
 }
 

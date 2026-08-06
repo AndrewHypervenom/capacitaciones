@@ -45,6 +45,11 @@ export function AdminNav() {
     s.items.filter((n) => n.kind === 'help_chat' && !n.read_at).length,
   )
 
+  // Lo mismo para las opiniones del sitio, que sí ve también el capacitador.
+  const feedbackUnread = useNotificationsStore((s) =>
+    s.items.filter((n) => n.kind === 'site_feedback' && !n.read_at).length,
+  )
+
   const toggleCategory = (title: string) => {
     setOpenCategories(prev =>
       prev.includes(title) 
@@ -317,6 +322,18 @@ export function AdminNav() {
                                 className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-neon-green px-1 text-[10px] font-bold leading-none text-black"
                               >
                                 {helpUnread > 9 ? '9+' : helpUnread}
+                              </motion.span>
+                            )}
+                            {to === '/admin/site-feedback' && feedbackUnread > 0 && (
+                              <motion.span
+                                key={feedbackUnread}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ type: 'spring', stiffness: 600, damping: 20 }}
+                                className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-neon-violet px-1 text-[10px] font-bold leading-none text-black"
+                              >
+                                {feedbackUnread > 9 ? '9+' : feedbackUnread}
                               </motion.span>
                             )}
                           </AnimatePresence>

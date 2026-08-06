@@ -41,8 +41,9 @@ import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { PasskeyInvite } from '@/components/auth/PasskeyInvite';
 import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
+import { CornerDock } from '@/components/ui/CornerDock';
 import { NotificationsSync } from '@/components/notifications/NotificationsSync';
-import { HelpChatPing } from '@/components/notifications/HelpChatPing';
+import { StaffPings } from '@/components/notifications/StaffPings';
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
 
 // Admin CMS — lazy loaded (code-split, no se carga para learners)
@@ -253,8 +254,13 @@ export default function App() {
           tareas en 2º plano, "hay versión nueva"): son del panel, no del curso, y
           en un modal solo estorban. */}
       {!IS_LEARNER_PREVIEW && <FeedbackWidget />}
-      {/* "Alguien está pidiendo ayuda": aviso en vivo del chat, solo superadmin. */}
-      <HelpChatPing />
+      {/* Un solo rincón flotante para ayuda, opiniones y "volver arriba": se
+          aparta al bajar por la página y se puede mover o esconder, para que
+          nunca quede encima de un botón que hay que tocar. */}
+      <CornerDock />
+      {/* Avisos en vivo del staff: "alguien pide ayuda en el chat" (superadmin) y
+          "llegó una opinión del sitio" (superadmin + capacitadores de la campaña). */}
+      <StaffPings />
       <Toaster />
       {/* "+XP" flotante: cada acreditación del store se ve al instante, en
           cualquier vista y para cualquier rol (incluido el staff probando). */}

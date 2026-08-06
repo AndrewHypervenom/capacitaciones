@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useAnimation } from 'framer-motion'
 import {
   Bell, BellRing, RotateCcw, Check, CheckCheck, MessageSquare, Inbox,
-  LifeBuoy, Settings2, Volume2, VolumeX, Play,
+  LifeBuoy, Megaphone, Settings2, Volume2, VolumeX, Play,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
@@ -16,6 +16,7 @@ import {
   type NotificationVolume,
 } from '@/stores/notificationPrefsStore'
 import { previewNotificationSound } from '@/lib/notificationSound'
+import { useAuth } from '@/hooks/useAuth'
 import type { AppNotification } from '@/services/notifications.service'
 
 type Filter = 'all' | 'unread'
@@ -296,7 +297,14 @@ export function NotificationBell({ className }: { className?: string }) {
                           const { title, body } = notificationText(n)
                           const isFeedback = n.kind === 'feedback'
                           const isHelp = n.kind === 'help_chat'
-                          const Icon = isHelp ? LifeBuoy : isFeedback ? MessageSquare : RotateCcw
+                          const isSiteFeedback = n.kind === 'site_feedback'
+                          const Icon = isHelp
+                            ? LifeBuoy
+                            : isSiteFeedback
+                              ? Megaphone
+                              : isFeedback
+                                ? MessageSquare
+                                : RotateCcw
                           return (
                             <motion.div
                               key={n.id}
@@ -316,10 +324,17 @@ export function NotificationBell({ className }: { className?: string }) {
                                   void markRead(n.id)
                                   // Cada aviso lleva a donde se resuelve: la
                                   // retroalimentación a la del aprendiz, el del
-                                  // chat de ayuda a su historial.
-                                  if (isFeedback || isHelp) {
+                                  // chat de ayuda a su historial y la opinión a
+                                  // la bandeja donde se atiende.
+                                  if (isFeedback || isHelp || isSiteFeedback) {
                                     setOpen(false)
-                                    navigate(isHelp ? '/admin/chat' : '/feedback')
+                                    navigate(
+                                      isHelp
+                                        ? '/admin/chat'
+                                        : isSiteFeedback
+                                          ? '/admin/site-feedback'
+                                          : '/feedback',
+                                    )
                                   }
                                 }}
                                 className={cn(
@@ -339,9 +354,11 @@ export function NotificationBell({ className }: { className?: string }) {
                                     'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
                                     isHelp
                                       ? 'bg-neon-green/12 text-neon-green'
-                                      : isFeedback
-                                        ? 'bg-violet-500/12 text-violet-500'
-                                        : 'bg-amber-500/12 text-amber-500',
+                                      : isSiteFeedback
+                                        ? 'bg-neon-violet/12 text-neon-violet'
+                                        : isFeedback
+                                          ? 'bg-violet-500/12 text-violet-500'
+                                          : 'bg-amber-500/12 text-amber-500',
                                   )}
                                 >
                                   <Icon className="h-4 w-4" />
@@ -401,9 +418,14 @@ export function NotificationBell({ className }: { className?: string }) {
 // ─────────────────────────────────────────────────────────────
 function PrefsPanel() {
   const { t } = useTranslation()
-  const { sound, volume, helpAlerts, mutedUntil, setSound, setVolume, setHelpAlerts, muteFor } =
-    useNotificationPrefs()
+  const {
+    sound, volume, helpAlerts, feedbackAlerts, mutedUntil,
+    setSound, setVolume, setHelpAlerts, setFeedbackAlerts, muteFor,
+  } = useNotificationPrefs()
   const mutedLeft = mutedMinutesLeft(mutedUntil)
+  // Los avisos de trabajo (chat de ayuda, opiniones) solo llegan al staff; a un
+  // aprendiz sus interruptores no le dirían nada, así que ni se le muestran.
+  const { isAdminOrCapacitador, isSuperAdmin } = useAuth()
 
   return (
     <motion.div
@@ -474,12 +496,25 @@ function PrefsPanel() {
           )}
         </AnimatePresence>
 
-        <PrefRow
-          label={t('notifications.prefs.help_alerts', 'Avisar cuando escriben al chat de ayuda')}
-          checked={helpAlerts}
-          onChange={setHelpAlerts}
-          icon={<LifeBuoy className="h-3.5 w-3.5" />}
-        />
+        {/* El chat de ayuda solo se notifica al superadmin; las opiniones también
+            al capacitador de la campaña. */}
+        {isSuperAdmin && (
+          <PrefRow
+            label={t('notifications.prefs.help_alerts', 'Avisar cuando escriben al chat de ayuda')}
+            checked={helpAlerts}
+            onChange={setHelpAlerts}
+            icon={<LifeBuoy className="h-3.5 w-3.5" />}
+          />
+        )}
+
+        {isAdminOrCapacitador && (
+          <PrefRow
+            label={t('notifications.prefs.feedback_alerts', 'Avisar cuando dejan una opinión del sitio')}
+            checked={feedbackAlerts}
+            onChange={setFeedbackAlerts}
+            icon={<Megaphone className="h-3.5 w-3.5" />}
+          />
+        )}
 
         {/* Silencio temporal: la salida de emergencia para una reunión. */}
         <div className="flex items-center justify-between gap-2 pt-0.5">

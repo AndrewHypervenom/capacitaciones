@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { MessageCircle, X, ArrowUp, Sparkles, Trash2, Bot } from 'lucide-react'
+import { X, ArrowUp, Sparkles, Trash2, Bot } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHelpChatStore } from '@/stores/helpChatStore'
-import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
+import { useFloatingDockStore } from '@/stores/floatingDockStore'
 import { sendHelpMessage } from '@/services/help.service'
 import { logHelpInteraction } from '@/services/helpLog.service'
 import { notifySuperadminsHelpChat } from '@/services/notifications.service'
@@ -27,7 +27,7 @@ export function HelpWidget() {
   const reduce = useReducedMotion()
   const {
     isOpen, messages, loading, aiUsage,
-    close, toggle, nextId, addMessage, updateMessage, setLoading, clear,
+    close, nextId, addMessage, updateMessage, setLoading, clear,
     aiUsedToday, recordAiUse, markAiExhausted,
   } = useHelpChatStore()
 
@@ -38,6 +38,17 @@ export function HelpWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const lang = (i18n.resolvedLanguage ?? 'es') as 'es' | 'en' | 'pt'
+  /** El botón vive en el rincón compartido (CornerDock), no aquí. */
+  const dockSide = useFloatingDockStore((s) => s.side)
+
+  // El chat no está montado en todas las vistas (AppShell y el panel sí; /world
+  // o /arena no). Se avisa al rincón flotante para que solo ofrezca "Chat de
+  // ayuda" donde de verdad hay panel que abrir.
+  useEffect(() => {
+    const { setHelpMounted } = useFloatingDockStore.getState()
+    setHelpMounted(true)
+    return () => setHelpMounted(false)
+  }, [])
 
   const dailyLimit = aiDailyLimit(isAdminOrCapacitador)
   const usedToday = aiUsage.day === todayKey() ? aiUsage.count : 0
@@ -156,44 +167,9 @@ export function HelpWidget() {
 
   return createPortal(
     <>
-      {/* ── Botón flotante ─────────────────────────────────────── */}
-      <motion.button
-        onClick={() => {
-          // El panel de opiniones vive en el mismo rincón: al abrir el chat se
-          // cierra, para que nunca queden dos paneles encimados.
-          if (!isOpen) useSiteFeedbackStore.getState().close()
-          toggle()
-        }}
-        aria-label={t('help.title')}
-        className="fixed bottom-5 right-5 z-[9990] h-14 w-14 rounded-full"
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.4, type: 'spring', stiffness: 260, damping: 20 }}
-        whileHover={{ scale: 1.06 }}
-        whileTap={{ scale: 0.92 }}
-      >
-        <span className="relative flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-neon-green to-neon-cyan text-black shadow-xl shadow-neon-green/30">
-          {/* halo pulsante cuando está cerrado */}
-          {!isOpen && !reduce && (
-            <motion.span
-              className="absolute inset-0 rounded-full bg-neon-green/40"
-              animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
-            />
-          )}
-          <AnimatePresence mode="wait" initial={false}>
-            {isOpen ? (
-              <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}>
-                <X className="h-6 w-6" />
-              </motion.span>
-            ) : (
-              <motion.span key="chat" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }}>
-                <MessageCircle className="h-6 w-6" />
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </span>
-      </motion.button>
+      {/* El botón que abre este panel ya no vive aquí: es una acción del rincón
+          flotante compartido (CornerDock), para que ayuda, opiniones y "volver
+          arriba" ocupen un solo punto de la pantalla y no tres. */}
 
       {/* ── Panel ──────────────────────────────────────────────── */}
       <AnimatePresence>
@@ -208,7 +184,10 @@ export function HelpWidget() {
               'fixed z-[9990] flex flex-col overflow-hidden',
               'glass-strong border border-glass-border/10 shadow-2xl shadow-black/40',
               'bottom-0 right-0 left-0 h-[88vh] rounded-t-[28px]',
-              'sm:bottom-24 sm:right-5 sm:left-auto sm:h-[620px] sm:max-h-[78vh] sm:w-[416px] sm:rounded-[28px]',
+              // En escritorio se abre justo encima del botón, del lado donde el
+              // usuario haya dejado el rincón flotante.
+              'sm:bottom-[4.75rem] sm:h-[620px] sm:max-h-[78vh] sm:w-[416px] sm:rounded-[28px]',
+              dockSide === 'left' ? 'sm:left-5 sm:right-auto' : 'sm:right-5 sm:left-auto',
             )}
           >
             {/* Header con degradado */}

@@ -14,8 +14,9 @@ import { toast } from '@/stores/toastStore'
  *  - Restablecimientos del superadmin → limpia la caché local (progressStore)
  *    para que la UI deje de mostrar 100%, y avisa con un emergente.
  *  - Retroalimentación del capacitador → aviso emergente.
- *  - "Alguien escribió al chat de ayuda" (solo superadmin) → suena y lo recoge
- *    `HelpChatPing`, que pinta la tarjeta con quién preguntó y qué preguntó.
+ *  - "Alguien escribió al chat de ayuda" (solo superadmin) y "llegó una opinión
+ *    del sitio" (superadmin + capacitadores de la campaña) → suenan y los
+ *    recoge `StaffPings`, que pinta la tarjeta con quién escribió y qué dijo.
  *
  * Se monta UNA sola vez, a nivel de toda la app (`NotificationsSync` en
  * App.tsx). Antes vivía en AppShell, que no envuelve /admin/* — el superadmin,
@@ -80,21 +81,25 @@ export function useResetNotifications() {
   const chimed = useRef(new Set<string>())
   useEffect(() => {
     if (justArrived.length === 0) return
-    const helpAlerts = useNotificationPrefs.getState().helpAlerts
+    const { helpAlerts, feedbackAlerts } = useNotificationPrefs.getState()
     const handled: string[] = []
 
     for (const n of justArrived) {
       const stamp = `${n.id}:${n.payload?.count ?? 1}`
       const isHelp = n.kind === 'help_chat'
+      const isSiteFeedback = n.kind === 'site_feedback'
+      // Cada tipo se puede silenciar por separado desde el engranaje de la campana.
+      const alertsOn = isHelp ? helpAlerts : isSiteFeedback ? feedbackAlerts : true
 
       if (!chimed.current.has(stamp)) {
         chimed.current.add(stamp)
-        if (!isHelp || helpAlerts) playNotificationSound(isHelp ? 'ping' : 'info')
+        if (alertsOn) playNotificationSound(isHelp || isSiteFeedback ? 'ping' : 'info')
       }
 
-      // Los del chat de ayuda los pinta HelpChatPing (tarjeta con la pregunta) y
-      // él mismo los saca de la cola; los resets ya avisaron por justApplied.
-      if (isHelp) continue
+      // Los del chat de ayuda y las opiniones los pinta StaffPings (tarjeta con
+      // lo que escribieron) y él mismo los saca de la cola; los resets ya
+      // avisaron por justApplied.
+      if (isHelp || isSiteFeedback) continue
       if (n.kind === 'feedback') {
         const { title, body } = notificationText(n)
         toast.info(title, body)

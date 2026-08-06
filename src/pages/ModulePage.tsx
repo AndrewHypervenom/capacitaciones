@@ -44,7 +44,6 @@ import { vimeoEmbedUrl } from '@/lib/vimeo';
 import type { ContentBlock } from '@/types/blocks';
 import type { ModuleSection, SectionMedia } from '@/data/modules';
 import { ModulePageSkeleton } from '@/components/ui/Skeleton';
-import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer';
 import { toast } from '@/stores/toastStore';
 import { getModuleFeedbackForUser } from '@/services/activity.service';
@@ -780,8 +779,8 @@ export default function ModulePage() {
         attempts={latestAttemptsPerSection}
         computedMetrics={{ ...computedMetrics, timeSpent: activeTimeLabel } as any}
       />
-
-      <ScrollToTopButton />
+      {/* "Volver arriba" ya no es un botón suelto: es una acción del rincón
+          flotante (CornerDock), montado una sola vez en la raíz. */}
     </>
   );
 }

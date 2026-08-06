@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { notifyStaffSiteFeedback } from '@/services/notifications.service'
 
 // La tabla site_feedback aún no está en los tipos generados de la BD; se accede
 // sin tipar hasta regenerarlos. profiles/campaigns sí van tipados.
@@ -95,6 +96,9 @@ function browserMeta(): Record<string, unknown> {
 /**
  * Guarda una opinión. Lanza si falla: a diferencia del registro del chat, aquí
  * el usuario espera confirmación y merece enterarse si no se guardó.
+ *
+ * Guardada la fila, avisa al staff (superadmin + capacitadores de la campaña)
+ * sin esperar la respuesta: el aviso es un extra, no parte del envío.
  */
 export async function submitSiteFeedback(input: SiteFeedbackInput): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession()
@@ -106,7 +110,7 @@ export async function submitSiteFeedback(input: SiteFeedbackInput): Promise<void
     .eq('id', session.user.id)
     .maybeSingle()
 
-  const { error } = await table().insert({
+  const { data, error } = await table().insert({
     user_id: session.user.id,
     role: profile?.role ?? null,
     campaign_id: profile?.campaign_id ?? null,
@@ -126,8 +130,14 @@ export async function submitSiteFeedback(input: SiteFeedbackInput): Promise<void
     contact_note: input.contactOk ? input.contactNote?.trim().slice(0, 500) || null : null,
     meta: browserMeta(),
     shots: input.shots ?? [],
-  })
+  }).select('id').single()
   if (error) throw error
+
+  // Aviso al staff en vivo (campana + tarjeta). Fire-and-forget y a prueba de
+  // fallos: la opinión ya está guardada, y quien opinó no tiene por qué
+  // enterarse de si el aviso llegó o no.
+  const id = (data as { id?: string } | null)?.id
+  if (id) void notifyStaffSiteFeedback(id)
 }
 
 /* ══════════════════════ Capturas de pantalla ══════════════════════ */
