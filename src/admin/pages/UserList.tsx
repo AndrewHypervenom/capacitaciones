@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BookOpen, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -21,7 +21,6 @@ import { FadeIn } from '@/components/ui/motion'
 import { Select } from '@/components/ui/Select'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { MultiSelect } from '@/components/ui/MultiSelect'
-import { UserCoursesModal } from '@/admin/components/UserCoursesModal'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { UserProgressDrawer } from '@/admin/components/UserProgressDrawer'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
@@ -58,7 +57,27 @@ export default function UserList() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
-  const [assignUser, setAssignUser] = useState<ProfileWithEmail | null>(null)
+  // La tabla es ancha y hay que moverse a los lados: además de la barra del
+  // propio contenedor (abajo del todo) ponemos una ARRIBA, para no tener que
+  // bajar hasta el final de la lista solo para desplazarse en horizontal.
+  const topScrollRef = useRef<HTMLDivElement>(null)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
+  // El encabezado no tiene barra propia (overflow oculto): lo movemos nosotros.
+  const headScrollRef = useRef<HTMLDivElement>(null)
+  // Sin este cerrojo las barras se empujan entre sí (una mueve a la otra, que
+  // dispara su propio onScroll y devuelve el movimiento).
+  const syncingRef = useRef(false)
+  const syncScroll = (from: 'top' | 'table') => {
+    if (syncingRef.current) return
+    const src = from === 'top' ? topScrollRef.current : tableScrollRef.current
+    if (!src) return
+    const others = [topScrollRef, tableScrollRef, headScrollRef]
+      .map((r) => r.current)
+      .filter((el): el is HTMLDivElement => !!el && el !== src)
+    syncingRef.current = true
+    for (const el of others) el.scrollLeft = src.scrollLeft
+    requestAnimationFrame(() => { syncingRef.current = false })
+  }
   // Vista superadmin de cursos + restablecer progreso de una persona.
   const [resetUser, setResetUser] = useState<ProfileWithEmail | null>(null)
   // Panel lateral con el avance (cursos → módulos → actividades) sin salir de la lista.
@@ -554,11 +573,11 @@ export default function UserList() {
     // 589px = 549 de antes + 40 del interruptor de "puede crear aprendices"
     // (solo aparece en filas de capacitador, pero la columna es fija para que
     // encabezado y filas queden alineados).
-    ? 'minmax(280px,1fr) 150px 210px 589px 48px'
+    ? 'minmax(280px,1fr) 150px 210px 455px 48px'
     // El capacitador también puede copiar credenciales de su gente: la columna
     // de acciones necesita espacio para ese botón.
-    : 'minmax(280px,1fr) 150px 490px'
-  const tableMinWidth = isSuperAdmin ? 1329 : 940
+    : 'minmax(280px,1fr) 150px 356px'
+  const tableMinWidth = isSuperAdmin ? 1195 : 806
 
   return (
     <div className="p-4 sm:p-8">
@@ -820,17 +839,47 @@ export default function UserList() {
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
       ) : (
-        <FadeIn className="rounded-2xl border border-line overflow-x-auto overscroll-x-contain" y={14}>
-          <div style={{ minWidth: tableMinWidth }}>
-          <div className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
-            style={{ gridTemplateColumns: gridCols }}
-          >
-            <span>{t('admin.users.col_user')}</span>
-            <span>{t('admin.users.col_role')}</span>
-            {isSuperAdmin && <span>{t('admin.users.col_campaign')}</span>}
-            <span>{t('admin.users.col_actions')}</span>
-            {isSuperAdmin && <span />}
+        <FadeIn y={14}>
+          {/* Barra de scroll horizontal + encabezado FIJOS arriba: al bajar por
+              la lista siguen a la vista, así el scroll de arriba se puede usar
+              siempre y las columnas nunca quedan sin título. El encabezado vive
+              fuera del contenedor con scroll (si viviera dentro, `sticky` se
+              mediría contra ese contenedor y no contra la página) y se desplaza
+              por código, sincronizado con el cuerpo. */}
+          {/* En móvil la barra superior del panel (fija, 56px) tapa el borde de
+              arriba del área con scroll: por eso el encabezado se pega a 14. */}
+          <div className="sticky top-14 md:top-0 z-20 bg-bg">
+            <div
+              ref={topScrollRef}
+              onScroll={() => syncScroll('top')}
+              className="h-3 overflow-x-auto overscroll-x-contain"
+              aria-hidden
+            >
+              {/* Altura fija arriba (12px = alto del scrollbar en globals.css):
+                  con `height:auto` la caja mide lo que su contenido (1px) y el
+                  navegador no deja sitio para pintar la barra. */}
+              <div style={{ minWidth: tableMinWidth, height: 1 }} />
+            </div>
+            <div ref={headScrollRef} className="mt-1 overflow-hidden rounded-t-2xl border border-b-0 border-line">
+              <div style={{ minWidth: tableMinWidth }}>
+                <div className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
+                  style={{ gridTemplateColumns: gridCols }}
+                >
+                  <span>{t('admin.users.col_user')}</span>
+                  <span>{t('admin.users.col_role')}</span>
+                  {isSuperAdmin && <span>{t('admin.users.col_campaign')}</span>}
+                  <span>{t('admin.users.col_actions')}</span>
+                  {isSuperAdmin && <span />}
+                </div>
+              </div>
+            </div>
           </div>
+          <div
+            ref={tableScrollRef}
+            onScroll={() => syncScroll('table')}
+            className="rounded-b-2xl border border-t-0 border-line overflow-x-auto overscroll-x-contain"
+          >
+          <div style={{ minWidth: tableMinWidth }}>
           <div className="divide-y divide-line">
             {filteredUsers.map((user) => (
               <div key={user.id} className="grid gap-4 px-5 py-3.5 items-center transition-colors hover:bg-subtle/40"
@@ -1044,15 +1093,6 @@ export default function UserList() {
                       </button>
                     </Tooltip>
                   )}
-                  <Tooltip label={t('admin.users.assign_courses_hint')} className="min-w-0" maxWidth={240}>
-                    <button
-                      onClick={() => setAssignUser(user)}
-                      className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors min-w-0"
-                    >
-                      <BookOpen className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{t('admin.users.assign_courses')}</span>
-                    </button>
-                  </Tooltip>
                   <Tooltip label={t('admin.users.view_progress_hint')} className="shrink-0" maxWidth={240}>
                     <button
                       onClick={() => setProgressUser(user)}
@@ -1162,11 +1202,8 @@ export default function UserList() {
             )}
           </div>
           </div>
+          </div>
         </FadeIn>
-      )}
-
-      {assignUser && (
-        <UserCoursesModal user={assignUser} onClose={() => setAssignUser(null)} />
       )}
 
       {progressUser && (

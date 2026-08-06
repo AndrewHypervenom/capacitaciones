@@ -98,8 +98,13 @@ export default function AdminRouter() {
     )
   }
 
+  // `h-screen` (no `min-h-screen`): con altura mínima el contenedor crecía con
+  // el contenido y el `overflow-auto` de abajo nunca llegaba a scrollear
+  // —scrolleaba la ventana—, así que ningún `sticky` de las páginas se pegaba
+  // (se medía contra un contenedor que nunca se movía). Con altura fija el panel
+  // scrollea de verdad dentro del contenedor, como dice el comentario de `scrollRef`.
   return (
-    <div className="flex min-h-screen bg-bg">
+    <div className="flex h-screen overflow-hidden bg-bg">
       <AdminNav />
       <div ref={scrollRef} className="flex-1 md:ml-56 overflow-auto pt-14 md:pt-0">
         <Routes>
