@@ -85,6 +85,7 @@ import { usePresenceStore } from '@/stores/presenceStore'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
+import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
 import type { GameClassifyBlock } from '@/types/blocks' // Importamos el tipo del bloque nuevo
 import type { BlockWithId, ContentBlock, GameSortBlock } from '@/types/blocks'
 import { toast } from '@/stores/toastStore'
@@ -1568,9 +1569,12 @@ export default function ModuleEditor() {
 
   const handleTogglePublished = async () => {
     if (!mod) return
+    const next = !mod.is_published
+    // No se publica con quiz de video en 0:00: nunca se disparan y el quiz no se
+    // puede saltar, así que el capacitador tiene que corregir el tiempo primero.
+    if (next && !(await ensureVideoQuizTimes([mod.id]))) return
     setPublishingMod(true)
     try {
-      const next = !mod.is_published
       await toggleModulePublished(mod.id, next)
       setMod((prev) => prev ? { ...prev, is_published: next } : prev)
       toast.success(next ? t('admin.modules.toast_published') : t('admin.modules.toast_unpublished'))

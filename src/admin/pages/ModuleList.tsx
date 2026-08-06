@@ -24,6 +24,7 @@ import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { Select } from '@/components/ui/Select'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
@@ -152,6 +153,8 @@ export default function ModuleList() {
   }, [selectedCampaignId, t])
 
   const handleTogglePublished = async (mod: DbModuleRow) => {
+    // No se publica con quiz de video en 0:00 (nunca se disparan).
+    if (!mod.is_published && !(await ensureVideoQuizTimes([mod.id]))) return
     try {
       await toggleModulePublished(mod.id, !mod.is_published)
       setModules((prev) =>

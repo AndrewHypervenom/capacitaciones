@@ -3143,6 +3143,16 @@
         "markers_count": "Marcadores ({{count}})",
         "no_markers": "Sin marcadores. Usa los botones para agregar capítulos o quizzes."
       },
+      "publish_quiz_zero": {
+        "title": "No se puede publicar todavía",
+        "desc_one": "1 quiz dentro de un video quedó al comienzo. El aprendiz no lo vería y, como los quiz del video no se pueden saltar, el video queda bloqueado:",
+        "desc_other": "{{count}} quizzes dentro de videos quedaron al comienzo. El aprendiz no los vería y, como los quiz del video no se pueden saltar, el video queda bloqueado:",
+        "section_n": "Sección {{n}}",
+        "and_more_one": "…y 1 más",
+        "and_more_other": "…y {{count}} más",
+        "hint": "Abre el video de esas secciones, mueve cada quiz al segundo {{s}} o más y vuelve a publicar.",
+        "understood": "Entendido"
+      },
       "template_gallery_title": "Elige un template",
       "template_gallery_subtitle": "Cada template predefine el tipo de contenido de la sección.",
       "template_hero": "Portada",

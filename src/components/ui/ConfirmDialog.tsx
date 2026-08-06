@@ -26,6 +26,8 @@ export interface ConfirmOptions {
   cancelLabel?: string
   /** Tono visual: 'danger' (rojo, por defecto) o 'default' (verde neón). */
   tone?: 'danger' | 'default'
+  /** Oculta el botón de cancelar: para avisos que sólo se pueden aceptar. */
+  hideCancel?: boolean
 }
 
 type ConfirmFn = (opts?: ConfirmOptions) => Promise<boolean>
@@ -97,6 +99,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           (opts?.tone === 'default' ? t('confirm.accept', 'Continuar') : t('confirm.delete'))
         }
         cancelLabel={opts?.cancelLabel ?? t('confirm.cancel')}
+        hideCancel={opts?.hideCancel}
         tone={opts?.tone ?? 'danger'}
         onConfirm={() => close(true)}
         onClose={() => close(false)}
@@ -111,6 +114,7 @@ interface ConfirmDialogProps {
   description?: ReactNode
   confirmLabel: string
   cancelLabel: string
+  hideCancel?: boolean
   tone: 'danger' | 'default'
   onConfirm: () => void
   onClose: () => void
@@ -126,6 +130,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   cancelLabel,
+  hideCancel,
   tone,
   onConfirm,
   onClose,
@@ -189,9 +194,11 @@ export function ConfirmDialog({
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <Button variant="ghost" size="sm" onClick={onClose}>
-                  {cancelLabel}
-                </Button>
+                {!hideCancel && (
+                  <Button variant="ghost" size="sm" onClick={onClose}>
+                    {cancelLabel}
+                  </Button>
+                )}
                 <button
                   autoFocus
                   onClick={onConfirm}

@@ -66,6 +66,7 @@ import {
   type CourseStats,
 } from '@/services/courses.service'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
 import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { TranslationModal } from '@/admin/components/TranslationModal'
@@ -669,6 +670,9 @@ export default function CourseEditor() {
 
   const handleTogglePublished = async () => {
     const next = !course.is_published
+    // Al publicar el curso el aprendiz ve sus módulos publicados: no se publica
+    // si alguno tiene quiz de video en 0:00 (nunca se disparan).
+    if (next && !(await ensureVideoQuizTimes(course.modules.map((m) => m.id)))) return
     try {
       await updateCourse(course.id, { is_published: next })
       setCourse({ ...course, is_published: next })
@@ -709,6 +713,9 @@ export default function CourseEditor() {
   }
 
   const handlePublishAllModules = async () => {
+    const pending = course.modules.filter((m) => !m.is_published)
+    // No se publica con quiz de video en 0:00 (nunca se disparan).
+    if (!(await ensureVideoQuizTimes(pending.map((m) => m.id)))) return
     try {
       for (const m of course.modules.filter((m) => !m.is_published)) {
         await toggleModulePublished(m.id, true)
@@ -724,6 +731,9 @@ export default function CourseEditor() {
   // Publica el contenido del curso: curso + módulos. NO toca los mundos: la
   // gamificación se crea y gestiona aparte, en la sección Mundos.
   const handlePublishAll = async () => {
+    // No se publica con quiz de video en 0:00 (nunca se disparan).
+    const pending = course.modules.filter((m) => !m.is_published)
+    if (!(await ensureVideoQuizTimes(pending.map((m) => m.id)))) return
     try {
       if (!course.is_published) {
         await updateCourse(course.id, { is_published: true })
@@ -925,6 +935,8 @@ export default function CourseEditor() {
   // Publicar/despublicar un módulo desde el curso: un módulo en borrador no lo
   // ve el aprendiz aunque el curso esté publicado.
   const handleToggleModulePublished = async (moduleId: string, isPublished: boolean) => {
+    // No se publica con quiz de video en 0:00 (nunca se disparan).
+    if (isPublished && !(await ensureVideoQuizTimes([moduleId]))) return
     try {
       await toggleModulePublished(moduleId, isPublished)
       invalidateModulesCache()

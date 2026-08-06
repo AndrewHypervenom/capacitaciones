@@ -3143,6 +3143,16 @@
         "markers_count": "Markers ({{count}})",
         "no_markers": "No markers. Use the buttons to add chapters or quizzes."
       },
+      "publish_quiz_zero": {
+        "title": "Can't publish yet",
+        "desc_one": "1 quiz inside a video sits at the very start. The learner never sees it and, since video quizzes can't be skipped, the video stays locked:",
+        "desc_other": "{{count}} quizzes inside videos sit at the very start. The learner never sees them and, since video quizzes can't be skipped, the video stays locked:",
+        "section_n": "Section {{n}}",
+        "and_more_one": "…and 1 more",
+        "and_more_other": "…and {{count}} more",
+        "hint": "Open the video in those sections, move each quiz to second {{s}} or later, then publish again.",
+        "understood": "Got it"
+      },
       "template_gallery_title": "Choose a template",
       "template_gallery_subtitle": "Each template predefines the section content type.",
       "template_hero": "Hero",
