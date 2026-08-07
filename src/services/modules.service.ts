@@ -3,6 +3,8 @@ import type { LearningModule, ModuleSection, SectionQuiz, VideoMarker, VideoQuiz
 import type { ContentBlock } from '@/types/blocks'
 import type { GeneratedModule } from '@/services/ai.service'
 import { requestDeletion } from '@/services/audit.service'
+import { isMediaUrlSharedInCourse } from '@/services/mediaDuplicates.service'
+import { shortFileHash } from '@/lib/fileHash'
 
 // ─── Raw DB types for video markers ──────────────────────────
 // Definidos en @/types/blocks (para poder embeberlos en el bloque de video sin
@@ -992,9 +994,16 @@ export async function uploadSectionMedia(
   moduleId: string,
   sectionId: string,
   onProgress?: (pct: number) => void,
+  /** Huella ya calculada por el llamador (la detección de duplicados la calcula
+   *  antes de subir); se pasa para no volver a leer el archivo entero. */
+  precomputedHash?: string | null,
 ): Promise<string> {
   const ext = file.name.split('.').pop() ?? 'bin'
-  const path = `${campaignId}/${moduleId}/${sectionId}/${Date.now()}.${ext}`
+  // La huella del contenido viaja en el nombre del objeto: así la URL pública
+  // basta para reconocer el mismo archivo subido dos veces al curso, sin tabla
+  // ni columna extra. Ver `lib/fileHash` y `mediaDuplicates.service`.
+  const hash = precomputedHash !== undefined ? precomputedHash : await shortFileHash(file)
+  const path = `${campaignId}/${moduleId}/${sectionId}/${Date.now()}${hash ? `-${hash}` : ''}.${ext}`
   const { error } = await supabase.storage.from('module-media').upload(path, file, {
     contentType: file.type,
     // @ts-expect-error onUploadProgress es válido en Supabase Storage JS v2
@@ -1013,8 +1022,14 @@ export async function uploadSectionMedia(
  * `cloneModule` copia `media_url` por referencia (no duplica el archivo), así que
  * el original y sus copias apuntan al mismo objeto de Storage. Sin esta comprobación,
  * cambiar la imagen en una copia dejaría rota la sección del módulo original.
+ *
+ * `media_url` cubre los medios a nivel de sección, pero los bloques `pdf` y
+ * `video` guardan su URL dentro de `blocks_data`, donde ese conteo no llega — y
+ * "usar el mismo archivo" (detección de duplicados) hace que varios bloques
+ * compartan un objeto a propósito. Por eso, cuando el llamador sabe en qué
+ * módulo está, se barre además el curso entero.
  */
-export async function deleteSectionMedia(publicUrl: string): Promise<void> {
+export async function deleteSectionMedia(publicUrl: string, moduleId?: string): Promise<void> {
   const prefix = '/storage/v1/object/public/module-media/'
   const idx = publicUrl.indexOf(prefix)
   if (idx === -1) return
@@ -1027,6 +1042,8 @@ export async function deleteSectionMedia(publicUrl: string): Promise<void> {
     .select('id', { count: 'exact', head: true })
     .eq('media_url', publicUrl)
   if (countErr || (count ?? 0) > 1) return
+
+  if (moduleId && (await isMediaUrlSharedInCourse(moduleId, publicUrl))) return
 
   const path = decodeURIComponent(publicUrl.slice(idx + prefix.length))
   const { error } = await supabase.storage.from('module-media').remove([path])

@@ -959,7 +959,15 @@
     "good_result": "Good result. You can continue.",
     "review_material": "Review the material and try again.",
     "continue_video": "Continue video",
-    "review_info": "Rewatch the video"
+    "review_info": "Rewatch the video",
+    "up_next": "Up next",
+    "next_in": "Next in {{s}}",
+    "play_next": "Play next",
+    "cancel": "Cancel",
+    "finished": "You finished this video.",
+    "watch_again": "Watch again",
+    "autoplay": "Autoplay",
+    "autoplay_hint": "Play the next video when this one ends"
   },
   "admin": {
     "surgery": {
@@ -3186,6 +3194,19 @@
       "media_type_error": "Only images (JPG, PNG, WebP, GIF)",
       "media_video_type_error": "Only MP4, WebM or OGG videos",
       "media_save_section_first": "Save the section first to upload files",
+      "dup": {
+        "checking": "Checking whether it's already in the course...",
+        "pdf_exact": "This document is already in the course.",
+        "video_exact": "This video is already in the course.",
+        "pdf_by_name": "There's already a document with this same name in the course.",
+        "video_by_name": "There's already a video with this same name in the course.",
+        "located_at": "It's in:",
+        "unnamed": "another module in the course",
+        "reuse_pdf": "Use the same file",
+        "reuse_video": "Use the same video",
+        "upload_anyway": "Upload anyway",
+        "view_existing": "View the existing one"
+      },
       "template_text_only": "Text only",
       "template_text_callout": "Text + Tip",
       "template_text_media": "Text + Media",
@@ -4687,5 +4708,20 @@
     "boost_ends_in": "Ends in {{time}}",
     "boost_starts_in": "Starts in {{time}}",
     "boost_default_desc": "Everything you earn counts ×{{x}}: modules, quizzes, reviews and certifications."
+  },
+  "cinema": {
+    "playlist": "Contents",
+    "videos_count": "{{count}} videos",
+    "duration_partial": "{{time}} and counting",
+    "checks_count": "{{count}} checks",
+    "watched_of": "{{done}} of {{total}} watched",
+    "video_n_of_m": "Video {{n}} of {{total}}",
+    "about": "Description",
+    "no_description": "This video has no supporting text.",
+    "autoplay_label": "Autoplay next video",
+    "focus_mode": "Focus mode",
+    "show_list": "Show list",
+    "previous": "Previous",
+    "next": "Next"
   }
 }

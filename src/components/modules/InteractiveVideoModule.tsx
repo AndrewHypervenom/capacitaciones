@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -15,6 +15,7 @@ import {
   RotateCcw,
   LayoutList,
   Lock,
+  SkipForward,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -23,8 +24,29 @@ import { YouTubePlayer } from './YouTubePlayer'
 import { VimeoPlayer } from './VimeoPlayer'
 import type { PlayerLike } from '@/lib/youtube'
 import { saveActivityAttempt } from '@/services/activity.service'
+import {
+  announcePlaying,
+  focusVideo,
+  getAutoplayNext,
+  nextVideoAfter,
+  ownsKeyboard,
+  registerVideo,
+  setAutoplayNext,
+  subscribeAutoplayNext,
+} from '@/lib/videoBus'
 import type { ModuleSection, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
+
+/** Lo que el reproductor le cuenta al contenedor en modo cine. */
+export interface VideoPlayerState {
+  currentTime: number
+  duration: number
+  playing: boolean
+  /** Tiempo del primer quiz pendiente: todo lo que venga después está bloqueado. */
+  gateTime: number | null
+  activeChapterIdx: number
+  completedQuizzes: Record<string, QuizResult>
+}
 
 interface InteractiveVideoModuleProps {
   section: ModuleSection
@@ -36,7 +58,28 @@ interface InteractiveVideoModuleProps {
   /** Resultados guardados en la base (markerId → {score,total}) para restaurar
    *  los quizzes ya hechos y no obligar a repetirlos para avanzar el video. */
   savedQuizResults?: Record<string, QuizResult>
+  /** Título del video: se muestra al pasar el mouse y en la tarjeta de "a continuación". */
+  title?: string
+  /** Modo cine: la lista de capítulos vive afuera, en el panel lateral. */
+  hideChapters?: boolean
+  /** Arrancar apenas esté listo. Solo se usa al encadenar desde el video anterior. */
+  autoPlayOnReady?: boolean
+  /**
+   * Qué reproducir cuando ESTE video termine.
+   * `undefined` → lo resuelve el registro de la página (varios reproductores montados).
+   * `null`      → no hay siguiente: es el último de la lista.
+   */
+  nextUp?: { title: string; start: () => void } | null
+  /** Se llama cuando el video TERMINA (no cuando se pausa). */
+  onEnded?: () => void
+  /** Estado hacia el contenedor (modo cine). Solo se emite cuando cambia algo visible. */
+  onState?: (state: VideoPlayerState) => void
+  /** El contenedor puede pedir un salto de tiempo (capítulos del panel lateral). */
+  seekRef?: React.MutableRefObject<((seconds: number) => void) | null>
 }
+
+/** Segundos de la cuenta regresiva antes de encadenar el siguiente video. */
+const NEXT_UP_SECONDS = 6
 
 function formatTime(s: number): string {
   const h = Math.floor(s / 3600)
@@ -70,8 +113,23 @@ interface QuizResult {
   total: number
 }
 
-export function InteractiveVideoModule({ section, language, userId, campaignId, moduleId, savedQuizResults }: InteractiveVideoModuleProps) {
+export function InteractiveVideoModule({
+  section,
+  language,
+  userId,
+  campaignId,
+  moduleId,
+  savedQuizResults,
+  title,
+  hideChapters,
+  autoPlayOnReady,
+  nextUp,
+  onEnded,
+  onState,
+  seekRef,
+}: InteractiveVideoModuleProps) {
   const { t } = useTranslation()
+  const playerId = useId()
   const videoRef = useRef<PlayerLike | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
@@ -109,6 +167,19 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const [pulseGate, setPulseGate] = useState(false)
   const controlsTimeout = useRef<ReturnType<typeof setTimeout>>()
   const lang = language as 'es' | 'en' | 'pt'
+
+  const videoAreaRef = useRef<HTMLDivElement>(null)
+
+  // ── Encadenado al terminar ──
+  // Solo cuenta el final REAL del video. Se guarda en un ref porque YouTube emite
+  // "pausado" pegado a "terminado" y no queremos contarlo dos veces.
+  const endedRef = useRef(false)
+  const [autoNext, setAutoNext] = useState(getAutoplayNext)
+  const [nextCountdown, setNextCountdown] = useState<number | null>(null)
+  const [finished, setFinished] = useState(false)
+  const nextTargetRef = useRef<{ title: string; start: () => void } | null>(null)
+  const [nextTitle, setNextTitle] = useState<string | null>(null)
+  const autoPlayArmed = useRef(!!autoPlayOnReady)
 
   const markers = section.videoMarkers ?? []
   const videoUrl = section.media?.url ?? null
@@ -159,14 +230,23 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     }
   }, [activeChapterIdx])
 
-  // Ocultar controles automáticamente
+  // Ocultar controles automáticamente. Con el menú de velocidad abierto los
+  // controles se quedan: quien está leyendo el panel no está moviendo el ratón,
+  // y verlo desaparecer a mitad es exasperante.
+  const menuOpen = showRates
   const showControlsTemporarily = useCallback(() => {
     setShowControls(true)
     clearTimeout(controlsTimeout.current)
-    if (playing) {
+    if (playing && !menuOpen) {
       controlsTimeout.current = setTimeout(() => setShowControls(false), 3000)
     }
-  }, [playing])
+  }, [playing, menuOpen])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    clearTimeout(controlsTimeout.current)
+    setShowControls(true)
+  }, [menuOpen])
 
   useEffect(() => {
     return () => {
@@ -192,13 +272,83 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     clearTimeout(pendingTimeout.current)
     setPending(false)
     setPlaying(true)
-  }, [])
+    endedRef.current = false
+    setFinished(false)
+    setNextCountdown(null)
+    // Este es el video que suena: los demás de la página se callan y los atajos
+    // de teclado pasan a ser suyos.
+    announcePlaying(playerId)
+  }, [playerId])
 
   const handlePauseEvent = useCallback(() => {
     clearTimeout(pendingTimeout.current)
     setPending(false)
     setPlaying(false)
   }, [])
+
+  /**
+   * El video llegó al final. Es el ÚNICO momento en que otro video puede arrancar
+   * solo: una pausa, un salto o un clic en otra parte nunca encadenan nada.
+   *
+   * De dónde sale "el siguiente": si el contenedor lo dice (modo cine, donde la
+   * lista está afuera y solo hay un reproductor montado) se usa eso; si no, se
+   * busca el siguiente reproductor de la página en orden de arriba abajo.
+   */
+  const handleEndedEvent = useCallback(() => {
+    if (endedRef.current) return // YouTube emite "pausado" pegado a "terminado"
+    endedRef.current = true
+    clearTimeout(pendingTimeout.current)
+    setPending(false)
+    setPlaying(false)
+    setFinished(true)
+    onEnded?.()
+
+    const target = nextUp !== undefined ? nextUp : (() => {
+      const n = nextVideoAfter(playerId)
+      if (!n) return null
+      return {
+        title: n.title,
+        // El siguiente puede estar muy por debajo del pliegue: se trae a la vista
+        // antes de arrancarlo. Un video sonando fuera de pantalla desconcierta.
+        start: () => {
+          n.getElement()?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          n.play()
+        },
+      }
+    })()
+    nextTargetRef.current = target
+    setNextTitle(target?.title ?? null)
+    if (target && getAutoplayNext()) setNextCountdown(NEXT_UP_SECONDS)
+  }, [nextUp, onEnded, playerId])
+
+  // Cuenta regresiva de "a continuación". Vive aparte para que cancelarla sea
+  // simplemente poner el contador en null.
+  useEffect(() => {
+    if (nextCountdown == null) return
+    if (nextCountdown <= 0) {
+      const target = nextTargetRef.current
+      setNextCountdown(null)
+      target?.start()
+      return
+    }
+    const id = setTimeout(() => setNextCountdown((c) => (c == null ? null : c - 1)), 1000)
+    return () => clearTimeout(id)
+  }, [nextCountdown])
+
+  // Alta en el registro de la página: quién soy, dónde estoy y cómo se me maneja.
+  useEffect(() => {
+    return registerVideo({
+      id: playerId,
+      title: title || section.heading?.[lang] || section.heading?.es || '',
+      getElement: () => containerRef.current,
+      play: () => { videoRef.current?.play() },
+      pause: () => { videoRef.current?.pause() },
+    })
+  }, [playerId, title, section.heading, lang])
+
+  // La preferencia de encadenado es del usuario, no del módulo: si la cambia en
+  // un reproductor, los demás de la página se enteran.
+  useEffect(() => subscribeAutoplayNext(setAutoNext), [])
 
   // Listener de cambio de pantalla completa
   useEffect(() => {
@@ -207,12 +357,19 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
 
-  // Atajos de teclado
+  // Atajos de teclado.
+  //
+  // El listener vive en `document` (así funciona sin tener que hacer clic dentro
+  // del video), pero SOLO obedece el reproductor con el que el usuario está
+  // interactuando. Sin ese filtro, en un módulo con varios videos la barra
+  // espaciadora le hablaba a todos: el que sonaba se pausaba y el de abajo
+  // arrancaba solo. Ver `lib/videoBus`.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!containerRef.current) return
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (showOverlay) return
+      if (!ownsKeyboard(playerId)) return
 
       switch (e.key) {
         case ' ':
@@ -283,6 +440,8 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
   const togglePlay = () => {
     const v = videoRef.current
     if (!v) return
+    // Tocar el video cierra el menú de velocidad, como cualquier reproductor.
+    setShowRates(false)
     // `pending` cuenta como "va a reproducir": un segundo clic cancela el arranque.
     if (playing || pending) {
       clearTimeout(pendingTimeout.current)
@@ -319,6 +478,40 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
     // intermedios; solo el avance natural de la reproducción los cruza.
     lastTimeRef.current = target
   }
+
+  // El contenedor (modo cine) maneja los capítulos desde el panel lateral.
+  useEffect(() => {
+    if (!seekRef) return
+    seekRef.current = (secs: number) => { focusVideo(playerId); seekTo(secs); requestPlay() }
+    return () => { seekRef.current = null }
+  })
+
+  // Estado hacia el contenedor. Se emite solo cuando cambia algo que se ve
+  // (medio segundo de reloj, capítulo, compuerta): esto se calcula 4 veces por
+  // segundo y avisar en cada tic haría re-pintar la lista lateral sin motivo.
+  const lastSignature = useRef('')
+  const gateForState = firstPendingQuizTime()
+  useEffect(() => {
+    if (!onState) return
+    const sig = [
+      Math.round(currentTime * 2),
+      Math.round(duration),
+      playing,
+      gateForState,
+      activeChapterIdx,
+      Object.keys(completedQuizzes).length,
+    ].join('|')
+    if (sig === lastSignature.current) return
+    lastSignature.current = sig
+    onState({
+      currentTime,
+      duration,
+      playing,
+      gateTime: gateForState,
+      activeChapterIdx,
+      completedQuizzes,
+    })
+  }, [onState, currentTime, duration, playing, gateForState, activeChapterIdx, completedQuizzes])
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressBarRef.current || !duration) return
@@ -464,6 +657,15 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
         setShowResumeToast(true)
       }
     } catch { /* ignore */ }
+
+    // Encadenado: este reproductor se montó porque el anterior TERMINÓ. Arranca
+    // una sola vez; si el navegador bloquea el arranque, el temporizador de
+    // `requestPlay` devuelve el botón grande y el aprendiz decide.
+    if (autoPlayArmed.current) {
+      autoPlayArmed.current = false
+      focusVideo(playerId)
+      requestPlay()
+    }
   }
 
   const handleResumeFromSaved = () => {
@@ -490,6 +692,32 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
       el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
   }
+
+  const cancelNextUp = () => {
+    setNextCountdown(null)
+    nextTargetRef.current = null
+  }
+
+  const playNextNow = () => {
+    const target = nextTargetRef.current
+    setNextCountdown(null)
+    target?.start()
+  }
+
+  const replay = () => {
+    setFinished(false)
+    endedRef.current = false
+    setNextCountdown(null)
+    seekTo(0)
+    requestPlay()
+  }
+
+  // Medidas de los controles. En pantalla completa todo crece: el reproductor
+  // pasa de 400px de alto a 1080 y los mismos iconos se vuelven inservibles.
+  // El `p-2` no es decoración: es el blanco mínimo para un dedo.
+  const ctrlBtn = cn('shrink-0 rounded-lg transition-colors', fullscreen ? 'p-2' : 'p-1.5')
+  const ctrlIcon = fullscreen ? 'h-7 w-7' : 'h-5 w-5'
+  const ctrlIconSm = fullscreen ? 'h-5 w-5' : 'h-4 w-4'
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0
   // Tope actual: tiempo del primer quiz pendiente. Todo marcador posterior está
@@ -659,9 +887,12 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
       )}
       onMouseMove={showControlsTemporarily}
       onMouseLeave={() => playing && setShowControls(false)}
+      // Tocar el reproductor lo vuelve el dueño de los atajos de teclado: en un
+      // módulo con varios videos, la barra espaciadora solo mueve este.
+      onPointerDownCapture={() => focusVideo(playerId)}
     >
       {/* ── Área de video ── */}
-      <div className={cn('relative bg-black', fullscreen ? 'flex-1 flex flex-col' : 'aspect-video w-full')}>
+      <div ref={videoAreaRef} className={cn('relative bg-black', fullscreen ? 'flex-1 flex flex-col' : 'aspect-video w-full')}>
         {isYouTube && videoUrl ? (
           <YouTubePlayer
             videoId={videoUrl}
@@ -670,7 +901,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
             onReady={handleLoadedMetadata}
             onPlay={handlePlayEvent}
             onPause={handlePauseEvent}
-            onEnded={handlePauseEvent}
+            onEnded={handleEndedEvent}
             onTimeUpdate={handleTimeUpdate}
           />
         ) : isVimeo && videoUrl ? (
@@ -681,7 +912,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
             onReady={handleLoadedMetadata}
             onPlay={handlePlayEvent}
             onPause={handlePauseEvent}
-            onEnded={handlePauseEvent}
+            onEnded={handleEndedEvent}
             onTimeUpdate={handleTimeUpdate}
           />
         ) : (
@@ -695,7 +926,7 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
             onPause={handlePauseEvent}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
-            onEnded={handlePauseEvent}
+            onEnded={handleEndedEvent}
           />
         )}
 
@@ -710,6 +941,20 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
             onClick={togglePlay}
             className="absolute inset-0 z-10 w-full h-full cursor-pointer bg-transparent"
           />
+        )}
+
+        {/* Título sobre el video: aparece con los controles y se va con ellos,
+            igual que en un reproductor de cine. */}
+        {title && (
+          <div
+            className={cn(
+              'absolute top-0 left-0 right-0 z-20 px-5 pt-4 pb-10 pointer-events-none',
+              'bg-gradient-to-b from-black/65 to-transparent transition-opacity duration-300',
+              showControls || !playing ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            <p className="text-[13.5px] font-semibold text-white/90 leading-snug line-clamp-2">{title}</p>
+          </div>
         )}
 
         {/* Toast de reanudar */}
@@ -795,7 +1040,9 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
         <AnimatePresence>
           {fullscreen && showFsChapters && (
             <motion.div
-              className="absolute right-0 top-0 h-full w-72 bg-zinc-900/97 border-l border-white/10 z-30 flex flex-col"
+              // Se corta antes de la barra de controles: tapándola, en pantalla
+              // completa quedaban inalcanzables salir, velocidad y subtítulos.
+              className="absolute right-0 top-0 bottom-24 w-72 max-w-[85vw] bg-zinc-900/97 border-l border-white/10 z-30 flex flex-col"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
@@ -877,21 +1124,110 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
           )}
         </AnimatePresence>
 
+        {/* Final del video: "a continuación" con cuenta regresiva cancelable, o
+            simplemente volver a verlo si no hay siguiente. Nada arranca sin que
+            este cartel lo anuncie primero. */}
+        <AnimatePresence>
+          {finished && !showOverlay && (
+            <motion.div
+              key="end-card"
+              // Deja libre la barra de controles: con el cartel encima no se podía
+              // ni salir de pantalla completa ni mover el video.
+              className="absolute inset-x-0 top-0 bottom-20 z-30 flex items-center justify-center bg-gradient-to-b from-black/70 via-black/80 to-black/90 px-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <motion.div
+                className="w-full max-w-md text-center"
+                initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              >
+                {nextTitle ? (
+                  <>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                      {t('video.up_next')}
+                    </p>
+                    <p className="mt-2 text-[19px] font-semibold leading-snug text-white text-balance">
+                      {nextTitle}
+                    </p>
+
+                    <div className="mt-6 flex items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={playNextNow}
+                        className="relative inline-flex items-center gap-2 rounded-full bg-neon-green px-5 py-2.5 text-[13px] font-semibold text-black transition-transform duration-200 hover:scale-[1.03]"
+                      >
+                        {/* El anillo cuenta el tiempo que falta: se ve cuánto queda
+                            sin tener que leer un número. */}
+                        {nextCountdown != null && (
+                          <motion.span
+                            aria-hidden
+                            className="absolute inset-0 rounded-full ring-2 ring-white/70"
+                            initial={{ opacity: 0.9, scale: 1 }}
+                            animate={{ opacity: 0, scale: 1.35 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: 'easeOut' }}
+                          />
+                        )}
+                        <SkipForward className="h-4 w-4" />
+                        {nextCountdown != null
+                          ? t('video.next_in', { s: nextCountdown })
+                          : t('video.play_next')}
+                      </button>
+                      {nextCountdown != null && (
+                        <button
+                          type="button"
+                          onClick={cancelNextUp}
+                          className="rounded-full border border-white/20 px-4 py-2.5 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+                        >
+                          {t('video.cancel')}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[15px] font-medium text-white/80">{t('video.finished')}</p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={replay}
+                  className="mt-5 inline-flex items-center gap-1.5 text-[12.5px] text-white/55 transition-colors hover:text-white"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> {t('video.watch_again')}
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Controles */}
         <div
           className={cn(
             'absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-300',
             showControls || !playing || seeking ? 'opacity-100' : 'opacity-0 pointer-events-none',
           )}
+          // Con el puntero encima, la barra no se esconde. Antes desaparecía a
+          // los 3 segundos aunque estuvieras apuntando a un botón — y en pantalla
+          // completa, donde hay que recorrer media pantalla para llegar, eso
+          // hacía que los botones "no funcionaran".
+          onMouseEnter={() => clearTimeout(controlsTimeout.current)}
+          onMouseLeave={showControlsTemporarily}
         >
           {/* Degradado */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
 
-          <div className="relative px-4 pb-4 pt-8 space-y-2">
-            {/* Barra de progreso */}
+          <div className={cn('relative space-y-2', fullscreen ? 'px-6 pb-6 pt-10' : 'px-3 sm:px-4 pb-3 sm:pb-4 pt-8')}>
+            {/* Barra de progreso. En pantalla completa y en táctil es más gruesa:
+                una línea de 6px es imposible de agarrar con el dedo. */}
             <div
               ref={progressBarRef}
-              className="relative h-1.5 rounded-full bg-white/20 cursor-pointer group"
+              className={cn(
+                'relative rounded-full bg-white/20 cursor-pointer group',
+                fullscreen ? 'h-2' : 'h-1.5',
+              )}
               onClick={handleProgressClick}
               onMouseDown={handleProgressMouseDown}
             >
@@ -942,32 +1278,38 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
               })}
             </div>
 
-            {/* Fila de controles */}
-            <div className="flex items-center gap-3">
+            {/* Fila de controles.
+
+                Se adapta a tres tamaños muy distintos: el reproductor embebido
+                en la página, el celular (donde no cabe todo y los dedos piden
+                blancos grandes) y la pantalla completa (donde unos iconos de
+                16px se ven ridículos y cuestan de acertar). */}
+            <div className={cn('flex items-center', fullscreen ? 'gap-4' : 'gap-1.5 sm:gap-3')}>
               {/* Play/Pausa */}
               <button
                 type="button"
                 onClick={togglePlay}
                 aria-label={playing ? 'Pausar' : 'Reproducir'}
-                className="text-white/90 hover:text-white transition-colors shrink-0"
+                className={cn(ctrlBtn, 'text-white/90 hover:text-white')}
               >
                 {playing
-                  ? <Pause className="h-5 w-5" />
-                  : <Play className="h-5 w-5 ml-0.5" />
+                  ? <Pause className={ctrlIcon} />
+                  : <Play className={cn(ctrlIcon, 'ml-0.5')} />
                 }
               </button>
 
-              {/* Volumen */}
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Volumen. La corredera se esconde en pantallas chicas: ahí el
+                  volumen se maneja con los botones del aparato. */}
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={toggleMute}
                   aria-label={muted || volume === 0 ? 'Activar sonido' : 'Silenciar'}
-                  className="text-white/70 hover:text-white transition-colors"
+                  className={cn(ctrlBtn, 'text-white/70 hover:text-white')}
                 >
                   {muted || volume === 0
-                    ? <VolumeX className="h-4 w-4" />
-                    : <Volume2 className="h-4 w-4" />
+                    ? <VolumeX className={ctrlIconSm} />
+                    : <Volume2 className={ctrlIconSm} />
                   }
                 </button>
                 <input
@@ -978,12 +1320,18 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                   aria-label="Volumen"
                   value={muted ? 0 : volume}
                   onChange={handleVolumeChange}
-                  className="w-16 h-1 accent-neon-green cursor-pointer"
+                  className={cn(
+                    'hidden sm:block h-1 accent-neon-green cursor-pointer',
+                    fullscreen ? 'w-24' : 'w-16',
+                  )}
                 />
               </div>
 
               {/* Tiempo */}
-              <span className="text-[11px] text-white/60 font-mono shrink-0">
+              <span className={cn(
+                'shrink-0 font-mono tabular-nums text-white/60',
+                fullscreen ? 'text-[13px]' : 'text-[10.5px] sm:text-[11px]',
+              )}>
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
 
@@ -994,32 +1342,58 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                 <button
                   type="button"
                   onClick={() => setShowFsChapters(!showFsChapters)}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+                  className={cn(ctrlBtn, 'flex items-center gap-1.5 text-[12px] font-semibold text-white/70 hover:text-white hover:bg-white/10')}
                 >
-                  <LayoutList className="h-3.5 w-3.5" />
+                  <LayoutList className={ctrlIconSm} />
                   <span className="hidden sm:inline">{t('video.chapters')}</span>
                 </button>
               )}
+
+              {/* Encadenar al terminar. Es una preferencia del aprendiz y se
+                  recuerda en su navegador para todos los videos del sitio. */}
+              <button
+                type="button"
+                onClick={() => setAutoplayNext(!autoNext)}
+                title={t('video.autoplay_hint')}
+                aria-pressed={autoNext}
+                className={cn(ctrlBtn, 'hidden sm:flex items-center gap-1.5 text-[11px] font-semibold text-white/70 hover:text-white hover:bg-white/10')}
+              >
+                <span className={cn(
+                  'relative h-3.5 w-6 rounded-full transition-colors duration-300',
+                  autoNext ? 'bg-neon-green/80' : 'bg-white/25',
+                )}>
+                  <motion.span
+                    className="absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white shadow"
+                    animate={{ left: autoNext ? 12 : 2 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                  />
+                </span>
+                <span className="hidden md:inline">{t('video.autoplay')}</span>
+              </button>
 
               {/* Velocidad de reproducción */}
               <div className="relative shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowRates(!showRates)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  className={cn(
+                    ctrlBtn,
+                    'flex items-center gap-1 font-semibold text-white/70 hover:text-white hover:bg-white/10',
+                    fullscreen ? 'text-[13px]' : 'text-[11px]',
+                  )}
                 >
                   {playbackRate}x
                   <ChevronDown className="h-3 w-3" />
                 </button>
                 {showRates && (
-                  <div className="absolute bottom-full right-0 mb-2 rounded-xl border border-white/15 bg-zinc-900/95 backdrop-blur-sm overflow-hidden shadow-xl">
+                  <div className="absolute bottom-full right-0 mb-2 overflow-hidden rounded-xl border border-white/10 bg-zinc-950 shadow-xl">
                     {PLAYBACK_RATES.map((r) => (
                       <button
                         key={r}
                         type="button"
                         onClick={() => handleRateChange(r)}
                         className={cn(
-                          'block w-full px-4 py-2 text-[12px] font-medium text-left transition-colors hover:bg-white/10',
+                          'block w-full px-5 py-2.5 text-left text-[12.5px] font-medium transition-colors hover:bg-white/10',
                           playbackRate === r ? 'text-neon-green' : 'text-white/80',
                         )}
                       >
@@ -1036,9 +1410,9 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                   type="button"
                   onClick={handlePiP}
                   title="Picture in Picture"
-                  className="text-white/70 hover:text-white transition-colors shrink-0"
+                  className={cn(ctrlBtn, 'hidden sm:block text-white/70 hover:text-white')}
                 >
-                  <PictureInPicture2 className="h-4 w-4" />
+                  <PictureInPicture2 className={ctrlIconSm} />
                 </button>
               )}
 
@@ -1047,11 +1421,11 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
                 type="button"
                 onClick={handleFullscreen}
                 aria-label={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-                className="text-white/70 hover:text-white transition-colors shrink-0"
+                className={cn(ctrlBtn, 'text-white/70 hover:text-white')}
               >
                 {fullscreen
-                  ? <Minimize className="h-4 w-4" />
-                  : <Maximize className="h-4 w-4" />
+                  ? <Minimize className={ctrlIconSm} />
+                  : <Maximize className={ctrlIconSm} />
                 }
               </button>
             </div>
@@ -1059,8 +1433,10 @@ export function InteractiveVideoModule({ section, language, userId, campaignId, 
         </div>
       </div>
 
-      {/* ── Panel de capítulos (sin pantalla completa) ── */}
-      {sortedMarkers.length > 0 && !fullscreen && (
+      {/* ── Panel de capítulos (sin pantalla completa) ──
+          En modo cine no se pinta: la lista vive en el panel lateral, junto a
+          los demás videos del módulo. */}
+      {sortedMarkers.length > 0 && !fullscreen && !hideChapters && (
         <div className="flex flex-col bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
           <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">

@@ -747,7 +747,9 @@ function SectionEditorPanel({
               onDirty(true)
             }}
           />
-        ) : (
+        ) : null}
+
+        {!section.id && (
           <div className="py-4 text-center text-[12px] text-text-subtle border border-dashed border-glass-border/10 rounded-xl">
             Guarda la sección primero para poder subir el video
           </div>

@@ -16,8 +16,7 @@ import { StatBlockRenderer } from './StatBlock';
 import { HotspotImageBlockRenderer } from './HotspotImageBlock';
 import { PdfBlockRenderer } from './PdfBlock';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
-import { mapVideoMarkersFromDb } from '@/services/modules.service';
-import type { ModuleSection } from '@/data/modules';
+import { inlineVideoSection } from '@/lib/videoPlaylist';
 import { extractYouTubeId } from '@/lib/youtube';
 import { extractVimeoId, vimeoEmbedUrl } from '@/lib/vimeo';
 import { cn } from '@/lib/cn';
@@ -118,28 +117,19 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
       // el embed/reproductor necesita solo el id.
       const youtubeId = extractYouTubeId(block.url) ?? block.url;
       const vimeoId = extractVimeoId(block.url) ?? block.url;
-      const embedId = isYT ? youtubeId : isVM ? vimeoId : block.url;
 
-      // Video interactivo inline: si el capacitador agregó capítulos/quiz, se
-      // reproduce con el mismo motor que la sección "Video interactivo" (compuertas
-      // de quiz, capítulos, guardado de intentos). Reutiliza sectionId/userId para
-      // que los intentos crucen con los ya guardados y cuenten en la compuerta.
+      // Video interactivo inline: si el capacitador agregó capítulos/quiz se
+      // reproduce con el mismo motor que la sección "Video interactivo"
+      // (compuertas de quiz, capítulos, guardado de intentos). Reutiliza
+      // sectionId/userId para que los intentos crucen con los ya guardados y
+      // cuenten en la compuerta.
       if (block.markers && block.markers.length > 0) {
-        const section = {
-          id: sectionId,
-          // Clave única de progreso por bloque (evita colisiones entre 2 videos
-          // en la misma sección); InteractiveVideoModule solo la usa para eso.
-          heading: { es: `vb:${sectionId ?? ''}:${blockIndex ?? 0}`, en: '', pt: '' },
-          body: { es: [], en: [], pt: [] },
-          style: 'video-interactive',
-          media: { type: isYT ? 'youtube' : isVM ? 'vimeo' : 'video', url: embedId },
-          videoMarkers: mapVideoMarkersFromDb(block.markers),
-        } as ModuleSection;
+        const section = inlineVideoSection(block, sectionId, blockIndex ?? 0);
 
         // Restaurar quizzes ya hechos (markerId → {score,total}) desde los intentos.
         const savedQuizResults: Record<string, { score: number; total: number }> = {};
         if (savedAttempts && sectionId) {
-          for (const m of block.markers) {
+          for (const m of block.markers ?? []) {
             if (m.type !== 'quiz') continue;
             const at = savedAttempts.get(`${sectionId}__VIDEO_QUIZ__${m.id}`);
             const sa = at?.submitted_answers;
@@ -159,6 +149,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
             campaignId={campaignId}
             moduleId={moduleId}
             savedQuizResults={savedQuizResults}
+            title={block.caption?.[language] || block.caption?.es || undefined}
           />
         );
       }

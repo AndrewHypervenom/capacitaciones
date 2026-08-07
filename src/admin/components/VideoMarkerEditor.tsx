@@ -19,6 +19,9 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { uploadSectionMedia } from '@/services/modules.service'
+import { findDuplicateMedia, type DuplicateMatch } from '@/services/mediaDuplicates.service'
+import { shortFileHash } from '@/lib/fileHash'
+import { DuplicateMediaNotice } from './DuplicateMediaNotice'
 import type { VideoMarkerRaw, VideoQuestionRaw } from '@/services/modules.service'
 import { MIN_VIDEO_QUIZ_SECONDS, clampQuizTime } from '@/types/blocks'
 import { moduleAiAssist } from '@/services/ai.service'
@@ -505,6 +508,9 @@ export function VideoMarkerEditor({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [checking, setChecking] = useState(false)
+  // Video elegido que ya está en otro módulo del curso: espera decisión.
+  const [dup, setDup] = useState<{ file: File; hash: string | null; match: DuplicateMatch } | null>(null)
   const [videoDuration, setVideoDuration] = useState(0)
   // El modo 'youtube' cubre YouTube y Vimeo (autodetección al pegar la URL).
   const [videoMode, setVideoMode] = useState<VideoSource>(
@@ -576,6 +582,20 @@ export function VideoMarkerEditor({
     )))
   }
 
+  const doUpload = async (file: File, hash: string | null) => {
+    setDup(null)
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const url = await uploadSectionMedia(file, campaignId, moduleId, sectionId, undefined, hash)
+      onVideoChange(url, 'video')
+    } catch {
+      setUploadError(t('admin.modules.vme.video_upload_error'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handleFileSelect = async (file: File) => {
     if (!sectionId) {
       setUploadError(t('admin.modules.media_save_section_first'))
@@ -591,16 +611,25 @@ export function VideoMarkerEditor({
       setUploadError(t('admin.modules.media_video_size_error'))
       return
     }
-    setUploading(true)
     setUploadError(null)
+    setDup(null)
+
+    // Un video de 50 MB duplicado en dos módulos del curso es el caso más caro
+    // de todos: se pregunta antes de subirlo.
+    setChecking(true)
+    let hash: string | null = null
     try {
-      const url = await uploadSectionMedia(file, campaignId, moduleId, sectionId)
-      onVideoChange(url, 'video')
-    } catch {
-      setUploadError(t('admin.modules.vme.video_upload_error'))
+      hash = await shortFileHash(file)
+      const match = await findDuplicateMedia(
+        moduleId,
+        { hash, filename: file.name, kind: 'video' },
+        videoUrl ?? undefined,
+      )
+      if (match) { setDup({ file, hash, match }); return }
     } finally {
-      setUploading(false)
+      setChecking(false)
     }
+    await doUpload(file, hash)
   }
 
   const handleUseYouTube = () => {
@@ -725,7 +754,14 @@ export function VideoMarkerEditor({
               </button>
             </div>
 
-            {videoMode === 'video' ? (
+            {videoMode === 'video' && dup ? (
+              <DuplicateMediaNotice
+                match={dup.match}
+                onReuse={() => { onVideoChange(dup.match.use.url, 'video'); setDup(null) }}
+                onUploadAnyway={() => doUpload(dup.file, dup.hash)}
+                onCancel={() => setDup(null)}
+              />
+            ) : videoMode === 'video' ? (
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
@@ -736,10 +772,10 @@ export function VideoMarkerEditor({
                 onClick={() => fileInputRef.current?.click()}
                 className="flex flex-col items-center justify-center gap-3 h-32 rounded-2xl border-2 border-dashed border-glass-border/15 bg-glass/3 hover:border-blue-400/30 hover:bg-blue-400/4 cursor-pointer transition-colors"
               >
-                {uploading ? (
+                {uploading || checking ? (
                   <div className="flex items-center gap-2 text-text-muted text-[13px]">
                     <div className="h-4 w-4 border-2 border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
-                    {t('admin.modules.vme.uploading_video')}
+                    {checking ? t('admin.modules.dup.checking') : t('admin.modules.vme.uploading_video')}
                   </div>
                 ) : (
                   <>

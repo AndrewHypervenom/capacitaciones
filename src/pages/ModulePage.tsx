@@ -37,6 +37,8 @@ import { NeonBadge } from '@/components/ui/NeonBadge';
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
 import { ModuleTOC } from '@/components/modules/ModuleTOC';
+import { VideoCinema } from '@/components/modules/VideoCinema';
+import { isVideoOnlyModule } from '@/lib/videoPlaylist';
 import { SectionLayout } from '@/components/modules/SectionLayout';
 import { cn } from '@/lib/cn';
 import { setQuizSoundTheme } from '@/lib/sound';
@@ -300,6 +302,21 @@ export default function ModulePage() {
           if (b?.type === 'pdf' && b.required !== false && b.url) {
             units.push({ key: `DOC__${sid}:b${bi}`, sectionIndex: i, type: 'DOCUMENT_REVIEW', detail: heading });
           }
+          // Quiz DENTRO de un bloque de video. Se cruza con la misma llave que
+          // usan la sección `video-interactive` y el registro de intentos
+          // (`sección__VIDEO_QUIZ__marcador`), así que un video no cuenta distinto
+          // por estar en un bloque en vez de ser la sección entera.
+          if (b?.type === 'video' && Array.isArray(b.markers)) {
+            for (const mk of b.markers as any[]) {
+              if (mk?.type !== 'quiz') continue;
+              units.push({
+                key: `${sid}__VIDEO_QUIZ__${mk.id}`,
+                sectionIndex: i,
+                type: 'VIDEO_QUIZ',
+                detail: (mk[`title_${language}`] as string) || mk.title_es || heading,
+              });
+            }
+          }
         });
       }
       // Video interactivo: cada marcador tipo quiz es una unidad independiente.
@@ -466,6 +483,11 @@ export default function ModulePage() {
   }, [latestAttemptsPerSection, module, language]);
 
   
+  // ¿El módulo es solo video? Entonces se pinta en modo cine. La decisión es
+  // conservadora: cualquier bloque que no sea video o texto de apoyo devuelve
+  // el módulo a la vista normal (ver `lib/videoPlaylist`).
+  const cinemaMode = useMemo(() => (module ? isVideoOnlyModule(module, language) : false), [module, language]);
+
   const totalQuizzes = useMemo(() => (module && module.sections ? module.sections.filter((s) => !!s.quiz).length : 0), [module]);
   const quizIndexMap = useMemo(() => {
     let count = 0;
@@ -524,6 +546,82 @@ export default function ModulePage() {
       toast.info(t('module.review_capped'));
     }
   };
+
+  // Cierre del módulo: lo que falta por aprobar y los botones de completar /
+  // repasar / siguiente. Es el mismo en las dos vistas (normal y cine), así que
+  // se arma una vez y cada una lo coloca donde le corresponde.
+  const moduleFooter = (
+    <>
+      {/* Desglose: actividades que faltan por aprobar para completar el módulo */}
+      {!completed && moduleGate.active && !moduleGate.canComplete && moduleGate.pending.length > 0 && (
+        <div className="mt-14 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-5">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Lock className="h-4 w-4 text-amber-500 shrink-0" />
+            <h3 className="text-[14px] font-semibold text-text">{t('module.pending_title')}</h3>
+            <span className="ml-auto text-[12px] tabular-nums text-text-muted">
+              {t('module.pending_progress', { done: moduleGate.done, total: moduleGate.total })}
+            </span>
+          </div>
+          <p className="text-[12px] text-text-muted mb-4">
+            {t('module.pending_hint', { threshold: coursePassPct, score: moduleGate.score })}
+          </p>
+          <ul className="space-y-2">
+            {moduleGate.pending.map((p) => (
+              <li key={p.unit.key}>
+                <a
+                  href={`#section-${p.unit.sectionIndex}`}
+                  className="group flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5 transition-all duration-300 ease-apple hover:border-primary/40 hover:-translate-y-0.5"
+                >
+                  <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                    p.status === 'failed' ? 'bg-neon-magenta/10 text-neon-magenta' : 'bg-subtle text-text-muted')}>
+                    {p.status === 'failed' ? <X className="h-4 w-4" strokeWidth={3} /> : <Lock className="h-3.5 w-3.5" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-medium text-text truncate">{t(ACTIVITY_LABEL_KEY[p.unit.type])}</div>
+                    {p.unit.detail && <div className="text-[11px] text-text-subtle truncate">{p.unit.detail}</div>}
+                  </div>
+                  <span className={cn('shrink-0 text-[11px] font-semibold tabular-nums',
+                    p.status === 'failed' ? 'text-neon-magenta' : 'text-text-subtle')}>
+                    {p.status === 'failed' ? `${p.score}/${coursePassPct}` : t('module.pending_not_started')}
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-text-subtle transition-colors group-hover:text-primary" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-6 mt-8 border-t border-glass-border/10">
+        <button
+          type="button"
+          className="w-full sm:w-auto mr-auto px-5 py-2.5 flex items-center justify-center gap-2 border border-neon-green/30 text-neon-green bg-neon-green/5 hover:bg-neon-green/10 transition-all rounded-xl text-[13px] font-medium shadow-[0_0_15px_rgba(0,255,100,0.05)]"
+          onClick={() => setIsModalOpen(true)}
+        >
+          <Target className="h-4 w-4 text-neon-green animate-pulse" />
+          {t('module.view_feedback_progress')}
+        </button>
+        {!completed && (
+          <Button variant="neon" size="md" onClick={handleComplete} disabled={!moduleGate.canComplete}>
+            <Check className="h-4 w-4" strokeWidth={3} /> {t('module.mark_complete')}
+          </Button>
+        )}
+        {completed && (
+          <ReviewButton
+            done={reviewedToday}
+            xp={reviewXPPreview}
+            multiplier={boostMultiplier}
+            onClick={handleReview}
+          />
+        )}
+        {nextModule && (
+          <Button variant={completed ? 'neon' : 'glass'} size="md" onClick={() => nav(`/modules/${nextModule.id}`)}>
+            {t('module.next')} <ChevronRight className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -605,8 +703,23 @@ export default function ModulePage() {
           </div>
         </header>
 
+        {/* Módulo de puro video: se cambia de vista. Un escenario, la lista de
+            videos al lado y encadenado al terminar (ver VideoCinema). El índice
+            de secciones no aporta nada cuando cada sección ES un video. */}
+        {cinemaMode ? (
+          <VideoCinema
+            module={module}
+            language={language}
+            userId={targetUserId ?? undefined}
+            campaignId={module.campaign_id}
+            moduleId={module.dbId || module.id}
+            attemptByUnit={attemptByUnit}
+          >
+            {moduleFooter}
+          </VideoCinema>
+        ) : (
         <div className={cn(readingMode ? 'block' : 'grid md:grid-cols-[280px_1fr] gap-12')}>
-            
+
           {!readingMode && (
             <aside className="flex flex-col justify-between sticky top-24 self-start h-[calc(100vh-140px)] pr-2 w-full">
               <div className="w-full overflow-y-auto custom-scrollbar max-h-[70vh] pb-4">
@@ -701,76 +814,10 @@ export default function ModulePage() {
               );
             })}
 
-            {/* Desglose: actividades que faltan por aprobar para completar el módulo */}
-            {!completed && moduleGate.active && !moduleGate.canComplete && moduleGate.pending.length > 0 && (
-              <div className="mt-14 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-5">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Lock className="h-4 w-4 text-amber-500 shrink-0" />
-                  <h3 className="text-[14px] font-semibold text-text">{t('module.pending_title')}</h3>
-                  <span className="ml-auto text-[12px] tabular-nums text-text-muted">
-                    {t('module.pending_progress', { done: moduleGate.done, total: moduleGate.total })}
-                  </span>
-                </div>
-                <p className="text-[12px] text-text-muted mb-4">
-                  {t('module.pending_hint', { threshold: coursePassPct, score: moduleGate.score })}
-                </p>
-                <ul className="space-y-2">
-                  {moduleGate.pending.map((p) => (
-                    <li key={p.unit.key}>
-                      <a
-                        href={`#section-${p.unit.sectionIndex}`}
-                        className="group flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5 transition-all duration-300 ease-apple hover:border-primary/40 hover:-translate-y-0.5"
-                      >
-                        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                          p.status === 'failed' ? 'bg-neon-magenta/10 text-neon-magenta' : 'bg-subtle text-text-muted')}>
-                          {p.status === 'failed' ? <X className="h-4 w-4" strokeWidth={3} /> : <Lock className="h-3.5 w-3.5" />}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[13px] font-medium text-text truncate">{t(ACTIVITY_LABEL_KEY[p.unit.type])}</div>
-                          {p.unit.detail && <div className="text-[11px] text-text-subtle truncate">{p.unit.detail}</div>}
-                        </div>
-                        <span className={cn('shrink-0 text-[11px] font-semibold tabular-nums',
-                          p.status === 'failed' ? 'text-neon-magenta' : 'text-text-subtle')}>
-                          {p.status === 'failed' ? `${p.score}/${coursePassPct}` : t('module.pending_not_started')}
-                        </span>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-text-subtle transition-colors group-hover:text-primary" />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-6 border-t border-glass-border/10">
-              <button
-                type="button"
-                className="w-full sm:w-auto mr-auto px-5 py-2.5 flex items-center justify-center gap-2 border border-neon-green/30 text-neon-green bg-neon-green/5 hover:bg-neon-green/10 transition-all rounded-xl text-[13px] font-medium shadow-[0_0_15px_rgba(0,255,100,0.05)]"
-                onClick={() => setIsModalOpen(true)}
-              >
-                <Target className="h-4 w-4 text-neon-green animate-pulse" />
-                {t('module.view_feedback_progress')}
-              </button>
-              {!completed && (
-                <Button variant="neon" size="md" onClick={handleComplete} disabled={!moduleGate.canComplete}>
-                  <Check className="h-4 w-4" strokeWidth={3} /> {t('module.mark_complete')}
-                </Button>
-              )}
-              {completed && (
-                <ReviewButton
-                  done={reviewedToday}
-                  xp={reviewXPPreview}
-                  multiplier={boostMultiplier}
-                  onClick={handleReview}
-                />
-              )}
-              {nextModule && (
-                <Button variant={completed ? 'neon' : 'glass'} size="md" onClick={() => nav(`/modules/${nextModule.id}`)}>
-                  {t('module.next')} <ChevronRight className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            {moduleFooter}
           </article>
         </div>
+        )}
       </div>
         
       <FeedbackModal

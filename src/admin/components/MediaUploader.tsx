@@ -203,7 +203,9 @@ export function MediaUploader({
     setClearing(true)
     try {
       if (currentType === 'image' || currentType === 'video') {
-        await deleteSectionMedia(currentUrl)
+        // Con moduleId el borrado también mira los bloques del curso: un video
+        // reusado ("usar el mismo video") vive en más de un lugar.
+        await deleteSectionMedia(currentUrl, moduleId)
       }
       onCleared()
       setYoutubeInput('')

@@ -959,7 +959,15 @@
     "good_result": "Buen resultado. Puedes continuar.",
     "review_material": "Repasa el material e inténtalo de nuevo.",
     "continue_video": "Continuar video",
-    "review_info": "Repasar el video"
+    "review_info": "Repasar el video",
+    "up_next": "A continuación",
+    "next_in": "Siguiente en {{s}}",
+    "play_next": "Reproducir siguiente",
+    "cancel": "Cancelar",
+    "finished": "Terminaste este video.",
+    "watch_again": "Volver a verlo",
+    "autoplay": "Encadenar",
+    "autoplay_hint": "Reproducir el siguiente video cuando este termine"
   },
   "admin": {
     "surgery": {
@@ -3186,6 +3194,19 @@
       "media_type_error": "Solo imágenes (JPG, PNG, WebP, GIF)",
       "media_video_type_error": "Solo videos MP4, WebM u OGG",
       "media_save_section_first": "Guarda la sección primero para poder subir archivos",
+      "dup": {
+        "checking": "Revisando si ya está en el curso...",
+        "pdf_exact": "Este documento ya está en el curso.",
+        "video_exact": "Este video ya está en el curso.",
+        "pdf_by_name": "Ya hay un documento con este mismo nombre en el curso.",
+        "video_by_name": "Ya hay un video con este mismo nombre en el curso.",
+        "located_at": "Está en:",
+        "unnamed": "otro módulo del curso",
+        "reuse_pdf": "Usar el mismo archivo",
+        "reuse_video": "Usar el mismo video",
+        "upload_anyway": "Subir de todos modos",
+        "view_existing": "Ver el que ya está"
+      },
       "template_text_only": "Solo texto",
       "template_text_callout": "Texto + Tip",
       "template_text_media": "Texto + Media",
@@ -4687,5 +4708,20 @@
     "boost_ends_in": "Termina en {{time}}",
     "boost_starts_in": "Empieza en {{time}}",
     "boost_default_desc": "Todo el XP que ganes cuenta ×{{x}}: módulos, quizzes, repasos y certificaciones."
+  },
+  "cinema": {
+    "playlist": "Contenido",
+    "videos_count": "{{count}} videos",
+    "duration_partial": "{{time}} y contando",
+    "checks_count": "{{count}} verificaciones",
+    "watched_of": "{{done}} de {{total}} vistos",
+    "video_n_of_m": "Video {{n}} de {{total}}",
+    "about": "Descripción",
+    "no_description": "Este video no trae texto de apoyo.",
+    "autoplay_label": "Reproducción encadenada",
+    "focus_mode": "Modo enfoque",
+    "show_list": "Ver la lista",
+    "previous": "Anterior",
+    "next": "Siguiente"
   }
 }

@@ -20,7 +20,10 @@ import {
 } from '@/types/blocks';
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
+import { DuplicateMediaNotice } from './DuplicateMediaNotice';
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service';
+import { findDuplicateMedia, type DuplicateMatch } from '@/services/mediaDuplicates.service';
+import { shortFileHash } from '@/lib/fileHash';
 import { VideoMarkerEditor } from './VideoMarkerEditor';
 import { extractYouTubeId } from '@/lib/youtube';
 import { extractVimeoId } from '@/lib/vimeo';
@@ -261,21 +264,23 @@ function PdfEditor({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [checking, setChecking] = useState(false);
+  // Archivo elegido que resultó estar ya en el curso: espera a que el
+  // capacitador decida entre reusarlo y subirlo igual.
+  const [dup, setDup] = useState<{ file: File; hash: string | null; match: DuplicateMatch } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Tope de subida. Supabase Free impone 50 MB globales; dejamos margen.
   const PDF_MAX = 25 * 1024 * 1024;
   const sectionSaved = !!mediaContext && mediaContext.sectionId !== '';
 
-  const handleFile = async (file: File) => {
-    setError(null);
-    if (file.type !== 'application/pdf') { setError(i18n.t('admin.modules.be.pdf_type_error')); return; }
-    if (file.size > PDF_MAX) { setError(i18n.t('admin.modules.be.pdf_size_error')); return; }
+  const doUpload = async (file: File, hash: string | null) => {
     if (!mediaContext) return;
+    setDup(null);
     setUploading(true); setProgress(0);
     try {
       const url = await uploadSectionMedia(
-        file, mediaContext.campaignId, mediaContext.moduleId, mediaContext.sectionId, setProgress,
+        file, mediaContext.campaignId, mediaContext.moduleId, mediaContext.sectionId, setProgress, hash,
       );
       onChange({ ...block, url, filename: file.name });
     } catch (err) {
@@ -286,8 +291,40 @@ function PdfEditor({
     }
   };
 
+  const handleFile = async (file: File) => {
+    setError(null); setDup(null);
+    if (file.type !== 'application/pdf') { setError(i18n.t('admin.modules.be.pdf_type_error')); return; }
+    if (file.size > PDF_MAX) { setError(i18n.t('admin.modules.be.pdf_size_error')); return; }
+    if (!mediaContext) return;
+
+    // ¿Ya está este documento en algún módulo del curso? Se pregunta ANTES de
+    // subir: si el capacitador decide reusarlo, el archivo nunca viaja.
+    setChecking(true);
+    let hash: string | null = null;
+    try {
+      hash = await shortFileHash(file);
+      const match = await findDuplicateMedia(
+        mediaContext.moduleId,
+        { hash, filename: file.name, kind: 'pdf' },
+        block.url || undefined,
+      );
+      if (match) { setDup({ file, hash, match }); return; }
+    } finally {
+      setChecking(false);
+    }
+    await doUpload(file, hash);
+  };
+
+  const handleReuse = () => {
+    if (!dup) return;
+    onChange({ ...block, url: dup.match.use.url, filename: dup.match.use.filename ?? dup.file.name });
+    setDup(null);
+  };
+
   const handleClear = async () => {
-    if (block.url) { try { await deleteSectionMedia(block.url); } catch { /* no bloquea la limpieza */ } }
+    // El módulo entra en el borrado porque, con "usar el mismo archivo", este PDF
+    // puede estar vivo en otro bloque del curso.
+    if (block.url) { try { await deleteSectionMedia(block.url, mediaContext?.moduleId); } catch { /* no bloquea la limpieza */ } }
     onChange({ ...block, url: '', filename: undefined });
   };
 
@@ -360,13 +397,20 @@ function PdfEditor({
         <div className="rounded-xl border-2 border-dashed border-line p-6 text-center">
           <p className="text-[12.5px] text-text-muted">{i18n.t('admin.modules.media_save_section_first')}</p>
         </div>
+      ) : dup ? (
+        <DuplicateMediaNotice
+          match={dup.match}
+          onReuse={handleReuse}
+          onUploadAnyway={() => doUpload(dup.file, dup.hash)}
+          onCancel={() => setDup(null)}
+        />
       ) : (
         <div>
           <div
             className={cn(
               'rounded-xl border-2 border-dashed transition-all cursor-pointer p-6 text-center',
               dragging ? 'border-brand-green bg-brand-green/5' : 'border-line hover:border-text-muted hover:bg-subtle/50',
-              uploading && 'pointer-events-none opacity-60',
+              (uploading || checking) && 'pointer-events-none opacity-60',
             )}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
@@ -379,9 +423,17 @@ function PdfEditor({
               <span className="text-text font-medium underline underline-offset-2">{i18n.t('admin.modules.media_browse')}</span>
             </p>
             <p className="text-[11px] text-text-subtle mt-1">{i18n.t('admin.modules.be.pdf_size_hint')}</p>
+            {/* Se limpia el valor para que volver a elegir el MISMO archivo
+                (p. ej. tras cancelar el aviso de duplicado) vuelva a disparar. */}
             <input ref={inputRef} type="file" accept="application/pdf" className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleFile(f); }} />
           </div>
+          {checking && (
+            <div className="mt-2 flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-green" />
+              <span className="text-[12px] text-text-muted">{i18n.t('admin.modules.dup.checking')}</span>
+            </div>
+          )}
           {uploading && (
             <div className="mt-2 flex items-center gap-2">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-green" />

@@ -959,7 +959,15 @@
     "good_result": "Bom resultado. Você pode continuar.",
     "review_material": "Revise o material e tente novamente.",
     "continue_video": "Continuar vídeo",
-    "review_info": "Rever o vídeo"
+    "review_info": "Rever o vídeo",
+    "up_next": "A seguir",
+    "next_in": "Próximo em {{s}}",
+    "play_next": "Reproduzir o próximo",
+    "cancel": "Cancelar",
+    "finished": "Você terminou este vídeo.",
+    "watch_again": "Assistir de novo",
+    "autoplay": "Encadear",
+    "autoplay_hint": "Reproduzir o próximo vídeo quando este terminar"
   },
   "admin": {
     "surgery": {
@@ -3186,6 +3194,19 @@
       "media_type_error": "Somente imagens (JPG, PNG, WebP, GIF)",
       "media_video_type_error": "Somente vídeos MP4, WebM ou OGG",
       "media_save_section_first": "Salve a seção primeiro para poder enviar arquivos",
+      "dup": {
+        "checking": "Verificando se já está no curso...",
+        "pdf_exact": "Este documento já está no curso.",
+        "video_exact": "Este vídeo já está no curso.",
+        "pdf_by_name": "Já existe um documento com este mesmo nome no curso.",
+        "video_by_name": "Já existe um vídeo com este mesmo nome no curso.",
+        "located_at": "Está em:",
+        "unnamed": "outro módulo do curso",
+        "reuse_pdf": "Usar o mesmo arquivo",
+        "reuse_video": "Usar o mesmo vídeo",
+        "upload_anyway": "Enviar mesmo assim",
+        "view_existing": "Ver o que já está"
+      },
       "template_text_only": "Somente texto",
       "template_text_callout": "Texto + Dica",
       "template_text_media": "Texto + Mídia",
@@ -4687,5 +4708,20 @@
     "boost_ends_in": "Termina em {{time}}",
     "boost_starts_in": "Começa em {{time}}",
     "boost_default_desc": "Todo o XP que você ganhar conta ×{{x}}: módulos, quizzes, revisões e certificações."
+  },
+  "cinema": {
+    "playlist": "Conteúdo",
+    "videos_count": "{{count}} vídeos",
+    "duration_partial": "{{time}} e contando",
+    "checks_count": "{{count}} verificações",
+    "watched_of": "{{done}} de {{total}} assistidos",
+    "video_n_of_m": "Vídeo {{n}} de {{total}}",
+    "about": "Descrição",
+    "no_description": "Este vídeo não tem texto de apoio.",
+    "autoplay_label": "Reprodução encadeada",
+    "focus_mode": "Modo foco",
+    "show_list": "Ver a lista",
+    "previous": "Anterior",
+    "next": "Próximo"
   }
 }
