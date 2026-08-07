@@ -102,6 +102,10 @@ import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useUnsavedWork } from '@/hooks/useUnsavedWork'
+import { useStaleGuard, type StaleGuard } from '@/hooks/useStaleGuard'
+import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
+import { StaleNotice } from '@/components/ui/StaleNotice'
 
 type Tab = 'info' | 'modules' | 'assign' | 'evaluation'
 
@@ -286,6 +290,11 @@ export default function CourseEditor() {
   // Escenario que se está publicando desde el curso (para el estado del botón).
   const [publishingScenarioId, setPublishingScenarioId] = useState<string | null>(null)
 
+  // `reload` se declara antes que el guardia de versión (que necesita `courseId`
+  // y vive más abajo, junto al resto de hooks de frescura). El ref rompe esa
+  // dependencia circular: reload fija la referencia sin conocer el guardia.
+  const staleGuardRef = useRef<StaleGuard<CourseWithModules> | null>(null)
+
   const reload = useCallback(async () => {
     if (!courseId) return
     const c = await getCourseById(courseId)
@@ -313,12 +322,42 @@ export default function CourseEditor() {
     setSimUnlockModuleId(c.sim_unlock_module_id ?? null)
     setWorldRule(c.world_unlock_rule ?? 'after_modules')
     setWorldUnlockModuleId(c.world_unlock_module_id ?? null)
+    staleGuardRef.current?.mark(c)
   }, [courseId, navigate])
 
   useEffect(() => {
     setLoading(true)
     reload().finally(() => setLoading(false))
   }, [reload])
+
+  // Cambios sin guardar de la ficha: alimenta el aviso de "Nueva versión
+  // disponible" y el de cerrar la pestaña (ver lib/unsavedWork.ts).
+  const unsaved = useUnsavedWork(
+    { form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId },
+    { label: form.title_es || t('common.untitled'), enabled: !loading },
+  )
+
+  // Guardia de versión de la ficha del curso. Se ignoran `modules` y los
+  // contadores derivados: cambian cada vez que alguien toca un módulo del curso
+  // y dispararían el aviso sin que la ficha —lo único que este editor
+  // sobrescribe— haya cambiado.
+  const staleGuard = useStaleGuard<CourseWithModules>({
+    fetch: () => getCourseById(courseId!),
+    topic: 'courses',
+    id: courseId,
+    ignoreKeys: ['modules', 'module_count', 'enrolled_count'],
+  })
+  useEffect(() => {
+    staleGuardRef.current = staleGuard
+  })
+
+  // Trae lo último al volver a la pestaña, pero nunca encima de algo a medias.
+  useFreshOnFocus(
+    () => {
+      void reload().then(() => unsaved.markSaved())
+    },
+    { topics: ['courses'], enabled: !loading && !unsaved.dirty },
+  )
 
   // Módulos disponibles para la Biblioteca: superadmin ve TODOS (traer cualquier
   // módulo a cualquier curso); el capacitador, los de sus campañas accesibles.
@@ -648,6 +687,17 @@ export default function CourseEditor() {
   // ─── Handlers ──────────────────────────────────────────────────
 
   const handleSaveInfo = async () => {
+    // ¿Sigue siendo la ficha que se abrió? Si otra pestaña la guardó mientras
+    // tanto, se pregunta en vez de pisarla.
+    if (courseId && !(await staleGuard.isSafeToSave())) {
+      const overwrite = await confirm({
+        title: t('common.stale.confirm_title'),
+        description: t('common.stale.confirm_body'),
+        confirmLabel: t('common.stale.confirm_overwrite'),
+      })
+      if (!overwrite) return
+    }
+
     setSaving(true)
     try {
       await updateCourse(course.id, {
@@ -671,6 +721,7 @@ export default function CourseEditor() {
       invalidateModulesCache()
       invalidateLearnerCoursesCache() // que la portada del aprendiz refleje el cambio (no quede en caché)
       await reload()
+      unsaved.markSaved()
     } catch (e) {
       console.error('[CourseEditor] handleSaveInfo', e)
       toast.error(t('admin.courses.error_save'), errMsg(e))
@@ -1297,6 +1348,18 @@ export default function CourseEditor() {
       <div className="mb-3 -mt-2">
         <EditingBanner coeditors={coeditors} />
       </div>
+
+      {staleGuard.stale && (
+        <StaleNotice
+          className="mb-3"
+          onReload={async () => {
+            await reload()
+            unsaved.markSaved()
+            toast.success(t('common.stale.reloaded'))
+          }}
+          onDismiss={staleGuard.dismiss}
+        />
+      )}
 
       {/* Recordatorio permanente: lo generado con IA se revisa antes de publicar. */}
       <AiReviewNotice variant="inline" className="mb-4" />

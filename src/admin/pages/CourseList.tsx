@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDownAZ, BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, LogOut, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
 import {
   getCoursesForCampaign,
@@ -245,7 +246,8 @@ export default function CourseList() {
 
   useEffect(() => {
     if (!selectedCampaignId) return
-    setLoading(true)
+    // Esqueleto solo la primera vez: los refrescos de fondo no deben parpadear.
+    if (courses.length === 0) setLoading(true)
     setError(null)
     const load = selectedCampaignId === ALL_CAMPAIGNS
       ? getAllCourses()
@@ -256,7 +258,16 @@ export default function CourseList() {
       .then(setCourses)
       .catch(() => setError(t('admin.courses.error_load')))
       .finally(() => setLoading(false))
+    // `courses` solo decide el esqueleto; no puede volver a disparar la carga.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaignId, t, refreshKey])
+
+  // Trae lo último cuando se vuelve a esta pestaña o cuando otra avisa que
+  // cambió un curso o un módulo (los módulos cambian el conteo de la tarjeta).
+  useFreshOnFocus(() => setRefreshKey((k) => k + 1), {
+    topics: ['courses', 'modules'],
+    enabled: !!selectedCampaignId,
+  })
 
   // Cuando una creación de curso con IA (en segundo plano) termina, refrescamos la
   // lista si el curso pertenece a la campaña que estamos viendo.

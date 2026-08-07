@@ -58,10 +58,13 @@
   "update": {
     "title": "New version available",
     "description": "Refresh to get the latest changes.",
+    "description_unsaved": "You have unsaved changes. Save them, then update.",
     "action": "Refresh",
     "confirm_title": "Refresh now?",
     "confirm_description": "Refreshing reloads the page. If you're in the middle of something unsaved (creating or editing content, taking an assessment, etc.), you could lose that progress. Save first and refresh when you're done.",
+    "confirm_unsaved": "You have unsaved changes in: {{items}}. Updating reloads the page and those changes are lost.",
     "confirm_action": "Yes, refresh",
+    "confirm_discard": "Update and lose the changes",
     "confirm_cancel": "Not now"
   },
   "welcome": {
@@ -865,6 +868,15 @@
     "use": "Use",
     "translate_error": "Translation failed. Please try again.",
     "ai_review_notice": "AI can make mistakes. Check the information before publishing or deleting.",
+    "stale": {
+      "message": "This changed in another tab (or someone else edited it) after you opened it. What you see here is no longer the latest version.",
+      "reload": "Get the latest",
+      "dismiss": "Dismiss",
+      "confirm_title": "There is a newer version",
+      "confirm_body": "Someone saved changes after you opened this. If you save now, those changes are lost.",
+      "confirm_overwrite": "Save anyway",
+      "reloaded": "Loaded the latest version."
+    },
     "save_changes": "Save changes",
     "optional_paren": "(optional)",
     "question_n": "Question {{n}}",

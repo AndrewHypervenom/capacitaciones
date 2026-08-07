@@ -31,6 +31,9 @@ import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
 import { useEditingPresence } from '@/hooks/usePresence'
+import { useStaleGuard } from '@/hooks/useStaleGuard'
+import { StaleNotice } from '@/components/ui/StaleNotice'
+import { useUnsavedWork } from '@/hooks/useUnsavedWork'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
 
@@ -261,18 +264,61 @@ export default function SimulationEditor() {
     return () => { alive = false }
   }, [campaignId])
 
+  // Guardia de versión: avisa si esta simulación cambió en la base (otra pestaña
+  // o alguien del equipo) después de que se abrió aquí. Sin esto, la pestaña que
+  // llevaba rato abierta guardaba su copia vieja encima y deshacía el trabajo de
+  // la otra sin decir nada — el "queda como borrador" de siempre.
+  const staleGuard = useStaleGuard<ScenarioRow>({
+    fetch: () => getScenarioAdmin(rowId!),
+    topic: 'simulations',
+    id: rowId,
+  })
+
+  // Cambios sin guardar: alimenta el aviso de "Nueva versión disponible" y el de
+  // cerrar la pestaña, para que ninguno de los dos se lleve el trabajo por
+  // delante sin decir qué se pierde (ver lib/unsavedWork.ts).
+  const unsaved = useUnsavedWork({ meta, nodes, checklist }, { label: meta.title_es || t('admin.simulations.ai_gen.bg_untitled'), enabled: !loading })
+
+  /** Vuelca una fila de la base en el editor y la fija como versión de referencia. */
+  const applyRow = useCallback(
+    (row: ScenarioRow) => {
+      const { meta: m, nodes: n, checklist: c } = rowToState(row)
+      setMeta(m); setNodes(n); setChecklist(c)
+      setCampaignId(row.campaign_id)
+      setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
+      staleGuard.mark(row)
+      unsaved.markSaved()
+    },
+    [staleGuard, unsaved],
+  )
+
   useEffect(() => {
     if (isNew) return
     getScenarioAdmin(id!)
-      .then((row) => {
-        const { meta: m, nodes: n, checklist: c } = rowToState(row)
-        setMeta(m); setNodes(n); setChecklist(c)
-        setCampaignId(row.campaign_id)
-        setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
-      })
+      .then(applyRow)
       .catch(() => toast.error('Error cargando escenario'))
       .finally(() => setLoading(false))
+    // `applyRow` cambia de identidad con el guardia; la carga es solo por id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isNew])
+
+  /** "Traer lo último": descarta lo local y recarga desde la base. */
+  const handleReloadLatest = async () => {
+    if (!rowId) return
+    const ok = await confirm({
+      title: t('common.stale.confirm_title'),
+      description: t('common.stale.message'),
+      confirmLabel: t('common.stale.reload'),
+      tone: 'default',
+    })
+    if (!ok) return
+    try {
+      applyRow(await getScenarioAdmin(rowId))
+      toast.success(t('common.stale.reloaded'))
+    } catch (e) {
+      toast.error(`Error: ${(e as Error).message}`)
+    }
+  }
 
   const handleSave = async () => {
     if (!campaignId) return toast.error(t('admin.simulations.toast_no_campaign'))
@@ -280,6 +326,18 @@ export default function SimulationEditor() {
     const finalSlug = meta.slug.trim() || slugify(meta.title_es)
     if (!finalSlug) return toast.error(t('admin.simulations.toast_slug_needs_title'))
     if (!meta.start_node_id || !nodes[meta.start_node_id]) return toast.error(t('admin.simulations.toast_start_missing'))
+
+    // Antes de escribir: ¿sigue siendo la versión que se abrió? Si no, se
+    // pregunta en vez de pisar. Guardar de todos modos es una opción legítima
+    // (a veces lo de esta pestaña es lo bueno), pero tiene que ser una decisión.
+    if (rowId && !(await staleGuard.isSafeToSave())) {
+      const overwrite = await confirm({
+        title: t('common.stale.confirm_title'),
+        description: t('common.stale.confirm_body'),
+        confirmLabel: t('common.stale.confirm_overwrite'),
+      })
+      if (!overwrite) return
+    }
 
     setSaving(true)
     try {
@@ -312,11 +370,17 @@ export default function SimulationEditor() {
       }
 
       if (rowId) {
-        await updateScenario(rowId, payload)
+        // La fila que devuelve el update pasa a ser la nueva referencia: sin
+        // esto el aviso de "hay una versión más nueva" seguiría encendido
+        // contra los cambios que acaba de hacer esta misma pestaña.
+        staleGuard.mark(await updateScenario(rowId, payload))
+        unsaved.markSaved()
         toast.success('Guardado')
       } else {
         const row = await createScenario(payload)
         setRowId(row.id)
+        staleGuard.mark(row)
+        unsaved.markSaved()
         nav(`/admin/simulations/${row.id}`, { replace: true })
         toast.success('Creado')
       }
@@ -457,6 +521,14 @@ export default function SimulationEditor() {
       <div className="mb-4 -mt-2">
         <EditingBanner coeditors={coeditors} />
       </div>
+
+      {staleGuard.stale && (
+        <StaleNotice
+          className="mb-4"
+          onReload={handleReloadLatest}
+          onDismiss={staleGuard.dismiss}
+        />
+      )}
 
       {/* AI Generator — abierto por defecto salvo en modo manual */}
       <AIGeneratorPanel type="dialogue" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} currentContent={currentContent} />

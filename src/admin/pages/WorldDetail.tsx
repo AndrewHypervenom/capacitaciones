@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { backdropDismiss } from '@/lib/backdropDismiss'
@@ -17,6 +17,7 @@ import { ArenaEditorModal, normalizeArenaRow, type ArenaQuiz } from '@/admin/com
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { useEditingPresence } from '@/hooks/usePresence'
+import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
 import { Stagger, StaggerItem } from '@/components/ui/motion'
@@ -213,22 +214,38 @@ export default function WorldDetail() {
 
   // Refresca regiones/niveles/quizzes cuando una generación en 2º plano de ESTE
   // mundo termina (total, parcial o cancelada), sin recargar la página.
+  /**
+   * Relee regiones, niveles y quizzes de este mundo. Aquí no hace falta guardia
+   * de versión —cada campo del mundo se guarda al tocarlo, no hay borrador en
+   * pantalla que se pueda perder—, así que refrescar sin preguntar es correcto.
+   */
+  const refreshWorldContent = useCallback(async () => {
+    if (!id) return
+    const [{ data: rData }, { data: lData }, { data: qData }] = await Promise.all([
+      supabase.from('world_regions').select('*').eq('world_id', id).order('order_index'),
+      supabase.from('world_levels').select('*').eq('world_id', id).order('order_index'),
+      supabase.from('arena_quizzes').select('id, title').eq('world_id', id).order('created_at'),
+    ])
+    setRegions((rData ?? []) as Region[])
+    setLevels((lData ?? []) as Level[])
+    setQuizzes((qData ?? []) as Quiz[])
+  }, [id])
+
+  // Otra pestaña generó niveles o tocó el mundo: traer lo último al volver aquí.
+  useFreshOnFocus(refreshWorldContent, {
+    topics: ['worlds', 'arena'],
+    enabled: !!id && !loading,
+  })
+
   useEffect(() => {
     if (!id) return
     const onGenerated = async (e: Event) => {
       if ((e as CustomEvent).detail?.worldId !== id) return
-      const [{ data: rData }, { data: lData }, { data: qData }] = await Promise.all([
-        supabase.from('world_regions').select('*').eq('world_id', id).order('order_index'),
-        supabase.from('world_levels').select('*').eq('world_id', id).order('order_index'),
-        supabase.from('arena_quizzes').select('id, title').eq('world_id', id).order('created_at'),
-      ])
-      setRegions((rData ?? []) as Region[])
-      setLevels((lData ?? []) as Level[])
-      setQuizzes((qData ?? []) as Quiz[])
+      await refreshWorldContent()
     }
     window.addEventListener(WORLD_LEVELS_EVENT, onGenerated)
     return () => window.removeEventListener(WORLD_LEVELS_EVENT, onGenerated)
-  }, [id])
+  }, [id, refreshWorldContent])
 
   /* ── Theme autosave ── */
   const handleTheme = async (field: string, value: string) => {

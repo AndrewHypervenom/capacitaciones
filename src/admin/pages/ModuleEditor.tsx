@@ -31,6 +31,8 @@ import {
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useUnsavedFlag } from '@/hooks/useUnsavedFlag'
+import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import {
   DndContext,
   closestCenter,
@@ -1438,9 +1440,13 @@ export default function ModuleEditor() {
     setPresenceDirty(isDirty)
   }, [isDirty, setPresenceDirty])
 
-  useEffect(() => {
+  // El mismo `isDirty` alimenta el registro global: así el aviso de "Nueva
+  // versión disponible" y el de cerrar la pestaña saben que aquí hay un módulo a
+  // medio escribir, y lo nombran en vez de advertir en genérico.
+  useUnsavedFlag(isDirty, mod?.title_es || t('common.untitled'))
+
+  const reloadModule = useCallback(() => {
     if (!moduleId) return
-    setLoading(true)
     getModuleWithSectionsRaw(moduleId)
       .then((data) => {
         setMod(data)
@@ -1451,7 +1457,23 @@ export default function ModuleEditor() {
         toast.error(t('admin.modules.error_load'))
       })
       .finally(() => setLoading(false))
+  }, [moduleId, t])
+
+  useEffect(() => {
+    if (!moduleId) return
+    setLoading(true)
+    reloadModule()
+    // La carga depende solo del id; `reloadModule` cambia con `t`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId])
+
+  // Si otra pestaña (o alguien del equipo) guarda este módulo, se trae lo
+  // último — pero SOLO si aquí no hay nada a medio escribir, porque recargar
+  // encima de una sección sin guardar la borraría.
+  useFreshOnFocus(reloadModule, {
+    topics: ['modules'],
+    enabled: !!moduleId && !isDirty && !loading,
+  })
 
   const handleMetaSaved = useCallback((updates: Partial<DbModuleWithSections>) => {
     setMod((prev) => (prev ? { ...prev, ...updates } : prev))

@@ -90,7 +90,7 @@ export type MetricSnapshot = Partial<Record<BadgeMetric, number>>;
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-interface ProgressState {
+export interface ProgressState {
   /**
    * Clave BUENA: UUIDs de módulo completados. Es la que manda.
    * @see ModuleKey
@@ -199,6 +199,16 @@ interface ProgressState {
    * superadmin, que se aplica antes en BD (ver `applyReset`).
    */
   hydrateFromServer: (data: ServerProgress) => void;
+  /**
+   * Une el progreso que acaba de escribir OTRA pestaña del mismo navegador.
+   *
+   * Con dos pestañas abiertas cada una tenía su copia en memoria y la última en
+   * guardar pisaba a la otra: se completaba un módulo en una y desaparecía al
+   * volver a la otra. Ahora, cuando una pestaña escribe el localStorage, las
+   * demás pasan por aquí. La fusión es aditiva por el mismo motivo que
+   * `hydrateFromServer`: nunca puede quitar avance ya ganado.
+   */
+  mergeFromTab: (incoming: Partial<ProgressState>) => void;
   /**
    * Aplica un restablecimiento hecho por el superadmin sobre la caché local, para
    * que la UI deje de mostrar 100%. Limpia solo lo que indique el payload.
@@ -773,6 +783,89 @@ export const useProgressStore = create<ProgressState>()(
           streak: Math.max(s.streak, data.streak),
           lastActivityDate,
         });
+      },
+
+      mergeFromTab: (incoming) => {
+        const s = get();
+        const union = (a: string[] = [], b: string[] = []) => [...new Set([...a, ...b])];
+        const maxOf = (a: number, b: number | undefined) => Math.max(a, b ?? 0);
+
+        // Respuestas de quiz: se unen por módulo y, dentro de cada módulo, gana la
+        // entrada de la otra pestaña solo para preguntas que aquí no se han tocado.
+        const checkAnswers: ProgressState['checkAnswers'] = { ...s.checkAnswers };
+        for (const [moduleKey, answers] of Object.entries(incoming.checkAnswers ?? {})) {
+          checkAnswers[moduleKey] = { ...answers, ...(s.checkAnswers[moduleKey] ?? {}) };
+        }
+
+        // Intentos del simulador: unión por id, ordenados por fecha.
+        const byId = new Map(s.attempts.map((a) => [a.id, a]));
+        for (const a of incoming.attempts ?? []) if (!byId.has(a.id)) byId.set(a.id, a);
+        const attempts = [...byId.values()].sort((a, b) => a.date - b.date);
+
+        const next: Partial<ProgressState> = {
+          completedModuleIds: union(s.completedModuleIds, incoming.completedModuleIds),
+          completedModules: union(s.completedModules, incoming.completedModules),
+          badges: union(s.badges, incoming.badges),
+          certifiedCourseIds: union(s.certifiedCourseIds, incoming.certifiedCourseIds),
+          moduleSlugToId: { ...incoming.moduleSlugToId, ...s.moduleSlugToId },
+          reviewedAt: { ...incoming.reviewedAt, ...s.reviewedAt },
+          courseReviewRound: { ...incoming.courseReviewRound, ...s.courseReviewRound },
+          courseReviewCount: { ...incoming.courseReviewCount, ...s.courseReviewCount },
+          checkAnswers,
+          attempts,
+          xp: maxOf(s.xp, incoming.xp),
+          streak: maxOf(s.streak, incoming.streak),
+          quizCorrectCount: maxOf(s.quizCorrectCount, incoming.quizCorrectCount),
+          quizBestStreak: maxOf(s.quizBestStreak, incoming.quizBestStreak),
+          redeemedCount: maxOf(s.redeemedCount, incoming.redeemedCount),
+          bestCertScore: maxOf(s.bestCertScore, incoming.bestCertScore),
+          worldLevelsCompleted: maxOf(s.worldLevelsCompleted, incoming.worldLevelsCompleted),
+          worldsCompleted: maxOf(s.worldsCompleted, incoming.worldsCompleted),
+          lastActivityDate:
+            !s.lastActivityDate || (incoming.lastActivityDate ?? '') > s.lastActivityDate
+              ? (incoming.lastActivityDate ?? s.lastActivityDate)
+              : s.lastActivityDate,
+        };
+
+        // El tope diario de XP por repaso es un contador de HOY: si la otra
+        // pestaña ya gastó más, hay que respetarlo o se farmearía abriendo
+        // pestañas. Solo aplica si ambas hablan del mismo día.
+        if (incoming.reviewXPDate && incoming.reviewXPDate === s.reviewXPDate) {
+          next.reviewXPToday = maxOf(s.reviewXPToday, incoming.reviewXPToday);
+        } else if (incoming.reviewXPDate && !s.reviewXPDate) {
+          next.reviewXPDate = incoming.reviewXPDate;
+          next.reviewXPToday = incoming.reviewXPToday ?? 0;
+        }
+
+        // CRÍTICO: si nada cambió, no escribir. Cada `set` hace que `persist`
+        // reescriba el localStorage, lo que dispara el evento `storage` en la
+        // otra pestaña, que volvería a fusionar y a escribir… un ping-pong
+        // infinito entre las dos. Como la fusión es aditiva y conmutativa,
+        // basta con detenerse cuando ya no aporta nada nuevo.
+        const changed =
+          next.completedModuleIds!.length !== s.completedModuleIds.length ||
+          next.completedModules!.length !== s.completedModules.length ||
+          next.badges!.length !== s.badges.length ||
+          next.certifiedCourseIds!.length !== s.certifiedCourseIds.length ||
+          next.attempts!.length !== s.attempts.length ||
+          next.xp !== s.xp ||
+          next.streak !== s.streak ||
+          next.quizCorrectCount !== s.quizCorrectCount ||
+          next.quizBestStreak !== s.quizBestStreak ||
+          next.redeemedCount !== s.redeemedCount ||
+          next.bestCertScore !== s.bestCertScore ||
+          next.worldLevelsCompleted !== s.worldLevelsCompleted ||
+          next.worldsCompleted !== s.worldsCompleted ||
+          next.lastActivityDate !== s.lastActivityDate ||
+          (next.reviewXPToday !== undefined && next.reviewXPToday !== s.reviewXPToday) ||
+          (next.reviewXPDate !== undefined && next.reviewXPDate !== s.reviewXPDate) ||
+          JSON.stringify(next.checkAnswers) !== JSON.stringify(s.checkAnswers) ||
+          JSON.stringify(next.moduleSlugToId) !== JSON.stringify(s.moduleSlugToId) ||
+          JSON.stringify(next.reviewedAt) !== JSON.stringify(s.reviewedAt) ||
+          JSON.stringify(next.courseReviewRound) !== JSON.stringify(s.courseReviewRound) ||
+          JSON.stringify(next.courseReviewCount) !== JSON.stringify(s.courseReviewCount);
+
+        if (changed) set(next);
       },
 
       applyReset: (payload) => {

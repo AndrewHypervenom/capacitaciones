@@ -11,6 +11,8 @@ import type { Json } from '@/types/database'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useUnsavedWork } from '@/hooks/useUnsavedWork'
+import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -134,6 +136,15 @@ export default function Arena() {
   const [form, setForm] = useState<QuizForm>(emptyForm())
   const [filterCampaign, setFilterCampaign] = useState<string>('all')
   const [editingId, setEditingId] = useState<string | null>(null)
+  /** Se incrementa para releer la lista (ver useFreshOnFocus más abajo). */
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // El formulario del modal es trabajo sin guardar mientras está abierto: que el
+  // aviso de nueva versión y el de cerrar pestaña lo sepan (lib/unsavedWork.ts).
+  const unsaved = useUnsavedWork(form, {
+    label: form.title || t('common.untitled'),
+    enabled: isModalOpen,
+  })
 
   const { isSuperAdmin, campaignId, user, loading: authLoading } = useAuth()
   // El capacitador ve/gestiona sus campañas (casa + colaboraciones); el superadmin todas.
@@ -173,7 +184,14 @@ export default function Arena() {
       setLoading(false)
     }
     load()
-  }, [authLoading, scopedToCampaign, campaignId, user?.id])
+  }, [authLoading, scopedToCampaign, campaignId, user?.id, refreshKey])
+
+  // Trae lo último al volver a esta pestaña o cuando otra guarda un quiz. No se
+  // refresca con el modal abierto: recargar bajo un formulario a medias confunde.
+  useFreshOnFocus(() => setRefreshKey((k) => k + 1), {
+    topics: ['arena', 'worlds'],
+    enabled: !authLoading && !isModalOpen,
+  })
 
   const openModal = () => {
     setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })

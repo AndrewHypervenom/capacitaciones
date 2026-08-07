@@ -58,10 +58,13 @@
   "update": {
     "title": "Nueva versión disponible",
     "description": "Actualiza para ver los últimos cambios del sitio.",
+    "description_unsaved": "Hay cambios sin guardar. Guárdalos y luego actualiza.",
     "action": "Actualizar",
     "confirm_title": "¿Actualizar ahora?",
     "confirm_description": "Al actualizar se recarga la página. Si estás en medio de algo sin guardar (creando o editando contenido, respondiendo una evaluación, etc.), podrías perder ese progreso. Guarda primero y actualiza cuando termines.",
+    "confirm_unsaved": "Tienes cambios sin guardar en: {{items}}. Al actualizar se recarga la página y esos cambios se pierden.",
     "confirm_action": "Sí, actualizar",
+    "confirm_discard": "Actualizar y perder los cambios",
     "confirm_cancel": "Ahora no"
   },
   "welcome": {
@@ -865,6 +868,15 @@
     "use": "Usar",
     "translate_error": "Error al traducir. Intenta de nuevo.",
     "ai_review_notice": "La IA puede cometer errores. Verifica la información antes de publicar o eliminar.",
+    "stale": {
+      "message": "Esto cambió en otra pestaña (o alguien más lo editó) después de que lo abriste. Lo que ves aquí ya no es la última versión.",
+      "reload": "Traer lo último",
+      "dismiss": "Cerrar aviso",
+      "confirm_title": "Hay una versión más nueva",
+      "confirm_body": "Alguien guardó cambios después de que abriste esto. Si guardas ahora, esos cambios se pierden.",
+      "confirm_overwrite": "Guardar de todos modos",
+      "reloaded": "Se cargó la última versión."
+    },
     "save_changes": "Guardar cambios",
     "optional_paren": "(opcional)",
     "question_n": "Pregunta {{n}}",

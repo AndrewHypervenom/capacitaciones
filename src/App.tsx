@@ -33,6 +33,7 @@ import { loadGamification } from '@/services/gamification.service';
 import { loadXPEvents } from '@/services/xpEvents.service';
 import { XPGainLayer } from '@/components/gamification/XPGainLayer';
 import { loadAiCreditsSetting } from '@/lib/aiCredits';
+import { initTabSync } from '@/lib/tabSync';
 import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
 import { ServiceStatusBanner } from '@/components/ui/ServiceStatusBanner';
@@ -59,6 +60,17 @@ function RouteFallback() {
 
 function AuthInit() {
   useEffect(() => { initAuth() }, []);
+  return null;
+}
+
+/**
+ * Sincronía entre pestañas del mismo navegador. Sin esto, dos pestañas abiertas
+ * eran dos apps sordas: la última en escribir el localStorage pisaba a la otra
+ * con un estado viejo (progreso que "se borraba", cambios que no aparecían).
+ * Ver src/lib/tabSync.ts y src/lib/crossTab.ts.
+ */
+function TabSyncInit() {
+  useEffect(() => { initTabSync() }, []);
   return null;
 }
 
@@ -200,6 +212,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthInit />
+      <TabSyncInit />
       <NavigationBridge />
       <PresenceSync />
       {/* Campana y avisos en vivo para TODOS los roles, dentro y fuera del panel. */}

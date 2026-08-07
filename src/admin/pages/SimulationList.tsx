@@ -32,6 +32,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useTranslation } from 'react-i18next'
+import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 
 type Tab = 'dialogue' | 'choice'
@@ -91,7 +92,9 @@ export default function SimulationList() {
 
   useEffect(() => {
     if (!selectedCampaignId) return
-    setLoading(true)
+    // El esqueleto solo en la primera carga: los refrescos de fondo (volver a la
+    // pestaña, aviso de otra pestaña) no deben hacer parpadear la lista entera.
+    if (dialogueRows.length === 0 && choiceRows.length === 0) setLoading(true)
     setError(null)
     Promise.all([
       getAllScenariosAdmin(selectedCampaignId),
@@ -100,7 +103,16 @@ export default function SimulationList() {
       .then(([d, c]) => { setDialogueRows(d); setChoiceRows(c) })
       .catch(() => setError('Error cargando simulaciones'))
       .finally(() => setLoading(false))
+    // Las filas se leen para decidir el esqueleto, no para volver a disparar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaignId, refreshKey])
+
+  // Vuelve sola a lo último: si en otra pestaña se guardó o publicó una
+  // simulación, esta lista deja de mostrar la foto de cuando se abrió.
+  useFreshOnFocus(() => setRefreshKey((k) => k + 1), {
+    topics: ['simulations'],
+    enabled: !!selectedCampaignId,
+  })
 
   // Catálogo compartido: necesita una campaña dueña concreta (con "Todas" no
   // sabríamos a dónde copiar ni qué excluir).

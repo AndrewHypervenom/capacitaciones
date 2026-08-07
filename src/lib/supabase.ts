@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { healthFetch } from '@/lib/serviceHealth'
+import { withWriteNotifier } from '@/lib/writeNotifier'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -12,9 +13,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   // `fetch` instrumentado: mide latencia y fallos (5xx / timeouts de sentencia)
-  // para poder avisar en pantalla cuando los servicios están degradados.
-  // No cambia el comportamiento de ninguna petición (ver lib/serviceHealth.ts).
-  global: { fetch: healthFetch },
+  // para poder avisar en pantalla cuando los servicios están degradados
+  // (lib/serviceHealth.ts), y anuncia las escrituras de contenido a las demás
+  // pestañas para que no se queden con la versión anterior (lib/writeNotifier.ts).
+  // Ninguno de los dos cambia el comportamiento de las peticiones.
+  global: { fetch: withWriteNotifier(healthFetch) },
   auth: {
     persistSession: true,
     autoRefreshToken: true,

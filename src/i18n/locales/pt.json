@@ -58,10 +58,13 @@
   "update": {
     "title": "Nova versão disponível",
     "description": "Atualize para ver as últimas mudanças do site.",
+    "description_unsaved": "Há alterações não salvas. Salve-as e depois atualize.",
     "action": "Atualizar",
     "confirm_title": "Atualizar agora?",
     "confirm_description": "Atualizar recarrega a página. Se você estiver no meio de algo sem salvar (criando ou editando conteúdo, respondendo uma avaliação, etc.), pode perder esse progresso. Salve primeiro e atualize quando terminar.",
+    "confirm_unsaved": "Você tem alterações não salvas em: {{items}}. Ao atualizar, a página recarrega e essas alterações se perdem.",
     "confirm_action": "Sim, atualizar",
+    "confirm_discard": "Atualizar e perder as alterações",
     "confirm_cancel": "Agora não"
   },
   "welcome": {
@@ -865,6 +868,15 @@
     "use": "Usar",
     "translate_error": "Erro ao traduzir. Tente novamente.",
     "ai_review_notice": "A IA pode cometer erros. Verifique as informações antes de publicar ou excluir.",
+    "stale": {
+      "message": "Isto mudou em outra aba (ou outra pessoa editou) depois que você abriu. O que você vê aqui já não é a última versão.",
+      "reload": "Trazer o mais recente",
+      "dismiss": "Fechar aviso",
+      "confirm_title": "Existe uma versão mais nova",
+      "confirm_body": "Alguém salvou alterações depois que você abriu isto. Se salvar agora, essas alterações se perdem.",
+      "confirm_overwrite": "Salvar mesmo assim",
+      "reloaded": "Carregada a última versão."
+    },
     "save_changes": "Salvar alterações",
     "optional_paren": "(opcional)",
     "question_n": "Pergunta {{n}}",

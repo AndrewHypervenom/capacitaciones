@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeftRight, BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Loader2, Monitor, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
 import {
   getModulesRaw,
@@ -59,6 +60,8 @@ export default function ModuleList() {
   const [courses, setCourses] = useState<CourseWithModules[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Se incrementa para volver a leer la lista (ver useFreshOnFocus más abajo). */
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Mover un módulo suelto a otra campaña (los módulos dentro de un curso se
   // mueven con el curso). moveModule = módulo elegido; el resto es el diálogo.
@@ -138,7 +141,8 @@ export default function ModuleList() {
 
   useEffect(() => {
     if (!selectedCampaignId) return
-    setLoading(true)
+    // Esqueleto solo la primera vez: los refrescos de fondo no deben parpadear.
+    if (modules.length === 0) setLoading(true)
     setError(null)
     Promise.all([
       getModulesRaw(selectedCampaignId),
@@ -150,7 +154,15 @@ export default function ModuleList() {
       })
       .catch(() => setError(t('admin.modules.error_load')))
       .finally(() => setLoading(false))
-  }, [selectedCampaignId, t])
+    // `modules` solo decide el esqueleto; no puede volver a disparar la carga.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCampaignId, t, refreshKey])
+
+  // Trae lo último al volver a esta pestaña o cuando otra guarda un módulo/curso.
+  useFreshOnFocus(() => setRefreshKey((k) => k + 1), {
+    topics: ['modules', 'courses'],
+    enabled: !!selectedCampaignId,
+  })
 
   const handleTogglePublished = async (mod: DbModuleRow) => {
     // No se publica con quiz de video en 0:00 (nunca se disparan).

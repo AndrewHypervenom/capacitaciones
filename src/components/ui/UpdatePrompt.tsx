@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { useUnsavedWorkSummary } from '@/hooks/useUnsavedWork';
 
 /**
  * Aviso flotante que aparece cuando hay una versión más reciente del sitio
@@ -14,18 +15,31 @@ export function UpdatePrompt() {
   const [dismissed, setDismissed] = useState(false);
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const unsaved = useUnsavedWorkSummary();
 
   const show = updateAvailable && !dismissed;
 
-  // Antes de recargar, advertir que un proceso manual sin guardar (crear/editar
-  // contenido, responder una evaluación, etc.) se perdería al actualizar.
+  /**
+   * Actualizar recarga la página, y recargar se lleva lo que no esté guardado.
+   *
+   * Antes se preguntaba SIEMPRE, con un texto que suponía lo peor ("podrías
+   * perder progreso"). Un aviso que sale siempre se acepta sin leer — y así el
+   * día que sí había un módulo a medio escribir tampoco frenaba a nadie.
+   *
+   * Ahora se consulta el registro de trabajo sin guardar (lib/unsavedWork.ts):
+   * si no hay nada abierto a medias se recarga y ya; si lo hay, el aviso NOMBRA
+   * qué se perdería, que es la única forma de que se lea.
+   */
   const handleUpdate = async () => {
+    if (!unsaved.any) {
+      window.location.reload();
+      return;
+    }
     const ok = await confirm({
       title: t('update.confirm_title'),
-      description: t('update.confirm_description'),
-      confirmLabel: t('update.confirm_action'),
+      description: t('update.confirm_unsaved', { items: unsaved.labels.join(', ') }),
+      confirmLabel: t('update.confirm_discard'),
       cancelLabel: t('update.confirm_cancel'),
-      tone: 'default',
     });
     if (ok) window.location.reload();
   };
@@ -54,7 +68,9 @@ export function UpdatePrompt() {
                 {t('update.title')}
               </p>
               <p className="text-[12px] text-text-muted mt-0.5 leading-snug">
-                {t('update.description')}
+                {/* Si hay algo a medias, el aviso lo dice desde el banner: así
+                    se guarda primero en vez de descubrirlo tras pulsar. */}
+                {unsaved.any ? t('update.description_unsaved') : t('update.description')}
               </p>
             </div>
 

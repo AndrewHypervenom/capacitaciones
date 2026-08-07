@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import i18n from '@/i18n';
+import { hasUnsavedWork } from '@/lib/unsavedWork';
 
 const RELOAD_KEY = 'learningai.chunk-reload-at';
 
@@ -15,8 +16,15 @@ export function isChunkLoadError(error: unknown): boolean {
 /**
  * Recarga la página una sola vez (guard de 30s en sessionStorage) para
  * traer la versión nueva del sitio. Devuelve true si disparó la recarga.
+ *
+ * NO recarga si hay trabajo sin guardar. Esta recarga es automática (chunk que
+ * no cargó tras un despliegue) y nadie la pidió: llevarse por delante un módulo
+ * a medio escribir, sin preguntar, es peor que el fallo que intenta arreglar.
+ * En ese caso devuelve false y quien llama muestra la pantalla de recuperación,
+ * desde la que se puede recargar a mano.
  */
 export function reloadForNewVersion(): boolean {
+  if (hasUnsavedWork()) return false;
   try {
     const last = Number(sessionStorage.getItem(RELOAD_KEY) ?? 0);
     if (Date.now() - last < 30_000) return false;

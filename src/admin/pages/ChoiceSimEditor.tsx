@@ -28,6 +28,9 @@ import { useTranslation } from 'react-i18next'
 import { useEditingPresence } from '@/hooks/usePresence'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
+import { useStaleGuard } from '@/hooks/useStaleGuard'
+import { StaleNotice } from '@/components/ui/StaleNotice'
+import { useUnsavedWork } from '@/hooks/useUnsavedWork'
 
 type Tab = 'meta' | 'nodes'
 
@@ -195,18 +198,58 @@ export default function ChoiceSimEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin, authCampaignId, user?.id, isNew])
 
+  // Guardia de versión: ver SimulationEditor. Con la misma simulación abierta en
+  // dos pestañas, la que llevaba rato abierta guardaba su copia vieja encima.
+  const staleGuard = useStaleGuard<ChoiceScenarioRow>({
+    fetch: () => getChoiceScenarioAdmin(rowId!),
+    topic: 'simulations',
+    id: rowId,
+  })
+
+  // Cambios sin guardar: alimenta el aviso de "Nueva versión disponible" y el de
+  // cerrar la pestaña, para que ninguno de los dos se lleve el trabajo por
+  // delante sin decir qué se pierde (ver lib/unsavedWork.ts).
+  const unsaved = useUnsavedWork({ meta, nodes }, { label: meta.title_es || t('admin.simulations.ai_gen.bg_untitled'), enabled: !loading })
+
+  /** Vuelca una fila de la base en el editor y la fija como versión de referencia. */
+  const applyRow = useCallback(
+    (row: ChoiceScenarioRow) => {
+      const { meta: m, nodes: n } = rowToState(row)
+      setMeta(m); setNodes(n)
+      setCampaignId(row.campaign_id)
+      setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
+      staleGuard.mark(row)
+      unsaved.markSaved()
+    },
+    [staleGuard, unsaved],
+  )
+
   useEffect(() => {
     if (isNew) return
     getChoiceScenarioAdmin(id!)
-      .then((row) => {
-        const { meta: m, nodes: n } = rowToState(row)
-        setMeta(m); setNodes(n)
-        setCampaignId(row.campaign_id)
-        setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
-      })
+      .then(applyRow)
       .catch(() => toast.error('Error cargando escenario'))
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isNew])
+
+  /** "Traer lo último": descarta lo local y recarga desde la base. */
+  const handleReloadLatest = async () => {
+    if (!rowId) return
+    const ok = await confirm({
+      title: t('common.stale.confirm_title'),
+      description: t('common.stale.message'),
+      confirmLabel: t('common.stale.reload'),
+      tone: 'default',
+    })
+    if (!ok) return
+    try {
+      applyRow(await getChoiceScenarioAdmin(rowId))
+      toast.success(t('common.stale.reloaded'))
+    } catch (e) {
+      toast.error(`Error: ${(e as Error).message}`)
+    }
+  }
 
   const handleSave = async () => {
     if (!campaignId) return toast.error(t('admin.simulations.toast_no_campaign'))
@@ -214,6 +257,16 @@ export default function ChoiceSimEditor() {
     const finalSlug = meta.slug.trim() || slugify(meta.title_es)
     if (!finalSlug) return toast.error(t('admin.simulations.toast_slug_needs_title'))
     if (!nodes[meta.start_node_id]) return toast.error(t('admin.simulations.toast_start_missing'))
+
+    // ¿Sigue siendo la versión que se abrió? Si no, se pregunta en vez de pisar.
+    if (rowId && !(await staleGuard.isSafeToSave())) {
+      const overwrite = await confirm({
+        title: t('common.stale.confirm_title'),
+        description: t('common.stale.confirm_body'),
+        confirmLabel: t('common.stale.confirm_overwrite'),
+      })
+      if (!overwrite) return
+    }
 
     setSaving(true)
     try {
@@ -232,11 +285,14 @@ export default function ChoiceSimEditor() {
       }
 
       if (rowId) {
-        await updateChoiceScenario(rowId, payload)
+        staleGuard.mark(await updateChoiceScenario(rowId, payload))
+        unsaved.markSaved()
         toast.success('Guardado')
       } else {
         const row = await createChoiceScenario(payload)
         setRowId(row.id)
+        staleGuard.mark(row)
+        unsaved.markSaved()
         nav(`/admin/simulations/choice/${row.id}`, { replace: true })
         toast.success('Creado')
       }
@@ -351,6 +407,14 @@ export default function ChoiceSimEditor() {
       <div className="mb-4 -mt-2">
         <EditingBanner coeditors={coeditors} />
       </div>
+
+      {staleGuard.stale && (
+        <StaleNotice
+          className="mb-4"
+          onReload={handleReloadLatest}
+          onDismiss={staleGuard.dismiss}
+        />
+      )}
 
       {/* AI Generator — abierto por defecto salvo en modo manual */}
       <AIGeneratorPanel type="choice" onApply={handleApplyGenerated} defaultOpen={isNew && !isManualMode} campaignId={campaignId} currentContent={currentContent} />
