@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Plus, Save, Trash2, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Play, Plus, Save, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
@@ -13,6 +13,8 @@ import { useSimAiStore } from '@/stores/simAiStore'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
 import { SimulationEditPanel } from '@/admin/components/simulation/SimulationEditPanel'
 import { ChoiceNodeForm, type ChoiceNodeData } from '@/admin/components/simulation/ChoiceNodeForm'
+import { SimulationPreviewModal } from '@/admin/components/simulation/SimulationPreviewModal'
+import { reviewScenario } from '@/admin/components/simulation/simulationPreview'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -117,6 +119,8 @@ export default function ChoiceSimEditor() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false)
   const [manualGuide, setManualGuide] = useState(isNew && isManualMode)
+  // Vista previa: `from` es el paso desde el que arranca el ensayo (null = el inicial).
+  const [preview, setPreview] = useState<{ from: string | null } | null>(null)
 
   // Ruta con la que se montó el editor. Los paneles de IA arman su clave de corrida
   // con esta misma ruta, y al guardar la URL ya puede haber cambiado de /new a /:id.
@@ -138,6 +142,13 @@ export default function ChoiceSimEditor() {
   )
 
   const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
+
+  // Problemas del guion (opciones sin destino, callejones, momentos sueltos).
+  const previewIssues = useMemo(
+    () => reviewScenario(nodes, meta.start_node_id, 'choice'),
+    [nodes, meta.start_node_id],
+  )
+
   const nodeOptions = nodeIds.map((nid) => {
     const preview = nodes[nid]?.message?.es?.slice(0, 32)
     return { value: nid, label: preview ? `${stepLabel(nid)} — ${preview}` : stepLabel(nid) }
@@ -310,6 +321,22 @@ export default function ChoiceSimEditor() {
           <NeonBadge color={meta.is_published ? 'green' : 'neutral'} className="text-[9px] hidden sm:inline-flex">
             {meta.is_published ? 'Publicado' : 'Borrador'}
           </NeonBadge>
+          {/* Ensayo del borrador en pantalla: nada se guarda. El contador avisa
+              de opciones sin destino o callejones antes de publicar. */}
+          <Button variant="glass" size="sm" onClick={() => setPreview({ from: null })}>
+            <Play className="h-4 w-4" fill="currentColor" />
+            <span className="hidden sm:inline">{t('admin.simulations.preview.open')}</span>
+            {previewIssues.length > 0 && (
+              <span className={cn(
+                'ml-0.5 rounded-full px-1.5 text-[10px] font-semibold',
+                previewIssues.some((i) => i.level === 'error')
+                  ? 'bg-danger/15 text-danger'
+                  : 'bg-amber-400/20 text-amber-500',
+              )}>
+                {previewIssues.length}
+              </span>
+            )}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setMeta((m) => ({ ...m, is_published: !m.is_published }))}>
             {meta.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             <span className="hidden sm:inline">{meta.is_published ? 'Despublicar' : 'Publicar'}</span>
@@ -544,9 +571,20 @@ export default function ChoiceSimEditor() {
                       <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">{t('admin.simulations.start')}</span>
                     )}
                   </div>
-                  <button onClick={() => removeNode(selectedNodeId)} className="p-1.5 hover:text-danger text-text-subtle transition-colors">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {/* Ensayar la conversación empezando justo en este momento. */}
+                    <button
+                      onClick={() => setPreview({ from: selectedNodeId })}
+                      className="flex items-center gap-1.5 rounded-full border border-glass-border/20 px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+                      title={t('admin.simulations.preview.from_here')}
+                    >
+                      <Play className="h-3 w-3" fill="currentColor" />
+                      <span className="hidden sm:inline">{t('admin.simulations.preview.from_here')}</span>
+                    </button>
+                    <button onClick={() => removeNode(selectedNodeId)} className="p-1.5 hover:text-danger text-text-subtle transition-colors">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <ChoiceNodeForm
                   nodeId={selectedNodeId}
@@ -561,6 +599,27 @@ export default function ChoiceSimEditor() {
             )}
           </div>
         </div>
+      )}
+
+      {preview && (
+        <SimulationPreviewModal
+          type="choice"
+          nodes={nodes}
+          startNodeId={meta.start_node_id}
+          fromNodeId={preview.from}
+          meta={{
+            title: meta.title_es,
+            clientName: meta.client_name,
+            clientSubtitle: meta.client_company || meta.objective,
+            description: meta.description,
+            objective: meta.objective,
+            level: meta.level,
+            passScore: null,
+          }}
+          stepLabel={stepLabel}
+          onGoToStep={(nid) => { setTab('nodes'); setSelectedNodeId(nid) }}
+          onClose={() => setPreview(null)}
+        />
       )}
     </div>
   )

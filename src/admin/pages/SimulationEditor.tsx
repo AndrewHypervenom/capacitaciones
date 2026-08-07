@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import {
-  ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, PhoneIncoming, PhoneOutgoing, Plus, Save, Trash2, X,
+  ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, PhoneIncoming, PhoneOutgoing, Play, Plus, Save, Trash2, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
@@ -18,6 +18,8 @@ import { SimulationEditPanel } from '@/admin/components/simulation/SimulationEdi
 import {
   DialogueNodeForm, type DialogueNodeData,
 } from '@/admin/components/simulation/DialogueNodeForm'
+import { SimulationPreviewModal } from '@/admin/components/simulation/SimulationPreviewModal'
+import { reviewScenario } from '@/admin/components/simulation/simulationPreview'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -170,6 +172,8 @@ export default function SimulationEditor() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false)
   const [manualGuide, setManualGuide] = useState(isNew && isManualMode)
+  // Vista previa: `from` es el paso desde el que arranca el ensayo (null = el inicial).
+  const [preview, setPreview] = useState<{ from: string | null } | null>(null)
 
   // Ruta con la que se montó el editor. Los paneles de IA arman su clave de corrida
   // con esta misma ruta, y al guardar la URL ya puede haber cambiado de /new a /:id.
@@ -191,6 +195,13 @@ export default function SimulationEditor() {
   )
 
   const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
+
+  // Problemas del guion (rutas rotas, callejones, momentos inalcanzables). Se
+  // muestran como contador sobre "Vista previa" para que se vean sin abrirla.
+  const previewIssues = useMemo(
+    () => reviewScenario(nodes, meta.start_node_id, 'dialogue'),
+    [nodes, meta.start_node_id],
+  )
 
   // Escenario actual (para "Mejorar con IA"). null si aún no hay contenido real.
   const currentContent = useMemo<GeneratedScenario | null>(() => {
@@ -412,6 +423,22 @@ export default function SimulationEditor() {
           <NeonBadge color={meta.is_published ? 'green' : 'neutral'} className="text-[9px] hidden sm:inline-flex">
             {meta.is_published ? 'Publicado' : 'Borrador'}
           </NeonBadge>
+          {/* Ensayo del borrador en pantalla: nada se guarda. El contador avisa
+              de rutas rotas o callejones antes de publicar. */}
+          <Button variant="glass" size="sm" onClick={() => setPreview({ from: null })}>
+            <Play className="h-4 w-4" fill="currentColor" />
+            <span className="hidden sm:inline">{t('admin.simulations.preview.open')}</span>
+            {previewIssues.length > 0 && (
+              <span className={cn(
+                'ml-0.5 rounded-full px-1.5 text-[10px] font-semibold',
+                previewIssues.some((i) => i.level === 'error')
+                  ? 'bg-danger/15 text-danger'
+                  : 'bg-amber-400/20 text-amber-500',
+              )}>
+                {previewIssues.length}
+              </span>
+            )}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -797,13 +824,24 @@ export default function SimulationEditor() {
                       <span className="text-[9px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded-full">{t('admin.simulations.start')}</span>
                     )}
                   </div>
-                  <button
-                    onClick={() => removeNode(selectedNodeId)}
-                    className="p-1.5 hover:text-danger text-text-subtle transition-colors"
-                    title={t('admin.simulations.del_step')}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {/* Ensayar la conversación empezando justo en este momento. */}
+                    <button
+                      onClick={() => setPreview({ from: selectedNodeId })}
+                      className="flex items-center gap-1.5 rounded-full border border-glass-border/20 px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
+                      title={t('admin.simulations.preview.from_here')}
+                    >
+                      <Play className="h-3 w-3" fill="currentColor" />
+                      <span className="hidden sm:inline">{t('admin.simulations.preview.from_here')}</span>
+                    </button>
+                    <button
+                      onClick={() => removeNode(selectedNodeId)}
+                      className="p-1.5 hover:text-danger text-text-subtle transition-colors"
+                      title={t('admin.simulations.del_step')}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <DialogueNodeForm
                   nodeId={selectedNodeId}
@@ -887,6 +925,32 @@ export default function SimulationEditor() {
             <Plus className="h-4 w-4" /> Agregar ítem
           </Button>
         </div>
+      )}
+
+      {preview && (
+        <SimulationPreviewModal
+          type="dialogue"
+          nodes={nodes}
+          startNodeId={meta.start_node_id}
+          fromNodeId={preview.from}
+          meta={{
+            title: meta.title_es,
+            clientName: meta.customer_name,
+            clientSubtitle: meta.customer_phone || meta.customer_reason_es,
+            reason: meta.customer_reason_es,
+            summary: meta.summary_es,
+            maxTurns: meta.max_turns,
+            passScore: meta.course_id ? meta.pass_score : null,
+            country: meta.country,
+            difficulty: meta.difficulty,
+            avatarSeed: meta.avatar_seed,
+          }}
+          checklist={checklist}
+          empathyKeywords={meta.empathy_keywords}
+          stepLabel={stepLabel}
+          onGoToStep={(nid) => { setTab('nodes'); setSelectedNodeId(nid) }}
+          onClose={() => setPreview(null)}
+        />
       )}
     </div>
   )

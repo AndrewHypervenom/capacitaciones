@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Phone, PhoneOff, Star } from 'lucide-react';
+import { ArrowLeft, BookOpen, Phone, PhoneOff, Star, Target } from 'lucide-react';
 import { type ChoiceNode, type ChoiceOption, type ChoiceScenario, calcMaxPoints, getChoiceScenario } from '@/data/choiceScenarios';
 import { getChoiceScenarioBySlug } from '@/services/choiceScenarios.service';
 import { saveSimulatorAttempt, type AiFeedback } from '@/services/certification.service';
@@ -29,6 +29,35 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const MAX_NODE_VISITS = 2;
 /** Tope duro de pasos por llamada, por si el grafo tiene un ciclo largo. */
 const MAX_STEPS = 40;
+
+/**
+ * TIEMPO MÍNIMO DE LECTURA antes de poder responder.
+ *
+ * Sin esto la simulación se puede "pasar" a puro clic: el aprendiz elige la
+ * primera opción apenas aparece, en treinta segundos termina la llamada y no leyó
+ * ni lo que dijo el cliente. El resultado sale malo pero tampoco enseña nada,
+ * porque nunca hubo una decisión.
+ *
+ * El tiempo se calcula sobre lo que hay que leer de verdad (mensaje del cliente +
+ * las tres respuestas), no es un castigo fijo: un momento corto se desbloquea casi
+ * enseguida y uno largo obliga a detenerse. Colgar sigue disponible en todo
+ * momento; lo único que espera es la respuesta.
+ */
+const READ_BASE_MS = 1200;
+const READ_PER_WORD_MS = 55;
+const READ_MAX_MS = 7000;
+
+function countWords(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function readingTimeMs(node: ChoiceNode | undefined, lang: Language) {
+  if (!node) return 0;
+  const words =
+    countWords(node.message?.[lang] ?? '') +
+    (node.options ?? []).reduce((n, o) => n + countWords(o.text?.[lang] ?? ''), 0);
+  return Math.min(READ_MAX_MS, READ_BASE_MS + words * READ_PER_WORD_MS);
+}
 
 function formatTime(s: number) {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
@@ -174,6 +203,8 @@ export default function ChoiceSimulatorRun() {
   const [decisions, setDecisions] = useState(0);
   // Última decisión, para que el aprendiz entienda por qué sube o no el puntaje.
   const [lastChoice, setLastChoice] = useState<{ letter: string; points: number; best: number } | null>(null);
+  // Segundos que faltan para poder responder (ver `readingTimeMs`). 0 = habilitado.
+  const [readSecondsLeft, setReadSecondsLeft] = useState(0);
   const [clockTime, setClockTime] = useState(getClockTime);
 
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
@@ -403,6 +434,28 @@ export default function ChoiceSimulatorRun() {
     [showClientMessage, language, activeNodeId],
   );
 
+  // Ventana de lectura: al aparecer las respuestas quedan apagadas el tiempo que
+  // cuesta leer ese momento, y se van habilitando solas.
+  useEffect(() => {
+    if (!waitingForUser || !activeNodeId || !scenario) {
+      setReadSecondsLeft(0);
+      return;
+    }
+    const ms = readingTimeMs(scenario.nodes[activeNodeId], language);
+    if (ms <= 0) {
+      setReadSecondsLeft(0);
+      return;
+    }
+    const deadline = Date.now() + ms;
+    setReadSecondsLeft(Math.ceil(ms / 1000));
+    const iv = setInterval(() => {
+      const left = deadline - Date.now();
+      setReadSecondsLeft(left > 0 ? Math.ceil(left / 1000) : 0);
+      if (left <= 0) clearInterval(iv);
+    }, 200);
+    return () => clearInterval(iv);
+  }, [waitingForUser, activeNodeId, scenario, language]);
+
   const handleEndCall = useCallback(() => {
     clearAllTimeouts();
     setTyping(false);
@@ -479,7 +532,7 @@ export default function ChoiceSimulatorRun() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="min-h-screen flex flex-col items-center justify-center px-4 py-16 relative"
+            className="min-h-screen px-5 pt-12 pb-24"
           >
             <button
               onClick={() => nav(simContext.returnTo ?? '/dashboard')}
@@ -489,72 +542,110 @@ export default function ChoiceSimulatorRun() {
               {t('simulator.choice.back')}
             </button>
 
+            {/* Dos columnas con jerarquía: a la izquierda lo que hay que leer
+                (el caso y el objetivo, que pueden ser largos), a la derecha la
+                ficha del cliente, las reglas y el botón siempre a la vista.
+                En una fila de tarjetas iguales, un objetivo de un párrafo
+                estiraba las de al lado y dejaba dos cajas medio vacías. */}
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full max-w-lg bg-surface border border-line rounded-3xl p-8"
+              className="mx-auto w-full max-w-5xl"
             >
-              <div className="flex flex-col items-center text-center">
-                <div
-                  className="w-20 h-20 rounded-full flex items-center justify-center mb-5"
-                  style={{ background: 'rgba(0,113,227,0.15)', border: '1px solid rgba(0,113,227,0.35)' }}
-                >
-                  <Phone className="w-9 h-9" style={{ color: '#0071e3' }} />
+              <header className="mb-9 text-center">
+                <div className="text-[12px] uppercase tracking-wider text-text-subtle mb-3">
+                  {t('simulator.choice_section_title')}
                 </div>
-
+                <h1 className="text-[30px] md:text-[38px] font-semibold tracking-[-0.04em] text-text text-balance leading-[1.15]">
+                  {scenario.title[language]}
+                </h1>
                 <span
-                  className="text-[11px] uppercase tracking-widest font-semibold mb-3 px-3 py-1 rounded-full"
+                  className="mt-4 inline-block text-[11px] uppercase tracking-widest font-semibold px-3 py-1 rounded-full"
                   style={{ color: levelColor, background: `${levelColor}20`, border: `1px solid ${levelColor}40` }}
                 >
                   {getLevelLabel(scenario.level)}
                 </span>
+              </header>
 
-                <h1 className="text-[34px] font-bold text-text tracking-tight leading-tight mb-3">
-                  {scenario.title[language]}
-                </h1>
-                <RichText
-                  text={scenario.description[language]}
-                  className="text-[16px] mb-8 text-text-muted"
-                />
-
-                <div className="w-full mb-8 bg-surface border border-line rounded-2xl p-5">
-                  {[
-                    { id: 'customer', label: t('simulator.customer'), value: scenario.clientName },
-                    { id: 'company', label: t('simulator.choice.company'), value: scenario.clientCompany[language] },
-                    { id: 'objective', label: t('simulator.choice.objective'), value: scenario.objective[language] },
-                  ].map(({ id, label, value }, i, arr) => (
-                    <div
-                      key={id}
-                      className="flex items-start justify-between py-3"
-                      style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(128,128,128,0.15)' : 'none' }}
-                    >
-                      <span className="text-[13px] shrink-0 mr-4 text-text-muted">{label}</span>
-                      <span className="text-[13px] text-text text-right">{value}</span>
+              <div className="grid items-start gap-5 lg:grid-cols-[1.55fr_1fr]">
+                {/* ── Lo que hay que leer ── */}
+                <div className="space-y-5">
+                  <section className="surface-card p-6 md:p-8">
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                        <Phone className="h-4 w-4" />
+                      </span>
+                      <h2 className="text-[12px] uppercase tracking-wider text-text-subtle font-medium">
+                        {t('simulator.choice.the_case')}
+                      </h2>
                     </div>
-                  ))}
+                    <RichText
+                      text={scenario.description[language]}
+                      className="text-[15px] leading-[1.7] text-text-muted"
+                    />
+                  </section>
+
+                  {scenario.objective[language] && (
+                    <section className="surface-card p-6 md:p-8 border-l-[3px] border-l-primary">
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                          <Target className="h-4 w-4" />
+                        </span>
+                        <h2 className="text-[12px] uppercase tracking-wider text-text-subtle font-medium">
+                          {t('simulator.choice.objective')}
+                        </h2>
+                      </div>
+                      <p className="text-[15px] leading-[1.7] text-text">{scenario.objective[language]}</p>
+                    </section>
+                  )}
                 </div>
 
-                {/* Reglas antes de empezar: qué se espera y cómo se califica. */}
-                <div className="w-full mb-8 text-left rounded-2xl p-5" style={{ background: 'rgba(0,113,227,0.08)', border: '1px solid rgba(0,113,227,0.25)' }}>
-                  <p className="text-text text-[13px] font-semibold mb-2">{t('simulator.choice.how_it_works')}</p>
-                  <ul className="text-text-muted text-[13px] leading-relaxed list-disc pl-4 space-y-1">
-                    <li>{t('simulator.choice.rule_choose')}</li>
-                    <li>{t('simulator.choice.rule_points')}</li>
-                    <li>{t('simulator.choice.rule_end')}</li>
-                  </ul>
-                </div>
+                {/* ── Con quién hablas, las reglas y el botón ── */}
+                <aside className="space-y-5 lg:sticky lg:top-6">
+                  <section className="surface-card p-6 text-center">
+                    <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-[22px] font-semibold text-primary">
+                      {scenario.clientName.trim().charAt(0).toUpperCase()}
+                    </div>
+                    <p className="text-[11px] uppercase tracking-wider text-text-subtle mb-1.5 font-medium">
+                      {t('simulator.customer')}
+                    </p>
+                    <p className="text-[17px] font-semibold tracking-tight text-text leading-snug">
+                      {scenario.clientName}
+                    </p>
+                    <p className="text-[13px] text-text-muted mt-0.5">{scenario.clientCompany[language]}</p>
+                  </section>
 
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={startCall}
-                  className="flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-[16px] text-black cursor-pointer"
-                  style={{ background: '#34c759' }}
-                >
-                  <Phone className="w-5 h-5" />
-                  {t('simulator.choice.accept_call')}
-                </motion.button>
+                  {/* Reglas antes de empezar: qué se espera y cómo se califica. */}
+                  <section className="surface-card p-6">
+                    <p className="text-text text-[13px] font-semibold mb-4">{t('simulator.choice.how_it_works')}</p>
+                    <ol className="space-y-3.5">
+                      {[
+                        t('simulator.choice.rule_choose'),
+                        t('simulator.choice.rule_points'),
+                        t('simulator.choice.rule_end'),
+                      ].map((rule, i) => (
+                        <li key={i} className="flex items-start gap-3">
+                          <span className="shrink-0 mt-0.5 grid h-5 w-5 place-items-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                            {i + 1}
+                          </span>
+                          <p className="text-text-muted text-[12.5px] leading-relaxed">{rule}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={startCall}
+                    className="flex w-full items-center justify-center gap-3 px-8 py-4 rounded-full font-semibold text-[16px] text-black cursor-pointer shadow-[0_10px_30px_-12px_rgba(52,199,89,0.9)]"
+                    style={{ background: '#34c759' }}
+                  >
+                    <Phone className="w-5 h-5" />
+                    {t('simulator.choice.accept_call')}
+                  </motion.button>
+                </aside>
               </div>
             </motion.div>
           </motion.div>
@@ -923,25 +1014,33 @@ export default function ChoiceSimulatorRun() {
                   <AnimatePresence mode="wait">
                     {waitingForUser && currentOptions.length > 0 ? (
                       <motion.div key="options" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {/* Ventana de lectura: responder sin leer no es una decisión. */}
+                        {readSecondsLeft > 0 && (
+                          <p className="text-[12px] text-text-muted m-0 mb-1 flex items-center gap-1.5">
+                            <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                            {t('simulator.choice.read_first', { s: readSecondsLeft })}
+                          </p>
+                        )}
                         {currentOptions.map((opt, i) => (
                           <motion.button
                             key={i}
                             initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
+                            animate={{ opacity: readSecondsLeft > 0 ? 0.55 : 1, x: 0 }}
                             transition={{ delay: i * 0.08, ease: [0.16, 1, 0.3, 1], duration: 0.35 }}
                             onClick={() => handleOptionSelect(opt, i, scenario)}
-                            className="bg-subtle border border-line hover:bg-line"
+                            disabled={readSecondsLeft > 0}
+                            className="bg-subtle border border-line enabled:hover:bg-line"
                             style={{
                               borderRadius: 16,
                               padding: 16,
                               textAlign: 'left',
-                              cursor: 'pointer',
+                              cursor: readSecondsLeft > 0 ? 'default' : 'pointer',
                               display: 'flex',
                               alignItems: 'flex-start',
                               gap: 12,
                             }}
-                            whileHover={{ scale: 1.01 } as never}
-                            whileTap={{ scale: 0.98 }}
+                            whileHover={readSecondsLeft > 0 ? undefined : ({ scale: 1.01 } as never)}
+                            whileTap={readSecondsLeft > 0 ? undefined : { scale: 0.98 }}
                           >
                             <span
                               style={{
