@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, LogOut, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, LogOut, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -55,6 +55,11 @@ const ALL_CAMPAIGNS = '__all__'
 // Marca de que el staff ya usó "Ver como aprendiz" (apaga el pulso de la tarjeta).
 const PREVIEW_HINT_KEY = 'course-preview-hint-seen'
 
+// Orden de la lista. 'default' es el que trae la consulta (lo más reciente
+// primero); las otras dos son alfabéticas por título.
+type CourseSort = 'default' | 'az' | 'za'
+const COURSE_SORT_KEY = 'admin-courses-sort'
+
 export default function CourseList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
@@ -82,6 +87,14 @@ export default function CourseList() {
     isSuperAdmin ? ALL_CAMPAIGNS : '',
   )
   const [courses, setCourses] = useState<AdminCourse[]>([])
+  // El orden elegido se recuerda: quien trabaja alfabéticamente no quiere
+  // volver a elegirlo cada vez que entra al panel.
+  const [sort, setSort] = useState<CourseSort>(() => {
+    try {
+      const saved = localStorage.getItem(COURSE_SORT_KEY)
+      return saved === 'az' || saved === 'za' ? saved : 'default'
+    } catch { return 'default' }
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Se incrementa para forzar recarga de la lista (p. ej. cuando una creación con
@@ -277,14 +290,42 @@ export default function CourseList() {
       ...[...names.keys()].sort().map((n) => ({ value: n, label: n }))]
   }, [sharedCourses, t])
 
+  const changeSort = (v: string) => {
+    const next = (v === 'az' || v === 'za' ? v : 'default') as CourseSort
+    setSort(next)
+    try { localStorage.setItem(COURSE_SORT_KEY, next) } catch { /* modo privado */ }
+  }
+
+  const sortOptions = [
+    { value: 'default', label: t('admin.courses.sort_default') },
+    { value: 'az', label: t('admin.courses.sort_az') },
+    { value: 'za', label: t('admin.courses.sort_za') },
+  ]
+
+  // El panel siempre muestra el título en español (es el idioma canónico del
+  // contenido), así que ordenamos por `title_es` con las reglas del español:
+  // acentos y "ñ" en su sitio, y números comparados como números ("Módulo 10"
+  // después de "Módulo 9").
+  const sortByTitle = useMemo(() => {
+    return <T extends { title_es: string }>(list: T[]): T[] => {
+      if (sort === 'default') return list
+      const cmp = (a: T, b: T) =>
+        a.title_es.localeCompare(b.title_es, 'es', { sensitivity: 'base', numeric: true })
+      return [...list].sort(sort === 'az' ? cmp : (a, b) => cmp(b, a))
+    }
+  }, [sort])
+
+  const visibleCourses = useMemo(() => sortByTitle(courses), [courses, sortByTitle])
+
   const filteredShared = useMemo(() => {
     const q = sharedSearch.trim().toLowerCase()
-    return sharedCourses.filter((c) => {
+    const list = sharedCourses.filter((c) => {
       if (sharedCampaignFilter && c.campaign_name !== sharedCampaignFilter) return false
       if (!q) return true
       return `${c.title_es} ${c.description_es ?? ''} ${c.category ?? ''}`.toLowerCase().includes(q)
     })
-  }, [sharedCourses, sharedSearch, sharedCampaignFilter])
+    return sortByTitle(list)
+  }, [sharedCourses, sharedSearch, sharedCampaignFilter, sortByTitle])
 
   const handleCreate = async () => {
     if (!newTitle.trim() || !selectedCampaignId) return
@@ -475,23 +516,36 @@ export default function CourseList() {
         </div>
       )}
 
-      {/* Tabs: Mis cursos / Cursos compartidos */}
-      <div className="mb-5 flex items-center gap-1 rounded-xl bg-subtle p-1 w-fit">
-        <button
-          onClick={() => setView('mine')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] ${view === 'mine' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
-        >
-          <GraduationCap className="h-4 w-4" />
-          {t('admin.courses.title')}
-        </button>
-        <button
-          onClick={() => setView('shared')}
-          disabled={selectedCampaignId === ALL_CAMPAIGNS}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] disabled:opacity-40 disabled:cursor-not-allowed ${view === 'shared' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
-        >
-          <Share2 className="h-4 w-4" />
-          {t('admin.courses.tab_shared')}
-        </button>
+      {/* Tabs: Mis cursos / Cursos compartidos. El orden vive aquí solo para la
+          pestaña propia; la de compartidos tiene el suyo junto a su buscador. */}
+      <div className="mb-5 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-1 rounded-xl bg-subtle p-1 w-fit">
+          <button
+            onClick={() => setView('mine')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] ${view === 'mine' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
+          >
+            <GraduationCap className="h-4 w-4" />
+            {t('admin.courses.title')}
+          </button>
+          <button
+            onClick={() => setView('shared')}
+            disabled={selectedCampaignId === ALL_CAMPAIGNS}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] disabled:opacity-40 disabled:cursor-not-allowed ${view === 'shared' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
+          >
+            <Share2 className="h-4 w-4" />
+            {t('admin.courses.tab_shared')}
+          </button>
+        </div>
+        {view === 'mine' && courses.length > 1 && (
+          <FilterDropdown
+            value={sort}
+            onChange={changeSort}
+            options={sortOptions}
+            leadingIcon={<ArrowDownAZ className="h-4 w-4 text-text-subtle" />}
+            aria-label={t('admin.courses.sort_label')}
+            className="w-full sm:w-auto sm:ml-auto sm:min-w-[13rem]"
+          />
+        )}
       </div>
 
       {error && (
@@ -524,6 +578,14 @@ export default function CourseList() {
                 className="max-w-xs"
               />
             )}
+            <FilterDropdown
+              value={sort}
+              onChange={changeSort}
+              options={sortOptions}
+              leadingIcon={<ArrowDownAZ className="h-4 w-4 text-text-subtle" />}
+              aria-label={t('admin.courses.sort_label')}
+              className="sm:max-w-[13rem]"
+            />
           </div>
 
           {sharedLoading ? (
@@ -618,7 +680,7 @@ export default function CourseList() {
         </GlassCard>
       ) : (
         <FadeIn className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" y={16}>
-          {courses.map((course) => (
+          {visibleCourses.map((course) => (
             <GlassCard
               key={course.id}
               intensity="subtle"

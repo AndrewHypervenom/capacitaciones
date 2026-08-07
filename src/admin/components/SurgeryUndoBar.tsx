@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useMotionValue, animate } from 'framer-motion'
 import { Check, Loader2, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from '@/stores/toastStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { EASE, SPRING } from './ModuleSurgeryBits'
 
@@ -52,14 +53,20 @@ export function SurgeryUndoBar({
 
   const CIRC = 2 * Math.PI * 9
 
+  // Desmontaje "de verdad" vs. el doble montaje de StrictMode (ver abajo).
+  const unmounted = useRef(false)
+
   useEffect(() => {
+    // Si volvemos a montar, cancelamos el desmontaje que había quedado pendiente.
+    unmounted.current = false
+
     const controls = animate(progress, 0, {
       duration: seconds,
       ease: 'linear',
       onUpdate: (v) => setDash(CIRC * (1 - v)),
     })
 
-    const timer = window.setTimeout(() => {
+    const finalizeNow = () => {
       if (settled.current) return
       settled.current = true
       setState('finalizing')
@@ -69,17 +76,28 @@ export function SurgeryUndoBar({
           setState('closed')
           onDoneRef.current()
         })
-    }, seconds * 1000)
+    }
+
+    const timer = window.setTimeout(finalizeNow, seconds * 1000)
 
     return () => {
       controls.stop()
       window.clearTimeout(timer)
+      unmounted.current = true
       // Salir de la pantalla cuenta como aceptar: si no se confirmara aquí, el
       // módulo absorbido quedaría vacío y suelto para siempre.
-      if (!settled.current) {
-        settled.current = true
-        void onFinalizeRef.current().catch(() => {})
-      }
+      //
+      // Pero NO se puede confirmar aquí mismo: en desarrollo, StrictMode monta,
+      // limpia y vuelve a montar. Confirmar en esa limpieza daba por cerrada la
+      // operación al instante y dejaba `settled` en true, así que el botón
+      // Deshacer no hacía nada. Se aplaza un tick: si el componente se remontó,
+      // `unmounted` ya volvió a false y no se confirma nada.
+      window.setTimeout(() => {
+        if (unmounted.current && !settled.current) {
+          settled.current = true
+          void onFinalizeRef.current().catch(() => {})
+        }
+      }, 0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seconds])
@@ -90,6 +108,12 @@ export function SurgeryUndoBar({
     setState('undoing')
     try {
       await onUndo()
+      toast.success(t('admin.surgery.undo_ok'))
+    } catch (e) {
+      // Antes esto se tragaba el fallo y la franja se cerraba igual: parecía que
+      // Deshacer no servía. Ahora se dice, y queda en consola por qué.
+      console.error('[SurgeryUndoBar] undo', e)
+      toast.error(t('admin.surgery.undo_error'))
     } finally {
       setState('closed')
       onDone()

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, Building2, Clock, Compass, GraduationCap, Loader2, Plus, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowDownAZ, BookOpen, Building2, Clock, Compass, GraduationCap, Loader2, Plus, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
@@ -18,6 +18,11 @@ import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/Cour
 import { cn } from '@/lib/cn';
 
 type Filter = 'all' | 'mandatory' | 'optional' | 'in_progress' | 'completed';
+
+// 'smart' es el orden de siempre (estado → obligatorio → alfabético). Las otras
+// dos son alfabéticas puras: quien busca un curso por nombre no quiere que el
+// progreso le mueva las tarjetas de sitio.
+type Sort = 'smart' | 'az' | 'za';
 
 const MotionLink = motion(Link);
 
@@ -221,6 +226,7 @@ export default function Courses() {
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [sort, setSort] = useState<Sort>('smart');
 
   // Separamos búsqueda de filtro para poder contar cuántos cursos caen en cada
   // pestaña sobre el mismo texto buscado.
@@ -257,12 +263,18 @@ export default function Courses() {
     [searched, filter, matchesFilter],
   );
 
+  const titleOf = (c: LearnerCourse) =>
+    pickText(c.title_es, c.title_en, c.title_pt, language);
+
+  // localeCompare con el idioma activo: en español la "ñ" va después de la "n",
+  // no al final del alfabeto, y los acentos no rompen el orden.
+  const byTitle = (a: LearnerCourse, b: LearnerCourse) =>
+    titleOf(a).localeCompare(titleOf(b), language, { sensitivity: 'base', numeric: true });
+
   const sortCourses = (list: LearnerCourse[]) =>
     [...list].sort((a, b) => {
       if (a.isMandatory !== b.isMandatory) return a.isMandatory ? -1 : 1;
-      return pickText(a.title_es, a.title_en, a.title_pt, language).localeCompare(
-        pickText(b.title_es, b.title_en, b.title_pt, language),
-      );
+      return byTitle(a, b);
     });
 
   // El estado pesa más que el orden alfabético: primero lo que el aprendiz ya
@@ -278,8 +290,16 @@ export default function Courses() {
   const sortByStatus = (list: LearnerCourse[]) =>
     sortCourses(list).sort((a, b) => statusRank(a) - statusRank(b));
 
-  const myCourses = sortByStatus(filtered.filter((c) => c.isAssigned));
-  const exploreCourses = sortByStatus(filtered.filter((c) => !c.isAssigned));
+  // A-Z / Z-A mandan sobre todo lo demás: si el aprendiz pide alfabético, no le
+  // colamos primero los obligatorios ni los que ya empezó.
+  const arrange = (list: LearnerCourse[]) => {
+    if (sort === 'az') return [...list].sort(byTitle);
+    if (sort === 'za') return [...list].sort((a, b) => byTitle(b, a));
+    return sortByStatus(list);
+  };
+
+  const myCourses = arrange(filtered.filter((c) => c.isAssigned));
+  const exploreCourses = arrange(filtered.filter((c) => !c.isAssigned));
 
   const mandatoryPending = courses.filter((c) => {
     if (!c.isMandatory) return false;
@@ -367,6 +387,20 @@ export default function Courses() {
             leadingIcon={<SlidersHorizontal className="h-4 w-4 text-text-subtle" />}
             aria-label={t('courses.filter_label')}
             className="min-w-[13rem]"
+          />
+          {/* Orden. Separado del filtro porque son cosas distintas: uno decide
+              QUÉ cursos se ven y el otro EN QUÉ ORDEN. */}
+          <Select
+            value={sort}
+            onChange={(v) => setSort(v as Sort)}
+            options={[
+              { value: 'smart', label: t('courses.sort_smart') },
+              { value: 'az', label: t('courses.sort_az') },
+              { value: 'za', label: t('courses.sort_za') },
+            ]}
+            leadingIcon={<ArrowDownAZ className="h-4 w-4 text-text-subtle" />}
+            aria-label={t('courses.sort_label')}
+            className="min-w-[11rem]"
           />
           {filter !== 'all' && (
             <button

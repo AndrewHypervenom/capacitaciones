@@ -67,6 +67,11 @@ export interface PartMeta {
   subtitle_es?: string | null
   objectives_es?: string[]
   key_takeaways_es?: string[]
+  /**
+   * Minutos escritos a mano en el modal. Si no viene (o viene 0) se usa el
+   * reparto/suma automático: el capacitador solo manda cuando lo toca.
+   */
+  duration_min?: number
 }
 
 /** Textos de enlace entre las dos partes. Se materializan como secciones. */
@@ -161,7 +166,21 @@ async function insertTextSection(
 }
 
 async function deleteSectionById(sectionId: string): Promise<void> {
-  await supabase.from('module_sections').delete().eq('id', sectionId)
+  const { error } = await supabase.from('module_sections').delete().eq('id', sectionId)
+  if (error) throw error
+}
+
+/**
+ * Borrado DURO del módulo que acaba de crear una separación. Solo se usa dentro
+ * de `undo()`: ese módulo nació hace segundos y nadie lo ha visto, así que no
+ * pasa por el borrado suave (que dejaría una solicitud de aprobación colgando).
+ *
+ * Comprueba el error a propósito: si RLS no deja borrarlo, Deshacer tiene que
+ * fallar a la vista y no fingir que revirtió algo que sigue ahí.
+ */
+async function hardDeleteModule(moduleId: string): Promise<void> {
+  const { error } = await supabase.from('modules').delete().eq('id', moduleId)
+  if (error) throw error
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -189,6 +208,8 @@ export async function planSplitWithAi(opts: {
   moduleId: string
   want: SurgeryAiWant[]
   cutIndex?: number
+  /** Qué corregir respecto al intento anterior, escrito por el capacitador. */
+  instruction?: string
 }): Promise<SplitAiPlan> {
   const mod = await getModuleWithSectionsRaw(opts.moduleId)
   const { data } = await moduleAiAssist({
@@ -197,7 +218,12 @@ export async function planSplitWithAi(opts: {
     sourceLang: 'es',
     fields: {},
     moduleTitle: mod.title_es,
-    surgery: { want: opts.want, cutIndex: opts.cutIndex, modules: [toSurgeryModule(mod)] },
+    surgery: {
+      want: opts.want,
+      cutIndex: opts.cutIndex,
+      instruction: opts.instruction?.trim() || undefined,
+      modules: [toSurgeryModule(mod)],
+    },
   })
   return data as SplitAiPlan
 }
@@ -206,6 +232,7 @@ export async function planSplitWithAi(opts: {
 export async function planMergeWithAi(opts: {
   moduleIds: string[]
   want: SurgeryAiWant[]
+  instruction?: string
 }): Promise<MergeAiPlan> {
   const mods = await Promise.all(opts.moduleIds.map((id) => getModuleWithSectionsRaw(id)))
   const { data } = await moduleAiAssist({
@@ -214,7 +241,11 @@ export async function planMergeWithAi(opts: {
     sourceLang: 'es',
     fields: {},
     moduleTitle: mods[0]?.title_es,
-    surgery: { want: opts.want, modules: mods.map(toSurgeryModule) },
+    surgery: {
+      want: opts.want,
+      instruction: opts.instruction?.trim() || undefined,
+      modules: mods.map(toSurgeryModule),
+    },
   })
   return data as MergeAiPlan
 }
@@ -254,10 +285,17 @@ export async function splitModule(opts: SplitOptions): Promise<SplitOutcome> {
 
   const head = sections.slice(0, cut)
   const tail = sections.slice(cut)
-  const [durA, durB] = splitDuration(src.duration_min || 1, sections, cut)
 
   const metaA = opts.parts?.[0]
   const metaB = opts.parts?.[1]
+
+  // Reparto automático por peso de texto, salvo que el modal traiga minutos
+  // escritos a mano — ahí manda lo que escribió el capacitador.
+  const [autoA, autoB] = splitDuration(src.duration_min || 1, sections, cut)
+  const pickMin = (v: number | undefined, fallback: number) =>
+    typeof v === 'number' && v > 0 ? Math.round(v) : fallback
+  const durA = pickMin(metaA?.duration_min, autoA)
+  const durB = pickMin(metaB?.duration_min, autoB)
 
   // Sin ayuda de la IA los objetivos se reparten en dos mitades (y los puntos
   // clave se quedan con la parte 2, que es la que cierra el tema). Es un reparto
@@ -373,7 +411,7 @@ export async function splitModule(opts: SplitOptions): Promise<SplitOutcome> {
     async undo() {
       for (const id of bridgeIds) await deleteSectionById(id)
       for (const s of tail) await moveSection(s.id, src.id, s.sort_order)
-      await supabase.from('modules').delete().eq('id', newModuleId)
+      await hardDeleteModule(newModuleId)
       await updateModuleRow(src.id, {
         duration_min: src.duration_min,
         title_es: src.title_es,
@@ -448,7 +486,10 @@ export async function mergeModules(opts: MergeOptions): Promise<PendingSurgery> 
 
   // 3) Metadatos del módulo unido.
   await updateModuleRow(keep.id, {
-    duration_min: (keep.duration_min || 0) + (absorbed.duration_min || 0),
+    duration_min:
+      typeof opts.meta?.duration_min === 'number' && opts.meta.duration_min > 0
+        ? Math.round(opts.meta.duration_min)
+        : (keep.duration_min || 0) + (absorbed.duration_min || 0),
     title_es: opts.meta?.title_es || keep.title_es,
     subtitle_es: opts.meta?.subtitle_es ?? keep.subtitle_es,
     objectives_es: opts.meta?.objectives_es ?? mergeUnique(keep.objectives_es, absorbed.objectives_es),
@@ -567,6 +608,13 @@ export async function mergeManyModules(opts: {
     // curso a medio unir.
     for (const s of steps.reverse()) await s.undo().catch(() => {})
     throw e
+  }
+
+  // Cada costura recalcula la duración sumando; con tres o más módulos la última
+  // pisaría los minutos escritos a mano. Se vuelven a poner al final.
+  const manualMin = opts.meta?.duration_min
+  if (typeof manualMin === 'number' && manualMin > 0 && rest.length > 1) {
+    await updateModuleRow(keepId, { duration_min: Math.round(manualMin) })
   }
 
   return {

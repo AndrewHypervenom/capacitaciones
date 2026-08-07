@@ -1084,6 +1084,8 @@ export interface AssistRequest {
   surgery?: {
     want: Array<'cut' | 'meta' | 'bridge'>
     cutIndex?: number
+    /** Qué corregir respecto al intento anterior ("más corto", "sin tecnicismos"). */
+    instruction?: string
     modules: Array<{
       title_es: string
       subtitle_es?: string | null

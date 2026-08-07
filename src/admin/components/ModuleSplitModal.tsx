@@ -3,10 +3,14 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Check,
+  ChevronDown,
+  Eye,
   GripVertical,
   Image as ImageIcon,
   Loader2,
+  Pencil,
   Scissors,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react'
@@ -16,6 +20,7 @@ import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
 import {
   getModuleWithSectionsRaw,
@@ -28,7 +33,53 @@ import {
   type SurgeryAiWant,
   type SurgeryImpact,
 } from '@/services/moduleSurgery.service'
-import { AiRunButton, AiToggle, EASE, OutcomeCard, SPRING } from './ModuleSurgeryBits'
+import {
+  AiRetryRow,
+  AiRunButton,
+  AiToggle,
+  DiscardAiButton,
+  EASE,
+  OutcomeCard,
+  SectionBody,
+  SPRING,
+  SurgeryField,
+  SurgeryFold,
+  SurgeryList,
+  SurgeryPreview,
+  type PreviewModule,
+  type PreviewSection,
+} from './ModuleSurgeryBits'
+
+/* Títulos de las secciones puente. Se escriben igual aquí y en el servicio: la
+   vista previa tiene que enseñar exactamente lo que se va a guardar. */
+const CLOSING_HEADING = 'Cierre'
+const INTRO_HEADING = 'Retomemos'
+
+/**
+ * Lo que la IA redacta para cada parte, ya en forma editable. Se guarda como
+ * borrador propio (no como respuesta cruda de la IA) para que todo lo que se ve
+ * en pantalla sea exactamente lo que se va a guardar.
+ */
+interface PartDraft {
+  subtitle_es: string
+  objectives_es: string[]
+  key_takeaways_es: string[]
+  /** Cierre en la parte 1, entrada en la parte 2. */
+  bridge_es: string
+}
+
+const emptyDraft = (): PartDraft => ({
+  subtitle_es: '',
+  objectives_es: [],
+  key_takeaways_es: [],
+  bridge_es: '',
+})
+
+/** Frases con contenido; si no queda ninguna se devuelve `undefined` (no tocar). */
+const cleanList = (list: string[]): string[] | undefined => {
+  const out = list.map((s) => s.trim()).filter(Boolean)
+  return out.length > 0 ? out : undefined
+}
 
 interface ModuleSplitModalProps {
   moduleId: string
@@ -65,6 +116,10 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
 
   const [titleA, setTitleA] = useState('')
   const [titleB, setTitleB] = useState('')
+  // `null` = los minutos siguen al reparto automático por peso de texto y se
+  // recalculan solos al mover la línea de corte.
+  const [minA, setMinA] = useState<number | null>(null)
+  const [minB, setMinB] = useState<number | null>(null)
 
   // Interruptores de IA. Por defecto solo los títulos: es lo que casi siempre
   // hace falta y lo más barato; sugerir corte y redactar enlaces se piden aparte.
@@ -73,10 +128,22 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
   const [wantBridge, setWantBridge] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [cutReason, setCutReason] = useState<string | null>(null)
-  const [aiPlan, setAiPlan] = useState<{
-    a?: { subtitle_es?: string | null; objectives_es?: string[]; key_takeaways_es?: string[]; closing_es?: string }
-    b?: { subtitle_es?: string | null; objectives_es?: string[]; key_takeaways_es?: string[]; intro_es?: string }
-  } | null>(null)
+  // Lo que redactó la IA, ya editable. `null` = todavía no ha corrido.
+  const [draft, setDraft] = useState<{ a: PartDraft; b: PartDraft } | null>(null)
+  const [draftOpen, setDraftOpen] = useState(true)
+  /** Qué corregirle a la IA para el siguiente intento. */
+  const [aiNote, setAiNote] = useState('')
+  /** Qué interruptores se llegaron a APLICAR de verdad (no solo a marcar). */
+  const [appliedWant, setAppliedWant] = useState<SurgeryAiWant[]>([])
+
+  /** Sección cuyo texto está desplegado, para leerlo sin salir del modal. */
+  const [peek, setPeek] = useState<string | null>(null)
+
+  /** `preview` enseña cómo quedan los dos módulos SIN tocar la base de datos. */
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
+
+  const patch = (side: 'a' | 'b', p: Partial<PartDraft>) =>
+    setDraft((d) => (d ? { ...d, [side]: { ...d[side], ...p } } : d))
 
   const listRef = useRef<HTMLDivElement>(null)
   const rowRefs = useRef<Array<HTMLDivElement | null>>([])
@@ -176,8 +243,74 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
     }
   }, [sections, cutIndex, mod])
 
+  /* ── Cómo quedan los dos módulos ─────────────────────────────────────────── */
+  // Reproduce exactamente lo que hará `splitModule`, incluidos los repartos por
+  // omisión: sin IA los objetivos se parten por la mitad y los puntos clave se
+  // quedan con la parte 1. Si la vista previa mintiera aquí, no serviría de nada.
+  const preview = useMemo<PreviewModule[]>(() => {
+    const toSection = (s: DbSectionRow): PreviewSection => ({
+      id: s.id,
+      heading: s.heading_es || t('admin.surgery.untitled_section'),
+      body: s.body_es ?? [],
+      hasQuiz: (s.section_quizzes ?? []).length > 0,
+      hasMedia: !!s.media_url,
+    })
+
+    const objectives = mod?.objectives_es ?? []
+    const half = Math.ceil(objectives.length / 2)
+    const closing = draft?.a.bridge_es.trim()
+    const intro = draft?.b.bridge_es.trim()
+
+    const headSections = sections.slice(0, cutIndex).map(toSection)
+    const tailSections = sections.slice(cutIndex).map(toSection)
+
+    return [
+      {
+        tone: 'green',
+        eyebrow: t('admin.surgery.part_one'),
+        title: titleA.trim() || (mod?.title_es ?? ''),
+        subtitle: draft?.a.subtitle_es.trim() || (mod?.subtitle_es ?? undefined),
+        minutes: minA ?? stats.a.min,
+        objectives: cleanList(draft?.a.objectives_es ?? []) ?? objectives.slice(0, half),
+        takeaways: cleanList(draft?.a.key_takeaways_es ?? []) ?? (mod?.key_takeaways_es ?? []),
+        sections: [
+          ...headSections,
+          ...(closing
+            ? [{ id: 'bridge-a', heading: CLOSING_HEADING, body: [closing], isNew: true }]
+            : []),
+        ],
+      },
+      {
+        tone: 'magenta',
+        eyebrow: t('admin.surgery.part_two'),
+        title: titleB.trim() || `${mod?.title_es ?? ''} (2)`,
+        subtitle: draft?.b.subtitle_es.trim() || (mod?.subtitle_es ?? undefined),
+        minutes: minB ?? stats.b.min,
+        objectives: cleanList(draft?.b.objectives_es ?? []) ?? objectives.slice(half),
+        // La parte 2 nace sin puntos clave salvo que se le escriban.
+        takeaways: cleanList(draft?.b.key_takeaways_es ?? []) ?? [],
+        sections: [
+          ...(intro ? [{ id: 'bridge-b', heading: INTRO_HEADING, body: [intro], isNew: true }] : []),
+          ...tailSections,
+        ],
+      },
+    ]
+  }, [mod, sections, cutIndex, titleA, titleB, minA, minB, stats, draft, t])
+
+  const previewLabels = {
+    objectives: t('admin.surgery.field_objectives'),
+    takeaways: t('admin.surgery.field_takeaways'),
+    minutes: t('admin.surgery.minutes'),
+    sections: t('admin.surgery.sections'),
+    quiz: t('admin.surgery.quiz_tag'),
+    isNew: t('admin.surgery.section_new'),
+    emptyBody: t('admin.surgery.section_empty'),
+    noTitle: t('admin.surgery.untitled_module'),
+  }
+
   /* ── IA ──────────────────────────────────────────────────────────────────── */
-  const runAi = async () => {
+  /** `instruction` = qué corregir del intento anterior; vacío en el primer intento. */
+  const runAi = async (instruction?: string) => {
     const want: SurgeryAiWant[] = []
     if (wantCut) want.push('cut')
     if (wantMeta) want.push('meta')
@@ -187,7 +320,12 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
     setAiBusy(true)
     try {
       await consumeAiOperation('module', t('admin.surgery.split_ai_label'), campaignId)
-      const plan = await planSplitWithAi({ moduleId, want, cutIndex: wantCut ? undefined : cutIndex })
+      const plan = await planSplitWithAi({
+        moduleId,
+        want,
+        cutIndex: wantCut ? undefined : cutIndex,
+        instruction,
+      })
 
       if (wantCut && typeof plan.cutIndex === 'number') {
         setCutIndex(clampCut(plan.cutIndex))
@@ -198,10 +336,34 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
         if (a?.title_es) setTitleA(a.title_es)
         if (b?.title_es) setTitleB(b.title_es)
       }
-      setAiPlan({
-        a: wantMeta || wantBridge ? a : undefined,
-        b: wantMeta || wantBridge ? b : undefined,
-      })
+      // El borrador se rellena con lo que haya venido y se despliega solo: es la
+      // única forma de que "revisa lo que propuso la IA" se pueda cumplir.
+      setDraft((prev) => ({
+        a: {
+          ...(prev?.a ?? emptyDraft()),
+          ...(wantMeta
+            ? {
+                subtitle_es: a?.subtitle_es ?? '',
+                objectives_es: a?.objectives_es ?? [],
+                key_takeaways_es: a?.key_takeaways_es ?? [],
+              }
+            : {}),
+          ...(wantBridge ? { bridge_es: a?.closing_es ?? '' } : {}),
+        },
+        b: {
+          ...(prev?.b ?? emptyDraft()),
+          ...(wantMeta
+            ? {
+                subtitle_es: b?.subtitle_es ?? '',
+                objectives_es: b?.objectives_es ?? [],
+                key_takeaways_es: b?.key_takeaways_es ?? [],
+              }
+            : {}),
+          ...(wantBridge ? { bridge_es: b?.intro_es ?? '' } : {}),
+        },
+      }))
+      setAppliedWant(want)
+      setDraftOpen(true)
       toast.success(t('admin.surgery.ai_done'))
     } catch (e) {
       if (isQuotaExceeded(e)) {
@@ -217,6 +379,38 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
     }
   }
 
+  /**
+   * Tira todo lo que redactó la IA y deja los títulos como estaban. El corte NO
+   * se toca: es una decisión visible en pantalla que se mueve arrastrando, no un
+   * texto escondido — revertirlo sin avisar sería peor.
+   */
+  const discardAi = () => {
+    setDraft(null)
+    setCutReason(null)
+    setAiNote('')
+    setAppliedWant([])
+    if (mod) {
+      setTitleA(mod.title_es)
+      setTitleB(`${mod.title_es} (2)`)
+    }
+    toast.success(t('admin.surgery.ai_discarded'))
+  }
+
+  /**
+   * Hay IA marcada que todavía no se ha ejecutado.
+   *
+   * Confirmar así escribiría en los módulos algo que el capacitador no ha visto
+   * nunca — el interruptor promete un trabajo que aún no existe. Se bloquea la
+   * confirmación hasta aplicarla (o apagar el interruptor): la IA no puede
+   * colarse sin pasar por la revisión.
+   */
+  const wantedNow: SurgeryAiWant[] = [
+    ...(wantCut ? (['cut'] as const) : []),
+    ...(wantMeta ? (['meta'] as const) : []),
+    ...(wantBridge ? (['bridge'] as const) : []),
+  ]
+  const aiPending = wantedNow.some((w) => !appliedWant.includes(w))
+
   /* ── Confirmar ───────────────────────────────────────────────────────────── */
   const confirm = async () => {
     if (!mod) return
@@ -231,20 +425,28 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
         parts: [
           {
             title_es: titleA.trim() || mod.title_es,
-            subtitle_es: aiPlan?.a?.subtitle_es,
-            objectives_es: aiPlan?.a?.objectives_es,
-            key_takeaways_es: aiPlan?.a?.key_takeaways_es,
+            subtitle_es: draft?.a.subtitle_es.trim() || undefined,
+            objectives_es: draft ? cleanList(draft.a.objectives_es) : undefined,
+            key_takeaways_es: draft ? cleanList(draft.a.key_takeaways_es) : undefined,
+            duration_min: minA ?? undefined,
           },
           {
             title_es: titleB.trim() || `${mod.title_es} (2)`,
-            subtitle_es: aiPlan?.b?.subtitle_es,
-            objectives_es: aiPlan?.b?.objectives_es,
-            key_takeaways_es: aiPlan?.b?.key_takeaways_es,
+            subtitle_es: draft?.b.subtitle_es.trim() || undefined,
+            objectives_es: draft ? cleanList(draft.b.objectives_es) : undefined,
+            key_takeaways_es: draft ? cleanList(draft.b.key_takeaways_es) : undefined,
+            duration_min: minB ?? undefined,
           },
         ],
-        bridge: wantBridge
-          ? { closing_es: aiPlan?.a?.closing_es, intro_es: aiPlan?.b?.intro_es }
-          : undefined,
+        // Se guarda lo que se ve escrito, no lo que dijo el interruptor: si el
+        // capacitador borró el texto del enlace, no se crea la sección.
+        bridge:
+          draft && (draft.a.bridge_es.trim() || draft.b.bridge_es.trim())
+            ? {
+                closing_es: draft.a.bridge_es.trim() || undefined,
+                intro_es: draft.b.bridge_es.trim() || undefined,
+              }
+            : undefined,
       })
       setPhase('done')
       if (!reduce) await new Promise((r) => setTimeout(r, 520))
@@ -297,7 +499,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
               <button
                 onClick={onClose}
                 disabled={busy}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-glass/6 hover:text-text disabled:opacity-30"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-glass/6 hover:text-text disabled:opacity-30 disabled:pointer-events-none"
                 aria-label={t('common.close')}
               >
                 <X className="h-4 w-4" />
@@ -316,6 +518,16 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
             ) : (
               <>
                 <div className="flex-1 overflow-y-auto px-5 py-4">
+                  {mode === 'preview' ? (
+                    <>
+                      <p className="mb-3 flex items-center gap-2 text-[12px] text-text-muted">
+                        <Eye className="h-3.5 w-3.5 text-brand-magenta" />
+                        {t('admin.surgery.preview_hint')}
+                      </p>
+                      <SurgeryPreview modules={preview} labels={previewLabels} />
+                    </>
+                  ) : (
+                  <>
                   {/* Instrucción única: no hay más que aprender que esto. */}
                   <p className="mb-3 flex items-center gap-2 text-[12px] text-text-muted">
                     <GripVertical className="h-3.5 w-3.5 text-brand-magenta" />
@@ -378,8 +590,40 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                                   {t('admin.surgery.quiz_tag')}
                                 </span>
                               )}
+                              {/* Leer el texto de la sección sin salir del modal:
+                                  sin esto no hay forma de saber qué cae de cada lado. */}
+                              <Tooltip
+                                label={t(peek === s.id ? 'admin.surgery.hide_section' : 'admin.surgery.peek_section')}
+                                className="shrink-0"
+                              >
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPeek(peek === s.id ? null : s.id)
+                                }}
+                                aria-expanded={peek === s.id}
+                                aria-label={t('admin.surgery.peek_section')}
+                                className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-glass/10 hover:text-text"
+                              >
+                                <motion.span
+                                  animate={{ rotate: peek === s.id ? 180 : 0 }}
+                                  transition={{ duration: 0.2, ease: EASE }}
+                                >
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </motion.span>
+                              </button>
+                              </Tooltip>
                             </span>
                           </motion.div>
+                          <AnimatePresence initial={false}>
+                            {peek === s.id && (
+                              <SectionBody
+                                lines={s.body_es ?? []}
+                                empty={t('admin.surgery.section_empty')}
+                              />
+                            )}
+                          </AnimatePresence>
                         </div>
                       )
                     })}
@@ -391,10 +635,21 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                       tone="green"
                       eyebrow={t('admin.surgery.part_one')}
                       title={titleA}
+                      titleLabel={t('admin.surgery.title_label')}
                       onTitleChange={setTitleA}
+                      disabled={busy}
+                      minutes={{
+                        value: minA ?? stats.a.min,
+                        auto: stats.a.min,
+                        overridden: minA !== null,
+                        onChange: setMinA,
+                        label: t('admin.surgery.duration_label'),
+                        suffix: t('admin.surgery.minutes'),
+                        resetLabel: t('admin.surgery.duration_reset'),
+                        autoHint: t('admin.surgery.duration_reset_tip'),
+                      }}
                       stats={[
                         { value: String(stats.a.sections), label: t('admin.surgery.sections') },
-                        { value: `${stats.a.min}`, label: t('admin.surgery.minutes') },
                         { value: String(stats.a.quizzes), label: t('admin.surgery.quizzes') },
                       ]}
                     />
@@ -402,17 +657,40 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                       tone="magenta"
                       eyebrow={t('admin.surgery.part_two')}
                       title={titleB}
+                      titleLabel={t('admin.surgery.title_label')}
                       onTitleChange={setTitleB}
+                      disabled={busy}
+                      minutes={{
+                        value: minB ?? stats.b.min,
+                        auto: stats.b.min,
+                        overridden: minB !== null,
+                        onChange: setMinB,
+                        label: t('admin.surgery.duration_label'),
+                        suffix: t('admin.surgery.minutes'),
+                        resetLabel: t('admin.surgery.duration_reset'),
+                        autoHint: t('admin.surgery.duration_reset_tip'),
+                      }}
                       stats={[
                         { value: String(stats.b.sections), label: t('admin.surgery.sections') },
-                        { value: `${stats.b.min}`, label: t('admin.surgery.minutes') },
                         { value: String(stats.b.quizzes), label: t('admin.surgery.quizzes') },
                       ]}
                     />
                   </div>
+                  <p className="mt-1.5 px-1 text-[11px] text-text-subtle">
+                    {t('admin.surgery.editable_hint')}
+                  </p>
 
                   {/* ── Qué hace la IA ── */}
-                  <div className="mt-4 rounded-2xl border border-line bg-glass/[0.02] p-3.5">
+                  <div
+                    className={cn(
+                      'mt-4 rounded-2xl border p-3.5 transition-colors',
+                      // Mientras quede IA marcada sin aplicar, el bloque se marca
+                      // en ámbar: es lo único que falta para poder confirmar.
+                      aiPending
+                        ? 'border-amber-500/40 bg-amber-500/[0.05]'
+                        : 'border-line bg-glass/[0.02]',
+                    )}
+                  >
                     <p className="mb-2.5 text-[12.5px] font-semibold text-text">
                       {t('admin.surgery.ai_section_title')}
                     </p>
@@ -443,13 +721,111 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                       <AiRunButton
                         busy={aiBusy}
                         disabled={busy || (!wantCut && !wantMeta && !wantBridge)}
-                        onClick={runAi}
+                        onClick={() => void runAi()}
+                        tooltip={t(
+                          !wantCut && !wantMeta && !wantBridge
+                            ? 'admin.surgery.ai_run_none_tip'
+                            : 'admin.surgery.ai_run_tip',
+                        )}
                       >
                         {aiBusy ? t('admin.surgery.ai_running') : t('admin.surgery.ai_run')}
                       </AiRunButton>
                       <AiReviewNotice variant="inline" className="flex-1" />
                     </div>
                   </div>
+
+                  {/* ── Lo que escribió la IA: a la vista y editable ── */}
+                  {draft && (
+                    <motion.div
+                      layout
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: EASE }}
+                      className="mt-3"
+                    >
+                      <SurgeryFold
+                        open={draftOpen}
+                        onToggle={() => setDraftOpen((o) => !o)}
+                        title={t('admin.surgery.ai_result_title')}
+                        badge={t('admin.surgery.ai_result_badge')}
+                        action={
+                          <DiscardAiButton
+                            onDiscard={discardAi}
+                            label={t('admin.surgery.ai_discard')}
+                            hint={t('admin.surgery.ai_discard_tip')}
+                            disabled={busy || aiBusy}
+                          />
+                        }
+                      >
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {(['a', 'b'] as const).map((side) => (
+                            <div key={side} className="space-y-2.5">
+                              <p
+                                className={cn(
+                                  'text-[10.5px] font-semibold uppercase tracking-wider',
+                                  side === 'a' ? 'text-brand-green' : 'text-brand-magenta',
+                                )}
+                              >
+                                {side === 'a' ? t('admin.surgery.part_one') : t('admin.surgery.part_two')}
+                              </p>
+                              <SurgeryField
+                                label={t('admin.surgery.field_subtitle')}
+                                value={draft[side].subtitle_es}
+                                onChange={(v) => patch(side, { subtitle_es: v })}
+                                placeholder={t('admin.surgery.field_subtitle_ph')}
+                                disabled={busy}
+                              />
+                              <SurgeryList
+                                label={t('admin.surgery.field_objectives')}
+                                items={draft[side].objectives_es}
+                                onChange={(v) => patch(side, { objectives_es: v })}
+                                addLabel={t('admin.surgery.add_item')}
+                                removeLabel={t('admin.surgery.remove_item')}
+                                placeholder={t('admin.surgery.field_objectives_ph')}
+                                disabled={busy}
+                              />
+                              <SurgeryList
+                                label={t('admin.surgery.field_takeaways')}
+                                items={draft[side].key_takeaways_es}
+                                onChange={(v) => patch(side, { key_takeaways_es: v })}
+                                addLabel={t('admin.surgery.add_item')}
+                                removeLabel={t('admin.surgery.remove_item')}
+                                placeholder={t('admin.surgery.field_takeaways_ph')}
+                                disabled={busy}
+                              />
+                              <SurgeryField
+                                rows={3}
+                                label={
+                                  side === 'a'
+                                    ? t('admin.surgery.field_closing')
+                                    : t('admin.surgery.field_intro')
+                                }
+                                value={draft[side].bridge_es}
+                                onChange={(v) => patch(side, { bridge_es: v })}
+                                placeholder={t('admin.surgery.field_bridge_ph')}
+                                disabled={busy}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-[11px] leading-relaxed text-text-subtle">
+                          {t('admin.surgery.ai_result_hint')}
+                        </p>
+                        <AiRetryRow
+                          note={aiNote}
+                          onNote={setAiNote}
+                          onRetry={() => void runAi(aiNote)}
+                          busy={aiBusy}
+                          disabled={busy}
+                          label={t('admin.surgery.ai_retry_label')}
+                          placeholder={t('admin.surgery.ai_retry_ph')}
+                          button={t('admin.surgery.ai_retry')}
+                          tooltip={t('admin.surgery.ai_retry_tip')}
+                          emptyTooltip={t('admin.surgery.ai_retry_empty_tip')}
+                        />
+                      </SurgeryFold>
+                    </motion.div>
+                  )}
 
                   {/* ── A quién afecta ── */}
                   {impact && (impact.completed > 0 || impact.started > 0) && (
@@ -474,25 +850,66 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                       </p>
                     </motion.div>
                   )}
+                  </>
+                  )}
                 </div>
 
                 {/* ── Pie ── */}
                 <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3.5">
-                  <p className="text-[11.5px] text-text-subtle">
-                    {t('admin.surgery.undo_hint')}
-                  </p>
+                  {aiPending ? (
+                    <motion.p
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.25, ease: EASE }}
+                      className="flex items-center gap-1.5 text-[11.5px] font-medium text-amber-500"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                      {t('admin.surgery.ai_pending_hint')}
+                    </motion.p>
+                  ) : (
+                    <p className="text-[11.5px] text-text-subtle">{t('admin.surgery.undo_hint')}</p>
+                  )}
                   <div className="flex shrink-0 items-center gap-2">
                     <button
                       onClick={onClose}
                       disabled={busy}
-                      className="h-10 rounded-xl px-3.5 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-glass/8 hover:text-text disabled:opacity-30"
+                      className="h-10 rounded-xl px-3.5 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-glass/8 hover:text-text disabled:opacity-30 disabled:pointer-events-none"
                     >
                       {t('common.cancel')}
                     </button>
+                    {/* Ver el resultado antes de tocar nada. */}
+                    <Tooltip
+                      label={t(mode === 'preview' ? 'admin.surgery.back_to_edit_tip' : 'admin.surgery.preview_tip')}
+                      maxWidth={280}
+                      className="shrink-0"
+                    >
+                    <button
+                      onClick={() => setMode(mode === 'preview' ? 'edit' : 'preview')}
+                      disabled={busy}
+                      className="flex h-10 items-center gap-2 rounded-xl border border-line px-3.5 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-glass/8 hover:text-text disabled:opacity-30 disabled:pointer-events-none"
+                    >
+                      {mode === 'preview' ? (
+                        <>
+                          <Pencil className="h-3.5 w-3.5" />
+                          {t('admin.surgery.back_to_edit')}
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="h-3.5 w-3.5" />
+                          {t('admin.surgery.preview')}
+                        </>
+                      )}
+                    </button>
+                    </Tooltip>
+                    <Tooltip
+                      label={t(aiPending ? 'admin.surgery.ai_pending_title' : 'admin.surgery.split_confirm_tip')}
+                      maxWidth={300}
+                      className="shrink-0"
+                    >
                     <button
                       onClick={confirm}
-                      disabled={busy}
-                      className="flex h-10 items-center gap-2 rounded-xl border border-brand-magenta/40 bg-brand-magenta/15 px-4 text-[12.5px] font-semibold text-brand-magenta transition-colors hover:bg-brand-magenta/25 disabled:opacity-60"
+                      disabled={busy || aiPending}
+                      className="flex h-10 items-center gap-2 rounded-xl border border-brand-magenta/40 bg-brand-magenta/15 px-4 text-[12.5px] font-semibold text-brand-magenta transition-colors hover:bg-brand-magenta/25 disabled:opacity-40 disabled:pointer-events-none"
                     >
                       <AnimatePresence mode="wait" initial={false}>
                         {phase === 'done' ? (
@@ -516,6 +933,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                       </AnimatePresence>
                       {t('admin.surgery.split_confirm')}
                     </button>
+                    </Tooltip>
                   </div>
                 </div>
               </>
