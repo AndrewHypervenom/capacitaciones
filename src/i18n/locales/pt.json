@@ -805,6 +805,8 @@
     "toggle_label": "Aparência"
   },
   "common": {
+    "clear": "Limpar",
+    "done": "Pronto",
     "rich": {
       "bold": "Negrito",
       "bold_hint": "Destaque o que importa",
@@ -3888,6 +3890,13 @@
       "only_contact": "Pedem contato",
       "filter_open": "Sem resolver",
       "filter_all": "Todas",
+      "filters": "Filtros",
+      "f_status": "Estado",
+      "f_kind": "Tipo",
+      "f_more": "Além disso",
+      "f_clear": "Remover todos",
+      "count": "{{n}} na lista",
+      "tab_info": "Detalhe",
       "empty_title": "Ainda não há nada aqui",
       "empty_desc": "Quando alguém opinar pelo botão flutuante, a mensagem aparecerá nesta caixa.",
       "no_message": "Sem comentário escrito",

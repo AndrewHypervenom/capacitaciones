@@ -805,6 +805,8 @@
     "toggle_label": "Appearance"
   },
   "common": {
+    "clear": "Clear",
+    "done": "Done",
     "rich": {
       "bold": "Bold",
       "bold_hint": "Highlight what matters",
@@ -3888,6 +3890,13 @@
       "only_contact": "Want contact",
       "filter_open": "Unresolved",
       "filter_all": "All",
+      "filters": "Filters",
+      "f_status": "Status",
+      "f_kind": "Type",
+      "f_more": "Also",
+      "f_clear": "Clear all",
+      "count": "{{n}} listed",
+      "tab_info": "Details",
       "empty_title": "Nothing here yet",
       "empty_desc": "When someone sends feedback from the floating button, it will show up in this inbox.",
       "no_message": "No written comment",

@@ -70,6 +70,13 @@ export interface FeedbackThreadProps {
    * flujo de la página y ahí sobra.
    */
   boxed?: boolean
+  /**
+   * El hilo se come TODA la altura de su contenedor: los mensajes scrollean en
+   * el hueco que quede y la caja de escribir se queda clavada abajo. Es el modo
+   * de la bandeja del panel, donde la conversación es la pantalla entera y no
+   * una tarjeta más de una ficha. Implica `boxed`.
+   */
+  fill?: boolean
   className?: string
 }
 
@@ -126,8 +133,10 @@ function useSeenWhenVisible(
  */
 export function FeedbackThread({
   row, variant, onPosted, showOrigin = true, reloadKey = 0, onRead, boxed = false,
-  className,
+  fill = false, className,
 }: FeedbackThreadProps) {
+  /** `fill` es `boxed` llevado al extremo: misma zona con scroll, sin techo fijo. */
+  const inBox = boxed || fill
   const { t } = useTranslation()
   const { user, displayName, avatarUrl } = useAuth()
   const reduce = useReducedMotion()
@@ -195,14 +204,31 @@ export function FeedbackThread({
   useEffect(() => { landed.current = false }, [row.id])
   useEffect(() => {
     const box = listRef.current
-    if (!boxed || !box || landed.current || events.length === 0) return
+    if (!inBox || !box || landed.current || events.length === 0) return
     landed.current = true
     requestAnimationFrame(() => {
       const mark = newFromId && box.querySelector(`[data-ev="${newFromId}"]`)
       if (mark) mark.scrollIntoView({ block: 'start' })
       else box.scrollTop = box.scrollHeight
     })
-  }, [boxed, events, newFromId])
+  }, [inBox, events, newFromId])
+
+  // La zona de mensajes puede desaparecer y volver (en el panel se alterna entre
+  // Conversación y Detalle): al volver, el navegador no devuelve la posición del
+  // scroll, así que en cuanto recupera altura se vuelve a lo último dicho —que es
+  // justo lo que uno espera al regresar a un chat.
+  useEffect(() => {
+    const box = listRef.current
+    if (!fill || !box || typeof ResizeObserver === 'undefined') return
+    let had = box.clientHeight > 0
+    const ro = new ResizeObserver(() => {
+      const has = box.clientHeight > 0
+      if (has && !had && box.scrollTop === 0) box.scrollTop = box.scrollHeight
+      had = has
+    })
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [fill])
 
   const append = useCallback((ev: FeedbackEvent) => {
     setEvents((cur) => [...cur, ev])
@@ -221,13 +247,24 @@ export function FeedbackThread({
   const meta = kindMeta(row.kind)
 
   return (
-    <div ref={rootRef} className={cn('space-y-4', className)}>
+    <div
+      ref={rootRef}
+      className={cn(
+        fill ? 'flex h-full min-h-0 flex-col gap-3.5' : 'space-y-4',
+        className,
+      )}
+    >
       {/* Al recargar (p. ej. tras cambiar el estado) NO se vuelve al esqueleto:
           lo ya leído se queda en pantalla y el hito nuevo entra animado. */}
       {loading && events.length === 0 ? (
-        <ThreadSkeleton />
+        <div className={cn(fill && 'min-h-0 flex-1')}>
+          <ThreadSkeleton />
+        </div>
       ) : failed ? (
-        <p className="rounded-xl border border-dashed border-line px-3.5 py-3 text-[12.5px] text-text-muted">
+        <p className={cn(
+          'rounded-xl border border-dashed border-line px-3.5 py-3 text-[12.5px] text-text-muted',
+          fill && 'flex-1',
+        )}>
           {t('feedback_thread.load_error', 'No pudimos cargar la conversación. Vuelve a abrirla en un momento.')}
         </p>
       ) : (
@@ -237,7 +274,10 @@ export function FeedbackThread({
             'relative space-y-4',
             // Zona de mensajes con scroll propio: la caja de escribir queda
             // siempre debajo, a la vista, sin tener que bajar hasta el final.
-            boxed && 'max-h-[clamp(14rem,38vh,30rem)] overflow-y-auto pr-1.5',
+            inBox && 'overflow-y-auto pr-1.5',
+            // Con `fill` no hay techo a ojo: los mensajes se quedan con todo el
+            // hueco que deje la caja de escribir.
+            fill ? 'min-h-0 flex-1' : inBox && 'max-h-[clamp(14rem,38vh,30rem)]',
           )}
         >
           {/* Riel de la línea de tiempo: cose todos los nodos en un solo hilo. */}
@@ -286,13 +326,15 @@ export function FeedbackThread({
 
       <div ref={endRef} />
 
-      <Composer
-        feedbackId={row.id}
-        isStaff={isStaff}
-        accent={meta.color}
-        me={{ name: displayName, avatar: avatarUrl }}
-        onPosted={append}
-      />
+      <div className={cn(fill && 'shrink-0')}>
+        <Composer
+          feedbackId={row.id}
+          isStaff={isStaff}
+          accent={meta.color}
+          me={{ name: displayName, avatar: avatarUrl }}
+          onPosted={append}
+        />
+      </div>
     </div>
   )
 }
@@ -621,8 +663,10 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
   }
 
   return (
-    <motion.div
-      layout={!reduce}
+    // Sin animación `layout`: lo que crece aquí dentro (plantillas, adjuntos) ya
+    // anima su propia altura, y medir la caja entera mientras la ficha entera
+    // está entrando hacía que la caja se estirara a la vista al abrir un chat.
+    <div
       className={cn(
         'relative overflow-hidden rounded-2xl border bg-surface transition-colors duration-300',
         focused ? 'border-transparent' : 'border-line',
@@ -639,11 +683,11 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
 
       {isStaff && (
         <div className="flex flex-wrap items-center gap-1 border-b border-line/70 px-2 py-1.5">
-          <ModeTab active={!internal} tone={accent} onClick={() => setInternal(false)}>
+          <ModeTab active={!internal} group={feedbackId} tone={accent} onClick={() => setInternal(false)}>
             <Send className="h-3 w-3" />
             {t('feedback_thread.mode_reply', 'Responder a la persona')}
           </ModeTab>
-          <ModeTab active={internal} tone="#f59e0b" onClick={() => setInternal(true)}>
+          <ModeTab active={internal} group={feedbackId} tone="#f59e0b" onClick={() => setInternal(true)}>
             <Lock className="h-3 w-3" />
             {t('feedback_thread.mode_note', 'Nota interna')}
           </ModeTab>
@@ -768,12 +812,14 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
             : t('feedback_thread.send', 'Enviar')}
         </motion.button>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
-function ModeTab({ active, tone, onClick, children }: {
+function ModeTab({ active, group, tone, onClick, children }: {
   active: boolean
+  /** Ata el fondo que se desliza a ESTE hilo: ver el porqué abajo. */
+  group: string
   tone: string
   onClick: () => void
   children: React.ReactNode
@@ -790,7 +836,10 @@ function ModeTab({ active, tone, onClick, children }: {
     >
       {active && (
         <motion.span
-          layoutId="composer-mode"
+          // Único por hilo: con un `layoutId` compartido, al abrir otra opinión
+          // el fondo de "Responder a la persona" salía volando desde la caja de
+          // la anterior en lugar de estar ya puesto.
+          layoutId={`composer-mode-${group}`}
           className="absolute inset-0 rounded-lg"
           style={{ background: `${tone}16` }}
           transition={{ type: 'spring', stiffness: 420, damping: 34 }}

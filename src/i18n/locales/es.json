@@ -805,6 +805,8 @@
     "toggle_label": "Apariencia"
   },
   "common": {
+    "clear": "Limpiar",
+    "done": "Listo",
     "rich": {
       "bold": "Negrita",
       "bold_hint": "Resalta lo importante",
@@ -3888,6 +3890,13 @@
       "only_contact": "Piden contacto",
       "filter_open": "Sin resolver",
       "filter_all": "Todas",
+      "filters": "Filtros",
+      "f_status": "Estado",
+      "f_kind": "Tipo",
+      "f_more": "Además",
+      "f_clear": "Quitar todos",
+      "count": "{{n}} en la lista",
+      "tab_info": "Detalle",
       "empty_title": "Nada por aquí todavía",
       "empty_desc": "Cuando alguien opine desde el botón flotante, su mensaje aparecerá en esta bandeja.",
       "no_message": "Sin comentario escrito",
