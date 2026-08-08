@@ -45,9 +45,16 @@ export function AdminNav() {
     s.items.filter((n) => n.kind === 'help_chat' && !n.read_at).length,
   )
 
-  // Lo mismo para las opiniones del sitio, que sí ve también el capacitador.
+  // Lo mismo para las opiniones del sitio, que sí ve también el capacitador. Las
+  // respuestas dentro de un hilo cuentan igual: una conversación que sigue es
+  // trabajo pendiente exactamente como una opinión recién llegada.
   const feedbackUnread = useNotificationsStore((s) =>
-    s.items.filter((n) => n.kind === 'site_feedback' && !n.read_at).length,
+    s.items.filter((n) => (
+      !n.read_at && (
+        n.kind === 'site_feedback' ||
+        (n.kind === 'site_feedback_reply' && n.payload?.for_staff === true)
+      )
+    )).length,
   )
 
   const toggleCategory = (title: string) => {

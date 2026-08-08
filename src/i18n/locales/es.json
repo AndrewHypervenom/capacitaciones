@@ -3933,6 +3933,7 @@
       "only_awaiting": "Esperan respuesta",
       "awaiting": "Esperando respuesta",
       "thread_count": "{{n}} mensaje(s) en la conversación",
+      "live_news": "Novedades fuera de esta vista ({{n}}) · Actualizar",
       "sec_thread": "Conversación",
       "status_hint": "Cada cambio queda escrito en la conversación, con tu nombre y la hora.",
       "pick_title": "Elige una opinión",
@@ -4652,7 +4653,8 @@
     "thread_new": "El equipo te respondió",
     "thread_open": "Conversación ({{n}})",
     "thread_empty": "Escribirle al equipo",
-    "thread_unread": "{{n}} sin leer"
+    "thread_unread": "{{n}} sin leer",
+    "thread_read_it": "— toca para leerla"
   },
   "site_feedback": {
     "close": "Cerrar",
@@ -4919,6 +4921,7 @@
     "someone": "Alguien del equipo",
     "by": "por",
     "seen": "visto",
+    "new_from_here": "Nuevo",
     "origin": "envió esta opinión",
     "internal": "Nota interna · solo la ve el equipo",
     "legacy_note": "nota original",

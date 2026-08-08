@@ -13,7 +13,7 @@ import { cn } from '@/lib/cn'
 import type { FeedbackShot, SiteFeedbackRow } from '@/services/siteFeedback.service'
 import {
   fetchFeedbackThread, markFeedbackThreadRead, postFeedbackMessage,
-  type FeedbackEvent,
+  subscribeFeedbackEvents, type FeedbackEvent,
 } from '@/services/feedbackThread.service'
 import { STATUS_COLOR } from './StatusPill'
 import { ShotGallery } from './ShotGallery'
@@ -21,6 +21,14 @@ import { ShotUploader } from './ShotUploader'
 import { kindMeta } from './config'
 
 const EASE = [0.16, 1, 0.3, 1] as const
+
+/**
+ * Cuánto tiene que estar el hilo delante de los ojos —en pantalla y con la
+ * pestaña al frente— para darlo por leído. Marcar al montar convertía "pasé por
+ * la bandeja" en "te leí", y del otro lado alguien veía un "visto" que nadie
+ * había hecho.
+ */
+const READ_AFTER_MS = 1200
 
 /** "hace 5 min": el hilo se lee como una conversación, no como un registro. */
 function fmtRelative(iso: string) {
@@ -53,7 +61,54 @@ export interface FeedbackThreadProps {
    * cliente no puede inventárselo sin volver a preguntar.
    */
   reloadKey?: number
+  /** Se llama cuando el hilo se da por leído de verdad (visto en pantalla). */
+  onRead?: () => void
   className?: string
+}
+
+/**
+ * "Visto" honesto: dispara `onSeen` solo cuando el elemento lleva `delay` en
+ * pantalla Y con la pestaña al frente. Si se sale de la vista o se cambia de
+ * pestaña antes de tiempo, el reloj se reinicia y nadie queda marcado como leído
+ * sin haberlo mirado.
+ */
+function useSeenWhenVisible(
+  ref: React.RefObject<HTMLElement | null>,
+  active: boolean,
+  onSeen: () => void,
+  delay = READ_AFTER_MS,
+) {
+  // La última versión del aviso, sin volver a montar el observador por ello.
+  const seenRef = useRef(onSeen)
+  useEffect(() => { seenRef.current = onSeen }, [onSeen])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!active || !el) return
+
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let onScreen = false
+
+    const stop = () => { if (timer) { clearTimeout(timer); timer = null } }
+    const evaluate = () => {
+      if (onScreen && document.visibilityState === 'visible') {
+        if (!timer) timer = setTimeout(() => { timer = null; seenRef.current() }, delay)
+      } else stop()
+    }
+
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting
+      evaluate()
+    }, { threshold: 0.2 })
+    io.observe(el)
+    document.addEventListener('visibilitychange', evaluate)
+
+    return () => {
+      stop()
+      io.disconnect()
+      document.removeEventListener('visibilitychange', evaluate)
+    }
+  }, [ref, active, delay])
 }
 
 /**
@@ -63,7 +118,7 @@ export interface FeedbackThreadProps {
  * que pasó; lo único que cambia es que el equipo puede dejar notas internas.
  */
 export function FeedbackThread({
-  row, variant, onPosted, showOrigin = true, reloadKey = 0, className,
+  row, variant, onPosted, showOrigin = true, reloadKey = 0, onRead, className,
 }: FeedbackThreadProps) {
   const { t } = useTranslation()
   const { user, displayName, avatarUrl } = useAuth()
@@ -74,28 +129,54 @@ export function FeedbackThread({
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let alive = true
     setLoading(true)
     setFailed(false)
     fetchFeedbackThread(row.id)
-      .then((e) => {
-        if (!alive) return
-        setEvents(e)
-        // Abrir el hilo ES leerlo: la campana y el punto de la lista no deben
-        // seguir pidiendo algo que ya se está mirando.
-        if (e.some((x) => !x.read_at && x.author_id !== user?.id)) {
-          void markFeedbackThreadRead(row.id).catch(() => {})
-        }
-      })
+      .then((e) => { if (alive) setEvents(e) })
       .catch((e) => {
         console.error('feedback thread error:', e)
         if (alive) setFailed(true)
       })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [row.id, user?.id, reloadKey])
+  }, [row.id, reloadKey])
+
+  // Mensajes nuevos mientras el hilo está abierto: entran solos, sin recargar.
+  // Los propios ya se pintaron al enviarlos, y el filtro por id evita el doble.
+  useEffect(() => subscribeFeedbackEvents((ev) => {
+    setEvents((cur) => (cur.some((x) => x.id === ev.id) ? cur : [...cur, ev]))
+  }, { feedbackId: row.id }), [row.id])
+
+  /** Lo que escribió el otro lado y sigue sin leer. */
+  const pending = useMemo(
+    () => events.filter((e) => !e.read_at && e.type !== 'status' && e.author_id !== user?.id),
+    [events, user?.id],
+  )
+
+  // Leer es mirar, no abrir: el hilo se da por leído tras un momento a la vista.
+  const markSeen = useCallback(() => {
+    const now = new Date().toISOString()
+    setEvents((cur) => cur.map((e) => (
+      e.read_at || e.author_id === user?.id ? e : { ...e, read_at: now }
+    )))
+    onRead?.()
+    void markFeedbackThreadRead(row.id).catch(() => {})
+  }, [row.id, user?.id, onRead])
+
+  useSeenWhenVisible(rootRef, pending.length > 0, markSeen)
+
+  // Dónde empieza lo que no habías leído. Se fija la primera vez y NO se borra al
+  // marcar leído: la línea es lo que te dice qué mirar, y quitarla en el mismo
+  // segundo en que la lees es perder el sitio.
+  const [newFromId, setNewFromId] = useState<string | null>(null)
+  useEffect(() => { setNewFromId(null) }, [row.id])
+  useEffect(() => {
+    setNewFromId((cur) => cur ?? (pending.length > 0 ? pending[0].id : null))
+  }, [pending])
 
   const append = useCallback((ev: FeedbackEvent) => {
     setEvents((cur) => [...cur, ev])
@@ -107,7 +188,7 @@ export function FeedbackThread({
   const meta = kindMeta(row.kind)
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div ref={rootRef} className={cn('space-y-3', className)}>
       {/* Al recargar (p. ej. tras cambiar el estado) NO se vuelve al esqueleto:
           lo ya leído se queda en pantalla y el hito nuevo entra animado. */}
       {loading && events.length === 0 ? (
@@ -140,7 +221,10 @@ export function FeedbackThread({
           )}
 
           <AnimatePresence initial={false}>
-            {events.map((e, i) => (
+            {/* Aplanado en vez de envuelto en Fragment: AnimatePresence solo ve
+                a sus hijos directos, y dentro de un Fragment perdería el rastro. */}
+            {events.flatMap((e, i) => [
+              ...(e.id === newFromId ? [<NewFromHere key={`new-${e.id}`} />] : []),
               <EventNode
                 key={e.id}
                 event={e}
@@ -149,8 +233,8 @@ export function FeedbackThread({
                 viewerId={user?.id ?? null}
                 isStaff={isStaff}
                 reduce={!!reduce}
-              />
-            ))}
+              />,
+            ])}
           </AnimatePresence>
 
           {events.length === 0 && !row.staff_note && (
@@ -337,6 +421,24 @@ function ReplyNode({ event, fromOwner, mine }: {
         </div>
       </div>
     </li>
+  )
+}
+
+/** Dónde empieza lo que no habías leído. Una línea, no un cartel. */
+function NewFromHere() {
+  const { t } = useTranslation()
+  return (
+    <motion.li
+      layout
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="relative flex items-center gap-2 pl-[42px] pr-1 py-0.5"
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-400">
+        {t('feedback_thread.new_from_here', 'Nuevo')}
+      </span>
+      <span className="h-px flex-1 bg-gradient-to-r from-sky-400/50 to-transparent" />
+    </motion.li>
   )
 }
 

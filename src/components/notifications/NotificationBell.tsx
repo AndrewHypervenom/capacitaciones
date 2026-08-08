@@ -341,7 +341,7 @@ export function NotificationBell({ className }: { className?: string }) {
                                           // en sus sugerencias.
                                           ? (n.payload?.for_staff
                                             ? `/admin/site-feedback${fid ? `?id=${fid}` : ''}`
-                                            : '/suggestions')
+                                            : `/suggestions${fid ? `?id=${fid}` : ''}`)
                                           : isSiteFeedback
                                             ? `/admin/site-feedback${fid ? `?id=${fid}` : ''}`
                                             : '/feedback',

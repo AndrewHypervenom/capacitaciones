@@ -171,3 +171,39 @@ export async function markFeedbackThreadRead(feedbackId: string): Promise<void> 
   const { error } = await (supabase as any).rpc('mark_site_feedback_read', { p_id: feedbackId })
   if (error) throw error
 }
+
+/**
+ * Escucha mensajes nuevos en los hilos. Sin `feedbackId` escucha TODOS los que la
+ * RLS deja ver a quien mira —la bandeja del equipo y "Mis sugerencias" se enteran
+ * de una respuesta sin recargar—; con él, solo ese hilo.
+ *
+ * La RLS se aplica también en Realtime, así que aquí no se filtra por rol: al
+ * autor no le llegan las notas internas del equipo porque la política se las
+ * esconde igual que en la consulta.
+ *
+ * Devuelve la función para darse de baja. Requiere que la tabla esté en la
+ * publicación `supabase_realtime` (ver el SQL de avisos de respuesta).
+ */
+export function subscribeFeedbackEvents(
+  onInsert: (event: FeedbackEvent) => void,
+  opts: { feedbackId?: string } = {},
+): () => void {
+  // Nombre único por suscripción: dos pantallas montadas a la vez (la bandeja y
+  // el hilo abierto) no pueden pelearse por el mismo canal.
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const channel = supabase
+    .channel(`sfe:${opts.feedbackId ?? 'all'}:${suffix}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'site_feedback_events',
+        ...(opts.feedbackId ? { filter: `feedback_id=eq.${opts.feedbackId}` } : {}),
+      },
+      (payload) => onInsert(payload.new as FeedbackEvent),
+    )
+    .subscribe()
+
+  return () => { void supabase.removeChannel(channel) }
+}

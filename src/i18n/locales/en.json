@@ -3933,6 +3933,7 @@
       "only_awaiting": "Awaiting reply",
       "awaiting": "Awaiting reply",
       "thread_count": "{{n}} message(s) in the conversation",
+      "live_news": "New activity outside this view ({{n}}) · Refresh",
       "sec_thread": "Conversation",
       "status_hint": "Every change is written into the conversation, with your name and the time.",
       "pick_title": "Pick a piece of feedback",
@@ -4652,7 +4653,8 @@
     "thread_new": "The team replied to you",
     "thread_open": "Conversation ({{n}})",
     "thread_empty": "Write to the team",
-    "thread_unread": "{{n}} unread"
+    "thread_unread": "{{n}} unread",
+    "thread_read_it": "— tap to read it"
   },
   "site_feedback": {
     "close": "Close",
@@ -4919,6 +4921,7 @@
     "someone": "Someone from the team",
     "by": "by",
     "seen": "seen",
+    "new_from_here": "New",
     "origin": "sent this feedback",
     "internal": "Internal note · only the team sees it",
     "legacy_note": "original note",

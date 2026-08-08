@@ -5,7 +5,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import i18n from '@/i18n'
 import {
   ArrowLeft, Check, Copy, Image as ImageIcon, Inbox, Loader2, Mail,
-  MessageSquare, Monitor, MousePointerClick, Phone, Search, Trash2, Users, X,
+  MessageSquare, Monitor, MousePointerClick, Phone, RefreshCw, Search, Trash2,
+  Users, X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -13,7 +14,8 @@ import {
   type FeedbackKind, type FeedbackStatus, type SiteFeedbackRow,
 } from '@/services/siteFeedback.service'
 import {
-  fetchThreadSummaries, EMPTY_SUMMARY, type ThreadSummary,
+  fetchThreadSummaries, subscribeFeedbackEvents, EMPTY_SUMMARY,
+  type FeedbackEvent, type ThreadSummary,
 } from '@/services/feedbackThread.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { KINDS, MOODS, kindMeta, questionsFor } from '@/components/feedback/config'
@@ -83,13 +85,13 @@ export default function SiteFeedback() {
   const [selectedId, setSelectedId] = useState<string | null>(params.get('id'))
   /** Se sube al cambiar el estado para que el hilo relea sus hitos. */
   const [threadKey, setThreadKey] = useState(0)
-  /** Solo se autoselecciona una vez por carga de pantalla, no en cada filtro. */
-  const autoPicked = useRef(false)
+  /** Novedades que llegaron en vivo y no caben en el filtro actual. */
+  const [pendingNews, setPendingNews] = useState(0)
 
   const load = useCallback(() => {
     setLoading(true)
     return fetchSiteFeedback({ status, kind, contactOnly, search })
-      .then(setRows)
+      .then((r) => { setRows(r); setPendingNews(0) })
       .catch((e) => {
         console.error('site feedback error:', e)
         toast.error(t('admin.site_feedback.load_error', 'No pudimos cargar las opiniones'))
@@ -112,15 +114,17 @@ export default function SiteFeedback() {
 
   useEffect(() => { loadSummaries(rows) }, [rows, loadSummaries])
 
-  // Los avisos de "llegó una opinión" se dan por leídos al abrir la bandeja: la
-  // campana y el contador del menú no deben seguir pidiendo algo que ya se está
-  // mirando (mismo criterio que el chat de ayuda en ChatLogs).
-  useEffect(() => {
+  /**
+   * Da por leídos los avisos DE ESA opinión, y solo de esa. Antes se marcaban
+   * todos al entrar a la bandeja: bastaba con asomarse para que la campana
+   * dejara de avisar de conversaciones que nadie había abierto.
+   */
+  const clearPingsFor = useCallback((feedbackId: string) => {
     const { items, markRead } = useNotificationsStore.getState()
     for (const n of items) {
-      if ((n.kind === 'site_feedback' || n.kind === 'site_feedback_reply') && !n.read_at) {
-        void markRead(n.id)
-      }
+      if (n.read_at) continue
+      if (n.kind !== 'site_feedback' && n.kind !== 'site_feedback_reply') continue
+      if (n.payload?.feedback_id === feedbackId) void markRead(n.id)
     }
   }, [])
 
@@ -147,16 +151,12 @@ export default function SiteFeedback() {
     [visible, selectedId],
   )
 
-  // En pantalla ancha el detalle nunca está vacío al llegar: se abre la primera.
-  // En móvil no, que sería abrirle una ficha encima a quien solo quería mirar.
-  useEffect(() => {
-    if (autoPicked.current || !wide || loading || visible.length === 0) return
-    autoPicked.current = true
-    if (!selectedId) setSelectedId(visible[0].id)
-  }, [wide, loading, visible, selectedId])
-
-  // El enlace del aviso trae ?id=…: si esa opinión no entra en el filtro actual
-  // (p. ej. ya resuelta), se abre igual quitando el filtro de estado.
+  // Nada se abre solo. Abrir una ficha es leerla —y del otro lado se ve el
+  // "visto"—, así que la bandeja espera a que alguien elija; solo el enlace de un
+  // aviso (?id=…) abre una, porque ahí sí hubo una decisión.
+  //
+  // Si esa opinión no entra en el filtro actual (p. ej. ya resuelta), se abre
+  // igual quitando el filtro de estado.
   useEffect(() => {
     const id = params.get('id')
     if (!id || loading) return
@@ -164,11 +164,48 @@ export default function SiteFeedback() {
     if (status !== 'all') setStatus('all')
   }, [params, rows, loading, status])
 
-  function select(id: string | null) {
+  const select = useCallback((id: string | null) => {
     setSelectedId(id)
     // El id viaja en la URL: recargar o compartir el enlace abre la misma ficha.
     setParams(id ? { id } : {}, { replace: true })
-  }
+    if (id) clearPingsFor(id)
+  }, [setParams, clearPingsFor])
+
+  // ── En vivo: una respuesta nueva no espera a que alguien recargue ──────────
+  // La ficha abierta se actualiza sola (lo hace el propio hilo); aquí solo se
+  // mueven los contadores de la lista, y lo que no cabe en el filtro se ofrece
+  // como "novedades" en vez de reordenar la pantalla debajo del cursor.
+  const rowsRef = useRef(rows)
+  const selectedRef = useRef(selectedId)
+  useEffect(() => { rowsRef.current = rows }, [rows])
+  useEffect(() => { selectedRef.current = selectedId }, [selectedId])
+
+  useEffect(() => subscribeFeedbackEvents((ev: FeedbackEvent) => {
+    if (ev.type === 'status') return
+    const row = rowsRef.current.find((r) => r.id === ev.feedback_id)
+    if (!row) { setPendingNews((n) => n + 1); return }
+
+    const fromOwner = ev.author_id === row.user_id
+    // Lo propio no es novedad, y lo que ya está abierto lo marca leído el hilo.
+    if (ev.author_id === user?.id) return
+    const isOpen = selectedRef.current === row.id
+
+    setSummaries((cur) => {
+      const next = new Map(cur)
+      const s = { ...(next.get(row.id) ?? EMPTY_SUMMARY) }
+      if (ev.type === 'note') s.notes++
+      else {
+        s.replies++
+        s.awaitingStaff = fromOwner
+        if (!fromOwner) s.answered = true
+        if (fromOwner && !isOpen) s.unread++
+      }
+      s.lastAt = ev.created_at
+      s.lastType = ev.type
+      next.set(row.id, s)
+      return next
+    })
+  }), [user?.id])
 
   /** Cambia el estado en la fila ya cargada (sin recargar toda la lista). */
   async function patch(id: string, p: { status?: FeedbackStatus; staff_note?: string | null }) {
@@ -205,6 +242,18 @@ export default function SiteFeedback() {
       toast.error(t('admin.site_feedback.delete_error', 'No se pudo borrar la opinión'))
     }
   }
+
+  /** El hilo abierto se dio por leído: se apaga su punto y sus avisos. */
+  const onThreadRead = useCallback((id: string) => {
+    setSummaries((cur) => {
+      const s = cur.get(id)
+      if (!s || s.unread === 0) return cur
+      const next = new Map(cur)
+      next.set(id, { ...s, unread: 0 })
+      return next
+    })
+    clearPingsFor(id)
+  }, [clearPingsFor])
 
   /** Tras escribir en un hilo, su resumen cambia: se refresca solo ese. */
   const bumpSummary = useCallback((id: string, mine: boolean, isNote: boolean) => {
@@ -320,6 +369,29 @@ export default function SiteFeedback() {
             </FilterChip>
           ))}
         </div>
+
+        {/* Novedades que no caben en lo que hay en pantalla. Se ofrecen, no se
+            imponen: recargar solo se dispara si alguien lo pide, para que la
+            lista no se reordene mientras se está leyendo una ficha. */}
+        <AnimatePresence initial={false}>
+          {pendingNews > 0 && (
+            <motion.button
+              key="news"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              onClick={() => void load()}
+              className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/10 px-3.5 py-1.5 text-[12px] font-medium text-sky-400 transition-colors hover:bg-sky-500/15"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {t('admin.site_feedback.live_news', {
+                n: pendingNews,
+                defaultValue: 'Novedades fuera de esta vista ({{n}}) · Actualizar',
+              })}
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── Lista + ficha ── */}
@@ -368,6 +440,7 @@ export default function SiteFeedback() {
                 onPatch={patch}
                 onDelete={remove}
                 onThreadPosted={bumpSummary}
+                onThreadRead={onThreadRead}
               />
             ) : wide ? (
               <motion.div
@@ -501,7 +574,8 @@ function ListItem({ row: r, index, summary, selected, isSuperAdmin, onSelect }: 
 /* ═══════════════════════ Ficha ═══════════════════════ */
 
 function Detail({
-  row: r, summary, isSuperAdmin, wide, threadKey, onClose, onPatch, onDelete, onThreadPosted,
+  row: r, summary, isSuperAdmin, wide, threadKey, onClose, onPatch, onDelete,
+  onThreadPosted, onThreadRead,
 }: {
   row: SiteFeedbackRow
   summary: ThreadSummary
@@ -512,6 +586,7 @@ function Detail({
   onPatch: (id: string, p: { status?: FeedbackStatus; staff_note?: string | null }) => Promise<void>
   onDelete: (row: SiteFeedbackRow) => Promise<void>
   onThreadPosted: (id: string, mine: boolean, isNote: boolean) => void
+  onThreadRead: (id: string) => void
 }) {
   const { t } = useTranslation()
   const { user } = useAuth()
@@ -644,6 +719,7 @@ function Detail({
               showOrigin
               reloadKey={threadKey}
               onPosted={(e) => onThreadPosted(r.id, e.author_id === user?.id, e.type === 'note')}
+              onRead={() => onThreadRead(r.id)}
             />
           </div>
         </Section>

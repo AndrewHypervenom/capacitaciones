@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
@@ -11,7 +11,8 @@ import {
   MAX_SHOTS, type FeedbackShot, type SiteFeedbackRow,
 } from '@/services/siteFeedback.service'
 import {
-  fetchThreadSummaries, EMPTY_SUMMARY, type ThreadSummary,
+  fetchThreadSummaries, subscribeFeedbackEvents, EMPTY_SUMMARY,
+  type FeedbackEvent, type ThreadSummary,
 } from '@/services/feedbackThread.service'
 import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
 import { useAuth } from '@/hooks/useAuth'
@@ -31,6 +32,10 @@ export default function MySuggestions() {
   const { user } = useAuth()
   const openFeedback = useSiteFeedbackStore((s) => s.open)
   const panelOpen = useSiteFeedbackStore((s) => s.isOpen)
+  // La campana enlaza a /suggestions?id=…: esa —y solo esa— se abre sola, porque
+  // ahí hubo un clic. Entrar a la pantalla no abre nada ni marca nada como visto.
+  const [params] = useSearchParams()
+  const focusId = params.get('id')
 
   const [rows, setRows] = useState<SiteFeedbackRow[]>([])
   const [summaries, setSummaries] = useState<Map<string, ThreadSummary>>(new Map())
@@ -64,6 +69,27 @@ export default function MySuggestions() {
     (id: string) => summaries.get(id) ?? EMPTY_SUMMARY,
     [summaries],
   )
+
+  // Una respuesta del equipo entra sola mientras la pantalla está abierta: la
+  // tarjeta se enciende ahí mismo, sin recargar y sin abrir nada.
+  const rowsRef = useRef(rows)
+  useEffect(() => { rowsRef.current = rows }, [rows])
+  useEffect(() => subscribeFeedbackEvents((ev: FeedbackEvent) => {
+    if (ev.type !== 'reply' || ev.author_id === user?.id) return
+    if (!rowsRef.current.some((r) => r.id === ev.feedback_id)) return
+    setSummaries((cur) => {
+      const next = new Map(cur)
+      const s = { ...(next.get(ev.feedback_id) ?? EMPTY_SUMMARY) }
+      s.replies++
+      s.answered = true
+      s.awaitingStaff = false
+      s.unread++
+      s.lastAt = ev.created_at
+      s.lastType = 'reply'
+      next.set(ev.feedback_id, s)
+      return next
+    })
+  }), [user?.id])
 
   /** Al abrir un hilo deja de estar "sin leer": la insignia se apaga en el acto. */
   const clearUnread = useCallback((id: string) => {
@@ -185,7 +211,8 @@ export default function MySuggestions() {
                 row={r}
                 summary={summaryOf(r.id)}
                 fmtDate={fmtDate}
-                onOpenThread={() => clearUnread(r.id)}
+                focused={focusId === r.id}
+                onThreadRead={() => clearUnread(r.id)}
               />
             ))}
           </FadeIn>
@@ -202,44 +229,44 @@ export default function MySuggestions() {
  * reportar, y volver a escribir todo el formulario solo para adjuntar una imagen
  * no tiene sentido.
  */
-function SuggestionCard({ row, summary, fmtDate, onOpenThread }: {
+function SuggestionCard({ row, summary, fmtDate, focused, onThreadRead }: {
   row: SiteFeedbackRow
   summary: ThreadSummary
   fmtDate: (iso: string) => string
-  onOpenThread: () => void
+  /** Llegó desde el aviso: esta es la que venía a leer, y solo esta se abre. */
+  focused: boolean
+  onThreadRead: () => void
 }) {
   const { t } = useTranslation()
   const reduce = useReducedMotion()
   const meta = kindMeta(row.kind)
   const [shots, setShots] = useState<FeedbackShot[]>(row.shots ?? [])
   const [adding, setAdding] = useState(false)
-  // El hilo con respuestas sin leer se abre solo: si te respondieron, lo que
-  // vienes a ver a esta pantalla es justo eso.
-  const [openThread, setOpenThread] = useState(false)
-  // Una sola vez: si el usuario lo cierra a mano, no se lo volvemos a abrir.
-  const autoOpened = useRef(false)
+  const [openThread, setOpenThread] = useState(focused)
+  const cardRef = useRef<HTMLDivElement>(null)
 
+  // La del aviso se abre y se trae a la vista. Las demás esperan: ver una
+  // respuesta es decisión de quien lee, no de la pantalla.
   useEffect(() => {
-    if (autoOpened.current || summary.unread === 0) return
-    autoOpened.current = true
+    if (!focused) return
     setOpenThread(true)
-    onOpenThread()
-  }, [summary.unread, onOpenThread])
-
-  function toggleThread() {
-    setOpenThread((v) => {
-      if (!v) onOpenThread()
-      return !v
-    })
-  }
+    const id = setTimeout(
+      () => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      120,
+    )
+    return () => clearTimeout(id)
+  }, [focused])
 
   return (
-    <div className={cn(
-      'rounded-2xl border bg-surface p-4 transition-all duration-300 ease-apple sm:p-5',
-      summary.unread > 0
-        ? 'border-sky-500/40 shadow-[0_0_0_1px_rgba(56,189,248,0.15)]'
-        : 'border-line hover:-translate-y-0.5 hover:shadow-card-hover',
-    )}>
+    <div
+      ref={cardRef}
+      className={cn(
+        'rounded-2xl border bg-surface p-4 transition-all duration-300 ease-apple sm:p-5',
+        summary.unread > 0
+          ? 'border-sky-500/40 shadow-[0_0_0_1px_rgba(56,189,248,0.15)]'
+          : 'border-line hover:-translate-y-0.5 hover:shadow-card-hover',
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <span
@@ -287,7 +314,7 @@ function SuggestionCard({ row, summary, fmtDate, onOpenThread }: {
       {/* ── Conversación ── */}
       <div className="mt-3 border-t border-line/60 pt-3">
         <button
-          onClick={toggleThread}
+          onClick={() => setOpenThread((v) => !v)}
           className={cn(
             'group flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors',
             openThread ? 'bg-subtle/60' : 'hover:bg-subtle/50',
@@ -303,6 +330,11 @@ function SuggestionCard({ row, summary, fmtDate, onOpenThread }: {
               : summary.replies > 0
                 ? t('my_suggestions.thread_open', 'Conversación ({{n}})', { n: summary.replies })
                 : t('my_suggestions.thread_empty', 'Escribirle al equipo')}
+            {summary.unread > 0 && !openThread && (
+              <span className="ml-1.5 text-[11.5px] font-normal text-sky-400">
+                {t('my_suggestions.thread_read_it', '— toca para leerla')}
+              </span>
+            )}
           </span>
           {summary.unread > 0 && (
             <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10.5px] font-semibold text-sky-400">
@@ -328,7 +360,12 @@ function SuggestionCard({ row, summary, fmtDate, onOpenThread }: {
               className="overflow-hidden"
             >
               <div className="pt-3">
-                <FeedbackThread row={row} variant="author" showOrigin={false} />
+                <FeedbackThread
+                  row={row}
+                  variant="author"
+                  showOrigin={false}
+                  onRead={onThreadRead}
+                />
               </div>
             </motion.div>
           )}
