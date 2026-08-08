@@ -23,7 +23,12 @@ export interface FeedbackShot {
 
 export type FeedbackKind = 'bug' | 'idea' | 'praise' | 'question'
 export type FeedbackStatus = 'new' | 'in_review' | 'planned' | 'done' | 'archived'
-export type ContactPref = 'email' | 'whatsapp' | 'call'
+/**
+ * Por dónde prefiere que lo busquen. `whatsapp` ya no se ofrece —la empresa se
+ * habla por Teams— pero se conserva en el tipo: hay opiniones viejas guardadas
+ * con ese valor y deben seguir leyéndose tal como se enviaron.
+ */
+export type ContactPref = 'email' | 'teams' | 'call' | 'whatsapp'
 
 export interface SiteFeedbackInput {
   kind: FeedbackKind

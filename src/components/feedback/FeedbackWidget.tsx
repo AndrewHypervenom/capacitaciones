@@ -5,7 +5,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   MessageSquarePlus, X, ArrowLeft, ArrowRight, Send, Check, Sparkles,
-  Loader2, Phone, Mail, MessageCircle, ChevronRight, Copy,
+  Loader2, Phone, Mail, Users, ChevronRight, Copy,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHelpChatStore } from '@/stores/helpChatStore'
@@ -500,7 +500,7 @@ export function FeedbackWidget() {
                                 <div className="grid grid-cols-3 gap-2">
                                   {([
                                     { key: 'email', icon: Mail },
-                                    { key: 'whatsapp', icon: MessageCircle },
+                                    { key: 'teams', icon: Users },
                                     { key: 'call', icon: Phone },
                                   ] as { key: ContactPref; icon: typeof Mail }[]).map(({ key, icon: Icon }) => {
                                     const active = pref === key

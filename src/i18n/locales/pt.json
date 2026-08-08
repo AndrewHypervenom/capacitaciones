@@ -233,7 +233,9 @@
       "sent_one": "deixou uma opinião do site",
       "sent_many_one": "deixou {{count}} opinião do site",
       "sent_many_other": "deixou {{count}} opiniões do site",
-      "open": "Ver a opinião"
+      "open": "Ver a opinião",
+      "replied": "respondeu na opinião dele(a)",
+      "open_thread": "Ver a conversa"
     },
     "prefs": {
       "title": "Preferências de aviso",
@@ -250,6 +252,11 @@
       "muted_left_other": "Em silêncio por mais {{count}} min",
       "not_muted": "Sem silêncio temporário",
       "unmute": "Reativar"
+    },
+    "feedback_reply": {
+      "title_staff": "{{name}} respondeu na opinião dele(a)",
+      "title_learner": "A equipe respondeu sua opinião",
+      "body": "Há uma mensagem nova na conversa."
     }
   },
   "dashboard": {
@@ -3920,7 +3927,17 @@
       "page_unknown": "Tela não identificada",
       "d_path": "Rota",
       "d_lang": "Idioma",
-      "d_id": "ID"
+      "d_id": "ID",
+      "subtitle2": "O que as pessoas relatam, propõem e celebram da plataforma — e toda a conversa que vem depois.",
+      "kpi_awaiting": "Aguardam resposta",
+      "only_awaiting": "Aguardam resposta",
+      "awaiting": "Aguardando resposta",
+      "thread_count": "{{n}} mensagem(ns) na conversa",
+      "sec_thread": "Conversa",
+      "status_hint": "Cada mudança fica registrada na conversa, com seu nome e o horário.",
+      "pick_title": "Escolha uma opinião",
+      "pick_desc": "Aqui você vê a ficha completa: o que disse, o que respondeu e toda a conversa.",
+      "delete_desc2": "É excluída para sempre, junto com toda a conversa e as notas internas. Se você só quer tirá-la da caixa, marque como Arquivada."
     },
     "savedock": {
       "save": "Salvar alterações",
@@ -4629,7 +4646,13 @@
     "contact_requested": "Você pediu para ser contatado",
     "shots_add": "Adicionar uma captura",
     "shots_manage": "Adicionar ou remover capturas ({{n}}/{{max}})",
-    "shots_done": "Pronto"
+    "shots_done": "Pronto",
+    "subtitle2": "O que você propôs ou relatou, e o que a equipe respondeu.",
+    "kpi_replied": "Responderam a você",
+    "thread_new": "A equipe respondeu você",
+    "thread_open": "Conversa ({{n}})",
+    "thread_empty": "Escrever para a equipe",
+    "thread_unread": "{{n}} não lida(s)"
   },
   "site_feedback": {
     "close": "Fechar",
@@ -4819,7 +4842,8 @@
       "3": "Normal",
       "4": "Fácil",
       "5": "Muito fácil"
-    }
+    },
+    "contact_pref_teams": "Teams"
   },
   "passkey": {
     "divider": "ou",
@@ -4888,5 +4912,34 @@
     "show_list": "Ver a lista",
     "previous": "Anterior",
     "next": "Próximo"
+  },
+  "feedback_thread": {
+    "you": "Você",
+    "team": "Equipe",
+    "someone": "Alguém da equipe",
+    "by": "por",
+    "seen": "visto",
+    "origin": "enviou esta opinião",
+    "internal": "Nota interna · só a equipe vê",
+    "legacy_note": "nota original",
+    "empty_staff": "Ninguém respondeu ainda. O que você escrever aqui chega à pessoa com um aviso.",
+    "empty_author": "A equipe ainda não respondeu. Quando responder, você verá aqui e a gente te avisa.",
+    "load_error": "Não conseguimos carregar a conversa. Abra de novo daqui a pouco.",
+    "mode_reply": "Responder à pessoa",
+    "mode_note": "Nota interna",
+    "ph_reply": "Escreva para a pessoa. Chega com um aviso…",
+    "ph_note": "O que foi feito com isso, para a equipe…",
+    "ph_author": "Responda à equipe…",
+    "attach": "Anexar",
+    "attach_close": "Pronto",
+    "shortcut": "Ctrl+Enter para enviar",
+    "send": "Enviar",
+    "save_note": "Salvar nota",
+    "sent": "Resposta enviada",
+    "saved_note": "Nota salva",
+    "send_error": "Não conseguimos enviar sua mensagem. Tente de novo.",
+    "tpl_reviewing": "Obrigado por avisar. Já estamos analisando e voltamos a falar assim que tivermos novidades.",
+    "tpl_fixed": "Já foi corrigido. Saia da conta, entre de novo e conte se ainda acontece.",
+    "tpl_more_info": "Você pode mandar uma captura da tela e o passo exato onde trava? Assim reproduzimos igual a você."
   }
 }

@@ -22,8 +22,11 @@ const MUTE_MINUTES = 30
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
-/** Los dos avisos "de trabajo" que interrumpen al staff. */
-type PingKind = 'help_chat' | 'site_feedback'
+/** Los avisos "de trabajo" que interrumpen al staff. */
+type PingKind = 'help_chat' | 'site_feedback' | 'site_feedback_reply'
+
+/** Los que nacen de una opinión: comparten bandeja, cita y interruptor. */
+const FEEDBACK_KINDS: PingKind[] = ['site_feedback', 'site_feedback_reply']
 
 /**
  * Todo lo que cambia entre un aviso y otro. Lo demás (avatar con ondas, metadatos,
@@ -38,6 +41,11 @@ const PING_META: Record<
     to: string
     ring: string
     glow: string
+    /** Resplandor de la esquina y sombra del botón, a juego con el degradado. */
+    halo: string
+    ctaShadow: string
+    /** Chip del rol de quien escribió. */
+    pill: string
     /** A dónde se va a atenderlo. */
     route: string
     ctaKey: string
@@ -50,6 +58,9 @@ const PING_META: Record<
     to: 'to-neon-cyan',
     ring: 'ring-neon-green/60',
     glow: 'border-neon-green/50',
+    halo: 'from-neon-green/25 to-neon-cyan/10',
+    ctaShadow: 'shadow-neon-green/25',
+    pill: 'bg-neon-green/12 text-neon-green',
     route: '/admin/chat',
     ctaKey: 'notifications.help_chat.open',
     ctaFallback: 'Ver la conversación',
@@ -60,10 +71,36 @@ const PING_META: Record<
     to: 'to-neon-magenta',
     ring: 'ring-neon-violet/60',
     glow: 'border-neon-violet/50',
+    halo: 'from-neon-violet/25 to-neon-magenta/10',
+    ctaShadow: 'shadow-neon-violet/25',
+    pill: 'bg-neon-violet/12 text-neon-violet',
     route: '/admin/site-feedback',
     ctaKey: 'notifications.site_feedback.open',
     ctaFallback: 'Ver la opinión',
   },
+  // La respuesta en un hilo se distingue en azul: no es una opinión nueva, es
+  // una conversación que sigue y que ya tiene a alguien esperando del otro lado.
+  site_feedback_reply: {
+    icon: MessageSquareText,
+    from: 'from-sky-400',
+    to: 'to-neon-cyan',
+    ring: 'ring-sky-400/60',
+    glow: 'border-sky-400/50',
+    halo: 'from-sky-400/25 to-neon-cyan/10',
+    ctaShadow: 'shadow-sky-400/25',
+    pill: 'bg-sky-400/12 text-sky-400',
+    route: '/admin/site-feedback',
+    ctaKey: 'notifications.site_feedback.open_thread',
+    ctaFallback: 'Ver la conversación',
+  },
+}
+
+/** ¿Este aviso lo tiene que ver el staff en una tarjeta? */
+function isStaffPing(n: AppNotification): boolean {
+  if (n.kind === 'help_chat' || n.kind === 'site_feedback') return true
+  // El aviso de respuesta viaja a los dos lados con la misma forma: solo el del
+  // equipo se pinta aquí; el de quien opinó se anuncia con un emergente normal.
+  return n.kind === 'site_feedback_reply' && n.payload?.for_staff === true
 }
 
 /**
@@ -92,16 +129,21 @@ export function StaffPings() {
   const helpAlerts = useNotificationPrefs((s) => s.helpAlerts)
   const feedbackAlerts = useNotificationPrefs((s) => s.feedbackAlerts)
 
+  // La respuesta a una opinión se apaga con el mismo interruptor que la opinión:
+  // son la misma bandeja, y separarlos sería un ajuste más que nadie pidió.
   const enabled = useMemo(
-    () => ({ help_chat: helpAlerts, site_feedback: feedbackAlerts }),
+    () => ({
+      help_chat: helpAlerts,
+      site_feedback: feedbackAlerts,
+      site_feedback_reply: feedbackAlerts,
+    }),
     [helpAlerts, feedbackAlerts],
   )
 
   const pings = useMemo(
     () =>
       justArrived
-        .filter((n) => (n.kind === 'help_chat' || n.kind === 'site_feedback') &&
-          enabled[n.kind as PingKind])
+        .filter((n) => isStaffPing(n) && enabled[n.kind as PingKind])
         .slice(-MAX_STACK),
     [justArrived, enabled],
   )
@@ -110,8 +152,7 @@ export function StaffPings() {
   // quedarían ahí y aparecerían de golpe al volver a encenderlo.
   useEffect(() => {
     for (const n of justArrived) {
-      const k = n.kind as PingKind
-      if ((k === 'help_chat' || k === 'site_feedback') && !enabled[k]) clearJustArrived(n.id)
+      if (isStaffPing(n) && !enabled[n.kind as PingKind]) clearJustArrived(n.id)
     }
   }, [enabled, justArrived, clearJustArrived])
 
@@ -152,10 +193,11 @@ function PingCard({
   const muteFor = useNotificationPrefs((s) => s.muteFor)
   const [paused, setPaused] = useState(false)
 
-  const kind = (n.kind === 'site_feedback' ? 'site_feedback' : 'help_chat') as PingKind
+  const kind = (PING_META[n.kind as PingKind] ? n.kind : 'help_chat') as PingKind
   const meta = PING_META[kind]
   const Icon = meta.icon
-  const isFeedback = kind === 'site_feedback'
+  const isFeedback = FEEDBACK_KINDS.includes(kind)
+  const isReply = kind === 'site_feedback_reply'
 
   const p = n.payload ?? {}
   const count = Number(p.count) > 1 ? Number(p.count) : 1
@@ -170,7 +212,9 @@ function PingCard({
   // Lo que se cita entre comillas: la pregunta al chat, o el texto de la opinión.
   const quote = isFeedback ? p.message : p.question
   // Qué hizo esa persona, en una línea.
-  const action = isFeedback
+  const action = isReply
+    ? t('notifications.site_feedback.replied', 'respondió en su opinión')
+    : isFeedback
     ? count > 1
       ? t('notifications.site_feedback.sent_many', {
           count,
@@ -215,7 +259,7 @@ function PingCard({
         aria-hidden
         className={cn(
           'pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br blur-2xl',
-          isFeedback ? 'from-neon-violet/25 to-neon-magenta/10' : 'from-neon-green/25 to-neon-cyan/10',
+          meta.halo,
         )}
       />
 
@@ -265,7 +309,7 @@ function PingCard({
             <span
               className={cn(
                 'rounded-full px-1.5 py-0.5 font-semibold uppercase tracking-wide',
-                isFeedback ? 'bg-neon-violet/12 text-neon-violet' : 'bg-neon-green/12 text-neon-green',
+                meta.pill,
               )}
             >
               {roleLabel}
@@ -319,16 +363,20 @@ function PingCard({
               whileTap={reduce ? undefined : { scale: 0.96 }}
               onClick={() => {
                 onOpen()
-                navigate(meta.route)
+                // La ficha exacta, no la bandeja entera: con siete opiniones ya
+                // cuesta encontrar de cuál hablaba el aviso.
+                navigate(isFeedback && p.feedback_id
+                  ? `${meta.route}?id=${p.feedback_id}`
+                  : meta.route)
               }}
               className={cn(
                 'inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br px-3 py-1.5 text-[12px] font-semibold text-black shadow-md',
                 meta.from,
                 meta.to,
-                isFeedback ? 'shadow-neon-violet/25' : 'shadow-neon-green/25',
+                meta.ctaShadow,
               )}
             >
-              {isFeedback ? <Megaphone className="h-3.5 w-3.5" /> : <MessageSquareText className="h-3.5 w-3.5" />}
+              <Icon className="h-3.5 w-3.5" />
               {t(meta.ctaKey, meta.ctaFallback)}
             </motion.button>
             <button

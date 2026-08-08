@@ -1,26 +1,39 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, ImagePlus, Inbox, Loader2, MessageSquarePlus, Phone, Sparkles } from 'lucide-react'
+import {
+  ArrowLeft, ChevronDown, ImagePlus, Inbox, Loader2, MessageSquare,
+  MessageSquarePlus, Phone, Sparkles,
+} from 'lucide-react'
 import {
   addShotsToFeedback, getMySiteFeedback, removeShotFromFeedback,
   MAX_SHOTS, type FeedbackShot, type SiteFeedbackRow,
 } from '@/services/siteFeedback.service'
+import {
+  fetchThreadSummaries, EMPTY_SUMMARY, type ThreadSummary,
+} from '@/services/feedbackThread.service'
 import { useSiteFeedbackStore } from '@/stores/siteFeedbackStore'
+import { useAuth } from '@/hooks/useAuth'
 import { kindMeta } from '@/components/feedback/config'
 import { StatusPill } from '@/components/feedback/StatusPill'
 import { ShotUploader } from '@/components/feedback/ShotUploader'
 import { ShotGallery } from '@/components/feedback/ShotGallery'
+import { FeedbackThread } from '@/components/feedback/FeedbackThread'
 import { FadeIn } from '@/components/ui/motion'
+import { cn } from '@/lib/cn'
+
+const EASE = [0.16, 1, 0.3, 1] as const
 
 export default function MySuggestions() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const openFeedback = useSiteFeedbackStore((s) => s.open)
   const panelOpen = useSiteFeedbackStore((s) => s.isOpen)
 
   const [rows, setRows] = useState<SiteFeedbackRow[]>([])
+  const [summaries, setSummaries] = useState<Map<string, ThreadSummary>>(new Map())
   const [loading, setLoading] = useState(true)
 
   // Al cerrar el panel recargamos: lo que el usuario acaba de enviar aparece
@@ -35,12 +48,44 @@ export default function MySuggestions() {
     return () => { alive = false }
   }, [panelOpen])
 
+  // Los contadores de los hilos, de un tirón: cuántas respuestas hay y cuáles
+  // no ha leído. Que fallen no puede tumbar la lista.
+  useEffect(() => {
+    if (rows.length === 0) { setSummaries(new Map()); return }
+    let alive = true
+    const owners = new Map(rows.map((r) => [r.id, r.user_id]))
+    fetchThreadSummaries(owners, user?.id ?? null)
+      .then((s) => { if (alive) setSummaries(s) })
+      .catch((e) => console.error('thread summaries error:', e))
+    return () => { alive = false }
+  }, [rows, user?.id])
+
+  const summaryOf = useCallback(
+    (id: string) => summaries.get(id) ?? EMPTY_SUMMARY,
+    [summaries],
+  )
+
+  /** Al abrir un hilo deja de estar "sin leer": la insignia se apaga en el acto. */
+  const clearUnread = useCallback((id: string) => {
+    setSummaries((cur) => {
+      const s = cur.get(id)
+      if (!s || s.unread === 0) return cur
+      const next = new Map(cur)
+      next.set(id, { ...s, unread: 0 })
+      return next
+    })
+  }, [])
+
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short', year: 'numeric' })
 
   const answered = useMemo(
     () => rows.filter((r) => r.status === 'planned' || r.status === 'done').length,
     [rows],
+  )
+  const replied = useMemo(
+    () => rows.filter((r) => summaryOf(r.id).answered).length,
+    [rows, summaryOf],
   )
 
   return (
@@ -62,7 +107,7 @@ export default function MySuggestions() {
               {t('my_suggestions.title', 'Mis sugerencias')}
             </h1>
             <p className="text-[13px] text-text-muted">
-              {t('my_suggestions.subtitle', 'Lo que has propuesto o reportado sobre la plataforma.')}
+              {t('my_suggestions.subtitle2', 'Lo que has propuesto o reportado, y lo que el equipo te ha respondido.')}
             </p>
           </div>
         </div>
@@ -112,12 +157,18 @@ export default function MySuggestions() {
         </div>
       ) : (
         <>
-          <div className="mb-5 grid grid-cols-2 gap-3">
+          <div className="mb-5 grid grid-cols-3 gap-3">
             <div className="rounded-2xl border border-line bg-surface p-4">
               <div className="text-[10px] uppercase tracking-wider text-text-muted">
                 {t('my_suggestions.kpi_total', 'Enviadas')}
               </div>
               <div className="text-2xl font-bold tabular-nums text-text">{rows.length}</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-surface p-4">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">
+                {t('my_suggestions.kpi_replied', 'Te respondieron')}
+              </div>
+              <div className="text-2xl font-bold tabular-nums text-sky-400">{replied}</div>
             </div>
             <div className="rounded-2xl border border-line bg-surface p-4">
               <div className="text-[10px] uppercase tracking-wider text-text-muted">
@@ -129,7 +180,13 @@ export default function MySuggestions() {
 
           <FadeIn className="space-y-3" y={14}>
             {rows.map((r) => (
-              <SuggestionCard key={r.id} row={r} fmtDate={fmtDate} />
+              <SuggestionCard
+                key={r.id}
+                row={r}
+                summary={summaryOf(r.id)}
+                fmtDate={fmtDate}
+                onOpenThread={() => clearUnread(r.id)}
+              />
             ))}
           </FadeIn>
         </>
@@ -140,26 +197,63 @@ export default function MySuggestions() {
 
 // ─────────────────────────────────────────────────────────────
 /**
- * Una opinión enviada. Las capturas se pueden seguir agregando después: casi
- * nadie tiene la captura a mano en el momento de reportar, y volver a escribir
- * todo el formulario solo para adjuntar una imagen no tiene sentido.
+ * Una opinión enviada, con todo lo que pasó después. Las capturas se pueden
+ * seguir agregando: casi nadie tiene la captura a mano en el momento de
+ * reportar, y volver a escribir todo el formulario solo para adjuntar una imagen
+ * no tiene sentido.
  */
-function SuggestionCard({ row, fmtDate }: { row: SiteFeedbackRow; fmtDate: (iso: string) => string }) {
+function SuggestionCard({ row, summary, fmtDate, onOpenThread }: {
+  row: SiteFeedbackRow
+  summary: ThreadSummary
+  fmtDate: (iso: string) => string
+  onOpenThread: () => void
+}) {
   const { t } = useTranslation()
   const reduce = useReducedMotion()
   const meta = kindMeta(row.kind)
   const [shots, setShots] = useState<FeedbackShot[]>(row.shots ?? [])
   const [adding, setAdding] = useState(false)
+  // El hilo con respuestas sin leer se abre solo: si te respondieron, lo que
+  // vienes a ver a esta pantalla es justo eso.
+  const [openThread, setOpenThread] = useState(false)
+  // Una sola vez: si el usuario lo cierra a mano, no se lo volvemos a abrir.
+  const autoOpened = useRef(false)
+
+  useEffect(() => {
+    if (autoOpened.current || summary.unread === 0) return
+    autoOpened.current = true
+    setOpenThread(true)
+    onOpenThread()
+  }, [summary.unread, onOpenThread])
+
+  function toggleThread() {
+    setOpenThread((v) => {
+      if (!v) onOpenThread()
+      return !v
+    })
+  }
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover sm:p-5">
+    <div className={cn(
+      'rounded-2xl border bg-surface p-4 transition-all duration-300 ease-apple sm:p-5',
+      summary.unread > 0
+        ? 'border-sky-500/40 shadow-[0_0_0_1px_rgba(56,189,248,0.15)]'
+        : 'border-line hover:-translate-y-0.5 hover:shadow-card-hover',
+    )}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[17px]"
+            className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[17px]"
             style={{ background: `${meta.color}1f` }}
           >
             {meta.emoji}
+            {summary.unread > 0 && (
+              <motion.span
+                className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-sky-400 ring-2 ring-surface"
+                animate={reduce ? undefined : { scale: [1, 1.35, 1], opacity: [1, 0.6, 1] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
           </span>
           <div className="min-w-0">
             <div className="text-[13.5px] font-semibold text-text">
@@ -190,7 +284,58 @@ function SuggestionCard({ row, fmtDate }: { row: SiteFeedbackRow; fmtDate: (iso:
       {/* Miniaturas de lo ya adjunto: se ven aunque el añadidor esté cerrado. */}
       {!adding && shots.length > 0 && <ShotGallery shots={shots} className="mt-3" />}
 
+      {/* ── Conversación ── */}
       <div className="mt-3 border-t border-line/60 pt-3">
+        <button
+          onClick={toggleThread}
+          className={cn(
+            'group flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors',
+            openThread ? 'bg-subtle/60' : 'hover:bg-subtle/50',
+          )}
+        >
+          <MessageSquare className={cn(
+            'h-4 w-4 shrink-0 transition-colors',
+            summary.unread > 0 ? 'text-sky-400' : 'text-text-muted',
+          )} />
+          <span className="min-w-0 flex-1 text-[12.5px] font-medium text-text">
+            {summary.unread > 0
+              ? t('my_suggestions.thread_new', 'El equipo te respondió')
+              : summary.replies > 0
+                ? t('my_suggestions.thread_open', 'Conversación ({{n}})', { n: summary.replies })
+                : t('my_suggestions.thread_empty', 'Escribirle al equipo')}
+          </span>
+          {summary.unread > 0 && (
+            <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10.5px] font-semibold text-sky-400">
+              {t('my_suggestions.thread_unread', '{{n}} sin leer', { n: summary.unread })}
+            </span>
+          )}
+          <motion.span
+            animate={{ rotate: openThread ? 180 : 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
+            className="shrink-0 text-text-muted"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </motion.span>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {openThread && (
+            <motion.div
+              initial={reduce ? false : { opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.35, ease: EASE }}
+              className="overflow-hidden"
+            >
+              <div className="pt-3">
+                <FeedbackThread row={row} variant="author" showOrigin={false} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="mt-2 border-t border-line/60 pt-3">
         <AnimatePresence initial={false} mode="wait">
           {adding ? (
             <motion.div
@@ -198,7 +343,7 @@ function SuggestionCard({ row, fmtDate }: { row: SiteFeedbackRow; fmtDate: (iso:
               initial={reduce ? false : { opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.3, ease: EASE }}
               className="overflow-hidden"
             >
               <ShotUploader

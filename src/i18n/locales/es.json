@@ -233,7 +233,9 @@
       "sent_one": "dejó una opinión del sitio",
       "sent_many_one": "dejó {{count}} opinión del sitio",
       "sent_many_other": "dejó {{count}} opiniones del sitio",
-      "open": "Ver la opinión"
+      "open": "Ver la opinión",
+      "replied": "respondió en su opinión",
+      "open_thread": "Ver la conversación"
     },
     "prefs": {
       "title": "Preferencias de aviso",
@@ -250,6 +252,11 @@
       "muted_left_other": "En silencio {{count}} min más",
       "not_muted": "Sin silencio temporal",
       "unmute": "Reactivar"
+    },
+    "feedback_reply": {
+      "title_staff": "{{name}} respondió en su opinión",
+      "title_learner": "El equipo respondió tu opinión",
+      "body": "Hay un mensaje nuevo en la conversación."
     }
   },
   "dashboard": {
@@ -3920,7 +3927,17 @@
       "page_unknown": "Pantalla no identificada",
       "d_path": "Ruta",
       "d_lang": "Idioma",
-      "d_id": "ID"
+      "d_id": "ID",
+      "subtitle2": "Lo que reportan, proponen y celebran de la plataforma — y toda la conversación que sigue después.",
+      "kpi_awaiting": "Esperan respuesta",
+      "only_awaiting": "Esperan respuesta",
+      "awaiting": "Esperando respuesta",
+      "thread_count": "{{n}} mensaje(s) en la conversación",
+      "sec_thread": "Conversación",
+      "status_hint": "Cada cambio queda escrito en la conversación, con tu nombre y la hora.",
+      "pick_title": "Elige una opinión",
+      "pick_desc": "Aquí verás la ficha completa: lo que dijo, lo que respondió y toda la conversación.",
+      "delete_desc2": "Se elimina para siempre, junto con toda su conversación y sus notas internas. Si solo quieres sacarla de la bandeja, márcala como Archivada."
     },
     "savedock": {
       "save": "Guardar cambios",
@@ -4629,7 +4646,13 @@
     "contact_requested": "Pediste que te contactaran",
     "shots_add": "Agregar una captura",
     "shots_manage": "Agregar o quitar capturas ({{n}}/{{max}})",
-    "shots_done": "Listo"
+    "shots_done": "Listo",
+    "subtitle2": "Lo que has propuesto o reportado, y lo que el equipo te ha respondido.",
+    "kpi_replied": "Te respondieron",
+    "thread_new": "El equipo te respondió",
+    "thread_open": "Conversación ({{n}})",
+    "thread_empty": "Escribirle al equipo",
+    "thread_unread": "{{n}} sin leer"
   },
   "site_feedback": {
     "close": "Cerrar",
@@ -4819,7 +4842,8 @@
       "3": "Normal",
       "4": "Fácil",
       "5": "Muy fácil"
-    }
+    },
+    "contact_pref_teams": "Teams"
   },
   "passkey": {
     "divider": "o",
@@ -4888,5 +4912,34 @@
     "show_list": "Ver la lista",
     "previous": "Anterior",
     "next": "Siguiente"
+  },
+  "feedback_thread": {
+    "you": "Tú",
+    "team": "Equipo",
+    "someone": "Alguien del equipo",
+    "by": "por",
+    "seen": "visto",
+    "origin": "envió esta opinión",
+    "internal": "Nota interna · solo la ve el equipo",
+    "legacy_note": "nota original",
+    "empty_staff": "Nadie ha respondido todavía. Lo que escribas aquí le llega a la persona con un aviso en su campana.",
+    "empty_author": "El equipo todavía no ha respondido. Cuando lo haga, lo verás aquí y te avisaremos.",
+    "load_error": "No pudimos cargar la conversación. Vuelve a abrirla en un momento.",
+    "mode_reply": "Responder a la persona",
+    "mode_note": "Nota interna",
+    "ph_reply": "Escríbele a la persona. Le llega con un aviso…",
+    "ph_note": "Qué se hizo con esto, para el equipo…",
+    "ph_author": "Responde al equipo…",
+    "attach": "Adjuntar",
+    "attach_close": "Listo",
+    "shortcut": "Ctrl+Enter para enviar",
+    "send": "Enviar",
+    "save_note": "Guardar nota",
+    "sent": "Respuesta enviada",
+    "saved_note": "Nota guardada",
+    "send_error": "No pudimos enviar tu mensaje. Inténtalo otra vez.",
+    "tpl_reviewing": "Gracias por avisarnos. Ya lo estamos revisando y te contamos apenas tengamos novedades.",
+    "tpl_fixed": "Ya quedó corregido. Cierra sesión, vuelve a entrar y cuéntanos si te sigue pasando.",
+    "tpl_more_info": "¿Nos ayudas con una captura de la pantalla y el paso exacto donde se queda? Así lo reproducimos igual que tú."
   }
 }

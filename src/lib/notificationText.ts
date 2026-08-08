@@ -42,6 +42,21 @@ export function notificationText(n: AppNotification): { title: string; body: str
     }
   }
 
+  // Alguien escribió en el hilo de una opinión: al equipo si respondió quien
+  // opinó, y a quien opinó si respondió el equipo. El mismo aviso sirve para los
+  // dos lados; `for_staff` dice de cuál se trata.
+  if (n.kind === 'site_feedback_reply') {
+    const who = p.from_name?.trim() || t('notifications.site_feedback.someone')
+    return {
+      title: p.for_staff
+        ? t('notifications.feedback_reply.title_staff', { name: who })
+        : t('notifications.feedback_reply.title_learner'),
+      body: p.message
+        ? `“${p.message}”`
+        : t('notifications.feedback_reply.body'),
+    }
+  }
+
   // Aviso de retroalimentación del capacitador (no es un reset).
   if (n.kind === 'feedback') {
     return {

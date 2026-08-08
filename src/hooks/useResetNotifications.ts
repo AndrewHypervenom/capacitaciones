@@ -14,9 +14,11 @@ import { toast } from '@/stores/toastStore'
  *  - Restablecimientos del superadmin → limpia la caché local (progressStore)
  *    para que la UI deje de mostrar 100%, y avisa con un emergente.
  *  - Retroalimentación del capacitador → aviso emergente.
- *  - "Alguien escribió al chat de ayuda" (solo superadmin) y "llegó una opinión
- *    del sitio" (superadmin + capacitadores de la campaña) → suenan y los
- *    recoge `StaffPings`, que pinta la tarjeta con quién escribió y qué dijo.
+ *  - "Alguien escribió al chat de ayuda" (solo superadmin), "llegó una opinión
+ *    del sitio" y "respondieron en una opinión" (superadmin + capacitadores de
+ *    la campaña) → suenan y los recoge `StaffPings`, que pinta la tarjeta con
+ *    quién escribió y qué dijo.
+ *  - "El equipo respondió tu opinión" (a quien opinó) → suena y sale de emergente.
  *
  * Se monta UNA sola vez, a nivel de toda la app (`NotificationsSync` en
  * App.tsx). Antes vivía en AppShell, que no envuelve /admin/* — el superadmin,
@@ -88,19 +90,28 @@ export function useResetNotifications() {
       const stamp = `${n.id}:${n.payload?.count ?? 1}`
       const isHelp = n.kind === 'help_chat'
       const isSiteFeedback = n.kind === 'site_feedback'
-      // Cada tipo se puede silenciar por separado desde el engranaje de la campana.
-      const alertsOn = isHelp ? helpAlerts : isSiteFeedback ? feedbackAlerts : true
+      // La respuesta en el hilo de una opinión llega a los dos lados: al equipo
+      // (que la ve como tarjeta) y a quien opinó (que la ve como emergente).
+      // Suena en ambos: que te contesten es justo lo que estabas esperando.
+      const isReply = n.kind === 'site_feedback_reply'
+      const forStaff = isReply && n.payload?.for_staff === true
+      // Cada tipo se puede silenciar por separado desde el engranaje de la
+      // campana. El aviso de respuesta al aprendiz no se silencia: es suyo, no
+      // es una bandeja de trabajo.
+      const alertsOn = isHelp ? helpAlerts : (isSiteFeedback || forStaff) ? feedbackAlerts : true
 
       if (!chimed.current.has(stamp)) {
         chimed.current.add(stamp)
-        if (alertsOn) playNotificationSound(isHelp || isSiteFeedback ? 'ping' : 'info')
+        if (alertsOn) {
+          playNotificationSound(isHelp || isSiteFeedback || isReply ? 'ping' : 'info')
+        }
       }
 
-      // Los del chat de ayuda y las opiniones los pinta StaffPings (tarjeta con
-      // lo que escribieron) y él mismo los saca de la cola; los resets ya
-      // avisaron por justApplied.
-      if (isHelp || isSiteFeedback) continue
-      if (n.kind === 'feedback') {
+      // Los del chat de ayuda, las opiniones y las respuestas AL EQUIPO los
+      // pinta StaffPings (tarjeta con lo que escribieron) y él mismo los saca de
+      // la cola; los resets ya avisaron por justApplied.
+      if (isHelp || isSiteFeedback || forStaff) continue
+      if (n.kind === 'feedback' || isReply) {
         const { title, body } = notificationText(n)
         toast.info(title, body)
       }

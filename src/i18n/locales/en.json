@@ -233,7 +233,9 @@
       "sent_one": "left feedback about the site",
       "sent_many_one": "left {{count}} piece of feedback about the site",
       "sent_many_other": "left {{count}} pieces of feedback about the site",
-      "open": "Open the feedback"
+      "open": "Open the feedback",
+      "replied": "replied on their feedback",
+      "open_thread": "Open the conversation"
     },
     "prefs": {
       "title": "Alert preferences",
@@ -250,6 +252,11 @@
       "muted_left_other": "Muted for {{count}} more min",
       "not_muted": "Not muted",
       "unmute": "Unmute"
+    },
+    "feedback_reply": {
+      "title_staff": "{{name}} replied on their feedback",
+      "title_learner": "The team replied to your feedback",
+      "body": "There is a new message in the conversation."
     }
   },
   "dashboard": {
@@ -3920,7 +3927,17 @@
       "page_unknown": "Screen not identified",
       "d_path": "Path",
       "d_lang": "Language",
-      "d_id": "ID"
+      "d_id": "ID",
+      "subtitle2": "What people report, suggest and celebrate about the platform — and every conversation that follows.",
+      "kpi_awaiting": "Awaiting reply",
+      "only_awaiting": "Awaiting reply",
+      "awaiting": "Awaiting reply",
+      "thread_count": "{{n}} message(s) in the conversation",
+      "sec_thread": "Conversation",
+      "status_hint": "Every change is written into the conversation, with your name and the time.",
+      "pick_title": "Pick a piece of feedback",
+      "pick_desc": "You will see the whole record here: what they said, what they answered and the full conversation.",
+      "delete_desc2": "It is deleted forever, along with its whole conversation and internal notes. If you only want it out of the inbox, mark it as Archived."
     },
     "savedock": {
       "save": "Save changes",
@@ -4629,7 +4646,13 @@
     "contact_requested": "You asked to be contacted",
     "shots_add": "Add a screenshot",
     "shots_manage": "Add or remove screenshots ({{n}}/{{max}})",
-    "shots_done": "Done"
+    "shots_done": "Done",
+    "subtitle2": "What you have suggested or reported, and what the team replied.",
+    "kpi_replied": "Replied to you",
+    "thread_new": "The team replied to you",
+    "thread_open": "Conversation ({{n}})",
+    "thread_empty": "Write to the team",
+    "thread_unread": "{{n}} unread"
   },
   "site_feedback": {
     "close": "Close",
@@ -4819,7 +4842,8 @@
       "3": "Okay",
       "4": "Easy",
       "5": "Very easy"
-    }
+    },
+    "contact_pref_teams": "Teams"
   },
   "passkey": {
     "divider": "or",
@@ -4888,5 +4912,34 @@
     "show_list": "Show list",
     "previous": "Previous",
     "next": "Next"
+  },
+  "feedback_thread": {
+    "you": "You",
+    "team": "Team",
+    "someone": "Someone from the team",
+    "by": "by",
+    "seen": "seen",
+    "origin": "sent this feedback",
+    "internal": "Internal note · only the team sees it",
+    "legacy_note": "original note",
+    "empty_staff": "No one has replied yet. What you write here reaches the person with a notification.",
+    "empty_author": "The team has not replied yet. When they do, you will see it here and we will let you know.",
+    "load_error": "We could not load the conversation. Open it again in a moment.",
+    "mode_reply": "Reply to the person",
+    "mode_note": "Internal note",
+    "ph_reply": "Write to the person. It reaches them with a notification…",
+    "ph_note": "What was done about this, for the team…",
+    "ph_author": "Reply to the team…",
+    "attach": "Attach",
+    "attach_close": "Done",
+    "shortcut": "Ctrl+Enter to send",
+    "send": "Send",
+    "save_note": "Save note",
+    "sent": "Reply sent",
+    "saved_note": "Note saved",
+    "send_error": "We could not send your message. Please try again.",
+    "tpl_reviewing": "Thanks for letting us know. We are looking into it and will get back to you as soon as we have news.",
+    "tpl_fixed": "This is fixed now. Sign out, sign back in and tell us if it still happens.",
+    "tpl_more_info": "Could you send a screenshot and the exact step where it gets stuck? That way we can reproduce it just like you."
   }
 }

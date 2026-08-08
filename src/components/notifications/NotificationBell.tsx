@@ -298,11 +298,14 @@ export function NotificationBell({ className }: { className?: string }) {
                           const isFeedback = n.kind === 'feedback'
                           const isHelp = n.kind === 'help_chat'
                           const isSiteFeedback = n.kind === 'site_feedback'
+                          // Respuesta en el hilo de una opinión: la reciben los
+                          // dos lados, y cada uno va a su propia pantalla.
+                          const isReply = n.kind === 'site_feedback_reply'
                           const Icon = isHelp
                             ? LifeBuoy
                             : isSiteFeedback
                               ? Megaphone
-                              : isFeedback
+                              : isFeedback || isReply
                                 ? MessageSquare
                                 : RotateCcw
                           return (
@@ -326,14 +329,22 @@ export function NotificationBell({ className }: { className?: string }) {
                                   // retroalimentación a la del aprendiz, el del
                                   // chat de ayuda a su historial y la opinión a
                                   // la bandeja donde se atiende.
-                                  if (isFeedback || isHelp || isSiteFeedback) {
+                                  if (isFeedback || isHelp || isSiteFeedback || isReply) {
                                     setOpen(false)
+                                    const fid = n.payload?.feedback_id
                                     navigate(
                                       isHelp
                                         ? '/admin/chat'
-                                        : isSiteFeedback
-                                          ? '/admin/site-feedback'
-                                          : '/feedback',
+                                        : isReply
+                                          // La respuesta abre la ficha exacta:
+                                          // el equipo en su bandeja, quien opinó
+                                          // en sus sugerencias.
+                                          ? (n.payload?.for_staff
+                                            ? `/admin/site-feedback${fid ? `?id=${fid}` : ''}`
+                                            : '/suggestions')
+                                          : isSiteFeedback
+                                            ? `/admin/site-feedback${fid ? `?id=${fid}` : ''}`
+                                            : '/feedback',
                                     )
                                   }
                                 }}
@@ -356,9 +367,11 @@ export function NotificationBell({ className }: { className?: string }) {
                                       ? 'bg-neon-green/12 text-neon-green'
                                       : isSiteFeedback
                                         ? 'bg-neon-violet/12 text-neon-violet'
-                                        : isFeedback
-                                          ? 'bg-violet-500/12 text-violet-500'
-                                          : 'bg-amber-500/12 text-amber-500',
+                                        : isReply
+                                          ? 'bg-sky-500/12 text-sky-400'
+                                          : isFeedback
+                                            ? 'bg-violet-500/12 text-violet-500'
+                                            : 'bg-amber-500/12 text-amber-500',
                                   )}
                                 >
                                   <Icon className="h-4 w-4" />

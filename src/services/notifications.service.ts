@@ -67,6 +67,14 @@ export interface SiteFeedbackNotificationPayload {
   /** Lo que escribió, recortado a 400 caracteres por el RPC. */
   message?: string
   page_label?: string | null
+  /** Id del mensaje del hilo (solo en kind = 'site_feedback_reply'). */
+  event_id?: string
+  /**
+   * El aviso de respuesta va a los dos lados con la misma forma: true cuando lo
+   * recibe el equipo (respondió quien opinó) y false cuando lo recibe quien
+   * opinó. Es lo que decide a dónde lleva el clic.
+   */
+  for_staff?: boolean
 }
 
 /** Todo lo que puede venir en `payload`, según el `kind` de la notificación. */
