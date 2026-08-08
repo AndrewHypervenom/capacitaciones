@@ -284,9 +284,13 @@ export default function SiteFeedback() {
   ]
 
   return (
-    <div className="p-4 sm:p-8">
-      <div className="mb-6">
-        <h1 className="mb-1 text-[20px] font-bold text-text sm:text-[24px]">
+    // Altura completa en escritorio: el contenedor del panel ya scrollea, así que
+    // aquí NO se scrollea la página entera — scrollean la lista y la ficha, cada
+    // una por su lado. Es lo que le devuelve al chat la altura que le faltaba (y
+    // lo que quita la segunda barra de scroll).
+    <div className="flex flex-col gap-3.5 p-4 sm:p-6 lg:h-full lg:min-h-0">
+      <div>
+        <h1 className="text-[20px] font-bold text-text sm:text-[23px]">
           {t('admin.site_feedback.title', 'Opiniones del sitio')}
         </h1>
         <p className="text-[13px] text-text-muted">
@@ -294,8 +298,9 @@ export default function SiteFeedback() {
         </p>
       </div>
 
-      {/* ── KPIs ── */}
-      <FadeIn as="section" className="mb-4 grid grid-cols-2 gap-3 sm:mb-5 sm:gap-4 lg:grid-cols-5" y={12}>
+      {/* ── KPIs: tira compacta, no cinco tarjetas grandes. Cada píxel que se
+             lleva la cabecera se lo quita a la conversación, que es el trabajo. ── */}
+      <FadeIn as="section" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5" y={12}>
         <Kpi label={t('admin.site_feedback.kpi_total', 'Opiniones')} value={String(stats.total)} />
         <Kpi label={t('admin.site_feedback.kpi_open', 'Sin resolver')} value={String(stats.open)} color="#f59e0b" />
         <Kpi
@@ -318,7 +323,7 @@ export default function SiteFeedback() {
       </FadeIn>
 
       {/* ── Toolbar ── */}
-      <div className="mb-4 space-y-3">
+      <div className="space-y-2.5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <form
             className="relative w-full sm:max-w-xs"
@@ -394,7 +399,7 @@ export default function SiteFeedback() {
         </AnimatePresence>
       </div>
 
-      {/* ── Lista + ficha ── */}
+      {/* ── Lista + ficha: se comen TODA la altura que sobra ── */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-text-subtle" />
@@ -410,9 +415,12 @@ export default function SiteFeedback() {
           </div>
         </div>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(19rem,24rem)_1fr]">
+        // `min-h-0` en toda la cadena: sin él, un hijo con scroll dentro de un
+        // flex/grid crece con su contenido en vez de scrollear (la razón de que
+        // antes hiciera falta un max-h a ojo).
+        <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[21rem_1fr] xl:grid-cols-[23rem_1fr]">
           {/* Lista */}
-          <div className="space-y-2 lg:max-h-[calc(100vh-19rem)] lg:overflow-y-auto lg:pr-1">
+          <div className="space-y-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1.5">
             {visible.map((r, i) => (
               <ListItem
                 key={r.id}
@@ -522,7 +530,7 @@ function ListItem({ row: r, index, summary, selected, isSuperAdmin, onSelect }: 
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-[12.5px] leading-snug text-text">
+          <p className="line-clamp-2 text-[13px] leading-snug text-text">
             {r.message || (
               <span className="italic text-text-muted">
                 {t('admin.site_feedback.no_message', 'Sin comentario escrito')}
@@ -624,9 +632,11 @@ function Detail({
       transition={{ duration: 0.35, ease: EASE }}
       className={cn(
         'overflow-y-auto bg-bg',
-        // Móvil: capa a pantalla completa. Escritorio: columna de la rejilla.
+        // Móvil: capa a pantalla completa. Escritorio: columna de la rejilla, a
+        // toda la altura disponible — la conversación es lo que se viene a hacer
+        // aquí, y merece la pantalla entera, no el hueco que sobre.
         'fixed inset-0 z-50 p-4',
-        'lg:static lg:z-auto lg:max-h-[calc(100vh-19rem)] lg:rounded-2xl lg:border lg:border-line lg:bg-surface lg:p-0',
+        'lg:static lg:z-auto lg:h-full lg:min-h-0 lg:rounded-2xl lg:border lg:border-line lg:bg-surface lg:p-0',
       )}
     >
       {/* Cabecera pegajosa: quién y qué, siempre a la vista mientras se lee */}
@@ -672,7 +682,7 @@ function Detail({
         </div>
       </div>
 
-      <div className="space-y-5 pb-24 lg:px-5 lg:pb-6 lg:pt-4">
+      <div className="space-y-4 pb-24 lg:px-6 lg:pb-6 lg:pt-3.5">
         {/* Contexto de una línea: desde dónde se escribió */}
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-text-muted">
           {r.role && r.role !== 'learner' && (
@@ -689,7 +699,7 @@ function Detail({
         {/* ── Lo que dijo ── */}
         <Section title={t('admin.site_feedback.sec_said', 'Lo que dijo')}>
           <p className={cn(
-            'whitespace-pre-wrap rounded-xl border border-line bg-subtle/40 px-3.5 py-3 text-[13.5px] leading-relaxed',
+            'whitespace-pre-wrap rounded-xl border border-line bg-subtle/40 px-4 py-3.5 text-[14.5px] leading-[1.65]',
             r.message ? 'text-text' : 'italic text-text-muted',
           )}>
             {r.message || t('admin.site_feedback.no_message', 'Sin comentario escrito')}
@@ -712,10 +722,11 @@ function Detail({
           {/* Fondo propio: los aros que separan avatares y hitos de la línea de
               tiempo son del color de la superficie, así que el hilo necesita
               estar sobre una — en móvil la ficha va sobre el fondo de la app. */}
-          <div className="rounded-2xl border border-line bg-surface p-3 sm:p-4">
+          <div className="rounded-2xl border border-line bg-surface p-3.5 sm:p-5">
             <FeedbackThread
               row={r}
               variant="staff"
+              boxed
               showOrigin
               reloadKey={threadKey}
               onPosted={(e) => onThreadPosted(r.id, e.author_id === user?.id, e.type === 'note')}
@@ -881,16 +892,17 @@ function Detail({
 
 /* ═══════════════════════ Piezas sueltas ═══════════════════════ */
 
+/** Dato y etiqueta en una línea: se lee igual de rápido y ocupa la mitad. */
 function Kpi({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-4 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover sm:p-5">
-      <span className="truncate text-[10px] uppercase tracking-wider text-text-muted sm:text-[11px]">{label}</span>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-2xl font-bold tabular-nums sm:text-3xl" style={color ? { color } : { color: 'var(--text)' }}>
+    <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3.5 py-2.5 transition-colors duration-300 hover:bg-subtle/40">
+      <span className="truncate text-[10.5px] uppercase tracking-wider text-text-muted">{label}</span>
+      <span className="flex shrink-0 items-baseline gap-1">
+        <span className="text-[19px] font-bold leading-none tabular-nums" style={color ? { color } : { color: 'var(--text)' }}>
           {value}
         </span>
-        {sub && <span className="text-[18px] leading-none">{sub}</span>}
-      </div>
+        {sub && <span className="text-[15px] leading-none">{sub}</span>}
+      </span>
     </div>
   )
 }

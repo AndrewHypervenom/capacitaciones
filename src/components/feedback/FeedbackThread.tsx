@@ -63,6 +63,13 @@ export interface FeedbackThreadProps {
   reloadKey?: number
   /** Se llama cuando el hilo se da por leído de verdad (visto en pantalla). */
   onRead?: () => void
+  /**
+   * Chat de verdad: los mensajes viven en su propia zona con scroll, abierta por
+   * lo último dicho, y la caja de escribir siempre debajo a la vista. Es lo que
+   * quiere el panel; en "Mis sugerencias" el hilo va dentro de una tarjeta en el
+   * flujo de la página y ahí sobra.
+   */
+  boxed?: boolean
   className?: string
 }
 
@@ -118,7 +125,8 @@ function useSeenWhenVisible(
  * que pasó; lo único que cambia es que el equipo puede dejar notas internas.
  */
 export function FeedbackThread({
-  row, variant, onPosted, showOrigin = true, reloadKey = 0, onRead, className,
+  row, variant, onPosted, showOrigin = true, reloadKey = 0, onRead, boxed = false,
+  className,
 }: FeedbackThreadProps) {
   const { t } = useTranslation()
   const { user, displayName, avatarUrl } = useAuth()
@@ -130,6 +138,9 @@ export function FeedbackThread({
   const [failed, setFailed] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLOListElement>(null)
+  /** El salto al final es de la apertura, no de cada mensaje que entra. */
+  const landed = useRef(false)
 
   useEffect(() => {
     let alive = true
@@ -178,17 +189,39 @@ export function FeedbackThread({
     setNewFromId((cur) => cur ?? (pending.length > 0 ? pending[0].id : null))
   }, [pending])
 
+  // Al abrir, el hilo arranca por lo ÚLTIMO que se dijo —o por donde empieza lo
+  // que no habías leído—, no por el principio de la historia. Es lo que
+  // diferencia un chat de un expediente.
+  useEffect(() => { landed.current = false }, [row.id])
+  useEffect(() => {
+    const box = listRef.current
+    if (!boxed || !box || landed.current || events.length === 0) return
+    landed.current = true
+    requestAnimationFrame(() => {
+      const mark = newFromId && box.querySelector(`[data-ev="${newFromId}"]`)
+      if (mark) mark.scrollIntoView({ block: 'start' })
+      else box.scrollTop = box.scrollHeight
+    })
+  }, [boxed, events, newFromId])
+
   const append = useCallback((ev: FeedbackEvent) => {
     setEvents((cur) => [...cur, ev])
     onPosted?.(ev)
     // Un instante después de que Motion coloque la burbuja nueva.
-    setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80)
+    setTimeout(() => {
+      const box = listRef.current
+      if (box && box.scrollHeight > box.clientHeight) {
+        box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' })
+      } else {
+        endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    }, 80)
   }, [onPosted])
 
   const meta = kindMeta(row.kind)
 
   return (
-    <div ref={rootRef} className={cn('space-y-3', className)}>
+    <div ref={rootRef} className={cn('space-y-4', className)}>
       {/* Al recargar (p. ej. tras cambiar el estado) NO se vuelve al esqueleto:
           lo ya leído se queda en pantalla y el hito nuevo entra animado. */}
       {loading && events.length === 0 ? (
@@ -198,7 +231,15 @@ export function FeedbackThread({
           {t('feedback_thread.load_error', 'No pudimos cargar la conversación. Vuelve a abrirla en un momento.')}
         </p>
       ) : (
-        <ol className="relative space-y-3">
+        <ol
+          ref={listRef}
+          className={cn(
+            'relative space-y-4',
+            // Zona de mensajes con scroll propio: la caja de escribir queda
+            // siempre debajo, a la vista, sin tener que bajar hasta el final.
+            boxed && 'max-h-[clamp(14rem,38vh,30rem)] overflow-y-auto pr-1.5',
+          )}
+        >
           {/* Riel de la línea de tiempo: cose todos los nodos en un solo hilo. */}
           <span
             aria-hidden
@@ -224,7 +265,7 @@ export function FeedbackThread({
             {/* Aplanado en vez de envuelto en Fragment: AnimatePresence solo ve
                 a sus hijos directos, y dentro de un Fragment perdería el rastro. */}
             {events.flatMap((e, i) => [
-              ...(e.id === newFromId ? [<NewFromHere key={`new-${e.id}`} />] : []),
+              ...(e.id === newFromId ? [<NewFromHere key={`new-${e.id}`} id={e.id} />] : []),
               <EventNode
                 key={e.id}
                 event={e}
@@ -355,7 +396,7 @@ function NoteNode({ body, authorName, at, shots, legacy }: {
             </span>
           )}
         </p>
-        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-text">{body}</p>
+        <p className="whitespace-pre-wrap text-[14px] leading-[1.6] text-text">{body}</p>
         {shots && shots.length > 0 && <ShotGallery shots={shots} className="mt-2.5" />}
         <p className="mt-1.5 text-[11px] text-text-subtle">
           {authorName ?? t('feedback_thread.someone', 'Alguien del equipo')}
@@ -381,9 +422,9 @@ function ReplyNode({ event, fromOwner, mine }: {
       <span className="relative z-10 mt-0.5 shrink-0 rounded-full ring-4 ring-surface">
         <Avatar src={event.author_avatar} name={event.author_name} size={32} />
       </span>
-      <div className={cn('min-w-0 max-w-[min(46rem,88%)]', teamSide && 'text-right')}>
+      <div className={cn('min-w-0 max-w-[min(48rem,90%)]', teamSide && 'text-right')}>
         <p className={cn(
-          'mb-1 flex items-center gap-1.5 text-[11px] text-text-subtle',
+          'mb-1 flex items-center gap-1.5 text-[11.5px] text-text-subtle',
           teamSide && 'justify-end',
         )}>
           <span className="font-semibold text-text-muted">
@@ -407,14 +448,14 @@ function ReplyNode({ event, fromOwner, mine }: {
         </p>
         <div
           className={cn(
-            'inline-block w-full rounded-2xl border px-3.5 py-2.5 text-left',
+            'inline-block w-full rounded-2xl border px-4 py-3 text-left',
             teamSide
               ? 'rounded-tr-sm border-[rgb(var(--brand-green))]/25 bg-[rgb(var(--brand-green))]/[0.07]'
               : 'rounded-tl-sm border-line bg-surface',
           )}
           style={teamSide ? { boxShadow: `0 1px 0 0 ${accent}0d` } : undefined}
         >
-          <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-text">{event.body}</p>
+          <p className="whitespace-pre-wrap text-[14.5px] leading-[1.65] text-text">{event.body}</p>
           {event.shots && event.shots.length > 0 && (
             <ShotGallery shots={event.shots} className={cn('mt-2.5', teamSide && 'justify-end')} />
           )}
@@ -425,14 +466,15 @@ function ReplyNode({ event, fromOwner, mine }: {
 }
 
 /** Dónde empieza lo que no habías leído. Una línea, no un cartel. */
-function NewFromHere() {
+function NewFromHere({ id }: { id: string }) {
   const { t } = useTranslation()
   return (
     <motion.li
       layout
+      data-ev={id}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="relative flex items-center gap-2 pl-[42px] pr-1 py-0.5"
+      className="relative flex scroll-mt-2 items-center gap-2 py-0.5 pl-[42px] pr-1"
     >
       <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-400">
         {t('feedback_thread.new_from_here', 'Nuevo')}
@@ -621,7 +663,7 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void send() }
           }}
-          rows={2}
+          rows={3}
           placeholder={
             internal
               ? t('feedback_thread.ph_note', 'Qué se hizo con esto, para el equipo…')
@@ -629,7 +671,7 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
                 ? t('feedback_thread.ph_reply', 'Escríbele a la persona. Le llega con un aviso…')
                 : t('feedback_thread.ph_author', 'Responde al equipo…')
           }
-          className="w-full resize-none border-0 bg-transparent py-1 text-[13.5px] leading-relaxed text-text outline-none placeholder:text-text-muted/60"
+          className="w-full resize-none border-0 bg-transparent py-1 text-[14.5px] leading-[1.6] text-text outline-none placeholder:text-text-muted/60"
         />
       </div>
 

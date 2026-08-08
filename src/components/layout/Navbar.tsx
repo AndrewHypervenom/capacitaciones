@@ -35,14 +35,20 @@ export function Navbar() {
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      'px-3 h-8 inline-flex items-center text-[13px] tracking-tight transition-colors',
+      'inline-flex h-8 items-center whitespace-nowrap px-2 text-[13px] tracking-tight transition-colors sm:px-3',
       isActive ? 'text-text font-medium' : 'text-text-muted hover:text-text',
     );
 
   return (
-    <header className="sticky top-0 z-40 nav-blur border-b border-line overflow-x-hidden">
-      <div className="mx-auto max-w-7xl px-3 sm:px-5 h-12 flex items-center justify-between">
-        <Link to="/dashboard" className="flex items-center gap-2 group">
+    // `overflow-x: clip` y no `hidden`: una caja con `hidden` SIGUE siendo
+    // scrolleable por dentro (el navegador la desplaza solo al enfocar algo que
+    // queda cortado), y eso es lo que hacía que la barra se moviera de lado a
+    // lado "sin que nadie tocara nada". `clip` recorta y punto: no hay scroll.
+    // Aun así, la regla de oro es que aquí nada sobre — de eso se encargan los
+    // `min-w-0` y los controles que se encogen abajo.
+    <header className="sticky top-0 z-40 nav-blur border-b border-line overflow-x-clip">
+      <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-3 sm:px-5">
+        <Link to="/dashboard" className="group flex shrink-0 items-center gap-2">
           <img
             src="/logo.jpg"
             alt={t('brand')}
@@ -50,7 +56,7 @@ export function Navbar() {
             width={24}
             height={24}
           />
-          <span className="hidden min-[480px]:inline font-semibold tracking-tight text-[14px]">{t('brand')}</span>
+          <span className="hidden text-[14px] font-semibold tracking-tight min-[560px]:inline">{t('brand')}</span>
         </Link>
 
         {/* El staff navega por el sidebar de gestión; aquí solo el aprendiz necesita
@@ -67,25 +73,35 @@ export function Navbar() {
           </nav>
         )}
 
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex min-w-0 items-center gap-0.5 sm:gap-1.5 lg:gap-2">
           {/* Compañía: quiénes más están estudiando ahora mismo. Solo para el
               aprendiz (el staff ya tiene su propia barra de presencia, con
               ubicación) y solo aparece si hay alguien más en línea. */}
-          {!isAdminOrCapacitador && <LearnerPresence />}
+          {/* En pantallas angostas la compañía cede el sitio a los controles:
+              es lo único de la barra que no sirve para hacer nada. */}
+          {!isAdminOrCapacitador && <LearnerPresence className="hidden sm:flex" />}
           {/* "Ver como": salto instantáneo a la vista de aprendiz y de vuelta. */}
           {isAdminOrCapacitador && <ViewSwitcher variant="inline" />}
+          {/* El nombre y el anillo de progreso son lo primero que sobra cuando
+              la ventana se estrecha: son contexto, no controles. */}
           <Link
             to="/profile"
-            className="hidden sm:flex items-center gap-2 h-8 pr-1 rounded-full transition-opacity hover:opacity-80"
+            className="hidden h-8 min-w-0 items-center gap-2 rounded-full pr-1 transition-opacity hover:opacity-80 sm:flex"
             title={t('profile.title', 'Mi perfil')}
           >
-            <ProgressRing value={progress} size={20} stroke={2} />
+            <span className="hidden lg:inline-flex">
+              <ProgressRing value={progress} size={20} stroke={2} />
+            </span>
             <Avatar src={avatarUrl} name={name} size={24} />
-            <span className="text-[12px] text-text-muted max-w-[100px] truncate">{name}</span>
+            <span className="hidden max-w-[100px] truncate text-[12px] text-text-muted md:inline">{name}</span>
           </Link>
           <NotificationBell />
           <LanguageSwitcher />
-          <ThemeToggle />
+          {/* El tema se cambia también desde el panel del aprendiz y desde el
+              perfil; en una ventana angosta, tres botones más no caben. */}
+          <span className="hidden min-[480px]:inline-flex">
+            <ThemeToggle />
+          </span>
           <button
             onClick={handleLogout}
             aria-label={t('nav.logout')}
