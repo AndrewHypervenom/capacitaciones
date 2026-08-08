@@ -241,15 +241,19 @@ export default function CoursePage() {
   const nextItem = items.find((i) => i.status === 'available');
   const completed = total > 0 && done === total;
 
-  // Desbloqueo del simulador (compartido por la sección Practicar y los botones de acceso directo)
+  // Desbloqueo del simulador (compartido por la sección Practicar y los botones
+  // de acceso directo). El `??` no es cosmético: en los cursos viejos la columna
+  // viene NULL y sin él ninguna rama se cumplía, así que el simulador quedaba
+  // bloqueado incluso con todos los módulos terminados.
+  const simRule = course.sim_unlock_rule ?? 'after_modules';
   const simUnlockModule = course.sim_unlock_module_id
     ? course.modules.find((m) => m.id === course.sim_unlock_module_id)
     : null;
   const simUnlocked =
-    course.sim_unlock_rule === 'from_start' ||
-    (course.sim_unlock_rule === 'after_modules' && completed) ||
-    (course.sim_unlock_rule === 'after_module' && !!simUnlockModule && isModuleDone(keyOfCourseModule(simUnlockModule))) ||
-    (course.sim_unlock_rule === 'after_module' && !simUnlockModule && completed);
+    simRule === 'from_start' ||
+    (simRule === 'after_modules' && completed) ||
+    (simRule === 'after_module' && !!simUnlockModule && isModuleDone(keyOfCourseModule(simUnlockModule))) ||
+    (simRule === 'after_module' && !simUnlockModule && completed);
 
   // Acceso directo a la simulación: si hay una sola y está desbloqueada, entra de una;
   // si hay varias o está bloqueada, el modal deja elegir / explica el motivo. Antes
@@ -298,7 +302,7 @@ export default function CoursePage() {
       : t('courses.world_locked');
 
   const simLockedReason =
-    course.sim_unlock_rule === 'after_module' && simUnlockModule
+    simRule === 'after_module' && simUnlockModule
       ? t('course_practice.locked_after_module', {
           title: pickText(
             simUnlockModule.title_es,
@@ -623,7 +627,7 @@ export default function CoursePage() {
 
       {/* ── Practicar: simulador de llamadas del curso ── */}
       {totalScenarios > 0 && (() => {
-        const rule = course.sim_unlock_rule;
+        const rule = simRule;
         const unlockModule = simUnlockModule;
 
         return (

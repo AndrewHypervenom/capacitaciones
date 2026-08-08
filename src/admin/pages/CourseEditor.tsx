@@ -31,7 +31,6 @@ import {
   Plus,
   Rocket,
   Flag,
-  Save,
   Scissors,
   Search,
   Share2,
@@ -106,6 +105,10 @@ import { useUnsavedWork } from '@/hooks/useUnsavedWork'
 import { useStaleGuard, type StaleGuard } from '@/hooks/useStaleGuard'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { StaleNotice } from '@/components/ui/StaleNotice'
+import { useUnsavedFlag } from '@/hooks/useUnsavedFlag'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
+import { SaveDock, DirtyDot } from '@/admin/components/SaveDock'
+import { fingerprint } from '@/lib/fingerprint'
 
 type Tab = 'info' | 'modules' | 'assign' | 'evaluation'
 
@@ -295,6 +298,15 @@ export default function CourseEditor() {
   // dependencia circular: reload fija la referencia sin conocer el guardia.
   const staleGuardRef = useRef<StaleGuard<CourseWithModules> | null>(null)
 
+  // Línea base de lo guardado, por parte del editor. La barra única de guardado
+  // necesita saber QUÉ cambió (ficha / evaluación), no solo que "algo" cambió:
+  // se compara contra la fila tal como vino de la BD, no contra el estado —
+  // así el editor nunca nace "sucio" por un setState que aún no se aplicó.
+  const [baseline, setBaseline] = useState<{ info: string; evaluation: string }>({
+    info: '',
+    evaluation: '',
+  })
+
   const reload = useCallback(async () => {
     if (!courseId) return
     const c = await getCourseById(courseId)
@@ -303,7 +315,7 @@ export default function CourseEditor() {
       return
     }
     setCourse(c)
-    setForm({
+    const nextForm = {
       title_es: c.title_es ?? '',
       title_en: c.title_en ?? '',
       title_pt: c.title_pt ?? '',
@@ -316,12 +328,21 @@ export default function CourseEditor() {
       visibility: c.visibility,
       is_shareable: c.is_shareable ?? false,
       cover_fit: c.cover_fit ?? 'cover',
-    })
-    setCond({ ...DEFAULT_CERT_CONDITIONS, ...(c.cert_conditions ?? {}) })
-    setSimRule(c.sim_unlock_rule ?? 'after_modules')
-    setSimUnlockModuleId(c.sim_unlock_module_id ?? null)
-    setWorldRule(c.world_unlock_rule ?? 'after_modules')
-    setWorldUnlockModuleId(c.world_unlock_module_id ?? null)
+    }
+    const nextEval = {
+      cond: { ...DEFAULT_CERT_CONDITIONS, ...(c.cert_conditions ?? {}) },
+      simRule: c.sim_unlock_rule ?? 'after_modules',
+      simUnlockModuleId: c.sim_unlock_module_id ?? null,
+      worldRule: c.world_unlock_rule ?? 'after_modules',
+      worldUnlockModuleId: c.world_unlock_module_id ?? null,
+    }
+    setForm(nextForm)
+    setCond(nextEval.cond)
+    setSimRule(nextEval.simRule)
+    setSimUnlockModuleId(nextEval.simUnlockModuleId)
+    setWorldRule(nextEval.worldRule)
+    setWorldUnlockModuleId(nextEval.worldUnlockModuleId)
+    setBaseline({ info: fingerprint(nextForm), evaluation: fingerprint(nextEval) })
     staleGuardRef.current?.mark(c)
   }, [courseId, navigate])
 
@@ -568,6 +589,42 @@ export default function CourseEditor() {
     return !campSame || !userSame
   }, [courseCampaigns, assignments, draftCampaigns, draftUsers])
 
+  // Deshacer/rehacer de TODO el editor: la ficha, las condiciones y también las
+  // asignaciones (destildar media campaña sin querer no tenía vuelta atrás).
+  const undoHistory = useUndoHistory({
+    state: { form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, draftCampaigns, draftUsers },
+    apply: (s) => {
+      setForm(s.form)
+      setCond(s.cond)
+      setSimRule(s.simRule)
+      setSimUnlockModuleId(s.simUnlockModuleId)
+      setWorldRule(s.worldRule)
+      setWorldUnlockModuleId(s.worldUnlockModuleId)
+      setDraftCampaigns(s.draftCampaigns)
+      setDraftUsers(s.draftUsers)
+    },
+    enabled: !loading,
+  })
+
+  // Las asignaciones se editan en borrador y no las cubre `useUnsavedWork` (que
+  // solo mira la ficha): sin esto, cerrar la pestaña con gente marcada y sin
+  // guardar se las llevaba sin decir nada.
+  useUnsavedFlag(assignDirty, t(TAB_LABEL_KEY.assign))
+
+  // ¿Qué parte del editor tiene cambios? Alimenta la barra única de guardado y
+  // el punto de las pestañas.
+  const infoDirty = useMemo(
+    () => !loading && fingerprint(form) !== baseline.info,
+    [form, loading, baseline.info],
+  )
+  const evalDirty = useMemo(
+    () =>
+      !loading &&
+      fingerprint({ cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId }) !==
+        baseline.evaluation,
+    [cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, loading, baseline.evaluation],
+  )
+
   // Escenarios de la campaña (para ligarlos al curso) + resultados de evaluación.
   // Estos hooks van ANTES de cualquier return temprano (Reglas de Hooks).
   // Los escenarios se cargan al montar (no solo en la pestaña Evaluación) para que
@@ -686,7 +743,13 @@ export default function CourseEditor() {
 
   // ─── Handlers ──────────────────────────────────────────────────
 
-  const handleSaveInfo = async () => {
+  /**
+   * Guarda la ficha. `silent` lo usa la barra única de guardado, que puede
+   * escribir varias partes de una vez y da UN solo acuse al final (tres toasts
+   * seguidos por una sola pulsación se leen como tres guardados distintos).
+   * Devuelve si de verdad quedó guardado.
+   */
+  const handleSaveInfo = async (opts?: { silent?: boolean }): Promise<boolean> => {
     // ¿Sigue siendo la ficha que se abrió? Si otra pestaña la guardó mientras
     // tanto, se pregunta en vez de pisarla.
     if (courseId && !(await staleGuard.isSafeToSave())) {
@@ -695,7 +758,7 @@ export default function CourseEditor() {
         description: t('common.stale.confirm_body'),
         confirmLabel: t('common.stale.confirm_overwrite'),
       })
-      if (!overwrite) return
+      if (!overwrite) return false
     }
 
     setSaving(true)
@@ -717,14 +780,16 @@ export default function CourseEditor() {
         is_shareable: form.is_shareable,
         cover_fit: form.cover_fit,
       })
-      toast.success(t('admin.courses.saved_ok'))
+      if (!opts?.silent) toast.success(t('admin.courses.saved_ok'))
       invalidateModulesCache()
       invalidateLearnerCoursesCache() // que la portada del aprendiz refleje el cambio (no quede en caché)
       await reload()
       unsaved.markSaved()
+      return true
     } catch (e) {
       console.error('[CourseEditor] handleSaveInfo', e)
       toast.error(t('admin.courses.error_save'), errMsg(e))
+      return false
     } finally {
       setSaving(false)
     }
@@ -1080,7 +1145,7 @@ export default function CourseEditor() {
     setDraftUsers((prev) => ({ ...prev, [userId]: isMandatory }))
   }
 
-  const saveAssignments = async () => {
+  const saveAssignments = async (opts?: { silent?: boolean }): Promise<boolean> => {
     setSavingAssign(true)
     try {
       // Campañas: diff borrador vs. BD
@@ -1115,16 +1180,18 @@ export default function CourseEditor() {
       setAssignments(aa)
       setDraftUsers(Object.fromEntries(aa.map((r) => [r.user_id, r.is_mandatory])))
       invalidateModulesCache()
-      toast.success(t('admin.courses.assign_saved_ok'))
+      if (!opts?.silent) toast.success(t('admin.courses.assign_saved_ok'))
+      return true
     } catch {
       toast.error(t('admin.courses.error_save'))
+      return false
     } finally {
       setSavingAssign(false)
     }
   }
 
-  const handleSaveConditions = async () => {
-    if (!course) return
+  const handleSaveConditions = async (opts?: { silent?: boolean }): Promise<boolean> => {
+    if (!course) return false
     setSavingEval(true)
     try {
       await updateCourse(course.id, {
@@ -1134,14 +1201,49 @@ export default function CourseEditor() {
         world_unlock_rule: worldRule,
         world_unlock_module_id: worldRule === 'after_module' ? worldUnlockModuleId : null,
       })
-      toast.success(t('admin.courses.saved_ok'))
+      if (!opts?.silent) toast.success(t('admin.courses.saved_ok'))
+      // La vista de aprendiz sirve los cursos desde una caché en memoria: sin
+      // esto, cambiar la regla de desbloqueo y pasar a "Ver como aprendiz" (que
+      // navega dentro de la misma pestaña) seguía leyendo la regla vieja y
+      // parecía que el ajuste no hacía nada.
+      invalidateLearnerCoursesCache()
       await reload()
+      return true
     } catch {
       toast.error(t('admin.courses.error_save'))
+      return false
     } finally {
       setSavingEval(false)
     }
   }
+
+  /**
+   * Guarda de una vez todo lo que esté pendiente, sin importar en qué pestaña
+   * se hizo el cambio.
+   *
+   * Antes había cinco botones "Guardar" repartidos por el editor (ficha,
+   * asignaciones, condiciones del certificado, mundo y simulador), cada uno
+   * guardando solo su trozo. Cambiar dos cosas en pestañas distintas y pulsar
+   * uno de ellos guardaba una y perdía la otra en silencio.
+   */
+  const saveAll = async () => {
+    // Orden deliberado: primero la ficha (es la que puede toparse con el aviso
+    // de "otra pestaña lo guardó" y cancelar todo el guardado).
+    if (infoDirty && !(await handleSaveInfo({ silent: true }))) return
+    if (evalDirty && !(await handleSaveConditions({ silent: true }))) return
+    if (assignDirty && !(await saveAssignments({ silent: true }))) return
+    toast.success(t('admin.courses.saved_ok'))
+  }
+
+  /** Lo que la barra de guardado tiene que ofrecer ahora mismo. */
+  const pendingSaves = [
+    infoDirty && { id: 'info', label: t(TAB_LABEL_KEY.info), onFocus: () => setTab('info') },
+    assignDirty && { id: 'assign', label: t(TAB_LABEL_KEY.assign), onFocus: () => setTab('assign') },
+    evalDirty && { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), onFocus: () => setTab('evaluation') },
+  ].filter(Boolean) as Array<{ id: string; label: string; onFocus: () => void }>
+
+  /** Pestañas con cambios pendientes, para el punto del rótulo. */
+  const dirtyTabs = new Set<Tab>(pendingSaves.map((p) => p.id as Tab))
 
   /**
    * Pide recertificación a TODO el curso. Es deliberadamente explícito y con
@@ -1640,21 +1742,29 @@ export default function CourseEditor() {
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Tabs. El subrayado es una sola pieza que se desliza entre pestañas
+          (layoutId): deja ver de dónde vienes, en vez de parpadear de sitio.
+          El punto ámbar marca dónde quedaron cambios sin guardar. */}
       <div className="flex gap-1 mb-6 border-b border-line">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors',
-              tab === id
-                ? 'border-primary text-primary'
-                : 'border-transparent text-text-muted hover:text-text',
+              'relative flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium -mb-px transition-colors',
+              tab === id ? 'text-primary' : 'text-text-muted hover:text-text',
             )}
           >
             <Icon className="h-3.5 w-3.5" />
             {label}
+            {dirtyTabs.has(id) && <DirtyDot />}
+            {tab === id && (
+              <motion.span
+                layoutId="course-tab-underline"
+                className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
+                transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+              />
+            )}
           </button>
         ))}
       </div>
@@ -1954,11 +2064,6 @@ export default function CourseEditor() {
               )}
             </div>
 
-            <div className="flex justify-end pt-1">
-              <Button variant="neon" size="sm" onClick={handleSaveInfo} disabled={saving}>
-                {saving ? t('admin.courses.saving') : t('admin.courses.save')}
-              </Button>
-            </div>
           </GlassCard>
 
           {/* Mover el curso a otra campaña. Solo aparece si el usuario tiene más de
@@ -2604,22 +2709,7 @@ export default function CourseEditor() {
             </GlassCard>
           )}
 
-          {/* Barra de guardado */}
-          <div className="sticky bottom-0 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 border-t border-line bg-bg/80 backdrop-blur flex items-center justify-between gap-3">
-            <span className="text-[12px] text-text-muted">
-              {assignDirty ? t('admin.courses.unsaved_changes') : ' '}
-            </span>
-            <Button
-              variant="neon"
-              size="sm"
-              onClick={saveAssignments}
-              disabled={savingAssign || !assignDirty}
-              className="flex items-center gap-1.5 shrink-0"
-            >
-              <Save className="h-3.5 w-3.5" />
-              {savingAssign ? t('admin.courses.saving') : t('admin.courses.save_assignments')}
-            </Button>
-          </div>
+          {/* El guardado de las asignaciones vive en la barra única del pie. */}
         </div>
       )}
 
@@ -2731,12 +2821,6 @@ export default function CourseEditor() {
               </ul>
             </div>
 
-            <div className="flex justify-end mt-4">
-              <Button variant="neon" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
-                <Save className="h-3.5 w-3.5" />
-                {savingEval ? t('admin.courses.saving') : t('admin.courses.save')}
-              </Button>
-            </div>
           </div>
 
           {/* 2. Mundo del curso — juego aparte del simulador (son cosas distintas).
@@ -2834,12 +2918,6 @@ export default function CourseEditor() {
                 </div>
               </div>
 
-              <div className="flex justify-end mt-4">
-                <Button variant="neon" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
-                  <Save className="h-3.5 w-3.5" />
-                  {savingEval ? t('admin.courses.saving') : t('admin.courses.save')}
-                </Button>
-              </div>
             </div>
           )}
 
@@ -2904,11 +2982,6 @@ export default function CourseEditor() {
                       ]}
                     />
                   )}
-                  <div className="flex justify-end mt-3">
-                    <Button variant="glass" size="sm" onClick={handleSaveConditions} disabled={savingEval}>
-                      <Save className="h-3.5 w-3.5" /> {t('admin.courses.save')}
-                    </Button>
-                  </div>
                 </div>
 
                 {/* Escenarios ligados al curso */}
@@ -3209,6 +3282,17 @@ export default function CourseEditor() {
           </div>
         </div>
       )}
+
+      {/* Único lugar donde se guarda este editor. */}
+      <SaveDock
+        pending={pendingSaves}
+        onSave={saveAll}
+        // Solo cuenta como "guardando" si había algo pendiente: guardar la ficha
+        // para abrir la vista previa no tiene por qué asomar la barra.
+        saving={pendingSaves.length > 0 && (saving || savingAssign || savingEval)}
+        onUndo={undoHistory.undo}
+        canUndo={undoHistory.canUndo}
+      />
     </div>
   )
 }

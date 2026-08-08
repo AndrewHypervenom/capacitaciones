@@ -9,6 +9,8 @@ import StarDisplay from '@/components/StarDisplay'
 import { useProgressStore } from '@/stores/progressStore'
 import { LevelTransition } from '@/components/worlds/LevelTransition'
 import { RichText } from '@/components/ui/RichText'
+import { useUserStore } from '@/stores/userStore'
+import { localizeRow, localizeRows } from '@/lib/lang'
 
 /* ── Types ── */
 interface World {
@@ -24,6 +26,9 @@ interface Level {
   region_id: string; world_id: string
   min_score_pct: number | null
 }
+
+/** Campos con traducción en `_en` / `_pt` (el español vive en la columna base). */
+const WORLD_TEXT_FIELDS = ['name', 'description']
 
 /* ── Theme configs ── */
 const THEMES: Record<string, {
@@ -256,6 +261,7 @@ export default function WorldMap() {
   const navigate = useNavigate()
   const location = useLocation()
   const { t } = useTranslation()
+  const language = useUserStore((s) => s.language)
   const { user, profile } = useAuth() as {
     user: { id: string } | null
     profile: { campaign_id?: string | null; role?: string } | null
@@ -366,7 +372,9 @@ export default function WorldMap() {
   }, [user, profile])
 
   const loadWorld = useCallback(async (w: World) => {
-    setWorld(w); setUnpublished(false)
+    // El texto de mundos/regiones/niveles se resuelve UNA vez al cargar: así el
+    // resto del componente sigue leyendo `world.name` sin saber de idiomas.
+    setWorld(localizeRow(w, WORLD_TEXT_FIELDS, language)); setUnpublished(false)
     // Slug del curso dueño (para el botón "Volver"). Si el mundo no está ligado a
     // un curso, queda null y "Volver" cae al fallback (historial / dashboard).
     if (w.course_id) {
@@ -376,9 +384,9 @@ export default function WorldMap() {
       setCourseSlug(null)
     }
     const { data: rData } = await supabase.from('world_regions').select('*').eq('world_id',w.id).order('order_index')
-    setRegions((rData ?? []) as Region[])
+    setRegions(localizeRows((rData ?? []) as Region[], WORLD_TEXT_FIELDS, language))
     const { data: lData } = await supabase.from('world_levels').select('*').eq('world_id',w.id).order('order_index')
-    setLevels((lData ?? []) as Level[])
+    setLevels(localizeRows((lData ?? []) as Level[], WORLD_TEXT_FIELDS, language))
     if (user) {
       const { data: pData } = await supabase.from('world_progress').select('level_id,xp_earned,score').eq('user_id',user.id).eq('world_id',w.id).eq('completed',true)
       const ids = new Set((pData ?? []).map((p: {level_id: string}) => p.level_id))
@@ -403,7 +411,7 @@ export default function WorldMap() {
         }
       }
     }
-  }, [user, locState])
+  }, [user, locState, language])
 
   const handleNodeClick = (level: Level, i: number) => {
     const done      = completedIds.has(level.id)

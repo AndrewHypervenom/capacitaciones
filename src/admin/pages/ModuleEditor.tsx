@@ -18,7 +18,6 @@ import {
   Menu,
   Monitor,
   Plus,
-  Save,
   Sparkle,
   Square,
   Star,
@@ -88,6 +87,9 @@ import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
+import { SaveDock } from '@/admin/components/SaveDock'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
+import { fingerprint } from '@/lib/fingerprint'
 import type { GameClassifyBlock } from '@/types/blocks' // Importamos el tipo del bloque nuevo
 import type { BlockWithId, ContentBlock, GameSortBlock } from '@/types/blocks'
 import { toast } from '@/stores/toastStore'
@@ -284,6 +286,8 @@ interface SectionEditorPanelProps {
   onSaved: (updated: DbSectionRow) => void
   onDirty: (dirty: boolean) => void
   onRegisterSave: (fn: (() => void | Promise<void>) | null) => void
+  /** Publica el historial de deshacer al editor padre (la barra lo pinta). */
+  onRegisterUndo: (fn: (() => void) | null, canUndo: boolean) => void
 }
 
 function GameSortEditorWrapper({
@@ -351,6 +355,7 @@ function SectionEditorPanel({
   onSaved,
   onDirty,
   onRegisterSave,
+  onRegisterUndo,
 }: SectionEditorPanelProps) {
   const { t } = useTranslation()
   const sectionStyles = useMemo(() => [
@@ -537,24 +542,79 @@ function SectionEditorPanel({
     toast.success(t('admin.modules.ed_legacy_done'))
   }
 
-  const isFirstRender = useRef(true)
+  // Igual que en el panel de metadatos: se compara con lo cargado en vez de
+  // fiarse de un "ya pasó el primer render". Ese ref sobrevivía al remontado que
+  // hace StrictMode, así que abrir una sección la marcaba sucia sola — y aquí
+  // eso además lanzaba un autoguardado que nadie pidió.
+  const sectionBaseline = useRef<string | null>(null)
   useEffect(() => {
-    if (!isFirstRender.current) {
-      onDirty(true)
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
-      setAutoSaveStatus('idle')
-      autoSaveTimerRef.current = setTimeout(() => {
-        if (handleSaveRef2.current) {
-          setAutoSaveStatus('saving')
-          void handleSaveRef2.current().then(() => {
-            setAutoSaveStatus('ok')
-            setTimeout(() => setAutoSaveStatus('idle'), 2000)
-          })
-        }
-      }, 1500)
+    const fp = fingerprint({
+      heading, body, sectionStyle, hasCallout, calloutKind, callout,
+      hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks,
+    })
+    if (sectionBaseline.current === null) {
+      sectionBaseline.current = fp
+      return
     }
-    isFirstRender.current = false
-  }, [heading, body, sectionStyle, hasCallout, calloutKind, callout, hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks])
+    if (fp === sectionBaseline.current) {
+      // Se deshizo hasta el punto de partida: no hay nada que guardar.
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+      onDirty(false)
+      return
+    }
+    onDirty(true)
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    setAutoSaveStatus('idle')
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (handleSaveRef2.current) {
+        setAutoSaveStatus('saving')
+        void handleSaveRef2.current().then(() => {
+          setAutoSaveStatus('ok')
+          setTimeout(() => setAutoSaveStatus('idle'), 2000)
+        })
+      }
+    }, 1500)
+  }, [heading, body, sectionStyle, hasCallout, calloutKind, callout, hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks, onDirty])
+
+  // Deshacer/rehacer de la sección. Cubre el contenido entero (bloques, medios,
+  // quiz, marcadores de video): borrar un bloque por error ya no obliga a
+  // rehacerlo a mano. Al aplicar una foto se dispara el autoguardado, así que
+  // lo deshecho también queda guardado.
+  const undoHistory = useUndoHistory({
+    state: {
+      heading, body, sectionStyle, hasCallout, calloutKind, callout,
+      hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow,
+      blocks, videoMarkers, hasQuiz, question, options, correctIndex, explanation,
+    },
+    apply: (s) => {
+      setHeading(s.heading)
+      setBody(s.body)
+      setSectionStyle(s.sectionStyle)
+      setHasCallout(s.hasCallout)
+      setCalloutKind(s.calloutKind)
+      setCallout(s.callout)
+      setHasMedia(s.hasMedia)
+      setMediaType(s.mediaType)
+      setMediaUrl(s.mediaUrl)
+      setMediaCaption(s.mediaCaption)
+      setMediaSize(s.mediaSize)
+      setMediaAlign(s.mediaAlign)
+      setMediaShadow(s.mediaShadow)
+      setBlocks(s.blocks)
+      setVideoMarkers(s.videoMarkers)
+      setHasQuiz(s.hasQuiz)
+      setQuestion(s.question)
+      setOptions(s.options)
+      setCorrectIndex(s.correctIndex)
+      setExplanation(s.explanation)
+    },
+  })
+
+  useEffect(() => {
+    onRegisterUndo(() => undoHistory.undo(), undoHistory.canUndo)
+    return () => onRegisterUndo(null, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoHistory.canUndo])
 
   const handleSave = async () => {
     setSaving(true)
@@ -653,6 +713,11 @@ function SectionEditorPanel({
           : []),
       }
       onSaved(updatedSection)
+      // Lo guardado es el nuevo punto de partida (ver el efecto de arriba).
+      sectionBaseline.current = fingerprint({
+        heading, body, sectionStyle, hasCallout, calloutKind, callout,
+        hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks,
+      })
       onDirty(false)
       setSaveOk(true)
       toast.success(t('admin.modules.toast_section_saved'))
@@ -673,16 +738,9 @@ function SectionEditorPanel({
     return () => onRegisterSave(null)
   }, [])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        void handleSaveRef.current()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [])
+  // Ctrl/Cmd+S ya no se escucha aquí: lo lleva la barra única de guardado
+  // (SaveDock), que guarda el panel abierto sea cual sea. Dos oyentes del
+  // mismo atajo guardaban dos veces.
 
   const langHasContent: Partial<Record<Lang, boolean>> = {
     es: !!(heading.es || body.es),
@@ -757,21 +815,8 @@ function SectionEditorPanel({
           </div>
         )}
 
-        <div className="flex items-center gap-3 pt-2">
-          {error && <p className="text-danger text-[12px] flex-1">{error}</p>}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-black bg-neon-green hover:bg-neon-green/90 disabled:opacity-50 transition-colors ml-auto"
-          >
-            {saving
-              ? <><span className="h-3.5 w-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />{t('admin.modules.ed_saving')}</>
-              : saveOk
-                ? <><span className="text-[13px]">✓</span> {t('admin.modules.saved_ok')}</>
-                : <>{t('admin.modules.save_section')}</>
-            }
-          </button>
-        </div>
+        {/* El guardado vive en la barra única del pie (SaveDock). */}
+        {error && <p className="text-danger text-[12px] pt-2">{error}</p>}
       </div>
     )
   }
@@ -786,12 +831,12 @@ function SectionEditorPanel({
           <span className="text-[15px] font-semibold text-text truncate max-w-[200px]">
             {heading.es || t('admin.modules.section_untitled')}
           </span>
-          {autoSaveStatus === 'saving' && (
+          {(autoSaveStatus === 'saving' || saving) && (
             <span className="flex items-center gap-1 text-[11px] text-text-subtle">
-              <Loader2 className="h-3 w-3 animate-spin" /> Guardando...
+              <Loader2 className="h-3 w-3 animate-spin" /> {t('admin.modules.ed_saving')}
             </span>
           )}
-          {(autoSaveStatus === 'ok' || saveOk) && autoSaveStatus !== 'saving' && (
+          {(autoSaveStatus === 'ok' || saveOk) && autoSaveStatus !== 'saving' && !saving && (
             <span className="text-[11px] text-neon-green">{t('admin.modules.saved_ok')}</span>
           )}
         </div>
@@ -1119,20 +1164,7 @@ function SectionEditorPanel({
         />
       </div>
 
-      {/* ── Pie de guardado ── */}
-      <div className="pt-5 border-t border-glass-border/8 flex items-center gap-3">
-        {error && <p className="text-[12px] text-danger flex-1">{error}</p>}
-        <Button
-          variant="neon"
-          size="sm"
-          onClick={handleSave}
-          disabled={saving}
-          className="ml-auto"
-        >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          {t('admin.modules.save_section')}
-        </Button>
-      </div>
+      {error && <p className="pt-5 text-[12px] text-danger">{error}</p>}
     </div>
   )
 }
@@ -1144,9 +1176,11 @@ interface MetaEditorPanelProps {
   onSaved: (updates: Partial<DbModuleWithSections>) => void
   onDirty: (dirty: boolean) => void
   onRegisterSave: (fn: (() => void | Promise<void>) | null) => void
+  /** Publica el historial de deshacer al editor padre (la barra lo pinta). */
+  onRegisterUndo: (fn: (() => void) | null, canUndo: boolean) => void
 }
 
-function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPanelProps) {
+function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo }: MetaEditorPanelProps) {
   const { t } = useTranslation()
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
@@ -1180,11 +1214,42 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
   const parseLines = (text: string) =>
     text.split('\n').map((l) => l.trim()).filter(Boolean)
 
-  const isFirstRender = useRef(true)
+  // "¿Cambió algo?" se responde comparando con lo que se cargó, no con un
+  // "primer render ya pasó". Ese truco daba un falso "1 cambio sin guardar" nada
+  // más abrir: con StrictMode el efecto corre dos veces al montar y el ref
+  // sobrevive al remontado simulado, así que la segunda pasada marcaba sucio sin
+  // que nadie tocara nada. De paso, deshacer hasta el punto de partida vuelve a
+  // dejarlo limpio, y `objectives`/`keyTakeaways` —que faltaban en la lista de
+  // dependencias y por tanto no marcaban nada— ahora también cuentan.
+  const metaBaseline = useRef<string | null>(null)
   useEffect(() => {
-    if (!isFirstRender.current) onDirty(true)
-    isFirstRender.current = false
-  }, [title, subtitle, icon, duration, soundTheme])
+    const fp = fingerprint({ title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme })
+    if (metaBaseline.current === null) {
+      metaBaseline.current = fp
+      return
+    }
+    onDirty(fp !== metaBaseline.current)
+  }, [title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme, onDirty])
+
+  // Mismo deshacer para los datos del módulo.
+  const undoHistory = useUndoHistory({
+    state: { title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme },
+    apply: (s) => {
+      setTitle(s.title)
+      setSubtitle(s.subtitle)
+      setObjectives(s.objectives)
+      setKeyTakeaways(s.keyTakeaways)
+      setIcon(s.icon)
+      setDuration(s.duration)
+      setSoundTheme(s.soundTheme)
+    },
+  })
+
+  useEffect(() => {
+    onRegisterUndo(() => undoHistory.undo(), undoHistory.canUndo)
+    return () => onRegisterUndo(null, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoHistory.canUndo])
 
   const handleSave = async () => {
     setSaving(true)
@@ -1210,6 +1275,10 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
       }
       await updateModuleMetadata(mod.id, updates)
       onSaved(updates)
+      // Lo guardado pasa a ser el nuevo punto de partida: si no, el primer
+      // toque posterior volvería a compararse contra lo que se cargó y saldría
+      // "sin guardar" algo que ya está en la base.
+      metaBaseline.current = fingerprint({ title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme })
       onDirty(false)
       setSaveOk(true)
       toast.success('Metadatos guardados')
@@ -1229,22 +1298,26 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
     return () => onRegisterSave(null)
   }, [])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        void handleSaveRef.current()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [])
+  // Ctrl/Cmd+S ya no se escucha aquí: lo lleva la barra única de guardado
+  // (SaveDock), que guarda el panel abierto sea cual sea. Dos oyentes del
+  // mismo atajo guardaban dos veces.
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <NeonBadge color="violet" className="mb-1">{t('admin.modules.ed_module_badge')}</NeonBadge>
+          <div className="flex items-center gap-2">
+            <NeonBadge color="violet" className="mb-1">{t('admin.modules.ed_module_badge')}</NeonBadge>
+            {/* Acuse junto al título, donde ya está la mirada. */}
+            {saving && (
+              <span className="flex items-center gap-1 text-[11px] text-text-subtle">
+                <Loader2 className="h-3 w-3 animate-spin" /> {t('admin.modules.ed_saving')}
+              </span>
+            )}
+            {saveOk && !saving && (
+              <span className="text-[11px] text-neon-green">{t('admin.modules.saved_ok')}</span>
+            )}
+          </div>
           <p className="text-[13px] text-text-muted mt-1">{t('admin.modules.meta_subtitle')}</p>
         </div>
         <LangTabs active={lang} onChange={setLang} />
@@ -1349,20 +1422,7 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave }: MetaEditorPa
         </div>
       </div>
 
-      <div className="mt-6 pt-5 border-t border-glass-border/8 flex items-center gap-3">
-        {error && <p className="text-[12px] text-danger flex-1">{error}</p>}
-        {saveOk && <p className="text-[12px] text-neon-green flex-1">{t('admin.modules.saved_ok')}</p>}
-        <Button
-          variant="neon"
-          size="sm"
-          onClick={handleSave}
-          disabled={saving}
-          className="ml-auto"
-        >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          {t('admin.modules.save_meta')}
-        </Button>
-      </div>
+      {error && <p className="mt-6 text-[12px] text-danger">{error}</p>}
     </div>
   )
 }
@@ -1392,6 +1452,15 @@ export default function ModuleEditor() {
   const [openingPreview, setOpeningPreview] = useState(false)
 
   const saveFnRef = useRef<(() => void | Promise<void>) | null>(null)
+  // Deshacer del panel abierto. La barra de guardado lo pinta; el atajo Ctrl+Z
+  // lo lleva el propio panel (useUndoHistory). Se guarda el booleano aparte
+  // porque el objeto del hook cambia de identidad en cada render.
+  const undoFnRef = useRef<(() => void) | null>(null)
+  const [canUndo, setCanUndo] = useState(false)
+  const registerUndo = useCallback((fn: (() => void) | null, can: boolean) => {
+    undoFnRef.current = fn
+    setCanUndo(can)
+  }, [])
 
   // ¿El módulo sigue solo en español? Se deduce comparando es/en/pt: no hay
   // columna nueva en la base para esto.
@@ -1865,14 +1934,8 @@ export default function ModuleEditor() {
                 <><Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">{t('admin.modules.publish')}</span></>
               )}
             </Button>
-            <Button
-              variant="neon"
-              size="sm"
-              onClick={() => saveFnRef.current?.()}
-            >
-              <Save className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t('admin.modules.ed_save')}</span>
-            </Button>
+            {/* Guardar ya no vive aquí: hay una sola barra de guardado al pie
+                (SaveDock) que aparece únicamente cuando hay algo pendiente. */}
           </div>
         </div>
 
@@ -1887,13 +1950,14 @@ export default function ModuleEditor() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className={cn('flex-1 overflow-y-auto', isDirty && 'pb-28')}>
           {selectedSectionId === null ? (
             <MetaEditorPanel
               mod={mod}
               onSaved={handleMetaSaved}
               onDirty={setIsDirty}
               onRegisterSave={(fn) => { saveFnRef.current = fn }}
+              onRegisterUndo={registerUndo}
             />
           ) : (
             sections.find((s) => s.id === selectedSectionId) ? (
@@ -1905,11 +1969,33 @@ export default function ModuleEditor() {
                 onSaved={handleSectionSaved}
                 onDirty={setIsDirty}
                 onRegisterSave={(fn) => { saveFnRef.current = fn }}
+                onRegisterUndo={registerUndo}
               />
             ) : null
           )}
         </div>
       </div>
+
+      {/* Único lugar donde se guarda el módulo: guarda el panel abierto (la
+          sección o los datos del módulo), que es lo que tiene los cambios. */}
+      <SaveDock
+        pending={
+          isDirty
+            ? [{
+                id: 'panel',
+                label: selectedSectionId
+                  ? (sections.find((s) => s.id === selectedSectionId)?.heading_es
+                      || t('admin.modules.section_untitled'))
+                  : t('admin.modules.ed_module_badge'),
+              }]
+            : []
+        }
+        onSave={() => saveFnRef.current?.()}
+        autoSave={selectedSectionId !== null}
+        onUndo={() => undoFnRef.current?.()}
+        canUndo={canUndo}
+        spacer={false}
+      />
 
       {previewPath && (
         <LearnerPreviewModal

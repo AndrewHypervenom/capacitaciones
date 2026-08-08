@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { FadeIn } from '@/components/ui/motion'
 import { stripMarkdown } from '@/components/ui/RichText'
+import { useUserStore } from '@/stores/userStore'
+import { pickLang } from '@/lib/lang'
 
 interface Quiz {
   id: string
@@ -23,6 +25,7 @@ export default function ArenaHub() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { campaignId } = useAuth()
+  const language = useUserStore((st) => st.language)
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -37,10 +40,16 @@ export default function ArenaHub() {
 
     query.then(({ data, error }) => {
       if (error && error.code !== '42P01') console.error('arena_quizzes:', error)
-      setQuizzes((data ?? []).map(q => ({ ...q, status: q.status as 'draft' | 'published', steps: Array.isArray(q.steps) ? q.steps : [] })))
+      setQuizzes((data ?? []).map(q => ({
+        ...q,
+        status: q.status as 'draft' | 'published',
+        title: pickLang(q, 'title', language),
+        description: pickLang(q, 'description', language),
+        steps: Array.isArray(q.steps) ? q.steps : [],
+      })))
       setLoading(false)
     })
-  }, [campaignId])
+  }, [campaignId, language])
 
   return (
     <>

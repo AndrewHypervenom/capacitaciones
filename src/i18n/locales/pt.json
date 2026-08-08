@@ -3776,14 +3776,17 @@
       "status_done": "Traduzido",
       "status_pending": "Sem tradução",
       "no_modules": "Este curso ainda não tem módulos.",
+      "simulations": "Simuladores do curso",
+      "worlds": "Mundos do curso",
+      "scope_note": "Traduzir o curso traduz tudo de uma vez: a ficha, os módulos, os simuladores ligados a ele e os mundos com as regiões, os níveis e as arenas.",
       "only_pending": "Só o que falta",
       "everything": "Tudo de novo",
       "start_one": "Traduzir 1 item",
       "start_other": "Traduzir {{count}} itens",
       "nothing_pending": "Já está tudo traduzido",
       "done_title": "Tradução pronta!",
-      "done_course_one": "1 módulo foi traduzido para inglês e português.",
-      "done_course_other": "{{count}} módulos foram traduzidos para inglês e português.",
+      "done_course_one": "1 item do curso foi traduzido para inglês e português.",
+      "done_course_other": "{{count}} itens do curso foram traduzidos para inglês e português.",
       "done_module": "O módulo ficou em inglês e português.",
       "error": "Não foi possível traduzir",
       "quota_blocked": "Sua cota de operações com IA de hoje acabou. Peça ao superadmin para ampliá-la ou volte amanhã."
@@ -3918,6 +3921,17 @@
       "d_path": "Rota",
       "d_lang": "Idioma",
       "d_id": "ID"
+    },
+    "savedock": {
+      "save": "Salvar alterações",
+      "saving": "Salvando…",
+      "saved": "Tudo salvo",
+      "pending_one": "1 alteração não salva",
+      "pending_other": "{{n}} alterações não salvas",
+      "autosave": "· salva sozinho",
+      "shortcut": "Ctrl+S",
+      "undo": "Desfazer",
+      "shortcut_undo": "Ctrl+Z"
     }
   },
   "themes": {

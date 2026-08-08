@@ -1983,7 +1983,7 @@
       "cover_title": "Portada",
       "cover_preview_hint": "Así se verá la portada en la tarjeta del curso antes de publicar.",
       "cover_size_hint": "Sube una imagen por tipo de pantalla con la medida que indica cada recuadro: es la proporción exacta de la caja, así la portada llena todo sin franjas vacías ni recortes, igual en el curso que en las tarjetas. Puedes subir más grande si respetas la proporción (se ve más nítido); lo que queda pequeño se ve borroso. Si falta alguna variante, se usa la de Escritorio.",
-      "cover_slot_mobile": "Móvil",
+      "cover_slot_mobile": "Celular",
       "cover_slot_tablet": "Tablet",
       "cover_slot_desktop": "Escritorio",
       "cover_replace": "Cambiar",
@@ -3776,14 +3776,17 @@
       "status_done": "Traducido",
       "status_pending": "Sin traducir",
       "no_modules": "Este curso todavía no tiene módulos.",
+      "simulations": "Simuladores del curso",
+      "worlds": "Mundos del curso",
+      "scope_note": "Traducir el curso traduce todo de una vez: su ficha, sus módulos, los simuladores ligados a él y sus mundos con las regiones, los niveles y las arenas.",
       "only_pending": "Solo lo que falta",
       "everything": "Todo de nuevo",
       "start_one": "Traducir 1 pieza",
       "start_other": "Traducir {{count}} piezas",
       "nothing_pending": "Ya está todo traducido",
       "done_title": "¡Traducción lista!",
-      "done_course_one": "Se tradujo 1 módulo a inglés y portugués.",
-      "done_course_other": "Se tradujeron {{count}} módulos a inglés y portugués.",
+      "done_course_one": "Se tradujo 1 pieza del curso a inglés y portugués.",
+      "done_course_other": "Se tradujeron {{count}} piezas del curso a inglés y portugués.",
       "done_module": "El módulo quedó en inglés y portugués.",
       "error": "No se pudo traducir",
       "quota_blocked": "Se agotó el cupo de operaciones con IA de hoy. Pídele al superadmin que te lo amplíe o vuelve mañana."
@@ -3918,6 +3921,17 @@
       "d_path": "Ruta",
       "d_lang": "Idioma",
       "d_id": "ID"
+    },
+    "savedock": {
+      "save": "Guardar cambios",
+      "saving": "Guardando…",
+      "saved": "Todo guardado",
+      "pending_one": "1 cambio sin guardar",
+      "pending_other": "{{n}} cambios sin guardar",
+      "autosave": "· se guarda solo",
+      "shortcut": "Ctrl+S",
+      "undo": "Deshacer",
+      "shortcut_undo": "Ctrl+Z"
     }
   },
   "themes": {

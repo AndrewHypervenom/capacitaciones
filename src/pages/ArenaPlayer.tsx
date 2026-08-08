@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
+import { useUserStore, type Language } from '@/stores/userStore'
+import { localizeSteps, pickLang } from '@/lib/lang'
 
 /* ── Types ── */
 interface QuizOption { id: string; text: string; correct: boolean; explanation: string }
@@ -23,12 +25,15 @@ function hashStr(s: string): number {
   return h
 }
 
-function normalizeQuiz(raw: Record<string, unknown>): ArenaQuiz {
-  const steps = Array.isArray(raw.steps) ? raw.steps : []
+function normalizeQuiz(raw: Record<string, unknown>, lang: Language): ArenaQuiz {
+  // El español vive en `steps`; `steps_en`/`steps_pt` traen el mismo arreglo
+  // traducido. Se mezclan por id ANTES de barajar las opciones: emparejar por
+  // posición desalinearía el quiz entero.
+  const steps = localizeSteps(raw.steps, raw[`steps_${lang}`], lang)
   return {
     id: raw.id as string,
-    title: (raw.title as string) ?? '',
-    description: (raw.description as string) ?? '',
+    title: pickLang(raw, 'title', lang),
+    description: pickLang(raw, 'description', lang),
     campaign_id: (raw.campaign_id as string | null) ?? null,
     theme_icon: (raw.theme_icon as string) ?? '⚔️',
     theme_color: (raw.theme_color as string) ?? '#10D451',
@@ -119,6 +124,7 @@ export default function ArenaPlayer() {
   const { id }   = useParams<{ id: string }>()
   const { user } = useAuth()
   const { play } = useSFX()
+  const language = useUserStore((st) => st.language)
 
   const locationState = location.state as { from?: string; levelId?: string; worldId?: string; minScorePct?: number | null } | null
   const backPath =
@@ -161,10 +167,10 @@ export default function ArenaPlayer() {
     if (!id) return
     supabase.from('arena_quizzes').select('*').eq('id',id).single()
       .then(({data,error}) => {
-        if (!error && data) setQuiz(normalizeQuiz(data as Record<string,unknown>))
+        if (!error && data) setQuiz(normalizeQuiz(data as Record<string,unknown>, language))
         setLoading(false)
       })
-  }, [id])
+  }, [id, language])
 
   /* Timer */
   useEffect(() => {

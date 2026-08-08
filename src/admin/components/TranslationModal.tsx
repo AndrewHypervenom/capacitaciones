@@ -12,7 +12,9 @@ import {
   translateCourse,
   translateModule,
   type ModuleTranslationState,
+  type SimulationTranslationState,
   type TranslateProgress,
+  type WorldTranslationState,
 } from '@/services/translation.service'
 import { consumeAiOperation, getAiQuota, isQuotaExceeded, refundAiOperation, type AiQuota } from '@/services/aiQuota.service'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
@@ -43,6 +45,8 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
   const [phase, setPhase] = useState<Phase>('review')
   const [loading, setLoading] = useState(true)
   const [modules, setModules] = useState<ModuleTranslationState[]>([])
+  const [simulations, setSimulations] = useState<SimulationTranslationState[]>([])
+  const [worlds, setWorlds] = useState<WorldTranslationState[]>([])
   const [courseTranslated, setCourseTranslated] = useState(true)
   const [onlyPending, setOnlyPending] = useState(true)
   const [progress, setProgress] = useState<TranslateProgress | null>(null)
@@ -60,11 +64,15 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
       ? getCourseTranslationState(id).then((s) => {
           if (!alive) return
           setModules(s.modules)
+          setSimulations(s.simulations)
+          setWorlds(s.worlds)
           setCourseTranslated(s.courseTranslated)
         })
       : getModuleTranslationState(id).then((s) => {
           if (!alive) return
           setModules([s])
+          setSimulations([])
+          setWorlds([])
           setCourseTranslated(true)
         })
 
@@ -83,9 +91,15 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
   }, [onClose, running])
 
   const pending = useMemo(() => modules.filter((m) => !m.translated), [modules])
+  const pendingSims = useMemo(() => simulations.filter((s) => !s.translated), [simulations])
+  const pendingWorlds = useMemo(() => worlds.filter((w) => !w.translated), [worlds])
   const targets = onlyPending ? pending : modules
-  // La ficha del curso también es trabajo: puede faltar aunque los módulos estén listos.
-  const canRun = targets.length > 0 || (scope === 'course' && (!courseTranslated || !onlyPending))
+  const simTargets = onlyPending ? pendingSims : simulations
+  const worldTargets = onlyPending ? pendingWorlds : worlds
+  // Lo que se va a traducir, para el contador del botón y el resumen final.
+  const pieceCount = targets.length + simTargets.length + worldTargets.length
+  // La ficha del curso también es trabajo: puede faltar aunque lo demás esté listo.
+  const canRun = pieceCount > 0 || (scope === 'course' && (!courseTranslated || !onlyPending))
   const noQuota = !!quota && !quota.unlimited && (quota.remaining ?? 0) <= 0
 
   const start = useCallback(async () => {
@@ -207,7 +221,7 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
               ) : phase === 'running' ? (
                 <RunningPanel pct={pct} progress={progress} onCancel={cancel} t={t} />
               ) : phase === 'done' ? (
-                <DonePanel count={targets.length} scope={scope} t={t} />
+                <DonePanel count={pieceCount} scope={scope} t={t} />
               ) : (
                 <>
                   {/* ── Qué falta ── */}
@@ -227,10 +241,37 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
                         {t('admin.translate.no_modules')}
                       </li>
                     )}
+
+                    {/* Las simulaciones ligadas al curso entran en la misma pasada. */}
+                    {simulations.length > 0 && (
+                      <li className="px-1 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+                        {t('admin.translate.simulations')}
+                      </li>
+                    )}
+                    {simulations.map((s) => (
+                      <StatusRow key={s.simId} label={s.title} translated={s.translated} t={t} />
+                    ))}
+
+                    {/* Los mundos arrastran sus regiones, niveles y arenas. */}
+                    {worlds.length > 0 && (
+                      <li className="px-1 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+                        {t('admin.translate.worlds')}
+                      </li>
+                    )}
+                    {worlds.map((w) => (
+                      <StatusRow key={w.worldId} label={w.name} translated={w.translated} t={t} />
+                    ))}
                   </ul>
 
+                  {/* Mundos y arenas guardan un solo idioma: no hay dónde traducirlas. */}
+                  {scope === 'course' && (
+                    <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-text-subtle">
+                      {t('admin.translate.scope_note')}
+                    </p>
+                  )}
+
                   {/* ── Alcance ── */}
-                  {scope === 'course' && modules.length > 0 && (
+                  {scope === 'course' && modules.length + simulations.length + worlds.length > 0 && (
                     <div className="mt-4 flex gap-1.5 rounded-xl border border-line bg-bg p-1">
                       {([true, false] as const).map((v) => (
                         <button
@@ -284,7 +325,7 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
                   <Globe className="h-4 w-4" />
                   {!canRun && !loading
                     ? t('admin.translate.nothing_pending')
-                    : t('admin.translate.start', { count: targets.length })}
+                    : t('admin.translate.start', { count: pieceCount })}
                 </button>
                 </div>
               </div>

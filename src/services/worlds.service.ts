@@ -625,8 +625,16 @@ export async function syncCourseWorldById(
 
     if (region) {
       if (region.order_index !== orderIndex || region.name !== m.title_es) {
+        // Si el nombre cambió, sus traducciones quedaron hablando de otra cosa:
+        // se borran para que la app vuelva a mostrar el español y "Traducir"
+        // detecte la región como pendiente.
+        const renamed = region.name !== m.title_es
         await supabase.from('world_regions')
-          .update({ order_index: orderIndex, name: m.title_es })
+          .update({
+            order_index: orderIndex,
+            name: m.title_es,
+            ...(renamed ? { name_en: null, name_pt: null } : {}),
+          })
           .eq('id', region.id)
       }
       // Región existente con niveles → se conserva tal cual; no se regenera.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Play, Plus, Save, Trash2, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Play, Plus, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
@@ -31,6 +31,8 @@ import { EditingBanner } from '@/components/presence/EditingBanner'
 import { useStaleGuard } from '@/hooks/useStaleGuard'
 import { StaleNotice } from '@/components/ui/StaleNotice'
 import { useUnsavedWork } from '@/hooks/useUnsavedWork'
+import { SaveDock } from '@/admin/components/SaveDock'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
 
 type Tab = 'meta' | 'nodes'
 
@@ -210,6 +212,17 @@ export default function ChoiceSimEditor() {
   // cerrar la pestaña, para que ninguno de los dos se lleve el trabajo por
   // delante sin decir qué se pierde (ver lib/unsavedWork.ts).
   const unsaved = useUnsavedWork({ meta, nodes }, { label: meta.title_es || t('admin.simulations.ai_gen.bg_untitled'), enabled: !loading })
+
+  // Deshacer/rehacer del guion completo (Ctrl+Z / Ctrl+Shift+Z): borrar un
+  // nodo o reescribir una opción ya no es un camino de ida.
+  const undoHistory = useUndoHistory({
+    state: { meta, nodes },
+    apply: (s) => {
+      setMeta(s.meta)
+      setNodes(s.nodes)
+    },
+    enabled: !loading,
+  })
 
   /** Vuelca una fila de la base en el editor y la fija como versión de referencia. */
   const applyRow = useCallback(
@@ -397,10 +410,7 @@ export default function ChoiceSimEditor() {
             {meta.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             <span className="hidden sm:inline">{meta.is_published ? 'Despublicar' : 'Publicar'}</span>
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            <span className="hidden sm:inline">{t('admin.simulations.save')}</span>
-          </Button>
+          {/* Guardar vive en la barra única del pie (SaveDock). */}
         </div>
       </div>
 
@@ -685,6 +695,15 @@ export default function ChoiceSimEditor() {
           onClose={() => setPreview(null)}
         />
       )}
+
+      {/* Único lugar donde se guarda: aparece solo si hay cambios. */}
+      <SaveDock
+        pending={unsaved.dirty ? [{ id: 'sim', label: meta.title_es || t('common.untitled') }] : []}
+        onSave={handleSave}
+        saving={saving}
+        onUndo={undoHistory.undo}
+        canUndo={undoHistory.canUndo}
+      />
     </div>
   )
 }

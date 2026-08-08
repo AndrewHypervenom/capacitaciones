@@ -1234,6 +1234,10 @@ export interface Database {
           transition_type: string
           character_emoji: string
           course_id: string | null
+          name_en: string | null
+          name_pt: string | null
+          description_en: string | null
+          description_pt: string | null
         }
         Insert: {
           id?: string
@@ -1251,6 +1255,10 @@ export interface Database {
           transition_type?: string
           character_emoji?: string
           course_id?: string | null
+          name_en?: string | null
+          name_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
         }
         Update: {
           id?: string
@@ -1268,6 +1276,10 @@ export interface Database {
           transition_type?: string
           character_emoji?: string
           course_id?: string | null
+          name_en?: string | null
+          name_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
         }
         Relationships: []
       }
@@ -1281,6 +1293,10 @@ export interface Database {
           order_index: number
           created_at: string
           module_id: string | null
+          name_en: string | null
+          name_pt: string | null
+          description_en: string | null
+          description_pt: string | null
         }
         Insert: {
           id?: string
@@ -1291,6 +1307,10 @@ export interface Database {
           order_index?: number
           created_at?: string
           module_id?: string | null
+          name_en?: string | null
+          name_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
         }
         Update: {
           id?: string
@@ -1301,6 +1321,10 @@ export interface Database {
           order_index?: number
           created_at?: string
           module_id?: string | null
+          name_en?: string | null
+          name_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
         }
         Relationships: []
       }
@@ -1319,6 +1343,10 @@ export interface Database {
           created_at: string
           min_score_pct: number | null
           module_id: string | null
+          name_en: string | null
+          name_pt: string | null
+          description_en: string | null
+          description_pt: string | null
         }
         Insert: {
           id?: string
@@ -1334,6 +1362,10 @@ export interface Database {
           created_at?: string
           min_score_pct?: number | null
           module_id?: string | null
+          name_en?: string | null
+          name_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
         }
         Update: {
           id?: string
@@ -1349,6 +1381,10 @@ export interface Database {
           created_at?: string
           min_score_pct?: number | null
           module_id?: string | null
+          name_en?: string | null
+          name_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
         }
         Relationships: []
       }
@@ -1409,6 +1445,12 @@ export interface Database {
           updated_at: string
           min_score_pct: number | null
           section_size: number
+          title_en: string | null
+          title_pt: string | null
+          description_en: string | null
+          description_pt: string | null
+          steps_en: Json | null
+          steps_pt: Json | null
         }
         Insert: {
           id?: string
@@ -1427,6 +1469,12 @@ export interface Database {
           updated_at?: string
           min_score_pct?: number | null
           section_size?: number
+          title_en?: string | null
+          title_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
+          steps_en?: Json | null
+          steps_pt?: Json | null
         }
         Update: {
           id?: string
@@ -1445,6 +1493,12 @@ export interface Database {
           updated_at?: string
           min_score_pct?: number | null
           section_size?: number
+          title_en?: string | null
+          title_pt?: string | null
+          description_en?: string | null
+          description_pt?: string | null
+          steps_en?: Json | null
+          steps_pt?: Json | null
         }
         Relationships: []
       }

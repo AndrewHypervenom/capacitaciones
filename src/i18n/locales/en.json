@@ -3776,14 +3776,17 @@
       "status_done": "Translated",
       "status_pending": "Not translated",
       "no_modules": "This course has no modules yet.",
+      "simulations": "Course simulators",
+      "worlds": "Course worlds",
+      "scope_note": "Translating the course covers everything at once: its details, every module, the simulators linked to it, and its worlds with their regions, levels and arenas.",
       "only_pending": "Only what is missing",
       "everything": "Everything again",
       "start_one": "Translate 1 item",
       "start_other": "Translate {{count}} items",
       "nothing_pending": "Everything is translated",
       "done_title": "Translation done!",
-      "done_course_one": "1 module was translated into English and Portuguese.",
-      "done_course_other": "{{count}} modules were translated into English and Portuguese.",
+      "done_course_one": "1 course item was translated into English and Portuguese.",
+      "done_course_other": "{{count}} course items were translated into English and Portuguese.",
       "done_module": "The module is now in English and Portuguese.",
       "error": "Translation failed",
       "quota_blocked": "You have used up today's AI operations. Ask the superadmin to raise your quota or try again tomorrow."
@@ -3918,6 +3921,17 @@
       "d_path": "Path",
       "d_lang": "Language",
       "d_id": "ID"
+    },
+    "savedock": {
+      "save": "Save changes",
+      "saving": "Saving…",
+      "saved": "All saved",
+      "pending_one": "1 unsaved change",
+      "pending_other": "{{n}} unsaved changes",
+      "autosave": "· saves itself",
+      "shortcut": "Ctrl+S",
+      "undo": "Undo",
+      "shortcut_undo": "Ctrl+Z"
     }
   },
   "themes": {
