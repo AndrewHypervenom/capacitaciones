@@ -3889,6 +3889,7 @@
       "kind_all": "All types",
       "only_contact": "Want contact",
       "filter_open": "Unresolved",
+      "scope_closed": "Closed",
       "filter_all": "All",
       "filters": "Filters",
       "f_status": "Status",
@@ -3896,6 +3897,7 @@
       "f_more": "Also",
       "f_clear": "Clear all",
       "count": "{{n}} listed",
+      "count_of": "{{n}} of {{total}}",
       "tab_info": "Details",
       "empty_title": "Nothing here yet",
       "empty_desc": "When someone sends feedback from the floating button, it will show up in this inbox.",
@@ -4950,8 +4952,12 @@
     "sent": "Reply sent",
     "saved_note": "Note saved",
     "send_error": "We could not send your message. Please try again.",
+    "templates": "Quick replies",
     "tpl_reviewing": "Thanks for letting us know. We are looking into it and will get back to you as soon as we have news.",
+    "tpl_reviewing_short": "Thanks for letting us know",
     "tpl_fixed": "This is fixed now. Sign out, sign back in and tell us if it still happens.",
-    "tpl_more_info": "Could you send a screenshot and the exact step where it gets stuck? That way we can reproduce it just like you."
+    "tpl_fixed_short": "This is fixed now",
+    "tpl_more_info": "Could you send a screenshot and the exact step where it gets stuck? That way we can reproduce it just like you.",
+    "tpl_more_info_short": "Ask for a screenshot"
   }
 }

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
-  ArrowRight, CornerDownLeft, ImagePlus, Loader2, Lock, MessageSquare,
+  ArrowRight, ImagePlus, Loader2, Lock, MessageSquare,
   Send, Sparkles, X,
 } from 'lucide-react'
 import i18n from '@/i18n'
@@ -250,7 +251,7 @@ export function FeedbackThread({
     <div
       ref={rootRef}
       className={cn(
-        fill ? 'flex h-full min-h-0 flex-col gap-3.5' : 'space-y-4',
+        fill ? 'flex h-full min-h-0 flex-col gap-2.5' : 'space-y-4',
         className,
       )}
     >
@@ -271,7 +272,7 @@ export function FeedbackThread({
         <ol
           ref={listRef}
           className={cn(
-            'relative space-y-4',
+            'relative space-y-3',
             // Zona de mensajes con scroll propio: la caja de escribir queda
             // siempre debajo, a la vista, sin tener que bajar hasta el final.
             inBox && 'overflow-y-auto pr-1.5',
@@ -280,11 +281,16 @@ export function FeedbackThread({
             fill ? 'min-h-0 flex-1' : inBox && 'max-h-[clamp(14rem,38vh,30rem)]',
           )}
         >
-          {/* Riel de la línea de tiempo: cose todos los nodos en un solo hilo. */}
-          <span
-            aria-hidden
-            className="pointer-events-none absolute bottom-2 left-[15px] top-2 w-px bg-gradient-to-b from-line via-line to-transparent"
-          />
+          {/* Riel de la línea de tiempo: cose todos los nodos en un solo hilo.
+              Solo fuera del chat. Cuando esto es una conversación, los mensajes
+              van a los dos lados y el riel deja de coser nada: es una raya que
+              cruza el panel por detrás de los avatares, ruido y no estructura. */}
+          {!inBox && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-2 left-[15px] top-2 w-px bg-gradient-to-b from-line via-line to-transparent"
+            />
+          )}
 
           {showOrigin && (
             <OriginNode row={row} color={meta.color} emoji={meta.emoji} isStaff={isStaff} />
@@ -429,8 +435,10 @@ function NoteNode({ body, authorName, at, shots, legacy }: {
       <span className="relative z-10 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/12 text-amber-500 ring-4 ring-surface">
         <Lock className="h-3.5 w-3.5" />
       </span>
-      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-dashed border-amber-500/35 bg-amber-500/[0.06] px-3.5 py-2.5">
-        <p className="mb-1 flex flex-wrap items-center gap-x-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-amber-500">
+      {/* El punteado ámbar sobraba: el candado, el tinte y el rótulo ya dicen
+          tres veces lo mismo, y el borde era el único que además hacía ruido. */}
+      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm bg-amber-500/[0.08] px-3 py-2">
+        <p className="mb-0.5 flex flex-wrap items-center gap-x-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-amber-500">
           {t('feedback_thread.internal', 'Nota interna · solo la ve el equipo')}
           {legacy && (
             <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] normal-case tracking-normal">
@@ -438,9 +446,9 @@ function NoteNode({ body, authorName, at, shots, legacy }: {
             </span>
           )}
         </p>
-        <p className="whitespace-pre-wrap text-[14px] leading-[1.6] text-text">{body}</p>
-        {shots && shots.length > 0 && <ShotGallery shots={shots} className="mt-2.5" />}
-        <p className="mt-1.5 text-[11px] text-text-subtle">
+        <p className="whitespace-pre-wrap text-[13.5px] leading-[1.55] text-text">{body}</p>
+        {shots && shots.length > 0 && <ShotGallery shots={shots} className="mt-2" />}
+        <p className="mt-1 text-[11px] text-text-subtle">
           {authorName ?? t('feedback_thread.someone', 'Alguien del equipo')}
           {at ? ` · ${fmtRelative(at)}` : ''}
         </p>
@@ -457,7 +465,6 @@ function ReplyNode({ event, fromOwner, mine }: {
 }) {
   const { t } = useTranslation()
   const teamSide = !fromOwner
-  const accent = teamSide ? 'rgb(var(--brand-green))' : undefined
 
   return (
     <li className={cn('relative flex gap-3', teamSide && 'flex-row-reverse')}>
@@ -488,16 +495,18 @@ function ReplyNode({ event, fromOwner, mine }: {
             </span>
           )}
         </p>
+        {/* Sin borde: en un hilo largo, un contorno por mensaje convierte la
+            conversación en una rejilla de cajas. El relleno ya separa lo dicho
+            del fondo, y el lado más el avatar ya dicen quién habla. */}
         <div
           className={cn(
-            'inline-block w-full rounded-2xl border px-4 py-3 text-left',
+            'inline-block w-full rounded-2xl px-3.5 py-2.5 text-left',
             teamSide
-              ? 'rounded-tr-sm border-[rgb(var(--brand-green))]/25 bg-[rgb(var(--brand-green))]/[0.07]'
-              : 'rounded-tl-sm border-line bg-surface',
+              ? 'rounded-tr-sm bg-[rgb(var(--brand-green))]/[0.09]'
+              : 'rounded-tl-sm bg-subtle',
           )}
-          style={teamSide ? { boxShadow: `0 1px 0 0 ${accent}0d` } : undefined}
         >
-          <p className="whitespace-pre-wrap text-[14.5px] leading-[1.65] text-text">{event.body}</p>
+          <p className="whitespace-pre-wrap text-[14px] leading-[1.6] text-text">{event.body}</p>
           {event.shots && event.shots.length > 0 && (
             <ShotGallery shots={event.shots} className={cn('mt-2.5', teamSide && 'justify-end')} />
           )}
@@ -618,23 +627,40 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
   const [attaching, setAttaching] = useState(false)
   const [sending, setSending] = useState(false)
   const [focused, setFocused] = useState(false)
+  const [picking, setPicking] = useState(false)
   const areaRef = useRef<HTMLTextAreaElement>(null)
 
   const tone = internal ? '#f59e0b' : accent
   const canSend = body.trim().length > 0 && !sending
 
-  // Crece con lo que se escribe: una respuesta larga no se teclea por una rendija.
+  // Crece con lo que se escribe, desde UNA línea: la caja de escribir es lo que
+  // menos espacio debe pedir mientras nadie escribe —el sitio es de la
+  // conversación— y solo se estira cuando de verdad hay texto que mostrar.
   useEffect(() => {
     const el = areaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 260)}px`
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`
   }, [body])
 
+  /**
+   * Las tres respuestas de siempre. Van en un desplegable y no a la vista: como
+   * fila fija se comían un tercio del panel y dejaban la conversación en una
+   * rendija. `short` es lo que se lee en el menú; `text` lo que se escribe.
+   */
   const templates = useMemo(() => [
-    t('feedback_thread.tpl_reviewing', 'Gracias por avisarnos. Ya lo estamos revisando y te contamos apenas tengamos novedades.'),
-    t('feedback_thread.tpl_fixed', 'Ya quedó corregido. Cierra sesión, vuelve a entrar y cuéntanos si te sigue pasando.'),
-    t('feedback_thread.tpl_more_info', '¿Nos ayudas con una captura de la pantalla y el paso exacto donde se queda? Así lo reproducimos igual que tú.'),
+    {
+      short: t('feedback_thread.tpl_reviewing_short', 'Gracias por avisarnos'),
+      text: t('feedback_thread.tpl_reviewing', 'Gracias por avisarnos. Ya lo estamos revisando y te contamos apenas tengamos novedades.'),
+    },
+    {
+      short: t('feedback_thread.tpl_fixed_short', 'Ya quedó corregido'),
+      text: t('feedback_thread.tpl_fixed', 'Ya quedó corregido. Cierra sesión, vuelve a entrar y cuéntanos si te sigue pasando.'),
+    },
+    {
+      short: t('feedback_thread.tpl_more_info_short', 'Pedir una captura'),
+      text: t('feedback_thread.tpl_more_info', '¿Nos ayudas con una captura de la pantalla y el paso exacto donde se queda? Así lo reproducimos igual que tú.'),
+    },
   ], [t])
 
   async function send() {
@@ -673,17 +699,29 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
       )}
       style={focused ? { boxShadow: `0 0 0 1.5px ${tone}55, 0 12px 30px -18px ${tone}` } : undefined}
     >
-      {/* Filo de color: dice de un vistazo si esto sale o se queda en casa. */}
-      <motion.span
-        aria-hidden
-        className="absolute inset-x-0 top-0 h-[2px]"
-        animate={{ background: tone, opacity: focused || internal ? 1 : 0.35 }}
-        transition={{ duration: 0.35, ease: EASE }}
-      />
+      {/* Filo de color: dice de un vistazo que esto NO sale de casa. Solo en
+          nota interna —que es el error caro— y no en la respuesta normal: una
+          raya de color permanente es adorno, y de adorno esta pantalla va
+          sobrada. */}
+      <AnimatePresence>
+        {internal && (
+          <motion.span
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: EASE }}
+            className="absolute inset-x-0 top-0 h-[2px]"
+            style={{ background: tone }}
+          />
+        )}
+      </AnimatePresence>
 
       {isStaff && (
-        <div className="flex flex-wrap items-center gap-1 border-b border-line/70 px-2 py-1.5">
-          <ModeTab active={!internal} group={feedbackId} tone={accent} onClick={() => setInternal(false)}>
+        <div className="flex flex-wrap items-center gap-0.5 px-1.5 pt-1">
+          {/* Sin color: responder es lo normal y lo normal no se pinta. El color
+              queda para la nota interna, que es lo que hay que ver sin leer. */}
+          <ModeTab active={!internal} group={feedbackId} onClick={() => setInternal(false)}>
             <Send className="h-3 w-3" />
             {t('feedback_thread.mode_reply', 'Responder a la persona')}
           </ModeTab>
@@ -694,59 +732,6 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
         </div>
       )}
 
-      <div className="flex gap-3 px-3 pt-3">
-        <span className="mt-0.5 hidden shrink-0 sm:block">
-          <Avatar src={me.avatar} name={me.name} size={32} />
-        </span>
-        <textarea
-          ref={areaRef}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void send() }
-          }}
-          rows={3}
-          placeholder={
-            internal
-              ? t('feedback_thread.ph_note', 'Qué se hizo con esto, para el equipo…')
-              : isStaff
-                ? t('feedback_thread.ph_reply', 'Escríbele a la persona. Le llega con un aviso…')
-                : t('feedback_thread.ph_author', 'Responde al equipo…')
-          }
-          className="w-full resize-none border-0 bg-transparent py-1 text-[14.5px] leading-[1.6] text-text outline-none placeholder:text-text-muted/60"
-        />
-      </div>
-
-      {/* Plantillas: el 80 % de las respuestas son estas tres, y escribirlas a
-          mano cada vez es la razón por la que las bandejas se quedan mudas. */}
-      <AnimatePresence initial={false}>
-        {isStaff && !internal && body.trim().length === 0 && (
-          <motion.div
-            initial={reduce ? false : { opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3, ease: EASE }}
-            className="overflow-hidden"
-          >
-            <div className="flex flex-wrap gap-1.5 px-3 pt-2 sm:pl-[3.6rem]">
-              {templates.map((tpl, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => { setBody(tpl); areaRef.current?.focus() }}
-                  className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11.5px] text-text-muted transition-colors hover:border-transparent hover:bg-subtle hover:text-text"
-                >
-                  <Sparkles className="h-3 w-3 shrink-0 text-text-subtle transition-colors group-hover:text-[rgb(var(--brand-green))]" />
-                  <span className="truncate">{tpl.split('.')[0]}</span>
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <AnimatePresence initial={false}>
         {attaching && (
           <motion.div
@@ -756,7 +741,7 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
             transition={{ duration: 0.3, ease: EASE }}
             className="overflow-hidden"
           >
-            <div className="px-3 pt-3 sm:pl-[3.6rem]">
+            <div className="px-2.5 pt-2.5">
               <ShotUploader
                 folder={`${feedbackId}/thread`}
                 shots={shots}
@@ -770,48 +755,200 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
       </AnimatePresence>
 
       {!attaching && shots.length > 0 && (
-        <div className="px-3 pt-3 sm:pl-[3.6rem]">
+        <div className="px-2.5 pt-2.5">
           <ShotGallery shots={shots} />
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:pl-[3.6rem]">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setAttaching((v) => !v)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors',
-              attaching ? 'bg-subtle text-text' : 'text-text-muted hover:bg-subtle hover:text-text',
-            )}
-          >
-            {attaching ? <X className="h-3.5 w-3.5" /> : <ImagePlus className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">
-              {attaching
-                ? t('feedback_thread.attach_close', 'Listo')
-                : t('feedback_thread.attach', 'Adjuntar')}
-            </span>
-          </button>
-          <span className="hidden items-center gap-1 text-[11px] text-text-subtle md:inline-flex">
-            <CornerDownLeft className="h-3 w-3" />
-            {t('feedback_thread.shortcut', 'Ctrl+Enter para enviar')}
-          </span>
-        </div>
+      {/* Todo en una fila: escribir, adjuntar, plantillas y enviar. La caja de
+          escribir de un chat mide una línea hasta que hay algo que decir; con las
+          acciones en su propia banda debajo, esto pedía el triple de alto y la
+          conversación —lo que se viene a leer— quedaba en una rendija. */}
+      <div className="flex items-end gap-2 px-2.5 py-2">
+        <span className="mb-1 hidden shrink-0 sm:block">
+          <Avatar src={me.avatar} name={me.name} size={28} />
+        </span>
 
-        <motion.button
-          type="button"
-          onClick={() => void send()}
-          disabled={!canSend}
-          whileTap={reduce || !canSend ? undefined : { scale: 0.96 }}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-white transition-opacity disabled:opacity-35"
-          style={{ background: tone, boxShadow: canSend ? `0 8px 20px -12px ${tone}` : undefined }}
-        >
-          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          {internal
-            ? t('feedback_thread.save_note', 'Guardar nota')
-            : t('feedback_thread.send', 'Enviar')}
-        </motion.button>
+        <textarea
+          ref={areaRef}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void send() }
+          }}
+          rows={1}
+          placeholder={
+            internal
+              ? t('feedback_thread.ph_note', 'Qué se hizo con esto, para el equipo…')
+              : isStaff
+                ? t('feedback_thread.ph_reply', 'Escríbele a la persona. Le llega con un aviso…')
+                : t('feedback_thread.ph_author', 'Responde al equipo…')
+          }
+          className="min-w-0 flex-1 resize-none self-center border-0 bg-transparent py-1.5 text-[14px] leading-[1.5] text-text outline-none placeholder:text-text-muted/60"
+        />
+
+        <div className="flex shrink-0 items-center gap-0.5 pb-0.5">
+          {isStaff && !internal && (
+            <TemplateMenu
+              open={picking}
+              onOpenChange={setPicking}
+              templates={templates}
+              reduce={!!reduce}
+              onPick={(text) => { setBody(text); setPicking(false); areaRef.current?.focus() }}
+            />
+          )}
+
+          <IconAction
+            active={attaching}
+            label={attaching
+              ? t('feedback_thread.attach_close', 'Listo')
+              : t('feedback_thread.attach', 'Adjuntar')}
+            onClick={() => setAttaching((v) => !v)}
+          >
+            {attaching ? <X className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
+          </IconAction>
+
+          <motion.button
+            type="button"
+            onClick={() => void send()}
+            disabled={!canSend}
+            whileTap={reduce || !canSend ? undefined : { scale: 0.94 }}
+            title={`${internal
+              ? t('feedback_thread.save_note', 'Guardar nota')
+              : t('feedback_thread.send', 'Enviar')} · ${t('feedback_thread.shortcut', 'Ctrl+Enter para enviar')}`}
+            className="ml-0.5 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold text-white transition-opacity disabled:opacity-35"
+            style={{ background: tone, boxShadow: canSend ? `0 8px 20px -12px ${tone}` : undefined }}
+          >
+            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            <span className="hidden lg:inline">
+              {internal
+                ? t('feedback_thread.save_note', 'Guardar nota')
+                : t('feedback_thread.send', 'Enviar')}
+            </span>
+          </motion.button>
+        </div>
       </div>
+    </div>
+  )
+}
+
+/** Botón de acción de la barra: solo ícono, con su nombre en el título. */
+function IconAction({ active, label, onClick, children }: {
+  active?: boolean
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={cn(
+        'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
+        active ? 'bg-subtle text-text' : 'text-text-muted hover:bg-subtle hover:text-text',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Las respuestas de siempre, a un clic pero sin ocupar sitio. El 80 % de lo que
+ * se responde son estas tres, y escribirlas a mano cada vez es la razón por la
+ * que las bandejas se quedan mudas; tenerlas desplegadas todo el rato era la
+ * razón por la que no se veía la conversación.
+ *
+ * El desplegable sale por un portal al `body`, no dentro de la caja: la caja de
+ * escribir recorta lo que se salga (`overflow-hidden`) y encima cuelga de varios
+ * contenedores con `transform` de Motion, donde un `fixed` se ancla al padre
+ * transformado en vez de a la ventana. Dentro, el menú simplemente no se vería.
+ */
+function TemplateMenu({ open, onOpenChange, templates, onPick, reduce }: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  templates: { short: string; text: string }[]
+  onPick: (text: string) => void
+  reduce: boolean
+}) {
+  const { t } = useTranslation()
+  const anchorRef = useRef<HTMLDivElement>(null)
+  /** Esquina inferior derecha del botón, en coordenadas de ventana. */
+  const [at, setAt] = useState<{ right: number; bottom: number } | null>(null)
+
+  const place = useCallback(() => {
+    const el = anchorRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setAt({ right: window.innerWidth - r.right, bottom: window.innerHeight - r.top })
+  }, [])
+
+  // Escape cierra: el menú tapa parte del hilo y hay que poder quitarlo sin ratón.
+  // Y si la ventana cambia de tamaño, se recoloca en vez de quedarse a la deriva.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onOpenChange(false) }
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', place)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', place)
+    }
+  }, [open, onOpenChange, place])
+
+  return (
+    <div ref={anchorRef}>
+      <IconAction
+        active={open}
+        label={t('feedback_thread.templates', 'Respuestas rápidas')}
+        onClick={() => { if (!open) place(); onOpenChange(!open) }}
+      >
+        <Sparkles className="h-4 w-4" />
+      </IconAction>
+
+      {createPortal(
+        <AnimatePresence>
+          {open && at && (
+            <>
+              {/* Clic fuera para cerrar, sin robarle el foco a lo que hay debajo. */}
+              <button
+                type="button"
+                aria-label={t('common.close', 'Cerrar')}
+                className="fixed inset-0 z-[9995] cursor-default"
+                onClick={() => onOpenChange(false)}
+              />
+              <motion.div
+                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                transition={{ duration: 0.18, ease: EASE }}
+                style={{ right: at.right, bottom: at.bottom + 8 }}
+                className="fixed z-[9996] w-[min(22rem,calc(100vw-2rem))] origin-bottom-right overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-[0_18px_40px_-20px_rgba(0,0,0,0.55)]"
+              >
+                <p className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-text-subtle">
+                  {t('feedback_thread.templates', 'Respuestas rápidas')}
+                </p>
+                {templates.map((tpl) => (
+                  <button
+                    key={tpl.short}
+                    type="button"
+                    onClick={() => onPick(tpl.text)}
+                    className="block w-full rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-subtle"
+                  >
+                    <span className="block text-[12.5px] font-medium text-text">{tpl.short}</span>
+                    <span className="block truncate text-[11px] text-text-muted">{tpl.text}</span>
+                  </button>
+                ))}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   )
 }
@@ -820,7 +957,8 @@ function ModeTab({ active, group, tone, onClick, children }: {
   active: boolean
   /** Ata el fondo que se desliza a ESTE hilo: ver el porqué abajo. */
   group: string
-  tone: string
+  /** Sin `tone` la pestaña activa va en neutro: es la opción de siempre. */
+  tone?: string
   onClick: () => void
   children: React.ReactNode
 }) {
@@ -830,9 +968,9 @@ function ModeTab({ active, group, tone, onClick, children }: {
       onClick={onClick}
       className={cn(
         'relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors',
-        active ? '' : 'text-text-muted hover:text-text',
+        active ? (tone ? '' : 'text-text') : 'text-text-muted hover:text-text',
       )}
-      style={active ? { color: tone } : undefined}
+      style={active && tone ? { color: tone } : undefined}
     >
       {active && (
         <motion.span
@@ -840,8 +978,8 @@ function ModeTab({ active, group, tone, onClick, children }: {
           // el fondo de "Responder a la persona" salía volando desde la caja de
           // la anterior en lugar de estar ya puesto.
           layoutId={`composer-mode-${group}`}
-          className="absolute inset-0 rounded-lg"
-          style={{ background: `${tone}16` }}
+          className={cn('absolute inset-0 rounded-lg', !tone && 'bg-subtle')}
+          style={tone ? { background: `${tone}16` } : undefined}
           transition={{ type: 'spring', stiffness: 420, damping: 34 }}
         />
       )}

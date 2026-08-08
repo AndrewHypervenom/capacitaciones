@@ -27,7 +27,31 @@ import { toast } from '@/stores/toastStore'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { cn } from '@/lib/cn'
 
-type StatusFilter = FeedbackStatus | 'all' | 'open'
+/**
+ * El ámbito de la bandeja. `open`, `planned` y `closed` **parten el total en
+ * tres**: toda opinión cae en uno y solo uno, y los tres suman `all`. Esa es la
+ * propiedad que hace que la pantalla se pueda auditar de un vistazo — si los
+ * números no cierran, hay casos escondidos que nadie va a revisar.
+ */
+type StatusFilter = FeedbackStatus | 'all' | 'open' | 'closed'
+
+/** A qué ámbito pertenece cada estado. Las cinco tienen sitio, ninguna se cae. */
+const SCOPE_OF: Record<FeedbackStatus, 'open' | 'planned' | 'closed'> = {
+  new: 'open',
+  in_review: 'open',
+  planned: 'planned',
+  done: 'closed',
+  archived: 'closed',
+}
+
+/** ¿Entra esta fila en el ámbito elegido? */
+function inScope(row: SiteFeedbackRow, scope: StatusFilter): boolean {
+  if (scope === 'all') return true
+  if (scope === 'open' || scope === 'planned' || scope === 'closed') {
+    return SCOPE_OF[row.status] === scope
+  }
+  return row.status === scope
+}
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -88,16 +112,24 @@ export default function SiteFeedback() {
   /** Novedades que llegaron en vivo y no caben en el filtro actual. */
   const [pendingNews, setPendingNews] = useState(0)
 
+  /**
+   * Se trae la bandeja ENTERA una sola vez y se filtra aquí. Antes cada filtro
+   * era una consulta nueva, y como los contadores de arriba se calculaban sobre
+   * lo que volvía, filtrar por "Sin resolver" hacía que el total de opiniones
+   * cayera de 12 a 8: el número dejaba de ser un total y pasaba a contar lo que
+   * ya estabas viendo. Con todo cargado, los contadores son fijos por
+   * construcción y cambiar de filtro es instantáneo, sin esperar al servidor.
+   */
   const load = useCallback(() => {
     setLoading(true)
-    return fetchSiteFeedback({ status, kind, contactOnly, search })
+    return fetchSiteFeedback({ limit: 500 })
       .then((r) => { setRows(r); setPendingNews(0) })
       .catch((e) => {
         console.error('site feedback error:', e)
         toast.error(t('admin.site_feedback.load_error', 'No pudimos cargar las opiniones'))
       })
       .finally(() => setLoading(false))
-  }, [status, kind, contactOnly, search, t])
+  }, [t])
 
   useEffect(() => { void load() }, [load])
 
@@ -133,17 +165,50 @@ export default function SiteFeedback() {
     [summaries],
   )
 
-  // "Esperan respuesta" se filtra aquí y no en la consulta: depende del hilo, que
-  // vive en otra tabla, y filtrarlo en el servidor costaría una vista más.
-  const visible = useMemo(
-    () => (awaitingOnly ? rows.filter((r) => isAwaiting(r, summaryOf(r.id))) : rows),
-    [rows, awaitingOnly, summaryOf],
-  )
+  /** Todos los filtros, en un solo sitio y sobre la lista ya cargada. */
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return rows.filter((r) => {
+      if (!inScope(r, status)) return false
+      if (kind !== 'all' && r.kind !== kind) return false
+      if (contactOnly && !r.contact_ok) return false
+      if (awaitingOnly && !isAwaiting(r, summaryOf(r.id))) return false
+      if (q && !(r.message ?? '').toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [rows, status, kind, contactOnly, awaitingOnly, search, summaryOf])
 
+  // Los contadores se calculan SIEMPRE sobre todo, nunca sobre lo filtrado: son
+  // el mapa de la bandeja, y un mapa que se redibuja según dónde estás parado no
+  // sirve para decidir a dónde ir.
   const stats = useMemo(() => computeStats(rows), [rows])
+
+  /**
+   * Cuántas hay en cada ámbito. Por construcción `open + planned + closed ===
+   * total`: es la garantía de que ninguna opinión se queda sin bandeja donde
+   * aparecer. `planned` es justo el caso que se perdía —ni "sin resolver" ni
+   * "cerrada"— y por eso el ámbito se muestra aunque esté vacío si hay alguna.
+   */
+  const scopes = useMemo(() => {
+    const c = { open: 0, planned: 0, closed: 0, all: rows.length }
+    for (const r of rows) c[SCOPE_OF[r.status]]++
+    return c
+  }, [rows])
+
+  /**
+   * Los refinamientos se cuentan DENTRO del ámbito abierto, no sobre todo: si
+   * estás en "Cerradas", saber que hay 8 esperando respuesta entre las
+   * pendientes no te dice qué va a pasar al pulsar. El número tiene que
+   * anticipar el resultado del clic.
+   */
+  const inScopeRows = useMemo(() => rows.filter((r) => inScope(r, status)), [rows, status])
   const awaitingCount = useMemo(
-    () => rows.filter((r) => isAwaiting(r, summaryOf(r.id))).length,
-    [rows, summaryOf],
+    () => inScopeRows.filter((r) => isAwaiting(r, summaryOf(r.id))).length,
+    [inScopeRows, summaryOf],
+  )
+  const contactCount = useMemo(
+    () => inScopeRows.filter((r) => r.contact_ok).length,
+    [inScopeRows],
   )
 
   const selected = useMemo(
@@ -157,12 +222,25 @@ export default function SiteFeedback() {
   //
   // Si esa opinión no entra en el filtro actual (p. ej. ya resuelta), se abre
   // igual quitando el filtro de estado.
+  //
+  // Se honra UNA vez por id. Si se reevaluara siempre, filtrar con una ficha
+  // abierta la escondería y el efecto quitaría el filtro acto seguido: la
+  // pantalla peleando con quien la usa.
+  /** Todas, cerradas incluidas: el histórico completo sin nada puesto encima. */
+  const showAll = useCallback(() => {
+    setStatus('all'); setKind('all'); setAwaitingOnly(false)
+    setContactOnly(false); setSearch(''); setSearchInput('')
+  }, [])
+
+  const honoredId = useRef<string | null>(null)
   useEffect(() => {
     const id = params.get('id')
-    if (!id || loading) return
-    if (rows.some((r) => r.id === id)) { setSelectedId(id); return }
-    if (status !== 'all') setStatus('all')
-  }, [params, rows, loading, status])
+    if (!id || loading || honoredId.current === id) return
+    if (!rows.some((r) => r.id === id)) return
+    honoredId.current = id
+    setSelectedId(id)
+    if (!visible.some((r) => r.id === id)) showAll()
+  }, [params, rows, visible, loading, showAll])
 
   const select = useCallback((id: string | null) => {
     setSelectedId(id)
@@ -273,27 +351,14 @@ export default function SiteFeedback() {
     })
   }, [])
 
-  const statusChips: { key: StatusFilter; label: string; color?: string }[] = [
-    { key: 'open', label: t('admin.site_feedback.filter_open', 'Sin resolver') },
-    { key: 'all', label: t('admin.site_feedback.filter_all', 'Todas') },
-    ...STATUSES.map((s) => ({
-      key: s as StatusFilter,
-      label: t(`site_feedback.status.${s}`),
-      color: STATUS_COLOR[s],
-    })),
-  ]
-
-  /** Filtros puestos a mano, para poder enseñarlos —y quitarlos— de uno en uno. */
+  /**
+   * Filtros puestos a mano, para poder enseñarlos —y quitarlos— de uno en uno.
+   * El ámbito NO entra aquí: no es un filtro que se quita, es en qué bandeja
+   * estás, y ya se ve en las pestañas. Repetirlo como chip "Todas ✕" hacía creer
+   * que había algo puesto encima cuando era justo lo contrario.
+   */
   const activeFilters = useMemo(() => {
     const out: { key: string; label: string; color?: string; clear: () => void }[] = []
-    if (status !== 'open') {
-      out.push({
-        key: 'status',
-        label: statusChips.find((c) => c.key === status)?.label ?? String(status),
-        color: status === 'all' ? undefined : STATUS_COLOR[status as FeedbackStatus],
-        clear: () => setStatus('open'),
-      })
-    }
     if (kind !== 'all') {
       const k = KINDS.find((x) => x.key === kind)
       out.push({
@@ -327,18 +392,11 @@ export default function SiteFeedback() {
       })
     }
     return out
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, kind, awaitingOnly, contactOnly, search, t])
+  }, [kind, awaitingOnly, contactOnly, search, t])
 
   /** Vuelve a la bandeja de trabajo: lo que queda por resolver, sin más filtros. */
   const resetFilters = useCallback(() => {
     setStatus('open'); setKind('all'); setAwaitingOnly(false)
-    setContactOnly(false); setSearch(''); setSearchInput('')
-  }, [])
-
-  /** Todas, resueltas incluidas: el histórico completo sin nada puesto encima. */
-  const showAll = useCallback(() => {
-    setStatus('all'); setKind('all'); setAwaitingOnly(false)
     setContactOnly(false); setSearch(''); setSearchInput('')
   }, [])
 
@@ -360,44 +418,78 @@ export default function SiteFeedback() {
           <h1 className="text-[20px] font-bold leading-tight text-text sm:text-[23px]">
             {t('admin.site_feedback.title', 'Opiniones del sitio')}
           </h1>
-          <p className="hidden text-[12.5px] text-text-muted sm:block">
+          {/* A dos líneas y parejas: en una sola tiraba el ancho de la cabecera
+              y empujaba los números de la derecha fuera de la vista. */}
+          <p className="hidden max-w-[54ch] text-[12.5px] leading-snug text-text-muted text-balance sm:block">
             {t('admin.site_feedback.subtitle2', 'Lo que reportan, proponen y celebran de la plataforma — y toda la conversación que sigue después.')}
           </p>
         </div>
 
-        {/* Los números NO son adorno: cada uno es el filtro que le corresponde,
-            así que mirar la bandeja y ponerse a trabajar es el mismo gesto. */}
-        <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-line bg-surface p-1">
-          <StatPill
-            label={t('admin.site_feedback.kpi_total', 'Opiniones')}
-            value={stats.total}
-            active={status === 'all' && activeFilters.length === 1}
-            onClick={showAll}
-          />
-          <StatPill
-            label={t('admin.site_feedback.kpi_open', 'Sin resolver')}
-            value={stats.open}
-            color="#f59e0b"
-            active={status === 'open'}
-            onClick={() => setStatus(status === 'open' ? 'all' : 'open')}
-          />
-          <StatPill
-            label={t('admin.site_feedback.kpi_awaiting', 'Esperan respuesta')}
-            value={awaitingCount}
-            color="#38bdf8"
-            active={awaitingOnly}
-            onClick={() => setAwaitingOnly((v) => !v)}
-          />
-          <StatPill
-            label={t('admin.site_feedback.kpi_contact', 'Piden contacto')}
-            value={stats.contactPending}
-            color="#ef4444"
-            active={contactOnly}
-            onClick={() => setContactOnly((v) => !v)}
-          />
-          <div className="mx-0.5 hidden h-6 w-px bg-line sm:block" />
+        {/* Dos cosas distintas que antes se veían igual, y de ahí el lío:
+            ─ El ÁMBITO (izquierda, pestañas unidas): excluyente y exhaustivo.
+              Sus números suman el total, así que siempre se ve dónde están las
+              que no estás mirando y ninguna se queda sin bandeja.
+            ─ Los REFINAMIENTOS (derecha, píldoras sueltas): estrechan el ámbito
+              abierto y se cuentan dentro de él.
+            La forma dice cuál reemplaza la vista y cuál la recorta. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="inline-flex items-center rounded-xl bg-subtle/70 p-0.5">
+            <ScopeTab
+              label={t('admin.site_feedback.filter_open', 'Sin resolver')}
+              value={scopes.open}
+              color="#f59e0b"
+              active={status === 'open'}
+              onClick={() => setStatus('open')}
+            />
+            {/* "Planeada" no es ni pendiente ni cerrada: si no tiene pestaña
+                propia, esas opiniones no aparecen en ninguna vista. Solo se
+                enseña cuando existe alguna, para no cargar la fila de vacíos. */}
+            {scopes.planned > 0 && (
+              <ScopeTab
+                label={t('site_feedback.status.planned', 'Planeada')}
+                value={scopes.planned}
+                color={STATUS_COLOR.planned}
+                active={status === 'planned'}
+                onClick={() => setStatus('planned')}
+              />
+            )}
+            <ScopeTab
+              label={t('admin.site_feedback.scope_closed', 'Cerradas')}
+              value={scopes.closed}
+              color="#94a3b8"
+              active={status === 'closed'}
+              onClick={() => setStatus('closed')}
+            />
+            <ScopeTab
+              label={t('admin.site_feedback.filter_all', 'Todas')}
+              value={scopes.all}
+              active={status === 'all'}
+              onClick={() => setStatus('all')}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1">
+            <RefineChip
+              label={t('admin.site_feedback.kpi_awaiting', 'Esperan respuesta')}
+              value={awaitingCount}
+              color="#38bdf8"
+              icon={<MessageSquare className="h-3 w-3" />}
+              active={awaitingOnly}
+              onClick={() => setAwaitingOnly((v) => !v)}
+            />
+            <RefineChip
+              label={t('admin.site_feedback.kpi_contact', 'Piden contacto')}
+              value={contactCount}
+              color="#ef4444"
+              icon={<Phone className="h-3 w-3" />}
+              active={contactOnly}
+              onClick={() => setContactOnly((v) => !v)}
+            />
+          </div>
+
+          {/* El ánimo no filtra nada: es el único número que solo se mira. */}
           <span
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] uppercase tracking-wider text-text-muted"
+            className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-text-muted"
             title={t('admin.site_feedback.kpi_mood', 'Ánimo promedio')}
           >
             {stats.avgMood !== null && (
@@ -447,14 +539,11 @@ export default function SiteFeedback() {
 
         <FiltersMenu
           count={activeFilters.length}
-          status={status}
-          statusChips={statusChips}
           kind={kind}
           byKind={stats.byKind}
           awaitingOnly={awaitingOnly}
           awaitingCount={awaitingCount}
           contactOnly={contactOnly}
-          onStatus={setStatus}
           onKind={setKind}
           onAwaiting={setAwaitingOnly}
           onContact={setContactOnly}
@@ -486,11 +575,20 @@ export default function SiteFeedback() {
           ))}
         </AnimatePresence>
 
+        {/* Aquí vive el total, y solo aquí: en cuanto hay algo filtrado dice
+            "8 de 12", que es la pregunta real —cuánto estoy viendo y cuánto
+            hay—. Tenerlo además arriba como número grande era duplicarlo. */}
         <span className="ml-auto shrink-0 text-[12px] tabular-nums text-text-subtle">
-          {t('admin.site_feedback.count', {
-            n: visible.length,
-            defaultValue: '{{n}} en la lista',
-          })}
+          {visible.length === stats.total
+            ? t('admin.site_feedback.count', {
+              n: stats.total,
+              defaultValue: '{{n}} en la lista',
+            })
+            : t('admin.site_feedback.count_of', {
+              n: visible.length,
+              total: stats.total,
+              defaultValue: '{{n}} de {{total}}',
+            })}
         </span>
 
         {/* Novedades que no caben en lo que hay en pantalla. Se ofrecen, no se
@@ -620,10 +718,13 @@ function ListItem({ row: r, index, summary, selected, isSuperAdmin, onSelect }: 
       transition={{ duration: 0.35, ease: EASE, delay: Math.min(index, 10) * 0.03 }}
       whileTap={reduce ? undefined : { scale: 0.995 }}
       className={cn(
+        // Sin borde salvo la abierta: doce tarjetas delineadas una debajo de
+        // otra son doce marcos, y el fondo propio ya las separa de la página.
+        // El borde transparente mantiene la medida para que no salten al abrir.
         'relative w-full overflow-hidden rounded-2xl border p-3 text-left transition-colors duration-300',
         selected
           ? 'border-[rgb(var(--brand-green))]/35 bg-[rgb(var(--brand-green))]/[0.05]'
-          : 'border-line bg-surface hover:bg-subtle/50',
+          : 'border-transparent bg-surface hover:bg-subtle/60',
       )}
     >
       {/* Filo de selección: dice cuál está abierta sin gritarlo */}
@@ -852,7 +953,7 @@ function Detail({
             avatares e hitos son del color de la superficie: el hilo necesita una
             debajo. En escritorio la ficha ya es una tarjeta. */}
         <div className={cn(
-          'h-full bg-surface p-3 sm:p-4 lg:bg-transparent lg:p-5',
+          'h-full bg-surface p-3 sm:p-3.5 lg:bg-transparent lg:p-4',
           tab !== 'chat' && 'hidden',
         )}>
           <FeedbackThread
@@ -1046,11 +1147,12 @@ function Detail({
 /* ═══════════════════════ Piezas sueltas ═══════════════════════ */
 
 /**
- * Número y etiqueta en una línea, y además el filtro que le corresponde. Lo que
- * antes eran cinco tarjetas de solo mirar ahora es la barra desde la que se
- * trabaja —y ocupa una cuarta parte de la altura.
+ * Una de las bandejas en las que se parte el total. Van unidas en un carril y
+ * solo una puede estar puesta: la forma de pestaña dice que elegir esta es
+ * *dejar* la anterior, no añadir un filtro encima. La pastilla activa se desliza
+ * de una a otra —un solo `layoutId`, porque de verdad hay una sola.
  */
-function StatPill({ label, value, color, active, onClick }: {
+function ScopeTab({ label, value, color, active, onClick }: {
   label: string
   value: number
   color?: string
@@ -1060,39 +1162,70 @@ function StatPill({ label, value, color, active, onClick }: {
   const reduce = useReducedMotion()
   const tone = color ?? 'rgb(var(--brand-green))'
   return (
-    <motion.button
+    <button
       onClick={onClick}
-      whileTap={reduce ? undefined : { scale: 0.97 }}
-      className={cn(
-        'relative inline-flex items-center gap-2 rounded-xl px-2.5 py-1.5 transition-colors',
-        active ? '' : 'hover:bg-subtle/70',
-      )}
-      style={active ? { background: `${tone}14` } : undefined}
+      className="relative inline-flex items-center gap-1.5 rounded-[0.6rem] px-2.5 py-1.5 transition-colors"
       aria-pressed={active}
     >
-      {/* Varias píldoras pueden estar puestas a la vez (sin resolver + piden
-          contacto, p. ej.), así que el aro es de cada una y no uno que viaja. */}
-      <motion.span
-        aria-hidden
-        className="absolute inset-0 rounded-xl border"
-        initial={false}
-        animate={{ opacity: active ? 1 : 0 }}
-        transition={{ duration: 0.25, ease: EASE }}
-        style={{ borderColor: `${tone}59` }}
-      />
+      {active && (
+        <motion.span
+          layoutId="feedback-scope"
+          aria-hidden
+          className="absolute inset-0 rounded-[0.6rem] bg-surface shadow-sm"
+          transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 36 }}
+        />
+      )}
       <span
-        className="relative text-[15px] font-bold leading-none tabular-nums"
+        className="relative text-[13.5px] font-bold leading-none tabular-nums transition-colors"
         // Los tokens son tripletes RGB: sin `rgb(...)` alrededor no pintan nada.
-        style={{ color: value > 0 || active ? tone : 'rgb(var(--text-muted))' }}
+        style={{ color: active ? tone : 'rgb(var(--text-muted))' }}
       >
         {value}
       </span>
       <span className={cn(
-        'relative whitespace-nowrap text-[11px] uppercase tracking-wider transition-colors',
-        active ? 'text-text' : 'text-text-muted',
+        'relative whitespace-nowrap text-[11.5px] transition-colors',
+        active ? 'font-semibold text-text' : 'text-text-muted',
       )}>
         {label}
       </span>
+    </button>
+  )
+}
+
+/**
+ * Recorta el ámbito abierto sin cambiarlo. Suelta y con su icono, para que no se
+ * confunda con las pestañas: varias pueden estar puestas a la vez, y quitarlas
+ * te devuelve a la bandeja donde estabas, no a otra.
+ */
+function RefineChip({ label, value, color, icon, active, onClick }: {
+  label: string
+  value: number
+  color: string
+  icon: React.ReactNode
+  active: boolean
+  onClick: () => void
+}) {
+  const reduce = useReducedMotion()
+  const none = value === 0
+  return (
+    <motion.button
+      onClick={onClick}
+      disabled={none && !active}
+      whileTap={reduce || none ? undefined : { scale: 0.97 }}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] transition-colors',
+        active ? 'font-semibold' : 'border-transparent text-text-muted',
+        // Sin casos no hay nada que recortar: se ve, pero no se puede pulsar.
+        none && !active ? 'opacity-45' : !active && 'hover:bg-subtle',
+      )}
+      style={active
+        ? { borderColor: `${color}59`, background: `${color}14`, color }
+        : undefined}
+      aria-pressed={active}
+    >
+      <span style={{ color: none && !active ? undefined : color }}>{icon}</span>
+      <span className="tabular-nums font-bold">{value}</span>
+      <span className="whitespace-nowrap">{label}</span>
     </motion.button>
   )
 }
@@ -1103,18 +1236,15 @@ function StatPill({ label, value, color, active, onClick }: {
  * casi nadie toca, con la conversación esperando debajo.
  */
 function FiltersMenu({
-  count, status, statusChips, kind, byKind, awaitingOnly, awaitingCount, contactOnly,
-  onStatus, onKind, onAwaiting, onContact, onReset,
+  count, kind, byKind, awaitingOnly, awaitingCount, contactOnly,
+  onKind, onAwaiting, onContact, onReset,
 }: {
   count: number
-  status: StatusFilter
-  statusChips: { key: StatusFilter; label: string; color?: string }[]
   kind: FeedbackKind | 'all'
   byKind: Record<string, number>
   awaitingOnly: boolean
   awaitingCount: number
   contactOnly: boolean
-  onStatus: (s: StatusFilter) => void
   onKind: (k: FeedbackKind | 'all') => void
   onAwaiting: (v: boolean) => void
   onContact: (v: boolean) => void
@@ -1171,14 +1301,9 @@ function FiltersMenu({
             transition={{ duration: 0.22, ease: EASE }}
             className="absolute left-0 top-full z-30 mt-2 w-[min(24rem,calc(100vw-2.5rem))] origin-top-left rounded-2xl border border-line bg-surface p-3.5 shadow-2xl shadow-black/25"
           >
-            <FilterGroup title={t('admin.site_feedback.f_status', 'Estado')}>
-              {statusChips.map((c) => (
-                <FilterChip key={c.key} active={status === c.key} color={c.color} onClick={() => onStatus(c.key)}>
-                  {c.label}
-                </FilterChip>
-              ))}
-            </FilterGroup>
-
+            {/* Sin grupo "Estado": el estado se elige en las pestañas de arriba,
+                que además enseñan cuántas hay en cada una. Tenerlo aquí también
+                era un segundo mando para lo mismo, y el que no coincidía. */}
             <FilterGroup title={t('admin.site_feedback.f_kind', 'Tipo')}>
               <FilterChip active={kind === 'all'} onClick={() => onKind('all')}>
                 {t('admin.site_feedback.kind_all', 'Todo tipo')}

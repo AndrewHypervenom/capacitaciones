@@ -3889,6 +3889,7 @@
       "kind_all": "Todo tipo",
       "only_contact": "Piden contacto",
       "filter_open": "Sin resolver",
+      "scope_closed": "Cerradas",
       "filter_all": "Todas",
       "filters": "Filtros",
       "f_status": "Estado",
@@ -3896,6 +3897,7 @@
       "f_more": "Además",
       "f_clear": "Quitar todos",
       "count": "{{n}} en la lista",
+      "count_of": "{{n}} de {{total}}",
       "tab_info": "Detalle",
       "empty_title": "Nada por aquí todavía",
       "empty_desc": "Cuando alguien opine desde el botón flotante, su mensaje aparecerá en esta bandeja.",
@@ -4950,8 +4952,12 @@
     "sent": "Respuesta enviada",
     "saved_note": "Nota guardada",
     "send_error": "No pudimos enviar tu mensaje. Inténtalo otra vez.",
+    "templates": "Respuestas rápidas",
     "tpl_reviewing": "Gracias por avisarnos. Ya lo estamos revisando y te contamos apenas tengamos novedades.",
+    "tpl_reviewing_short": "Gracias por avisarnos",
     "tpl_fixed": "Ya quedó corregido. Cierra sesión, vuelve a entrar y cuéntanos si te sigue pasando.",
-    "tpl_more_info": "¿Nos ayudas con una captura de la pantalla y el paso exacto donde se queda? Así lo reproducimos igual que tú."
+    "tpl_fixed_short": "Ya quedó corregido",
+    "tpl_more_info": "¿Nos ayudas con una captura de la pantalla y el paso exacto donde se queda? Así lo reproducimos igual que tú.",
+    "tpl_more_info_short": "Pedir una captura"
   }
 }
