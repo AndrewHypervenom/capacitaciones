@@ -1000,7 +1000,13 @@
     "previous_passed": "passed",
     "previous_failed": "not passed",
     "try_again": "Try again",
-    "keep_watching": "Keep watching"
+    "keep_watching": "Keep watching",
+    "has_checks": "This video has {{count}} checks: it pauses on its own to ask you about what you just watched.",
+    "why_paused": "We paused the video at {{time}} to check what you just watched: {{count}} questions.",
+    "retry_hint": "You need {{pct}}% to pass, and you can retake it as many times as you want.",
+    "result_passed_hint": "Check passed. It will not pop up again, but you can retake it any time from the content list.",
+    "result_failed_hint": "You still need {{pct}}%. Retake it now or later from the content list; the score kept is the last attempt.",
+    "retry_check": "Retake"
   },
   "admin": {
     "surgery": {
@@ -4930,7 +4936,11 @@
     "focus_mode": "Focus mode",
     "show_list": "Show list",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "checks_done": "{{done}}/{{total}} checks",
+    "retry_check": "Retake this check",
+    "how_it_works": "This module is video-based: you watch them one at a time and the list beside keeps your place.",
+    "how_it_works_checks": "This module is video-based: you watch them one at a time and the list beside keeps your place. The video pauses on its own when there is a check, and you can retake it from that same list."
   },
   "feedback_thread": {
     "you": "You",

@@ -73,10 +73,19 @@ interface InteractiveVideoModuleProps {
   nextUp?: { title: string; start: () => void } | null
   /** Se llama cuando el video TERMINA (no cuando se pausa). */
   onEnded?: () => void
+  /**
+   * Resultado de una verificación, apenas se responde. El contenedor lo necesita
+   * para que un quiz hecho HOY siga contando cuando el reproductor se remonta
+   * (modo cine: cambiar de video destruye este componente y su estado local, y
+   * los intentos de la base se cargaron antes de responder).
+   */
+  onQuizGraded?: (markerId: string, result: QuizResult) => void
   /** Estado hacia el contenedor (modo cine). Solo se emite cuando cambia algo visible. */
   onState?: (state: VideoPlayerState) => void
   /** El contenedor puede pedir un salto de tiempo (capítulos del panel lateral). */
   seekRef?: React.MutableRefObject<((seconds: number) => void) | null>
+  /** El contenedor puede pedir repetir una verificación (panel lateral del cine). */
+  retryRef?: React.MutableRefObject<((markerId: string) => void) | null>
 }
 
 /** Segundos de la cuenta regresiva antes de encadenar el siguiente video. */
@@ -126,8 +135,10 @@ export function InteractiveVideoModule({
   autoPlayOnReady,
   nextUp,
   onEnded,
+  onQuizGraded,
   onState,
   seekRef,
+  retryRef,
 }: InteractiveVideoModuleProps) {
   const { t } = useTranslation()
   const playerId = useId()
@@ -195,6 +206,7 @@ export function InteractiveVideoModule({
   // Embeds por iframe (YouTube/Vimeo): sin PiP y con el mismo patrón de sondeo de tiempo.
   const isEmbed = isYouTube || isVimeo
   const sortedMarkers = [...markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
+  const quizCount = sortedMarkers.filter((m) => m.type === 'quiz').length
 
   const activeChapterIdx = sortedMarkers.reduce((acc, m, i) => {
     if (m.timeSeconds <= currentTime) return i
@@ -542,6 +554,14 @@ export function InteractiveVideoModule({
     return () => { seekRef.current = null }
   })
 
+  // …y desde ahí también puede pedir repetir una verificación, porque con
+  // `hideChapters` la lista interna (donde vive el botón) no se pinta.
+  useEffect(() => {
+    if (!retryRef) return
+    retryRef.current = (markerId: string) => { focusVideo(playerId); handleRetryQuiz(markerId) }
+    return () => { retryRef.current = null }
+  })
+
   // Estado hacia el contenedor. Se emite solo cuando cambia algo que se ve
   // (medio segundo de reloj, capítulo, compuerta): esto se calcula 4 veces por
   // segundo y avisar en cada tic haría re-pintar la lista lateral sin motivo.
@@ -641,6 +661,9 @@ export function InteractiveVideoModule({
   const handleQuizGraded = (score: number, total: number, detail: QuizAnswerDetail[]) => {
     if (!activeMarker) return
     setCompletedQuizzes((prev) => ({ ...prev, [activeMarker.id]: { score, total } }))
+    // El contenedor guarda el resultado por su cuenta: en modo cine este
+    // componente se destruye al cambiar de video y volvería sin memoria.
+    onQuizGraded?.(activeMarker.id, { score, total })
 
     // Registrar el intento para que aparezca en el panel de evaluaciones y cuente
     // en la compuerta del módulo. Solo si tenemos los ids reales (el preview de
@@ -1073,8 +1096,18 @@ export function InteractiveVideoModule({
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             >
-              <div className="h-16 w-16 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20">
-                <Play className="h-7 w-7 text-white ml-1" />
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20">
+                  <Play className="h-7 w-7 text-white ml-1" />
+                </div>
+                {/* Contrato con el aprendiz ANTES de darle play: este video se va a
+                    detener para preguntarle. Verlo venir evita el sobresalto de
+                    "¿por qué se paró y qué es esto?". */}
+                {quizCount > 0 && currentTime < 1 && (
+                  <span className="max-w-[min(90%,22rem)] text-center rounded-full bg-black/55 backdrop-blur-sm px-4 py-2 text-[11.5px] leading-snug text-white/85 border border-white/10">
+                    {t('video.has_checks', { count: quizCount })}
+                  </span>
+                )}
               </div>
             </motion.div>
           )}

@@ -1000,7 +1000,13 @@
     "previous_passed": "aprobada",
     "previous_failed": "no aprobada",
     "try_again": "Volver a intentarlo",
-    "keep_watching": "Seguir con el video"
+    "keep_watching": "Seguir con el video",
+    "has_checks": "Este video tiene {{count}} verificaciones: se pausa solo para preguntarte lo que acabas de ver.",
+    "why_paused": "Pausamos el video en {{time}} para verificar lo que acabas de ver: {{count}} preguntas.",
+    "retry_hint": "Necesitas {{pct}}% para aprobarla y puedes repetirla cuantas veces quieras.",
+    "result_passed_hint": "Verificación aprobada. No te volverá a salir sola, pero puedes repetirla cuando quieras desde la lista de contenido.",
+    "result_failed_hint": "Te falta llegar al {{pct}}%. Puedes repetirla ahora o más tarde desde la lista de contenido; queda la nota del último intento.",
+    "retry_check": "Repetir"
   },
   "admin": {
     "surgery": {
@@ -4930,7 +4936,11 @@
     "focus_mode": "Modo enfoque",
     "show_list": "Ver la lista",
     "previous": "Anterior",
-    "next": "Siguiente"
+    "next": "Siguiente",
+    "checks_done": "{{done}}/{{total}} verificaciones",
+    "retry_check": "Repetir esta verificación",
+    "how_it_works": "Este módulo es de video: se ven de a uno y la lista de al lado guarda por dónde vas.",
+    "how_it_works_checks": "Este módulo es de video: se ven de a uno y la lista de al lado guarda por dónde vas. El video se pausa solo cuando hay una verificación, y puedes repetirla desde esa misma lista."
   },
   "feedback_thread": {
     "you": "Tú",

@@ -28,12 +28,14 @@ import {
   Maximize2,
   Minimize2,
   Play,
+  RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { RichTextInline } from '@/components/ui/RichText'
 import { InteractiveVideoModule, type VideoPlayerState } from './InteractiveVideoModule'
 import { buildVideoPlaylist, type PlaylistItem } from '@/lib/videoPlaylist'
 import { getAutoplayNext, setAutoplayNext, subscribeAutoplayNext } from '@/lib/videoBus'
+import { isVideoQuizPassed } from '@/types/blocks'
 import type { LearningModule } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
@@ -84,7 +86,15 @@ export function VideoCinema({ module, language, userId, campaignId, moduleId, at
   const [focusMode, setFocusMode] = useState(false)
   const [playerState, setPlayerState] = useState<VideoPlayerState | null>(null)
   const [autoNext, setAutoNext] = useState(getAutoplayNext)
+  // Verificaciones respondidas EN ESTA SESIÓN. Cambiar de video destruye el
+  // reproductor y con él su memoria, y los intentos de la base se cargaron al
+  // abrir el módulo: sin esto, un quiz recién hecho volvía a salir al regresar al
+  // video y otro ya hecho parecía perdido. Se indexa con la MISMA clave que la
+  // base (`sección__VIDEO_QUIZ__marcador`) porque los ids de marcador solo son
+  // únicos dentro de su video: dos videos clonados pueden repetirlos.
+  const [sessionQuizResults, setSessionQuizResults] = useState<Record<string, { score: number; total: number }>>({})
   const seekRef = useRef<((seconds: number) => void) | null>(null)
+  const retryRef = useRef<((markerId: string) => void) | null>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   // Solo se enciende al encadenar: montar la pantalla nunca arranca un video.
   const chainRef = useRef(false)
@@ -177,14 +187,39 @@ export function VideoCinema({ module, language, userId, campaignId, moduleId, at
       if (m.type !== 'quiz') continue
       const at = attemptByUnit.get(`${active.sectionId}__VIDEO_QUIZ__${m.id}`)
       const sa = at?.submitted_answers
-      if (!sa) continue
-      out[m.id] = {
-        score: typeof sa.aciertos === 'number' ? sa.aciertos : 0,
-        total: typeof sa.total === 'number' ? sa.total : (m.questions?.length ?? 0),
+      if (sa) {
+        out[m.id] = {
+          score: typeof sa.aciertos === 'number' ? sa.aciertos : 0,
+          total: typeof sa.total === 'number' ? sa.total : (m.questions?.length ?? 0),
+        }
+      }
+      // Lo respondido en esta sesión manda: es más nuevo que lo que trajo la base.
+      const fresh = sessionQuizResults[`${active.sectionId}__VIDEO_QUIZ__${m.id}`]
+      if (fresh) out[m.id] = fresh
+    }
+    return out
+  }, [active, attemptByUnit, sessionQuizResults])
+
+  /** Notas de TODOS los videos, para que la lista lateral las muestre sin
+   *  depender de que ese video sea el que se está viendo. */
+  const quizResultsByMarker = useMemo(() => {
+    const out: Record<string, { score: number; total: number }> = {}
+    for (const it of items) {
+      for (const m of it.markers) {
+        if (m.type !== 'quiz' || !it.sectionId) continue
+        const sa = attemptByUnit.get(`${it.sectionId}__VIDEO_QUIZ__${m.id}`)?.submitted_answers
+        if (sa) {
+          out[m.id] = {
+            score: typeof sa.aciertos === 'number' ? sa.aciertos : 0,
+            total: typeof sa.total === 'number' ? sa.total : (m.questions?.length ?? 0),
+          }
+        }
+        const fresh = sessionQuizResults[`${it.sectionId}__VIDEO_QUIZ__${m.id}`]
+        if (fresh) out[m.id] = fresh
       }
     }
     return out
-  }, [active, attemptByUnit])
+  }, [items, attemptByUnit, sessionQuizResults])
 
   // ── Cifras de cabecera ──
   const knownDuration = items.reduce((acc, it) => acc + (durations[it.key] ?? 0), 0)
@@ -202,8 +237,9 @@ export function VideoCinema({ module, language, userId, campaignId, moduleId, at
         initial={reduce ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: EASE }}
-        className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-line bg-subtle/60 px-5 py-3.5"
+        className="rounded-2xl border border-line bg-subtle/60 px-5 py-3.5"
       >
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
         <span className="inline-flex items-center gap-2 text-[12.5px] font-medium text-text">
           <Film className="h-4 w-4 text-neon-green" />
           {t('cinema.videos_count', { count: items.length })}
@@ -234,6 +270,13 @@ export function VideoCinema({ module, language, userId, campaignId, moduleId, at
             {t('cinema.watched_of', { done: watchedCount, total: items.length })}
           </span>
         </div>
+      </div>
+
+      {/* Por qué este módulo se ve así. Antes cada video era una sección aparte y
+          el cambio desconcierta si nadie lo explica. */}
+      <p className="mt-3 border-t border-line/70 pt-3 text-[12px] leading-relaxed text-text-subtle">
+        {totalChecks > 0 ? t('cinema.how_it_works_checks') : t('cinema.how_it_works')}
+      </p>
       </motion.div>
 
       {/* ── Escenario + lista ── */}
@@ -275,8 +318,14 @@ export function VideoCinema({ module, language, userId, campaignId, moduleId, at
                   autoPlayOnReady={chainRef.current}
                   nextUp={nextUp}
                   onEnded={handleEnded}
+                  onQuizGraded={(markerId, result) =>
+                    setSessionQuizResults((prev) => ({
+                      ...prev,
+                      [`${active.sectionId}__VIDEO_QUIZ__${markerId}`]: result,
+                    }))}
                   onState={setPlayerState}
                   seekRef={seekRef}
+                  retryRef={retryRef}
                 />
               </motion.div>
             </AnimatePresence>
@@ -396,8 +445,10 @@ export function VideoCinema({ module, language, userId, campaignId, moduleId, at
                       duration={durations[item.key]}
                       state={i === activeIndex ? playerState : null}
                       language={language}
+                      quizResults={quizResultsByMarker}
                       onSelect={() => goTo(i)}
                       onSeek={(secs) => seekRef.current?.(secs)}
+                      onRetryQuiz={i === activeIndex ? (markerId) => retryRef.current?.(markerId) : undefined}
                     />
                   ))}
                 </div>
@@ -415,7 +466,7 @@ export function VideoCinema({ module, language, userId, campaignId, moduleId, at
 /* ── Fila de la lista: el video, y sus capítulos cuando es el que se ve ── */
 
 function PlaylistRow({
-  item, index, active, watched, duration, state, language, onSelect, onSeek,
+  item, index, active, watched, duration, state, language, quizResults, onSelect, onSeek, onRetryQuiz,
 }: {
   item: PlaylistItem
   index: number
@@ -424,12 +475,18 @@ function PlaylistRow({
   duration?: number
   state: VideoPlayerState | null
   language: Language
+  /** Notas de las verificaciones de todos los videos (markerId → nota). */
+  quizResults: Record<string, { score: number; total: number }>
   onSelect: () => void
   onSeek: (seconds: number) => void
+  /** Solo el video que se está viendo puede repetir una verificación. */
+  onRetryQuiz?: (markerId: string) => void
 }) {
   const { t } = useTranslation()
   const lang = language as 'es' | 'en' | 'pt'
   const chapters = [...item.markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
+  const quizzes = chapters.filter((c) => c.type === 'quiz')
+  const quizzesDone = quizzes.filter((c) => isVideoQuizPassed(quizResults[c.id])).length
   const pct = active && state && state.duration > 0
     ? Math.min(100, (state.currentTime / state.duration) * 100)
     : watched ? 100 : 0
@@ -475,9 +532,15 @@ function PlaylistRow({
             <span className="font-mono text-[11px] tabular-nums text-text-subtle">
               {duration ? formatTime(duration) : '--:--'}
             </span>
+            {/* Verificaciones: cuántas hay y cuántas van aprobadas. Sin el "de N"
+                el número solo se leía como un adorno. */}
             {item.quizCount > 0 && (
-              <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-amber-500">
-                <ClipboardList className="h-2.5 w-2.5" /> {item.quizCount}
+              <span className={cn(
+                'inline-flex items-center gap-1 text-[10.5px] font-medium',
+                quizzesDone >= item.quizCount ? 'text-neon-green' : 'text-amber-500',
+              )}>
+                <ClipboardList className="h-2.5 w-2.5" />
+                {t('cinema.checks_done', { done: quizzesDone, total: item.quizCount })}
               </span>
             )}
             {chapters.filter((c) => c.type === 'chapter').length > 0 && (
@@ -515,36 +578,65 @@ function PlaylistRow({
               {chapters.map((m, ci) => {
                 const gate = state?.gateTime ?? null
                 const locked = gate != null && m.timeSeconds > gate
-                const result = m.type === 'quiz' ? state?.completedQuizzes?.[m.id] : undefined
+                const isQuiz = m.type === 'quiz'
+                // La nota sale del reproductor si este es el video activo, y si no
+                // de lo acumulado (base + sesión), para que la lista nunca mienta.
+                const result = isQuiz ? (state?.completedQuizzes?.[m.id] ?? quizResults[m.id]) : undefined
+                const passed = isVideoQuizPassed(result)
                 const isActive = state ? ci === state.activeChapterIdx : false
                 return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    disabled={locked}
-                    onClick={() => onSeek(m.timeSeconds)}
-                    title={locked ? t('video.locked_hint') : undefined}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
-                      locked
-                        ? 'cursor-not-allowed opacity-45'
-                        : isActive
-                          ? 'bg-glass/15 text-text'
-                          : 'text-text-muted hover:bg-glass/10 hover:text-text',
+                  <div key={m.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={locked}
+                      onClick={() => onSeek(m.timeSeconds)}
+                      title={locked ? t('video.locked_hint') : undefined}
+                      className={cn(
+                        'flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
+                        locked
+                          ? 'cursor-not-allowed opacity-45'
+                          : isActive
+                            ? 'bg-glass/15 text-text'
+                            : 'text-text-muted hover:bg-glass/10 hover:text-text',
+                      )}
+                    >
+                      {locked
+                        ? <Lock className="h-3 w-3 shrink-0 text-text-subtle" />
+                        : isQuiz
+                          ? <ClipboardList className={cn('h-3 w-3 shrink-0', passed ? 'text-neon-green' : 'text-amber-500')} />
+                          : <BookOpen className="h-3 w-3 shrink-0 text-text-subtle" />}
+                      <span className="min-w-0 flex-1 truncate text-[12px] leading-snug">
+                        {m.title[lang] || m.title.es}
+                      </span>
+                      {/* La nota, a la vista: el aprendiz sabe cuál le falta. */}
+                      {result && (
+                        <span className={cn(
+                          'shrink-0 font-mono text-[10.5px] tabular-nums',
+                          passed ? 'text-neon-green' : 'text-amber-500',
+                        )}>
+                          {result.score}/{result.total}
+                        </span>
+                      )}
+                      <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-text-subtle">
+                        {formatTime(m.timeSeconds)}
+                      </span>
+                    </button>
+
+                    {/* Repetir la verificación sin rebobinar. En modo cine la lista
+                        interna del reproductor no se pinta, así que este es el
+                        único camino que tiene el aprendiz. */}
+                    {isQuiz && !locked && onRetryQuiz && (
+                      <button
+                        type="button"
+                        onClick={() => onRetryQuiz(m.id)}
+                        title={t('cinema.retry_check')}
+                        aria-label={t('cinema.retry_check')}
+                        className="shrink-0 rounded-lg p-1.5 text-text-subtle transition-colors hover:bg-glass/15 hover:text-neon-green"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </button>
                     )}
-                  >
-                    {locked
-                      ? <Lock className="h-3 w-3 shrink-0 text-text-subtle" />
-                      : m.type === 'quiz'
-                        ? <ClipboardList className={cn('h-3 w-3 shrink-0', result ? 'text-neon-green' : 'text-amber-500')} />
-                        : <BookOpen className="h-3 w-3 shrink-0 text-text-subtle" />}
-                    <span className="min-w-0 flex-1 truncate text-[12px] leading-snug">
-                      {m.title[lang] || m.title.es}
-                    </span>
-                    <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-text-subtle">
-                      {formatTime(m.timeSeconds)}
-                    </span>
-                  </button>
+                  </div>
                 )
               })}
             </div>

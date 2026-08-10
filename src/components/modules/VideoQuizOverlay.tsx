@@ -40,6 +40,13 @@ interface VideoQuizOverlayProps {
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E']
 
+/** m:ss del punto del video donde está la verificación. */
+function formatMarkerTime(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${String(sec).padStart(2, '0')}`
+}
+
 const CONFETTI = [
   { color: 'bg-neon-green', isBar: true },
   { color: 'bg-amber-400', isBar: false },
@@ -116,6 +123,15 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
   const handleNext = () => {
     setSelected(null)
     setCurrentIdx((prev) => prev + 1)
+  }
+
+  /** Volver a empezar la misma verificación, desde la pantalla de resultados. */
+  const handleRestart = () => {
+    setAnswered({})
+    setSelected(null)
+    setCurrentIdx(0)
+    setShowConfetti(false)
+    setPhase('question')
   }
 
   const handleFinish = () => {
@@ -265,6 +281,15 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
 
             {/* Contenido — ocupa el espacio restante, centrado */}
             <div className="flex-1 flex flex-col justify-center px-8 py-6 max-w-2xl mx-auto w-full min-h-0">
+              {/* Por qué se detuvo el video. Va solo en la primera pregunta: en las
+                  siguientes ya se entendió y estorbaría. */}
+              {currentIdx === 0 && !isAnswered && (
+                <p className="mb-5 rounded-xl border-l-2 border-amber-400/60 bg-amber-400/[0.06] px-4 py-2.5 text-[12.5px] leading-relaxed text-zinc-400">
+                  {t('video.why_paused', { time: formatMarkerTime(marker.timeSeconds), count: questions.length })}
+                  {' '}
+                  {t('video.retry_hint', { pct: Math.round(VIDEO_QUIZ_PASS_RATIO * 100) })}
+                </p>
+              )}
               <p className="text-[22px] font-semibold text-white leading-snug mb-7">
                 {questionText}
               </p>
@@ -442,14 +467,31 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                 })}
               </div>
 
-              <button
-                type="button"
-                onClick={() => onComplete(score, questions.length)}
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-neon-green hover:bg-neon-green/90 transition-colors"
-              >
-                <PlayCircle className="h-4 w-4" />
-                {t('video.continue_video')}
-              </button>
+              <div className="space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => onComplete(score, questions.length)}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-neon-green hover:bg-neon-green/90 transition-colors"
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  {t('video.continue_video')}
+                </button>
+                {/* Repetir SIEMPRE está a la mano, no solo cuando le fue mal: la
+                    nota que queda es la del último intento. */}
+                <button
+                  type="button"
+                  onClick={handleRestart}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[13.5px] font-medium text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {t('video.try_again')}
+                </button>
+                <p className="pt-1 text-[11.5px] leading-relaxed text-zinc-600">
+                  {score / questions.length >= VIDEO_QUIZ_PASS_RATIO
+                    ? t('video.result_passed_hint')
+                    : t('video.result_failed_hint', { pct: Math.round(VIDEO_QUIZ_PASS_RATIO * 100) })}
+                </p>
+              </div>
             </div>
           </motion.div>
         )}
