@@ -994,7 +994,13 @@
     "finished": "Você terminou este vídeo.",
     "watch_again": "Assistir de novo",
     "autoplay": "Encadear",
-    "autoplay_hint": "Reproduzir o próximo vídeo quando este terminar"
+    "autoplay_hint": "Reproduzir o próximo vídeo quando este terminar",
+    "already_answered": "Você já respondeu esta verificação",
+    "previous_score": "Seu resultado anterior: {{score}} de {{total}}",
+    "previous_passed": "aprovada",
+    "previous_failed": "não aprovada",
+    "try_again": "Tentar de novo",
+    "keep_watching": "Continuar o vídeo"
   },
   "admin": {
     "surgery": {

@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, XCircle, PlayCircle, ChevronRight, Trophy, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { playQuizSound } from '@/lib/sound'
+import { isVideoQuizPassed, VIDEO_QUIZ_PASS_RATIO } from '@/types/blocks'
 import type { VideoQuizMarker, VideoQuizQuestion } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
@@ -26,6 +27,10 @@ interface VideoQuizOverlayProps {
    * en el panel QUÉ respondió y no solo cuántas acertó.
    */
   onGraded: (score: number, total: number, detail: QuizAnswerDetail[]) => void
+  /** Nota del intento anterior, cuando esta verificación ya se respondió. En vez
+   *  de lanzar las preguntas de golpe, se abre diciendo cómo le fue y ofreciendo
+   *  volver a intentarla o seguir con el video. */
+  previousResult?: { score: number; total: number } | null
   /** Se dispara al pulsar "Continuar video": cierra el overlay y reanuda la reproducción. */
   onComplete: (score: number, total: number) => void
   /** Cierra el overlay y regresa al segmento anterior para repasar la información;
@@ -64,25 +69,38 @@ function ConfettiPiece({ color, angle, delay, isBar }: { color: string; angle: n
   )
 }
 
-type Phase = 'question' | 'summary'
+type Phase = 'intro' | 'question' | 'summary'
 
-export function VideoQuizOverlay({ marker, language, onGraded, onComplete, onReview }: VideoQuizOverlayProps) {
+export function VideoQuizOverlay({ marker, language, previousResult, onGraded, onComplete, onReview }: VideoQuizOverlayProps) {
   const { t } = useTranslation()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selected, setSelected] = useState<number | null>(null)
   const [answered, setAnswered] = useState<Record<number, number>>({})
-  const [phase, setPhase] = useState<Phase>('question')
+  const [phase, setPhase] = useState<Phase>(previousResult ? 'intro' : 'question')
   const [showConfetti, setShowConfetti] = useState(false)
 
   const questions = marker.questions
-  const q: VideoQuizQuestion = questions[currentIdx]
+  // Guarda de última línea: un marcador de quiz sin preguntas no debe reventar la
+  // pantalla ni dejar el video trancado (el mapeo ya los degrada a capítulo).
+  const emptyHandled = useRef(false)
+  useEffect(() => {
+    if (questions.length > 0 || emptyHandled.current) return
+    emptyHandled.current = true
+    onComplete(0, 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions.length])
+
+  const q: VideoQuizQuestion | undefined = questions[currentIdx]
   const lang = language as 'es' | 'en' | 'pt'
+  if (!q) return null
+
   const questionText = q.question[lang] || q.question.es
   const options = q.options[lang]?.length ? q.options[lang] : q.options.es
   const explanation = q.explanation[lang] || q.explanation.es
   const isAnswered = selected !== null
   const isCorrect = selected === q.correct
   const isLast = currentIdx === questions.length - 1
+  const previousPassed = isVideoQuizPassed(previousResult)
 
   const score = Object.entries(answered).filter(
     ([idx, choice]) => choice === questions[Number(idx)].correct,
@@ -104,7 +122,7 @@ export function VideoQuizOverlay({ marker, language, onGraded, onComplete, onRev
     const finalScore = Object.entries({ ...answered }).filter(
       ([idx, choice]) => choice === questions[Number(idx)].correct,
     ).length
-    if (finalScore / questions.length >= 0.75) {
+    if (finalScore / questions.length >= VIDEO_QUIZ_PASS_RATIO) {
       setShowConfetti(true)
       setTimeout(() => setShowConfetti(false), 1500)
       playQuizSound('complete')
@@ -138,7 +156,62 @@ export function VideoQuizOverlay({ marker, language, onGraded, onComplete, onRev
       <div className="h-px w-full bg-gradient-to-r from-transparent via-amber-400 to-transparent shrink-0" />
 
       <AnimatePresence mode="wait">
-        {phase === 'question' ? (
+        {phase === 'intro' ? (
+          /* Ya la respondió antes: se le dice cómo le fue y decide él. Aprobada
+             no vuelve a salir sola, así que aquí solo se llega reprobado o por
+             el botón de reintentar de la lista de capítulos. */
+          <motion.div
+            key="intro"
+            className="flex-1 flex flex-col items-center justify-center px-8"
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="w-full max-w-md text-center">
+              <div className={cn(
+                'h-20 w-20 rounded-3xl flex items-center justify-center mb-6 mx-auto ring-1',
+                previousPassed
+                  ? 'bg-neon-green/10 ring-neon-green/30 text-neon-green'
+                  : 'bg-amber-400/10 ring-amber-400/20 text-amber-400',
+              )}>
+                <RotateCcw className="h-8 w-8" />
+              </div>
+
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                {marker.title[lang] || marker.title.es || t('video.quiz_tag')}
+              </p>
+              <p className="text-[19px] font-semibold text-white leading-snug mb-2">
+                {t('video.already_answered')}
+              </p>
+              <p className="text-[14px] text-zinc-500 mb-8">
+                {t('video.previous_score', {
+                  score: previousResult?.score ?? 0,
+                  total: previousResult?.total ?? questions.length,
+                })}
+                {' · '}
+                {previousPassed ? t('video.previous_passed') : t('video.previous_failed')}
+              </p>
+
+              <div className="space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPhase('question')}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-amber-400 hover:bg-amber-300 transition-colors"
+                >
+                  <RotateCcw className="h-4 w-4" /> {t('video.try_again')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onComplete(previousResult?.score ?? 0, previousResult?.total ?? questions.length)}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[13.5px] font-medium text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors"
+                >
+                  <PlayCircle className="h-4 w-4" /> {t('video.keep_watching')}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ) : phase === 'question' ? (
           <motion.div
             key="question"
             className="flex-1 flex flex-col min-h-0"
@@ -315,7 +388,7 @@ export function VideoQuizOverlay({ marker, language, onGraded, onComplete, onRev
             <div className="w-full max-w-md text-center">
               <div className={cn(
                 'h-20 w-20 rounded-3xl flex items-center justify-center mb-6 mx-auto ring-1',
-                score / questions.length >= 0.75
+                score / questions.length >= VIDEO_QUIZ_PASS_RATIO
                   ? 'bg-neon-green/10 ring-neon-green/30 text-neon-green'
                   : 'bg-amber-400/10 ring-amber-400/20 text-amber-400',
               )}>
@@ -332,14 +405,14 @@ export function VideoQuizOverlay({ marker, language, onGraded, onComplete, onRev
               <p className="text-[14px] text-zinc-500 mb-6">
                 {score === questions.length
                   ? t('video.all_correct')
-                  : score / questions.length >= 0.75
+                  : score / questions.length >= VIDEO_QUIZ_PASS_RATIO
                     ? t('video.good_result')
                     : t('video.review_material')}
               </p>
 
               <div className="h-1 w-full rounded-full bg-zinc-800 mb-8 overflow-hidden">
                 <motion.div
-                  className={cn('h-full rounded-full', score / questions.length >= 0.75 ? 'bg-neon-green' : 'bg-amber-400')}
+                  className={cn('h-full rounded-full', score / questions.length >= VIDEO_QUIZ_PASS_RATIO ? 'bg-neon-green' : 'bg-amber-400')}
                   initial={{ width: 0 }}
                   animate={{ width: `${(score / questions.length) * 100}%` }}
                   transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}

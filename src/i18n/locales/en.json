@@ -994,7 +994,13 @@
     "finished": "You finished this video.",
     "watch_again": "Watch again",
     "autoplay": "Autoplay",
-    "autoplay_hint": "Play the next video when this one ends"
+    "autoplay_hint": "Play the next video when this one ends",
+    "already_answered": "You already answered this check",
+    "previous_score": "Your previous result: {{score}} of {{total}}",
+    "previous_passed": "passed",
+    "previous_failed": "not passed",
+    "try_again": "Try again",
+    "keep_watching": "Keep watching"
   },
   "admin": {
     "surgery": {

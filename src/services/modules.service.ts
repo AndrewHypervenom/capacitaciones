@@ -21,19 +21,35 @@ export function mapVideoMarkersFromDb(raw: unknown): VideoMarker[] {
       title: { es: m.title_es || '', en: m.title_en || m.title_es || '', pt: m.title_pt || m.title_es || '' },
     }
     if (m.type === 'quiz') {
+      // Solo cuentan las preguntas realmente jugables: con enunciado y al menos
+      // dos opciones. Una pregunta a medias (IA interrumpida, edición sin guardar)
+      // reventaba el overlay al abrirlo y el video se quedaba trancado.
+      const questions = (m.questions ?? [])
+        .filter((q) => {
+          const text = (q.question_es || q.question_en || q.question_pt || '').trim()
+          const opts = (q.options_es?.length ? q.options_es : q.options_en?.length ? q.options_en : q.options_pt) ?? []
+          return text.length > 0 && opts.filter((o) => (o ?? '').trim().length > 0).length >= 2
+        })
+        .map((q) => ({
+          id: q.id,
+          question: { es: q.question_es || '', en: q.question_en || q.question_es || '', pt: q.question_pt || q.question_es || '' },
+          options: { es: q.options_es || [], en: q.options_en || q.options_es || [], pt: q.options_pt || q.options_es || [] },
+          correct: q.correct ?? 0,
+          explanation: { es: q.explanation_es || '', en: q.explanation_en || q.explanation_es || '', pt: q.explanation_pt || q.explanation_es || '' },
+        }))
+
+      // Un "quiz" sin ninguna pregunta usable no es un quiz: se degrada a capítulo
+      // para que no bloquee el avance del video con una compuerta que nunca se
+      // puede abrir.
+      if (questions.length === 0) return { ...base, type: 'chapter' as const }
+
       const qm: VideoQuizMarker = {
         ...base,
         // Un quiz guardado en 0:00 (o casi) jamás se dispararía y dejaría el video
         // bloqueado; lo corremos al mínimo para no romper contenido ya publicado.
         timeSeconds: clampQuizTime(base.timeSeconds),
         type: 'quiz',
-        questions: (m.questions ?? []).map((q) => ({
-          id: q.id,
-          question: { es: q.question_es || '', en: q.question_en || q.question_es || '', pt: q.question_pt || q.question_es || '' },
-          options: { es: q.options_es || [], en: q.options_en || q.options_es || [], pt: q.options_pt || q.options_es || [] },
-          correct: q.correct ?? 0,
-          explanation: { es: q.explanation_es || '', en: q.explanation_en || q.explanation_es || '', pt: q.explanation_pt || q.explanation_es || '' },
-        })),
+        questions,
       }
       return qm
     }

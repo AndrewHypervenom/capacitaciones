@@ -93,11 +93,27 @@ export interface VideoMarkerRaw {
  *  el aprendiz se queda con el video bloqueado y sin ver la pregunta. */
 export const MIN_VIDEO_QUIZ_SECONDS = 3;
 
+/** Proporción de aciertos que da por APROBADA una verificación de video. Es el
+ *  mismo umbral con el que se guarda el intento (`status: completed` ≥ 75) y con
+ *  el que la lista de capítulos pinta el ✓. Un quiz aprobado es el ÚNICO que no
+ *  se vuelve a ofrecer; uno reprobado se ofrece otra vez. */
+export const VIDEO_QUIZ_PASS_RATIO = 0.75;
+
+/** ¿Este resultado da por superada la verificación? Sin resultado, no. */
+export function isVideoQuizPassed(result?: { score: number; total: number } | null): boolean {
+  if (!result || !result.total) return false;
+  return result.score / result.total >= VIDEO_QUIZ_PASS_RATIO;
+}
+
 /** Sube a `MIN_VIDEO_QUIZ_SECONDS` los quiz puestos demasiado al principio, sin
  *  pasarse de la duración cuando esta se conoce (0 = desconocida). */
 export function clampQuizTime(seconds: number, duration = 0): number {
   const min = duration > 0 ? Math.min(MIN_VIDEO_QUIZ_SECONDS, Math.max(1, Math.floor(duration) - 1)) : MIN_VIDEO_QUIZ_SECONDS;
-  return Math.max(min, Math.round(seconds));
+  const at = Math.max(min, Math.round(seconds));
+  // Un quiz más allá del final del video nunca se alcanza reproduciendo. Con la
+  // duración a la vista se deja un segundo antes del final, donde sí se cruza.
+  if (duration > 0) return Math.min(at, Math.max(min, Math.floor(duration) - 1));
+  return at;
 }
 
 export interface VideoBlock {

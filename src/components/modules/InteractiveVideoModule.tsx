@@ -34,6 +34,7 @@ import {
   setAutoplayNext,
   subscribeAutoplayNext,
 } from '@/lib/videoBus'
+import { isVideoQuizPassed } from '@/types/blocks'
 import type { ModuleSection, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
@@ -137,6 +138,9 @@ export function InteractiveVideoModule({
   const triggeredRef = useRef<Set<string>>(new Set())
   const lastSaveRef = useRef(0)
   const lastTimeRef = useRef(0)
+  /** Espejo síncrono de `showOverlay`: el reproductor sondea más rápido de lo que
+   *  React repinta y el estado llegaría tarde para evitar una segunda apertura. */
+  const overlayOpenRef = useRef(false)
 
   const [playing, setPlaying] = useState(false)
   // "Se pidió reproducir pero el reproductor aún no confirma". Mientras dure, ocultamos
@@ -157,6 +161,9 @@ export function InteractiveVideoModule({
   // Se inicializa con los intentos ya guardados en la base para no obligar a
   // rehacer quizzes de video ya aprobados al volver al módulo.
   const [completedQuizzes, setCompletedQuizzes] = useState<Record<string, QuizResult>>(() => ({ ...(savedQuizResults ?? {}) }))
+  // Nota del intento anterior cuando se reabre un quiz ya respondido pero NO
+  // aprobado: el overlay la muestra y pregunta si quiere volver a intentarlo.
+  const [retryResult, setRetryResult] = useState<QuizResult | null>(null)
   const [showResumeToast, setShowResumeToast] = useState(false)
   const [savedTime, setSavedTime] = useState(0)
   const [showFsChapters, setShowFsChapters] = useState(false)
@@ -205,7 +212,10 @@ export function InteractiveVideoModule({
       for (const [id, res] of Object.entries(savedQuizResults)) {
         if (!(id in next)) {
           next[id] = res
-          triggeredRef.current.add(id)
+          // Solo el quiz APROBADO se da por visto y no vuelve a interrumpir. Uno
+          // reprobado se vuelve a ofrecer al cruzarlo (con su nota anterior a la
+          // vista), que es justo lo que el aprendiz necesita para recuperarlo.
+          if (isVideoQuizPassed(res)) triggeredRef.current.add(id)
           changed = true
         }
       }
@@ -255,6 +265,49 @@ export function InteractiveVideoModule({
     }
   }, [])
 
+  /**
+   * ¿Queda alguna verificación por hacer a esta altura del video? Devuelve la
+   * primera (en orden de tiempo) que el aprendiz aún no ha APROBADO.
+   *
+   * `limit` acota hasta dónde mirar: durante la reproducción es el segundo actual
+   * (solo lo ya visto); al terminar el video es `Infinity`, porque un marcador
+   * puesto más allá de la duración real —video reemplazado, tiempo calculado por
+   * la IA a ojo— jamás se alcanzaría y el quiz se perdería para siempre.
+   */
+  const findPendingQuiz = useCallback((limit: number): VideoQuizMarker | null => {
+    for (const m of sortedMarkers) {
+      if (m.type !== 'quiz') continue
+      if (m.timeSeconds > limit) break
+      if (triggeredRef.current.has(m.id)) continue
+      if (isVideoQuizPassed(completedQuizzes[m.id])) continue
+      return m as VideoQuizMarker
+    }
+    return null
+    // sortedMarkers se rearma en cada render; su contenido solo cambia con la sección.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, completedQuizzes])
+
+  /** Pausa el video y abre la verificación pendiente, si hay alguna. */
+  const openPendingQuiz = useCallback((limit: number): boolean => {
+    // Guarda SÍNCRONA: entre abrir el overlay y que React repinte pueden entrar
+    // otros tics del reproductor, y con dos quiz pendientes el segundo se montaba
+    // encima del primero.
+    if (overlayOpenRef.current) return false
+    const m = findPendingQuiz(limit)
+    if (!m) return false
+    overlayOpenRef.current = true
+    triggeredRef.current.add(m.id)
+    const previous = completedQuizzes[m.id]
+    // Ya respondida y no aprobada: el overlay lo dice y ofrece reintentarla en
+    // vez de lanzar las preguntas de golpe como si fuera la primera vez.
+    setRetryResult(previous && !isVideoQuizPassed(previous) ? previous : null)
+    videoRef.current?.pause()
+    setPlaying(false)
+    setActiveMarker(m)
+    setShowOverlay(true)
+    return true
+  }, [findPendingQuiz, completedQuizzes])
+
   // Pide reproducir y marca el estado "arrancando". Con YouTube/Vimeo el arranque no es
   // inmediato (buffer + handshake del iframe), así que esperamos al evento `play` real;
   // el temporizador devuelve el botón si nunca arranca (autoplay bloqueado, red caída).
@@ -300,6 +353,17 @@ export function InteractiveVideoModule({
     clearTimeout(pendingTimeout.current)
     setPending(false)
     setPlaying(false)
+
+    // Última oportunidad para las verificaciones que quedaron sin salir: un
+    // marcador puesto más allá de la duración real (video reemplazado, tiempo
+    // calculado por la IA) o en los últimos segundos que el reproductor nunca
+    // llega a reportar. El video no se da por terminado ni encadena el siguiente
+    // hasta que se responda: si tiene quiz, el quiz se hace.
+    if (openPendingQuiz(Infinity)) {
+      endedRef.current = false
+      return
+    }
+
     setFinished(true)
     onEnded?.()
 
@@ -319,7 +383,7 @@ export function InteractiveVideoModule({
     nextTargetRef.current = target
     setNextTitle(target?.title ?? null)
     if (target && getAutoplayNext()) setNextCountdown(NEXT_UP_SECONDS)
-  }, [nextUp, onEnded, playerId])
+  }, [nextUp, onEnded, playerId, openPendingQuiz])
 
   // Cuenta regresiva de "a continuación". Vive aparte para que cancelarla sea
   // simplemente poner el contador en null.
@@ -406,7 +470,6 @@ export function InteractiveVideoModule({
     const v = videoRef.current
     if (!v) return
     const cur = v.currentTime
-    const prev = lastTimeRef.current
     lastTimeRef.current = cur
     setCurrentTime(cur)
     // Mantener la duración fresca (YouTube la expone tarde y sin evento propio).
@@ -420,22 +483,15 @@ export function InteractiveVideoModule({
       } catch { /* ignore */ }
     }
 
-    // Verificar marcadores de quiz por CRUCE (prev < marcador ≤ actual). Esto funciona
-    // igual con el evento denso de <video> nativo que con el sondeo de YouTube (~250ms),
-    // donde el tiempo salta y una ventana fija se saltaría el marcador.
-    for (const m of sortedMarkers) {
-      if (m.type !== 'quiz') continue
-      if (triggeredRef.current.has(m.id)) continue
-      if (prev < m.timeSeconds && cur >= m.timeSeconds) {
-        triggeredRef.current.add(m.id)
-        v.pause()
-        setPlaying(false)
-        setActiveMarker(m as VideoQuizMarker)
-        setShowOverlay(true)
-        break
-      }
-    }
-  }, [sortedMarkers, section.heading?.es])
+    // Disparo de los quiz: el PRIMERO pendiente cuyo tiempo ya quedó atrás.
+    //
+    // Antes se exigía cruzarlo justo (prev < t && cur >= t) y eso dejaba quizzes
+    // sin salir en cuanto la reproducción no pasaba exactamente por ahí: un salto,
+    // una reanudación, el sondeo ralo de YouTube a velocidad 2x, o un marcador
+    // colocado en un segundo que el video nunca reporta. Con "ya lo pasaste" el
+    // quiz sale siempre; `triggeredRef` evita que se repita en la misma pasada.
+    if (!showOverlay) openPendingQuiz(cur)
+  }, [openPendingQuiz, showOverlay, section.heading?.es])
 
   const togglePlay = () => {
     const v = videoRef.current
@@ -614,8 +670,15 @@ export function InteractiveVideoModule({
   }
 
   const handleOverlayComplete = () => {
+    overlayOpenRef.current = false
     setShowOverlay(false)
     setActiveMarker(null)
+    setRetryResult(null)
+    // El video terminó y el quiz salió como red de seguridad: al cerrarlo no hay
+    // nada que reanudar, se da por terminado (y encadena, si toca).
+    const v = videoRef.current
+    const atEnd = duration > 0 && (v?.currentTime ?? 0) >= duration - 0.5
+    if (atEnd) { handleEndedEvent(); return }
     requestPlay()
   }
 
@@ -627,27 +690,39 @@ export function InteractiveVideoModule({
     if (!activeMarker) return
     const markerTime = activeMarker.timeSeconds
     triggeredRef.current.delete(activeMarker.id)
+    overlayOpenRef.current = false
     setShowOverlay(false)
     setActiveMarker(null)
+    setRetryResult(null)
     const prev = sortedMarkers.filter((m) => m.timeSeconds < markerTime).pop()
     seekTo(prev ? prev.timeSeconds : Math.max(0, markerTime - 20))
     requestPlay()
   }
 
+  // Reintento pedido a mano desde la lista de capítulos. Abre la verificación tal
+  // cual, sin pasar por `openPendingQuiz`: una ya aprobada se puede repetir si el
+  // aprendiz quiere, y no tiene sentido rebobinar el video para conseguirlo.
   const handleRetryQuiz = (markerId: string) => {
-    triggeredRef.current.delete(markerId)
     const marker = sortedMarkers.find((m) => m.id === markerId) as VideoQuizMarker | undefined
-    if (!marker) return
-    seekTo(marker.timeSeconds - 1)
-    requestPlay()
+    if (!marker || marker.type !== 'quiz') return
+    overlayOpenRef.current = true
+    triggeredRef.current.add(markerId)
+    setRetryResult(completedQuizzes[markerId] ?? null)
+    videoRef.current?.pause()
+    setPlaying(false)
+    setActiveMarker(marker)
+    setShowOverlay(true)
   }
 
   const handleLoadedMetadata = () => {
     const dur = videoRef.current?.duration ?? 0
     setDuration(dur)
     triggeredRef.current.clear()
-    // Re-sembrar los quizzes ya hechos para que no vuelvan a interrumpir el video.
-    for (const id of Object.keys(completedQuizzes)) triggeredRef.current.add(id)
+    // Re-sembrar SOLO los quizzes ya aprobados: son los únicos que no vuelven a
+    // interrumpir. Los reprobados se ofrecen de nuevo al llegar a su marcador.
+    for (const [id, res] of Object.entries(completedQuizzes)) {
+      if (isVideoQuizPassed(res)) triggeredRef.current.add(id)
+    }
     lastTimeRef.current = videoRef.current?.currentTime ?? 0
 
     try {
@@ -745,7 +820,7 @@ export function InteractiveVideoModule({
         const isActive = i === activeChapterIdx
         const markerLang = m.title[lang] || m.title.es
         const quizResult = m.type === 'quiz' ? completedQuizzes[m.id] : undefined
-        const isPassing = quizResult && quizResult.score / quizResult.total >= 0.75
+        const isPassing = isVideoQuizPassed(quizResult)
         // Bloqueado: hay un quiz pendiente antes de este marcador en la línea de tiempo.
         const isLocked = gateTime != null && m.timeSeconds > gateTime
         // Requerido: es justamente el quiz pendiente que abre la compuerta.
@@ -1029,6 +1104,7 @@ export function InteractiveVideoModule({
               key={activeMarker.id}
               marker={activeMarker}
               language={language}
+              previousResult={retryResult}
               onGraded={handleQuizGraded}
               onComplete={handleOverlayComplete}
               onReview={handleReviewQuiz}
