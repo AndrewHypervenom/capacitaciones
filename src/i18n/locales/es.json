@@ -4695,6 +4695,8 @@
       "next": "Siguiente",
       "zoom_in": "Acercar",
       "zoom_out": "Alejar",
+      "fit": "Encajar en pantalla",
+      "rotate": "Rotar",
       "download": "Descargar",
       "err_type": "Solo podemos adjuntar imágenes.",
       "err_size": "Cada imagen debe pesar menos de 12 MB.",

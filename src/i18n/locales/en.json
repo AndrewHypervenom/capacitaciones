@@ -4695,6 +4695,8 @@
       "next": "Next",
       "zoom_in": "Zoom in",
       "zoom_out": "Zoom out",
+      "fit": "Fit to screen",
+      "rotate": "Rotate",
       "download": "Download",
       "err_type": "We can only attach images.",
       "err_size": "Each image must be under 12 MB.",

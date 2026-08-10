@@ -77,6 +77,10 @@ export function CornerDock() {
   const showFeedback = shouldShowFeedbackFab(location.pathname)
   const panelOpen = helpOpen || feedbackOpen
   const visible = isAuthenticated && !IS_LEARNER_PREVIEW && routeAllows && (helpMounted || showFeedback)
+  // "Volver arriba" no depende de ayuda/opiniones: mientras se baja por un
+  // módulo largo es lo único que hace falta, y tiene que verse sin desplegar
+  // nada (antes vivía dentro del menú y en la práctica nadie lo encontraba).
+  const showTop = isAuthenticated && !IS_LEARNER_PREVIEW && routeAllows && scrolled && !panelOpen
 
   // Al bajar se aparta; al subir, al llegar arriba o al abrir un panel, vuelve.
   //
@@ -165,15 +169,57 @@ export function CornerDock() {
     }
   }, [expanded])
 
-  if (!visible) return null
-
   const sideClass = side === 'right' ? 'right-4 sm:right-5' : 'left-4 sm:left-5'
   /** Apartado: se va hacia su borde. Así no queda "medio botón" sobre el contenido. */
   const awayX = side === 'right' ? 64 : -64
 
+  const goTop = () => {
+    setExpanded(false)
+    const behavior: ScrollBehavior = reduce ? 'auto' : 'smooth'
+    // Sube lo que de verdad está scrolleando: la página o el contenedor del panel.
+    if (scrollerRef.current) scrollerRef.current.scrollTo({ top: 0, behavior })
+    else window.scrollTo({ top: 0, behavior })
+  }
+
+  /** Hay lanzador debajo (el de ayuda): la flecha se apila encima de él. */
+  const launcherBelow = visible && !hidden
+
+  // ── Flecha "volver arriba": vive fuera del dock, así no se aparta al bajar ──
+  const topFab = (
+    <AnimatePresence key="top">
+      {showTop && (
+        <motion.button
+          type="button"
+          onClick={goTop}
+          aria-label={t('common.scroll_top', 'Volver arriba')}
+          title={t('common.scroll_top', 'Volver arriba')}
+          className={cn(
+            'fixed z-[9990] flex h-11 w-11 items-center justify-center rounded-full',
+            'border border-line bg-surface/90 text-text shadow-lg backdrop-blur',
+            'transition-colors hover:bg-subtle',
+            sideClass,
+            launcherBelow ? 'bottom-[4.75rem] sm:bottom-[5.25rem]' : 'bottom-4 sm:bottom-5',
+          )}
+          initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6, y: 8 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+          whileHover={reduce ? undefined : { scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
+        >
+          <ArrowUp className="h-5 w-5" strokeWidth={2.2} />
+        </motion.button>
+      )}
+    </AnimatePresence>
+  )
+
+  if (!visible) return createPortal(topFab, document.body)
+
   // ── Escondido a petición: solo queda una pestañita en el borde ──────────
   if (hidden) {
     return createPortal(
+      <>
+      {topFab}
       <button
         type="button"
         onClick={() => setHidden(false)}
@@ -189,7 +235,8 @@ export function CornerDock() {
         {side === 'right'
           ? <ChevronLeft className="h-3.5 w-3.5" />
           : <ChevronRight className="h-3.5 w-3.5" />}
-      </button>,
+      </button>
+      </>,
       document.body,
     )
   }
@@ -206,14 +253,6 @@ export function CornerDock() {
     useSiteFeedbackStore.getState().open()
   }
 
-  const goTop = () => {
-    setExpanded(false)
-    const behavior: ScrollBehavior = reduce ? 'auto' : 'smooth'
-    // Sube lo que de verdad está scrolleando: la página o el contenedor del panel.
-    if (scrollerRef.current) scrollerRef.current.scrollTo({ top: 0, behavior })
-    else window.scrollTo({ top: 0, behavior })
-  }
-
   const onLauncher = () => {
     // Con un panel abierto el botón cierra, que es lo que la gente espera del
     // aspa; si no, despliega el menú.
@@ -226,6 +265,8 @@ export function CornerDock() {
   }
 
   return createPortal(
+    <>
+    {topFab}
     <motion.div
       ref={rootRef}
       className={cn(
@@ -267,14 +308,6 @@ export function CornerDock() {
                 label={t('dock.feedback', 'Tu opinión')}
                 tone="fuchsia"
                 onClick={openFeedback}
-              />
-            )}
-            {scrolled && (
-              <DockAction
-                side={side}
-                icon={<ArrowUp className="h-4.5 w-4.5" />}
-                label={t('common.scroll_top', 'Volver arriba')}
-                onClick={goTop}
               />
             )}
             <DockAction
@@ -338,7 +371,8 @@ export function CornerDock() {
           )}
         </AnimatePresence>
       </motion.button>
-    </motion.div>,
+    </motion.div>
+    </>,
     document.body,
   )
 }
