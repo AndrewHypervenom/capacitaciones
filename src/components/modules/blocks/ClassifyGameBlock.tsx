@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { saveActivityAttempt } from '@/services/activity.service';
 import { CompletedActivityBanner } from './CompletedActivityBanner';
 import { beginDragUx, endDragUx, withNoSelectDrag } from '@/lib/dragUx';
+import { shuffleArray } from '@/lib/quizShuffle';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext,
@@ -149,7 +150,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
   const [assigned, setAssigned] = useState<Record<string, ClassifyCase[]>>(() =>
     Object.fromEntries(block.categories.map((c) => [c.id, []]))
   );
-  const [unassigned, setUnassigned] = useState<ClassifyCase[]>(() => [...block.cases].sort(() => Math.random() - 0.5));
+  const [unassigned, setUnassigned] = useState<ClassifyCase[]>(() => shuffleArray(block.cases));
   const [submitted, setSubmitted] = useState(false);
   // Caso que se está arrastrando ahora mismo (para pintar el "fantasma" que
   // sigue al dedo o al cursor).
@@ -334,7 +335,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
   const handleReset = () => {
     setInteracted(true);
     setAssigned(Object.fromEntries(block.categories.map((c) => [c.id, []])));
-    setUnassigned([...block.cases].sort(() => Math.random() - 0.5));
+    setUnassigned(shuffleArray(block.cases));
     setSubmitted(false);
     setElapsedSeconds(0);
     setFallosDetectados(0);

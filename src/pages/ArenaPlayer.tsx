@@ -7,6 +7,7 @@ import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
 import { useUserStore, type Language } from '@/stores/userStore'
 import { localizeSteps, pickLang } from '@/lib/lang'
+import { shuffleArray } from '@/lib/quizShuffle'
 
 /* ── Types ── */
 interface QuizOption { id: string; text: string; correct: boolean; explanation: string }
@@ -18,13 +19,6 @@ interface ArenaQuiz  {
 }
 
 /* ── Normalize ── */
-// Hash estable de un string → número (para ordenar de forma determinista).
-function hashStr(s: string): number {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0
-  return h
-}
-
 function normalizeQuiz(raw: Record<string, unknown>, lang: Language): ArenaQuiz {
   // El español vive en `steps`; `steps_en`/`steps_pt` traen el mismo arreglo
   // traducido. Se mezclan por id ANTES de barajar las opciones: emparejar por
@@ -52,15 +46,17 @@ function normalizeQuiz(raw: Record<string, unknown>, lang: Language): ArenaQuiz 
             explanation: typeof o.explanation === 'string' ? o.explanation : '',
           }))
         : [])
-        // La IA suele poner la correcta primera (posición A). Reordenamos las
-        // opciones de forma determinista (sembrada por el id de la pregunta) para
-        // que la correcta no quede siempre en A, y el orden sea estable por pregunta.
-        .sort((a, b) => hashStr(stepId + a.id) - hashStr(stepId + b.id))
+      // La IA suele poner la correcta primera (posición A). Antes se reordenaba de
+      // forma determinista por id: la correcta dejaba de estar siempre en A, pero
+      // quedaba SIEMPRE en el mismo sitio para esa pregunta, y repetir el quiz era
+      // recitar posiciones. Ahora se baraja de verdad en cada carga —y `retry`
+      // recarga el quiz—, así que memorizar el orden no sirve de nada.
+      const shuffledOptions = shuffleArray(options)
       return {
         id: stepId,
         question: typeof s.question === 'string' ? s.question : '',
         context: typeof s.context === 'string' ? s.context : '',
-        options,
+        options: shuffledOptions,
       }
     }),
   }

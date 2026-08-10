@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, PlayCircle, ChevronRight, Trophy, RotateCcw } fr
 import { cn } from '@/lib/cn'
 import { playQuizSound } from '@/lib/sound'
 import { isVideoQuizPassed, VIDEO_QUIZ_PASS_RATIO } from '@/types/blocks'
+import { shuffledIndicesMoved } from '@/lib/quizShuffle'
 import type { VideoQuizMarker, VideoQuizQuestion } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
@@ -87,6 +88,20 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
   const [showConfetti, setShowConfetti] = useState(false)
 
   const questions = marker.questions
+
+  // ── Orden aleatorio (solo de presentación) ──
+  // `questionOrder[posición] = índice original` y lo mismo para las opciones de
+  // cada pregunta. Todo lo demás —respuestas, puntaje, intento guardado— sigue
+  // en índices originales, así que barajar no toca los datos.
+  const [questionOrder, setQuestionOrder] = useState(() => shuffledIndicesMoved(questions.length))
+  const [optionOrders, setOptionOrders] = useState<number[][]>(() =>
+    questions.map((qq) => shuffledIndicesMoved((qq.options[language as 'es' | 'en' | 'pt']?.length || qq.options.es.length))))
+
+  const reshuffle = () => {
+    setQuestionOrder(shuffledIndicesMoved(questions.length))
+    setOptionOrders(questions.map((qq) =>
+      shuffledIndicesMoved(qq.options[language as 'es' | 'en' | 'pt']?.length || qq.options.es.length)))
+  }
   // Guarda de última línea: un marcador de quiz sin preguntas no debe reventar la
   // pantalla ni dejar el video trancado (el mapeo ya los degrada a capítulo).
   const emptyHandled = useRef(false)
@@ -97,12 +112,21 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions.length])
 
-  const q: VideoQuizQuestion | undefined = questions[currentIdx]
+  // Posición en pantalla → pregunta real.
+  const qIndex = questionOrder[currentIdx] ?? currentIdx
+  const q: VideoQuizQuestion | undefined = questions[qIndex]
   const lang = language as 'es' | 'en' | 'pt'
   if (!q) return null
 
   const questionText = q.question[lang] || q.question.es
   const options = q.options[lang]?.length ? q.options[lang] : q.options.es
+  // Orden en que se pintan las opciones de ESTA pregunta (índices originales).
+  // Si no cuadra con las opciones a la vista —cambio de idioma con distinto
+  // número de opciones— se cae al orden natural antes que perder una opción.
+  const storedOrder = optionOrders[qIndex]
+  const optionOrder = storedOrder?.length === options.length
+    ? storedOrder
+    : options.map((_, i) => i)
   const explanation = q.explanation[lang] || q.explanation.es
   const isAnswered = selected !== null
   const isCorrect = selected === q.correct
@@ -113,10 +137,11 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
     ([idx, choice]) => choice === questions[Number(idx)].correct,
   ).length
 
+  /** `i` es el índice ORIGINAL de la opción, no la posición en pantalla. */
   const handleSelect = (i: number) => {
     if (isAnswered) return
     setSelected(i)
-    setAnswered((prev) => ({ ...prev, [currentIdx]: i }))
+    setAnswered((prev) => ({ ...prev, [qIndex]: i }))
     playQuizSound(i === q.correct ? 'correct' : 'wrong')
   }
 
@@ -125,12 +150,14 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
     setCurrentIdx((prev) => prev + 1)
   }
 
-  /** Volver a empezar la misma verificación, desde la pantalla de resultados. */
+  /** Volver a empezar la misma verificación, desde la pantalla de resultados.
+   *  Se rebaraja: repetir no puede ser recitar el orden de la vez anterior. */
   const handleRestart = () => {
     setAnswered({})
     setSelected(null)
     setCurrentIdx(0)
     setShowConfetti(false)
+    reshuffle()
     setPhase('question')
   }
 
@@ -295,7 +322,10 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
               </p>
 
               <div className="space-y-2.5">
-                {options.map((opt, i) => {
+                {/* Se recorre el ORDEN barajado: `i` es el índice original de la
+                    opción y `position` solo decide la letra que le toca. */}
+                {optionOrder.map((i, position) => {
+                  const opt = options[i]
                   const isSelectedOpt = selected === i
                   const isCorrectOpt = i === q.correct
 
@@ -326,7 +356,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                                 ? 'bg-neon-green/20 text-neon-green'
                                 : 'bg-zinc-800 text-zinc-600',
                       )}>
-                        {LETTERS[i]}
+                        {LETTERS[position]}
                       </span>
                       <span className="flex-1">{opt}</span>
                       {isAnswered && isSelectedOpt && isCorrect && <CheckCircle2 className="h-5 w-5 text-neon-green shrink-0" />}
@@ -445,7 +475,8 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
               </div>
 
               <div className="space-y-2 mb-8 text-left">
-                {questions.map((_, i) => {
+                {/* En el mismo orden en que las respondió, no en el del editor. */}
+                {questionOrder.map((i) => {
                   const correct = answered[i] === questions[i].correct
                   const qText = questions[i].question[lang] || questions[i].question.es
                   return (

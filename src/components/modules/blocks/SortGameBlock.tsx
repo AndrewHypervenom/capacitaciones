@@ -22,6 +22,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { CheckCircle2, GripVertical, RefreshCcw, Trophy, Timer, AlertCircle } from 'lucide-react';
 import { saveActivityAttempt } from '@/services/activity.service';
 import { beginDragUx, endDragUx, withNoSelectDrag } from '@/lib/dragUx';
+import { shuffleArrayMoved } from '@/lib/quizShuffle';
 import { CompletedActivityBanner } from './CompletedActivityBanner';
 import type { GameSortBlock, GameSortProcess } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
@@ -45,9 +46,10 @@ function signature(processes: GameSortProcess[]): string {
   return processes.map((p) => `${p.id}:${p.steps.map((s) => s.id).join(',')}`).join('|');
 }
 
-function shuffled<T>(arr: T[]): T[] {
-  return [...arr].sort(() => Math.random() - 0.5);
-}
+// El orden ES el ejercicio: se baraja de verdad (Fisher-Yates) y se garantiza
+// que no salga ya ordenado. `sort(() => Math.random() - 0.5)` no reparte parejo
+// y dejaba los pasos cerca de su sitio correcto más veces de la cuenta.
+const shuffled = shuffleArrayMoved;
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);

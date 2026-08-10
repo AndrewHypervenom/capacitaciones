@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -12,6 +12,7 @@ import { RichText } from '@/components/ui/RichText';
 import { unloopScenario, deferEndings, collapseEndings } from '@/lib/scenarioFlow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
+import { shuffleArray } from '@/lib/quizShuffle';
 import type { Language } from '@/stores/userStore';
 
 type Phase = 'intro' | 'call' | 'result';
@@ -434,6 +435,15 @@ export default function ChoiceSimulatorRun() {
     [showClientMessage, language, activeNodeId],
   );
 
+  // Orden de las respuestas: barajado por nodo. Un guion se juega varias veces y
+  // con el orden de la base la mejor opción caía siempre en el mismo sitio: se
+  // respondía de memoria, sin leer. Solo se recalcula al cambiar de nodo, así que
+  // el reloj de la ventana de lectura no las hace bailar a mitad de la decisión.
+  const currentOptions = useMemo(
+    () => (waitingForUser && scenario ? shuffleArray(scenario.nodes[activeNodeId]?.options ?? []) : []),
+    [waitingForUser, scenario, activeNodeId],
+  );
+
   // Ventana de lectura: al aparecer las respuestas quedan apagadas el tiempo que
   // cuesta leer ese momento, y se van habilitando solas.
   useEffect(() => {
@@ -502,7 +512,6 @@ export default function ChoiceSimulatorRun() {
     );
   }
 
-  const currentOptions = waitingForUser ? scenario.nodes[activeNodeId]?.options ?? [] : [];
   const scorePercent = toScorePct(totalPoints, maxPoints);
   const levelColor = LEVEL_COLORS[scenario.level] ?? '#86868b';
   // El puntaje manda sobre el final narrativo: mostrar "¡Excelente!" con 40%

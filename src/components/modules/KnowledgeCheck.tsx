@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X, Sparkles, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -8,6 +8,7 @@ import { useProgressStore } from '@/stores/progressStore';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/cn';
 import { playQuizSound } from '@/lib/sound';
+import { shuffledIndicesMoved } from '@/lib/quizShuffle';
 import { saveActivityAttempt } from '@/services/activity.service';
 
 interface Props {
@@ -154,6 +155,20 @@ export function KnowledgeCheck({
   const [showConfetti, setShowConfetti] = useState(false);
   const reducedMotion = useReducedMotion();
 
+  // Orden en que se pintan las opciones. Es SOLO presentación: la respuesta
+  // elegida, el store y el intento guardado siguen usando el índice original,
+  // así que un intento viejo se restaura igual de bien. Se rebaraja al
+  // reintentar para que repetir no sea recordar dónde estaba la buena.
+  const [shuffleSeed, setShuffleSeed] = useState(0);
+  const optionCount = quiz.options[language]?.length ?? 0;
+  const order = useMemo(
+    () => shuffledIndicesMoved(optionCount),
+    // El idioma entra a propósito: cambiarlo repinta las opciones y el orden
+    // debe rehacerse para el número de opciones de ESE idioma.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [optionCount, language, shuffleSeed],
+  );
+
   // ─── ELEGIR OPCIÓN ────────────────────────────────────────────────────────
   const choose = (i: number) => {
     if (selected !== null) return;
@@ -216,6 +231,7 @@ export function KnowledgeCheck({
   // ─── REINTENTAR (solo cuando falló) ──────────────────────────────────────
   const retry = () => {
     setSelected(null);
+    setShuffleSeed((n) => n + 1);
     // Limpiamos también el store para que al volver a la página no quede bloqueado
     recordCheck(moduleId, storeKey, -1); // -1 = sin respuesta
   };
@@ -274,7 +290,10 @@ export function KnowledgeCheck({
 
         {/* Opciones */}
         <div className="space-y-2.5 mb-2">
-          {quiz.options[language].map((opt, i) => {
+          {/* Se recorre el orden barajado: `i` es el índice ORIGINAL de la opción
+              y `position` solo decide su letra y el retardo de entrada. */}
+          {order.map((i, position) => {
+            const opt = quiz.options[language][i];
             const isSelected = selected === i;
             const isCorrect = i === quiz.correct;
             const showState = answered;
@@ -287,7 +306,7 @@ export function KnowledgeCheck({
                 initial={reducedMotion ? false : { opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{
-                  delay: reducedMotion ? 0 : i * 0.07,
+                  delay: reducedMotion ? 0 : position * 0.07,
                   duration: 0.3,
                   ease: [0.16, 1, 0.3, 1],
                 }}
@@ -338,7 +357,7 @@ export function KnowledgeCheck({
                         ))}
                     </>
                   ) : (
-                    OPTION_LABELS[i] ?? String(i + 1)
+                    OPTION_LABELS[position] ?? String(position + 1)
                   )}
                 </span>
 
