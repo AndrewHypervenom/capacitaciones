@@ -3,10 +3,9 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
-  ArrowRight, ImagePlus, Loader2, Lock, MessageSquare,
+  ArrowDown, ArrowRight, ImagePlus, Loader2, Lock, MessageSquare,
   Send, Sparkles, X,
 } from 'lucide-react'
-import i18n from '@/i18n'
 import { useAuth } from '@/hooks/useAuth'
 import { Avatar } from '@/components/ui/Avatar'
 import { toast } from '@/stores/toastStore'
@@ -16,10 +15,12 @@ import {
   fetchFeedbackThread, markFeedbackThreadRead, postFeedbackMessage,
   subscribeFeedbackEvents, type FeedbackEvent,
 } from '@/services/feedbackThread.service'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { STATUS_COLOR } from './StatusPill'
 import { ShotGallery } from './ShotGallery'
 import { ShotUploader } from './ShotUploader'
 import { kindMeta } from './config'
+import { fmtExact, fmtRelative, minutesSince } from './time'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -31,22 +32,12 @@ const EASE = [0.16, 1, 0.3, 1] as const
  */
 const READ_AFTER_MS = 1200
 
-/** "hace 5 min": el hilo se lee como una conversación, no como un registro. */
-function fmtRelative(iso: string) {
-  const rtf = new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' })
-  const s = (Date.now() - new Date(iso).getTime()) / 1000
-  if (s < 60) return rtf.format(-Math.round(s), 'second')
-  if (s < 3600) return rtf.format(-Math.round(s / 60), 'minute')
-  if (s < 86400) return rtf.format(-Math.round(s / 3600), 'hour')
-  if (s < 2592000) return rtf.format(-Math.round(s / 86400), 'day')
-  return rtf.format(-Math.round(s / 2592000), 'month')
-}
-
-function fmtExact(iso: string) {
-  return new Date(iso).toLocaleString(i18n.language, {
-    day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
-}
+/**
+ * A cuántos píxeles del final se considera que "estás abajo". Con margen: si
+ * estás leyendo lo último, el mensaje que entra debe aparecer solo; si te fuiste
+ * a buscar algo más arriba, moverte el scroll es quitarte el sitio donde estabas.
+ */
+const NEAR_BOTTOM_PX = 96
 
 export interface FeedbackThreadProps {
   row: SiteFeedbackRow
@@ -146,11 +137,51 @@ export function FeedbackThread({
   const [events, setEvents] = useState<FeedbackEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
-  const endRef = useRef<HTMLDivElement>(null)
+  const endRef = useRef<HTMLLIElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLOListElement>(null)
   /** El salto al final es de la apertura, no de cada mensaje que entra. */
   const landed = useRef(false)
+
+  /**
+   * Lo que llegó mientras mirabas hacia arriba. La píldora es la respuesta al
+   * dilema del chat: arrastrarte al final cada vez que entra un mensaje te quita
+   * de donde estabas leyendo, y no avisarte esconde lo que acaba de pasar. Así,
+   * si estás abajo entra solo; si no, se anuncia y tú decides.
+   */
+  const [pendingNew, setPendingNew] = useState<{
+    count: number; name: string | null; avatar: string | null
+  } | null>(null)
+  /** ¿Estás mirando el final del hilo? En el ref para poder leerlo desde Realtime. */
+  const atBottomRef = useRef(true)
+  const [scrolledUp, setScrolledUp] = useState(false)
+  /** Espejo de los eventos para decidir en el callback de Realtime sin re-suscribir. */
+  const eventsRef = useRef<FeedbackEvent[]>([])
+  useEffect(() => { eventsRef.current = events }, [events])
+
+  const scrollToEnd = useCallback((smooth = true) => {
+    const behavior: ScrollBehavior = smooth ? 'smooth' : 'auto'
+    const box = listRef.current
+    if (box && box.scrollHeight > box.clientHeight) {
+      box.scrollTo({ top: box.scrollHeight, behavior })
+    } else {
+      endRef.current?.scrollIntoView({ behavior, block: 'nearest' })
+    }
+    atBottomRef.current = true
+    setPendingNew(null)
+    setScrolledUp(false)
+  }, [])
+
+  /** Dónde estás parada la conversación: cerca del final o buscando algo arriba. */
+  const onListScroll = useCallback(() => {
+    const box = listRef.current
+    if (!box) return
+    const near = box.scrollHeight - box.scrollTop - box.clientHeight < NEAR_BOTTOM_PX
+    atBottomRef.current = near
+    setScrolledUp(!near && box.scrollHeight > box.clientHeight + NEAR_BOTTOM_PX)
+    // Llegar al final ES haber visto lo que había: la píldora se apaga sola.
+    if (near) setPendingNew(null)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -169,8 +200,35 @@ export function FeedbackThread({
   // Mensajes nuevos mientras el hilo está abierto: entran solos, sin recargar.
   // Los propios ya se pintaron al enviarlos, y el filtro por id evita el doble.
   useEffect(() => subscribeFeedbackEvents((ev) => {
+    // Se comprueba contra el espejo y no dentro del `setEvents`: el updater se
+    // ejecuta dos veces en desarrollo (StrictMode) y contar allí dentro haría
+    // que la píldora dijera 2 por cada mensaje que llega.
+    if (eventsRef.current.some((x) => x.id === ev.id)) return
+    eventsRef.current = [...eventsRef.current, ev]
     setEvents((cur) => (cur.some((x) => x.id === ev.id) ? cur : [...cur, ev]))
-  }, { feedbackId: row.id }), [row.id])
+
+    // Fuera de la caja con scroll (la tarjeta de "Mis sugerencias") mandar la
+    // página al final sería secuestrar el scroll de toda la pantalla.
+    if (!inBox) return
+    if (atBottomRef.current) {
+      // Un cuadro después, cuando Motion ya colocó la burbuja nueva.
+      requestAnimationFrame(() => scrollToEnd(true))
+    } else {
+      setPendingNew((n) => ({
+        count: (n?.count ?? 0) + 1,
+        name: ev.author_name,
+        avatar: ev.author_avatar,
+      }))
+    }
+  }, { feedbackId: row.id }), [row.id, inBox, scrollToEnd])
+
+  // Cada opinión empieza con su propia cuenta: la píldora de la anterior no se
+  // hereda al saltar de hilo.
+  useEffect(() => {
+    setPendingNew(null)
+    setScrolledUp(false)
+    atBottomRef.current = true
+  }, [row.id])
 
   /** Lo que escribió el otro lado y sigue sin leer. */
   const pending = useMemo(
@@ -232,18 +290,31 @@ export function FeedbackThread({
   }, [fill])
 
   const append = useCallback((ev: FeedbackEvent) => {
+    eventsRef.current = [...eventsRef.current, ev]
     setEvents((cur) => [...cur, ev])
     onPosted?.(ev)
-    // Un instante después de que Motion coloque la burbuja nueva.
-    setTimeout(() => {
-      const box = listRef.current
-      if (box && box.scrollHeight > box.clientHeight) {
-        box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' })
-      } else {
-        endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-      }
-    }, 80)
-  }, [onPosted])
+    // Escribir SIEMPRE te lleva al final, estuvieras donde estuvieras: acabas de
+    // hablar tú, y lo tuyo es lo último que hay que ver.
+    setTimeout(() => scrollToEnd(true), 80)
+  }, [onPosted, scrollToEnd])
+
+  /**
+   * Un compañero del equipo ya le respondió a la persona y esa sigue siendo la
+   * última palabra. Es EL aviso de esta pantalla: sin él, dos personas del
+   * equipo le contestan lo mismo al mismo usuario con minutos de diferencia.
+   */
+  const answeredByPeer = useMemo(() => {
+    if (!isStaff) return null
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]
+      if (e.type !== 'reply') continue
+      // La persona volvió a escribir: la pelota es del equipo otra vez y
+      // responder ya no duplica nada.
+      if (e.author_id === row.user_id) return null
+      return e.author_id && e.author_id !== user?.id ? e : null
+    }
+    return null
+  }, [events, isStaff, row.user_id, user?.id])
 
   const meta = kindMeta(row.kind)
 
@@ -269,68 +340,83 @@ export function FeedbackThread({
           {t('feedback_thread.load_error', 'No pudimos cargar la conversación. Vuelve a abrirla en un momento.')}
         </p>
       ) : (
-        <ol
-          ref={listRef}
-          className={cn(
-            'relative space-y-3',
-            // Zona de mensajes con scroll propio: la caja de escribir queda
-            // siempre debajo, a la vista, sin tener que bajar hasta el final.
-            inBox && 'overflow-y-auto pr-1.5',
-            // Con `fill` no hay techo a ojo: los mensajes se quedan con todo el
-            // hueco que deje la caja de escribir.
-            fill ? 'min-h-0 flex-1' : inBox && 'max-h-[clamp(14rem,38vh,30rem)]',
-          )}
-        >
-          {/* Riel de la línea de tiempo: cose todos los nodos en un solo hilo.
-              Solo fuera del chat. Cuando esto es una conversación, los mensajes
-              van a los dos lados y el riel deja de coser nada: es una raya que
-              cruza el panel por detrás de los avatares, ruido y no estructura. */}
-          {!inBox && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-2 left-[15px] top-2 w-px bg-gradient-to-b from-line via-line to-transparent"
+        // Envoltura relativa: la píldora de mensajes nuevos flota SOBRE la
+        // conversación, pegada a su borde inferior, sin robarle altura ni
+        // moverle los mensajes al aparecer.
+        <div className={cn('relative flex min-h-0', fill ? 'flex-1 flex-col' : 'flex-col')}>
+          <ol
+            ref={listRef}
+            onScroll={inBox ? onListScroll : undefined}
+            className={cn(
+              'relative space-y-3',
+              // Zona de mensajes con scroll propio: la caja de escribir queda
+              // siempre debajo, a la vista, sin tener que bajar hasta el final.
+              inBox && 'overflow-y-auto pr-1.5',
+              // Con `fill` no hay techo a ojo: los mensajes se quedan con todo el
+              // hueco que deje la caja de escribir.
+              fill ? 'min-h-0 flex-1' : inBox && 'max-h-[clamp(14rem,38vh,30rem)]',
+            )}
+          >
+            {/* Riel de la línea de tiempo: cose todos los nodos en un solo hilo.
+                Solo fuera del chat. Cuando esto es una conversación, los mensajes
+                van a los dos lados y el riel deja de coser nada: es una raya que
+                cruza el panel por detrás de los avatares, ruido y no estructura. */}
+            {!inBox && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute bottom-2 left-[15px] top-2 w-px bg-gradient-to-b from-line via-line to-transparent"
+              />
+            )}
+
+            {showOrigin && (
+              <OriginNode row={row} color={meta.color} emoji={meta.emoji} isStaff={isStaff} />
+            )}
+
+            {/* La nota que existía antes de que hubiera hilo: se conserva y se
+                marca como tal en vez de desaparecer bajo el modelo nuevo. */}
+            {isStaff && row.staff_note && (
+              <NoteNode
+                body={row.staff_note}
+                authorName={row.handled_by_name ?? null}
+                at={row.handled_at}
+                legacy
+              />
+            )}
+
+            <AnimatePresence initial={false}>
+              {/* Aplanado en vez de envuelto en Fragment: AnimatePresence solo ve
+                  a sus hijos directos, y dentro de un Fragment perdería el rastro. */}
+              {events.flatMap((e, i) => [
+                ...(e.id === newFromId ? [<NewFromHere key={`new-${e.id}`} id={e.id} />] : []),
+                <EventNode
+                  key={e.id}
+                  event={e}
+                  index={i}
+                  ownerId={row.user_id}
+                  viewerId={user?.id ?? null}
+                  isStaff={isStaff}
+                  reduce={!!reduce}
+                />,
+              ])}
+            </AnimatePresence>
+
+            {events.length === 0 && !row.staff_note && (
+              <EmptyHint isStaff={isStaff} />
+            )}
+
+            <li ref={endRef} aria-hidden className="h-px" />
+          </ol>
+
+          {inBox && (
+            <JumpToLatest
+              pending={pendingNew}
+              scrolledUp={scrolledUp}
+              reduce={!!reduce}
+              onClick={() => scrollToEnd(true)}
             />
           )}
-
-          {showOrigin && (
-            <OriginNode row={row} color={meta.color} emoji={meta.emoji} isStaff={isStaff} />
-          )}
-
-          {/* La nota que existía antes de que hubiera hilo: se conserva y se
-              marca como tal en vez de desaparecer bajo el modelo nuevo. */}
-          {isStaff && row.staff_note && (
-            <NoteNode
-              body={row.staff_note}
-              authorName={row.handled_by_name ?? null}
-              at={row.handled_at}
-              legacy
-            />
-          )}
-
-          <AnimatePresence initial={false}>
-            {/* Aplanado en vez de envuelto en Fragment: AnimatePresence solo ve
-                a sus hijos directos, y dentro de un Fragment perdería el rastro. */}
-            {events.flatMap((e, i) => [
-              ...(e.id === newFromId ? [<NewFromHere key={`new-${e.id}`} id={e.id} />] : []),
-              <EventNode
-                key={e.id}
-                event={e}
-                index={i}
-                ownerId={row.user_id}
-                viewerId={user?.id ?? null}
-                isStaff={isStaff}
-                reduce={!!reduce}
-              />,
-            ])}
-          </AnimatePresence>
-
-          {events.length === 0 && !row.staff_note && (
-            <EmptyHint isStaff={isStaff} />
-          )}
-        </ol>
+        </div>
       )}
-
-      <div ref={endRef} />
 
       <div className={cn(fill && 'shrink-0')}>
         <Composer
@@ -338,9 +424,87 @@ export function FeedbackThread({
           isStaff={isStaff}
           accent={meta.color}
           me={{ name: displayName, avatar: avatarUrl }}
+          answeredByPeer={answeredByPeer}
           onPosted={append}
         />
       </div>
+    </div>
+  )
+}
+
+/**
+ * "Bajar a lo último". Dos formas del mismo botón, y la forma es el mensaje:
+ * redondo y discreto cuando solo te alejaste, píldora con cara y número cuando
+ * hay algo nuevo que no has visto. Nunca los dos a la vez.
+ */
+function JumpToLatest({ pending, scrolledUp, reduce, onClick }: {
+  pending: { count: number; name: string | null; avatar: string | null } | null
+  scrolledUp: boolean
+  reduce: boolean
+  onClick: () => void
+}) {
+  const { t } = useTranslation()
+  const show = !!pending || scrolledUp
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-1 z-20 flex justify-center">
+      <AnimatePresence initial={false}>
+        {show && (
+          <motion.button
+            // Una sola clave para las dos formas: al llegar un mensaje mientras
+            // el botón redondo está puesto, se ESTIRA hasta píldora en vez de
+            // salir uno y entrar otro.
+            key="jump"
+            type="button"
+            layout
+            onClick={onClick}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.85 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 460, damping: 32 }}
+            className={cn(
+              'pointer-events-auto inline-flex items-center gap-2 rounded-full text-[12px] font-semibold shadow-lg backdrop-blur transition-colors',
+              pending
+                ? 'bg-sky-500 py-1.5 pl-1.5 pr-3.5 text-white shadow-sky-500/30'
+                : 'h-9 w-9 justify-center border border-line bg-surface/90 text-text-muted shadow-black/20 hover:text-text',
+            )}
+          >
+            {pending ? (
+              <>
+                <motion.span
+                  layout="position"
+                  className="relative flex h-6 w-6 items-center justify-center rounded-full bg-white/20"
+                >
+                  {pending.avatar
+                    ? <Avatar src={pending.avatar} name={pending.name} size={24} />
+                    : <MessageSquare className="h-3.5 w-3.5" />}
+                  {/* Latido: lo nuevo llama la atención una vez y se queda quieto. */}
+                  {!reduce && (
+                    <motion.span
+                      aria-hidden
+                      className="absolute inset-0 rounded-full ring-2 ring-white/70"
+                      initial={{ opacity: 0.9, scale: 1 }}
+                      animate={{ opacity: 0, scale: 1.7 }}
+                      transition={{ duration: 1.6, repeat: 2, ease: 'easeOut' }}
+                    />
+                  )}
+                </motion.span>
+                <motion.span layout="position" className="whitespace-nowrap">
+                  {pending.count === 1 && pending.name
+                    ? t('feedback_thread.new_from', '{{who}} respondió', { who: pending.name })
+                    : t('feedback_thread.new_count', {
+                      count: pending.count,
+                      defaultValue: '{{count}} mensajes nuevos',
+                    })}
+                </motion.span>
+                <ArrowDown className="h-3.5 w-3.5 shrink-0 opacity-80" />
+              </>
+            ) : (
+              <ArrowDown className="h-4 w-4" />
+            )}
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -371,9 +535,9 @@ function OriginNode({ row, color, emoji, isStaff }: {
           <span className="font-semibold text-text">{who}</span>{' '}
           {t('feedback_thread.origin', 'envió esta opinión')}
           {' · '}
-          <time dateTime={row.created_at} title={fmtExact(row.created_at)}>
-            {fmtRelative(row.created_at)}
-          </time>
+          <Tooltip anchor="element" label={fmtExact(row.created_at)}>
+            <time dateTime={row.created_at}>{fmtRelative(row.created_at)}</time>
+          </Tooltip>
         </p>
       </div>
     </li>
@@ -413,9 +577,9 @@ function StatusNode({ event }: { event: FeedbackEvent }) {
             · {t('feedback_thread.by', 'por')} {event.author_name}
           </span>
         )}
-        <span className="text-text-subtle" title={fmtExact(event.created_at)}>
-          · {fmtRelative(event.created_at)}
-        </span>
+        <Tooltip anchor="element" label={fmtExact(event.created_at)}>
+          <span className="text-text-subtle">· {fmtRelative(event.created_at)}</span>
+        </Tooltip>
       </p>
     </li>
   )
@@ -458,10 +622,12 @@ function NoteNode({ body, authorName, at, shots, legacy }: {
 }
 
 /** Un mensaje del hilo. Quien opinó a la izquierda, el equipo a la derecha. */
-function ReplyNode({ event, fromOwner, mine }: {
+function ReplyNode({ event, fromOwner, mine, isStaff }: {
   event: FeedbackEvent
   fromOwner: boolean
   mine: boolean
+  /** Cambia a quién señala el "visto": a la persona o al equipo. */
+  isStaff: boolean
 }) {
   const { t } = useTranslation()
   const teamSide = !fromOwner
@@ -486,13 +652,31 @@ function ReplyNode({ event, fromOwner, mine }: {
               {t('feedback_thread.team', 'Equipo')}
             </span>
           )}
-          <span title={fmtExact(event.created_at)}>{fmtRelative(event.created_at)}</span>
+          <Tooltip anchor="element" label={fmtExact(event.created_at)}>
+            <span>{fmtRelative(event.created_at)}</span>
+          </Tooltip>
           {/* Doble uso del "leído": al equipo le dice que la persona ya lo vio;
-              a la persona, que el equipo ya leyó lo suyo. */}
+              a la persona, que el equipo ya leyó lo suyo. Una palabra de cinco
+              letras cargando con eso pide explicarse: el globo dice QUIÉN lo vio
+              y CUÁNDO, que es lo que de verdad se quiere saber. */}
           {mine && event.read_at && (
-            <span className="text-[10.5px] text-[rgb(var(--brand-green))]">
-              {t('feedback_thread.seen', 'visto')}
-            </span>
+            <Tooltip
+              anchor="element"
+              maxWidth={220}
+              label={
+                <>
+                  {isStaff
+                    ? t('feedback_thread.seen_by_person', 'La persona ya lo leyó')
+                    : t('feedback_thread.seen_by_team', 'El equipo ya lo leyó')}
+                  {' · '}
+                  {fmtExact(event.read_at)}
+                </>
+              }
+            >
+              <span className="text-[10.5px] text-[rgb(var(--brand-green))]">
+                {t('feedback_thread.seen', 'visto')}
+              </span>
+            </Tooltip>
           )}
         </p>
         {/* Sin borde: en un hilo largo, un contorno por mensaje convierte la
@@ -566,7 +750,7 @@ function EventNode({ event, index, ownerId, viewerId, isStaff, reduce }: {
           />
         ) : null
       ) : (
-        <ReplyNode event={event} fromOwner={fromOwner} mine={mine} />
+        <ReplyNode event={event} fromOwner={fromOwner} mine={mine} isStaff={isStaff} />
       )}
     </motion.div>
   )
@@ -612,16 +796,20 @@ function ThreadSkeleton() {
  * error caro aquí es publicarle a alguien lo que era para el equipo, así que la
  * diferencia tiene que verse sin leer.
  */
-function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
+function Composer({ feedbackId, isStaff, accent, me, answeredByPeer, onPosted }: {
   feedbackId: string
   isStaff: boolean
   accent: string
   me: { name: string; avatar: string | null }
+  /** Respuesta de un compañero que sigue siendo la última palabra del hilo. */
+  answeredByPeer?: FeedbackEvent | null
   onPosted: (e: FeedbackEvent) => void
 }) {
   const { t } = useTranslation()
   const reduce = useReducedMotion()
   const [internal, setInternal] = useState(false)
+  /** El aviso se puede apartar, pero de a uno: apartarlo no vale para el siguiente. */
+  const [dismissed, setDismissed] = useState<string | null>(null)
   const [body, setBody] = useState('')
   const [shots, setShots] = useState<FeedbackShot[]>([])
   const [attaching, setAttaching] = useState(false)
@@ -688,10 +876,57 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
     }
   }
 
+  const warn = answeredByPeer && answeredByPeer.id !== dismissed && !internal
+    ? answeredByPeer
+    : null
+
   return (
-    // Sin animación `layout`: lo que crece aquí dentro (plantillas, adjuntos) ya
-    // anima su propia altura, y medir la caja entera mientras la ficha entera
-    // está entrando hacía que la caja se estirara a la vista al abrir un chat.
+    <>
+    {/* El aviso va FUERA de la caja y encima: dentro quedaría por debajo de las
+        pestañas de modo, que es justo donde nadie mira antes de escribir. */}
+    <AnimatePresence initial={false}>
+      {warn && (
+        <motion.div
+          key={warn.id}
+          initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0, y: 6 }}
+          animate={{ opacity: 1, height: 'auto', y: 0 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0, y: 6 }}
+          transition={{ duration: 0.3, ease: EASE }}
+          className="overflow-hidden"
+        >
+          <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.09] px-2.5 py-1.5">
+            <span className="shrink-0 rounded-full ring-2 ring-amber-500/40">
+              <Avatar src={warn.author_avatar} name={warn.author_name} size={22} />
+            </span>
+            <p className="min-w-0 flex-1 text-[12px] leading-snug text-amber-500">
+              <span className="font-semibold">
+                {t('feedback_thread.peer_answered', '{{who}} ya respondió', {
+                  who: warn.author_name ?? t('feedback_thread.someone', 'Alguien del equipo'),
+                })}
+              </span>
+              <span className="text-amber-500/80">
+                {' · '}{fmtRelative(warn.created_at)}
+                {minutesSince(warn.created_at) < 30
+                  ? ` · ${t('feedback_thread.peer_answered_hint', 'revisa lo suyo antes de escribir')}`
+                  : ''}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setDismissed(warn.id)}
+              className="shrink-0 rounded-lg p-1 text-amber-500/70 transition-colors hover:bg-amber-500/15 hover:text-amber-500"
+              aria-label={t('common.close', 'Cerrar')}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
+    {/* Sin animación `layout`: lo que crece aquí dentro (plantillas, adjuntos) ya
+        anima su propia altura, y medir la caja entera mientras la ficha entera
+        está entrando hacía que la caja se estirara a la vista al abrir un chat. */}
     <div
       className={cn(
         'relative overflow-hidden rounded-2xl border bg-surface transition-colors duration-300',
@@ -721,11 +956,22 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
         <div className="flex flex-wrap items-center gap-0.5 px-1.5 pt-1">
           {/* Sin color: responder es lo normal y lo normal no se pinta. El color
               queda para la nota interna, que es lo que hay que ver sin leer. */}
-          <ModeTab active={!internal} group={feedbackId} onClick={() => setInternal(false)}>
+          <ModeTab
+            active={!internal}
+            group={feedbackId}
+            hint={t('feedback_thread.mode_reply_hint', 'Sale de la casa: la persona lo lee y le llega un aviso.')}
+            onClick={() => setInternal(false)}
+          >
             <Send className="h-3 w-3" />
             {t('feedback_thread.mode_reply', 'Responder a la persona')}
           </ModeTab>
-          <ModeTab active={internal} group={feedbackId} tone="#f59e0b" onClick={() => setInternal(true)}>
+          <ModeTab
+            active={internal}
+            group={feedbackId}
+            tone="#f59e0b"
+            hint={t('feedback_thread.mode_note_hint', 'Se queda en casa: solo lo ve el equipo, nunca quien opinó.')}
+            onClick={() => setInternal(true)}
+          >
             <Lock className="h-3 w-3" />
             {t('feedback_thread.mode_note', 'Nota interna')}
           </ModeTab>
@@ -805,55 +1051,99 @@ function Composer({ feedbackId, isStaff, accent, me, onPosted }: {
             label={attaching
               ? t('feedback_thread.attach_close', 'Listo')
               : t('feedback_thread.attach', 'Adjuntar')}
+            hint={attaching
+              ? undefined
+              : t('feedback_thread.attach_hint', 'Una captura vale más que tres párrafos explicando dónde falla')}
             onClick={() => setAttaching((v) => !v)}
           >
             {attaching ? <X className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
           </IconAction>
 
-          <motion.button
-            type="button"
-            onClick={() => void send()}
-            disabled={!canSend}
-            whileTap={reduce || !canSend ? undefined : { scale: 0.94 }}
-            title={`${internal
-              ? t('feedback_thread.save_note', 'Guardar nota')
-              : t('feedback_thread.send', 'Enviar')} · ${t('feedback_thread.shortcut', 'Ctrl+Enter para enviar')}`}
-            className="ml-0.5 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold text-white transition-opacity disabled:opacity-35"
-            style={{ background: tone, boxShadow: canSend ? `0 8px 20px -12px ${tone}` : undefined }}
+          {/* El globo cambia con el modo: el error caro de esta caja es mandarle
+              a la persona lo que era una nota para el equipo, así que hasta el
+              botón de enviar dice a dónde va lo que escribiste. */}
+          <Tooltip
+            anchor="element"
+            maxWidth={220}
+            shortcut="Ctrl+Enter"
+            label={
+              <span className="flex flex-col gap-0.5 text-center">
+                <span className="font-semibold">
+                  {internal
+                    ? t('feedback_thread.save_note', 'Guardar nota')
+                    : t('feedback_thread.send', 'Enviar')}
+                </span>
+                <span className="opacity-70">
+                  {internal
+                    ? t('feedback_thread.send_hint_note', 'Solo la ve el equipo. A la persona no le llega nada.')
+                    : t('feedback_thread.send_hint_reply', 'Le llega a la persona con un aviso en su campana.')}
+                </span>
+              </span>
+            }
           >
-            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            <span className="hidden lg:inline">
-              {internal
-                ? t('feedback_thread.save_note', 'Guardar nota')
-                : t('feedback_thread.send', 'Enviar')}
-            </span>
-          </motion.button>
+            <motion.button
+              type="button"
+              onClick={() => void send()}
+              disabled={!canSend}
+              whileTap={reduce || !canSend ? undefined : { scale: 0.94 }}
+              // `disabled:pointer-events-none` para que el globo salga también
+              // con la caja vacía: es justo cuando hace falta saber a dónde iría.
+              className="ml-0.5 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold text-white transition-opacity disabled:pointer-events-none disabled:opacity-35"
+              style={{ background: tone, boxShadow: canSend ? `0 8px 20px -12px ${tone}` : undefined }}
+            >
+              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              <span className="hidden lg:inline">
+                {internal
+                  ? t('feedback_thread.save_note', 'Guardar nota')
+                  : t('feedback_thread.send', 'Enviar')}
+              </span>
+            </motion.button>
+          </Tooltip>
         </div>
       </div>
     </div>
+    </>
   )
 }
 
-/** Botón de acción de la barra: solo ícono, con su nombre en el título. */
-function IconAction({ active, label, onClick, children }: {
+/**
+ * Botón de acción de la barra: solo ícono. El nombre va en un globo propio y no
+ * en el `title` del sistema — ese tarda un segundo largo, sale con la tipografía
+ * del sistema operativo y en el móvil no existe.
+ */
+function IconAction({ active, label, hint, onClick, children }: {
   active?: boolean
   label: string
+  /** Segunda línea: qué pasa al pulsarlo, cuando el nombre no basta. */
+  hint?: string
   onClick: () => void
   children: React.ReactNode
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={cn(
-        'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
-        active ? 'bg-subtle text-text' : 'text-text-muted hover:bg-subtle hover:text-text',
-      )}
+    <Tooltip
+      anchor="element"
+      maxWidth={hint ? 210 : undefined}
+      label={hint
+        ? (
+          <span className="flex flex-col gap-0.5 text-center">
+            <span className="font-semibold">{label}</span>
+            <span className="opacity-70">{hint}</span>
+          </span>
+        )
+        : label}
     >
-      {children}
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={cn(
+          'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
+          active ? 'bg-subtle text-text' : 'text-text-muted hover:bg-subtle hover:text-text',
+        )}
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }
 
@@ -905,6 +1195,7 @@ function TemplateMenu({ open, onOpenChange, templates, onPick, reduce }: {
       <IconAction
         active={open}
         label={t('feedback_thread.templates', 'Respuestas rápidas')}
+        hint={t('feedback_thread.templates_hint', 'Las tres de siempre, listas para retocar antes de enviar')}
         onClick={() => { if (!open) place(); onOpenChange(!open) }}
       >
         <Sparkles className="h-4 w-4" />
@@ -953,16 +1244,19 @@ function TemplateMenu({ open, onOpenChange, templates, onPick, reduce }: {
   )
 }
 
-function ModeTab({ active, group, tone, onClick, children }: {
+function ModeTab({ active, group, tone, hint, onClick, children }: {
   active: boolean
   /** Ata el fondo que se desliza a ESTE hilo: ver el porqué abajo. */
   group: string
   /** Sin `tone` la pestaña activa va en neutro: es la opción de siempre. */
   tone?: string
+  /** Quién va a leer lo que se escriba en este modo. */
+  hint?: string
   onClick: () => void
   children: React.ReactNode
 }) {
   return (
+    <Tooltip anchor="element" maxWidth={230} label={hint} disabled={!hint}>
     <button
       type="button"
       onClick={onClick}
@@ -985,5 +1279,6 @@ function ModeTab({ active, group, tone, onClick, children }: {
       )}
       <span className="relative inline-flex items-center gap-1.5">{children}</span>
     </button>
+    </Tooltip>
   )
 }

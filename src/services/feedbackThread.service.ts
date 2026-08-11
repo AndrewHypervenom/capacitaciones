@@ -55,6 +55,21 @@ export async function fetchFeedbackThread(feedbackId: string): Promise<FeedbackE
   return (data ?? []) as FeedbackEvent[]
 }
 
+/**
+ * Alguien del equipo que ya metió mano en este hilo. Es el dato que evita el
+ * error caro de esta bandeja: dos personas respondiéndole a la misma persona sin
+ * saber la una de la otra.
+ */
+export interface ThreadStaffer {
+  id: string
+  name: string | null
+  avatar: string | null
+  /** Lo último que escribió aquí (respuesta o nota). */
+  at: string
+  /** Solo ha dejado notas internas: todavía no le ha hablado a la persona. */
+  onlyNotes: boolean
+}
+
 /** Resumen de un hilo, para pintar la lista sin abrir cada opinión. */
 export interface ThreadSummary {
   /** Mensajes visibles (respuestas de ambos lados), sin contar notas ni estados. */
@@ -69,12 +84,29 @@ export interface ThreadSummary {
   answered: boolean
   /** Mensajes que el que mira todavía no ha leído. */
   unread: number
+  /** Quiénes del equipo han escrito aquí, del más reciente al más antiguo. */
+  staff: ThreadStaffer[]
+  /** Quién del equipo dio la ÚLTIMA respuesta hacia afuera (null si nadie). */
+  lastReplyBy: ThreadStaffer | null
+  /** Quien mira ya le respondió a la persona en este hilo. */
+  mine: boolean
 }
 
-export const EMPTY_SUMMARY: ThreadSummary = {
-  replies: 0, notes: 0, lastAt: null, lastType: null,
-  awaitingStaff: false, answered: false, unread: 0,
+/**
+ * Un resumen en blanco NUEVO cada vez. No vale un objeto compartido: `staff` es
+ * un array y un `{ ...EMPTY_SUMMARY }` copiaría la referencia — el primer hilo
+ * que empujara un compañero se lo encontrarían todos los demás.
+ */
+export function emptySummary(): ThreadSummary {
+  return {
+    replies: 0, notes: 0, lastAt: null, lastType: null,
+    awaitingStaff: false, answered: false, unread: 0,
+    staff: [], lastReplyBy: null, mine: false,
+  }
 }
+
+/** Solo para LEER (fallback de un id sin hilo). Para mutar, `emptySummary()`. */
+export const EMPTY_SUMMARY: ThreadSummary = Object.freeze(emptySummary())
 
 /**
  * Resúmenes de varios hilos de un tirón. Una sola consulta para toda la bandeja:
@@ -94,14 +126,14 @@ export async function fetchThreadSummaries(
   if (ids.length === 0) return out
 
   const { data, error } = await table()
-    .select('feedback_id,author_id,type,created_at,read_at')
+    .select('feedback_id,author_id,author_name,author_avatar,type,created_at,read_at')
     .in('feedback_id', ids)
     .order('created_at', { ascending: true })
   if (error) throw error
 
   for (const e of (data ?? []) as FeedbackEvent[]) {
     const owner = ownerOf.get(e.feedback_id)
-    const s = out.get(e.feedback_id) ?? { ...EMPTY_SUMMARY }
+    const s = out.get(e.feedback_id) ?? emptySummary()
     const fromOwner = e.author_id === owner
 
     if (e.type === 'note') s.notes++
@@ -115,12 +147,48 @@ export async function fetchThreadSummaries(
       const viewerIsOwner = owner === viewerId
       if (!e.read_at && fromOwner !== viewerIsOwner) s.unread++
     }
+
+    // Quién del equipo puso mano aquí. Todo lo que no escribió el dueño de la
+    // opinión es del equipo — no hace falta preguntar por el rol de nadie.
+    if (!fromOwner && e.author_id && e.type !== 'status') {
+      trackStaffer(s, e)
+      if (e.type === 'reply') {
+        s.lastReplyBy = { ...stafferOf(e), onlyNotes: false }
+        if (e.author_id === viewerId) s.mine = true
+      }
+    }
+
     s.lastAt = e.created_at
     s.lastType = e.type
     out.set(e.feedback_id, s)
   }
 
+  // El más reciente primero: en la lista solo caben dos o tres caras, y las que
+  // importan son las de quien acaba de tocar el hilo.
+  for (const s of out.values()) s.staff.sort((a, b) => b.at.localeCompare(a.at))
+
   return out
+}
+
+function stafferOf(e: FeedbackEvent): ThreadStaffer {
+  return {
+    id: e.author_id as string,
+    name: e.author_name,
+    avatar: e.author_avatar,
+    at: e.created_at,
+    onlyNotes: e.type === 'note',
+  }
+}
+
+/** Apunta a esta persona del equipo en el resumen (o refresca lo que ya tenía). */
+function trackStaffer(s: ThreadSummary, e: FeedbackEvent) {
+  const cur = s.staff.find((x) => x.id === e.author_id)
+  if (!cur) { s.staff.push(stafferOf(e)); return }
+  cur.at = e.created_at
+  cur.name = e.author_name ?? cur.name
+  cur.avatar = e.author_avatar ?? cur.avatar
+  // Una sola respuesta hacia afuera basta para que deje de ser "solo notas".
+  if (e.type === 'reply') cur.onlyNotes = false
 }
 
 /**

@@ -14,14 +14,17 @@ import {
   type FeedbackKind, type FeedbackStatus, type SiteFeedbackRow,
 } from '@/services/siteFeedback.service'
 import {
-  fetchThreadSummaries, subscribeFeedbackEvents, EMPTY_SUMMARY,
-  type FeedbackEvent, type ThreadSummary,
+  fetchThreadSummaries, subscribeFeedbackEvents, emptySummary, EMPTY_SUMMARY,
+  type FeedbackEvent, type ThreadStaffer, type ThreadSummary,
 } from '@/services/feedbackThread.service'
+import { useViewingPresence } from '@/hooks/usePresence'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { KINDS, MOODS, kindMeta, questionsFor } from '@/components/feedback/config'
 import { STATUSES, StatusPill, STATUS_COLOR } from '@/components/feedback/StatusPill'
 import { ShotGallery } from '@/components/feedback/ShotGallery'
 import { FeedbackThread } from '@/components/feedback/FeedbackThread'
+import { AttentionBar, HandledByLine } from '@/components/feedback/HandledBy'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { FadeIn } from '@/components/ui/motion'
 import { toast } from '@/stores/toastStore'
 import { useNotificationsStore } from '@/stores/notificationsStore'
@@ -270,13 +273,30 @@ export default function SiteFeedback() {
 
     setSummaries((cur) => {
       const next = new Map(cur)
-      const s = { ...(next.get(row.id) ?? EMPTY_SUMMARY) }
+      const s = { ...(next.get(row.id) ?? emptySummary()) }
       if (ev.type === 'note') s.notes++
       else {
         s.replies++
         s.awaitingStaff = fromOwner
         if (!fromOwner) s.answered = true
         if (fromOwner && !isOpen) s.unread++
+      }
+      // La cara de quien acaba de atenderla aparece en la lista al instante:
+      // es el aviso que evita que dos personas escriban a la vez, y llegar
+      // tarde a darlo es no darlo.
+      if (!fromOwner && ev.author_id) {
+        const before = s.staff.find((x) => x.id === ev.author_id)
+        const who: ThreadStaffer = {
+          id: ev.author_id,
+          name: ev.author_name,
+          avatar: ev.author_avatar,
+          at: ev.created_at,
+          // Quien ya le habló a la persona no vuelve a ser "solo notas" porque
+          // después anote algo interno.
+          onlyNotes: ev.type === 'note' && (before?.onlyNotes ?? true),
+        }
+        s.staff = [who, ...s.staff.filter((x) => x.id !== who.id)]
+        if (ev.type === 'reply') s.lastReplyBy = who
       }
       s.lastAt = ev.created_at
       s.lastType = ev.type
@@ -334,18 +354,34 @@ export default function SiteFeedback() {
   }, [clearPingsFor])
 
   /** Tras escribir en un hilo, su resumen cambia: se refresca solo ese. */
-  const bumpSummary = useCallback((id: string, mine: boolean, isNote: boolean) => {
+  const bumpSummary = useCallback((id: string, ev: FeedbackEvent) => {
+    const isNote = ev.type === 'note'
     setSummaries((cur) => {
       const next = new Map(cur)
-      const s = { ...(next.get(id) ?? EMPTY_SUMMARY) }
+      const s = { ...(next.get(id) ?? emptySummary()) }
       if (isNote) s.notes++
       else {
         s.replies++
-        s.answered = s.answered || mine
+        s.answered = true
         s.awaitingStaff = false
+        s.mine = true
       }
-      s.lastAt = new Date().toISOString()
-      s.lastType = isNote ? 'note' : 'reply'
+      if (ev.author_id) {
+        const before = s.staff.find((x) => x.id === ev.author_id)
+        s.staff = [
+          {
+            id: ev.author_id,
+            name: ev.author_name,
+            avatar: ev.author_avatar,
+            at: ev.created_at,
+            onlyNotes: isNote && (before?.onlyNotes ?? true),
+          },
+          ...s.staff.filter((x) => x.id !== ev.author_id),
+        ]
+        if (!isNote) s.lastReplyBy = s.staff[0]
+      }
+      s.lastAt = ev.created_at
+      s.lastType = ev.type
       next.set(id, s)
       return next
     })
@@ -437,6 +473,7 @@ export default function SiteFeedback() {
             <ScopeTab
               label={t('admin.site_feedback.filter_open', 'Sin resolver')}
               value={scopes.open}
+              hint={t('admin.site_feedback.scope_open_hint', 'Nuevas y en revisión: el trabajo de hoy. Las tres bandejas suman el total, así que nada se queda sin aparecer.')}
               color="#f59e0b"
               active={status === 'open'}
               onClick={() => setStatus('open')}
@@ -448,6 +485,7 @@ export default function SiteFeedback() {
               <ScopeTab
                 label={t('site_feedback.status.planned', 'Planeada')}
                 value={scopes.planned}
+                hint={t('admin.site_feedback.scope_planned_hint', 'Aceptadas y en cola: ni pendientes de decidir ni cerradas. Tienen bandeja propia para que no se pierdan entre las dos.')}
                 color={STATUS_COLOR.planned}
                 active={status === 'planned'}
                 onClick={() => setStatus('planned')}
@@ -456,6 +494,7 @@ export default function SiteFeedback() {
             <ScopeTab
               label={t('admin.site_feedback.scope_closed', 'Cerradas')}
               value={scopes.closed}
+              hint={t('admin.site_feedback.scope_closed_hint', 'Resueltas y archivadas. Siguen aquí enteras, con su conversación: cerrar no borra nada.')}
               color="#94a3b8"
               active={status === 'closed'}
               onClick={() => setStatus('closed')}
@@ -463,6 +502,7 @@ export default function SiteFeedback() {
             <ScopeTab
               label={t('admin.site_feedback.filter_all', 'Todas')}
               value={scopes.all}
+              hint={t('admin.site_feedback.scope_all_hint', 'El histórico completo, sin nada puesto encima.')}
               active={status === 'all'}
               onClick={() => setStatus('all')}
             />
@@ -472,6 +512,8 @@ export default function SiteFeedback() {
             <RefineChip
               label={t('admin.site_feedback.kpi_awaiting', 'Esperan respuesta')}
               value={awaitingCount}
+              hint={t('admin.site_feedback.awaiting_hint', 'Nadie del equipo ha contestado, o la última palabra es de la persona. Se cuentan dentro de la bandeja abierta.')}
+              emptyHint={t('admin.site_feedback.awaiting_empty', 'Aquí no queda ninguna sin contestar.')}
               color="#38bdf8"
               icon={<MessageSquare className="h-3 w-3" />}
               active={awaitingOnly}
@@ -480,6 +522,8 @@ export default function SiteFeedback() {
             <RefineChip
               label={t('admin.site_feedback.kpi_contact', 'Piden contacto')}
               value={contactCount}
+              hint={t('admin.site_feedback.contact_hint', 'Dejaron correo o teléfono para que alguien les escriba o les llame.')}
+              emptyHint={t('admin.site_feedback.contact_empty', 'Nadie pidió que lo contactaran en esta bandeja.')}
               color="#ef4444"
               icon={<Phone className="h-3 w-3" />}
               active={contactOnly}
@@ -488,10 +532,19 @@ export default function SiteFeedback() {
           </div>
 
           {/* El ánimo no filtra nada: es el único número que solo se mira. */}
-          <span
-            className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-text-muted"
-            title={t('admin.site_feedback.kpi_mood', 'Ánimo promedio')}
+          <Tooltip
+            anchor="element"
+            maxWidth={230}
+            label={
+              <span className="flex flex-col gap-0.5 text-center">
+                <span className="font-semibold">{t('admin.site_feedback.kpi_mood', 'Ánimo promedio')}</span>
+                <span className="opacity-70">
+                  {t('admin.site_feedback.mood_hint', 'Cómo se sienten en promedio quienes opinaron, del 1 al 5. Es el único número que no filtra nada: solo se mira.')}
+                </span>
+              </span>
+            }
           >
+          <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-text-muted">
             {stats.avgMood !== null && (
               <span className="text-[15px] leading-none">
                 {MOODS[Math.round(stats.avgMood) - 1]?.emoji}
@@ -505,6 +558,7 @@ export default function SiteFeedback() {
               {stats.avgMood !== null ? `${stats.avgMood}/5` : '—'}
             </span>
           </span>
+          </Tooltip>
         </div>
       </FadeIn>
 
@@ -646,6 +700,7 @@ export default function SiteFeedback() {
                 summary={summaryOf(r.id)}
                 selected={selectedId === r.id}
                 isSuperAdmin={isSuperAdmin}
+                viewerId={user?.id ?? null}
                 onSelect={() => select(r.id)}
               />
             ))}
@@ -696,12 +751,13 @@ export default function SiteFeedback() {
 
 /* ═══════════════════════ Lista ═══════════════════════ */
 
-function ListItem({ row: r, index, summary, selected, isSuperAdmin, onSelect }: {
+function ListItem({ row: r, index, summary, selected, isSuperAdmin, viewerId, onSelect }: {
   row: SiteFeedbackRow
   index: number
   summary: ThreadSummary
   selected: boolean
   isSuperAdmin: boolean
+  viewerId: string | null
   onSelect: () => void
 }) {
   const { t } = useTranslation()
@@ -770,32 +826,74 @@ function ListItem({ row: r, index, summary, selected, isSuperAdmin, onSelect }: 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <StatusPill status={r.status} />
             {awaiting && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2 py-1 text-[10.5px] font-medium text-sky-400">
-                {t('admin.site_feedback.awaiting', 'Esperando respuesta')}
-              </span>
+              <Tooltip
+                anchor="element"
+                maxWidth={225}
+                label={summary.answered
+                  ? t('feedback_handled.back_to_you_hint', 'Ya se le respondió, pero la persona escribió otra vez: lee lo último antes de contestar.')
+                  : t('admin.site_feedback.awaiting_chip_hint', 'Nadie del equipo le ha contestado todavía.')}
+              >
+                <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2 py-1 text-[10.5px] font-medium text-sky-400">
+                  {/* Que espere respuesta después de haberla tenido no es lo mismo
+                      que no haber sido atendida nunca: en el primer caso hay que
+                      leer lo que ya se dijo antes de contestar. */}
+                  {summary.answered
+                    ? t('admin.site_feedback.wrote_back', 'Volvió a escribir')
+                    : t('admin.site_feedback.awaiting', 'Esperando respuesta')}
+                </span>
+              </Tooltip>
             )}
             {summary.replies > 0 && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-1 text-[10.5px] font-medium text-text-muted"
-                title={t('admin.site_feedback.thread_count', '{{n}} mensaje(s) en la conversación', { n: summary.replies })}
+              <Tooltip
+                anchor="element"
+                label={
+                  <>
+                    {t('admin.site_feedback.thread_count', '{{n}} mensaje(s) en la conversación', { n: summary.replies })}
+                    {summary.notes > 0 && ` · ${t('feedback_handled.notes_count', {
+                      count: summary.notes,
+                      defaultValue: '{{count}} notas internas',
+                    })}`}
+                  </>
+                }
               >
-                <MessageSquare className="h-3 w-3" />
-                {summary.replies}
-              </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-1 text-[10.5px] font-medium text-text-muted">
+                  <MessageSquare className="h-3 w-3" />
+                  {summary.replies}
+                </span>
+              </Tooltip>
             )}
             {r.shots && r.shots.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-1 text-[10.5px] font-medium text-text-muted">
-                <ImageIcon className="h-3 w-3" />
-                {r.shots.length}
-              </span>
+              <Tooltip
+                anchor="element"
+                label={t('admin.site_feedback.shots_count', {
+                  count: r.shots.length,
+                  defaultValue: '{{count}} capturas adjuntas',
+                })}
+              >
+                <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-1 text-[10.5px] font-medium text-text-muted">
+                  <ImageIcon className="h-3 w-3" />
+                  {r.shots.length}
+                </span>
+              </Tooltip>
             )}
             {r.contact_ok && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/12 px-2 py-1 text-[10.5px] font-medium text-red-400">
-                <Phone className="h-3 w-3" />
-                {t('admin.site_feedback.wants_contact', 'Contactar')}
-              </span>
+              <Tooltip
+                anchor="element"
+                maxWidth={220}
+                label={t('admin.site_feedback.contact_chip_hint', 'Dejó cómo contactarlo. Los datos están en la pestaña Detalle.')}
+              >
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-500/12 px-2 py-1 text-[10.5px] font-medium text-red-400">
+                  <Phone className="h-3 w-3" />
+                  {t('admin.site_feedback.wants_contact', 'Contactar')}
+                </span>
+              </Tooltip>
             )}
           </div>
+
+          {/* Quién del equipo ya puso mano aquí, antes de abrir nada. Esta línea
+              es la que evita la respuesta duplicada: se ve de un barrido cuáles
+              están atendidas y por quién, sin entrar en ninguna. */}
+          <HandledByLine summary={summary} viewerId={viewerId} className="mt-2 w-full" />
         </div>
       </div>
     </motion.button>
@@ -816,7 +914,7 @@ function Detail({
   onClose: () => void
   onPatch: (id: string, p: { status?: FeedbackStatus; staff_note?: string | null }) => Promise<void>
   onDelete: (row: SiteFeedbackRow) => Promise<void>
-  onThreadPosted: (id: string, mine: boolean, isNote: boolean) => void
+  onThreadPosted: (id: string, event: FeedbackEvent) => void
   onThreadRead: (id: string) => void
 }) {
   const { t } = useTranslation()
@@ -853,6 +951,19 @@ function Detail({
   // Arranca en el chat en cada opinión: la ficha se remonta al cambiar de fila
   // (lleva `key`), así que no hay que reponerla a mano.
   const [tab, setTab] = useState<'chat' | 'info'>('chat')
+
+  /**
+   * Quién más tiene ESTA opinión abierta ahora mismo. El historial dice quién
+   * respondió ya; esto dice quién está a punto de responder — el choque que
+   * ningún registro puede avisar a tiempo. Va como 'view' y no como 'edit'
+   * porque atender no es editar: no dispara el aviso de coedición.
+   */
+  const watchers = useViewingPresence({
+    type: 'feedback',
+    id: r.id,
+    title: r.display_name ?? t('admin.site_feedback.user_fallback', 'Usuario'),
+    campaignId: r.campaign_id ?? undefined,
+  })
 
   return (
     <motion.div
@@ -953,18 +1064,34 @@ function Detail({
             avatares e hitos son del color de la superficie: el hilo necesita una
             debajo. En escritorio la ficha ya es una tarjeta. */}
         <div className={cn(
-          'h-full bg-surface p-3 sm:p-3.5 lg:bg-transparent lg:p-4',
+          'flex h-full min-h-0 flex-col gap-2 bg-surface p-3 sm:p-3.5 lg:bg-transparent lg:p-4',
           tab !== 'chat' && 'hidden',
         )}>
-          <FeedbackThread
-            row={r}
-            variant="staff"
-            fill
-            showOrigin
-            reloadKey={threadKey}
-            onPosted={(e) => onThreadPosted(r.id, e.author_id === user?.id, e.type === 'note')}
-            onRead={() => onThreadRead(r.id)}
+          {/* Lo primero que se lee al abrir: si esto ya está atendido y por
+              quién. Va encima de la conversación porque la decisión —escribir o
+              no— se toma antes de leerla entera. */}
+          <AttentionBar
+            summary={summary}
+            viewerId={user?.id ?? null}
+            awaiting={isAwaiting(r, summary)}
+            watchers={watchers.map((p) => ({
+              user_id: p.user_id, name: p.name, avatar_url: p.avatar_url,
+            }))}
+            className="shrink-0"
           />
+          {/* `min-h-0 flex-1` para que el hilo (que es `h-full`) tenga contra qué
+              medirse: sin esto, la franja de arriba lo empuja fuera de la ficha. */}
+          <div className="min-h-0 flex-1">
+            <FeedbackThread
+              row={r}
+              variant="staff"
+              fill
+              showOrigin
+              reloadKey={threadKey}
+              onPosted={(e) => onThreadPosted(r.id, e)}
+              onRead={() => onThreadRead(r.id)}
+            />
+          </div>
         </div>
 
         {/* Solo entrada, sin AnimatePresence: una salida a medias aquí dentro es
@@ -1152,9 +1279,11 @@ function Detail({
  * *dejar* la anterior, no añadir un filtro encima. La pastilla activa se desliza
  * de una a otra —un solo `layoutId`, porque de verdad hay una sola.
  */
-function ScopeTab({ label, value, color, active, onClick }: {
+function ScopeTab({ label, value, hint, color, active, onClick }: {
   label: string
   value: number
+  /** Qué estados caen en esta bandeja. El número solo no lo dice. */
+  hint?: string
   color?: string
   active: boolean
   onClick: () => void
@@ -1162,6 +1291,7 @@ function ScopeTab({ label, value, color, active, onClick }: {
   const reduce = useReducedMotion()
   const tone = color ?? 'rgb(var(--brand-green))'
   return (
+    <Tooltip anchor="element" maxWidth={240} label={hint} disabled={!hint}>
     <button
       onClick={onClick}
       className="relative inline-flex items-center gap-1.5 rounded-[0.6rem] px-2.5 py-1.5 transition-colors"
@@ -1189,6 +1319,7 @@ function ScopeTab({ label, value, color, active, onClick }: {
         {label}
       </span>
     </button>
+    </Tooltip>
   )
 }
 
@@ -1197,17 +1328,39 @@ function ScopeTab({ label, value, color, active, onClick }: {
  * confunda con las pestañas: varias pueden estar puestas a la vez, y quitarlas
  * te devuelve a la bandeja donde estabas, no a otra.
  */
-function RefineChip({ label, value, color, icon, active, onClick }: {
+function RefineChip({ label, value, hint, emptyHint, color, icon, active, onClick }: {
   label: string
   value: number
+  /** Qué recorta este filtro. */
+  hint?: string
+  /** Por qué está apagado cuando no hay ningún caso. */
+  emptyHint?: string
   color: string
   icon: React.ReactNode
   active: boolean
   onClick: () => void
 }) {
+  const { t } = useTranslation()
   const reduce = useReducedMotion()
   const none = value === 0
   return (
+    // Un botón apagado sin explicación es la trampa clásica: la persona pulsa,
+    // no pasa nada y se queda sin saber si está roto. El globo dice que no hay
+    // nada que recortar en esta bandeja, no que la pantalla falle.
+    <Tooltip
+      anchor="element"
+      maxWidth={230}
+      label={
+        <span className="flex flex-col gap-0.5 text-center">
+          <span className="font-semibold">
+            {active ? t('admin.site_feedback.chip_active', 'Filtro puesto · pulsa para quitarlo') : label}
+          </span>
+          {(none && !active ? emptyHint : hint) && (
+            <span className="opacity-70">{none && !active ? emptyHint : hint}</span>
+          )}
+        </span>
+      }
+    >
     <motion.button
       onClick={onClick}
       disabled={none && !active}
@@ -1216,7 +1369,10 @@ function RefineChip({ label, value, color, icon, active, onClick }: {
         'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] transition-colors',
         active ? 'font-semibold' : 'border-transparent text-text-muted',
         // Sin casos no hay nada que recortar: se ve, pero no se puede pulsar.
-        none && !active ? 'opacity-45' : !active && 'hover:bg-subtle',
+        // `pointer-events-none` es lo que deja que el globo del envoltorio SÍ
+        // salga: un botón deshabilitado no emite eventos de puntero, y sin esto
+        // la explicación de por qué está apagado no aparecería nunca.
+        none && !active ? 'pointer-events-none opacity-45' : !active && 'hover:bg-subtle',
       )}
       style={active
         ? { borderColor: `${color}59`, background: `${color}14`, color }
@@ -1227,6 +1383,7 @@ function RefineChip({ label, value, color, icon, active, onClick }: {
       <span className="tabular-nums font-bold">{value}</span>
       <span className="whitespace-nowrap">{label}</span>
     </motion.button>
+    </Tooltip>
   )
 }
 
@@ -1428,15 +1585,27 @@ function StatusMenu({ status, onPick }: {
 
   return (
     <div ref={boxRef} className="relative shrink-0">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-full transition-opacity hover:opacity-80"
-        aria-expanded={open}
-        title={t('admin.site_feedback.manage', 'Gestión')}
+      <Tooltip
+        anchor="element"
+        maxWidth={230}
+        label={
+          <span className="flex flex-col gap-0.5 text-center">
+            <span className="font-semibold">{t('admin.site_feedback.manage', 'Gestión')}</span>
+            <span className="opacity-70">
+              {t('admin.site_feedback.status_hint', 'Cada cambio queda escrito en la conversación, con tu nombre y la hora.')}
+            </span>
+          </span>
+        }
       >
-        <StatusPill status={status} />
-        <ChevronDown className={cn('h-3.5 w-3.5 text-text-muted transition-transform duration-300', open && 'rotate-180')} />
-      </button>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex items-center gap-1 rounded-full transition-opacity hover:opacity-80"
+          aria-expanded={open}
+        >
+          <StatusPill status={status} />
+          <ChevronDown className={cn('h-3.5 w-3.5 text-text-muted transition-transform duration-300', open && 'rotate-180')} />
+        </button>
+      </Tooltip>
 
       <AnimatePresence>
         {open && (

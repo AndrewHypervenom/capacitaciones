@@ -45,6 +45,10 @@ export type PresenceResourceType =
   | 'world'
   | 'simulation'
   | 'choice'
+  // Una opinión de la bandeja. No es contenido que se edite: se declara para que
+  // dos personas del equipo sepan que están atendiendo la MISMA opinión antes de
+  // escribirle dos veces a quien la mandó.
+  | 'feedback'
 
 export interface PresenceActivity {
   type: PresenceResourceType
