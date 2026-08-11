@@ -151,6 +151,18 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
   const busy = phase === 'cutting' || phase === 'done'
 
   /* ── Carga ───────────────────────────────────────────────────────────────── */
+  // `onClose` y `t` cambian de identidad en cada render del padre (y al cambiar
+  // de idioma). Si el efecto de carga dependiera de ellos, cualquier re-render
+  // del editor volvería a cargar el módulo y devolvería la línea de corte a la
+  // mitad, borrando el gesto del capacitador. Van por referencia: el efecto solo
+  // depende del módulo.
+  const onCloseRef = useRef(onClose)
+  const tRef = useRef(t)
+  useEffect(() => {
+    onCloseRef.current = onClose
+    tRef.current = t
+  })
+
   useEffect(() => {
     let alive = true
     void (async () => {
@@ -168,14 +180,14 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
         if (alive) setImpact(imp[moduleId] ?? null)
       } catch (e) {
         console.error('[ModuleSplitModal] load', e)
-        toast.error(t('admin.surgery.load_error'))
-        onClose()
+        toast.error(tRef.current('admin.surgery.load_error'))
+        onCloseRef.current()
       }
     })()
     return () => {
       alive = false
     }
-  }, [moduleId, onClose, t])
+  }, [moduleId])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -192,10 +204,17 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
     [sections.length],
   )
 
+  // El corte vigente se lee por referencia: si `nearestGap` dependiera del
+  // estado, cada movimiento del puntero recrearía los oyentes en pleno arrastre.
+  const cutRef = useRef(cutIndex)
+  useEffect(() => {
+    cutRef.current = cutIndex
+  }, [cutIndex])
+
   /** Hueco más cercano al puntero, midiendo el borde superior de cada fila. */
   const nearestGap = useCallback(
     (clientY: number) => {
-      let best = cutIndex
+      let best = cutRef.current
       let bestDist = Infinity
       for (let i = 1; i < sections.length; i++) {
         const el = rowRefs.current[i]
@@ -208,7 +227,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
       }
       return clampCut(best)
     },
-    [sections.length, cutIndex, clampCut],
+    [sections.length, clampCut],
   )
 
   useEffect(() => {

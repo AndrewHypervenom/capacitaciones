@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -120,6 +120,17 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
   const merging = phase === 'merging' || phase === 'done'
 
   /* ── Carga ───────────────────────────────────────────────────────────────── */
+  // `onClose` y `t` cambian de identidad en cada render del padre (y al cambiar
+  // de idioma). Si el efecto de carga dependiera de ellos, cualquier re-render
+  // del editor recargaría los módulos y devolvería el orden y el título a su
+  // valor por omisión, borrando lo que ya había ajustado el capacitador.
+  const onCloseRef = useRef(onClose)
+  const tRef = useRef(t)
+  useEffect(() => {
+    onCloseRef.current = onClose
+    tRef.current = t
+  })
+
   useEffect(() => {
     let alive = true
     void (async () => {
@@ -135,14 +146,16 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
         if (alive) setImpact(imp)
       } catch (e) {
         console.error('[ModuleMergeModal] load', e)
-        toast.error(t('admin.surgery.load_error'))
-        onClose()
+        toast.error(tRef.current('admin.surgery.load_error'))
+        onCloseRef.current()
       }
     })()
     return () => {
       alive = false
     }
-  }, [moduleIds, onClose, t])
+    // El identificador de los módulos es lo único que debe provocar una recarga.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleIds.join(',')])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
