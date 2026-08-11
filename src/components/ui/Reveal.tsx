@@ -15,6 +15,15 @@ export interface RevealProps {
   children?: ReactNode;
 }
 
+/** Evento global: obliga a TODOS los Reveal a mostrarse ya (sin esperar scroll).
+ *  Lo usa el índice del módulo antes de saltar a una sección, para que la
+ *  posición del destino no cambie a mitad del desplazamiento. */
+export const REVEAL_ALL_EVENT = 'reveal:show-all';
+
+export function revealAll() {
+  window.dispatchEvent(new Event(REVEAL_ALL_EVENT));
+}
+
 export function Reveal({
   as = 'div',
   id,
@@ -28,6 +37,12 @@ export function Reveal({
 }: RevealProps) {
   const ref = useRef<HTMLElement | null>(null);
   const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const showNow = () => setVisible(true);
+    window.addEventListener(REVEAL_ALL_EVENT, showNow);
+    return () => window.removeEventListener(REVEAL_ALL_EVENT, showNow);
+  }, []);
 
   useEffect(() => {
     const node = ref.current;
