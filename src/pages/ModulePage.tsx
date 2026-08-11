@@ -750,6 +750,25 @@ export default function ModulePage() {
                         moduleId={module.dbId || module.id}
                         savedQuizResults={s.id ? videoQuizResultsBySection[s.id] : undefined}
                       />
+                      {/* Material que acompaña al video (PDFs, texto, imágenes…):
+                          los mismos bloques que en una sección normal. */}
+                      {s.blocks && s.blocks.length > 0 && (
+                        <div className="mt-8">
+                          {s.blocks.map((block, j) => (
+                            <BlockRenderer
+                              key={j}
+                              block={block as ContentBlock}
+                              language={language}
+                              moduleId={module.dbId || module.id}
+                              sectionId={s.id}
+                              blockIndex={j}
+                              userId={targetUserId ?? ''}
+                              campaignId={module.campaign_id}
+                              savedAttempts={attemptByUnit}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </Reveal>
                 );

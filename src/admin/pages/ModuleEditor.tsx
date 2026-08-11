@@ -804,6 +804,23 @@ function SectionEditorPanel({
           </div>
         )}
 
+        {/* ── BLOQUES ──
+            El video no es lo único que puede vivir aquí: debajo se pueden
+            agregar los mismos bloques que en una sección normal (PDF del
+            material, texto, imágenes…), y se pintan bajo el reproductor. */}
+        <div className="space-y-4 pt-2">
+          <GroupDivider label={t('admin.modules.ed_group_blocks')} />
+          <BlockEditor
+            blocks={blocks}
+            onChange={(next) => {
+              setBlocks(next)
+              onDirty(true)
+            }}
+            activeLang={lang}
+            mediaContext={section.id ? { moduleId: section.module_id, sectionId: section.id, campaignId } : undefined}
+          />
+        </div>
+
         {/* El guardado vive en la barra única del pie (SaveDock). */}
         {error && <p className="text-danger text-[12px] pt-2">{error}</p>}
       </div>
