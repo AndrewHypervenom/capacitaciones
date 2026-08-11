@@ -32,6 +32,8 @@ import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useUnsavedFlag } from '@/hooks/useUnsavedFlag'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
+import { useStaleGuard } from '@/hooks/useStaleGuard'
+import { StaleNotice } from '@/components/ui/StaleNotice'
 import {
   DndContext,
   closestCenter,
@@ -371,7 +373,6 @@ function SectionEditorPanel({
   const [lang, setLang] = useState<Lang>('es')
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'ok'>('idle')
   const [error, setError] = useState<string | null>(null)
   
   // Ojo: el id es solo para React/dnd y para identificar el bloque al borrarlo.
@@ -382,9 +383,6 @@ function SectionEditorPanel({
     return section.blocks_data.map((data) => ({ id: nextLocalBlockId(), data: data as ContentBlock }))
   })
   
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const handleSaveRef2 = useRef<(() => Promise<void>) | null>(null)
-
   // Contenido
   const [heading, setHeading] = useState<Record<Lang, string>>({
     es: section.heading_es,
@@ -542,10 +540,15 @@ function SectionEditorPanel({
     toast.success(t('admin.modules.ed_legacy_done'))
   }
 
-  // Igual que en el panel de metadatos: se compara con lo cargado en vez de
-  // fiarse de un "ya pasó el primer render". Ese ref sobrevivía al remontado que
-  // hace StrictMode, así que abrir una sección la marcaba sucia sola — y aquí
-  // eso además lanzaba un autoguardado que nadie pidió.
+  // Marca la sección como "sucia" cuando su contenido se aparta de lo cargado.
+  // Se compara con el contenido en vez de fiarse de un "ya pasó el primer
+  // render": ese ref sobrevivía al remontado que hace StrictMode y abrir una
+  // sección la marcaba sucia sola.
+  //
+  // Aquí NO se guarda solo. Antes había un autoguardado con retardo y el
+  // contenido se escribía en la base mientras seguías escribiendo: con dos
+  // pestañas abiertas cada una pisaba a la otra, y no había forma de probar un
+  // cambio y descartarlo. Se guarda desde la barra (o con Ctrl+S), y punto.
   const sectionBaseline = useRef<string | null>(null)
   useEffect(() => {
     const fp = fingerprint({
@@ -558,28 +561,15 @@ function SectionEditorPanel({
     }
     if (fp === sectionBaseline.current) {
       // Se deshizo hasta el punto de partida: no hay nada que guardar.
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
       onDirty(false)
       return
     }
     onDirty(true)
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
-    setAutoSaveStatus('idle')
-    autoSaveTimerRef.current = setTimeout(() => {
-      if (handleSaveRef2.current) {
-        setAutoSaveStatus('saving')
-        void handleSaveRef2.current().then(() => {
-          setAutoSaveStatus('ok')
-          setTimeout(() => setAutoSaveStatus('idle'), 2000)
-        })
-      }
-    }, 1500)
   }, [heading, body, sectionStyle, hasCallout, calloutKind, callout, hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks, onDirty])
 
   // Deshacer/rehacer de la sección. Cubre el contenido entero (bloques, medios,
   // quiz, marcadores de video): borrar un bloque por error ya no obliga a
-  // rehacerlo a mano. Al aplicar una foto se dispara el autoguardado, así que
-  // lo deshecho también queda guardado.
+  // rehacerlo a mano. Lo deshecho queda en pantalla; se confirma al guardar.
   const undoHistory = useUndoHistory({
     state: {
       heading, body, sectionStyle, hasCallout, calloutKind, callout,
@@ -732,7 +722,6 @@ function SectionEditorPanel({
 
   const handleSaveRef = useRef(handleSave)
   handleSaveRef.current = handleSave
-  handleSaveRef2.current = handleSave
   useEffect(() => {
     onRegisterSave(() => handleSaveRef.current())
     return () => onRegisterSave(null)
@@ -831,12 +820,12 @@ function SectionEditorPanel({
           <span className="text-[15px] font-semibold text-text truncate max-w-[200px]">
             {heading.es || t('admin.modules.section_untitled')}
           </span>
-          {(autoSaveStatus === 'saving' || saving) && (
+          {saving && (
             <span className="flex items-center gap-1 text-[11px] text-text-subtle">
               <Loader2 className="h-3 w-3 animate-spin" /> {t('admin.modules.ed_saving')}
             </span>
           )}
-          {(autoSaveStatus === 'ok' || saveOk) && autoSaveStatus !== 'saving' && !saving && (
+          {saveOk && !saving && (
             <span className="text-[11px] text-neon-green">{t('admin.modules.saved_ok')}</span>
           )}
         </div>
@@ -1427,6 +1416,45 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo
   )
 }
 
+/* ─── Qué mira el guardia de versión ────────────────────────────────────────
+ *
+ * Solo los campos que estos editores ESCRIBEN. Comparar la fila entera daría
+ * avisos falsos: `select('*')` trae también columnas que se mueven solas
+ * (`updated_at`, `created_at`) y la fila que el panel arma tras guardar no las
+ * refresca, así que cada guardado se leería como "alguien lo cambió".
+ */
+const MODULE_GUARD_KEYS = [
+  'title_es', 'title_en', 'title_pt',
+  'subtitle_es', 'subtitle_en', 'subtitle_pt',
+  'objectives_es', 'objectives_en', 'objectives_pt',
+  'key_takeaways_es', 'key_takeaways_en', 'key_takeaways_pt',
+  'icon', 'duration_min', 'sound_theme',
+] as const
+
+const SECTION_GUARD_KEYS = [
+  'sort_order',
+  'heading_es', 'heading_en', 'heading_pt',
+  'body_es', 'body_en', 'body_pt',
+  'callout_kind', 'callout_es', 'callout_en', 'callout_pt',
+  'media_type', 'media_url',
+  'media_caption_es', 'media_caption_en', 'media_caption_pt',
+  'media_size', 'media_align', 'media_shadow',
+  'section_style', 'video_markers', 'blocks_data',
+] as const
+
+const QUIZ_GUARD_KEYS = [
+  'question_es', 'question_en', 'question_pt',
+  'options_es', 'options_en', 'options_pt',
+  'correct_index',
+  'explanation_es', 'explanation_en', 'explanation_pt',
+] as const
+
+/** Copia solo esas claves, con `null` para las que falten (huella estable). */
+function pickKeys(row: object, keys: readonly string[]): Record<string, unknown> {
+  const src = row as Record<string, unknown>
+  return Object.fromEntries(keys.map((k) => [k, src[k] ?? null]))
+}
+
 // ─── Exportación principal ──────────────────────────────────────────
 
 export default function ModuleEditor() {
@@ -1514,12 +1542,29 @@ export default function ModuleEditor() {
   // medio escribir, y lo nombran en vez de advertir en genérico.
   useUnsavedFlag(isDirty, mod?.title_es || t('common.untitled'))
 
+  // Los paneles copian su fila a estado local al montarse: sin remontarlos, una
+  // recarga cambia `sections` pero lo que se ve en el formulario sigue siendo lo
+  // viejo. Este contador va en su `key` y los estrena con lo recién traído.
+  //
+  // Solo se mueve si de verdad llegó algo distinto: `useFreshOnFocus` recarga
+  // cada vez que se vuelve a la pestaña del navegador, y remontar por costumbre
+  // reiniciaría el idioma abierto y la posición sin motivo.
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const loadedFpRef = useRef<string | null>(null)
+
   const reloadModule = useCallback(() => {
     if (!moduleId) return
     getModuleWithSectionsRaw(moduleId)
       .then((data) => {
         setMod(data)
         setSections(data.module_sections)
+        const fp = fingerprint(data)
+        if (fp !== loadedFpRef.current) {
+          setReloadNonce((n) => n + 1)
+          // Los paneles se estrenan con lo traído: no queda nada pendiente.
+          setIsDirty(false)
+        }
+        loadedFpRef.current = fp
       })
       .catch(() => {
         setError(t('admin.modules.error_load'))
@@ -1543,6 +1588,84 @@ export default function ModuleEditor() {
     topics: ['modules'],
     enabled: !!moduleId && !isDirty && !loading,
   })
+
+  // ── Guardia de versión (el mismo del editor de cursos y de simulaciones) ──
+  //
+  // `useFreshOnFocus` de arriba solo actúa cuando aquí NO hay nada a medio
+  // escribir. El caso peligroso es justo el contrario: el módulo abierto en dos
+  // pestañas, se guarda en la A, y la B —que lleva rato con su copia vieja—
+  // guarda encima y deshace lo de A sin decir nada. Esto lo detecta y pregunta.
+  //
+  // Se compara SOLO lo que el panel abierto sobrescribe: la sección abierta, o
+  // la ficha del módulo sin sus secciones. Si se comparara el módulo entero,
+  // guardar una sección en la otra pestaña haría saltar el aviso en esta aunque
+  // se esté editando otra sección distinta, que no se pisan entre sí.
+  const guardTarget = useCallback(
+    (data: DbModuleWithSections | null): object | null => {
+      if (!data) return null
+      if (!selectedSectionId) return pickKeys(data, MODULE_GUARD_KEYS)
+      const section = data.module_sections.find((s) => s.id === selectedSectionId)
+      if (!section) return null
+      return {
+        ...pickKeys(section, SECTION_GUARD_KEYS),
+        // El quiz va dentro de la sección: se guarda con ella y se pisa con ella.
+        section_quizzes: (section.section_quizzes ?? []).map((q) => pickKeys(q, QUIZ_GUARD_KEYS)),
+      }
+    },
+    [selectedSectionId],
+  )
+
+  const staleGuard = useStaleGuard<object>({
+    fetch: async () => guardTarget(await getModuleWithSectionsRaw(moduleId!)),
+    topic: 'modules',
+    // El id sigue al panel abierto: cambiar de sección estrena línea base.
+    id: selectedSectionId ?? moduleId ?? null,
+  })
+
+  // La línea base se fija con lo que hay en pantalla recién cargado o recién
+  // guardado (`mod`/`sections` solo cambian de identidad en esos dos momentos).
+  const markStaleBaseline = staleGuard.mark
+  useEffect(() => {
+    if (!mod) return
+    markStaleBaseline(guardTarget({ ...mod, module_sections: sections }))
+  }, [mod, sections, guardTarget, markStaleBaseline])
+
+  /**
+   * "Traer lo último": descarta lo que hay en pantalla y relee de la base. Con
+   * cambios sin guardar se pregunta primero — recargar los borra, y esa es
+   * decisión de quien está editando, no del aviso.
+   */
+  const handleReloadLatest = useCallback(async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: t('common.stale.confirm_title'),
+        description: t('admin.modules.stale_discard_body'),
+        confirmLabel: t('common.stale.reload'),
+      })
+      if (!ok) return
+    }
+    reloadModule()
+    staleGuard.dismiss()
+    toast.success(t('common.stale.reloaded'))
+  }, [isDirty, confirm, t, reloadModule, staleGuard])
+
+  /**
+   * Guarda el panel abierto, pero comprobando antes que nadie haya guardado
+   * esto mismo mientras tanto. Es el ÚNICO camino de guardado del editor: lo
+   * usan la barra y la vista previa. Devuelve si el guardado llegó a hacerse.
+   */
+  const saveCurrentPanel = useCallback(async (): Promise<boolean> => {
+    if (!(await staleGuard.isSafeToSave())) {
+      const overwrite = await confirm({
+        title: t('common.stale.confirm_title'),
+        description: t('common.stale.confirm_body'),
+        confirmLabel: t('common.stale.confirm_overwrite'),
+      })
+      if (!overwrite) return false
+    }
+    await saveFnRef.current?.()
+    return true
+  }, [staleGuard, confirm, t])
 
   const handleMetaSaved = useCallback((updates: Partial<DbModuleWithSections>) => {
     setMod((prev) => (prev ? { ...prev, ...updates } : prev))
@@ -1703,13 +1826,17 @@ export default function ModuleEditor() {
       return
     }
     setOpeningPreview(true)
+    let saved = false
     try {
-      await saveFnRef.current?.()
+      saved = await saveCurrentPanel()
     } catch {
       toast.error(t('admin.preview.save_failed'))
     } finally {
       setOpeningPreview(false)
     }
+    // Se echó atrás en el aviso de "hay una versión más nueva": abrir la vista
+    // previa enseñaría lo de la base, no lo que tiene en pantalla. Mejor nada.
+    if (!saved) return
     const idx = sections.findIndex((s) => s.id === selectedSectionId)
     setPreviewPath(`/modules/${mod.slug}${idx >= 0 ? `#section-${idx}` : ''}`)
   }
@@ -1941,6 +2068,16 @@ export default function ModuleEditor() {
 
         <EditingBanner coeditors={coeditors} />
 
+        {/* "Esto ya cambió en otra pestaña." No recarga solo: lo que hay en
+            pantalla sin guardar es trabajo de quien está editando. */}
+        {staleGuard.stale && (
+          <StaleNotice
+            className="mx-3 md:mx-5 mt-2 shrink-0"
+            onReload={() => { void handleReloadLatest() }}
+            onDismiss={staleGuard.dismiss}
+          />
+        )}
+
         {/* Recordatorio permanente: lo generado con IA se revisa antes de publicar. */}
         <AiReviewNotice variant="inline" className="mx-3 md:mx-5 mt-2 shrink-0" />
 
@@ -1953,6 +2090,7 @@ export default function ModuleEditor() {
         <div className={cn('flex-1 overflow-y-auto', isDirty && 'pb-28')}>
           {selectedSectionId === null ? (
             <MetaEditorPanel
+              key={`meta:${reloadNonce}`}
               mod={mod}
               onSaved={handleMetaSaved}
               onDirty={setIsDirty}
@@ -1962,7 +2100,7 @@ export default function ModuleEditor() {
           ) : (
             sections.find((s) => s.id === selectedSectionId) ? (
               <SectionEditorPanel
-                key={selectedSectionId}
+                key={`${selectedSectionId}:${reloadNonce}`}
                 section={sections.find((s) => s.id === selectedSectionId)!}
                 campaignId={mod.campaign_id}
                 moduleTitle={mod.title_es}
@@ -1990,8 +2128,7 @@ export default function ModuleEditor() {
               }]
             : []
         }
-        onSave={() => saveFnRef.current?.()}
-        autoSave={selectedSectionId !== null}
+        onSave={saveCurrentPanel}
         onUndo={() => undoFnRef.current?.()}
         canUndo={canUndo}
         spacer={false}

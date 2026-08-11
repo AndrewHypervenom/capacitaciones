@@ -31,9 +31,6 @@ import { ReviewButton } from '@/components/gamification/ReviewButton';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { RichText, RichTextInline } from '@/components/ui/RichText';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { GradientHeading } from '@/components/ui/GradientHeading';
-import { NeonBadge } from '@/components/ui/NeonBadge';
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
 import { ModuleTOC } from '@/components/modules/ModuleTOC';
@@ -554,15 +551,15 @@ export default function ModulePage() {
     <>
       {/* Desglose: actividades que faltan por aprobar para completar el módulo */}
       {!completed && moduleGate.active && !moduleGate.canComplete && moduleGate.pending.length > 0 && (
-        <div className="mt-14 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-5">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Lock className="h-4 w-4 text-amber-500 shrink-0" />
-            <h3 className="text-[14px] font-semibold text-text">{t('module.pending_title')}</h3>
-            <span className="ml-auto text-[12px] tabular-nums text-text-muted">
+        <div className="mt-14 rounded-2xl border border-line p-5">
+          <div className="mb-1.5 flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <h3 className="text-[14px] font-medium text-text">{t('module.pending_title')}</h3>
+            <span className="ml-auto text-[12px] tabular-nums text-text-subtle">
               {t('module.pending_progress', { done: moduleGate.done, total: moduleGate.total })}
             </span>
           </div>
-          <p className="text-[12px] text-text-muted mb-4">
+          <p className="mb-4 text-[12.5px] text-text-muted">
             {t('module.pending_hint', { threshold: coursePassPct, score: moduleGate.score })}
           </p>
           <ul className="space-y-2">
@@ -570,21 +567,21 @@ export default function ModulePage() {
               <li key={p.unit.key}>
                 <a
                   href={`#section-${p.unit.sectionIndex}`}
-                  className="group flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5 transition-all duration-300 ease-apple hover:border-primary/40 hover:-translate-y-0.5"
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-300 hover:bg-subtle/60"
                 >
-                  <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                    p.status === 'failed' ? 'bg-neon-magenta/10 text-neon-magenta' : 'bg-subtle text-text-muted')}>
-                    {p.status === 'failed' ? <X className="h-4 w-4" strokeWidth={3} /> : <Lock className="h-3.5 w-3.5" />}
+                  <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+                    p.status === 'failed' ? 'bg-neon-magenta/10 text-neon-magenta' : 'bg-subtle text-text-subtle')}>
+                    {p.status === 'failed' ? <X className="h-3.5 w-3.5" strokeWidth={3} /> : <Lock className="h-3 w-3" />}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium text-text truncate">{t(ACTIVITY_LABEL_KEY[p.unit.type])}</div>
-                    {p.unit.detail && <div className="text-[11px] text-text-subtle truncate">{p.unit.detail}</div>}
+                    <div className="truncate text-[13px] text-text">{t(ACTIVITY_LABEL_KEY[p.unit.type])}</div>
+                    {p.unit.detail && <div className="truncate text-[11px] text-text-subtle">{p.unit.detail}</div>}
                   </div>
-                  <span className={cn('shrink-0 text-[11px] font-semibold tabular-nums',
+                  <span className={cn('shrink-0 text-[11.5px] tabular-nums',
                     p.status === 'failed' ? 'text-neon-magenta' : 'text-text-subtle')}>
                     {p.status === 'failed' ? `${p.score}/${coursePassPct}` : t('module.pending_not_started')}
                   </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-text-subtle transition-colors group-hover:text-primary" />
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-subtle transition-transform duration-500 ease-apple group-hover:translate-x-1" />
                 </a>
               </li>
             ))}
@@ -592,13 +589,14 @@ export default function ModulePage() {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-6 mt-8 border-t border-glass-border/10">
+      <div className="mt-10 flex flex-col items-center justify-end gap-3 border-t border-line pt-6 sm:flex-row">
+        {/* Sin halo ni icono latiendo: es una accion secundaria, no la principal. */}
         <button
           type="button"
-          className="w-full sm:w-auto mr-auto px-5 py-2.5 flex items-center justify-center gap-2 border border-neon-green/30 text-neon-green bg-neon-green/5 hover:bg-neon-green/10 transition-all rounded-xl text-[13px] font-medium shadow-[0_0_15px_rgba(0,255,100,0.05)]"
+          className="mr-auto flex w-full items-center justify-center gap-2 rounded-full border border-line px-5 py-2.5 text-[13px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary sm:w-auto"
           onClick={() => setIsModalOpen(true)}
         >
-          <Target className="h-4 w-4 text-neon-green animate-pulse" />
+          <Target className="h-3.5 w-3.5" />
           {t('module.view_feedback_progress')}
         </button>
         {!completed && (
@@ -631,75 +629,75 @@ export default function ModulePage() {
           <Reveal>
             <Link
               to={backTo}
-              className="inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text transition-colors mb-6"
+              className="group mb-6 inline-flex items-center gap-1.5 text-[13px] text-text-subtle transition-colors hover:text-text"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-500 ease-apple group-hover:-translate-x-1" />
               {backLabel}
             </Link>
           </Reveal>
           <Reveal>
-            <div className="flex flex-wrap items-center gap-3 mb-5">
+            {/* Ficha del modulo en texto plano: posicion, duracion y estado. Antes
+                eran dos NeonBadge de colores compitiendo con el titulo. */}
+            <div className="mb-4 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-text-subtle">
               {moduleIndex >= 0 && (
-                <NeonBadge color="neutral">
+                <span>
                   {/* El total son los hermanos visibles (mismo curso o plan general),
                       no todos los módulos publicados de la plataforma. */}
                   {t('module.of_modules', { idx: moduleIndex + 1, total: siblings.length })}
-                </NeonBadge>
+                </span>
               )}
-              <span className="inline-flex items-center gap-1.5 text-[12px] text-text-muted">
+              {moduleIndex >= 0 && <span className="text-text-subtle/50">·</span>}
+              <span className="inline-flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
                 {t('module.duration', { min: module.duration })}
               </span>
               {completed && (
-                <NeonBadge color="green">
-                  <Check className="h-3 w-3" strokeWidth={3} />
-                  {t('module.marked_complete')}
-                </NeonBadge>
+                <>
+                  <span className="text-text-subtle/50">·</span>
+                  <span className="inline-flex items-center gap-1 font-medium text-primary">
+                    <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                    {t('module.marked_complete')}
+                  </span>
+                </>
               )}
             </div>
 
-            <GradientHeading as="h1" variant="white" size="display-lg" className="mb-5 text-balance">
+            <h1 className="max-w-4xl text-balance text-[30px] font-semibold leading-[1.12] tracking-[-0.03em] text-text sm:text-[42px]">
               {module.title[language]}
-            </GradientHeading>
+            </h1>
 
             {module.subtitle?.[language] && (
               <RichText
                 text={module.subtitle[language]}
-                className="text-[17px] text-text-muted max-w-2xl mb-10"
+                className="mt-4 max-w-2xl text-[15.5px] leading-relaxed text-text-muted"
               />
             )}
           </Reveal>
 
           {module.objectives?.[language]?.length > 0 && (
             <Reveal delay={80}>
-              <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {/* Objetivos: lista numerada, no una rejilla de tarjetas de cristal.
+                  Son una promesa de lectura, no elementos accionables. */}
+              <ul className="mt-8 grid gap-x-8 gap-y-2.5 sm:grid-cols-2">
                 {module.objectives[language].map((o, i) => (
-                  <GlassCard
-                    key={i}
-                    intensity="subtle"
-                    interactive
-                    padding="sm"
-                    rounded="2xl"
-                    className="flex items-start gap-3"
-                  >
-                    <span className="mt-0.5 h-5 w-5 rounded-full bg-glass-border/10 text-text-muted flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ring-glass-border/8">
-                      {i + 1}
+                  <li key={i} className="flex items-start gap-2.5">
+                    <span className="mt-[3px] shrink-0 text-[11px] tabular-nums text-text-subtle">
+                      {String(i + 1).padStart(2, '0')}
                     </span>
-                    <span className="text-[13px] text-text leading-snug">{o}</span>
-                  </GlassCard>
+                    <span className="text-[13.5px] leading-relaxed text-text-muted">{o}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </Reveal>
           )}
 
-          {/* Separador con conteo de secciones */}
-          <div className="flex items-center gap-4 mt-12">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-glass-border/15" />
-            <span className="text-[11px] text-text-subtle uppercase tracking-wider font-medium">
+          {/* Conteo de secciones sobre un hairline recto (los degradados a los
+              lados hacian que la linea pareciera un adorno). */}
+          <div className="mt-12 border-t border-line pt-3">
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-text-subtle">
               {module.sections.length} {module.sections.length === 1 ? t('module.section_one') : t('module.section_other')}
               {totalQuizzes > 0 && ` · ${totalQuizzes} ${totalQuizzes === 1 ? t('module.check_one') : t('module.check_other')}`}
             </span>
-            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-glass-border/15" />
           </div>
         </header>
 
@@ -738,10 +736,10 @@ export default function ModulePage() {
                 return (
                   <Reveal as="section" key={i} delay={Math.min(i * 60, 200)}>
                     <div id={`section-${i}`} className="scroll-mt-28">
-                      <div className="text-[10.5px] uppercase tracking-widest text-text-subtle mb-4">
-                        {String(i + 1).padStart(2, '0')} — {String(module.sections.length).padStart(2, '0')}
+                      <div className="mb-3 text-[11px] tabular-nums tracking-[0.14em] text-text-subtle">
+                        {String(i + 1).padStart(2, '0')} / {String(module.sections.length).padStart(2, '0')}
                       </div>
-                      <h2 className="font-bold text-[clamp(1.6rem,2.5vw+0.5rem,2.2rem)] tracking-[-0.03em] leading-tight mb-5">
+                      <h2 className="mb-5 text-[clamp(1.45rem,2vw+0.5rem,1.95rem)] font-semibold leading-tight tracking-[-0.03em]">
                         {(s.heading as any)?.[language]}
                       </h2>
                       <InteractiveVideoModule
@@ -761,10 +759,10 @@ export default function ModulePage() {
                 <Reveal as="section" key={i} delay={Math.min(i * 60, 200)}>
                   <div id={`section-${i}`} className="scroll-mt-28">
                     <SectionLayout style={(s.style ?? 'default') as any} hasMedia={!!s.media} feedbackNode={null}>
-                      <div className="text-[10.5px] uppercase tracking-widest text-text-subtle mb-4">
-                        {String(i + 1).padStart(2, '0')} — {String(module.sections.length).padStart(2, '0')}
+                      <div className="mb-3 text-[11px] tabular-nums tracking-[0.14em] text-text-subtle">
+                        {String(i + 1).padStart(2, '0')} / {String(module.sections.length).padStart(2, '0')}
                       </div>
-                      <h2 className="font-bold text-[clamp(1.6rem,2.5vw+0.5rem,2.2rem)] tracking-[-0.03em] leading-tight mb-5">
+                      <h2 className="mb-5 text-[clamp(1.45rem,2vw+0.5rem,1.95rem)] font-semibold leading-tight tracking-[-0.03em]">
                         {(s.heading as any)?.[language]}
                       </h2>
                       

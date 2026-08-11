@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/cn';
 import { revealAll } from '@/components/ui/Reveal';
 import type { Language } from '@/stores/userStore';
@@ -27,6 +29,7 @@ function docTop(el: HTMLElement): number {
 
 export function ModuleTOC({ sections, language, sectionPrefix = 'section' }: Props) {
   const { t } = useTranslation();
+  const reduce = useReducedMotion();
   const [activeIdx, setActiveIdx] = useState(0);
   const observersRef = useRef<IntersectionObserver[]>([]);
   const activeRef = useRef<HTMLButtonElement>(null);
@@ -159,33 +162,44 @@ export function ModuleTOC({ sections, language, sectionPrefix = 'section' }: Pro
   };
 
   return (
-    <aside className="md:sticky md:top-24 self-start">
-      <div className="glass-md rounded-2xl p-4 flex flex-col max-h-[calc(100vh-8rem)] overflow-hidden">
-        <div className="text-[10px] uppercase tracking-wider text-text-subtle mb-3 px-1 font-semibold shrink-0">
+    // Sin tarjeta de cristal: el índice es un riel. La sección activa la marca
+    // una línea que se desliza (layoutId), no un recuadro verde por elemento.
+    <aside className="self-start md:sticky md:top-24">
+      <div className="flex max-h-[calc(100vh-8rem)] flex-col overflow-hidden">
+        <div className="mb-3 shrink-0 pl-4 text-[11px] font-medium uppercase tracking-[0.14em] text-text-subtle">
           {t('module.section_index')}
         </div>
-        <nav ref={navRef} className="overflow-y-auto relative">
-          <ul className="space-y-0.5">
+        <nav ref={navRef} className="relative overflow-y-auto border-l border-line">
+          <ul>
             {sections.map((s, i) => {
+              const active = activeIdx === i;
               return (
-                <li key={i}>
+                <li key={i} className="relative">
+                  {active && (
+                    <motion.span
+                      layoutId="module-toc-rail"
+                      aria-hidden
+                      className="absolute -left-px top-1 bottom-1 w-[2px] rounded-full bg-primary"
+                      transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
+                    />
+                  )}
                   <button
-                    ref={activeIdx === i ? activeRef : undefined}
+                    ref={active ? activeRef : undefined}
                     onClick={() => scrollTo(i)}
                     className={cn(
-                      'w-full text-left px-3 py-2 rounded-xl text-[12px] transition-all duration-200',
-                      activeIdx === i
-                        ? 'bg-neon-green/8 border border-neon-green/15 text-text font-medium'
-                        : 'text-text-muted hover:text-text hover:bg-glass/5 border border-transparent',
+                      'w-full py-2 pl-4 pr-2 text-left text-[12.5px] leading-snug transition-colors duration-300',
+                      active ? 'font-medium text-text' : 'text-text-subtle hover:text-text-muted',
                     )}
                   >
-                    <span className={cn(
-                      'tabular-nums text-[10px] mr-2',
-                      activeIdx === i ? 'text-neon-green/60' : 'text-text-subtle/50',
-                    )}>
+                    <span
+                      className={cn(
+                        'mr-2 text-[10.5px] tabular-nums',
+                        active ? 'text-primary' : 'text-text-subtle/60',
+                      )}
+                    >
                       {String(i + 1).padStart(2, '0')}
                     </span>
-                    <span className="leading-snug">{s.heading[language]}</span>
+                    {s.heading[language]}
                   </button>
                 </li>
               );

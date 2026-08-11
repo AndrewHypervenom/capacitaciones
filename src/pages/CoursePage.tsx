@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Award, BookOpen, Check, Clock, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Award, Check, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { FadeIn } from '@/components/ui/motion';
 import { supabase } from '@/lib/supabase';
 import type { Scenario } from '@/data/scenarios';
 import { useUserStore } from '@/stores/userStore';
@@ -29,10 +31,37 @@ import { CountryFlag } from '@/components/layout/CountryFlag';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { SimulatorPickerModal, type SimPick } from '@/components/simulator/SimulatorPickerModal';
 import { toast } from '@/stores/toastStore';
-import { Reveal } from '@/components/ui/Reveal';
 import { RichText, stripMarkdown } from '@/components/ui/RichText';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { cn } from '@/lib/cn';
+
+/** Curva corporativa, la misma del catálogo y del kit de motion. */
+const ease = [0.16, 1, 0.3, 1] as const;
+
+/* Encabezado de sección — mismo patrón que /courses: título de 19px, conteo o
+   dato al lado en gris y una línea de apoyo. Sin iconos de colores. */
+function SectionHead({
+  title,
+  subtitle,
+  aside,
+  id,
+}: {
+  title: string;
+  subtitle: string;
+  aside?: React.ReactNode;
+  id?: string;
+}) {
+  return (
+    <div id={id} className="mb-6 flex items-end justify-between gap-4 scroll-mt-24">
+      <div>
+        <h2 className="text-[19px] font-semibold tracking-tight text-text">{title}</h2>
+        <p className="mt-0.5 text-[13px] text-text-muted">{subtitle}</p>
+      </div>
+      {aside}
+    </div>
+  );
+}
 
 type ModuleStatus = 'completed' | 'available' | 'locked';
 
@@ -56,6 +85,7 @@ export default function CoursePage() {
   // El mundo es solo para staff (preview del CMS); el aprendiz ya no lo ve.
   const { isAdminOrCapacitador } = useAuth();
   const isModuleDone = useModuleDone();
+  const reduce = useReducedMotion();
 
   // Repaso: qué paga hoy cada módulo terminado y cuáles ya se cobraron.
   const reviewedAt = useProgressStore((s) => s.reviewedAt);
@@ -206,12 +236,22 @@ export default function CoursePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl px-5 pt-12 pb-24">
-        <div className="animate-pulse space-y-5">
-          <div className="h-44 rounded-3xl bg-subtle" />
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-20 rounded-2xl bg-subtle" />
-          ))}
+      <div className="mx-auto max-w-4xl px-4 pt-12 pb-24 sm:px-8 sm:pt-16">
+        <div className="space-y-8">
+          <div className="h-40 rounded-3xl bg-subtle skeleton-shine" />
+          <div className="space-y-3">
+            <div className="h-8 w-72 max-w-full rounded-xl bg-subtle skeleton-shine" />
+            <div className="h-4 w-96 max-w-full rounded-lg bg-subtle skeleton-shine" />
+          </div>
+          <div className="space-y-2">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="h-16 rounded-2xl bg-subtle skeleton-shine"
+                style={{ animationDelay: `${i * 90}ms` }}
+              />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -219,15 +259,15 @@ export default function CoursePage() {
 
   if (!course) {
     return (
-      <div className="mx-auto max-w-4xl px-5 pt-20 pb-24 text-center">
-        <GraduationCap className="h-10 w-10 text-text-subtle mx-auto mb-3" />
-        <h1 className="text-xl font-semibold text-text mb-2">{t('courses.not_found_title')}</h1>
-        <p className="text-[14px] text-text-muted mb-6">{t('courses.not_found_subtitle')}</p>
+      <div className="mx-auto max-w-4xl px-5 pt-24 pb-24 text-center">
+        <GraduationCap className="mx-auto mb-4 h-8 w-8 text-text-subtle" />
+        <h1 className="mb-1 text-[17px] font-medium text-text">{t('courses.not_found_title')}</h1>
+        <p className="mb-6 text-[13.5px] text-text-muted">{t('courses.not_found_subtitle')}</p>
         <Link
           to="/courses"
-          className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13px] font-semibold text-on-primary"
+          className="inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-[13px] text-text-muted transition-colors duration-300 hover:border-text-subtle hover:text-text"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-3.5 w-3.5" />
           {t('courses.back_to_courses')}
         </Link>
       </div>
@@ -315,183 +355,204 @@ export default function CoursePage() {
 
   return (
     <>
-    <div className="mx-auto max-w-4xl px-4 sm:px-8 pt-8 sm:pt-12 pb-24">
-      <Reveal>
+    <div className="mx-auto max-w-4xl px-4 pb-24 pt-10 sm:px-8 sm:pt-14">
+      <FadeIn>
         <Link
           to={backTo}
-          className="inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text transition-colors mb-5"
+          className="group mb-6 inline-flex items-center gap-1.5 text-[13px] text-text-subtle transition-colors hover:text-text"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-500 ease-apple group-hover:-translate-x-1" />
           {backLabel}
         </Link>
-      </Reveal>
+      </FadeIn>
 
-      {/* Hero */}
-      <Reveal>
-        <div className="relative overflow-hidden rounded-3xl border border-line bg-surface mb-10">
-          <div
-            className={COVER_BOX}
-            style={{
-              background: courseHasCover(course)
-                ? course.cover_fit === 'contain'
-                  ? `linear-gradient(120deg, ${course.color}26, ${course.color}0A)`
-                  : undefined
-                : `linear-gradient(120deg, ${course.color}4D, ${course.color}14)`,
-            }}
-          >
-            <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
-          </div>
-          <div className="px-6 sm:px-8 pb-6 sm:pb-8">
-            <div
-              className="relative z-10 -mt-7 mb-4 flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md"
-              style={{ background: course.color }}
-            >
-              <GraduationCap className="h-6 w-6" />
-            </div>
-
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-              <div className="max-w-xl">
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  {course.isMandatory ? (
-                    <span className="rounded-full bg-danger/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-danger">
-                      {t('courses.mandatory')}
-                    </span>
-                  ) : course.isAssigned ? (
-                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                      {t('courses.assigned')}
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-text-muted">
-                      {course.campaign_name || t('courses.catalog')}
-                    </span>
-                  )}
-                  <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                    {t(`courses.level_${course.level}`)}
-                  </span>
-                  {course.category && (
-                    <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                      {course.category}
-                    </span>
-                  )}
-                </div>
-                <h1 className="text-[26px] sm:text-3xl font-extrabold tracking-tight text-text mb-2">
-                  {pickText(course.title_es, course.title_en, course.title_pt, language)}
-                </h1>
-                <RichText
-                  text={pickText(course.description_es, course.description_en, course.description_pt, language)}
-                  className="text-[14px] sm:text-[15px] text-text-muted mb-4"
-                />
-                <div className="flex items-center gap-4 text-[13px] text-text-subtle">
-                  <span className="inline-flex items-center gap-1.5">
-                    <BookOpen className="h-4 w-4" />
-                    {t('courses.modules_count', { n: total })}
-                  </span>
-                  {totalMin > 0 && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Clock className="h-4 w-4" />
-                      {totalMin} min
-                    </span>
-                  )}
-                </div>
-                {nextItem && (
-                  <Link
-                    to={`/modules/${nextItem.module.slug}`}
-                    className="mt-5 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md"
-                  >
-                    <Play className="h-4 w-4" />
-                    {done > 0 ? t('courses.cta_continue') : t('courses.cta_start')}
-                  </Link>
-                )}
-                {completed && (
-                  <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-5 py-2.5 text-[13px] font-semibold text-primary">
-                    <Check className="h-4 w-4" strokeWidth={3} />
-                    {certStatus?.require_simulator && !certStatus.simulator_ok
-                      ? t('courses.modules_done_banner')
-                      : t('courses.completed_banner')}
-                  </div>
-                )}
-
-                {/* Auto-inscripción en cursos del catálogo */}
-                <div className="mt-5 flex flex-wrap items-center gap-3">
-                  {certStatus && (certStatus.all_met || certStatus.certified) && (
-                    <Link
-                      to={`/certificate/${course.id}`}
-                      className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md"
-                    >
-                      <Award className="h-4 w-4" />
-                      {t('course_cert.view')}
-                    </Link>
-                  )}
-                  {certStatus?.require_simulator && !certStatus.simulator_ok && totalScenarios > 0 && (
-                    <button
-                      onClick={startSimulation}
-                      className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md"
-                    >
-                      <PhoneCall className="h-4 w-4" />
-                      {t('course_practice.do_simulation')}
-                    </button>
-                  )}
-                  {/* El mundo se desbloquea según la regla configurada por el capacitador
-                      (desde el inicio / tras los módulos / tras un módulo). El staff
-                      (superadmin/capacitador) siempre puede entrar (preview). */}
-                  {worldId && (isAdminOrCapacitador || course.isAssigned) && (
-                    isAdminOrCapacitador || worldUnlocked ? (
-                      <Link
-                        to="/world"
-                        state={{ worldId, from: 'course' }}
-                        className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-6 py-3 text-[14px] font-semibold text-primary shadow-sm transition-all hover:bg-primary/10"
-                      >
-                        <Map className="h-4 w-4" />
-                        {t('courses.play_world')}
-                      </Link>
-                    ) : (
-                      <div
-                        title={worldLockedReason}
-                        className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-line bg-subtle px-6 py-3 text-[14px] font-semibold text-text-subtle"
-                      >
-                        <Lock className="h-4 w-4" />
-                        {t('courses.play_world')}
-                      </div>
-                    )
-                  )}
-                  {!course.isAssigned && (
-                    <button
-                      onClick={handleEnroll}
-                      disabled={enrollBusy}
-                      className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md disabled:opacity-60"
-                    >
-                      {enrollBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                      {t('courses.enroll')}
-                    </button>
-                  )}
-                  {course.selfEnrolled && (
-                    <button
-                      onClick={handleLeave}
-                      disabled={enrollBusy}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-60"
-                    >
-                      <LogOut className="h-3.5 w-3.5" />
-                      {isAdminOrCapacitador ? t('admin.courses.exit_preview') : t('courses.leave')}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-line bg-bg p-5">
-                <ProgressRing value={pct} size={88} stroke={10} showLabel color={course.color} />
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-text-subtle mb-1">
-                    {t('courses.progress_label')}
-                  </div>
-                  <div className="text-[17px] font-bold tabular-nums text-text">
-                    {t('courses.progress', { done, total })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Portada. Sin tarjeta alrededor: la imagen es la imagen, y debajo va la
+          identidad del curso en texto. */}
+      <FadeIn delay={0.05}>
+        <div
+          className={`relative overflow-hidden rounded-3xl border border-line ${COVER_BOX}`}
+          style={{
+            background: courseHasCover(course)
+              ? course.cover_fit === 'contain'
+                ? `linear-gradient(120deg, ${course.color}1F, ${course.color}08)`
+                : undefined
+              : `linear-gradient(120deg, ${course.color}33, ${course.color}0A)`,
+          }}
+        >
+          <CourseCover
+            course={course}
+            alt={pickText(course.title_es, course.title_en, course.title_pt, language)}
+            className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`}
+          />
         </div>
-      </Reveal>
+      </FadeIn>
+
+      <FadeIn delay={0.1} className="relative z-10 -mt-7 mb-12 px-1 sm:px-2">
+        {/* Emblema y avance: sustituyen al panel del anillo que antes iba en su
+            propia caja al lado del titulo. */}
+        <div className="mb-4 flex items-center gap-3">
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-sm ring-4 ring-bg"
+            style={{ background: course.color }}
+          >
+            <GraduationCap className="h-6 w-6" />
+          </div>
+          {total > 0 && (
+            <div className="mt-7 flex items-center gap-2.5">
+              <ProgressRing value={pct} size={34} stroke={3} showLabel color={course.color} />
+              <span className="text-[12.5px] tabular-nums text-text-muted">
+                {t('courses.progress', { done, total })}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Clasificacion en texto plano: obligatorio / nivel / categoria / campana.
+            Antes eran tres capsulas de colores apiladas sobre el titulo. */}
+        <div className="mb-2 flex flex-wrap items-center gap-x-1.5 text-[12px] text-text-subtle">
+          {course.isMandatory && (
+            <span className="inline-flex items-center gap-1.5 font-medium text-danger">
+              <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-hidden />
+              {t('courses.mandatory')}
+            </span>
+          )}
+          {[t(`courses.level_${course.level}`), course.category, course.campaign_name]
+            .filter(Boolean)
+            .map((chunk, i) => (
+              <span key={String(chunk)} className="inline-flex items-center gap-1.5">
+                {(i > 0 || course.isMandatory) && <span className="text-text-subtle/50">.</span>}
+                {chunk}
+              </span>
+            ))}
+        </div>
+
+        <h1 className="text-[28px] font-semibold leading-[1.15] tracking-[-0.03em] text-text sm:text-[36px]">
+          {pickText(course.title_es, course.title_en, course.title_pt, language)}
+        </h1>
+        <RichText
+          text={pickText(course.description_es, course.description_en, course.description_pt, language)}
+          className="mt-3 max-w-2xl text-[14.5px] leading-relaxed text-text-muted"
+        />
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-text-subtle">
+          <span>{t('courses.modules_count', { n: total })}</span>
+          {totalMin > 0 && (
+            <>
+              <span className="text-text-subtle/50">.</span>
+              <span>{totalMin} min</span>
+            </>
+          )}
+        </div>
+
+        {/* Hilo de progreso: la misma medida de 3px que las tarjetas. */}
+        {total > 0 && (
+          <div className="mt-5 h-[3px] w-full max-w-md overflow-hidden rounded-full bg-subtle">
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: course.color }}
+              initial={{ width: reduce ? `${Math.round(pct * 100)}%` : 0 }}
+              animate={{ width: `${Math.round(pct * 100)}%` }}
+              transition={{ duration: reduce ? 0 : 1.1, ease, delay: reduce ? 0 : 0.2 }}
+            />
+          </div>
+        )}
+
+        {/* Acciones. UNA sola llena (la que toca ahora); el resto, contorno. */}
+        <div className="mt-7 flex flex-wrap items-center gap-2.5">
+          {nextItem && (
+            <motion.div whileTap={reduce ? undefined : { scale: 0.97 }} className="inline-flex">
+              <Link
+                to={`/modules/${nextItem.module.slug}`}
+                className="group inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13.5px] font-medium text-on-primary transition-opacity duration-300 hover:opacity-90"
+              >
+                <Play className="h-3.5 w-3.5" />
+                {done > 0 ? t('courses.cta_continue') : t('courses.cta_start')}
+                <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">-&gt;</span>
+              </Link>
+            </motion.div>
+          )}
+
+          {certStatus && (certStatus.all_met || certStatus.certified) && (
+            <Link
+              to={`/certificate/${course.id}`}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[13.5px] font-medium transition-colors duration-300',
+                nextItem
+                  ? 'border border-line text-text-muted hover:border-primary/50 hover:text-primary'
+                  : 'bg-primary text-on-primary hover:opacity-90',
+              )}
+            >
+              <Award className="h-3.5 w-3.5" />
+              {t('course_cert.view')}
+            </Link>
+          )}
+
+          {certStatus?.require_simulator && !certStatus.simulator_ok && totalScenarios > 0 && (
+            <button
+              onClick={startSimulation}
+              className="inline-flex items-center gap-2 rounded-full border border-line px-5 py-2.5 text-[13.5px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
+            >
+              <PhoneCall className="h-3.5 w-3.5" />
+              {t('course_practice.do_simulation')}
+            </button>
+          )}
+
+          {/* El mundo se desbloquea segun la regla configurada por el capacitador
+              (desde el inicio / tras los modulos / tras un modulo). El staff
+              (superadmin/capacitador) siempre puede entrar (preview). */}
+          {worldId && (isAdminOrCapacitador || course.isAssigned) && (
+            isAdminOrCapacitador || worldUnlocked ? (
+              <Link
+                to="/world"
+                state={{ worldId, from: 'course' }}
+                className="inline-flex items-center gap-2 rounded-full border border-line px-5 py-2.5 text-[13.5px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
+              >
+                <Map className="h-3.5 w-3.5" />
+                {t('courses.play_world')}
+              </Link>
+            ) : (
+              <Tooltip label={worldLockedReason}>
+                <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-line px-5 py-2.5 text-[13.5px] font-medium text-text-subtle">
+                  <Lock className="h-3.5 w-3.5" />
+                  {t('courses.play_world')}
+                </span>
+              </Tooltip>
+            )
+          )}
+
+          {!course.isAssigned && (
+            <motion.button
+              onClick={handleEnroll}
+              disabled={enrollBusy}
+              whileTap={reduce ? undefined : { scale: 0.96 }}
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13.5px] font-medium text-on-primary transition-opacity duration-300 hover:opacity-90 disabled:opacity-60"
+            >
+              {enrollBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              {t('courses.enroll')}
+            </motion.button>
+          )}
+
+          {course.selfEnrolled && (
+            <button
+              onClick={handleLeave}
+              disabled={enrollBusy}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-2.5 text-[13px] text-text-subtle transition-colors duration-300 hover:text-danger disabled:opacity-60"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {isAdminOrCapacitador ? t('admin.courses.exit_preview') : t('courses.leave')}
+            </button>
+          )}
+        </div>
+
+        {completed && (
+          <p className="mt-5 inline-flex items-center gap-2 text-[13px] font-medium text-primary">
+            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+            {certStatus?.require_simulator && !certStatus.simulator_ok
+              ? t('courses.modules_done_banner')
+              : t('courses.completed_banner')}
+          </p>
+        )}
+      </FadeIn>
 
       {/* Día de XP multiplicado (si lo hay): también aquí, porque es donde se
           decide entrar a un módulo. */}
@@ -500,13 +561,13 @@ export default function CoursePage() {
       {/* Curso terminado → invitación explícita a repasar. Sin esto, el aprendiz
           que ya se certificó no tiene ninguna razón visible para volver. */}
       {completed && (
-        <Reveal className="mb-8">
-          <div className="flex flex-col gap-3 rounded-3xl border border-primary/25 bg-primary/[0.04] p-5 sm:flex-row sm:items-center">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <RefreshCw className="h-5 w-5" />
+        <FadeIn className="mb-10">
+          <div className="flex flex-col gap-3 rounded-2xl border border-line p-5 sm:flex-row sm:items-center">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <RefreshCw className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-[15px] font-semibold text-text">
+              <h3 className="text-[14.5px] font-medium text-text">
                 {t('courses.review_title', 'Repasa y sigue sumando')}
               </h3>
               <p className="text-[13px] text-text-muted">
@@ -518,27 +579,27 @@ export default function CoursePage() {
                 })}
               </p>
             </div>
-            <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1.5 text-[12px] font-bold tabular-nums text-primary">
+            <span className="shrink-0 text-[12px] tabular-nums text-text-subtle">
               {t('courses.review_round', {
                 n: courseReviewCount[course.id] ?? 0,
                 defaultValue: 'Vueltas: {{n}}',
               })}
             </span>
           </div>
-        </Reveal>
+        </FadeIn>
       )}
 
-      {/* Módulos */}
-      <Reveal className="mb-6">
-        <h2 className="text-xl font-semibold tracking-tight text-text mb-1">
-          {t('courses.content_title')}
-        </h2>
-        <p className="text-[14px] text-text-muted">{t('courses.content_subtitle')}</p>
-      </Reveal>
+      {/* Modulos */}
+      <FadeIn>
+        <SectionHead title={t('courses.content_title')} subtitle={t('courses.content_subtitle')} />
+      </FadeIn>
 
-      <div className="space-y-3">
+      {/* Lista, no rejilla de tarjetas: cada modulo es una fila separada por un
+          hairline. La jerarquia la marca el estado del numero, no un borde de
+          color por fila. */}
+      <FadeIn delay={0.05} className="divide-y divide-line border-y border-line">
         {items.length === 0 && (
-          <div className="rounded-3xl border border-line bg-surface p-8 text-center text-[14px] text-text-muted">
+          <div className="py-12 text-center text-[13.5px] text-text-muted">
             {t('courses.no_modules')}
           </div>
         )}
@@ -547,83 +608,74 @@ export default function CoursePage() {
           const Wrapper: React.ElementType = interactive ? Link : 'div';
           const wrapperProps = interactive ? { to: `/modules/${module.slug}` } : {};
           return (
-            <Reveal key={module.id} delay={Math.min(idx * 50, 250)}>
-              <Wrapper
-                {...wrapperProps}
+            <Wrapper
+              key={module.id}
+              {...wrapperProps}
+              className={cn(
+                'group flex items-center gap-4 px-2 py-4 transition-colors duration-300 sm:px-3',
+                interactive ? 'cursor-pointer hover:bg-subtle/60' : 'opacity-50',
+              )}
+            >
+              {/* Estado */}
+              <div
                 className={cn(
-                  'flex items-center gap-4 rounded-2xl border bg-surface p-4 sm:p-5 transition-all duration-300 ease-apple',
-                  status === 'available' && 'border-line hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer',
-                  status === 'completed' && 'border-primary/25 hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer',
-                  status === 'locked' && 'border-line opacity-55',
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-medium tabular-nums transition-colors duration-300',
+                  status === 'completed' && 'bg-primary/10 text-primary',
+                  status === 'available' && 'text-white',
+                  status === 'locked' && 'bg-subtle text-text-subtle',
                 )}
+                style={status === 'available' ? { background: course.color } : undefined}
               >
-                {/* Estado */}
-                <div
-                  className={cn(
-                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
-                    status === 'completed' && 'bg-primary/10 text-primary',
-                    status === 'available' && 'text-white',
-                    status === 'locked' && 'bg-subtle text-text-subtle',
-                  )}
-                  style={status === 'available' ? { background: course.color } : undefined}
-                >
-                  {status === 'completed' ? (
-                    <Check className="h-5 w-5" strokeWidth={3} />
-                  ) : status === 'locked' ? (
-                    <Lock className="h-4 w-4" />
-                  ) : (
-                    <span className="text-[14px] font-bold tabular-nums">{idx + 1}</span>
-                  )}
-                </div>
+                {status === 'completed' ? (
+                  <Check className="h-4 w-4" strokeWidth={3} />
+                ) : status === 'locked' ? (
+                  <Lock className="h-3.5 w-3.5" />
+                ) : (
+                  idx + 1
+                )}
+              </div>
 
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-[15px] font-semibold tracking-tight text-text truncate">
-                    {pickText(module.title_es, module.title_en, module.title_pt, language)}
-                  </h3>
-                  <p className="text-[13px] text-text-muted truncate">
-                    {status === 'locked'
-                      ? t('courses.module_locked_hint')
-                      : stripMarkdown(pickText(module.subtitle_es, module.subtitle_en, module.subtitle_pt, language))}
-                  </p>
-                </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-[14.5px] font-medium tracking-tight text-text">
+                  {pickText(module.title_es, module.title_en, module.title_pt, language)}
+                </h3>
+                <p className="truncate text-[12.5px] text-text-muted">
+                  {status === 'locked'
+                    ? t('courses.module_locked_hint')
+                    : stripMarkdown(pickText(module.subtitle_es, module.subtitle_en, module.subtitle_pt, language))}
+                </p>
+              </div>
 
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="hidden sm:inline text-[12px] tabular-nums text-text-subtle">
-                    {module.duration_min} min
+              <div className="flex shrink-0 items-center gap-3 text-[12px] text-text-subtle">
+                <span className="hidden tabular-nums sm:inline">{module.duration_min} min</span>
+                {status === 'completed' && (
+                  <>
+                    {/* El modulo terminado deja de ser un callejon sin salida:
+                        dice que se lleva por volver, o que ya lo cobro hoy. */}
+                    {reviewedTodayIn(module) ? (
+                      <span className="hidden sm:inline">{t('courses.review_done_today', 'Repasado hoy')}</span>
+                    ) : (
+                      <span
+                        className={cn(
+                          'tabular-nums',
+                          boostMultiplier > 1 ? 'text-neon-magenta' : 'text-primary',
+                        )}
+                      >
+                        +{Math.round(reviewValue(XP_REWARDS.module) * boostMultiplier)} XP
+                      </span>
+                    )}
+                  </>
+                )}
+                {interactive && (
+                  <span className="text-text-subtle transition-all duration-500 ease-apple group-hover:translate-x-1 group-hover:text-text">
+                    &rarr;
                   </span>
-                  {status === 'completed' && (
-                    <>
-                      {/* El módulo terminado deja de ser un callejón sin salida:
-                          dice qué se lleva por volver, o que ya lo cobró hoy. */}
-                      {reviewedTodayIn(module) ? (
-                        <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-subtle">
-                          {t('courses.review_done_today', 'Repasado hoy')}
-                        </span>
-                      ) : (
-                        <span
-                          className={cn(
-                            'rounded-full px-2.5 py-0.5 text-[10px] font-bold tabular-nums',
-                            boostMultiplier > 1
-                              ? 'bg-neon-magenta/15 text-neon-magenta'
-                              : 'bg-primary/10 text-primary',
-                          )}
-                        >
-                          +{Math.round(reviewValue(XP_REWARDS.module) * boostMultiplier)} XP
-                        </span>
-                      )}
-                    </>
-                  )}
-                  {status === 'available' && (
-                    <span className="rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-on-primary">
-                      {isModuleDone(keyOfCourseModule(module)) ? t('courses.cta_review') : t('courses.cta_start')}
-                    </span>
-                  )}
-                </div>
-              </Wrapper>
-            </Reveal>
+                )}
+              </div>
+            </Wrapper>
           );
         })}
-      </div>
+      </FadeIn>
 
       {/* ── Practicar: simulador de llamadas del curso ── */}
       {totalScenarios > 0 && (() => {
@@ -631,28 +683,24 @@ export default function CoursePage() {
         const unlockModule = simUnlockModule;
 
         return (
-          <Reveal id="practice-section" className="mt-12 scroll-mt-24">
-            <div className="mb-5 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-text mb-1">
-                  <PhoneCall className="h-5 w-5" style={{ color: course.color }} />
-                  {t('course_practice.title')}
-                </h2>
-                <p className="text-[14px] text-text-muted">{t('course_practice.subtitle')}</p>
-              </div>
-              {simUnlocked && certStatus && certStatus.best_score > 0 && (
-                <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-[12px] font-semibold tabular-nums text-primary">
-                  {t('course_practice.best_score', { score: certStatus.best_score })}
-                </span>
-              )}
-            </div>
+          <FadeIn className="mt-14">
+            <SectionHead
+              id="practice-section"
+              title={t('course_practice.title')}
+              subtitle={t('course_practice.subtitle')}
+              aside={
+                simUnlocked && certStatus && certStatus.best_score > 0 ? (
+                  <span className="shrink-0 text-[12.5px] tabular-nums text-text-muted">
+                    {t('course_practice.best_score', { score: certStatus.best_score })}
+                  </span>
+                ) : undefined
+              }
+            />
 
             {!simUnlocked ? (
-              <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-subtle text-text-muted">
-                  <Lock className="h-5 w-5" />
-                </div>
-                <p className="text-[14px] text-text-muted">
+              <div className="flex items-center gap-3 rounded-2xl border border-line px-5 py-4">
+                <Lock className="h-4 w-4 shrink-0 text-text-subtle" />
+                <p className="text-[13.5px] text-text-muted">
                   {rule === 'after_module' && unlockModule
                     ? t('course_practice.locked_after_module', {
                         title: pickText(unlockModule.title_es, unlockModule.title_en, unlockModule.title_pt, language),
@@ -674,27 +722,25 @@ export default function CoursePage() {
                         },
                       })
                     }
-                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all duration-300 ease-apple hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5"
+                    className="group rounded-2xl border border-line p-5 text-left transition-all duration-500 ease-apple hover:-translate-y-1 hover:shadow-card-hover"
                   >
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ListChecks className="h-4 w-4 text-primary" />
-                        <span className="text-[12px] text-text-muted">
-                          {t('simulator.choice_section_title')}
-                        </span>
-                      </div>
-                      <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                    <div className="mb-3 flex items-center gap-1.5 text-[12px] text-text-subtle">
+                      <ListChecks className="h-3.5 w-3.5" />
+                      <span>{t('simulator.choice_section_title')}</span>
+                      <span className="text-text-subtle/50">·</span>
+                      <span>
                         {t(`simulator.choice.level_${scn.level === 'basico' ? 'basic' : scn.level === 'medio' ? 'medium' : 'advanced'}`)}
                       </span>
                     </div>
-                    <h3 className="text-[15px] font-semibold tracking-tight text-text mb-1.5">
+                    <h3 className="mb-1.5 text-[15px] font-medium tracking-tight text-text">
                       {scn.title[language]}
                     </h3>
-                    <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
+                    <p className="mb-4 line-clamp-2 text-[13px] leading-relaxed text-text-muted">
                       {stripMarkdown(scn.description[language])}
                     </p>
-                    <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
-                      {t('simulator.take_call')} →
+                    <span className="inline-flex items-center gap-1 text-[13px] font-medium text-text">
+                      {t('simulator.take_call')}
+                      <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
                     </span>
                   </button>
                 ))}
@@ -710,39 +756,38 @@ export default function CoursePage() {
                         },
                       })
                     }
-                    className="group text-left rounded-2xl border border-line bg-surface p-5 transition-all duration-300 ease-apple hover:border-primary hover:shadow-card-hover hover:-translate-y-0.5"
+                    className="group rounded-2xl border border-line p-5 text-left transition-all duration-500 ease-apple hover:-translate-y-1 hover:shadow-card-hover"
                   >
                     <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <CountryFlag code={scn.country} size={18} />
-                        <span className="text-[12px] text-text-muted">
-                          {t(`simulator.countries.${scn.country}`, scn.country)}
-                        </span>
+                      <div className="flex items-center gap-1.5 text-[12px] text-text-subtle">
+                        <CountryFlag code={scn.country} size={16} />
+                        <span>{t(`simulator.countries.${scn.country}`, scn.country)}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         {[1, 2, 3].map((d) => (
                           <Flame
                             key={d}
-                            className={cn('h-3.5 w-3.5', d <= scn.difficulty ? 'text-primary' : 'text-line')}
+                            className={cn('h-3 w-3', d <= scn.difficulty ? 'text-primary' : 'text-line')}
                             fill={d <= scn.difficulty ? 'currentColor' : 'none'}
                           />
                         ))}
                       </div>
                     </div>
-                    <h3 className="text-[15px] font-semibold tracking-tight text-text mb-1.5">
+                    <h3 className="mb-1.5 text-[15px] font-medium tracking-tight text-text">
                       {scn.title[language]}
                     </h3>
-                    <p className="text-[13px] text-text-muted leading-relaxed line-clamp-2 mb-4">
+                    <p className="mb-4 line-clamp-2 text-[13px] leading-relaxed text-text-muted">
                       {scn.summary[language]}
                     </p>
-                    <span className="text-[13px] font-medium text-primary group-hover:translate-x-0.5 inline-block transition-transform">
-                      {t('simulator.take_call')} →
+                    <span className="inline-flex items-center gap-1 text-[13px] font-medium text-text">
+                      {t('simulator.take_call')}
+                      <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
                     </span>
                   </button>
                 ))}
               </div>
             )}
-          </Reveal>
+          </FadeIn>
         );
       })()}
 
@@ -760,29 +805,27 @@ export default function CoursePage() {
           certStatus.min_score > 0 ? Math.min(1, certStatus.best_score / certStatus.min_score) : 0;
 
         return (
-          <Reveal id="cert-section" className="mt-12 scroll-mt-24">
-            <div className="mb-5 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-text mb-1">
-                  <Award className="h-5 w-5" style={{ color: course.color }} />
-                  {t('course_cert.title')}
-                </h2>
-                <p className="text-[14px] text-text-muted">{t('course_cert.subtitle')}</p>
-              </div>
-              {!ready && (
-                <span className="shrink-0 rounded-full bg-subtle px-3 py-1 text-[12px] font-semibold tabular-nums text-text-muted">
-                  {t('course_cert.reqs_met', { done: reqMet, total: reqTotal })}
-                </span>
-              )}
-            </div>
+          <FadeIn className="mt-14">
+            <SectionHead
+              id="cert-section"
+              title={t('course_cert.title')}
+              subtitle={t('course_cert.subtitle')}
+              aside={
+                !ready ? (
+                  <span className="shrink-0 text-[12.5px] tabular-nums text-text-muted">
+                    {t('course_cert.reqs_met', { done: reqMet, total: reqTotal })}
+                  </span>
+                ) : undefined
+              }
+            />
 
-            {/* Recertificación: su certificado sigue siendo válido y visible.
-                Esto informa, no bloquea — el aprendiz decide cuándo rehacerlo. */}
+            {/* Recertificacion: su certificado sigue siendo valido y visible.
+                Esto informa, no bloquea - el aprendiz decide cuando rehacerlo. */}
             {certStatus.certified && certStatus.needs_recert && (
-              <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-3.5">
-                <RefreshCw className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <div className="mb-4 flex items-start gap-3 rounded-2xl border border-line px-4 py-3.5">
+                <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
                 <div className="text-[13px] text-text-muted">
-                  <span className="block font-semibold text-text mb-0.5">
+                  <span className="mb-0.5 block font-medium text-text">
                     {certStatus.expired
                       ? t('course_cert.recert_expired_title')
                       : t('course_cert.recert_title')}
@@ -791,7 +834,7 @@ export default function CoursePage() {
                     ? t('course_cert.recert_expired_hint')
                     : t('course_cert.recert_hint')}
                   {certStatus.new_modules_count > 0 && (
-                    <span className="block mt-1">
+                    <span className="mt-1 block">
                       {t('course_cert.recert_new_modules', {
                         count: certStatus.new_modules_count,
                       })}
@@ -804,49 +847,54 @@ export default function CoursePage() {
             {ready ? (
               <Link
                 to={`/certificate/${course.id}`}
-                className="flex items-center gap-5 rounded-3xl border border-primary/30 bg-surface p-6 transition-all hover:border-primary hover:shadow-card-hover"
+                className="group flex items-center gap-4 rounded-2xl border border-line p-5 transition-all duration-500 ease-apple hover:-translate-y-1 hover:shadow-card-hover"
               >
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-on-primary">
-                  <Award className="h-6 w-6" />
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <Award className="h-5 w-5" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-primary mb-1">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary">
                     {t('course_cert.ready_tag')}
                   </p>
-                  <div className="text-[18px] font-semibold tracking-tight text-text">
+                  <div className="mt-0.5 text-[16px] font-medium tracking-tight text-text">
                     {t('course_cert.ready_title')}
                   </div>
                 </div>
-                <span className="shrink-0 text-[13px] font-medium text-text-muted">
-                  {t('course_cert.view')} →
+                <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-text-muted">
+                  {t('course_cert.view')}
+                  <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
                 </span>
               </Link>
             ) : (
-              <div className="rounded-3xl border border-line bg-surface p-6 space-y-6">
-                {/* Requisito: módulos */}
+              <div className="space-y-6 rounded-2xl border border-line p-6">
+                {/* Requisito: modulos */}
                 {certStatus.require_all_modules && (
                   <div className="flex items-center gap-4">
-                    <div className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                      certStatus.modules_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
-                      {certStatus.modules_ok ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-[13px] font-bold">1</span>}
+                    <div
+                      className={cn(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12.5px] font-medium',
+                        certStatus.modules_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
+                      )}
+                    >
+                      {certStatus.modules_ok ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : '1'}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[14px] font-medium text-text mb-1.5">{t('course_cert.req_modules')}</div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 text-[13.5px] text-text">{t('course_cert.req_modules')}</div>
+                      <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
                         <motion.div
                           className="h-full rounded-full bg-primary"
-                          initial={{ width: 0 }}
+                          initial={{ width: reduce ? `${modulesPct * 100}%` : 0 }}
                           animate={{ width: `${modulesPct * 100}%` }}
-                          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+                          transition={{ duration: reduce ? 0 : 1, ease }}
                         />
                       </div>
                     </div>
-                    <span className={cn(
-                      'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums',
-                      certStatus.modules_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
+                    <span
+                      className={cn(
+                        'shrink-0 text-[12px] tabular-nums',
+                        certStatus.modules_ok ? 'text-primary' : 'text-text-subtle',
+                      )}
+                    >
                       {certStatus.modules_done}/{certStatus.modules_total}
                     </span>
                   </div>
@@ -854,28 +902,30 @@ export default function CoursePage() {
                 {/* Requisito: simulador */}
                 {certStatus.require_simulator && (
                   <div className="flex items-center gap-4">
-                    <div className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                      certStatus.simulator_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
-                      {certStatus.simulator_ok ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-[13px] font-bold">2</span>}
+                    <div
+                      className={cn(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12.5px] font-medium',
+                        certStatus.simulator_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
+                      )}
+                    >
+                      {certStatus.simulator_ok ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : '2'}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[14px] font-medium text-text mb-1.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 text-[13.5px] text-text">
                         {t('course_cert.req_simulator', { score: certStatus.min_score })}
                       </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
+                      <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
                         <motion.div
                           className="h-full rounded-full bg-primary"
-                          initial={{ width: 0 }}
+                          initial={{ width: reduce ? `${simPct * 100}%` : 0 }}
                           animate={{ width: `${simPct * 100}%` }}
-                          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+                          transition={{ duration: reduce ? 0 : 1, ease }}
                         />
                       </div>
                       {!certStatus.simulator_ok && totalScenarios > 0 && (
                         <button
                           onClick={startSimulation}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90"
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-1.5 text-[12.5px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
                         >
                           <PhoneCall className="h-3.5 w-3.5" />
                           {t('course_practice.do_simulation')}
@@ -887,41 +937,23 @@ export default function CoursePage() {
                         </p>
                       )}
                     </div>
-                    <span className={cn(
-                      'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums',
-                      certStatus.simulator_ok ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
-                    )}>
+                    <span
+                      className={cn(
+                        'shrink-0 text-[12px] tabular-nums',
+                        certStatus.simulator_ok ? 'text-primary' : 'text-text-subtle',
+                      )}
+                    >
                       {certStatus.best_score}/{certStatus.min_score}
                     </span>
                   </div>
                 )}
-                <p className="text-[13px] text-text-muted pt-1">{t('course_cert.pending_hint')}</p>
+                <p className="pt-1 text-[13px] text-text-muted">{t('course_cert.pending_hint')}</p>
               </div>
             )}
-          </Reveal>
+          </FadeIn>
         );
       })()}
 
-      {/* Barra de progreso al pie */}
-      {total > 0 && (
-        <Reveal className="mt-10">
-          <div className="rounded-2xl border border-line bg-surface p-5">
-            <div className="mb-2 flex items-center justify-between text-[12px] text-text-muted">
-              <span>{t('courses.progress_label')}</span>
-              <span className="tabular-nums font-semibold text-text">{Math.round(pct * 100)}%</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
-              <motion.div
-                className="h-full rounded-full"
-                style={{ background: course.color }}
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.round(pct * 100)}%` }}
-                transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-              />
-            </div>
-          </div>
-        </Reveal>
-      )}
     </div>
     {pickerOpen && (
       <SimulatorPickerModal

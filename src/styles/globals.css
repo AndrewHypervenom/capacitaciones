@@ -246,6 +246,34 @@
     text-wrap: balance;
   }
 
+  /* Esqueleto de carga con brillo que recorre la pieza. Un `animate-pulse` a
+     secas se lee como "algo se está apagando"; el barrido se lee como "está
+     llegando". Se usa junto a `bg-subtle` en los bloques que ocupan el sitio
+     del contenido real (catálogo de cursos, tarjetas, KPIs). */
+  .skeleton-shine {
+    position: relative;
+    overflow: hidden;
+  }
+  .skeleton-shine::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--surface) / 0.75),
+      transparent
+    );
+    animation: skeleton-sweep 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
   .reveal-init {
     opacity: 0;
     transform: translateY(24px);

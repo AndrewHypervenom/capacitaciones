@@ -13,7 +13,9 @@ export function Skeleton({ className, rounded = 'lg' }: SkeletonProps) {
   return (
     <div
       className={cn(
-        'bg-glass-border/8 animate-pulse',
+        // Brillo que recorre la pieza (globals.css). Se lee como "esta
+        // llegando", no como "algo se esta apagando" (que es el animate-pulse).
+        'bg-subtle skeleton-shine',
         roundedMap[rounded],
         className,
       )}

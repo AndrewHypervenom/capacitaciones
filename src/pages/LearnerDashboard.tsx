@@ -5,7 +5,6 @@ import {
   ArrowRight,
   BookOpen,
   Compass,
-  GraduationCap,
   Home,
   Lock,
   LogOut,
@@ -18,13 +17,12 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
-import { Stagger, StaggerItem } from '@/components/ui/motion';
+import { FadeIn, Stagger, StaggerItem, ease } from '@/components/ui/motion';
 import { useUserStore } from '@/stores/userStore';
 import {
   useProgressStore,
   useModuleDone,
   keyOfModule,
-  keyOfCourseModule,
 } from '@/stores/progressStore';
 import {
   useGamificationStore,
@@ -48,7 +46,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Avatar } from '@/components/ui/Avatar';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
-import { Reveal } from '@/components/ui/Reveal';
+import { CourseGrid } from '@/components/course/CourseCard';
 import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
@@ -79,6 +77,14 @@ export default function LearnerDashboard() {
   // Los cursos abiertos "para todo el mundo" no se mezclan aquí: se exploran en
   // /courses, para que el aprendiz no crea que debe hacer cursos que no son suyos.
   const dashboardCourses = useMemo(() => courses.filter((c) => c.isAssigned), [courses]);
+  // Los obligatorios primero; el resto conserva el orden que trae el servicio.
+  const sortedDashboardCourses = useMemo(
+    () =>
+      [...dashboardCourses].sort((a, b) =>
+        a.isMandatory === b.isMandatory ? 0 : a.isMandatory ? -1 : 1,
+      ),
+    [dashboardCourses],
+  );
   const assignedCourseIds = useMemo(
     () => new Set(dashboardCourses.map((c) => c.id)),
     [dashboardCourses],
@@ -239,11 +245,22 @@ export default function LearnerDashboard() {
 
   if (modulesLoading) {
     return (
-      <div className="mx-auto max-w-5xl px-5 pt-12 pb-24">
-        <div className="animate-pulse space-y-6">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-20 rounded-2xl bg-subtle" />
-          ))}
+      <div className="mx-auto max-w-5xl px-5 pb-24 pt-12">
+        <div className="space-y-8">
+          <div className="space-y-3">
+            <div className="h-4 w-40 rounded-lg bg-subtle skeleton-shine" />
+            <div className="h-10 w-80 max-w-full rounded-xl bg-subtle skeleton-shine" />
+            <div className="h-4 w-96 max-w-full rounded-lg bg-subtle skeleton-shine" />
+          </div>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-64 rounded-3xl bg-subtle skeleton-shine"
+                style={{ animationDelay: `${i * 90}ms` }}
+              />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -390,345 +407,292 @@ export default function LearnerDashboard() {
       <div className="lg:pl-64">
         <main className="mx-auto max-w-6xl px-4 sm:px-8 pt-10 sm:pt-14 pb-24 overflow-x-hidden">
 
-          {/* Hero + estado del aprendizaje */}
-          <Reveal as="section" className="mb-16 md:mb-20 scroll-mt-16" id="inicio">
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-8">
-              <div className="max-w-2xl">
-                <p className="text-[14px] text-text-muted mb-2">
-                  {t('dashboard.greeting', { name })}
-                </p>
-                <h1 className="text-[34px] leading-[1.08] sm:text-5xl font-extrabold tracking-tight text-text mb-5 text-balance">
-                  {t('dashboard.panel_headline')}
-                </h1>
-                <p className="text-[16px] sm:text-[17px] text-text-muted leading-relaxed">
-                  {t('dashboard.panel_subheadline', { done, total })}
-                </p>
-                {nextModule && (
-                  <Link
-                    to={`/modules/${nextModule.id}`}
-                    className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-[14px] font-semibold text-on-primary shadow-sm transition-all hover:opacity-90 hover:shadow-md"
-                  >
-                    {t('dashboard.module_continue')}: {nextModule.title[language]} →
-                  </Link>
-                )}
-              </div>
+          {/* Hero + estado del aprendizaje. El anillo ya no vive en un panel
+              encajonado al lado del titulo: va pequeno junto al dato, y el
+              avance lo cuenta un hilo de 3px como en el resto del sitio. */}
+          <FadeIn as="section" className="mb-14 scroll-mt-16 md:mb-16" id="inicio">
+            <p className="mb-2 text-[13px] text-text-subtle">
+              {t('dashboard.greeting', { name })}
+            </p>
+            <h1 className="max-w-3xl text-balance text-[32px] font-semibold leading-[1.1] tracking-[-0.03em] text-text sm:text-[44px]">
+              {t('dashboard.panel_headline')}
+            </h1>
+            <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-text-muted">
+              {t('dashboard.panel_subheadline', { done, total })}
+            </p>
 
-              <div className="flex shrink-0 items-center gap-6 rounded-3xl border border-line bg-surface p-6 sm:p-8 shadow-sm">
-                <ProgressRing value={progressPct} size={104} stroke={11} showLabel color="rgb(var(--primary))" />
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-text-subtle mb-1">
-                    {t('dashboard.panel_progress_label')}
-                  </div>
-                  <div className="text-[19px] font-bold tabular-nums text-text">
-                    {t('dashboard.progress_full', {
-                      done,
-                      total,
-                      pct: Math.round(progressPct * 100),
-                    })}
+            {total > 0 && (
+              <div className="mt-8 max-w-md">
+                <div className="mb-2 flex items-center gap-2.5">
+                  <ProgressRing value={progressPct} size={34} stroke={3} showLabel color="rgb(var(--primary))" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-subtle">
+                      {t('dashboard.panel_progress_label')}
+                    </div>
+                    <div className="text-[13px] tabular-nums text-text-muted">
+                      {t('dashboard.progress_full', {
+                        done,
+                        total,
+                        pct: Math.round(progressPct * 100),
+                      })}
+                    </div>
                   </div>
                 </div>
+                <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
+                  <motion.div
+                    className="h-full rounded-full bg-primary"
+                    initial={{ width: reduce ? `${progressPct * 100}%` : 0 }}
+                    animate={{ width: `${progressPct * 100}%` }}
+                    transition={{ duration: reduce ? 0 : 1.2, ease, delay: 0.3 }}
+                  />
+                </div>
               </div>
-            </div>
-          </Reveal>
+            )}
+
+            {nextModule && (
+              <motion.div whileTap={reduce ? undefined : { scale: 0.97 }} className="mt-7 inline-flex max-w-full">
+                <Link
+                  to={`/modules/${nextModule.id}`}
+                  className="group inline-flex max-w-full items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13.5px] font-medium text-on-primary transition-opacity duration-300 hover:opacity-90"
+                >
+                  <span className="truncate">
+                    {t('dashboard.module_continue')}: {nextModule.title[language]}
+                  </span>
+                  <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
+                </Link>
+              </motion.div>
+            )}
+          </FadeIn>
 
           {/* Día de XP multiplicado: va arriba del todo porque cambia QUÉ
               conviene hacer hoy. Si no hay evento vigente ni próximo, no pinta
               nada (el componente devuelve null). */}
           <XPBoostCard lang={language as Lang} className="mb-12 md:mb-16" />
 
-          {/* Cursos — navegación principal: Campaña → Curso → Módulo */}
+          {/* Cursos — navegación principal: Campaña → Curso → Módulo.
+              Tarjeta y rejilla COMPARTIDAS con /courses (components/course/CourseCard):
+              el mismo curso ya no se ve de dos maneras según por dónde llegues. */}
           <section id="cursos" className="mb-16 md:mb-20 scroll-mt-16">
-            <Reveal className="mb-8">
-              <h2 className="text-2xl font-semibold tracking-tight text-text mb-1">
-                <Link
-                  to="/courses"
-                  className="inline-flex items-center gap-1.5 hover:text-primary transition-colors"
-                >
+            <FadeIn className="mb-6">
+              <Link
+                to="/courses"
+                className="group inline-flex items-baseline gap-2"
+              >
+                <h2 className="text-[19px] font-semibold tracking-tight text-text transition-colors group-hover:text-primary">
                   {t('dashboard.courses_title')}
-                  <ArrowRight className="h-5 w-5" />
-                </Link>
-              </h2>
-              <p className="text-[15px] text-text-muted">
+                </h2>
+                <span className="text-[13px] tabular-nums text-text-subtle">{dashboardCourses.length}</span>
+                <ArrowRight className="h-3.5 w-3.5 self-center text-text-subtle transition-transform duration-500 ease-apple group-hover:translate-x-1" />
+              </Link>
+              <p className="mt-0.5 text-[13px] text-text-muted">
                 {t('dashboard.courses_subtitle')}
               </p>
-            </Reveal>
+            </FadeIn>
 
             {dashboardCourses.length === 0 && (
-              <div className="mb-5 rounded-3xl border border-line bg-surface p-8 text-center text-[14px] text-text-muted">
+              <div className="mb-5 rounded-3xl border border-line bg-surface p-10 text-center text-[13.5px] text-text-muted">
                 {t('dashboard.courses_empty')}
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {dashboardCourses.length > 0 &&
-                [...dashboardCourses]
-                  .sort((a, b) => {
-                    if (a.isMandatory !== b.isMandatory) return a.isMandatory ? -1 : 1;
-                    return 0;
-                  })
-                  .map((course, idx) => {
-                    const courseTotal = course.modules.length;
-                    const courseDone = course.modules.filter((m) =>
-                      isModuleDone(keyOfCourseModule(m)),
-                    ).length;
-                    const coursePct = courseTotal > 0 ? courseDone / courseTotal : 0;
-                    const courseTitle =
-                      language === 'en'
-                        ? course.title_en || course.title_es
-                        : language === 'pt'
-                          ? course.title_pt || course.title_es
-                          : course.title_es;
-                    return (
-                      <Reveal key={course.id} delay={idx * 60}>
-                        <MotionLink
-                          to={`/courses/${course.slug}`}
-                          whileHover={reduce ? undefined : { y: -4 }}
-                          transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-                          className="flex h-full flex-col justify-between rounded-3xl border border-line bg-surface p-6 transition-[border-color,box-shadow] duration-300 hover:border-primary hover:shadow-card-hover"
-                        >
-                          <div className="mb-5">
-                            <div className="mb-4 flex items-center justify-between">
-                              <div
-                                className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm"
-                                style={{ background: course.color }}
-                              >
-                                <GraduationCap className="h-5 w-5" />
-                              </div>
-                              {course.isMandatory && (
-                                <span className="rounded-full bg-danger/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-danger">
-                                  {t('courses.mandatory')}
-                                </span>
-                              )}
-                            </div>
-                            {course.campaign_name && (
-                              <p className="mb-1 truncate text-[11px] font-medium uppercase tracking-wide text-text-subtle">
-                                {course.campaign_name}
-                              </p>
-                            )}
-                            <h3 className="text-[17px] font-semibold tracking-tight text-text mb-1">
-                              {courseTitle}
-                            </h3>
-                            <p className="text-[13px] text-text-muted">
-                              {t('courses.modules_count', { n: courseTotal })}
-                            </p>
-                          </div>
-                          <div>
-                            <div className="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-subtle">
-                              <div
-                                className="h-full rounded-full transition-[width] duration-700"
-                                style={{ background: course.color, width: `${Math.round(coursePct * 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-[11px] tabular-nums text-text-subtle">
-                              {t('courses.progress', { done: courseDone, total: courseTotal })}
-                            </span>
-                          </div>
-                        </MotionLink>
-                      </Reveal>
-                    );
-                  })}
-              <Reveal delay={dashboardCourses.length * 60}>
+            <CourseGrid
+              courses={sortedDashboardCourses}
+              reduce={reduce}
+              trailing={
                 <MotionLink
                   to="/courses"
-                  whileHover={reduce ? undefined : { y: -4 }}
+                  whileHover={reduce ? undefined : { y: -5 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-                  className="group flex h-full flex-col justify-center gap-3 rounded-3xl border border-dashed border-line bg-surface/60 p-6 text-center transition-[border-color,background-color] duration-300 hover:border-primary hover:bg-surface"
+                  className="group flex h-full min-h-[13rem] flex-col justify-center gap-2.5 rounded-3xl border border-dashed border-line p-6 text-center transition-colors duration-500 hover:border-text-subtle/50"
                 >
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Compass className="h-5 w-5" />
-                  </div>
+                  <Compass className="mx-auto h-5 w-5 text-text-subtle transition-colors duration-500 group-hover:text-primary" />
                   <div>
-                    <p className="text-[15px] font-semibold tracking-tight text-text">
+                    <p className="text-[15px] font-medium tracking-tight text-text">
                       {t('dashboard.explore_cta_title')}
                     </p>
                     <p className="mt-0.5 text-[13px] text-text-muted">
                       {t('dashboard.explore_cta_subtitle')}
                     </p>
                   </div>
-                  <span className="inline-flex items-center justify-center gap-1 text-[13px] font-semibold text-primary">
+                  <span className="inline-flex items-center justify-center gap-1 text-[13px] text-text-muted transition-colors group-hover:text-primary">
                     {t('dashboard.courses_title')}
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform duration-500 ease-apple group-hover:translate-x-1" />
                   </span>
                 </MotionLink>
-              </Reveal>
-            </div>
+              }
+            />
           </section>
 
           {/* Recursos Complementarios */}
           <section id="recursos" className="mb-16 md:mb-20 scroll-mt-16">
-            <Reveal className="mb-8">
-              <h2 className="text-2xl font-semibold tracking-tight text-text mb-1">
+            <FadeIn className="mb-6">
+              <h2 className="text-[19px] font-semibold tracking-tight text-text">
                 {t('dashboard.resources_title')}
               </h2>
-              <p className="text-[15px] text-text-muted">
+              <p className="mt-0.5 text-[13px] text-text-muted">
                 {t('dashboard.resources_subtitle')}
               </p>
-            </Reveal>
+            </FadeIn>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <Reveal>
-                <Link
-                  to="/quiz"
-                  className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 transition-all hover:border-primary hover:shadow-card-hover"
-                >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-subtle text-text-muted">
-                    <Zap className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-                      {t('dashboard.quiz_tag')}
-                    </p>
-                    <h3 className="text-[15px] font-semibold text-text truncate">
-                      {t('dashboard.quiz_title')}
-                    </h3>
-                    <p className="text-[13px] text-text-muted truncate">
-                      {t('dashboard.quiz_subtitle')}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-[13px] font-medium text-text-muted">
-                    {t('dashboard.quiz_join')} →
-                  </span>
-                </Link>
-              </Reveal>
-            </div>
+            <FadeIn delay={0.05} className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <Link
+                to="/quiz"
+                className="group flex items-center gap-4 rounded-2xl border border-line p-4 transition-all duration-500 ease-apple hover:-translate-y-1 hover:shadow-card-hover"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-subtle text-text-muted transition-colors duration-500 group-hover:text-primary">
+                  <Zap className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-subtle">
+                    {t('dashboard.quiz_tag')}
+                  </p>
+                  <h3 className="truncate text-[14.5px] font-medium text-text">
+                    {t('dashboard.quiz_title')}
+                  </h3>
+                  <p className="truncate text-[12.5px] text-text-muted">
+                    {t('dashboard.quiz_subtitle')}
+                  </p>
+                </div>
+                <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-text-muted">
+                  {t('dashboard.quiz_join')}
+                  <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
+                </span>
+              </Link>
+            </FadeIn>
           </section>
 
-          {/* Insignias y logros */}
-          <Reveal as="section" className="mb-16 md:mb-20 scroll-mt-16" id="logros">
-            <div className="mb-8 flex items-end justify-between">
-              <h2 className="text-2xl font-semibold tracking-tight text-text">
-                {t('dashboard.badges_title')}
-              </h2>
-              <span className="text-[12px] tabular-nums text-text-subtle">
-                {t('dashboard.badges_unlocked', { n: earnedVisibleCount, total: visibleBadges.length })}
+          {/* Insignias y logros. Experiencia y racha dejan de ser dos cajas:
+              son una sola linea de datos sobre un hilo de 3px. */}
+          <FadeIn as="section" className="mb-14 scroll-mt-16 md:mb-16" id="logros">
+            <div className="mb-6 flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-[19px] font-semibold tracking-tight text-text">
+                  {t('dashboard.badges_title')}
+                </h2>
+                <p className="mt-0.5 text-[13px] text-text-muted">
+                  {t('dashboard.badges_unlocked', { n: earnedVisibleCount, total: visibleBadges.length })}
+                </p>
+              </div>
+              {/* La racha vive aqui, en texto: una caja propia para un numero de
+                  un digito era la definicion de saturado. */}
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-[13px] text-text-muted">
+                {streak > 0 ? (
+                  <motion.span
+                    animate={reduce ? undefined : { scale: [1, 1.18, 1] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                    className="text-[15px] leading-none"
+                  >
+                    🔥
+                  </motion.span>
+                ) : (
+                  <span className="text-[15px] leading-none opacity-50">💤</span>
+                )}
+                <span className="tabular-nums font-medium text-text">{streak}</span>
+                {streak === 1
+                  ? t('dashboard.streak_one')
+                  : streak > 1
+                    ? t('dashboard.streak_other')
+                    : t('dashboard.streak_start')}
               </span>
             </div>
 
-            {/* Experiencia y racha */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-              <div className="md:col-span-2 rounded-3xl border border-line bg-surface p-6">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
-                    Experiencia
-                    <span
-                      className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal"
-                      style={{ background: `${xpLevel.color}18`, color: xpLevel.color }}
-                    >
-                      Nv. {xpLevel.level} · {xpLevelLabel(xpLevel, language)}
-                    </span>
+            {/* Experiencia */}
+            <div className="mb-8">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="inline-flex items-baseline gap-2 text-[13px] text-text-muted">
+                  {t('dashboard.xp_label')}
+                  <span className="font-medium" style={{ color: xpLevel.color }}>
+                    Nv. {xpLevel.level} · {xpLevelLabel(xpLevel, language)}
                   </span>
-                  <span className="flex items-center gap-2 text-[13px] font-bold tabular-nums text-text">
-                    {/* Si hoy hay evento, se dice justo al lado del contador: es
-                        donde el aprendiz mira para saber cuánto lleva. */}
-                    <XPBoostPill lang={language as Lang} />
-                    {xp.toLocaleString()} XP
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-subtle mb-2">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: `linear-gradient(90deg, ${xpLevel.color}, ${xpLevel.color}88)` }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.round(xpProgress * 100)}%` }}
-                    transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-                  />
-                </div>
-                {nextLevel && (
-                  <p className="text-[11px] tabular-nums text-text-subtle">
-                    {t('dashboard.xp_to_next', {
-                      xp,
-                      max: xpLevel.maxXP,
-                      rank: xpLevelLabel(nextLevel, language),
-                    })}
-                  </p>
-                )}
+                </span>
+                <span className="flex items-center gap-2 text-[13px] font-medium tabular-nums text-text">
+                  {/* Si hoy hay evento, se dice justo al lado del contador: es
+                      donde el aprendiz mira para saber cuanto lleva. */}
+                  <XPBoostPill lang={language as Lang} />
+                  {xp.toLocaleString()} XP
+                </span>
               </div>
-
-              <div className="flex items-center gap-4 rounded-3xl border border-line bg-surface p-6">
-                <div className={cn(
-                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl',
-                  streak > 0 ? 'bg-orange-500/10' : 'bg-subtle',
-                )}>
-                  {streak > 0 ? (
-                    <motion.span
-                      animate={{ scale: [1, 1.15, 1] }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    >
-                      🔥
-                    </motion.span>
-                  ) : '💤'}
-                </div>
-                <div>
-                  <div className="text-[26px] font-bold leading-none tabular-nums text-text">
-                    {streak}
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-text-subtle">
-                    {streak === 1 ? t('dashboard.streak_one') : streak > 1 ? t('dashboard.streak_other') : t('dashboard.streak_start')}
-                  </div>
-                </div>
+              <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: xpLevel.color }}
+                  initial={{ width: reduce ? `${Math.round(xpProgress * 100)}%` : 0 }}
+                  animate={{ width: `${Math.round(xpProgress * 100)}%` }}
+                  transition={{ duration: reduce ? 0 : 1.2, ease, delay: 0.25 }}
+                />
               </div>
+              {nextLevel && (
+                <p className="mt-2 text-[11.5px] tabular-nums text-text-subtle">
+                  {t('dashboard.xp_to_next', {
+                    xp,
+                    max: xpLevel.maxXP,
+                    rank: xpLevelLabel(nextLevel, language),
+                  })}
+                </p>
+              )}
             </div>
 
             {/* Grilla de insignias */}
-            <Stagger gap={0.04} className="grid grid-cols-4 md:grid-cols-7 gap-3">
+            <Stagger gap={0.03} className="grid grid-cols-4 gap-3 md:grid-cols-8">
               {visibleBadges.map((badge) => {
                 const earned = badges.includes(badge.id);
                 return (
                   <StaggerItem
                     key={badge.id}
                     title={badgeDescription(badge, language)}
-                    whileHover={reduce || !earned ? undefined : { y: -3, scale: 1.04 }}
+                    whileHover={reduce || !earned ? undefined : { y: -3 }}
                     transition={{ type: 'spring', stiffness: 320, damping: 20 }}
                     className={cn(
-                      'flex flex-col items-center gap-2 cursor-default',
-                      !earned && 'opacity-40',
+                      'flex cursor-default flex-col items-center gap-2',
+                      !earned && 'opacity-35',
                     )}
                   >
-                    <div className={cn(
-                      'relative flex aspect-square w-full items-center justify-center rounded-2xl border text-2xl',
-                      earned
-                        ? badge.rare
-                          ? 'border-amber-400/40 bg-amber-400/10 ring-1 ring-amber-400/30'
-                          : 'border-primary/25 bg-primary/10'
-                        : 'border-line bg-subtle text-text-subtle',
-                    )}>
-                      {earned ? badge.emoji : <Lock className="h-5 w-5" />}
-                      {/* Marca de logro poco común */}
+                    <div
+                      className={cn(
+                        'relative flex aspect-square w-full items-center justify-center rounded-2xl border text-[22px] transition-colors duration-500',
+                        earned
+                          ? badge.rare
+                            ? 'border-amber-400/40 bg-amber-400/[0.07]'
+                            : 'border-line bg-subtle/60'
+                          : 'border-dashed border-line text-text-subtle',
+                      )}
+                    >
+                      {earned ? badge.emoji : <Lock className="h-4 w-4" />}
+                      {/* Marca de logro poco comun */}
                       {badge.rare && (
                         <span
-                          className={cn(
-                            'absolute -right-1 -top-1 text-[10px]',
-                            !earned && 'opacity-60',
-                          )}
+                          className={cn('absolute -right-0.5 -top-0.5 text-[9px]', !earned && 'opacity-50')}
                           title="Logro poco común"
                         >
                           ⭐
                         </span>
                       )}
                     </div>
-                    <p className="w-full truncate text-center text-[10px] font-medium text-text-muted">
+                    <p className="w-full truncate text-center text-[10px] text-text-subtle">
                       {badgeLabel(badge, language)}
                     </p>
                   </StaggerItem>
                 );
               })}
             </Stagger>
-          </Reveal>
+          </FadeIn>
 
           {/* Estadísticas de pie de página */}
-          <Reveal>
-            <div className="mb-6 h-px w-full bg-line" />
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-text-muted">
+          <FadeIn>
+            <div className="mb-5 h-px w-full bg-line" />
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[12.5px] text-text-subtle">
               {remainingMinutes > 0 && (
                 <span>{t('dashboard.footer_minutes', { n: remainingMinutes })}</span>
               )}
               {nextModule && (
                 <>
-                  {remainingMinutes > 0 && <span className="text-text-subtle">·</span>}
-                  <span>{t('dashboard.footer_next', { title: nextModule.title[language] })}</span>
+                  {remainingMinutes > 0 && <span className="text-text-subtle/50">·</span>}
+                  <span className="truncate">
+                    {t('dashboard.footer_next', { title: nextModule.title[language] })}
+                  </span>
                 </>
               )}
             </div>
-          </Reveal>
+          </FadeIn>
         </main>
       </div>
     </div>
