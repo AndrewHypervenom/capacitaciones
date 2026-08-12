@@ -7,6 +7,7 @@ import type {
   CourseEvaluationResult,
   CourseRecertStatus,
   PublicCertificate,
+  PublicCertificateSyllabus,
   SimulatorAttemptRow,
 } from '@/types/database'
 
@@ -291,6 +292,29 @@ export async function getPublicCertificate(certId: string): Promise<PublicCertif
   // El RPC puede devolver el objeto directamente o dentro de un array.
   const row = Array.isArray(data) ? data[0] : data
   return (row ?? null) as PublicCertificate | null
+}
+
+/**
+ * Pénsum del certificado: el programa y, módulo a módulo, qué aprendió la
+ * persona (objetivos), qué se lleva (conclusiones clave) y qué temas cubrió.
+ * Es lo que ve quien escanea el QR del diploma o abre el enlace compartido —
+ * "obtuvo la certificación" no le dice a nadie qué sabe esa persona.
+ *
+ * Devuelve null (y no revienta) si el SQL 2026-08-12_public_certificate_pensum.sql
+ * aún no se corrió: la página pública simplemente no pinta la sección.
+ */
+export async function getPublicCertificateSyllabus(
+  certId: string,
+): Promise<PublicCertificateSyllabus | null> {
+  const { data, error } = await supabase.rpc('get_public_certificate_syllabus', {
+    p_cert_id: certId,
+  })
+  // 42883 = función inexistente (SQL sin correr). Ningún error acá debe tumbar
+  // una página pública: el diploma sigue siendo lo importante.
+  if (error || data == null) return null
+  const row = (Array.isArray(data) ? data[0] : data) as PublicCertificateSyllabus | null
+  if (!row) return null
+  return { course: row.course ?? null, modules: row.modules ?? [] }
 }
 
 // ─── Panel del capacitador ───────────────────────────────────────────────

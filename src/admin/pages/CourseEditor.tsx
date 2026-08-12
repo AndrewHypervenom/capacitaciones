@@ -77,6 +77,7 @@ import { SurgeryUndoBar } from '@/admin/components/SurgeryUndoBar'
 import type { PendingSurgery } from '@/services/moduleSurgery.service'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { ExamBuilder } from '@/admin/components/exam/ExamBuilder'
+import { CertificatePensumPanel } from '@/admin/components/CertificatePensumPanel'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { getCourseTranslationState } from '@/services/translation.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
@@ -112,7 +113,7 @@ import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { SaveDock, DirtyDot } from '@/admin/components/SaveDock'
 import { fingerprint } from '@/lib/fingerprint'
 
-type Tab = 'info' | 'modules' | 'assign' | 'evaluation' | 'exam'
+type Tab = 'info' | 'modules' | 'assign' | 'evaluation' | 'exam' | 'cert'
 
 /** Rótulo i18n de cada pestaña; se reusa en las pestañas y en la presencia. */
 const TAB_LABEL_KEY: Record<Tab, string> = {
@@ -121,6 +122,7 @@ const TAB_LABEL_KEY: Record<Tab, string> = {
   assign: 'admin.courses.tab_assign',
   evaluation: 'admin.courses.tab_evaluation',
   exam: 'admin.courses.tab_exam',
+  cert: 'admin.courses.tab_cert',
 }
 type Lang = 'es' | 'en' | 'pt'
 
@@ -287,6 +289,12 @@ export default function CourseEditor() {
   const registerExamSave = useCallback((fn: (() => Promise<boolean>) | null) => {
     examSaveRef.current = fn
   }, [])
+  // Pénsum del certificado (lo que se publica al compartirlo): mismo esquema.
+  const [pensumDirty, setPensumDirty] = useState(false)
+  const pensumSaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const registerPensumSave = useCallback((fn: (() => Promise<boolean>) | null) => {
+    pensumSaveRef.current = fn
+  }, [])
   const [simRule, setSimRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
   const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
   // Desbloqueo del mundo (juego), mismo esquema que el simulador.
@@ -316,9 +324,14 @@ export default function CourseEditor() {
   // necesita saber QUÉ cambió (ficha / evaluación), no solo que "algo" cambió:
   // se compara contra la fila tal como vino de la BD, no contra el estado —
   // así el editor nunca nace "sucio" por un setState que aún no se aplicó.
-  const [baseline, setBaseline] = useState<{ info: string; evaluation: string }>({
+  // `evaluation` y `cert` van por separado porque ahora son dos pestañas: si
+  // compartieran huella, tocar el desbloqueo del simulador encendería el punto
+  // de "Certificación" y viceversa. El GUARDADO sigue siendo uno solo
+  // (`handleSaveConditions` escribe ambos trozos en un update).
+  const [baseline, setBaseline] = useState<{ info: string; evaluation: string; cert: string }>({
     info: '',
     evaluation: '',
+    cert: '',
   })
 
   const reload = useCallback(async () => {
@@ -356,7 +369,16 @@ export default function CourseEditor() {
     setSimUnlockModuleId(nextEval.simUnlockModuleId)
     setWorldRule(nextEval.worldRule)
     setWorldUnlockModuleId(nextEval.worldUnlockModuleId)
-    setBaseline({ info: fingerprint(nextForm), evaluation: fingerprint(nextEval) })
+    setBaseline({
+      info: fingerprint(nextForm),
+      evaluation: fingerprint({
+        simRule: nextEval.simRule,
+        simUnlockModuleId: nextEval.simUnlockModuleId,
+        worldRule: nextEval.worldRule,
+        worldUnlockModuleId: nextEval.worldUnlockModuleId,
+      }),
+      cert: fingerprint({ cond: nextEval.cond }),
+    })
     staleGuardRef.current?.mark(c)
   }, [courseId, navigate])
 
@@ -643,17 +665,23 @@ export default function CourseEditor() {
     () => !loading && fingerprint(form) !== baseline.info,
     [form, loading, baseline.info],
   )
+  // Pestaña "Evaluación": desbloqueo del mundo y del simulador.
   const evalDirty = useMemo(
     () =>
       !loading &&
-      fingerprint({ cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId }) !==
+      fingerprint({ simRule, simUnlockModuleId, worldRule, worldUnlockModuleId }) !==
         baseline.evaluation,
-    [cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, loading, baseline.evaluation],
+    [simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, loading, baseline.evaluation],
+  )
+  // Pestaña "Certificación": las condiciones para emitir el certificado.
+  const certDirty = useMemo(
+    () => !loading && fingerprint({ cond }) !== baseline.cert,
+    [cond, loading, baseline.cert],
   )
 
   // Escenarios de la campaña (para ligarlos al curso) + resultados de evaluación.
   // Estos hooks van ANTES de cualquier return temprano (Reglas de Hooks).
-  // Los escenarios se cargan al montar (no solo en la pestaña Evaluación) para que
+  // Los escenarios se cargan al montar (no solo en la pestaña Práctica) para que
   // la barra de "Publicación" pueda reflejar el estado del simulador en todo momento.
   const loadScenarios = useCallback(async () => {
     if (!course?.campaign_id) return
@@ -681,7 +709,9 @@ export default function CourseEditor() {
   }, [loadScenarios, courseId])
 
   useEffect(() => {
-    if (tab === 'evaluation') void loadEvalData()
+    // Los resultados por aprendiz se mudaron a "Certificación", pero la pestaña
+    // de evaluación sigue necesitando los escenarios del simulador.
+    if (tab === 'evaluation' || tab === 'cert') void loadEvalData()
   }, [tab, loadEvalData])
 
   const courseScenarios = useMemo(
@@ -701,6 +731,9 @@ export default function CourseEditor() {
     [campaignChoiceScenarios, courseId],
   )
   const courseScenarioCount = courseScenarios.length + courseChoiceScenarios.length
+  // ¿Hay simulaciones de la campaña que se puedan enganchar sin crear nada nuevo?
+  // Cambia el consejo que se da cuando el curso todavía no tiene ninguna.
+  const hasAddableScenarios = otherScenarios.length > 0 || otherChoiceScenarios.length > 0
   // Escenarios ligados al curso pero en borrador: el aprendiz filtra por
   // is_published=true, así que estos NO aparecen en su vista del curso.
   const unpublishedLinkedCount =
@@ -1313,7 +1346,10 @@ export default function CourseEditor() {
     // Orden deliberado: primero la ficha (es la que puede toparse con el aviso
     // de "otra pestaña lo guardó" y cancelar todo el guardado).
     if (infoDirty && !(await handleSaveInfo({ silent: true }))) return
-    if (evalDirty && !(await handleSaveConditions({ silent: true }))) return
+    // Un solo update cubre las dos pestañas (condiciones + desbloqueos).
+    if ((evalDirty || certDirty) && !(await handleSaveConditions({ silent: true }))) return
+    // El pénsum del certificado escribe en los módulos, no en el curso.
+    if (pensumDirty && pensumSaveRef.current && !(await pensumSaveRef.current())) return
     if (assignDirty && !(await saveAssignments({ silent: true }))) return
     // El examen guarda su propio trozo (reglas), igual que las demás pestañas.
     if (examDirty && examSaveRef.current && !(await examSaveRef.current())) return
@@ -1326,6 +1362,9 @@ export default function CourseEditor() {
     assignDirty && { id: 'assign', label: t(TAB_LABEL_KEY.assign), onFocus: () => setTab('assign') },
     evalDirty && { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), onFocus: () => setTab('evaluation') },
     examDirty && { id: 'exam', label: t(TAB_LABEL_KEY.exam), onFocus: () => setTab('exam') },
+    // Condiciones y pénsum comparten entrada: los dos viven en "Certificación",
+    // y dos filas con el mismo rótulo en la barra no le dirían nada a nadie.
+    (certDirty || pensumDirty) && { id: 'cert', label: t(TAB_LABEL_KEY.cert), onFocus: () => setTab('cert') },
   ].filter(Boolean) as Array<{ id: string; label: string; onFocus: () => void }>
 
   /** Pestañas con cambios pendientes, para el punto del rótulo. */
@@ -1424,8 +1463,9 @@ export default function CourseEditor() {
     { id: 'info', label: t(TAB_LABEL_KEY.info), icon: Info },
     { id: 'modules', label: t(TAB_LABEL_KEY.modules), icon: BookOpen },
     { id: 'assign', label: t(TAB_LABEL_KEY.assign), icon: Users },
-    { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), icon: Award },
+    { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), icon: Rocket },
     { id: 'exam', label: t(TAB_LABEL_KEY.exam), icon: ClipboardCheck },
+    { id: 'cert', label: t(TAB_LABEL_KEY.cert), icon: Award },
   ]
 
   const inputCls =
@@ -2822,10 +2862,16 @@ export default function CourseEditor() {
         />
       )}
 
-      {/* ── Evaluación: condiciones del certificado + simulador + resultados ── */}
-      {tab === 'evaluation' && (
+      {/* ── Evaluación y Certificación ─────────────────────────────────────
+          Dos pestañas distintas que comparten este contenedor (y un único
+          guardado): "Evaluación" es dónde se practica —mundo y simulador— y
+          "Certificación" es qué hace falta para el diploma, qué dirá al
+          compartirlo y quién ya lo tiene. Cada sección declara a cuál pertenece
+          en vez de duplicar el bloque entero. */}
+      {(tab === 'evaluation' || tab === 'cert') && (
         <div className="space-y-10">
           {/* 1. Condiciones del certificado */}
+          {tab === 'cert' && (
           <div>
             <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
               <Award className="h-4 w-4 text-text-muted" />
@@ -2975,11 +3021,40 @@ export default function CourseEditor() {
             </div>
 
           </div>
+          )}
+
+          {/* 1b. Lo que dirá el certificado al compartirlo.
+              Va pegado a las condiciones a propósito: ahí se decide QUIÉN se
+              certifica y aquí QUÉ dice ese certificado cuando alguien abre su
+              enlace o escanea su QR. Antes esto último no se decidía en ninguna
+              parte — salía de campos de los módulos que nadie relacionaba con
+              el certificado, y un curso sin ellos publicaba una página que solo
+              sabía decir "hizo 3 módulos". */}
+          {tab === 'cert' && course && (
+            <CertificatePensumPanel
+              courseId={course.id}
+              courseTitle={course.title_es}
+              courseDescription={course.description_es}
+              onDirtyChange={setPensumDirty}
+              registerSave={registerPensumSave}
+            />
+          )}
 
           {/* 2. Mundo del curso — juego aparte del simulador (son cosas distintas).
               Sección propia y visible: aquí el capacitador decide si el mundo
               queda libre o se desbloquea, sin que quede escondido bajo el simulador. */}
-          {world && (
+          {/* Antesala: qué son estas dos cosas. La escribe alguien que nunca ha
+              oído hablar de "mundos" ni de "simuladores" y llega aquí a ciegas. */}
+          {tab === 'evaluation' && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-line bg-subtle/40 px-3.5 py-3">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand-magenta" />
+              <p className="text-[12px] leading-relaxed text-text-muted">
+                {t('admin.courses.practice_intro')}
+              </p>
+            </div>
+          )}
+
+          {tab === 'evaluation' && (
             <div>
               <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
                 <MapIcon className="h-4 w-4 text-text-muted" />
@@ -2987,6 +3062,68 @@ export default function CourseEditor() {
               </h2>
               <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.world_gate_hint')}</p>
 
+              {/* Sin mundo la sección desaparecía entera y el capacitador se
+                  quedaba preguntando por qué no ve nada. Ahora se explica qué es
+                  y se crea desde aquí mismo. */}
+              {world === undefined ? (
+                <div className="h-24 rounded-2xl bg-subtle skeleton-shine" />
+              ) : !world ? (
+                <div className="rounded-2xl border border-dashed border-line px-4 py-5">
+                  <div className="flex items-start gap-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-subtle text-text-muted">
+                      <MapIcon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13.5px] font-semibold text-text">
+                        {t('admin.courses.world_empty_title')}
+                      </div>
+                      <p className="mt-1 text-[12px] leading-relaxed text-text-muted">
+                        {t('admin.courses.world_empty_what')}
+                      </p>
+                      <p className="mt-2 text-[12px] leading-relaxed text-text-muted">
+                        {t('admin.courses.world_empty_how')}
+                      </p>
+
+                      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={handleViewWorld}
+                          disabled={openingWorld || linkingWorld}
+                        >
+                          {openingWorld
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Sparkles className="h-3.5 w-3.5" />}
+                          {openingWorld
+                            ? t('admin.courses.opening_world')
+                            : t('admin.courses.world_empty_cta')}
+                        </Button>
+                        {/* Enlazar un mundo suelto que ya exista en la campaña. */}
+                        {linkableWorlds.length > 0 && (
+                          <div className="min-w-[200px]">
+                            <Select
+                              value=""
+                              onChange={handleLinkWorld}
+                              disabled={linkingWorld}
+                              placeholder={t('admin.courses.world_link_existing', { defaultValue: 'Enlazar existente…' })}
+                              options={[
+                                { value: '', label: t('admin.courses.world_link_existing', { defaultValue: 'Enlazar existente…' }) },
+                                ...linkableWorlds.map((w) => ({ value: w.id, label: `${w.icon ?? '🌍'} ${w.name}` })),
+                              ]}
+                            />
+                          </div>
+                        )}
+                        <Link
+                          to="/admin/worlds"
+                          className="text-[12px] font-medium text-text-muted underline-offset-2 hover:text-text hover:underline"
+                        >
+                          {t('admin.courses.world_empty_see_all')}
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+              <>
               <div className="space-y-2.5">
                 {([
                   { id: 'from_start', icon: Rocket },
@@ -3070,11 +3207,14 @@ export default function CourseEditor() {
                   )}
                 </div>
               </div>
+              </>
+              )}
 
             </div>
           )}
 
           {/* 3. Simulador del curso — opcional y poco frecuente: sección plegable */}
+          {tab === 'evaluation' && (
           <div className={cn('rounded-2xl border overflow-hidden', simRequiredButEmpty ? 'border-amber-500/40' : 'border-line')}>
             <button
               type="button"
@@ -3141,16 +3281,56 @@ export default function CourseEditor() {
                 <div>
                   <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_in_course')}</div>
                   {courseScenarioCount === 0 ? (
+                    /* Sin escenarios había solo una frase suelta y ninguna salida:
+                       "este curso no tiene escenarios" y a averiguárselas. Ahora
+                       se dice qué es un simulador y desde dónde se crea. */
                     <div className={cn(
-                      'flex items-start gap-2.5 rounded-xl px-3.5 py-3 border',
+                      'rounded-2xl px-4 py-4 border',
                       cond.require_simulator ? 'border-amber-500/30 bg-amber-500/8' : 'border-dashed border-line',
                     )}>
-                      {cond.require_simulator && <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />}
-                      <p className="text-[12px] text-text-muted">
-                        {cond.require_simulator
-                          ? t('admin.courses.sim_missing_scenarios_warn')
-                          : t('admin.courses.sim_none_in_course')}
-                      </p>
+                      <div className="flex items-start gap-3">
+                        <div className={cn(
+                          'grid h-9 w-9 shrink-0 place-items-center rounded-xl',
+                          cond.require_simulator ? 'bg-amber-500/15 text-amber-500' : 'bg-subtle text-text-muted',
+                        )}>
+                          {cond.require_simulator
+                            ? <AlertTriangle className="h-4 w-4" />
+                            : <PhoneCall className="h-4 w-4" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13.5px] font-semibold text-text">
+                            {cond.require_simulator
+                              ? t('admin.courses.sim_empty_required_title')
+                              : t('admin.courses.sim_empty_title')}
+                          </div>
+                          <p className={cn(
+                            'mt-1 text-[12px] leading-relaxed',
+                            cond.require_simulator ? 'text-amber-500' : 'text-text-muted',
+                          )}>
+                            {cond.require_simulator
+                              ? t('admin.courses.sim_missing_scenarios_warn')
+                              : t('admin.courses.sim_empty_what')}
+                          </p>
+                          <p className="mt-2 text-[12px] leading-relaxed text-text-muted">
+                            {hasAddableScenarios
+                              ? t('admin.courses.sim_empty_how_or_add')
+                              : t('admin.courses.sim_empty_how')}
+                          </p>
+
+                          <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                            <Button size="sm" onClick={() => navigate('/admin/simulations/new')}>
+                              <Plus className="h-3.5 w-3.5" />
+                              {t('admin.courses.sim_empty_cta')}
+                            </Button>
+                            <Link
+                              to="/admin/simulations"
+                              className="text-[12px] font-medium text-text-muted underline-offset-2 hover:text-text hover:underline"
+                            >
+                              {t('admin.courses.sim_empty_see_all')}
+                            </Link>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -3309,8 +3489,10 @@ export default function CourseEditor() {
               </div>
             )}
           </div>
+          )}
 
-          {/* 3. Resultados por aprendiz — ver/descargar sus certificados */}
+          {/* 4. Resultados por aprendiz — ver/descargar sus certificados */}
+          {tab === 'cert' && (
           <div>
             <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
               <GraduationCap className="h-4 w-4 text-text-muted" />
@@ -3433,6 +3615,7 @@ export default function CourseEditor() {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 

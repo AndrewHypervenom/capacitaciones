@@ -371,6 +371,8 @@ export interface Database {
           is_published: boolean
           /** Módulo del que se clonó este (deep-copy). NULL = original. */
           copied_from: string | null
+          /** Borrado suave: si no es null el módulo está eliminado. */
+          deleted_at: string | null
           created_at: string
           updated_at: string
         }
@@ -1938,6 +1940,13 @@ export interface Database {
           modules_total: number
         }[]
       }
+      // Pénsum público del certificado: el programa y, por módulo, qué aprendió
+      // (objetivos), qué se lleva (conclusiones) y qué temas cubrió. Lo pinta
+      // /verify/:certId — la página que abre el QR del diploma.
+      get_public_certificate_syllabus: {
+        Args: { p_cert_id: string }
+        Returns: PublicCertificateSyllabus | null
+      }
       // Aprendices (activos e inactivos) de las campañas indicadas, con su
       // correo de auth.users, para cruzar contra la nómina de Talento Humano.
       // SECURITY DEFINER: solo responde al superadmin.
@@ -2052,6 +2061,55 @@ export interface PublicCertificate {
   /** Documento de identidad ENMASCARADO por el RPC (p. ej. "••••7890"). La
    *  página es pública: el número completo nunca sale de la base de datos. */
   national_id?: string | null
+}
+
+/**
+ * Un módulo del pénsum público de un certificado — lo que se le muestra a quien
+ * escanea el QR del diploma. Son los módulos congelados al emitir (o los
+ * publicados hoy, como respaldo). Solo temario: ni progreso ni puntajes ni el
+ * contenido de las lecciones.
+ *
+ * Los arrays `_en`/`_pt` llegan en `null` cuando no hay traducción: el front cae
+ * al español, igual que en el resto del sitio.
+ */
+export interface PublicCertificateModule {
+  id: string
+  icon: string | null
+  duration_min: number
+  title_es: string
+  title_en: string | null
+  title_pt: string | null
+  subtitle_es: string | null
+  subtitle_en: string | null
+  subtitle_pt: string | null
+  /** Objetivos de aprendizaje del módulo → "qué aprendió". */
+  objectives_es: string[]
+  objectives_en: string[] | null
+  objectives_pt: string[] | null
+  /** Conclusiones clave del módulo → "qué sabe ahora". */
+  takeaways_es: string[]
+  takeaways_en: string[] | null
+  takeaways_pt: string[] | null
+  /** Títulos de las secciones del módulo → los temas cubiertos, en su orden. */
+  topics_es: string[]
+  topics_en: string[] | null
+  topics_pt: string[] | null
+}
+
+/**
+ * Pénsum completo de un certificado público (RPC `get_public_certificate_syllabus`):
+ * el programa y sus módulos. Es lo que convierte la página del QR en algo útil
+ * para quien evalúa a la persona — "hizo 3 módulos" no dice qué sabe.
+ */
+export interface PublicCertificateSyllabus {
+  course: {
+    description_es: string | null
+    description_en: string | null
+    description_pt: string | null
+    level: 'basico' | 'medio' | 'avanzado' | null
+    category: string | null
+  } | null
+  modules: PublicCertificateModule[]
 }
 
 /** Constante por defecto de condiciones (coincide con el DEFAULT del SQL). */

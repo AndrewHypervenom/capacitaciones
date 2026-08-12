@@ -1071,7 +1071,7 @@ export async function analyzeDocument(opts: {
 }
 
 export interface AssistRequest {
-  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan'
+  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum'
   contentType: 'section' | 'meta'
   sourceLang: string
   targetLangs?: string[]
@@ -1086,6 +1086,21 @@ export interface AssistRequest {
     cutIndex?: number
     /** Qué corregir respecto al intento anterior ("más corto", "sin tecnicismos"). */
     instruction?: string
+    modules: Array<{
+      title_es: string
+      subtitle_es?: string | null
+      objectives_es?: string[]
+      key_takeaways_es?: string[]
+      sections: Array<{ heading_es: string; excerpt_es: string }>
+    }>
+  }
+  /**
+   * Pénsum del certificado: los módulos a los que hay que redactarles objetivos
+   * y conclusiones. Van TODOS en una sola llamada para que el modelo vea el
+   * curso completo y no repita la misma idea en dos módulos.
+   */
+  pensum?: {
+    courseTitle?: string
     modules: Array<{
       title_es: string
       subtitle_es?: string | null

@@ -252,7 +252,11 @@ export default function App() {
           <Route path="/certificate" element={<Certificate />} />
           <Route path="/quiz" element={<LiveQuizPlay />} />
         </Route>
-        {/* Verificación pública del certificado (LinkedIn) — sin login */}
+        {/* Verificación pública del certificado (LinkedIn) — sin login.
+            El id reservado `preview` abre ESTA MISMA página con el borrador que
+            el capacitador está editando: la vista previa no puede ser una
+            maqueta aparte o dejaría de coincidir con lo que ve quien abre el
+            enlace. Ningún cert_id emitido puede llamarse así. */}
         <Route path="/verify/:certId" element={<PublicCertificate />} />
         <Route path="/mission/:id" element={<MissionPlayer />} />
         <Route path="/arena" element={<ArenaHub />} />
