@@ -134,9 +134,11 @@ const PUSH_COALESCE_MS = 350
 // Se ataca por los dos lados:
 //   1. Emisión (`goAway`): dejo de anunciarme (untrack) en cuanto no hay señales
 //      de que estoy aquí. Los demás reciben `leave` y desaparezco al instante.
-//   2. Recepción (`sweepPeers`): descarto a quien lleva demasiado sin latir,
+//   2. Recepción (`syncPeers`): descarto a quien lleva demasiado sin dar señal,
 //      porque un equipo apagado de golpe no alcanza a despedirse y su presencia
-//      puede quedarse colgada en el canal.
+//      puede quedarse colgada en el canal. La señal de vida es el ping por
+//      broadcast (ver `pingNow`), que llega bastante más seguido que el `track`
+//      y permite retirar al que se apagó en ~30 s en vez de un minuto.
 
 /**
  * Sin una sola interacción durante este rato → ausente (equipo bloqueado, AFK).
@@ -156,21 +158,52 @@ const HIDDEN_AFTER_MS = 45_000
 const PRESENCE_TICK_MS = 10_000
 
 /** Cada cuánto re-emito mi presencia mientras estoy activo. */
-const HEARTBEAT_MS = 25_000
+const HEARTBEAT_MS = 20_000
 
 /**
  * Milisegundos sin latido a partir de los cuales un peer se considera dudoso:
  * se pinta atenuado y con el aviso de "sin señal reciente". Dos latidos
  * perdidos — puede ser solo una mala conexión.
  */
-export const STALE_AFTER_MS = 60_000
+export const STALE_AFTER_MS = 45_000
 
 /**
- * Milisegundos sin latido a partir de los cuales el peer se retira de la lista.
- * A esta altura no es una mala conexión: es un equipo apagado o suspendido que
- * dejó su presencia colgada en el canal sin llegar a emitir `leave`.
+ * Milisegundos sin señal de vida a partir de los cuales el peer se retira de la
+ * lista, cuando lo ÚNICO que se recibe de él son sus `track`. A esta altura no
+ * es una mala conexión: es un equipo apagado o suspendido que dejó su presencia
+ * colgada en el canal sin llegar a emitir `leave`.
+ *
+ * Tres latidos perdidos. Antes eran 100 s y se sentía eterno: quien cerraba el
+ * portátil seguía "activo" casi dos minutos, que es justo el rato en el que
+ * alguien mira la lista y decide escribirle a quien ya no está.
  */
-const GONE_AFTER_MS = 100_000
+const GONE_AFTER_MS = 60_000
+
+// ─── Ping: señal de vida barata ─────────────────────────────────────────
+// Para retirar antes a quien se apagó de golpe habría que latir más seguido,
+// pero el latido es un `track`: reescribe el estado de presencia y dispara un
+// `sync` en todos los que escuchan el canal. Subirle la frecuencia es
+// exactamente lo que una vez dejó el canal mudo con 'timed out'.
+//
+// Así que la señal de vida va aparte, por `broadcast`: un mensaje con el
+// user_id y nada más. No toca el estado de presencia, no provoca sync y no
+// re-renderiza nada — solo refresca un reloj interno. El `track` sigue siendo
+// quien transporta el ESTADO (dónde estoy, qué edito) a su ritmo de siempre.
+
+/** Cada cuánto emito la señal de vida. */
+const PING_MS = 8_000
+
+/**
+ * Milisegundos sin señal a partir de los cuales se retira a un peer del que SÍ
+ * recibimos pings. Tres pings perdidos.
+ *
+ * El umbral rápido solo se aplica a quien ha demostrado que emite pings. De
+ * quien nunca mandó uno —una pestaña con la versión anterior durante el
+ * despliegue, o un `broadcast` que no llega— seguimos fiándonos de sus `track`
+ * con el umbral conservador. Sin esa distinción, el día del despliegue todo el
+ * que tuviera el bundle viejo desaparecería de las listas estando presente.
+ */
+const GONE_PINGED_MS = 30_000
 
 /** Cuánto dura el señalamiento al seguir a alguien antes de apagarse solo. */
 const FOCUS_TTL_MS = 8_000
@@ -419,6 +452,8 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
   let focusTimer: ReturnType<typeof setTimeout> | null = null
   // Revisa mi propia ausencia y purga fantasmas ajenos. Ver los umbrales arriba.
   let tickTimer: ReturnType<typeof setInterval> | null = null
+  // Ver `pingNow`: señal de vida, aparte del latido de estado.
+  let pingTimer: ReturnType<typeof setInterval> | null = null
 
   // ¿Estoy ausente? Mientras lo esté no me anuncio en ningún canal: para los
   // demás, sencillamente no estoy.
@@ -427,6 +462,8 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
   let lastInput = Date.now()
   // Desde cuándo la pestaña está oculta, o null si está a la vista.
   let hiddenSince: number | null = null
+  // Ver `onVisibility`: despedida programada al pasar a segundo plano.
+  let hiddenTimer: ReturnType<typeof setTimeout> | null = null
   let unbindAwayListeners: (() => void) | null = null
 
   // Canales vivos. `emitChannels` (completo) y `redactedChannels` (solo
@@ -477,6 +514,20 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
     }
   }
 
+  /**
+   * ¿Debería estar ausente ahora mismo? Se calcula con el reloj, nunca con
+   * "cuántas veces corrió el temporizador".
+   *
+   * Es la diferencia entre que esto funcione o no en una pestaña de fondo: el
+   * navegador estrangula los `setInterval` de las pestañas ocultas a uno por
+   * minuto (y acaba congelándolas), así que el chequeo periódico puede no correr
+   * cuando toca. Preguntando esto en cada latido, el latido se autocensura: si
+   * llega a destiempo y ya no hay nadie al otro lado, no se anuncia.
+   */
+  const shouldBeAway = (now = Date.now()) =>
+    (hiddenSince !== null && now - hiddenSince > HIDDEN_AFTER_MS) ||
+    now - lastInput > IDLE_AFTER_MS
+
   const trackOn = async (channel: RealtimeChannel, payload: object) => {
     try {
       const status = await channel.track(payload)
@@ -493,6 +544,11 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
   const pushNow = async () => {
     const { me, activity } = get()
     if (!me || away) return
+    // Antes de anunciarme, comprobar que sigo aquí. No basta con que `tick` lo
+    // vigile: en una pestaña de fondo ambos temporizadores quedan estrangulados
+    // al mismo ritmo, y un latido que se cuele antes del chequeo mantiene viva
+    // una presencia que ya no corresponde a nadie.
+    if (shouldBeAway()) { goAway(); return }
     const full = fullPayload()
     const redacted = redactedPayload()
     if (!full || !redacted) return
@@ -515,6 +571,32 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
         await trackOn(channel, full)
         editingChannelName = next
       }
+    }
+  }
+
+  /**
+   * Señal de vida a los canales donde me anuncio. Va a los mismos canales que el
+   * `track` —incluido el de edición del superadmin— porque quien me ve por ahí
+   * es justamente quien necesita saber si sigo vivo. En los de solo escucha no:
+   * ahí no me anuncio, y un ping delataría mi presencia.
+   *
+   * Solo viaja el user_id. Ni ruta, ni recurso, ni campaña: no hay nada que
+   * redactar, así que sirve igual para el canal completo y para el redactado.
+   */
+  const pingNow = () => {
+    const { me } = get()
+    if (!me || away) return
+    // El ping es lo que más seguido corre, así que también es lo que antes se da
+    // cuenta de que ya no hay nadie al otro lado.
+    if (shouldBeAway()) { goAway(); return }
+    const targets = new Set<RealtimeChannel>([...emitChannels, ...redactedChannels])
+    const editing = editingChannelName ? channelsByName.get(editingChannelName) : null
+    if (editing) targets.add(editing)
+    for (const channel of targets) {
+      // Sin `ack`: es fuego y olvido. Un ping perdido lo cubre el siguiente, y
+      // si se pierden tres seguidos la conclusión de que no está es correcta.
+      void channel.send({ type: 'broadcast', event: 'ping', payload: { u: me.user_id } })
+        .catch(() => {})
     }
   }
 
@@ -581,10 +663,7 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
    * toque algo, no hay prueba de que haya vuelto.
    */
   const tick = () => {
-    const now = Date.now()
-    const hiddenTooLong = hiddenSince !== null && now - hiddenSince > HIDDEN_AFTER_MS
-    const idle = now - lastInput > IDLE_AFTER_MS
-    if (hiddenTooLong || idle) goAway()
+    if (shouldBeAway()) goAway()
     syncPeers()
   }
 
@@ -605,7 +684,14 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
         hiddenSince = Date.now()
+        // Temporizador propio en vez de esperar al chequeo periódico: al pasar a
+        // segundo plano el `setInterval` queda estrangulado y podría tardar
+        // minutos en darse cuenta. Este se arma en el instante en que la pestaña
+        // se oculta, así que como muy tarde dispara una vez.
+        if (hiddenTimer) clearTimeout(hiddenTimer)
+        hiddenTimer = setTimeout(goAway, HIDDEN_AFTER_MS + 1_000)
       } else {
+        if (hiddenTimer) { clearTimeout(hiddenTimer); hiddenTimer = null }
         hiddenSince = null
         markActive()
       }
@@ -622,6 +708,7 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
     hiddenSince = document.visibilityState === 'hidden' ? Date.now() : null
 
     unbindAwayListeners = () => {
+      if (hiddenTimer) { clearTimeout(hiddenTimer); hiddenTimer = null }
       for (const ev of events) window.removeEventListener(ev, markActive, { capture: true })
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('pagehide', onLeave)
@@ -643,6 +730,25 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
   // se vea eternamente fresca (o eternamente muerta). Aquí solo se usa su sello
   // como "¿cambió respecto a la última vez?"; la antigüedad la mide mi reloj.
   const lastBeat = new Map<string, { stamp: string; at: number }>()
+
+  // Último ping recibido de cada quien, y de quiénes sabemos que emiten pings.
+  // Se guardan aparte de `lastBeat` a propósito: si el ping moviera el
+  // `online_at` que se publica, el array de peers cambiaría cada 8 s y volvería
+  // a renderizar todas las vistas que lo leen. El ping decide si alguien sigue
+  // ahí; el `track` sigue siendo el que dice "última vez visto".
+  const lastPing = new Map<string, number>()
+  const pingCapable = new Set<string>()
+
+  const notePing = (userId: unknown) => {
+    if (typeof userId !== 'string' || !userId) return
+    if (userId === get().me?.user_id) return
+    pingCapable.add(userId)
+    lastPing.set(userId, Date.now())
+    // A propósito no se llama a `syncPeers`: con varias personas en el canal
+    // serían decenas de recálculos por minuto para no cambiar nada. Si el ping
+    // resucita a alguien que se había descartado, el barrido lo recoge en la
+    // siguiente pasada (10 s como mucho).
+  }
 
   // Junta la presencia de TODOS los canales (el superadmin escucha varios) y
   // deja fuera a quien no me toca ver. Al deduplicar por user_id, alguien que
@@ -684,14 +790,22 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
       const prev = lastBeat.get(peer.user_id)
       const at = prev && prev.stamp === stamp ? prev.at : now
       lastBeat.set(peer.user_id, { stamp, at })
-      if (now - at > GONE_AFTER_MS) continue
+      // Vale cualquiera de las dos señales: el ping llega más seguido, pero si
+      // por lo que sea no llega, el `track` sigue sirviendo de prueba de vida.
+      const seenAt = Math.max(at, lastPing.get(peer.user_id) ?? 0)
+      const limit = pingCapable.has(peer.user_id) ? GONE_PINGED_MS : GONE_AFTER_MS
+      if (now - seenAt > limit) continue
       // Se reescribe con mi reloj para que "hace X" y el atenuado de dudosos no
       // dependan de la hora del equipo ajeno.
       alive.push({ ...peer, online_at: new Date(at).toISOString() })
     }
     // Nadie a quien seguirle el rastro: los que ya no están en ningún canal.
     for (const id of [...lastBeat.keys()]) {
-      if (!seen.has(id)) lastBeat.delete(id)
+      if (!seen.has(id)) {
+        lastBeat.delete(id)
+        lastPing.delete(id)
+        pingCapable.delete(id)
+      }
     }
 
     // La redacción va al final, después de deduplicar: la regla de "gana el
@@ -725,10 +839,20 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
       reviveDelay = Math.min(reviveDelay * 2, 30_000)
       const { channels: c, me: m } = get()
       if (!c || !m) return
+      // Reconectar NO es prueba de que la persona haya vuelto: `connect` da por
+      // presente a quien entra, y sin esto cada caída de canal resucitaba a un
+      // ausente y le regalaba otros tres minutos de "activo". Un equipo bloqueado
+      // en Windows mantiene la pestaña `visible`, así que ese chequeo no lo
+      // atrapa: la única prueba válida es una interacción real (`markActive`).
+      const wasAway = away
+      const inputBefore = lastInput
       // Forzamos la reconexión saltándonos el atajo de "ya conectado".
       teardown()
       set({ channels: null })
       get().connect(c, m)
+      away = wasAway
+      lastInput = inputBefore
+      // El `pushNow` del SUBSCRIBED ya ve `away` restaurado y no se anuncia.
     }, reviveDelay)
   }
 
@@ -775,6 +899,10 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
           .on('presence', { event: 'sync' }, syncPeers)
           .on('presence', { event: 'join' }, syncPeers)
           .on('presence', { event: 'leave' }, syncPeers)
+          // Señal de vida ajena. Se escucha en TODOS los canales, incluidos los
+          // de solo escucha: al superadmin le llegan por ahí los pings de las
+          // campañas que vigila, que es donde ve a casi todo el mundo.
+          .on('broadcast', { event: 'ping' }, (msg) => notePing(msg?.payload?.u))
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
               reviveDelay = 2_000 // el canal está sano: se reinicia la espera
@@ -805,6 +933,9 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
       if (tickTimer) clearInterval(tickTimer)
       tickTimer = setInterval(tick, PRESENCE_TICK_MS)
 
+      if (pingTimer) clearInterval(pingTimer)
+      pingTimer = setInterval(pingNow, PING_MS)
+
       set({ channels, me, peers: [] })
     },
 
@@ -812,10 +943,13 @@ export const usePresenceStore = create<PresenceState>((set, get) => {
       if (heartbeat) { clearInterval(heartbeat); heartbeat = null }
       if (pushTimer) { clearTimeout(pushTimer); pushTimer = null }
       if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
+      if (pingTimer) { clearInterval(pingTimer); pingTimer = null }
       unbindAwayListeners?.()
       unbindAwayListeners = null
       away = false
       lastBeat.clear()
+      lastPing.clear()
+      pingCapable.clear()
       teardown()
       set({ channels: null, me: null, peers: [], activity: null })
     },
@@ -910,7 +1044,7 @@ const VIEW_PATTERNS: Array<[RegExp, string]> = [
 /**
  * Segundos desde la última señal de vida de un compañero.
  *
- * `online_at` llega ya reescrito con el reloj de ESTE equipo (ver `sweepPeers`),
+ * `online_at` llega ya reescrito con el reloj de ESTE equipo (ver `syncPeers`),
  * así que el cálculo no depende de que la otra persona tenga la hora bien.
  */
 export function secondsSinceSeen(peer: Peer, now = Date.now()): number {
