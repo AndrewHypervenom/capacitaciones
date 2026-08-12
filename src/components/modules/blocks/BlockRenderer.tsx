@@ -16,6 +16,7 @@ import { StatBlockRenderer } from './StatBlock';
 import { HotspotImageBlockRenderer } from './HotspotImageBlock';
 import { PdfBlockRenderer } from './PdfBlock';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
+import { SimpleVideo } from '@/components/modules/SimpleVideo';
 import { inlineVideoSection } from '@/lib/videoPlaylist';
 import { extractYouTubeId } from '@/lib/youtube';
 import { extractVimeoId, vimeoEmbedUrl } from '@/lib/vimeo';
@@ -171,12 +172,9 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
         );
       }
       return (
-        <video
+        <SimpleVideo
           src={block.url}
-          controls
-          preload="metadata"
-          playsInline
-          className="w-full rounded-2xl border border-line block bg-black"
+          title={block.caption?.[language] || block.caption?.es || undefined}
         />
       );
     }

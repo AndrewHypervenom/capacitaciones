@@ -31,6 +31,7 @@ import { NumberField } from '@/components/ui/NumberField'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useUndoHistory, type RegisterUndo } from '@/hooks/useUndoHistory'
 import { toast } from '@/stores/toastStore'
 import {
   checkExamHealth,
@@ -124,6 +125,7 @@ export function ExamBuilder({
   modules,
   onDirtyChange,
   registerSave,
+  registerUndo,
 }: {
   courseId: string
   campaignId: string | null
@@ -133,6 +135,8 @@ export function ExamBuilder({
   onDirtyChange?: (dirty: boolean) => void
   /** Entrega al editor del curso la función de guardado de esta pestaña. */
   registerSave?: (fn: (() => Promise<boolean>) | null) => void
+  /** …y su deshacer, para que el botón de la barra no quede muerto aquí. */
+  registerUndo?: RegisterUndo
 }) {
   const { t } = useTranslation()
   const reduce = useReducedMotion()
@@ -231,6 +235,18 @@ export function ExamBuilder({
     registerSave?.(saveSettings)
     return () => registerSave?.(null)
   }, [registerSave, saveSettings])
+
+  // Deshacer de los ajustes del examen (nivel, puntaje, intentos…). Sin esto,
+  // la barra mostraba "Examen · sin guardar" con un botón Deshacer apagado.
+  const { undo: undoSettings, canUndo: canUndoSettings } = useUndoHistory({
+    state: form,
+    apply: setForm,
+    enabled: !loading && !!form,
+  })
+  useEffect(() => {
+    registerUndo?.(undoSettings, canUndoSettings)
+    return () => registerUndo?.(null, false)
+  }, [registerUndo, undoSettings, canUndoSettings])
 
   /* ── Salud del examen: todo lo que falta, de una vez ── */
   const health = useMemo(

@@ -108,6 +108,18 @@ export function Tooltip({
   // cambian con la escala de la animación de entrada.
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
 
+  // Con algo en pantalla completa, el navegador SOLO pinta ese subárbol: un
+  // portal a <body> existe en el DOM pero es invisible. Por eso el destino del
+  // portal sigue al elemento en pantalla completa (el reproductor de video) y
+  // vuelve a <body> al salir.
+  const [fsHost, setFsHost] = useState<Element | null>(null)
+  useEffect(() => {
+    const sync = () => setFsHost(document.fullscreenElement)
+    sync()
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+
   const place = useCallback((x: number, y: number) => {
     // Arriba salvo que no quepa: cerca del techo de la ventana el globo se
     // saldría de la pantalla, y ahí es mejor taparle un poco menos y bajarlo.
@@ -308,7 +320,7 @@ export function Tooltip({
             </motion.span>
           )}
         </AnimatePresence>,
-        document.body,
+        fsHost ?? document.body,
       )}
     </span>
   )

@@ -604,11 +604,11 @@ function SectionEditorPanel({
     },
   })
 
+  const { undo: undoPanel, canUndo: canUndoPanel } = undoHistory
   useEffect(() => {
-    onRegisterUndo(() => undoHistory.undo(), undoHistory.canUndo)
+    onRegisterUndo(undoPanel, canUndoPanel)
     return () => onRegisterUndo(null, false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undoHistory.canUndo])
+  }, [onRegisterUndo, undoPanel, canUndoPanel])
 
   const handleSave = async () => {
     setSaving(true)
@@ -1255,11 +1255,11 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo
     },
   })
 
+  const { undo: undoPanel, canUndo: canUndoPanel } = undoHistory
   useEffect(() => {
-    onRegisterUndo(() => undoHistory.undo(), undoHistory.canUndo)
+    onRegisterUndo(undoPanel, canUndoPanel)
     return () => onRegisterUndo(null, false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undoHistory.canUndo])
+  }, [onRegisterUndo, undoPanel, canUndoPanel])
 
   const handleSave = async () => {
     setSaving(true)

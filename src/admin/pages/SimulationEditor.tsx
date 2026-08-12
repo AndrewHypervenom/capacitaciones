@@ -294,6 +294,7 @@ export default function SimulationEditor() {
   })
 
   /** Vuelca una fila de la base en el editor y la fija como versión de referencia. */
+  const adoptUndo = undoHistory.adopt
   const applyRow = useCallback(
     (row: ScenarioRow) => {
       const { meta: m, nodes: n, checklist: c } = rowToState(row)
@@ -302,8 +303,12 @@ export default function SimulationEditor() {
       setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
       staleGuard.mark(row)
       unsaved.markSaved()
+      // Traer la versión de la base no es una edición: es el nuevo punto de
+      // partida. Sin esto, un Ctrl+Z justo después de recargar devolvía el
+      // guion viejo y parecía que el deshacer no servía.
+      adoptUndo()
     },
-    [staleGuard, unsaved],
+    [staleGuard, unsaved, adoptUndo],
   )
 
   useEffect(() => {

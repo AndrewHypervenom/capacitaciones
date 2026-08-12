@@ -225,6 +225,7 @@ export default function ChoiceSimEditor() {
   })
 
   /** Vuelca una fila de la base en el editor y la fija como versión de referencia. */
+  const adoptUndo = undoHistory.adopt
   const applyRow = useCallback(
     (row: ChoiceScenarioRow) => {
       const { meta: m, nodes: n } = rowToState(row)
@@ -233,8 +234,11 @@ export default function ChoiceSimEditor() {
       setSelectedNodeId(m.start_node_id || Object.keys(n)[0] || 'start')
       staleGuard.mark(row)
       unsaved.markSaved()
+      // Traer la versión de la base no es una edición: es el nuevo punto de
+      // partida, no un paso al que volver con Ctrl+Z.
+      adoptUndo()
     },
-    [staleGuard, unsaved],
+    [staleGuard, unsaved, adoptUndo],
   )
 
   useEffect(() => {

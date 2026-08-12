@@ -1065,7 +1065,24 @@
     "retry_hint": "You need {{pct}}% to pass, and you can retake it as many times as you want.",
     "result_passed_hint": "Check passed. It will not pop up again, but you can retake it any time from the content list.",
     "result_failed_hint": "You still need {{pct}}%. Retake it now or later from the content list; the score kept is the last attempt.",
-    "retry_check": "Retake"
+    "retry_check": "Retake",
+    "conn": {
+      "aria": "Connection quality",
+      "good_title": "Connection is stable",
+      "good_hint": "The video is downloading smoothly. If something looks off, it is not your internet.",
+      "fair_title": "Connection is tight",
+      "fair_hint": "The video is barely keeping up. It may pause for a moment to catch up.",
+      "poor_title": "Slow connection",
+      "poor_hint": "Your connection cannot download the video fast enough. Try moving closer to the router or lowering the video quality.",
+      "offline_title": "No connection",
+      "offline_hint": "Your device lost its internet connection. The video will continue when it comes back.",
+      "warning": "Your connection is slow: the video may pause to load.",
+      "buffer": "Buffered ahead: {{s}} s",
+      "stalls": "Buffering pauses (last minute): {{n}}",
+      "speed": "Estimated speed: {{mbps}} Mbps",
+      "network": "Network: {{type}}",
+      "embed_note": "This video is played by YouTube/Vimeo: we can only measure your network."
+    }
   },
   "admin": {
     "surgery": {

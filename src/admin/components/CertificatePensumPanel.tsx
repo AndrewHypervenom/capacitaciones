@@ -16,6 +16,7 @@ import {
 } from '@/services/pensum.service'
 import { writeCertSharePreview } from '@/lib/certSharePreview'
 import { useUserStore } from '@/stores/userStore'
+import { useUndoHistory, type RegisterUndo } from '@/hooks/useUndoHistory'
 
 /** Una línea = un ítem. Es la forma más rápida de escribir listas a mano. */
 function parseLines(s: string): string[] {
@@ -85,12 +86,15 @@ export function CertificatePensumPanel({
   courseDescription,
   onDirtyChange,
   registerSave,
+  registerUndo,
 }: {
   courseId: string
   courseTitle: string
   courseDescription: string | null
   onDirtyChange: (dirty: boolean) => void
   registerSave: (fn: (() => Promise<boolean>) | null) => void
+  /** Publica el deshacer del pénsum en la barra de guardado del editor. */
+  registerUndo?: RegisterUndo
 }) {
   const { t } = useTranslation()
   const confirm = useConfirm()
@@ -145,6 +149,16 @@ export function CertificatePensumPanel({
     registerSave(handleSave)
     return () => registerSave(null)
   }, [registerSave, handleSave])
+
+  // Deshacer del pénsum. Lo generado con IA reescribe objetivos y aprendizajes
+  // de golpe: sin vuelta atrás, recuperar lo que había escrito a mano era
+  // teclearlo otra vez.
+  const undoHistory = useUndoHistory({ state: rows, apply: setRows, enabled: !loading })
+  const { undo, canUndo } = undoHistory
+  useEffect(() => {
+    registerUndo?.(undo, canUndo)
+    return () => registerUndo?.(null, false)
+  }, [registerUndo, undo, canUndo])
 
   const stats = useMemo(() => {
     const withObj = rows.filter((r) => parseLines(r.objText).length > 0).length

@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { VideoQuizOverlay, type QuizAnswerDetail } from './VideoQuizOverlay'
+import { ConnectionBadge } from './ConnectionBadge'
+import { useConnectionQuality } from '@/hooks/useConnectionQuality'
 import { YouTubePlayer } from './YouTubePlayer'
 import { VimeoPlayer } from './VimeoPlayer'
 import type { PlayerLike } from '@/lib/youtube'
@@ -118,6 +120,65 @@ function getProgressKey(sectionId?: string) {
   return `video_progress_${sectionId ?? 'default'}`
 }
 
+/** Una posición de scroll guardada para devolverla tal cual. */
+type ScrollMark = { el: Element | null; top: number; left: number }
+
+/**
+ * Foto del scroll de la ventana y de todos los contenedores desplazables por
+ * encima del reproductor. Hay que recorrer los ancestros porque según la vista
+ * el que scrollea es la ventana (página de módulo) o un `div` con overflow
+ * (modo cine, vista previa en modal, panel del capacitador).
+ */
+function captureScroll(from: Element | null): ScrollMark[] {
+  const marks: ScrollMark[] = [{ el: null, top: window.scrollY, left: window.scrollX }]
+  let node = from?.parentElement ?? null
+  while (node) {
+    const { overflowY, overflowX } = getComputedStyle(node)
+    const scrolls =
+      (/(auto|scroll|overlay)/.test(overflowY) && node.scrollHeight > node.clientHeight) ||
+      (/(auto|scroll|overlay)/.test(overflowX) && node.scrollWidth > node.clientWidth)
+    if (scrolls) marks.push({ el: node, top: node.scrollTop, left: node.scrollLeft })
+    node = node.parentElement
+  }
+  return marks
+}
+
+/** Devuelve el scroll SIN animar: `html` tiene `scroll-behavior: smooth` y
+ *  restaurar con desplazamiento suave se ve como un salto raro. */
+function restoreScroll(marks: ScrollMark[]) {
+  for (const m of marks) {
+    const target: Element | Window = m.el ?? window
+    target.scrollTo({ top: m.top, left: m.left, behavior: 'instant' as ScrollBehavior })
+  }
+}
+
+/** Posición actual de un marcador, para saber si la restauración ya "prendió". */
+function currentTop(m: ScrollMark) {
+  return m.el ? m.el.scrollTop : window.scrollY
+}
+
+/**
+ * Restaura y REPITE cuadro a cuadro hasta que la posición se sostenga, con un
+ * tope de tiempo. Salir de pantalla completa no devuelve la altura de golpe:
+ * el navegador recompone y React repinta el contenedor con su tamaño normal en
+ * momentos distintos, y hasta que la página no vuelve a ser alta, el scroll que
+ * pedimos se recorta solo. Devuelve una función para cancelar al desmontar.
+ */
+function settleScroll(marks: ScrollMark[], maxMs = 700): () => void {
+  const start = performance.now()
+  let raf = 0
+  const tick = () => {
+    restoreScroll(marks)
+    // Se acepta 1px de holgura: los navegadores redondean el scroll con zoom
+    // o pantallas HiDPI y si no, esto no pararía nunca.
+    const done = marks.every((m) => Math.abs(currentTop(m) - m.top) <= 1)
+    if (!done && performance.now() - start < maxMs) raf = requestAnimationFrame(tick)
+    else raf = 0
+  }
+  tick()
+  return () => { if (raf) cancelAnimationFrame(raf) }
+}
+
 interface QuizResult {
   score: number
   total: number
@@ -187,6 +248,32 @@ export function InteractiveVideoModule({
   const lang = language as 'es' | 'en' | 'pt'
 
   const videoAreaRef = useRef<HTMLDivElement>(null)
+
+  /** Scroll de la página guardado al entrar en pantalla completa (ver más abajo). */
+  const scrollSnapshot = useRef<ScrollMark[] | null>(null)
+  /** Cancela la restauración en curso si el módulo se desmonta a media faena. */
+  const cancelSettle = useRef<(() => void) | null>(null)
+  useEffect(() => () => cancelSettle.current?.(), [])
+
+  // ── Calidad de conexión ──
+  // El `<video>` nativo va en estado (no en el ref) porque el hook necesita
+  // enterarse de que ya existe para engancharle los oyentes de buffering.
+  // Con YouTube/Vimeo queda en null: el video vive en un iframe ajeno y solo
+  // podemos diagnosticar la red.
+  const [nativeVideoEl, setNativeVideoEl] = useState<HTMLVideoElement | null>(null)
+  const connection = useConnectionQuality(nativeVideoEl, playing)
+
+  /**
+   * El `ref` del <video> TIENE que ser estable (`useCallback` sin dependencias).
+   * Con una flecha en línea, React vuelve a llamar al ref en cada pintado —una
+   * vez con null para soltar el anterior y otra con el elemento—, así que cada
+   * pintado hacía dos `setState` y provocaba otro pintado: bucle infinito y la
+   * vista del aprendiz sin cargar.
+   */
+  const attachVideo = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el
+    setNativeVideoEl(el)
+  }, [])
 
   // ── Encadenado al terminar ──
   // Solo cuenta el final REAL del video. Se guarda en un ref porque YouTube emite
@@ -426,9 +513,36 @@ export function InteractiveVideoModule({
   // un reproductor, los demás de la página se enteran.
   useEffect(() => subscribeAutoplayNext(setAutoNext), [])
 
-  // Listener de cambio de pantalla completa
+  // Listener de cambio de pantalla completa.
+  //
+  // Además de anotar el estado, guarda y devuelve el scroll de la página. Al
+  // entrar en pantalla completa el reproductor pasa a la capa superior y su
+  // hueco se colapsa: el módulo se acorta de golpe y el navegador recorta el
+  // scroll al nuevo máximo. Al salir, la altura vuelve pero el scroll ya se
+  // perdió, y el aprendiz aparecía arriba del módulo como si acabara de entrar
+  // —perdiendo el punto donde iba leyendo.
   useEffect(() => {
-    const handler = () => setFullscreen(!!document.fullscreenElement)
+    const handler = () => {
+      const isFs = !!document.fullscreenElement
+      setFullscreen(isFs)
+
+      // Al entrar no hay nada que hacer: la foto ya se tomó en `handleFullscreen`,
+      // antes de que el layout se moviera.
+      if (isFs) return
+
+      // Solo restaura quien había guardado foto. En un módulo con varios videos
+      // el evento llega a todos los reproductores, y solo uno estuvo en pantalla
+      // completa.
+      const snap = scrollSnapshot.current
+      if (!snap) return
+      scrollSnapshot.current = null
+      // Insistir cuadro a cuadro hasta que cuadre. El navegador rehace el layout
+      // DESPUÉS de emitir el evento, y React todavía tiene que devolverle al
+      // contenedor su altura normal: una sola restauración se aplicaría sobre la
+      // altura colapsada y el navegador la volvería a recortar.
+      cancelSettle.current?.()
+      cancelSettle.current = settleScroll(snap)
+    }
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
@@ -632,6 +746,11 @@ export function InteractiveVideoModule({
   const handleFullscreen = () => {
     if (!containerRef.current) return
     if (!document.fullscreenElement) {
+      // La foto del scroll se toma AQUÍ, antes de pedir pantalla completa.
+      // Dentro de `fullscreenchange` ya es tarde: para cuando ese evento llega,
+      // el reproductor ya pasó a la capa superior, el módulo se acortó y el
+      // navegador ya recortó el scroll — se guardaría el valor ya arruinado.
+      scrollSnapshot.current = captureScroll(containerRef.current)
       containerRef.current.requestFullscreen()
     } else {
       document.exitFullscreen()
@@ -1015,7 +1134,7 @@ export function InteractiveVideoModule({
           />
         ) : (
           <video
-            ref={(el) => { videoRef.current = el }}
+            ref={attachVideo}
             src={videoUrl ?? undefined}
             className="absolute inset-0 w-full h-full object-contain cursor-pointer"
             preload="metadata"
@@ -1080,6 +1199,26 @@ export function InteractiveVideoModule({
               >
                 {t('video.from_beginning')}
               </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Aviso de conexión. Solo sale cuando la cosa está mal de verdad: el
+            objetivo es que nadie se quede mirando una ruedita sin saber qué pasa.
+            Con el quiz abierto no se pinta para no competir con la pregunta. */}
+        <AnimatePresence>
+          {(connection.level === 'poor' || connection.level === 'offline') && !showOverlay && (
+            <motion.div
+              key="conn-warning"
+              className="absolute top-4 right-4 z-30 flex items-center gap-2 rounded-xl border border-amber-400/25 bg-zinc-900/90 px-3 py-2 backdrop-blur-sm pointer-events-none max-w-[min(85%,20rem)]"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <span className="text-[11.5px] leading-snug text-amber-200/90">
+                {connection.level === 'offline' ? t('video.conn.offline_hint') : t('video.conn.warning')}
+              </span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1457,6 +1596,15 @@ export function InteractiveVideoModule({
                   <span className="hidden sm:inline">{t('video.chapters')}</span>
                 </button>
               )}
+
+              {/* Semáforo de conexión. Cuando el video se traba, la respuesta a
+                  "¿es mi internet?" tiene que estar a la vista y no obligar a
+                  salir a probar otra página. */}
+              <ConnectionBadge
+                quality={connection}
+                size={fullscreen ? 'md' : 'sm'}
+                className={cn(ctrlBtn, 'shrink-0')}
+              />
 
               {/* Encadenar al terminar. Es una preferencia del aprendiz y se
                   recuerda en su navegador para todos los videos del sitio. */}

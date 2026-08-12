@@ -17,6 +17,27 @@ import { fingerprint } from '@/lib/fingerprint'
  * Dentro de un campo de texto NO se intercepta el atajo: ahí el Ctrl+Z del
  * navegador deshace letra por letra, que es lo que se espera al escribir.
  *
+ * ── Lo que hacía que "Deshacer" fuera un botón que no deshacía nada ─────────
+ *
+ * 1. UNA FOTO NO ES UN PASO SI NADIE TOCÓ NADA. Un editor carga por partes: el
+ *    curso pinta enseguida y las condiciones, el simulador o las asignaciones
+ *    llegan después. Cada llegada cambiaba el estado y se guardaba como si
+ *    fuera una edición. El primer Ctrl+Z gastaba ese paso fantasma: en pantalla
+ *    no se movía nada (lo tuyo seguía escrito) y encima aparecía un cambio
+ *    NUEVO sin guardar, porque acababa de devolver a sus valores por defecto
+ *    algo que la base sí tenía. Ahora solo cuenta como paso lo que ocurre
+ *    cerca de una acción humana de verdad (clic, tecla, pegar, soltar); lo
+ *    demás se adopta en silencio como nuevo punto de partida.
+ *
+ * 2. DESHACER NUNCA CREA UN PASO. Si al volver atrás algún control devuelve un
+ *    valor ligeramente distinto, eso no es una edición del usuario: se adopta,
+ *    no se apila.
+ *
+ * 3. EL CAMBIO RECIÉN HECHO YA SE PUEDE DESHACER. Las fotos se toman cuando la
+ *    edición "se asienta" (para no guardar una por letra), pero si pulsas
+ *    Deshacer antes de que asiente, ese cambio se cierra en el acto en vez de
+ *    quedarse fuera del historial.
+ *
  * ```ts
  * const undo = useUndoHistory({
  *   state: { form, cond },
@@ -32,12 +53,41 @@ export interface UndoHistory {
   redo: () => void
   /** Olvida el historial (al cargar otro registro). */
   reset: () => void
+  /**
+   * Toma el estado de ahora como punto de partida SIN registrar un paso. Para
+   * cuando el editor sabe que lo que cambió no lo cambió una persona (datos que
+   * acaban de llegar del servidor, un guardado que redefine la línea base).
+   */
+  adopt: () => void
 }
+
+/**
+ * Un panel hijo (el examen, el pénsum, una sección) publica su deshacer al
+ * editor que pinta la barra de guardado. Sin esto la barra ofrece un botón
+ * "Deshacer" muerto cuando lo que está sin guardar vive dentro del panel.
+ */
+export type RegisterUndo = (fn: (() => void) | null, canUndo: boolean) => void
+export type PanelUndo = { undo: () => void; canUndo: boolean } | null
 
 /** Cuánto se espera a que la edición "se asiente" antes de tomar la foto. */
 const SETTLE_MS = 450
+/**
+ * Tope de espera. Si algo repinta la pantalla sin parar (presencia, un
+ * cronómetro), el retardo se reiniciaría siempre y no se guardaría ni una foto:
+ * pasado este tiempo se guarda igual.
+ */
+const MAX_WAIT_MS = 2200
+/**
+ * Cuánto vale una acción humana. La foto se toma 450 ms después del cambio, así
+ * que la ventana tiene que ser holgada; lo que llega del servidor mucho después
+ * de tu último clic no es una edición tuya.
+ */
+const USER_WINDOW_MS = 2500
 /** Fotos guardadas como máximo (el contenido de un módulo pesa). */
 const DEFAULT_LIMIT = 40
+
+/** Eventos que delatan a una persona haciendo algo (no a una carga de datos). */
+const USER_EVENTS = ['pointerdown', 'keydown', 'input', 'change', 'paste', 'drop'] as const
 
 export function useUndoHistory<T>(opts: {
   /** Estado editable completo. Puede ser un literal nuevo en cada render. */
@@ -67,6 +117,91 @@ export function useUndoHistory<T>(opts: {
   const syncCounts = useCallback(() => {
     setCounts({ past: pastRef.current.length, future: futureRef.current.length })
   }, [])
+  /**
+   * Hay una edición hecha que todavía no ha "asentado". Cuenta como deshacible
+   * desde el primer instante: si no, el botón salía apagado justo después de
+   * tocar algo —que es cuando uno se arrepiente— y parecía que no servía.
+   */
+  const [pendingEdit, setPendingEdit] = useState(false)
+  /** Espejo en ref: el atajo de teclado no puede leer estado del render. */
+  const pendingEditRef = useRef(false)
+  useEffect(() => {
+    pendingEditRef.current = pendingEdit
+  }, [pendingEdit])
+
+  /** Cuándo tocó algo una persona por última vez. */
+  const lastInputRef = useRef(0)
+  /** Se acaba de volver a una foto: lo que cambie por rebote no es un paso. */
+  const justAppliedRef = useRef(false)
+  /**
+   * El editor avisó de que lo que viene no lo escribió una persona (recargar de
+   * la base, datos que acaban de llegar). Se mantiene hasta que ese cambio se
+   * cierre o hasta que alguien toque algo de verdad.
+   */
+  const adoptNextRef = useRef(false)
+  /** Foto pendiente de cerrarse (el retardo de asentamiento). */
+  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Desde cuándo hay un cambio esperando a asentarse. */
+  const pendingSinceRef = useRef(0)
+
+  useEffect(() => {
+    const mark = () => {
+      lastInputRef.current = Date.now()
+      justAppliedRef.current = false
+      adoptNextRef.current = false
+    }
+    // En captura: así se marca ANTES de que corra el manejador del propio
+    // editor (o el atajo de aquí abajo) y el orden nunca depende del burbujeo.
+    for (const ev of USER_EVENTS) document.addEventListener(ev, mark, true)
+    return () => {
+      for (const ev of USER_EVENTS) document.removeEventListener(ev, mark, true)
+    }
+  }, [])
+
+  /**
+   * Cierra el cambio que hay ahora mismo. `record` decide si es un paso del
+   * historial o solo un nuevo punto de partida.
+   */
+  const commit = useCallback((record: boolean) => {
+    const settled = stateRef.current
+    const previous = currentRef.current
+    const fp = fingerprint(settled)
+    if (!previous) {
+      currentRef.current = { value: settled, fp }
+      return
+    }
+    setPendingEdit(false)
+    if (fp === previous.fp) return
+    if (record) {
+      pastRef.current = [...pastRef.current, previous.value].slice(-limit)
+      // Editar después de deshacer corta la rama: lo rehecho ya no aplica.
+      futureRef.current = []
+    }
+    currentRef.current = { value: settled, fp }
+    syncCounts()
+  }, [limit, syncCounts])
+
+  /** ¿El cambio pendiente lo hizo una persona? */
+  const isUserEdit = () =>
+    !justAppliedRef.current &&
+    !adoptNextRef.current &&
+    Date.now() - lastInputRef.current <= USER_WINDOW_MS
+
+  const clearPending = useCallback(() => {
+    if (pendingRef.current) clearTimeout(pendingRef.current)
+    pendingRef.current = null
+    pendingSinceRef.current = 0
+  }, [])
+
+  /** Cierra ya lo que estuviera esperando a asentarse. */
+  const flush = useCallback(() => {
+    if (!pendingRef.current) return
+    clearPending()
+    const record = isUserEdit()
+    justAppliedRef.current = false
+    adoptNextRef.current = false
+    commit(record)
+  }, [clearPending, commit])
 
   useEffect(() => {
     if (!enabled) return
@@ -77,20 +212,47 @@ export function useUndoHistory<T>(opts: {
       currentRef.current = { value: state, fp }
       return
     }
-    if (fp === currentRef.current.fp) return
+    if (fp === currentRef.current.fp) {
+      pendingSinceRef.current = 0
+      setPendingEdit(false)
+      return
+    }
+
+    if (isUserEdit()) setPendingEdit(true)
+
+    const now = Date.now()
+    if (pendingSinceRef.current === 0) pendingSinceRef.current = now
+
+    const close = () => {
+      const record = isUserEdit()
+      justAppliedRef.current = false
+      adoptNextRef.current = false
+      clearPending()
+      commit(record)
+    }
 
     // Con retardo: escribir un título son veinte cambios y veinte fotos harían
-    // del Ctrl+Z un borrador de letras. Se guarda cuando la edición se detiene.
-    const timer = setTimeout(() => {
-      const settled = stateRef.current
-      pastRef.current = [...pastRef.current, currentRef.current!.value].slice(-limit)
-      currentRef.current = { value: settled, fp: fingerprint(settled) }
-      // Editar después de deshacer corta la rama: lo rehecho ya no aplica.
-      futureRef.current = []
-      syncCounts()
-    }, SETTLE_MS)
-    return () => clearTimeout(timer)
-  }, [state, enabled, limit, syncCounts])
+    // del Ctrl+Z un borrador de letras. Se guarda cuando la edición se detiene…
+    // …salvo que lleve demasiado esperando: hay pantallas que repintan solas y
+    // el retardo se reiniciaría para siempre.
+    if (now - pendingSinceRef.current >= MAX_WAIT_MS) {
+      close()
+      return
+    }
+
+    if (pendingRef.current) clearTimeout(pendingRef.current)
+    const timer = setTimeout(close, SETTLE_MS)
+    pendingRef.current = timer
+    return () => {
+      // Solo se cancela el temporizador: `pendingSinceRef` se mantiene para que
+      // el tope de espera cuente desde el primer cambio, no desde el último
+      // repintado.
+      if (pendingRef.current === timer) {
+        clearTimeout(timer)
+        pendingRef.current = null
+      }
+    }
+  }, [state, enabled, commit, clearPending])
 
   /**
    * Salta a una foto. `currentRef` se fija en el acto (no en el efecto): así
@@ -103,30 +265,54 @@ export function useUndoHistory<T>(opts: {
     if (from === 'past') futureRef.current = [previous.value, ...futureRef.current]
     else pastRef.current = [...pastRef.current, previous.value]
     currentRef.current = { value: target, fp: fingerprint(target) }
+    // Si al repintar algún control devuelve un valor distinto, eso es un rebote
+    // del salto, no una edición: se adoptará sin apilar un paso.
+    justAppliedRef.current = true
     applyRef.current(target)
     syncCounts()
   }, [syncCounts])
 
   const undo = useCallback(() => {
+    // Lo que acabas de tocar todavía puede estar esperando a asentarse: sin
+    // esto, pulsar Deshacer enseguida no hacía nada (y el cambio se apilaba
+    // medio segundo después, ya sin poder deshacerlo de un golpe).
+    flush()
     const previous = pastRef.current[pastRef.current.length - 1]
     if (previous === undefined) return
     pastRef.current = pastRef.current.slice(0, -1)
     jump(previous, 'past')
-  }, [jump])
+  }, [flush, jump])
 
   const redo = useCallback(() => {
+    flush()
     const next = futureRef.current[0]
     if (next === undefined) return
     futureRef.current = futureRef.current.slice(1)
     jump(next, 'future')
-  }, [jump])
+  }, [flush, jump])
 
   const reset = useCallback(() => {
+    clearPending()
     pastRef.current = []
     futureRef.current = []
     currentRef.current = null
+    justAppliedRef.current = false
+    adoptNextRef.current = false
+    setPendingEdit(false)
     syncCounts()
-  }, [syncCounts])
+  }, [clearPending, syncCounts])
+
+  const adopt = useCallback(() => {
+    clearPending()
+    const settled = stateRef.current
+    currentRef.current = { value: settled, fp: fingerprint(settled) }
+    justAppliedRef.current = false
+    // El estado nuevo puede no haberse pintado todavía (adoptar suele llamarse
+    // en el mismo suspiro en que se vuelca lo que llegó del servidor): la marca
+    // hace que también ese cambio se adopte en vez de apilarse.
+    adoptNextRef.current = true
+    setPendingEdit(false)
+  }, [clearPending])
 
   // Atajos. El oyente se instala una sola vez y lee por ref: reinstalarlo en
   // cada cambio de estado haría perder pulsaciones a mitad de render.
@@ -140,25 +326,38 @@ export function useUndoHistory<T>(opts: {
   useEffect(() => {
     if (!enabled) return
     const onKey = (e: KeyboardEvent) => {
+      // Otro editor más adentro ya atendió el atajo (un panel dentro de una
+      // pestaña, por ejemplo). Sin esto, Ctrl+Z deshacía DOS pasos de golpe.
+      if (e.defaultPrevented) return
       if (!(e.ctrlKey || e.metaKey)) return
       const key = e.key.toLowerCase()
       if (key !== 'z' && key !== 'y') return
       // En un campo de texto manda el deshacer del navegador.
       if (isTextEntry(e.target)) return
+      // Si aquí no hay nada que deshacer, no se reclama el atajo: que lo
+      // atienda el editor de más afuera.
+      const wantsRedo = key === 'y' || e.shiftKey
+      const has = wantsRedo
+        ? futureRef.current.length > 0
+        : pastRef.current.length > 0 || pendingEditRef.current
+      if (!has) return
       e.preventDefault()
-      if (key === 'y' || e.shiftKey) redoRef.current()
+      if (wantsRedo) redoRef.current()
       else undoRef.current()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [enabled])
 
+  useEffect(() => () => clearPending(), [clearPending])
+
   return {
-    canUndo: counts.past > 0,
+    canUndo: counts.past > 0 || pendingEdit,
     canRedo: counts.future > 0,
     undo,
     redo,
     reset,
+    adopt,
   }
 }
 

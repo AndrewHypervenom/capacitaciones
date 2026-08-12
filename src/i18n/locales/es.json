@@ -1065,7 +1065,24 @@
     "retry_hint": "Necesitas {{pct}}% para aprobarla y puedes repetirla cuantas veces quieras.",
     "result_passed_hint": "Verificación aprobada. No te volverá a salir sola, pero puedes repetirla cuando quieras desde la lista de contenido.",
     "result_failed_hint": "Te falta llegar al {{pct}}%. Puedes repetirla ahora o más tarde desde la lista de contenido; queda la nota del último intento.",
-    "retry_check": "Repetir"
+    "retry_check": "Repetir",
+    "conn": {
+      "aria": "Calidad de la conexión",
+      "good_title": "Conexión estable",
+      "good_hint": "El video se está descargando sin problemas. Si algo se ve raro, no es tu internet.",
+      "fair_title": "Conexión justa",
+      "fair_hint": "El video va cargando apenas al día. Puede pausarse un momento para alcanzar.",
+      "poor_title": "Conexión lenta",
+      "poor_hint": "Tu conexión no alcanza a bajar el video a tiempo. Prueba acercarte al router o bajar la calidad del video.",
+      "offline_title": "Sin conexión",
+      "offline_hint": "Tu equipo se quedó sin internet. El video seguirá cuando vuelva.",
+      "warning": "Tu conexión va lenta: el video puede pausarse para cargar.",
+      "buffer": "Cargado por delante: {{s}} s",
+      "stalls": "Cortes por carga (último minuto): {{n}}",
+      "speed": "Velocidad estimada: {{mbps}} Mbps",
+      "network": "Red: {{type}}",
+      "embed_note": "Este video lo reproduce YouTube/Vimeo: solo podemos medir tu red."
+    }
   },
   "admin": {
     "surgery": {

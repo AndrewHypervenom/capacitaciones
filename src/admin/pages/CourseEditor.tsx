@@ -109,7 +109,7 @@ import { useStaleGuard, type StaleGuard } from '@/hooks/useStaleGuard'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { StaleNotice } from '@/components/ui/StaleNotice'
 import { useUnsavedFlag } from '@/hooks/useUnsavedFlag'
-import { useUndoHistory } from '@/hooks/useUndoHistory'
+import { useUndoHistory, type PanelUndo, type RegisterUndo } from '@/hooks/useUndoHistory'
 import { SaveDock, DirtyDot } from '@/admin/components/SaveDock'
 import { fingerprint } from '@/lib/fingerprint'
 
@@ -305,11 +305,21 @@ export default function CourseEditor() {
   const registerExamSave = useCallback((fn: (() => Promise<boolean>) | null) => {
     examSaveRef.current = fn
   }, [])
+  // …y su deshacer, para que la barra no ofrezca un botón muerto cuando lo que
+  // está sin guardar vive dentro del panel del examen.
+  const [examUndo, setExamUndo] = useState<PanelUndo>(null)
+  const registerExamUndo = useCallback<RegisterUndo>((fn, canUndo) => {
+    setExamUndo(fn ? { undo: fn, canUndo } : null)
+  }, [])
   // Pénsum del certificado (lo que se publica al compartirlo): mismo esquema.
   const [pensumDirty, setPensumDirty] = useState(false)
   const pensumSaveRef = useRef<(() => Promise<boolean>) | null>(null)
   const registerPensumSave = useCallback((fn: (() => Promise<boolean>) | null) => {
     pensumSaveRef.current = fn
+  }, [])
+  const [pensumUndo, setPensumUndo] = useState<PanelUndo>(null)
+  const registerPensumUndo = useCallback<RegisterUndo>((fn, canUndo) => {
+    setPensumUndo(fn ? { undo: fn, canUndo } : null)
   }, [])
   const [simRule, setSimRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
   const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
@@ -649,14 +659,21 @@ export default function CourseEditor() {
   // Deshacer/rehacer de TODO el editor: la ficha, las condiciones y también las
   // asignaciones (destildar media campaña sin querer no tenía vuelta atrás).
   //
-  // `enabled` espera también a `assignLoaded`: el curso se pinta antes de que
-  // lleguen las asignaciones, así que sin esa espera la PRIMERA foto era una
-  // con los borradores vacíos. Un Ctrl+Z volvía a ella, la base de datos seguía
-  // llena, y el siguiente guardado leía la diferencia como "quítale el curso a
-  // la campaña y a todas las personas". Así se borró de golpe la campaña y las
-  // tres personas de PRUEBA CURSO 1 (auditoría del 2026-08-11 15:47).
+  // Las asignaciones solo entran en la foto cuando de verdad llegaron, y al
+  // volver atrás solo se aplican si la foto las traía. Antes el editor esperaba
+  // a `assignLoaded` para encender TODO el historial: si esa consulta fallaba o
+  // tardaba, el deshacer no nacía nunca y el botón quedaba muerto toda la
+  // sesión. Con el borrador aparte, el historial vive desde el primer momento
+  // sin poder repetir el accidente que lo motivó: una foto con los borradores
+  // vacíos volvía a aplicarse, la base seguía llena, y el siguiente guardado
+  // leía la diferencia como "quítale el curso a la campaña y a todas las
+  // personas" (así se borró la campaña y las tres personas de PRUEBA CURSO 1,
+  // auditoría del 2026-08-11 15:47).
   const undoHistory = useUndoHistory({
-    state: { form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, draftCampaigns, draftUsers },
+    state: {
+      form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId,
+      assign: assignLoaded ? { campaigns: draftCampaigns, users: draftUsers } : null,
+    },
     apply: (s) => {
       setForm(s.form)
       setCond(s.cond)
@@ -664,11 +681,20 @@ export default function CourseEditor() {
       setSimUnlockModuleId(s.simUnlockModuleId)
       setWorldRule(s.worldRule)
       setWorldUnlockModuleId(s.worldUnlockModuleId)
-      setDraftCampaigns(s.draftCampaigns)
-      setDraftUsers(s.draftUsers)
+      if (s.assign) {
+        setDraftCampaigns(s.assign.campaigns)
+        setDraftUsers(s.assign.users)
+      }
     },
-    enabled: !loading && assignLoaded,
+    enabled: !loading,
   })
+
+  // Que lleguen las asignaciones no es una edición: se toma como nuevo punto de
+  // partida en vez de apilar un paso que no hizo nadie.
+  const adoptUndo = undoHistory.adopt
+  useEffect(() => {
+    if (assignLoaded) adoptUndo()
+  }, [assignLoaded, adoptUndo])
 
   // Las asignaciones se editan en borrador y no las cubre `useUnsavedWork` (que
   // solo mira la ficha): sin esto, cerrar la pestaña con gente marcada y sin
@@ -1382,6 +1408,18 @@ export default function CourseEditor() {
     // y dos filas con el mismo rótulo en la barra no le dirían nada a nadie.
     (certDirty || pensumDirty) && { id: 'cert', label: t(TAB_LABEL_KEY.cert), onFocus: () => setTab('cert') },
   ].filter(Boolean) as Array<{ id: string; label: string; onFocus: () => void }>
+
+  /**
+   * Qué deshacer ofrece la barra. Manda el panel de la pestaña abierta (examen,
+   * pénsum): lo que esos paneles editan vive en su propio estado y no está en el
+   * historial de la página, así que sin esto el botón salía apagado justo cuando
+   * había algo sin guardar. Si el panel no tiene nada que deshacer, se cae al
+   * historial de la página (la ficha, las condiciones, las asignaciones).
+   */
+  const panelUndo: PanelUndo = tab === 'exam' ? examUndo : tab === 'cert' ? pensumUndo : null
+  const activeUndo: { undo: () => void; canUndo: boolean } = panelUndo?.canUndo
+    ? panelUndo
+    : { undo: undoHistory.undo, canUndo: undoHistory.canUndo }
 
   /** Pestañas con cambios pendientes, para el punto del rótulo. */
   const dirtyTabs = new Set<Tab>(pendingSaves.map((p) => p.id as Tab))
@@ -2875,6 +2913,7 @@ export default function CourseEditor() {
           modules={course.modules.filter((m) => !m.deleted_at)}
           onDirtyChange={setExamDirty}
           registerSave={registerExamSave}
+          registerUndo={registerExamUndo}
         />
       )}
 
@@ -3053,6 +3092,7 @@ export default function CourseEditor() {
               courseDescription={course.description_es}
               onDirtyChange={setPensumDirty}
               registerSave={registerPensumSave}
+              registerUndo={registerPensumUndo}
             />
           )}
 
@@ -3642,8 +3682,8 @@ export default function CourseEditor() {
         // Solo cuenta como "guardando" si había algo pendiente: guardar la ficha
         // para abrir la vista previa no tiene por qué asomar la barra.
         saving={pendingSaves.length > 0 && (saving || savingAssign || savingEval)}
-        onUndo={undoHistory.undo}
-        canUndo={undoHistory.canUndo}
+        onUndo={activeUndo.undo}
+        canUndo={activeUndo.canUndo}
       />
     </div>
   )
