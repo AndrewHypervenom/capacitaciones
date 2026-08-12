@@ -6,9 +6,8 @@ import {
 } from 'framer-motion';
 import {
   Download, Linkedin, Link2, ShieldCheck, AlertCircle, Check, Clock,
-  Layers, Sparkles, QrCode, ArrowDown, BadgeCheck, Eye,
+  Layers, Sparkles, ArrowDown, BadgeCheck, Eye,
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import {
   getPublicCertificate, getPublicCertificateSyllabus,
 } from '@/services/certification.service';
@@ -16,6 +15,7 @@ import type {
   PublicCertificate as PublicCert, PublicCertificateSyllabus,
 } from '@/types/database';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { readCertSharePreview } from '@/lib/certSharePreview';
 import { CertificateSheet } from '@/components/certificate/CertificateSheet';
@@ -286,6 +286,8 @@ export default function PublicCertificate() {
   // incluso si llegamos por un enlace viejo que no traía `?lang=`.
   // En vista previa no hay certificado emitido: el QR y el pie llevan un código
   // de ejemplo, que al escanearlo dice honestamente que no existe.
+  // Dominio del sitio, para explicar en el tooltip cómo se verifica un código.
+  const verifyBase = typeof window === 'undefined' ? '' : window.location.origin;
   const shareUrl = typeof window === 'undefined'
     ? ''
     : isPreview
@@ -726,60 +728,50 @@ export default function PublicCertificate() {
         </section>
       )}
 
-      {/* ── Verificación + QR ──────────────────────────────────────────── */}
-      <section className="mx-auto max-w-4xl px-5 pb-24 pt-20">
+      {/* ── Cierre ─────────────────────────────────────────────────────── */}
+      {/* Sin QR y sin tarjeta de verificación: quien lee esta página YA llegó
+          por el enlace o escaneando el QR del diploma, y el código ya está en
+          la píldora de arriba. Acá solo queda con qué compartirla. */}
+      <section className="mx-auto max-w-3xl px-5 pb-24 pt-20">
         <motion.div
-          initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
-          whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-60px' }}
-          transition={{ duration: 0.8, ease: EASE }}
-          className="surface-card relative overflow-hidden"
+          transition={{ duration: 0.7, ease: EASE }}
         >
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 opacity-60"
-            style={{
-              background:
-                'radial-gradient(70% 90% at 100% 0%, rgb(var(--brand-green) / 0.10), transparent 60%),' +
-                'radial-gradient(60% 80% at 0% 100%, rgb(var(--brand-magenta) / 0.08), transparent 60%)',
-            }}
-          />
-          <div className="relative flex flex-col items-center gap-8 px-6 py-9 sm:px-10 md:flex-row md:items-center">
-            {/* QR: abre esta misma página desde cualquier teléfono. */}
-            <motion.div
-              whileHover={reduce ? undefined : { scale: 1.03, rotate: -1 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-              className="shrink-0 rounded-2xl border border-line bg-white p-3 shadow-glass"
+          <p className="mx-auto max-w-xl text-center text-[13.5px] leading-relaxed text-text-muted text-balance">
+            {t('public_certificate.authenticity')}
+          </p>
+
+          {/* El código, con la explicación de cómo se verifica de verdad. No
+              hay buscador por código: la verificación ES esta página, y el
+              código es el final de su dirección. Decir "puede verificarse en
+              línea" sin explicar dónde era una promesa que nadie podía cumplir. */}
+          <div className="mt-4 flex justify-center">
+            <Tooltip
+              label={t('public_certificate.code_tooltip', { url: `${verifyBase}/verify/` })}
+              maxWidth={320}
+              anchor="element"
+              describedBy
             >
-              <QRCodeSVG
-                value={shareUrl}
-                size={128}
-                level="M"
-                fgColor="#0E1512"
-                bgColor="#FFFFFF"
-              />
-            </motion.div>
+              <span className="inline-flex cursor-help items-center gap-2 rounded-full border border-line bg-subtle px-3.5 py-1.5">
+                <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                  {t('public_certificate.code_label')}
+                </span>
+                {/* Seleccionable de un clic: es el dato que alguien copia. */}
+                <span className="select-all font-mono text-[12.5px] tracking-[0.04em] text-text">
+                  {displayCertId}
+                </span>
+              </span>
+            </Tooltip>
+          </div>
 
-            <div className="min-w-0 flex-1 text-center md:text-left">
-              <div className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
-                <QrCode className="h-3.5 w-3.5" />
-                {t('public_certificate.verify_title')}
-              </div>
-              <p className="text-[14px] leading-relaxed text-text-muted">
-                {t('public_certificate.authenticity', { id: displayCertId })}
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-text-subtle">
-                {t('public_certificate.scan_hint')}
-              </p>
-
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-2 md:justify-start">
-                {shareButtons(true)}
-              </div>
-            </div>
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-2.5">
+            {shareButtons()}
           </div>
         </motion.div>
 
-        <p className="mt-10 text-center text-[12px] text-text-subtle">
+        <p className="mt-12 text-center text-[12px] text-text-subtle">
           {t('certificate.registry_line')}
         </p>
       </section>

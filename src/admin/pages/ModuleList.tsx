@@ -24,6 +24,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { AiAuthoredBadge, AI_AUTHORED_TINT } from '@/admin/components/AiAuthoredBadge'
 import { Select } from '@/components/ui/Select'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
@@ -251,6 +252,8 @@ export default function ModuleList() {
       className={cn(
         'group hover:border-glass-border/15 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover',
         mod.is_published && 'hover:border-glass-border/15',
+        // Lo escrito por IA se distingue de un vistazo, sin leer el título.
+        mod.ai_generated && AI_AUTHORED_TINT,
         // Resalte al venir siguiendo a alguien: señala la fila sin abrirla.
         mod.id === focusId && 'ring-2 ring-primary/70 border-primary/40',
       )}
@@ -271,6 +274,7 @@ export default function ModuleList() {
               <NeonBadge color={mod.is_published ? 'green' : 'neutral'} dot={mod.is_published}>
                 {mod.is_published ? t('admin.modules.published') : t('admin.modules.draft')}
               </NeonBadge>
+              {mod.ai_generated && <AiAuthoredBadge scope="module" />}
               <ResourcePresence type="module" id={mod.id} />
             </div>
             <div className="text-[12px] text-text-subtle mt-0.5">

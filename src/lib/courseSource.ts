@@ -66,6 +66,81 @@ function blockText(value: unknown, depth = 0): string[] {
   return []
 }
 
+/** Tope del contenido de UN módulo. Más chico que el del curso: es una parte. */
+export const MODULE_SOURCE_CHAR_LIMIT = 40_000
+
+export interface ModuleSource {
+  /** El contenido del módulo en texto plano, en el orden en que se lee. */
+  text: string
+  /** Los encabezados que ya existen, en orden. Sirven para no repetir temas. */
+  headings: string[]
+  chars: number
+  truncated: boolean
+}
+
+/**
+ * Lo mismo que `getCourseSource` pero de UN módulo, para escribirle una sección
+ * nueva con IA: sin este texto, la IA solo vería el índice y tendría que sacarse
+ * el contenido de la cabeza (o repetir lo que la sección de al lado ya dice).
+ */
+export async function getModuleSource(moduleId: string): Promise<ModuleSource> {
+  const { data: mod, error } = await supabase
+    .from('modules')
+    .select('title_es, subtitle_es, objectives_es, key_takeaways_es')
+    .eq('id', moduleId)
+    .maybeSingle()
+  if (error) throw error
+
+  const m = (mod ?? null) as {
+    title_es?: string
+    subtitle_es?: string | null
+    objectives_es?: string[] | null
+    key_takeaways_es?: string[] | null
+  } | null
+  if (!m) return { text: '', headings: [], chars: 0, truncated: false }
+
+  const { data: sectionRows } = await supabase
+    .from('module_sections')
+    .select('heading_es, body_es, callout_es, blocks_data, sort_order')
+    .eq('module_id', moduleId)
+    .order('sort_order')
+
+  type Sec = {
+    heading_es: string
+    body_es: string[] | null
+    callout_es: string | null
+    blocks_data: unknown
+  }
+  const secs = (sectionRows ?? []) as Sec[]
+
+  const lines: string[] = [`═══ MÓDULO: ${m.title_es ?? ''} ═══`]
+  if (m.subtitle_es) lines.push(m.subtitle_es)
+  if (m.objectives_es?.length) lines.push(`Objetivos: ${m.objectives_es.join(' · ')}`)
+  if (m.key_takeaways_es?.length) lines.push(`Puntos clave: ${m.key_takeaways_es.join(' · ')}`)
+
+  for (const s of secs) {
+    const parts: string[] = []
+    if (s.body_es?.length) parts.push(...s.body_es.filter(Boolean))
+    if (s.callout_es) parts.push(`Nota importante: ${s.callout_es}`)
+    parts.push(...blockText(s.blocks_data))
+    lines.push(`\n── ${s.heading_es} ──`)
+    lines.push(parts.length ? parts.join('\n') : '(sección sin texto)')
+  }
+
+  let text = lines.join('\n')
+  const truncated = text.length > MODULE_SOURCE_CHAR_LIMIT
+  if (truncated) {
+    text = `${text.slice(0, MODULE_SOURCE_CHAR_LIMIT)}\n\n[…el módulo sigue, pero se cortó aquí por tamaño…]`
+  }
+
+  return {
+    text,
+    headings: secs.map((s) => s.heading_es).filter(Boolean),
+    chars: text.length,
+    truncated,
+  }
+}
+
 /**
  * Arma la fuente cerrada del curso: todo lo que el aprendiz puede leer, en el
  * mismo orden en que lo lee.

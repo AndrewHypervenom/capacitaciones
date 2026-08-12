@@ -68,6 +68,10 @@ import { MediaUploader } from '@/admin/components/MediaUploader'
 import { VideoMarkerEditor } from '@/admin/components/VideoMarkerEditor'
 import { SortableItem } from '@/admin/components/SortableSectionList'
 import { SectionTemplateGallery } from '@/admin/components/SectionTemplateGallery'
+import { AiSectionModal } from '@/admin/components/AiSectionModal'
+import { AiAuthoredBadge, AI_AUTHORED_ROW, AI_AUTHORED_EDGE } from '@/admin/components/AiAuthoredBadge'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { SECTION_AI_CREATED_EVENT } from '@/services/sectionAi.service'
 import type { SectionTemplate } from '@/admin/components/AddSectionMenu'
 import type { VideoMarkerRaw } from '@/services/modules.service'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -1486,6 +1490,7 @@ export default function ModuleEditor() {
   const [error, setError] = useState<string | null>(null)
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
+  const [aiSectionOpen, setAiSectionOpen] = useState(false)
   const [addingSection, setAddingSection] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [publishingMod, setPublishingMod] = useState(false)
@@ -1514,16 +1519,22 @@ export default function ModuleEditor() {
   // Traducir cuesta plata, así que solo se habilita cuando el contenido está
   // dado por terminado: el curso publicado. Un módulo suelto (sin curso) usa su
   // propia publicación como señal, si no jamás podría traducirse.
-  const [coursePublished, setCoursePublished] = useState<boolean | null>(null)
+  // El título viaja con el estado de publicación: el botón de volver nombra el
+  // curso ("Volver a Ventas Consultivas"), que es lo que uno busca al salir.
+  const [course, setCourse] = useState<{ title: string; published: boolean } | null>(null)
   useEffect(() => {
     const courseId = mod?.course_id
-    if (!courseId) { setCoursePublished(null); return }
+    if (!courseId) { setCourse(null); return }
     let active = true
-    supabase.from('courses').select('is_published').eq('id', courseId).maybeSingle()
-      .then(({ data }) => { if (active) setCoursePublished(!!(data as { is_published?: boolean } | null)?.is_published) })
+    supabase.from('courses').select('title_es, is_published').eq('id', courseId).maybeSingle()
+      .then(({ data }) => {
+        if (!active) return
+        const row = data as { title_es?: string; is_published?: boolean } | null
+        setCourse(row ? { title: row.title_es ?? '', published: !!row.is_published } : null)
+      })
     return () => { active = false }
   }, [mod?.course_id])
-  const canTranslate = mod?.course_id ? coursePublished === true : !!mod?.is_published
+  const canTranslate = mod?.course_id ? course?.published === true : !!mod?.is_published
 
   // Presencia colaborativa: anuncio en qué módulo Y en qué sección estoy, y
   // obtengo la lista de coeditores que lo tienen abierto ahora mismo. La sección
@@ -1606,6 +1617,27 @@ export default function ModuleEditor() {
     enabled: !!moduleId && !isDirty && !loading,
   })
 
+  // La IA va guardando cada sección apenas la termina: se traen a la vista de
+  // una, para ver el módulo crecer sin recargar. Con algo a medio escribir NO se
+  // recarga (borraría el panel abierto): se avisa y se trae al guardar o al
+  // volver a la pestaña, igual que hace `useFreshOnFocus`.
+  const isDirtyRef = useRef(isDirty)
+  useEffect(() => { isDirtyRef.current = isDirty }, [isDirty])
+  useEffect(() => {
+    if (!moduleId) return
+    const onCreated = (e: Event) => {
+      const detail = (e as CustomEvent<{ moduleId?: string }>).detail
+      if (detail?.moduleId !== moduleId) return
+      if (isDirtyRef.current) {
+        toast.info(t('admin.section_ai.toast_pending'))
+        return
+      }
+      reloadModule()
+    }
+    window.addEventListener(SECTION_AI_CREATED_EVENT, onCreated)
+    return () => window.removeEventListener(SECTION_AI_CREATED_EVENT, onCreated)
+  }, [moduleId, reloadModule, t])
+
   // ── Guardia de versión (el mismo del editor de cursos y de simulaciones) ──
   //
   // `useFreshOnFocus` de arriba solo actúa cuando aquí NO hay nada a medio
@@ -1665,6 +1697,38 @@ export default function ModuleEditor() {
     staleGuard.dismiss()
     toast.success(t('common.stale.reloaded'))
   }, [isDirty, confirm, t, reloadModule, staleGuard])
+
+  /**
+   * A dónde lleva el botón de salir: al curso del módulo si lo tiene (que es de
+   * donde se entra casi siempre), y si no, a la lista de módulos.
+   */
+  const courseTitle = course?.title ?? ''
+  const backTarget = mod?.course_id && courseTitle
+    ? {
+        // A la pestaña Módulos, que es de donde se entró: caer en Información
+        // obliga a un clic más para seguir donde uno estaba.
+        path: `/admin/courses/${mod.course_id}?tab=modules`,
+        label: courseTitle,
+        hint: t('admin.modules.back_to_course', { title: courseTitle }),
+      }
+    : {
+        path: '/admin/modules',
+        label: t('admin.modules.back_to_modules_short'),
+        hint: t('admin.modules.back_to_modules'),
+      }
+
+  /** Salir del editor. Con cambios sin guardar, pregunta: irse los pierde. */
+  const handleBack = async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: t('admin.modules.leave_title'),
+        description: t('admin.modules.leave_body'),
+        confirmLabel: t('admin.modules.leave_confirm'),
+      })
+      if (!ok) return
+    }
+    navigate(backTarget.path)
+  }
 
   /**
    * Guarda el panel abierto, pero comprobando antes que nadie haya guardado
@@ -1897,7 +1961,9 @@ export default function ModuleEditor() {
     <div className="flex h-screen overflow-hidden bg-bg">
 
       {/* ── PANEL IZQUIERDO ── */}
-      <div className="w-60 flex flex-col glass-strong border-r border-glass-border/8 shrink-0 overflow-hidden">
+      {/* Un poco más ancha en pantallas grandes: los títulos de sección suelen
+          empezar con "10. …" y se cortaban antes de decir de qué tratan. */}
+      <div className="w-60 lg:w-72 flex flex-col glass-strong border-r border-glass-border/8 shrink-0 overflow-hidden">
         <div className="px-4 pt-4 pb-3 border-b border-glass-border/8 md:hidden">
           <button
             onClick={() => setSidebarOpen(false)}
@@ -1959,21 +2025,36 @@ export default function ModuleEditor() {
                         selectedSectionId === section.id
                           ? 'bg-glass-border/8 text-text'
                           : 'text-text-muted hover:text-text hover:bg-glass/4',
+                        // Escrita por IA: un tinte y una línea, sin tapar el
+                        // resalte de la sección abierta (que va encima).
+                        section.ai_generated && selectedSectionId !== section.id && AI_AUTHORED_ROW,
+                        section.ai_generated && AI_AUTHORED_EDGE,
                       )}
                     >
-                      <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
+                      {/* Agarradera y papelera: en escritorio no ocupan ancho
+                          hasta que el puntero está encima. Antes estaban ahí
+                          siempre (invisibles pero midiendo), y ese hueco fijo
+                          era el que se comía el título. En táctil no hay hover,
+                          así que se quedan visibles. */}
+                      <div className={cn(
+                        'shrink-0 overflow-hidden transition-all',
+                        'md:w-0 md:opacity-0 md:group-hover:w-4 md:group-hover:opacity-100',
+                      )}>
                         {dragHandle}
                       </div>
                       <span className="text-[10px] font-mono text-text-subtle w-4 shrink-0 text-right">
                         {idx + 1}
                       </span>
                       <span className={cn(
-                        'flex-1 text-[12px] font-medium truncate',
+                        // Dos líneas: los títulos largos ("11. Casos especiales:
+                        // VCAS-CT, bloqueos y…") se cortaban en la tercera palabra.
+                        'flex-1 min-w-0 text-[12px] font-medium leading-snug line-clamp-2 break-words',
                         selectedSectionId === section.id ? 'text-text' : '',
                       )}>
                         {section.heading_es || t('common.untitled')}
                       </span>
                       <div className="flex items-center gap-1 shrink-0 opacity-100 md:opacity-50 md:group-hover:opacity-100 transition-opacity">
+                        {section.ai_generated && <AiAuthoredBadge variant="dot" scope="section" />}
                         {section.media_type && <Image className="h-2.5 w-2.5 text-text-subtle" />}
                         {section.callout_kind && <Lightbulb className="h-2.5 w-2.5 text-text-subtle" />}
                         {(section.section_quizzes?.length ?? 0) > 0 && <HelpCircle className="h-2.5 w-2.5 text-text-subtle" />}
@@ -1983,7 +2064,14 @@ export default function ModuleEditor() {
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id) }}
-                        className="p-2 md:p-1 rounded-md opacity-60 md:opacity-0 md:group-hover:opacity-60 hover:!opacity-100 hover:text-danger hover:bg-danger/8 transition-all shrink-0"
+                        aria-label={t('confirm.delete_section_title')}
+                        className={cn(
+                          'shrink-0 overflow-hidden rounded-md transition-all',
+                          'p-2 opacity-60',
+                          'md:w-0 md:p-0 md:opacity-0',
+                          'md:group-hover:w-6 md:group-hover:p-1 md:group-hover:opacity-60',
+                          'hover:!opacity-100 hover:text-danger hover:bg-danger/8',
+                        )}
                       >
                         <Trash2 className="h-3.5 w-3.5 md:h-3 md:w-3" />
                       </button>
@@ -2019,6 +2107,20 @@ export default function ModuleEditor() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center gap-3 px-5 h-14 glass-md border-b border-glass-border/8 shrink-0">
           <div className="flex-1 min-w-0 flex items-center gap-2">
+            {/* Salir. Antes solo se podía por el menú lateral o el navegador:
+                el editor ocupa la pantalla entera y no tenía puerta. Nombra a
+                dónde va, y con cambios sin guardar pregunta antes de irse. */}
+            <Tooltip label={backTarget.hint} anchor="element">
+              <button
+                onClick={handleBack}
+                aria-label={backTarget.hint}
+                className="h-8 flex items-center gap-1.5 -ml-1.5 px-2 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4 shrink-0" />
+                <span className="hidden lg:inline max-w-[180px] truncate">{backTarget.label}</span>
+              </button>
+            </Tooltip>
+            <span className="text-text-subtle/40 hidden lg:inline">/</span>
             <span className="text-[13px] md:text-[14px] font-medium text-text truncate">{mod.title_es}</span>
             {isDirty && (
               <span
@@ -2163,6 +2265,21 @@ export default function ModuleEditor() {
         open={galleryOpen}
         onClose={() => setGalleryOpen(false)}
         onSelect={handleAddSection}
+        onSelectAi={() => setAiSectionOpen(true)}
+      />
+
+      <AiSectionModal
+        open={aiSectionOpen}
+        onClose={() => setAiSectionOpen(false)}
+        moduleId={mod.id}
+        campaignId={mod.campaign_id}
+        moduleTitle={mod.title_es}
+        moduleSubtitle={mod.subtitle_es}
+        objectives={mod.objectives_es}
+        existingHeadings={sections.map((s) => s.heading_es).filter(Boolean)}
+        // Van al final: `sections.length` no sirve porque los módulos generados
+        // numeran desde 1 y chocarían con la última sección.
+        startOrder={Math.max(-1, ...sections.map((s) => s.sort_order)) + 1}
       />
 
       {translateOpen && (

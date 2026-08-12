@@ -371,6 +371,8 @@ export interface Database {
           is_published: boolean
           /** Módulo del que se clonó este (deep-copy). NULL = original. */
           copied_from: string | null
+          /** Lo escribió la IA (Importar/Generar). Solo para marcarlo en la interfaz. */
+          ai_generated: boolean
           /** Borrado suave: si no es null el módulo está eliminado. */
           deleted_at: string | null
           created_at: string
@@ -400,6 +402,7 @@ export interface Database {
           sound_theme?: string | null
           is_published?: boolean
           copied_from?: string | null
+          ai_generated?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -427,6 +430,7 @@ export interface Database {
           sound_theme?: string | null
           is_published?: boolean
           copied_from?: string | null
+          ai_generated?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -457,6 +461,8 @@ export interface Database {
           section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
           video_markers: Json | null
           blocks_data: Json | null
+          /** La escribió la IA. Solo para marcarla en la interfaz. */
+          ai_generated: boolean
         }
         Insert: {
           id?: string
@@ -483,6 +489,7 @@ export interface Database {
           section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
           video_markers?: Json | null
           blocks_data?: Json | null
+          ai_generated?: boolean
         }
         Update: {
           id?: string
@@ -509,6 +516,7 @@ export interface Database {
           section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
           video_markers?: Json | null
           blocks_data?: Json | null
+          ai_generated?: boolean
         }
         Relationships: []
       }

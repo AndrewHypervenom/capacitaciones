@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { X, FileText, Lightbulb, Image, HelpCircle, LayoutTemplate, ZoomIn, Star, Layers, Clapperboard } from 'lucide-react'
+import { X, FileText, Lightbulb, Image, HelpCircle, LayoutTemplate, ZoomIn, Star, Layers, Clapperboard, Sparkles } from 'lucide-react'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { cn } from '@/lib/cn'
@@ -11,6 +11,8 @@ interface SectionTemplateGalleryProps {
   open: boolean
   onClose: () => void
   onSelect: (template: SectionTemplate) => void
+  /** "Crear con IA": abre el modal de generación en vez de una sección vacía. */
+  onSelectAi?: () => void
 }
 
 type TemplateColor = 'green' | 'violet' | 'cyan' | 'amber' | 'blue'
@@ -311,7 +313,7 @@ const iconBgMap: Record<TemplateColor, string> = {
   blue: 'bg-blue-400/10 text-blue-400 ring-1 ring-blue-400/15',
 }
 
-export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTemplateGalleryProps) {
+export function SectionTemplateGallery({ open, onClose, onSelect, onSelectAi }: SectionTemplateGalleryProps) {
   const handleSelect = (key: SectionTemplate) => {
     onSelect(key)
     onClose()
@@ -358,6 +360,30 @@ export function SectionTemplateGallery({ open, onClose, onSelect }: SectionTempl
                     <X className="h-4 w-4" />
                   </button>
                 </div>
+
+                {/* Escribirla con IA va ARRIBA y aparte de los templates: no es
+                    otro molde vacío, es la sección ya escrita. */}
+                {onSelectAi && (
+                  <button
+                    onClick={() => { onSelectAi(); onClose() }}
+                    className={cn(
+                      'group w-full mb-3 flex items-center gap-3 p-4 rounded-2xl text-left transition-all duration-200',
+                      'border border-neon-green/25 bg-neon-green/[0.06] hover:border-neon-green/50 hover:bg-neon-green/[0.1]',
+                    )}
+                  >
+                    <div className="h-9 w-9 rounded-xl bg-neon-green/12 text-neon-green ring-1 ring-neon-green/20 flex items-center justify-center shrink-0">
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-text leading-tight">
+                        {i18n.t('admin.section_ai.gallery_label')}
+                      </div>
+                      <div className="text-[11px] text-text-muted leading-snug mt-0.5">
+                        {i18n.t('admin.section_ai.gallery_desc')}
+                      </div>
+                    </div>
+                  </button>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
                   {TEMPLATES.map(({ key, label, description, icon: Icon, color, preview }) => (

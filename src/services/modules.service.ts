@@ -57,6 +57,19 @@ export function mapVideoMarkersFromDb(raw: unknown): VideoMarker[] {
   })
 }
 
+/**
+ * ¿El error es "esa columna no existe"? Pasa cuando una migración todavía no se
+ * corrió en la base. Sirve para reintentar sin el campo opcional en vez de
+ * tumbar la operación entera por un adorno.
+ */
+function isMissingColumn(error: unknown, column: string): boolean {
+  const e = error as { code?: string; message?: string; details?: string } | null
+  if (!e) return false
+  // PGRST204: PostgREST no la tiene en su caché de esquema. 42703: Postgres.
+  if (e.code !== 'PGRST204' && e.code !== '42703') return false
+  return `${e.message ?? ''} ${e.details ?? ''}`.includes(column)
+}
+
 // ─── Raw DB types for admin editor ───────────────────────────
 
 export interface DbModuleRow {
@@ -84,6 +97,8 @@ export interface DbModuleRow {
   is_published: boolean
   /** Módulo del que se clonó este (deep-copy). NULL = original. Ver cloneModule. */
   copied_from?: string | null
+  /** Lo generó la IA. Opcional: es `undefined` mientras la columna no exista. */
+  ai_generated?: boolean
   created_at: string
   updated_at: string
   module_sections?: Array<{ id: string; sort_order?: number }>
@@ -119,6 +134,8 @@ export interface DbSectionRow {
   section_style: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
   video_markers: VideoMarkerRaw[] | null
   blocks_data: ContentBlock[] | null
+  /** La escribió la IA. Opcional: es `undefined` mientras la columna no exista. */
+  ai_generated?: boolean
   section_quizzes: DbQuizRow[]
 }
 
@@ -815,19 +832,28 @@ export async function upsertSection(section: {
   section_style?: 'default' | 'immersive' | 'side-by-side' | 'hero' | 'spotlight' | 'feature' | 'video-interactive' | 'game-sort' | 'game-classify' | null
   video_markers?: VideoMarkerRaw[] | null
   blocks_data?: ContentBlock[] | null
+  /** Marca de "lo escribió la IA". Se omite si la columna todavía no existe. */
+  ai_generated?: boolean
 }): Promise<{ id: string }> {
-  const { video_markers, blocks_data, media_shadow, ...rest } = section
-  const payload = {
+  const { video_markers, blocks_data, media_shadow, ai_generated, ...rest } = section
+  const base = {
     ...rest,
     media_shadow: media_shadow ?? false,
     ...(video_markers !== undefined ? { video_markers: video_markers as import('@/types/database').Json | null } : {}),
     ...(blocks_data !== undefined ? { blocks_data: blocks_data as import('@/types/database').Json | null } : {}),
   }
-  const { data, error } = await supabase
-    .from('module_sections')
-    .upsert(payload)
-    .select('id')
-    .single()
+
+  const save = (payload: typeof base & { ai_generated?: boolean }) =>
+    supabase.from('module_sections').upsert(payload).select('id').single()
+
+  let { data, error } = await save(
+    ai_generated !== undefined ? { ...base, ai_generated } : base,
+  )
+  // La marca es un adorno: si el SQL no se ha corrido, se guarda sin ella antes
+  // que perder la sección entera.
+  if (error && ai_generated !== undefined && isMissingColumn(error, 'ai_generated')) {
+    ;({ data, error } = await save(base))
+  }
   if (error) throw error
   return data as { id: string }
 }
@@ -1216,6 +1242,58 @@ async function buildSectionBlocks(
  * secciones de bloques dinámicos. `images` son las figuras del documento que los
  * bloques de imagen pueden referenciar por índice (vacío cuando no hay documento).
  */
+/**
+ * Guarda UNA sección generada por IA dentro de un módulo que ya existe (el botón
+ * "Crear con IA" del editor). Es el cuerpo del bucle de `saveGeneratedModule`
+ * sacado aparte: mismo tratamiento de estilos, bloques y figuras, para que una
+ * sección añadida después no salga distinta a las que nacieron con el módulo.
+ *
+ * Se guarda de una vez, sección por sección: si la tarea se cancela a la mitad,
+ * lo ya escrito se queda en el módulo en vez de perderse.
+ */
+export async function saveGeneratedSection(
+  campaignId: string,
+  moduleId: string,
+  section: GeneratedModule['sections'][number],
+  sortOrder: number,
+  images: GenSourceImage[] = [],
+): Promise<{ id: string }> {
+  const sectionStyle = (VALID_SECTION_STYLES.has(section.section_style ?? '')
+    ? section.section_style
+    : 'default') as DbSectionRow['section_style']
+
+  const headings = {
+    heading_es: section.heading_es,
+    heading_en: section.heading_en,
+    heading_pt: section.heading_pt,
+  }
+
+  const { id: sectionId } = await upsertSection({
+    module_id: moduleId,
+    sort_order: sortOrder,
+    ...headings,
+    body_es: [],
+    section_style: sectionStyle,
+    ai_generated: true,
+  })
+
+  const blocks = await buildSectionBlocks(section.blocks ?? [], images, campaignId, moduleId, sectionId)
+  if (blocks.length) {
+    await upsertSection({
+      id: sectionId,
+      module_id: moduleId,
+      sort_order: sortOrder,
+      ...headings,
+      body_es: [],
+      section_style: sectionStyle,
+      blocks_data: blocks,
+      ai_generated: true,
+    })
+  }
+
+  return { id: sectionId }
+}
+
 export async function saveGeneratedModule(
   campaignId: string,
   generated: GeneratedModule,
@@ -1234,44 +1312,26 @@ export async function saveGeneratedModule(
     subtitle_pt: metadata.subtitle_pt,
   })
 
-  await supabase.from('modules').update({
+  const meta = {
     objectives_es: metadata.objectives_es,
     objectives_en: metadata.objectives_en,
     objectives_pt: metadata.objectives_pt,
     key_takeaways_es: metadata.key_takeaways_es,
     key_takeaways_en: metadata.key_takeaways_en,
     key_takeaways_pt: metadata.key_takeaways_pt,
-  }).eq('id', moduleId)
+  }
+  const { error: metaError } = await supabase
+    .from('modules')
+    .update({ ...meta, ai_generated: true })
+    .eq('id', moduleId)
+  // Igual que en las secciones: sin la columna se guarda el resto y la marca
+  // se pierde, pero el módulo no.
+  if (metaError && isMissingColumn(metaError, 'ai_generated')) {
+    await supabase.from('modules').update(meta).eq('id', moduleId)
+  }
 
   for (let i = 0; i < sections.length; i++) {
-    const s = sections[i]
-    const sectionStyle = (VALID_SECTION_STYLES.has(s.section_style ?? '')
-      ? s.section_style
-      : 'default') as DbSectionRow['section_style']
-    const { id: sectionId } = await upsertSection({
-      module_id: moduleId,
-      sort_order: i + 1,
-      heading_es: s.heading_es,
-      heading_en: s.heading_en,
-      heading_pt: s.heading_pt,
-      body_es: [],
-      section_style: sectionStyle,
-    })
-
-    const blocks = await buildSectionBlocks(s.blocks ?? [], images, campaignId, moduleId, sectionId)
-    if (blocks.length) {
-      await upsertSection({
-        id: sectionId,
-        module_id: moduleId,
-        sort_order: i + 1,
-        heading_es: s.heading_es,
-        heading_en: s.heading_en,
-        heading_pt: s.heading_pt,
-        body_es: [],
-        section_style: sectionStyle,
-        blocks_data: blocks,
-      })
-    }
+    await saveGeneratedSection(campaignId, moduleId, sections[i], i + 1, images)
   }
 
   return moduleId

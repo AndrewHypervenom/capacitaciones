@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -192,7 +192,23 @@ export default function CourseEditor() {
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [tab, setTab] = useState<Tab>('info')
+  // La pestaña abierta vive en la URL (`?tab=modules`). Antes era estado suelto
+  // y siempre se entraba por "Información": volver desde un módulo aterrizaba
+  // en la pestaña equivocada, y recargar perdía dónde estabas.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTabState] = useState<Tab>(() => {
+    const fromUrl = searchParams.get('tab')
+    return fromUrl && fromUrl in TAB_LABEL_KEY ? (fromUrl as Tab) : 'info'
+  })
+  const setTab = (next: Tab) => {
+    setTabState(next)
+    // `replace` para no llenar el historial: el botón atrás del navegador debe
+    // salir del curso, no recorrer las pestañas una por una.
+    const params = new URLSearchParams(searchParams)
+    if (next === 'info') params.delete('tab')
+    else params.set('tab', next)
+    setSearchParams(params, { replace: true })
+  }
 
   // Presencia colaborativa: coeditores que tienen abierto este curso. Publicamos
   // también la pestaña abierta para que se vea el punto exacto donde están.
