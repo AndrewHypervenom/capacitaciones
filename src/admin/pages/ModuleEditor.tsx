@@ -290,7 +290,8 @@ interface SectionEditorPanelProps {
   campaignId: string
   moduleTitle?: string
   onSaved: (updated: DbSectionRow) => void
-  onDirty: (dirty: boolean) => void
+  /** Qué campos se apartaron de lo cargado (vacío = nada que guardar). */
+  onDirty: (fields: string[]) => void
   onRegisterSave: (fn: (() => void | Promise<void>) | null) => void
   /** Publica el historial de deshacer al editor padre (la barra lo pinta). */
   onRegisterUndo: (fn: (() => void) | null, canUndo: boolean) => void
@@ -347,6 +348,24 @@ function GameSortEditorWrapper({
     </div>
   )
 }
+
+/* ─── Qué está sin guardar, campo por campo ─────────────────────────────────
+ *
+ * La barra decía "1 cambio sin guardar" pasara lo que pasara: contaba PANELES
+ * abiertos, no ediciones, así que la segunda modificación no se notaba y era
+ * imposible saber si te faltaba guardar algo o si el editor no se había
+ * enterado. Ahora cada panel publica QUÉ campos se apartaron de lo cargado, y
+ * ese mismo cálculo es la única señal de "hay cambios": no hay avisos a mano
+ * que puedan contradecirlo.
+ */
+type FieldPrints = Record<string, string>
+
+/** Una huella por campo, para poder nombrar lo que cambió (no solo contarlo). */
+const fieldPrints = (fields: Record<string, unknown>): FieldPrints =>
+  Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, fingerprint(v)]))
+
+const changedFields = (base: FieldPrints, now: FieldPrints): string[] =>
+  Object.keys(now).filter((k) => now[k] !== base[k])
 
 // Identificador local (no persistido) para cada bloque del editor.
 let localBlockSeq = 0
@@ -540,7 +559,6 @@ function SectionEditorPanel({
     setHasMedia(false)
     setMediaType(null)
     setMediaUrl(null)
-    onDirty(true)
     toast.success(t('admin.modules.ed_legacy_done'))
   }
 
@@ -553,23 +571,46 @@ function SectionEditorPanel({
   // contenido se escribía en la base mientras seguías escribiendo: con dos
   // pestañas abiertas cada una pisaba a la otra, y no había forma de probar un
   // cambio y descartarlo. Se guarda desde la barra (o con Ctrl+S), y punto.
-  const sectionBaseline = useRef<string | null>(null)
+  /**
+   * Huella de lo que esta sección guarda DE VERDAD, y única fuente del "sin
+   * guardar". Dos cosas la tenían mal contada:
+   *
+   * - Los `id` de los bloques son de React (arrastrar, duplicar, borrar): no
+   *   viajan a la base y se regeneran solos. Contarlos dejaba secciones sucias
+   *   nada más abrirlas — los juegos "Ordenar" y "Clasificar" reescriben su
+   *   bloque con un id fijo al montar, así que la huella cambiaba sin que
+   *   nadie tocara nada y la barra ya no se apagaba nunca. Se compara
+   *   `b.data`, que es lo que se guarda.
+   * - El quiz y los marcadores de video SÍ se guardan, pero no estaban en la
+   *   cuenta. Se parcheaba con `onDirty(true)` a mano desde cada control, y el
+   *   siguiente cambio de cualquier otra cosa volvía a apagar la barra: el
+   *   trabajo del quiz se perdía al salir sin un solo aviso.
+   */
+  const sectionFp = useMemo(
+    () => fieldPrints({
+      heading, body, style: sectionStyle,
+      callout: hasCallout ? { calloutKind, callout } : null,
+      media: hasMedia || mediaUrl
+        ? { mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow }
+        : null,
+      blocks: blocks.map((b) => b.data),
+      markers: videoMarkers,
+      quiz: hasQuiz ? { question, options, correctIndex, explanation } : null,
+    }),
+    [heading, body, sectionStyle, hasCallout, calloutKind, callout, hasMedia, mediaType,
+      mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks,
+      videoMarkers, hasQuiz, question, options, correctIndex, explanation],
+  )
+  const sectionBaseline = useRef<FieldPrints | null>(null)
   useEffect(() => {
-    const fp = fingerprint({
-      heading, body, sectionStyle, hasCallout, calloutKind, callout,
-      hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks,
-    })
     if (sectionBaseline.current === null) {
-      sectionBaseline.current = fp
+      sectionBaseline.current = sectionFp
       return
     }
-    if (fp === sectionBaseline.current) {
-      // Se deshizo hasta el punto de partida: no hay nada que guardar.
-      onDirty(false)
-      return
-    }
-    onDirty(true)
-  }, [heading, body, sectionStyle, hasCallout, calloutKind, callout, hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks, onDirty])
+    // Vale también al revés: si se deshizo hasta el punto de partida, la lista
+    // queda vacía y la barra se va.
+    onDirty(changedFields(sectionBaseline.current, sectionFp))
+  }, [sectionFp, onDirty])
 
   // Deshacer/rehacer de la sección. Cubre el contenido entero (bloques, medios,
   // quiz, marcadores de video): borrar un bloque por error ya no obliga a
@@ -707,12 +748,12 @@ function SectionEditorPanel({
           : []),
       }
       onSaved(updatedSection)
-      // Lo guardado es el nuevo punto de partida (ver el efecto de arriba).
-      sectionBaseline.current = fingerprint({
-        heading, body, sectionStyle, hasCallout, calloutKind, callout,
-        hasMedia, mediaType, mediaUrl, mediaCaption, mediaSize, mediaAlign, mediaShadow, blocks,
-      })
-      onDirty(false)
+      // Lo guardado es el nuevo punto de partida (ver el efecto de arriba). Es
+      // la huella de LO QUE SE ENVIÓ: `handleSave` se rearma en cada render, así
+      // que `sectionFp` es justo lo que viajó. Lo que se haya escrito mientras
+      // la petición iba sigue sin guardar, y la barra debe seguir diciéndolo.
+      sectionBaseline.current = sectionFp
+      onDirty([])
       setSaveOk(true)
       toast.success(t('admin.modules.toast_section_saved'))
       setTimeout(() => setSaveOk(false), 2000)
@@ -751,6 +792,9 @@ function SectionEditorPanel({
           <LangTabs active={lang} onChange={setLang} />
         </div>
 
+        {/* Nadie avisa aquí "esto ensucia": lo dice la huella de la sección.
+            Los avisos a mano se contradecían entre sí — uno encendía la barra y
+            el siguiente cambio la apagaba sin haber guardado nada. */}
         <ModuleAIPanel
           type="section"
           content={{ heading }}
@@ -759,15 +803,12 @@ function SectionEditorPanel({
           markers={videoMarkers}
           onApplyTranslation={(l, fields) => {
             if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
-            onDirty(true)
           }}
           onApplyImprovement={(l, fields) => {
             if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
-            onDirty(true)
           }}
-          onApplyMarkerTranslation={(l, updated) => {
+          onApplyMarkerTranslation={(_l, updated) => {
             setVideoMarkers(updated)
-            onDirty(true)
           }}
         />
 
@@ -793,12 +834,8 @@ function SectionEditorPanel({
               setMediaUrl(url)
               setMediaType(url ? type : null)
               setHasMedia(!!url)
-              onDirty(true)
             }}
-            onMarkersChange={(m) => {
-              setVideoMarkers(m)
-              onDirty(true)
-            }}
+            onMarkersChange={setVideoMarkers}
           />
         ) : null}
 
@@ -816,10 +853,7 @@ function SectionEditorPanel({
           <GroupDivider label={t('admin.modules.ed_group_blocks')} />
           <BlockEditor
             blocks={blocks}
-            onChange={(next) => {
-              setBlocks(next)
-              onDirty(true)
-            }}
+            onChange={setBlocks}
             activeLang={lang}
             mediaContext={section.id ? { moduleId: section.module_id, sectionId: section.id, campaignId } : undefined}
           />
@@ -866,13 +900,11 @@ function SectionEditorPanel({
           if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
           if (fields.body !== undefined) setBody(p => ({ ...p, [l]: fields.body }))
           if (fields.callout !== undefined) setCallout(p => ({ ...p, [l]: fields.callout }))
-          onDirty(true)
         }}
         onApplyImprovement={(l, fields) => {
           if (fields.heading !== undefined) setHeading(p => ({ ...p, [l]: fields.heading }))
           if (fields.body !== undefined) setBody(p => ({ ...p, [l]: fields.body }))
           if (fields.callout !== undefined) setCallout(p => ({ ...p, [l]: fields.callout }))
-          onDirty(true)
         }}
       />
 
@@ -1112,7 +1144,6 @@ function SectionEditorPanel({
               { id: 'game-sort-block', data: updated },
               ...prev.filter((b) => !GAME_BLOCK_TYPES.has(b.data.type)),
             ])
-            onDirty(true)
           }}
         />
       )}
@@ -1134,7 +1165,6 @@ function SectionEditorPanel({
                 { id: 'game-classify-block', data: updated },
                 ...prev.filter((b) => !GAME_BLOCK_TYPES.has(b.data.type)),
               ])
-              onDirty(true)
             }}
           />
         </div>
@@ -1167,7 +1197,6 @@ function SectionEditorPanel({
             setBlocks(isGameSection
               ? [...blocks.filter((b) => GAME_BLOCK_TYPES.has(b.data.type)), ...next]
               : next)
-            onDirty(true)
           }}
           activeLang={lang}
           mediaContext={section.id ? { moduleId: section.module_id, sectionId: section.id, campaignId } : undefined}
@@ -1184,7 +1213,8 @@ function SectionEditorPanel({
 interface MetaEditorPanelProps {
   mod: DbModuleRow
   onSaved: (updates: Partial<DbModuleWithSections>) => void
-  onDirty: (dirty: boolean) => void
+  /** Qué campos se apartaron de lo cargado (vacío = nada que guardar). */
+  onDirty: (fields: string[]) => void
   onRegisterSave: (fn: (() => void | Promise<void>) | null) => void
   /** Publica el historial de deshacer al editor padre (la barra lo pinta). */
   onRegisterUndo: (fn: (() => void) | null, canUndo: boolean) => void
@@ -1231,15 +1261,20 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo
   // que nadie tocara nada. De paso, deshacer hasta el punto de partida vuelve a
   // dejarlo limpio, y `objectives`/`keyTakeaways` —que faltaban en la lista de
   // dependencias y por tanto no marcaban nada— ahora también cuentan.
-  const metaBaseline = useRef<string | null>(null)
+  const metaFp = useMemo(
+    () => fieldPrints({
+      title, subtitle, objectives, key_takeaways: keyTakeaways, icon, duration, sound: soundTheme,
+    }),
+    [title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme],
+  )
+  const metaBaseline = useRef<FieldPrints | null>(null)
   useEffect(() => {
-    const fp = fingerprint({ title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme })
     if (metaBaseline.current === null) {
-      metaBaseline.current = fp
+      metaBaseline.current = metaFp
       return
     }
-    onDirty(fp !== metaBaseline.current)
-  }, [title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme, onDirty])
+    onDirty(changedFields(metaBaseline.current, metaFp))
+  }, [metaFp, onDirty])
 
   // Mismo deshacer para los datos del módulo.
   const undoHistory = useUndoHistory({
@@ -1288,8 +1323,12 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo
       // Lo guardado pasa a ser el nuevo punto de partida: si no, el primer
       // toque posterior volvería a compararse contra lo que se cargó y saldría
       // "sin guardar" algo que ya está en la base.
-      metaBaseline.current = fingerprint({ title, subtitle, objectives, keyTakeaways, icon, duration, soundTheme })
-      onDirty(false)
+      // La huella de LO QUE SE ENVIÓ, no la de ahora: `handleSave` se rearma en
+      // cada render, así que `metaFp` es exactamente lo que viajó. Si seguiste
+      // escribiendo mientras la petición iba, eso sigue sin guardar — y la
+      // barra tiene que seguir diciéndolo.
+      metaBaseline.current = metaFp
+      onDirty([])
       setSaveOk(true)
       toast.success('Metadatos guardados')
       setTimeout(() => setSaveOk(false), 2000)
@@ -1348,14 +1387,12 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo
           if (fields.subtitle !== undefined) setSubtitle(p => ({ ...p, [l]: fields.subtitle }))
           if (fields.objectives !== undefined) setObjectives(p => ({ ...p, [l]: fields.objectives }))
           if (fields.key_takeaways !== undefined) setKeyTakeaways(p => ({ ...p, [l]: fields.key_takeaways }))
-          onDirty(true)
         }}
         onApplyImprovement={(l, fields) => {
           if (fields.title !== undefined) setTitle(p => ({ ...p, [l]: fields.title }))
           if (fields.subtitle !== undefined) setSubtitle(p => ({ ...p, [l]: fields.subtitle }))
           if (fields.objectives !== undefined) setObjectives(p => ({ ...p, [l]: fields.objectives }))
           if (fields.key_takeaways !== undefined) setKeyTakeaways(p => ({ ...p, [l]: fields.key_takeaways }))
-          onDirty(true)
         }}
       />
 
@@ -1492,7 +1529,18 @@ export default function ModuleEditor() {
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [aiSectionOpen, setAiSectionOpen] = useState(false)
   const [addingSection, setAddingSection] = useState(false)
-  const [isDirty, setIsDirty] = useState(false)
+  // Los campos sin guardar del panel abierto. Es una lista y no un booleano
+  // para que la barra pueda decir QUÉ falta ("Subtítulo", "Objetivos") en vez
+  // del eterno "1 cambio sin guardar" que no se movía por más que editaras.
+  const [dirtyFields, setDirtyFields] = useState<string[]>([])
+  const isDirty = dirtyFields.length > 0
+  const registerDirty = useCallback((fields: string[]) => {
+    // Misma lista = mismo array: el panel publica en cada cambio de huella y
+    // sin esto cada tecleo repintaría el editor entero.
+    setDirtyFields((prev) =>
+      prev.length === fields.length && prev.every((f, i) => f === fields[i]) ? prev : fields,
+    )
+  }, [])
   const [publishingMod, setPublishingMod] = useState(false)
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -1590,7 +1638,7 @@ export default function ModuleEditor() {
         if (fp !== loadedFpRef.current) {
           setReloadNonce((n) => n + 1)
           // Los paneles se estrenan con lo traído: no queda nada pendiente.
-          setIsDirty(false)
+          setDirtyFields([])
         }
         loadedFpRef.current = fp
       })
@@ -1934,7 +1982,7 @@ export default function ModuleEditor() {
   const handleSelectSection = (id: string | null) => {
     setSelectedSectionId(id)
     setFocusedSectionId(id)
-    setIsDirty(false)
+    setDirtyFields([])
     setSidebarOpen(false)
   }
 
@@ -2212,7 +2260,7 @@ export default function ModuleEditor() {
               key={`meta:${reloadNonce}`}
               mod={mod}
               onSaved={handleMetaSaved}
-              onDirty={setIsDirty}
+              onDirty={registerDirty}
               onRegisterSave={(fn) => { saveFnRef.current = fn }}
               onRegisterUndo={registerUndo}
             />
@@ -2224,7 +2272,7 @@ export default function ModuleEditor() {
                 campaignId={mod.campaign_id}
                 moduleTitle={mod.title_es}
                 onSaved={handleSectionSaved}
-                onDirty={setIsDirty}
+                onDirty={registerDirty}
                 onRegisterSave={(fn) => { saveFnRef.current = fn }}
                 onRegisterUndo={registerUndo}
               />
@@ -2236,17 +2284,12 @@ export default function ModuleEditor() {
       {/* Único lugar donde se guarda el módulo: guarda el panel abierto (la
           sección o los datos del módulo), que es lo que tiene los cambios. */}
       <SaveDock
-        pending={
-          isDirty
-            ? [{
-                id: 'panel',
-                label: selectedSectionId
-                  ? (sections.find((s) => s.id === selectedSectionId)?.heading_es
-                      || t('admin.modules.section_untitled'))
-                  : t('admin.modules.ed_module_badge'),
-              }]
-            : []
-        }
+        // Un renglón por CAMPO sin guardar, con su nombre: así el número se
+        // mueve con cada modificación y se ve exactamente qué falta.
+        pending={dirtyFields.map((f) => ({
+          id: f,
+          label: t(`admin.modules.dirty.${f}`, { defaultValue: f }),
+        }))}
         onSave={saveCurrentPanel}
         onUndo={() => undoFnRef.current?.()}
         canUndo={canUndo}
