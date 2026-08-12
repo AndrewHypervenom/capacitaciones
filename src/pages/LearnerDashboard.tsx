@@ -46,10 +46,15 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Avatar } from '@/components/ui/Avatar';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
-import { CourseGrid } from '@/components/course/CourseCard';
+import { CourseGrid, courseProgress, pickCourseText } from '@/components/course/CourseCard';
 import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
+
+// Cuántos cursos pendientes se nombran en el encabezado. Con 50 asignados la
+// lista completa tapa la pantalla; estos son los que conviene retomar YA y el
+// resto vive en la rejilla de "Cursos", a un clic.
+const CHIP_LIMIT = 4;
 
 const MotionLink = motion(Link);
 
@@ -177,11 +182,40 @@ export default function LearnerDashboard() {
     [visibleBadges, badges],
   );
 
-  const total = modules.length;
-  // Only count completions for modules that actually exist right now
-  // Solo cuentan los módulos que existen hoy (uno retirado no debe inflar el %).
-  const done = modules.filter((m) => isModuleDone(keyOfModule(m))).length;
-  const progressPct = total > 0 ? Math.min(1, done / total) : 0;
+  // Titular en CURSOS, no en módulos: el aprendiz razona por curso ("¿cuáles me
+  // faltan?"), y 44 módulos sueltos no dicen nada. Solo entran los cursos en los
+  // que YA está inscrito (`dashboardCourses` = isAssigned): el catálogo abierto
+  // no es tarea pendiente suya.
+  //
+  // Cada curso se lista como una ficha (nombre + cuánto le falta), no dentro de
+  // una frase: una enumeración con comas y un "y 3 más" escondía justo lo que se
+  // quiere saber. Pendientes primero y, dentro de ellos, los ya empezados antes
+  // que los que no ha tocado: ese es el orden en que conviene retomarlos.
+  const courseStatus = useMemo(() => {
+    const withPct = sortedDashboardCourses.map((c) => {
+      const p = courseProgress(c, isModuleDone);
+      return {
+        id: c.id,
+        slug: c.slug,
+        title: pickCourseText(c.title_es, c.title_en, c.title_pt, language),
+        // Un curso sin módulos no está completo: no hay nada que dar por hecho.
+        complete: p.total > 0 && p.done === p.total,
+        pct: Math.round(p.pct * 100),
+        done: p.done,
+        total: p.total,
+      };
+    });
+    return {
+      finished: withPct.filter((c) => c.complete),
+      unfinished: withPct
+        .filter((c) => !c.complete)
+        .sort((a, b) => b.pct - a.pct),
+    };
+  }, [sortedDashboardCourses, isModuleDone, language]);
+
+  const coursesTotal = sortedDashboardCourses.length;
+  const coursesDone = courseStatus.finished.length;
+  const coursePct = coursesTotal > 0 ? coursesDone / coursesTotal : 0;
 
   const pending = modules.filter((m) => !isModuleDone(keyOfModule(m)));
   const remainingMinutes = pending.reduce((acc, m) => acc + m.duration, 0);
@@ -418,31 +452,76 @@ export default function LearnerDashboard() {
               {t('dashboard.panel_headline')}
             </h1>
             <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-text-muted">
-              {t('dashboard.panel_subheadline', { done, total })}
+              {coursesTotal === 0
+                ? t('dashboard.panel_subheadline_none')
+                : courseStatus.unfinished.length === 0
+                  ? t('dashboard.panel_subheadline_all', { total: coursesTotal })
+                  : t('dashboard.panel_subheadline_courses', {
+                      done: coursesDone,
+                      total: coursesTotal,
+                    })}
             </p>
 
-            {total > 0 && (
+            {/* Solo lo PENDIENTE y solo las primeras fichas: con 50 cursos
+                asignados, listarlos todos aquí es ruido —para eso está la
+                rejilla de abajo, a un clic de "+N más". Lo ya terminado se
+                cuenta en el hilo de progreso, no ocupa una ficha cada uno. */}
+            {courseStatus.unfinished.length > 0 && (
+              <div className="mt-5 flex max-w-2xl flex-wrap gap-2">
+                {courseStatus.unfinished.slice(0, CHIP_LIMIT).map((c) => (
+                  <Link
+                    key={c.id}
+                    to={`/courses/${c.slug}`}
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-line py-1.5 pl-2 pr-3.5 text-[13px] text-text transition-colors duration-300 hover:border-primary/40 hover:bg-primary/[0.04]"
+                  >
+                    <ProgressRing
+                      value={c.total > 0 ? c.done / c.total : 0}
+                      size={16}
+                      stroke={2}
+                      color="rgb(var(--primary))"
+                    />
+                    <span className="truncate">{c.title}</span>
+                    <span className="shrink-0 tabular-nums text-[12px] text-text-subtle">
+                      {c.done}/{c.total}
+                    </span>
+                  </Link>
+                ))}
+                {courseStatus.unfinished.length > CHIP_LIMIT && (
+                  <a
+                    href="#cursos"
+                    className="inline-flex items-center rounded-full border border-dashed border-line px-3.5 py-1.5 text-[13px] text-text-muted transition-colors duration-300 hover:border-text-subtle/50 hover:text-text"
+                  >
+                    {t('dashboard.courses_more', {
+                      n: courseStatus.unfinished.length - CHIP_LIMIT,
+                    })}
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* Un solo hilo de avance, en CURSOS —la misma unidad del titular.
+                Antes había un anillo con "11%", un rótulo y "5 de 44 módulos ·
+                11%": tres veces el mismo dato y dos unidades distintas. El
+                porcentaje se dice una vez, al final de la línea. */}
+            {coursesTotal > 0 && (
               <div className="mt-8 max-w-md">
-                <div className="mb-2 flex items-center gap-2.5">
-                  <ProgressRing value={progressPct} size={34} stroke={3} showLabel color="rgb(var(--primary))" />
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-subtle">
-                      {t('dashboard.panel_progress_label')}
-                    </div>
-                    <div className="text-[13px] tabular-nums text-text-muted">
-                      {t('dashboard.progress_full', {
-                        done,
-                        total,
-                        pct: Math.round(progressPct * 100),
-                      })}
-                    </div>
-                  </div>
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-subtle">
+                    {t('dashboard.panel_progress_label')}
+                  </span>
+                  <span className="text-[13px] tabular-nums font-medium text-text">
+                    {t('dashboard.progress_courses', {
+                      done: coursesDone,
+                      total: coursesTotal,
+                      pct: Math.round(coursePct * 100),
+                    })}
+                  </span>
                 </div>
                 <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
                   <motion.div
                     className="h-full rounded-full bg-primary"
-                    initial={{ width: reduce ? `${progressPct * 100}%` : 0 }}
-                    animate={{ width: `${progressPct * 100}%` }}
+                    initial={{ width: reduce ? `${coursePct * 100}%` : 0 }}
+                    animate={{ width: `${coursePct * 100}%` }}
                     transition={{ duration: reduce ? 0 : 1.2, ease, delay: 0.3 }}
                   />
                 </div>
