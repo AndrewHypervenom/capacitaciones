@@ -28,6 +28,15 @@ export interface ConfirmOptions {
   tone?: 'danger' | 'default'
   /** Oculta el botón de cancelar: para avisos que sólo se pueden aceptar. */
   hideCancel?: boolean
+  /**
+   * Palabra que hay que escribir para habilitar el botón de confirmar. Para
+   * borrados irreversibles de contenido ajeno: obliga a leer el diálogo en vez
+   * de despacharlo con un clic (o con Enter, que aquí queda desactivado hasta
+   * que la palabra coincide).
+   */
+  requireText?: string
+  /** Rótulo del campo. Por defecto: confirm.require_text_label con la palabra. */
+  requireTextLabel?: string
 }
 
 type ConfirmFn = (opts?: ConfirmOptions) => Promise<boolean>
@@ -100,6 +109,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         }
         cancelLabel={opts?.cancelLabel ?? t('confirm.cancel')}
         hideCancel={opts?.hideCancel}
+        requireText={opts?.requireText}
+        requireTextLabel={opts?.requireTextLabel}
         tone={opts?.tone ?? 'danger'}
         onConfirm={() => close(true)}
         onClose={() => close(false)}
@@ -115,6 +126,8 @@ interface ConfirmDialogProps {
   confirmLabel: string
   cancelLabel: string
   hideCancel?: boolean
+  requireText?: string
+  requireTextLabel?: string
   tone: 'danger' | 'default'
   onConfirm: () => void
   onClose: () => void
@@ -131,19 +144,36 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   hideCancel,
+  requireText,
+  requireTextLabel,
   tone,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation()
+  const [typed, setTyped] = useState('')
+
+  // Cada apertura arranca con el campo vacío: si no, una confirmación anterior
+  // dejaría el botón ya habilitado. Se ajusta en el render (no en un efecto)
+  // para que el diálogo nunca se pinte un frame con el texto viejo.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setTyped('')
+  }
+
+  const canConfirm =
+    !requireText || typed.trim().toUpperCase() === requireText.trim().toUpperCase()
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
-      if (e.key === 'Enter') onConfirm()
+      if (e.key === 'Enter' && canConfirm) onConfirm()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose, onConfirm])
+  }, [open, onClose, onConfirm, canConfirm])
 
   const accent =
     tone === 'danger'
@@ -193,6 +223,29 @@ export function ConfirmDialog({
                   )}
                 </div>
               </div>
+              {requireText && (
+                <label className="mt-4 block">
+                  <span className="text-[12px] text-text-muted">
+                    {requireTextLabel ?? t('confirm.require_text_label')}{' '}
+                    {/* La palabra va aparte y en negrita: si se pierde dentro de
+                        la frase, la gente escribe cualquier cosa y se frustra.
+                        Sin color propio — `text-text` ya se adapta al tema. */}
+                    <span className="font-semibold text-text">{requireText}</span>
+                  </span>
+                  {/* Sin placeholder: repetir ahí la palabra la vuelve un trámite
+                      de copiar y pegar, que es justo lo que queremos evitar. */}
+                  <input
+                    autoFocus
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`mt-1.5 w-full h-9 px-3 rounded-xl border bg-subtle text-[13px] text-text outline-none transition-colors ${
+                      canConfirm ? 'border-[rgb(var(--brand-green))]/40' : 'border-line focus:border-glass-border/40'
+                    }`}
+                  />
+                </label>
+              )}
               <div className="flex justify-end gap-2 mt-6">
                 {!hideCancel && (
                   <Button variant="ghost" size="sm" onClick={onClose}>
@@ -200,9 +253,10 @@ export function ConfirmDialog({
                   </Button>
                 )}
                 <button
-                  autoFocus
+                  autoFocus={!requireText}
+                  disabled={!canConfirm}
                   onClick={onConfirm}
-                  className={`h-9 px-4 rounded-full text-[13px] font-medium transition-colors inline-flex items-center gap-2 ${confirmBtn}`}
+                  className={`h-9 px-4 rounded-full text-[13px] font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${confirmBtn}`}
                 >
                   {confirmLabel}
                 </button>

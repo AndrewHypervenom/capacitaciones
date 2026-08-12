@@ -17,6 +17,7 @@ import {
   setChoiceScenarioShareable, getShareableChoiceScenarios, cloneChoiceScenario,
   type ChoiceScenarioRow, type ShareableChoiceScenario,
 } from '@/services/choiceScenarios.admin.service'
+import { ownedDeleteConfirm } from '@/lib/ownedDeleteConfirm'
 import { NewSimulationModal } from '@/admin/components/simulation/NewSimulationModal'
 import { AiDraftsPanel } from '@/admin/components/simulation/AiDraftsPanel'
 import type { Campaign } from '@/types/database'
@@ -27,6 +28,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { deletionToast } from '@/lib/deletionToast'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -173,16 +175,28 @@ export default function SimulationList() {
     } catch { toast.error('Error al cambiar estado') }
   }
 
-  const handleDeleteDialogue = async (row: ScenarioRow) => {
-    const ok = await confirm({
-      title: t('confirm.delete_simulation_title'),
-      description: t('confirm.delete_simulation_desc', { title: row.title_es }),
+  // Confirmación de borrado con dueño a la vista. El superadmin manda a la
+  // papelera (30 días); el capacitador, a la cola de aprobación.
+  const deleteConfirmOptions = (row: ScenarioRow | ChoiceScenarioRow) => {
+    const author = authors.get(row.id)
+    return ownedDeleteConfirm({
+      title: row.title_es,
+      ownerName: author?.name ?? null,
+      ownerId: author?.id ?? null,
+      actorId: user?.id ?? null,
+      campaignName: campaigns.find((c) => c.id === row.campaign_id)?.name ?? null,
+      isPublished: row.is_published,
+      outcome: isSuperAdmin ? 'trash' : 'approval',
     })
+  }
+
+  const handleDeleteDialogue = async (row: ScenarioRow) => {
+    const ok = await confirm(deleteConfirmOptions(row))
     if (!ok) return
     try {
       const result = await deleteScenario(row.id)
       setDialogueRows((prev) => prev.filter((r) => r.id !== row.id))
-      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('admin.simulations.list_toast_deleted'))
+      toast.success(deletionToast(result, t('admin.simulations.list_toast_deleted')))
     } catch { toast.error(t('admin.simulations.list_toast_delete_error')) }
   }
 
@@ -195,15 +209,12 @@ export default function SimulationList() {
   }
 
   const handleDeleteChoice = async (row: ChoiceScenarioRow) => {
-    const ok = await confirm({
-      title: t('confirm.delete_simulation_title'),
-      description: t('confirm.delete_simulation_desc', { title: row.title_es }),
-    })
+    const ok = await confirm(deleteConfirmOptions(row))
     if (!ok) return
     try {
       const result = await deleteChoiceScenario(row.id)
       setChoiceRows((prev) => prev.filter((r) => r.id !== row.id))
-      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('admin.simulations.list_toast_deleted'))
+      toast.success(deletionToast(result, t('admin.simulations.list_toast_deleted')))
     } catch { toast.error(t('admin.simulations.list_toast_delete_error')) }
   }
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Lista de países para el perfil de las personas.
  *
  * El simulador tenía solo CO/MX/AR (los mercados donde se practica la llamada),
@@ -61,3 +61,52 @@ export const COUNTRY_OPTIONS = COUNTRIES.map((c) => ({
   value: c.code,
   label: `${c.flag} ${c.name}`,
 }))
+
+/**
+ * Nombres alternativos que aparecen en los archivos reales de Talento Humano:
+ * en inglés, en portugués, sin tildes, o con el gentilicio. La lista solo cubre
+ * lo que NO se resuelve solo comparando contra `COUNTRIES[].name` normalizado.
+ */
+const COUNTRY_SYNONYMS: Record<string, string> = {
+  // Español sin tilde / variantes de escritura
+  mexico: 'MX', 'mejico': 'MX', panama: 'PA', peru: 'PE', 'republica dominicana': 'DO',
+  // Inglés
+  colombia: 'CO', brazil: 'BR', spain: 'ES', 'united states': 'US', usa: 'US',
+  'united states of america': 'US', 'dominican republic': 'DO', 'puerto rico': 'PR',
+  'costa rica': 'CR', 'el salvador': 'SV',
+  // Portugués
+  espanha: 'ES', 'estados unidos da america': 'US',
+  // Abreviaturas de uso interno
+  eeuu: 'US', 'ee uu': 'US', 'ee.uu': 'US', col: 'CO', mex: 'MX', arg: 'AR', bra: 'BR',
+}
+
+function normKey(s: string): string {
+  return String(s ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[.\-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+const BY_NAME = new Map(COUNTRIES.map((c) => [normKey(c.name), c.code]))
+
+/**
+ * Convierte lo que venga en un archivo ("COLOMBIA", "México", "co", "BR") en el
+ * código ISO que guarda `profiles.country`. Devuelve `null` cuando no se
+ * reconoce: en ese caso quien carga decide, nunca se adivina.
+ */
+export function normalizeCountryCode(value?: string | null): string | null {
+  const key = normKey(value ?? '')
+  if (!key) return null
+  // Ya es un código válido ("CO", "mx").
+  const upper = key.toUpperCase()
+  if (upper.length === 2 && BY_CODE.has(upper)) return upper
+  return BY_NAME.get(key) ?? COUNTRY_SYNONYMS[key] ?? null
+}
+
+/** `true` si el código existe en el catálogo (para validar antes de guardar). */
+export function isKnownCountry(code?: string | null): boolean {
+  return !!code && BY_CODE.has(code)
+}

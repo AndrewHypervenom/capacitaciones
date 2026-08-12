@@ -13,6 +13,7 @@ import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
 import {
   getDeletionRequests, approveDeletion, rejectDeletion, getEntityActivity,
+  restoreDeletion, purgeDeletion, purgeExpiredTrash, trashDaysLeft, TRASH_DAYS,
   type DeletionRequestRow, type EntityType, type ActivityLogRow,
 } from '@/services/audit.service'
 import { getContentDetail, type ContentDetail } from '@/services/auditContext.service'
@@ -33,13 +34,15 @@ const ENTITY_COLORS: Record<EntityType, string> = {
   profiles: '#8b5cf6',
   course_assignments: '#22c55e',
   course_campaigns: '#10D451',
+  course_exams: '#6366f1',
+  exam_unlocks: '#6366f1',
   certifications: '#eab308',
   progress: '#06b6d4',
   gamification: '#a855f7',
 }
 
-type StatusTab = 'pending' | 'approved' | 'rejected' | 'all'
-const TABS: StatusTab[] = ['pending', 'approved', 'rejected', 'all']
+type StatusTab = 'pending' | 'trashed' | 'approved' | 'rejected' | 'all'
+const TABS: StatusTab[] = ['pending', 'trashed', 'approved', 'rejected', 'all']
 
 function entityLabel(type: string): string {
   return i18n.t(`admin.entity_types.${type}`, type)
@@ -77,9 +80,11 @@ export default function DeletionApprovals() {
   const load = () => {
     setLoading(true)
     setSelected(new Set())
-    // Traemos todo el historial de una vez: los contadores de las pestañas
-    // necesitan ver también lo ya resuelto.
-    getDeletionRequests('all')
+    // Antes de listar, se purga lo que ya cumplió los 30 días. Es la única
+    // garantía de que la papelera se vacía sin depender de pg_cron; si el RPC
+    // todavía no existe, devuelve 0 y la página sigue igual.
+    purgeExpiredTrash()
+      .then(() => getDeletionRequests('all'))
       .then(setRows)
       .catch((e) => { console.error('deletion requests error:', e); toast.error(t('admin.approvals.error')) })
       .finally(() => setLoading(false))
@@ -88,8 +93,11 @@ export default function DeletionApprovals() {
 
   const counts = useMemo(() => ({
     pending: rows.filter((r) => r.status === 'pending').length,
+    trashed: rows.filter((r) => r.status === 'trashed').length,
+    // 'restored' y 'rejected' son lo mismo visto desde dos puertas (papelera y
+    // cola de aprobación): se cuentan juntos para no multiplicar pestañas.
     approved: rows.filter((r) => r.status === 'approved').length,
-    rejected: rows.filter((r) => r.status === 'rejected').length,
+    rejected: rows.filter((r) => r.status === 'rejected' || r.status === 'restored').length,
     all: rows.length,
   }), [rows])
 
@@ -101,7 +109,8 @@ export default function DeletionApprovals() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((r) => {
-      if (tab !== 'all' && r.status !== tab) return false
+      if (tab === 'rejected' && !(r.status === 'rejected' || r.status === 'restored')) return false
+      if (tab !== 'all' && tab !== 'rejected' && r.status !== tab) return false
       if (typeFilter !== 'all' && r.entity_type !== typeFilter) return false
       if (!q) return true
       return [r.entity_label, entityLabel(r.entity_type), r.requested_by_name, r.entity_id]
@@ -156,6 +165,49 @@ export default function DeletionApprovals() {
     }
   }
 
+  // ── Papelera ──────────────────────────────────────────────────────────────
+  const handleRestore = async (r: DeletionRequestRow) => {
+    setBusyId(r.id)
+    try {
+      await restoreDeletion(r.id)
+      setRows((prev) => prev.map((x) => (
+        x.id === r.id ? { ...x, status: 'restored', resolved_at: new Date().toISOString() } : x
+      )))
+      toast.success(t('admin.approvals.restored_toast'))
+    } catch (e) {
+      console.error(e)
+      toast.error(t('admin.approvals.error'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handlePurge = async (r: DeletionRequestRow) => {
+    const name = r.entity_label ?? entityLabel(r.entity_type)
+    const ok = await confirm({
+      title: t('admin.approvals.confirm_purge_title'),
+      description: t('admin.approvals.confirm_purge_desc', { name }),
+      confirmLabel: t('admin.approvals.purge'),
+      // Vaciar antes de tiempo es el único paso de aquí sin vuelta atrás.
+      requireText: name,
+      requireTextLabel: t('admin.approvals.confirm_purge_type'),
+    })
+    if (!ok) return
+    setBusyId(r.id)
+    try {
+      await purgeDeletion(r.id)
+      setRows((prev) => prev.map((x) => (
+        x.id === r.id ? { ...x, status: 'approved', resolved_at: new Date().toISOString() } : x
+      )))
+      toast.success(t('admin.approvals.purged_toast'))
+    } catch (e) {
+      console.error(e)
+      toast.error(t('admin.approvals.error'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const handleBulk = async (kind: 'approve' | 'reject') => {
     const targets = pendingVisible.filter((r) => selected.has(r.id))
     if (targets.length === 0) return
@@ -199,7 +251,7 @@ export default function DeletionApprovals() {
             <ShieldAlert className="h-6 w-6 text-[rgb(var(--brand-green))]" />
             {t('admin.approvals.title')}
           </h1>
-          <p className="text-[13px] text-text-muted">{t('admin.approvals.subtitle')}</p>
+          <p className="text-[13px] text-text-muted">{t('admin.approvals.subtitle', { days: TRASH_DAYS })}</p>
         </div>
         <button
           onClick={load}
@@ -217,8 +269,9 @@ export default function DeletionApprovals() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <Stagger as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5" gap={0.06}>
+          <Stagger as="section" className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-5" gap={0.06}>
             <Kpi icon={Inbox} color="#f59e0b" label={t('admin.approvals.kpi_pending')} value={String(counts.pending)} />
+            <Kpi icon={Trash2} color="#06b6d4" label={t('admin.approvals.kpi_trashed')} value={String(counts.trashed)} />
             <Kpi icon={Trash2} color="#ef4444" label={t('admin.approvals.kpi_approved')} value={String(counts.approved)} />
             <Kpi icon={RotateCcw} color="#8b5cf6" label={t('admin.approvals.kpi_rejected')} value={String(counts.rejected)} />
             <Kpi
@@ -313,6 +366,12 @@ export default function DeletionApprovals() {
             )}
           </div>
 
+          {tab === 'trashed' && (
+            <div className="mb-4 rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-3 py-2.5 text-[12.5px] text-text-muted">
+              {t('admin.approvals.trash_note', { days: TRASH_DAYS })}
+            </div>
+          )}
+
           {visible.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line p-6 sm:p-12 text-center">
               <Inbox className="h-7 w-7 text-text-subtle mx-auto mb-3" />
@@ -336,6 +395,8 @@ export default function DeletionApprovals() {
                     onToggle={() => setExpanded(expanded === r.id ? null : r.id)}
                     onApprove={() => handleApprove(r)}
                     onReject={() => handleReject(r)}
+                    onRestore={() => handleRestore(r)}
+                    onPurge={() => handlePurge(r)}
                   />
                 ))}
               </FadeIn>
@@ -363,14 +424,18 @@ function Kpi({ icon: Icon, label, value, color }: {
   )
 }
 
-function RequestRow({ row, busy, open, selected, onSelect, onToggle, onApprove, onReject }: {
+function RequestRow({ row, busy, open, selected, onSelect, onToggle, onApprove, onReject, onRestore, onPurge }: {
   row: DeletionRequestRow
   busy: boolean; open: boolean; selected: boolean
-  onSelect: () => void; onToggle: () => void; onApprove: () => void; onReject: () => void
+  onSelect: () => void; onToggle: () => void
+  onApprove: () => void; onReject: () => void
+  onRestore: () => void; onPurge: () => void
 }) {
   const { t } = useTranslation()
   const color = ENTITY_COLORS[row.entity_type] ?? '#94a3b8'
   const isPending = row.status === 'pending'
+  const isTrashed = row.status === 'trashed'
+  const daysLeft = isTrashed ? trashDaysLeft(row.requested_at) : 0
 
   return (
     <div className={cn(open && 'bg-subtle/30')}>
@@ -399,7 +464,16 @@ function RequestRow({ row, busy, open, selected, onSelect, onToggle, onApprove, 
           <div className="text-[11.5px] text-text-muted truncate">
             {t('admin.approvals.requested_by')}: {row.requested_by_name ?? t('admin.approvals.unknown_user')}
             {' · '}{fmtDate(row.requested_at)}{' · '}{fmtRelative(row.requested_at)}
-            {row.status !== 'pending' && (
+            {isTrashed && (
+              <span className={cn(
+                'ml-1.5 rounded-md px-1.5 py-0.5 text-[10.5px] tabular-nums',
+                // Los últimos días se avisan en ámbar: después ya no hay vuelta.
+                daysLeft <= 5 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
+              )}>
+                {t('admin.approvals.days_left', { n: daysLeft })}
+              </span>
+            )}
+            {row.status !== 'pending' && !isTrashed && (
               <span className={cn(
                 'ml-1.5 rounded-md px-1.5 py-0.5 text-[10.5px]',
                 row.status === 'approved' ? 'bg-danger/10 text-danger' : 'bg-subtle text-text-muted',
@@ -428,6 +502,25 @@ function RequestRow({ row, busy, open, selected, onSelect, onToggle, onApprove, 
             >
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               {t('admin.approvals.approve')}
+            </button>
+          </div>
+        ) : isTrashed ? (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onPurge}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-[12.5px] font-medium text-text-muted hover:text-danger hover:border-danger/30 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {t('admin.approvals.purge')}
+            </button>
+            <button
+              onClick={onRestore}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[rgb(var(--brand-green))]/30 bg-[rgb(var(--brand-green))]/10 px-3 py-2 text-[12.5px] font-medium text-[rgb(var(--brand-green))] hover:bg-[rgb(var(--brand-green))]/20 transition-colors disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              {t('admin.approvals.restore')}
             </button>
           </div>
         ) : <span />}

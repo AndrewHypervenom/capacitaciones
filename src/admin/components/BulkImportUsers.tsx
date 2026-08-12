@@ -17,6 +17,7 @@ import {
   readGrids, analyzeGrid, extractRows, finalDisplayName,
   type SheetGrid, type ColumnMapping, type ExtractedRow,
 } from '@/lib/parseUsersSheet'
+import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries'
 import type { Campaign } from '@/types/database'
 
 const MAX_ROWS = 200
@@ -31,6 +32,8 @@ interface RowResult {
   status: 'created' | 'error'
   password?: string
   reason?: string
+  /** País que el servidor dice haber guardado (ausente en despliegues viejos). */
+  country?: string | null
 }
 
 /** Fila ya resuelta: exactamente lo que se va a crear (o por qué no). */
@@ -44,6 +47,13 @@ interface PreviewRow {
   nameFromFile: boolean
   role: string
   campaignId: string | null
+  /** Código ISO que se va a guardar ('' = sin país). */
+  country: string
+  /**
+   * El archivo traía algo en la columna de país que no se pudo interpretar. Se
+   * muestra en ámbar: el alta sigue, pero sin país, y quien carga lo ve.
+   */
+  countryUnknown: string
   status: RowStatus
   include: boolean
 }
@@ -102,11 +112,15 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [sheetIdx, setSheetIdx] = useState(0)
   const [hasHeader, setHasHeader] = useState(true)
   const [headerRow, setHeaderRow] = useState(0)
-  const [mapping, setMapping] = useState<ColumnMapping>({ email: NONE, name: NONE, role: NONE, campaign: NONE })
+  const [mapping, setMapping] = useState<ColumnMapping>({
+    email: NONE, name: NONE, role: NONE, campaign: NONE, country: NONE,
+  })
 
   // Ajustes que aplican a las filas sin valor propio. El capacitador arranca en
   // la campaña donde está parado el panel, y solo puede moverse entre las suyas.
   const [roleDefault, setRoleDefault] = useState('learner')
+  // País para las filas que no traen uno propio (o cuyo valor no se reconoce).
+  const [countryDefault, setCountryDefault] = useState('')
   const [campaignDefault, setCampaignDefault] = useState(() =>
     isSuperAdmin ? '' : resolveCreationCampaignId(null, campaigns.map((c) => c.id)),
   )
@@ -123,6 +137,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [results, setResults] = useState<RowResult[] | null>(null)
   // Lo confirma el servidor: es él quien decide si aplicó la predeterminada.
   const [usedDefaultPwd, setUsedDefaultPwd] = useState(false)
+  // Se pidió país y el servidor no confirmó ninguno: la función desplegada es
+  // anterior a este soporte. Se avisa en vez de dar por hecho que se guardó.
+  const [countryIgnored, setCountryIgnored] = useState(false)
   const [defaultPwdValue, setDefaultPwdValue] = useState('')
 
   useEffect(() => {
@@ -285,6 +302,8 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
       // capacitador, `campaignByName` ya son únicamente las suyas.
       const rowCampaign =
         campaignByName.get(r.campaign.trim().toLowerCase()) ?? (campaignDefault || null)
+      // El país del archivo manda; el predeterminado solo rellena lo que falta.
+      const rowCountry = r.country || countryDefault
       return {
         key,
         sourceLine: r.sourceLine,
@@ -294,13 +313,15 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         nameFromFile,
         role: rowRole,
         campaignId: rowCampaign,
+        country: rowCountry,
+        countryUnknown: !r.country && r.countryRaw.trim() ? r.countryRaw.trim() : '',
         status,
         // Sin campaña, el servidor rechazaría el alta del capacitador: se marca
         // como no incluible en vez de dejar que falle fila por fila.
         include: status === 'new' && !excluded[key] && !(campaignRequired && !rowCampaign),
       }
     })
-  }, [extracted, existing, nameEdits, excluded, canChooseRole, campaignRequired, roleDefault, campaignDefault, campaignByName])
+  }, [extracted, existing, nameEdits, excluded, canChooseRole, campaignRequired, roleDefault, campaignDefault, countryDefault, campaignByName])
 
   const counts = useMemo(() => {
     const c = { new: 0, exists: 0, duplicate: 0, invalid: 0, excluded: 0 }
@@ -313,14 +334,22 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
 
   const selected = useMemo(() => rows.filter((r) => r.include), [rows])
   const tooMany = selected.length > MAX_ROWS
+  // Filas que se van a crear con un país escrito en el archivo que no se pudo
+  // interpretar: se avisa una vez, no fila por fila.
+  const unknownCountries = useMemo(
+    () => selected.filter((r) => !r.country && r.countryUnknown).length,
+    [selected],
+  )
 
   /* ── Acciones ──────────────────────────────────────────────────────────── */
 
   const downloadTemplate = () => {
+    // El país acepta el nombre ("Colombia") o el código ISO ("CO"): la plantilla
+    // muestra las dos formas para que ninguna parezca la única válida.
     const ws = XLSX.utils.aoa_to_sheet([
-      ['email', 'display_name'],
-      ['ana@ejemplo.com', 'Ana Pérez'],
-      ['juan@ejemplo.com', 'Juan Gómez'],
+      ['email', 'display_name', 'pais'],
+      ['ana@ejemplo.com', 'Ana Pérez', 'Colombia'],
+      ['juan@ejemplo.com', 'Juan Gómez', 'MX'],
     ])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'usuarios')
@@ -336,6 +365,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         display_name: r.name,
         role: r.role,
         campaign: r.campaignId ?? undefined,
+        country: r.country || undefined,
       }))
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
@@ -351,8 +381,12 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
       )
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error')
-      setResults(json.results as RowResult[])
+      const rowResults = json.results as RowResult[]
+      setResults(rowResults)
       setUsedDefaultPwd(json.defaultPassword === true)
+      const wantedCountry = selected.filter((r) => r.country).length
+      const appliedCountry = rowResults.filter((r) => r.status === 'created' && r.country).length
+      setCountryIgnored(wantedCountry > 0 && appliedCountry === 0)
       setStep('result')
       toast.success(t('admin.users.bulk_done', { created: json.created, total: json.total }))
       await onImported()
@@ -588,6 +622,26 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                           options={columnOptions}
                         />
                       </Field>
+                      <Field label={t('admin.users.bulk_map_country')}>
+                        <Select
+                          compact
+                          value={String(mapping.country ?? NONE)}
+                          onChange={(v) => changeMapping({ country: Number(v) })}
+                          options={columnOptions}
+                        />
+                      </Field>
+                      <Field label={t('admin.users.bulk_country_all')}>
+                        <Select
+                          compact
+                          value={countryDefault}
+                          onChange={setCountryDefault}
+                          placeholder={t('admin.users.bulk_country_none')}
+                          options={[
+                            { value: '', label: t('admin.users.bulk_country_none') },
+                            ...COUNTRY_OPTIONS,
+                          ]}
+                        />
+                      </Field>
                       {canChooseRole && (
                         <Field label={t('admin.users.bulk_role_all')}>
                           <Select
@@ -691,7 +745,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                       {/* Tabla de revisión */}
                       <div className="overflow-hidden rounded-xl border border-line">
                         <div className="overflow-x-auto">
-                          <table className="w-full min-w-[720px] text-left text-[12px]">
+                          <table className="w-full min-w-[840px] text-left text-[12px]">
                             <thead>
                               <tr className="bg-subtle text-[11px] uppercase tracking-wider text-text-muted">
                                 <th className="w-10 px-3 py-2" />
@@ -704,6 +758,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                 {campaigns.length > 0 && (
                                   <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_campaign')}</th>
                                 )}
+                                <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_country')}</th>
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_password')}</th>
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_status')}</th>
                               </tr>
@@ -769,6 +824,20 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                       )}
                                     </td>
                                   )}
+                                  <td className="max-w-[150px] truncate px-3 py-2 text-text-muted">
+                                    {r.country ? (
+                                      countryLabelWithFlag(r.country)
+                                    ) : r.countryUnknown ? (
+                                      <span
+                                        className="text-amber-500"
+                                        title={t('admin.users.bulk_country_unknown', { value: r.countryUnknown })}
+                                      >
+                                        {r.countryUnknown}
+                                      </span>
+                                    ) : (
+                                      <span className="text-text-subtle">—</span>
+                                    )}
+                                  </td>
                                   <td className="px-3 py-2 font-mono text-text-muted">
                                     {defaultPasswordOn
                                       ? defaultPwdValue || t('admin.users.bulk_pwd_default')
@@ -783,6 +852,13 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                           </table>
                         </div>
                       </div>
+
+                      {unknownCountries > 0 && (
+                        <p className="flex items-center gap-2 text-[12px] text-amber-500">
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          {t('admin.users.bulk_country_unknown_hint', { n: unknownCountries })}
+                        </p>
+                      )}
 
                       {campaignRequired && !campaignDefault && (
                         <p className="flex items-center gap-2 text-[12px] text-amber-500">
@@ -841,6 +917,12 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                     <p className="flex items-start gap-2 text-[12px] text-amber-500">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                       {t('admin.users.default_pwd_ignored')}
+                    </p>
+                  )}
+                  {countryIgnored && (
+                    <p className="flex items-start gap-2 text-[12px] text-amber-500">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      {t('admin.users.country_ignored')}
                     </p>
                   )}
                   <div className="overflow-hidden rounded-xl border border-line">

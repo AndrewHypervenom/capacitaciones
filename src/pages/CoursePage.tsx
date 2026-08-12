@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Award, Check, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Award, Check, ClipboardCheck, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { FadeIn } from '@/components/ui/motion';
@@ -26,6 +26,8 @@ import { getScenariosForCourse } from '@/services/scenarios.service';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
 import type { ChoiceScenario } from '@/data/choiceScenarios';
 import { getCourseCertStatus } from '@/services/certification.service';
+import { getExamState } from '@/services/exams.service';
+import type { ExamState } from '@/types/exam';
 import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
@@ -116,12 +118,14 @@ export default function CoursePage() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [choiceScenarios, setChoiceScenarios] = useState<ChoiceScenario[]>([]);
   const [rawCertStatus, setRawCertStatus] = useState<CourseCertStatus | null>(null);
+  const [examState, setExamState] = useState<ExamState | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   useEffect(() => {
     if (!course?.id) {
       setScenarios([]);
       setChoiceScenarios([]);
       setRawCertStatus(null);
+      setExamState(null);
       return;
     }
     let active = true;
@@ -134,6 +138,10 @@ export default function CoursePage() {
     getCourseCertStatus(course.id)
       .then((st) => { if (active) setRawCertStatus(st); })
       .catch(() => { if (active) setRawCertStatus(null); });
+    // Examen final: solo existe si el capacitador lo creó y publicó.
+    getExamState(course.id)
+      .then((st) => { if (active) setExamState(st); })
+      .catch(() => { if (active) setExamState(null); });
     return () => { active = false; };
   }, [course?.id, isModuleDone]);
 
@@ -472,7 +480,10 @@ export default function CoursePage() {
             </motion.div>
           )}
 
-          {certStatus && (certStatus.all_met || certStatus.certified) && (
+          {certStatus &&
+            (certStatus.all_met || certStatus.certified) &&
+            // Con examen obligatorio el certificado no se ofrece hasta aprobarlo.
+            (!course.cert_conditions?.require_exam || !!examState?.passed) && (
             <Link
               to={`/certificate/${course.id}`}
               className={cn(
@@ -495,6 +506,22 @@ export default function CoursePage() {
               <PhoneCall className="h-3.5 w-3.5" />
               {t('course_practice.do_simulation')}
             </button>
+          )}
+
+          {/* Examen final: cuando esta disponible es LA accion del curso. */}
+          {examState && !examState.passed && examState.unlocked && !examState.reinforcement && (
+            <Link
+              to={`/exam/${course.id}`}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[13.5px] font-medium transition-colors duration-300',
+                nextItem
+                  ? 'border border-line text-text-muted hover:border-primary/50 hover:text-primary'
+                  : 'bg-primary text-on-primary hover:opacity-90',
+              )}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {t('exam.cta_start', 'Comenzar examen')}
+            </Link>
           )}
 
           {/* El mundo se desbloquea segun la regla configurada por el capacitador
@@ -791,18 +818,110 @@ export default function CoursePage() {
         );
       })()}
 
+      {/* ── Examen final de certificacion ── */}
+      {examState && (
+        <FadeIn className="mt-14">
+          <SectionHead
+            id="exam-section"
+            title={t('exam.section_title', 'Examen final')}
+            subtitle={t(
+              'exam.section_subtitle',
+              'La prueba que acredita el curso. Se sortea de un banco de preguntas y entrega un informe por area.',
+            )}
+            aside={
+              examState.attempts_used > 0 ? (
+                <span className="shrink-0 text-[12.5px] tabular-nums text-text-muted">
+                  {t('exam.section_best', { score: examState.best_score, defaultValue: 'Mejor: {{score}}%' })}
+                </span>
+              ) : undefined
+            }
+          />
+
+          <Link
+            to={`/exam/${course.id}`}
+            className="group flex items-center gap-4 rounded-2xl border border-line p-5 transition-all duration-500 ease-apple hover:-translate-y-1 hover:shadow-card-hover"
+          >
+            <div
+              className={cn(
+                'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
+                examState.passed
+                  ? 'bg-primary/10 text-primary'
+                  : examState.unlocked
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-subtle text-text-subtle',
+              )}
+            >
+              {examState.passed ? (
+                <Award className="h-5 w-5" />
+              ) : examState.unlocked ? (
+                <ClipboardCheck className="h-5 w-5" />
+              ) : (
+                <Lock className="h-5 w-5" />
+              )}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-subtle">
+                {examState.passed
+                  ? t('exam.status_passed', 'Aprobado')
+                  : examState.reinforcement
+                    ? t('exam.section_reinforcing', 'Refuerzo pendiente')
+                    : examState.unlocked
+                      ? t('exam.section_ready', 'Disponible')
+                      : t('exam.section_locked', 'Bloqueado')}
+              </p>
+              <div className="mt-0.5 truncate text-[16px] font-medium tracking-tight text-text">
+                {pickText(examState.title_es, examState.title_en, examState.title_pt, language)}
+              </div>
+              <p className="mt-0.5 text-[12.5px] text-text-muted">
+                {t('exam.section_meta', {
+                  n: examState.question_count,
+                  score: examState.pass_score,
+                  defaultValue: '{{n}} preguntas · {{score}}% para aprobar',
+                })}
+                {examState.time_limit_min > 0 && ` · ${examState.time_limit_min} min`}
+              </p>
+            </div>
+
+            <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-text-muted">
+              {examState.passed
+                ? t('exam.section_view_report', 'Ver informe')
+                : t('exam.section_open', 'Abrir')}
+              <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
+            </span>
+          </Link>
+        </FadeIn>
+      )}
+
       {/* ── Acreditar: certificado del curso ── */}
-      {certStatus && (certStatus.require_all_modules || certStatus.require_simulator) && (() => {
+      {(() => {
+        // El examen final es un requisito más del certificado: sale de
+        // cert_conditions del curso y del estado real del examen del aprendiz.
+        const requireExam = !!course.cert_conditions?.require_exam;
+        const examMin = course.cert_conditions?.exam_min_score ?? 80;
+        const examOk =
+          !!examState && examState.passed && examState.best_score >= examMin;
+        if (!certStatus) return null;
+        if (!certStatus.require_all_modules && !certStatus.require_simulator && !requireExam) {
+          return null;
+        }
         const reqTotal =
-          (certStatus.require_all_modules ? 1 : 0) + (certStatus.require_simulator ? 1 : 0);
+          (certStatus.require_all_modules ? 1 : 0) +
+          (certStatus.require_simulator ? 1 : 0) +
+          (requireExam ? 1 : 0);
         const reqMet =
           (certStatus.require_all_modules && certStatus.modules_ok ? 1 : 0) +
-          (certStatus.require_simulator && certStatus.simulator_ok ? 1 : 0);
-        const ready = certStatus.all_met || certStatus.certified;
+          (certStatus.require_simulator && certStatus.simulator_ok ? 1 : 0) +
+          (requireExam && examOk ? 1 : 0);
+        // El servidor no conoce todavia el examen en `all_met`: se exige aqui y,
+        // de forma inviolable, en el trigger de `certifications` (ver el SQL).
+        const ready = (certStatus.all_met || certStatus.certified) && (!requireExam || examOk);
         const modulesPct =
           certStatus.modules_total > 0 ? certStatus.modules_done / certStatus.modules_total : 0;
         const simPct =
           certStatus.min_score > 0 ? Math.min(1, certStatus.best_score / certStatus.min_score) : 0;
+        const examPct =
+          examMin > 0 ? Math.min(1, (examState?.best_score ?? 0) / examMin) : 0;
 
         return (
           <FadeIn className="mt-14">
@@ -944,6 +1063,59 @@ export default function CoursePage() {
                       )}
                     >
                       {certStatus.best_score}/{certStatus.min_score}
+                    </span>
+                  </div>
+                )}
+                {/* Requisito: examen final */}
+                {requireExam && (
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={cn(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12.5px] font-medium',
+                        examOk ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-muted',
+                      )}
+                    >
+                      {examOk ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : reqTotal}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 text-[13.5px] text-text">
+                        {t('course_cert.req_exam', {
+                          score: examMin,
+                          defaultValue: 'Aprobar el examen final con al menos {{score}}%',
+                        })}
+                      </div>
+                      <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
+                        <motion.div
+                          className="h-full rounded-full bg-primary"
+                          initial={{ width: reduce ? `${examPct * 100}%` : 0 }}
+                          animate={{ width: `${examPct * 100}%` }}
+                          transition={{ duration: reduce ? 0 : 1, ease }}
+                        />
+                      </div>
+                      {!examOk && examState && (
+                        <Link
+                          to={`/exam/${course.id}`}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-1.5 text-[12.5px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
+                        >
+                          <ClipboardCheck className="h-3.5 w-3.5" />
+                          {examState.attempts_used > 0
+                            ? t('exam.section_open', 'Abrir')
+                            : t('exam.cta_start', 'Comenzar examen')}
+                        </Link>
+                      )}
+                      {!examOk && !examState && (
+                        <p className="mt-2 text-[12px] text-text-muted">
+                          {t('course_cert.no_exam_available', 'El examen todavía no está publicado.')}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className={cn(
+                        'shrink-0 text-[12px] tabular-nums',
+                        examOk ? 'text-primary' : 'text-text-subtle',
+                      )}
+                    >
+                      {examState?.best_score ?? 0}/{examMin}
                     </span>
                   </div>
                 )}

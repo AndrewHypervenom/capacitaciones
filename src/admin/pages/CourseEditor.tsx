@@ -12,6 +12,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  ClipboardCheck,
   Combine,
   Copy,
   Eye,
@@ -75,6 +76,7 @@ import { ModuleMergeModal } from '@/admin/components/ModuleMergeModal'
 import { SurgeryUndoBar } from '@/admin/components/SurgeryUndoBar'
 import type { PendingSurgery } from '@/services/moduleSurgery.service'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
+import { ExamBuilder } from '@/admin/components/exam/ExamBuilder'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { getCourseTranslationState } from '@/services/translation.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
@@ -110,7 +112,7 @@ import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { SaveDock, DirtyDot } from '@/admin/components/SaveDock'
 import { fingerprint } from '@/lib/fingerprint'
 
-type Tab = 'info' | 'modules' | 'assign' | 'evaluation'
+type Tab = 'info' | 'modules' | 'assign' | 'evaluation' | 'exam'
 
 /** Rótulo i18n de cada pestaña; se reusa en las pestañas y en la presencia. */
 const TAB_LABEL_KEY: Record<Tab, string> = {
@@ -118,6 +120,7 @@ const TAB_LABEL_KEY: Record<Tab, string> = {
   modules: 'admin.courses.tab_modules',
   assign: 'admin.courses.tab_assign',
   evaluation: 'admin.courses.tab_evaluation',
+  exam: 'admin.courses.tab_exam',
 }
 type Lang = 'es' | 'en' | 'pt'
 
@@ -266,6 +269,11 @@ export default function CourseEditor() {
   // Borradores: id → obligatorio (solo entradas asignadas). Ausente = no asignado.
   const [draftCampaigns, setDraftCampaigns] = useState<Record<string, boolean>>({})
   const [draftUsers, setDraftUsers] = useState<Record<string, boolean>>({})
+  // Las asignaciones llegan en su propia consulta, DESPUÉS de que el curso ya
+  // pintó. Hasta que no estén, los borradores están vacíos y no significan
+  // "sin nadie asignado": significan "todavía no sé". Sin esta marca, cualquier
+  // diff contra la BD interpretaba ese vacío como "quítalo todo".
+  const [assignLoaded, setAssignLoaded] = useState(false)
   const [savingAssign, setSavingAssign] = useState(false)
   // Aprendices por campaña: lo que la lista de personas NO muestra. Sin esto,
   // "N personas con el curso asignado" parecía contradecir a "Matriculados".
@@ -273,6 +281,12 @@ export default function CourseEditor() {
 
   // ── Evaluación (condiciones del certificado + simulador + resultados) ──
   const [cond, setCond] = useState<CertConditions>(DEFAULT_CERT_CONDITIONS)
+  // Pestaña del examen: publica su estado sucio y su guardado en la barra única.
+  const [examDirty, setExamDirty] = useState(false)
+  const examSaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const registerExamSave = useCallback((fn: (() => Promise<boolean>) | null) => {
+    examSaveRef.current = fn
+  }, [])
   const [simRule, setSimRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
   const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
   // Desbloqueo del mundo (juego), mismo esquema que el simulador.
@@ -440,21 +454,25 @@ export default function CourseEditor() {
     return () => { active = false }
   }, [course?.campaign_id, world])
 
-  // Datos de asignación
+  // Datos de asignación. Campañas y personas se piden JUNTAS y `assignLoaded`
+  // solo se enciende si las dos llegaron: con una sola a medias, el borrador
+  // quedaría incompleto y guardar borraría lo que no alcanzó a cargarse.
   useEffect(() => {
     if (!courseId || !course) return
-    getCourseCampaigns(courseId)
-      .then((rows) => {
-        setCourseCampaigns(rows)
-        setDraftCampaigns(Object.fromEntries(rows.map((r) => [r.campaign_id, r.is_mandatory])))
+    let active = true
+    setAssignLoaded(false)
+    Promise.all([getCourseCampaigns(courseId), getCourseAssignments(courseId)])
+      .then(([cc, aa]) => {
+        if (!active) return
+        setCourseCampaigns(cc)
+        setDraftCampaigns(Object.fromEntries(cc.map((r) => [r.campaign_id, r.is_mandatory])))
+        setAssignments(aa)
+        setDraftUsers(Object.fromEntries(aa.map((r) => [r.user_id, r.is_mandatory])))
+        setAssignLoaded(true)
       })
-      .catch(() => {})
-    getCourseAssignments(courseId)
-      .then((rows) => {
-        setAssignments(rows)
-        setDraftUsers(Object.fromEntries(rows.map((r) => [r.user_id, r.is_mandatory])))
+      .catch(() => {
+        if (active) toast.error(t('admin.courses.assign_load_error'))
       })
-      .catch(() => {})
     supabase
       .from('campaigns')
       .select('*')
@@ -474,6 +492,7 @@ export default function CourseEditor() {
       }
       profilesQuery.then(({ data }) => setProfiles((data ?? []) as Profile[]))
     }
+    return () => { active = false }
   }, [courseId, course?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cuánta gente alcanza cada campaña marcada (se recalcula al marcar/desmarcar).
@@ -591,6 +610,13 @@ export default function CourseEditor() {
 
   // Deshacer/rehacer de TODO el editor: la ficha, las condiciones y también las
   // asignaciones (destildar media campaña sin querer no tenía vuelta atrás).
+  //
+  // `enabled` espera también a `assignLoaded`: el curso se pinta antes de que
+  // lleguen las asignaciones, así que sin esa espera la PRIMERA foto era una
+  // con los borradores vacíos. Un Ctrl+Z volvía a ella, la base de datos seguía
+  // llena, y el siguiente guardado leía la diferencia como "quítale el curso a
+  // la campaña y a todas las personas". Así se borró de golpe la campaña y las
+  // tres personas de PRUEBA CURSO 1 (auditoría del 2026-08-11 15:47).
   const undoHistory = useUndoHistory({
     state: { form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, draftCampaigns, draftUsers },
     apply: (s) => {
@@ -603,7 +629,7 @@ export default function CourseEditor() {
       setDraftCampaigns(s.draftCampaigns)
       setDraftUsers(s.draftUsers)
     },
-    enabled: !loading,
+    enabled: !loading && assignLoaded,
   })
 
   // Las asignaciones se editan en borrador y no las cubre `useUnsavedWork` (que
@@ -1146,27 +1172,84 @@ export default function CourseEditor() {
   }
 
   const saveAssignments = async (opts?: { silent?: boolean }): Promise<boolean> => {
+    // Sin las asignaciones cargadas no hay borrador que valga: los diccionarios
+    // vacíos no son "nadie asignado". Guardar aquí borraría todo.
+    if (!assignLoaded) return true
     setSavingAssign(true)
     try {
-      // Campañas: diff borrador vs. BD
-      const baseCamp = new Map(courseCampaigns.map((c) => [c.campaign_id, c.is_mandatory]))
+      // La línea base se relee de la BD JUSTO ANTES de comparar. Lo que hay en
+      // memoria puede llevar minutos ahí (o venir de otra pestaña, o de un
+      // Ctrl+Z), y de esa comparación salen BORRADOS: quitar el curso a alguien
+      // por culpa de un estado viejo es el fallo caro de esta pantalla.
+      const [freshCC, freshCA] = await Promise.all([
+        getCourseCampaigns(course.id),
+        getCourseAssignments(course.id),
+      ])
+      const baseCamp = new Map(freshCC.map((c) => [c.campaign_id, c.is_mandatory]))
+      const baseUser = new Map(freshCA.map((a) => [a.user_id, a.is_mandatory]))
+      // Lo que el usuario TENÍA DELANTE cuando editó. Un borrado solo puede
+      // salir de aquí: si una fila apareció en la BD después de cargar esta
+      // pantalla (otra pestaña, otro capacitador, una inscripción del propio
+      // aprendiz), el borrador nunca la vio y su ausencia no es una decisión.
+      // Sin esto, marcar una campaña le quitaba el curso a quien lo tenía
+      // asignado a mano desde otro lado.
+      const seenCamp = new Set(courseCampaigns.map((c) => c.campaign_id))
+      const seenUser = new Set(assignments.map((a) => a.user_id))
       const campIds = new Set([...baseCamp.keys(), ...Object.keys(draftCampaigns)])
+      const userIds = new Set([...baseUser.keys(), ...Object.keys(draftUsers)])
+
+      const campsToRemove = [...campIds].filter(
+        (id) => !(id in draftCampaigns) && baseCamp.has(id) && seenCamp.has(id),
+      )
+      const usersToRemove = [...userIds].filter(
+        (id) => !(id in draftUsers) && baseUser.has(id) && seenUser.has(id),
+      )
+      const removeCamp = new Set(campsToRemove)
+      const removeUser = new Set(usersToRemove)
+
+      // Quitar el curso a alguien se avisa SIEMPRE, también en el guardado
+      // silencioso de la barra: es la única acción de esta pantalla que le
+      // arranca contenido a gente que ya lo tenía.
+      if (campsToRemove.length + usersToRemove.length > 0) {
+        const what = [
+          campsToRemove.length && t('admin.courses.assign_remove_campaigns', { count: campsToRemove.length }),
+          usersToRemove.length && t('admin.courses.assign_remove_users', { count: usersToRemove.length }),
+        ].filter(Boolean).join(t('admin.courses.assign_remove_join'))
+        const ok = await confirm({
+          title: t('admin.courses.assign_remove_title'),
+          description: t('admin.courses.assign_remove_confirm', { what }),
+          confirmLabel: t('admin.courses.assign_remove_ok'),
+          tone: 'danger',
+        })
+        if (!ok) {
+          // Se cancela el borrado y el borrador vuelve a lo que hay en la BD:
+          // así no queda un "pendiente" invisible listo para borrar al próximo
+          // guardado automático.
+          setCourseCampaigns(freshCC)
+          setDraftCampaigns(Object.fromEntries(freshCC.map((r) => [r.campaign_id, r.is_mandatory])))
+          setAssignments(freshCA)
+          setDraftUsers(Object.fromEntries(freshCA.map((r) => [r.user_id, r.is_mandatory])))
+          return true
+        }
+      }
+
+      // Campañas: diff borrador vs. BD
       for (const id of campIds) {
         const inDraft = id in draftCampaigns
-        if (!inDraft && baseCamp.has(id)) {
-          await removeCourseCampaign(course.id, id)
-        } else if (inDraft && (!baseCamp.has(id) || baseCamp.get(id) !== draftCampaigns[id])) {
+        if (!inDraft) {
+          if (removeCamp.has(id)) await removeCourseCampaign(course.id, id)
+        } else if (!baseCamp.has(id) || baseCamp.get(id) !== draftCampaigns[id]) {
           await setCourseCampaign(course.id, id, draftCampaigns[id])
         }
       }
-      // Personas: diff borrador vs. BD
-      const baseUser = new Map(assignments.map((a) => [a.user_id, a.is_mandatory]))
-      const userIds = new Set([...baseUser.keys(), ...Object.keys(draftUsers)])
+      // Personas: diff borrador vs. BD. Es INDEPENDIENTE del bloque de arriba:
+      // una persona asignada a mano conserva su fila aunque su campaña también
+      // reciba el curso (y al revés). Las dos vías suman, nunca se pisan.
       for (const id of userIds) {
         const inDraft = id in draftUsers
-        if (!inDraft && baseUser.has(id)) {
-          await removeCourseAssignment(course.id, id)
-        } else if (inDraft && (!baseUser.has(id) || baseUser.get(id) !== draftUsers[id])) {
+        if (!inDraft) {
+          if (removeUser.has(id)) await removeCourseAssignment(course.id, id)
+        } else if (!baseUser.has(id) || baseUser.get(id) !== draftUsers[id]) {
           await setCourseAssignment(course.id, id, draftUsers[id])
         }
       }
@@ -1232,6 +1315,8 @@ export default function CourseEditor() {
     if (infoDirty && !(await handleSaveInfo({ silent: true }))) return
     if (evalDirty && !(await handleSaveConditions({ silent: true }))) return
     if (assignDirty && !(await saveAssignments({ silent: true }))) return
+    // El examen guarda su propio trozo (reglas), igual que las demás pestañas.
+    if (examDirty && examSaveRef.current && !(await examSaveRef.current())) return
     toast.success(t('admin.courses.saved_ok'))
   }
 
@@ -1240,6 +1325,7 @@ export default function CourseEditor() {
     infoDirty && { id: 'info', label: t(TAB_LABEL_KEY.info), onFocus: () => setTab('info') },
     assignDirty && { id: 'assign', label: t(TAB_LABEL_KEY.assign), onFocus: () => setTab('assign') },
     evalDirty && { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), onFocus: () => setTab('evaluation') },
+    examDirty && { id: 'exam', label: t(TAB_LABEL_KEY.exam), onFocus: () => setTab('exam') },
   ].filter(Boolean) as Array<{ id: string; label: string; onFocus: () => void }>
 
   /** Pestañas con cambios pendientes, para el punto del rótulo. */
@@ -1339,6 +1425,7 @@ export default function CourseEditor() {
     { id: 'modules', label: t(TAB_LABEL_KEY.modules), icon: BookOpen },
     { id: 'assign', label: t(TAB_LABEL_KEY.assign), icon: Users },
     { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), icon: Award },
+    { id: 'exam', label: t(TAB_LABEL_KEY.exam), icon: ClipboardCheck },
   ]
 
   const inputCls =
@@ -2623,6 +2710,10 @@ export default function CourseEditor() {
                   const isAssigned = p.id in draftUsers
                   const isMandatory = draftUsers[p.id]
                   const campaignName = campaigns.find((c) => c.id === p.campaign_id)?.name
+                  // Las dos vías suman: marcar su campaña no reemplaza esta
+                  // casilla ni al revés. Se dice en la tarjeta para que nadie
+                  // destilde a una persona creyendo que ya sobra.
+                  const viaCampaign = !!p.campaign_id && p.campaign_id in draftCampaigns
                   return (
                     <GlassCard key={p.id} intensity="subtle" rounded="2xl" padding="none">
                       <div className="flex items-center gap-3 px-4 py-2.5">
@@ -2647,6 +2738,12 @@ export default function CourseEditor() {
                                 </span>
                               )}
                             </span>
+                            {viaCampaign && (
+                              <span className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                <Check className="h-3 w-3" />
+                                {t('admin.courses.also_via_campaign')}
+                              </span>
+                            )}
                             {campaignName && (
                               <span className="block text-[11px] text-text-subtle truncate">
                                 {campaignName}
@@ -2711,6 +2808,18 @@ export default function CourseEditor() {
 
           {/* El guardado de las asignaciones vive en la barra única del pie. */}
         </div>
+      )}
+
+      {/* ── Examen final de certificación ── */}
+      {tab === 'exam' && course && (
+        <ExamBuilder
+          courseId={course.id}
+          campaignId={course.campaign_id}
+          courseTitle={course.title_es}
+          modules={course.modules.filter((m) => !m.deleted_at)}
+          onDirtyChange={setExamDirty}
+          registerSave={registerExamSave}
+        />
       )}
 
       {/* ── Evaluación: condiciones del certificado + simulador + resultados ── */}
@@ -2796,6 +2905,49 @@ export default function CourseEditor() {
                 )}
               </div>
 
+              {/* Requiere examen final — el candado fuerte de la certificación */}
+              <div className="rounded-xl border border-line px-3.5 py-3">
+                <div className="flex items-center gap-3">
+                  <ClipboardCheck className="h-4 w-4 text-text-muted shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-medium text-text">
+                      {t('admin.courses.cond_exam', 'Aprobar el examen final')}
+                    </div>
+                    <div className="text-[11px] text-text-muted">
+                      {t(
+                        'admin.courses.cond_exam_hint',
+                        'Sin aprobarlo no se emite el certificado. El examen se arma en la pestaña "Examen".',
+                      )}
+                    </div>
+                  </div>
+                  <Toggle
+                    on={cond.require_exam}
+                    onClick={() => setCond({ ...cond, require_exam: !cond.require_exam })}
+                  />
+                </div>
+                {cond.require_exam && (
+                  <div className="flex items-center gap-2 mt-3 pl-7">
+                    <span className="text-[12px] text-text-muted">
+                      {t('admin.courses.cond_exam_min', 'Puntaje mínimo')}
+                    </span>
+                    <input
+                      type="number" min={0} max={100}
+                      value={cond.exam_min_score}
+                      onChange={(e) => setCond({ ...cond, exam_min_score: Math.max(0, Math.min(100, +e.target.value)) })}
+                      className="w-16 rounded-lg border border-line bg-surface px-2 py-1 text-[13px] text-text"
+                    />
+                    <span className="text-[12px] text-text-muted">/ 100</span>
+                    <button
+                      type="button"
+                      onClick={() => setTab('exam')}
+                      className="ml-2 text-[12px] font-medium text-primary hover:underline"
+                    >
+                      {t('admin.courses.cond_exam_go', 'Ir al examen')}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Config incompleta: requiere simulador pero no hay escenarios */}
               {simRequiredButEmpty && (
                 <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-3">
@@ -2818,6 +2970,7 @@ export default function CourseEditor() {
                 {!cond.require_all_modules && <li>· {t('admin.courses.cond_preview_modules_pct', { pct: cond.min_modules_pct })}</li>}
                 <li>· {t('admin.courses.cond_preview_module_score', { pct: cond.module_pass_pct })}</li>
                 {cond.require_simulator && <li>· {t('admin.courses.cond_preview_simulator', { score: cond.min_score })}</li>}
+                {cond.require_exam && <li>· {t('admin.courses.cond_preview_exam', { score: cond.exam_min_score, defaultValue: 'Aprobar el examen final con al menos {{score}}%' })}</li>}
               </ul>
             </div>
 

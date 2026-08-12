@@ -12,6 +12,7 @@ import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { requestDeletion } from '@/services/audit.service'
 import { toast } from '@/stores/toastStore'
+import { deletionToast } from '@/lib/deletionToast'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
@@ -445,7 +446,7 @@ export default function LiveQuizAdmin() {
     if (!ok) return
     try {
       const result = await requestDeletion('live_quizzes', id)
-      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('livequiz.deleted_ok'))
+      toast.success(deletionToast(result, t('livequiz.deleted_ok')))
     } catch (e) {
       // Antes esto reventaba la promesa y el quiz seguía en pantalla sin explicación.
       toast.error(t('livequiz.err_delete'), dbReason(e as { code?: string; message?: string }))

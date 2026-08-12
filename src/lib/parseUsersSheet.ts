@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { normalizeCountryCode } from './countries'
 
 /**
  * Lectura tolerante de listas de personas en Excel/CSV.
@@ -29,8 +30,14 @@ const EMAIL_ALIASES = [
 const NAME_ALIASES = [
   'display_name', 'display name', 'nombre', 'nombres', 'name', 'full name',
   'nombre completo', 'nombre y apellido', 'nombre y apellidos', 'colaborador',
-  'participante', 'persona', 'empleado', 'aprendiz',
+  'participante', 'persona', 'aprendiz',
 ]
+/**
+ * Encabezados que a veces son el nombre y a veces el número de ficha
+ * ("EMPLEADO" en los reportes de Talento Humano suele ser lo segundo). Solo se
+ * usan cuando no hay un encabezado de nombre inequívoco.
+ */
+const NAME_WEAK_ALIASES = ['empleado', 'funcionario', 'trabajador']
 const ROLE_ALIASES = ['role', 'rol', 'perfil', 'tipo de usuario']
 // Cédula / documento: la llave con la que Talento Humano identifica a su gente.
 // Sin 'id' a secas: por `includes` pegaría en "apellido".
@@ -39,7 +46,9 @@ const NATIONAL_ID_ALIASES = [
   'documento', 'no documento', 'nro documento', 'numero de documento',
   'num documento', 'doc identidad', 'documento de identidad',
   'identificacion', 'identificación', 'numero de identificacion',
-  'national_id', 'dni', 'nit', 'cc',
+  'national_id', 'dni', 'nit', 'cc', 'legajo', 'ficha', 'no empleado',
+  'nro empleado', 'numero de empleado', 'num empleado', 'codigo de empleado',
+  'codigo empleado', 'id empleado',
 ]
 // Estado laboral en el reporte de TH ("Activo", "Retirado", "Baja"…).
 const STATUS_ALIASES = [
@@ -49,6 +58,11 @@ const STATUS_ALIASES = [
 // Deliberadamente cortos: "área" o "proyecto" suelen ser otra cosa y no
 // queremos adivinar campañas a partir de columnas que solo se le parecen.
 const CAMPAIGN_ALIASES = ['campaign', 'campaña', 'campana', 'cuenta cliente']
+// País de la persona. Sin 'ciudad' ni 'sede': son otra cosa y el perfil solo
+// guarda país.
+// Los alias se comparan ya normalizados (sin tildes y en minúsculas): por eso
+// van escritos así, no como aparecen en el archivo.
+const COUNTRY_ALIASES = ['pais', 'country', 'nacionalidad', 'nationality', 'paise']
 
 /** Normaliza para comparar encabezados: sin tildes, sin dobles espacios, minúsculas. */
 function norm(s: string): string {
@@ -138,6 +152,8 @@ export interface ColumnMapping {
   nationalId?: number
   /** Estado laboral del reporte de TH ("Activo"/"Retirado"). Opcional. */
   status?: number
+  /** País de la persona. Opcional: si no viene, se aplica el país por defecto. */
+  country?: number
 }
 
 /**
@@ -207,20 +223,30 @@ export function analyzeGrid(rows: string[][]): SheetAnalysis {
     // Un encabezado real no debería ser en sí mismo un correo.
     if (emailCol !== -1 && hasEmail(row[emailCol])) continue
     const columns = Array.from({ length: width }, (_, i) => row[i] || `Columna ${columnLabel(i)}`)
+    /* "EMPLEADO" es ambiguo: en unos archivos es el nombre y en otros el número
+     * de ficha. Se resuelve por contexto — si la hoja ya trae un encabezado de
+     * nombre inequívoco ("NOMBRE COMPLETO"), esa columna es la ficha; si no, es
+     * el nombre. Sin esto, un reporte de TH creaba a la gente llamada "1020762515"
+     * y perdía la cédula. */
+    const strongName = row.findIndex((c) => matchAlias(c, NAME_ALIASES))
+    const weakName = row.findIndex((c) => matchAlias(c, NAME_WEAK_ALIASES))
+    const nameCol = strongName !== -1 ? strongName : weakName
+    const nidCandidate = nidCol !== -1 ? nidCol : weakName !== -1 && weakName !== nameCol ? weakName : -1
     const mapping: ColumnMapping = {
       email: emailCol,
-      name: row.findIndex((c) => matchAlias(c, NAME_ALIASES)),
+      name: nameCol,
       role: row.findIndex((c) => matchAlias(c, ROLE_ALIASES)),
       campaign: row.findIndex((c) => matchAlias(c, CAMPAIGN_ALIASES)),
-      nationalId: nidCol,
+      nationalId: nidCandidate,
       status: row.findIndex((c) => matchAlias(c, STATUS_ALIASES)),
+      country: row.findIndex((c) => matchAlias(c, COUNTRY_ALIASES)),
     }
     return {
       headerRow: r,
       columns,
       mapping,
       emailCount: emailCol === -1 ? 0 : countEmails(rows, emailCol, r + 1),
-      nationalIdCount: countFilled(rows, nidCol, r + 1),
+      nationalIdCount: countFilled(rows, nidCandidate, r + 1),
     }
   }
 
@@ -254,7 +280,10 @@ export function analyzeGrid(rows: string[][]): SheetAnalysis {
   return {
     headerRow: -1,
     columns,
-    mapping: { email: best, name: nameCol, role: NONE, campaign: NONE, nationalId: NONE, status: NONE },
+    mapping: {
+      email: best, name: nameCol, role: NONE, campaign: NONE,
+      nationalId: NONE, status: NONE, country: NONE,
+    },
     emailCount: bestCount,
     nationalIdCount: 0,
   }
@@ -296,6 +325,14 @@ export interface ExtractedRow {
   /** Estado laboral crudo del reporte de TH ('' si no hay columna). */
   status: string
   /**
+   * País ya convertido a código ISO ('' si no viene o no se reconoce). Se deja
+   * vacío en vez de adivinar: la interfaz muestra el valor crudo en ámbar para
+   * que quien carga lo corrija.
+   */
+  country: string
+  /** País tal como venía en el archivo ('' si no hay columna). */
+  countryRaw: string
+  /**
    * `invalid` significa "sin correo válido". Una fila con cédula pero sin correo
    * llega marcada así a propósito: para la carga masiva sigue siendo inservible
    * (no se puede crear una cuenta sin correo), mientras la sincronización con
@@ -327,6 +364,9 @@ export function extractRows(
     const nationalId = normalizeNationalId(nationalIdRaw)
     const statusCol = mapping.status ?? NONE
     const status = statusCol >= 0 ? (row[statusCol] ?? '') : ''
+    const countryCol = mapping.country ?? NONE
+    const countryRaw = countryCol >= 0 ? (row[countryCol] ?? '') : ''
+    const country = normalizeCountryCode(countryRaw) ?? ''
     // Fila en blanco: no es un error, simplemente no existe.
     if (!rawEmailCell && !name && !nationalId) continue
 
@@ -342,6 +382,8 @@ export function extractRows(
         nationalId,
         nationalIdRaw,
         status,
+        country,
+        countryRaw,
         issue: 'invalid',
       })
       continue
@@ -362,6 +404,10 @@ export function extractRows(
         nationalId: found.length > 1 && email !== found[0] ? '' : nationalId,
         nationalIdRaw: found.length > 1 && email !== found[0] ? '' : nationalIdRaw,
         status,
+        // El país sí vale para todas: una celda con varios correos es un equipo
+        // del mismo sitio, no personas de países distintos.
+        country,
+        countryRaw,
         issue,
       })
     }

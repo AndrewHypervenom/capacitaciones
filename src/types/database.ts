@@ -23,6 +23,11 @@ export interface CertConditions {
   required_scenario_slugs: string[]
   require_world: boolean
   valid_months: number | null
+  /** Exige aprobar el examen final del curso para emitir el certificado.
+   *  Ver supabase/sql/2026-08-11_course_exams.sql. */
+  require_exam: boolean
+  /** Puntaje mínimo del examen final (0-100) cuando `require_exam` está activo. */
+  exam_min_score: number
 }
 
 export interface Database {
@@ -1678,6 +1683,43 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
+      // -- Examen final (SQL 2026-08-11_course_exams.sql) --
+      get_exam_state: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      start_exam_attempt: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      save_exam_progress: {
+        Args: { p_attempt_id: string; p_answers: Json; p_flagged: Json }
+        Returns: boolean
+      }
+      submit_exam_attempt: {
+        Args: { p_attempt_id: string; p_answers: Json }
+        Returns: Json
+      }
+      get_exam_attempt_report: {
+        Args: { p_attempt_id: string }
+        Returns: Json
+      }
+      mark_reinforcement_module: {
+        Args: { p_reinforcement_id: string; p_module_id: string }
+        Returns: Json
+      }
+      get_exam_results: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      grant_exam_attempt: {
+        Args: { p_course_id: string; p_user_id: string; p_extra: number; p_reason: string | null }
+        Returns: boolean
+      }
+      get_course_exam_gate: {
+        Args: { p_course_id: string; p_user_id: string | null }
+        Returns: Json
+      }
       auth_role: {
         Args: Record<string, never>
         Returns: string
@@ -1979,6 +2021,13 @@ export interface CourseCertStatus {
   expired: boolean
   /** Venció, o el capacitador pidió recertificación después de su emisión. */
   needs_recert: boolean
+  // ── Examen final (2026-08-11). Los rellena get_course_exam_gate; llegan
+  //    `undefined` si el SQL del examen todavía no se corrió. ──
+  require_exam?: boolean
+  exam_min_score?: number
+  exam_best?: number
+  exam_ok?: boolean
+  exam_exists?: boolean
 }
 
 /**
@@ -2015,6 +2064,8 @@ export const DEFAULT_CERT_CONDITIONS: CertConditions = {
   required_scenario_slugs: [],
   require_world: false,
   valid_months: null,
+  require_exam: false,
+  exam_min_score: 80,
 }
 export type Profile = Database['public']['Tables']['profiles']['Row']
 /** Dispositivo con ingreso biométrico registrado (huella / Face ID / Hello). */

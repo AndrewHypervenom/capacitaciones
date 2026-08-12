@@ -20,6 +20,9 @@ import SimulatorRun from '@/pages/SimulatorRun';
 import SimulatorResult from '@/pages/SimulatorResult';
 import ChoiceSimulatorRun from '@/pages/ChoiceSimulatorRun';
 import Certificate from '@/pages/Certificate';
+import ExamLanding from '@/pages/ExamLanding';
+import ExamRunner from '@/pages/ExamRunner';
+import ExamResult from '@/pages/ExamResult';
 import PublicCertificate from '@/pages/PublicCertificate';
 import LiveQuizPlay from '@/pages/LiveQuizPlay';
 import MissionPlayer from '@/pages/MissionPlayer';
@@ -239,6 +242,11 @@ export default function App() {
           <Route path="/simulator/run/:id" element={<SimulatorRun />} />
           <Route path="/simulator/result/:id" element={<SimulatorResult />} />
           <Route path="/simulator/choice/:id" element={<ChoiceSimulatorRun />} />
+          {/* Examen final de certificación. `run` y `result` cuelgan del curso
+              para que el aprendiz nunca pueda saltarse la antesala a mano. */}
+          <Route path="/exam/:courseId" element={<ExamLanding />} />
+          <Route path="/exam/:courseId/run" element={<ExamRunner />} />
+          <Route path="/exam/:courseId/result/:attemptId" element={<ExamResult />} />
           <Route path="/certificate/:courseId/:userId" element={<Certificate />} />
           <Route path="/certificate/:courseId" element={<Certificate />} />
           <Route path="/certificate" element={<Certificate />} />

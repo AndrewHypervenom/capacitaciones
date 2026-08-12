@@ -29,6 +29,7 @@ import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
 import { getDefaultPassword } from '@/services/appSettings.service'
 import { setUsersActive } from '@/services/hrSync.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
+import { COUNTRY_OPTIONS } from '@/lib/countries'
 import type { Profile, Campaign } from '@/types/database'
 
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
@@ -117,6 +118,9 @@ export default function UserList() {
   const [savingName, setSavingName] = useState(false)
   const [inviteRole, setInviteRole] = useState<'learner' | 'capacitador' | 'superadmin'>('learner')
   const [inviteCampaign, setInviteCampaign] = useState('')
+  // País opcional: si se deja vacío, la persona lo elige en su onboarding.
+  const [inviteCountry, setInviteCountry] = useState('')
+  const [countryIgnored, setCountryIgnored] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState(false)
@@ -325,6 +329,7 @@ export default function UserList() {
             name: inviteName.trim(),
             role: inviteRole,
             campaignId: inviteCampaign || null,
+            country: inviteCountry || null,
           }),
         },
       )
@@ -334,6 +339,9 @@ export default function UserList() {
       setCreatedEmail(json.email ?? inviteEmail.trim())
       setCreatedPassword(json.password ?? '')
       setCreatedWithDefaultPwd(json.defaultPassword === true)
+      // Se pidió país y el servidor no lo confirma: la Edge Function desplegada
+      // es anterior a este soporte. Mejor decirlo que dar por hecho que se guardó.
+      setCountryIgnored(!!inviteCountry && json.country !== inviteCountry)
       setInviteSuccess(true)
       setInviteEmail('')
       setInviteName('')
@@ -696,6 +704,11 @@ export default function UserList() {
                   {t('admin.users.default_pwd_ignored')}
                 </p>
               )}
+              {countryIgnored && (
+                <p className="text-[12px] text-amber-500 mt-2">
+                  {t('admin.users.country_ignored')}
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-3">
                 <button
                   onClick={() => copyCreds('__new__', createdEmail, createdPassword)}
@@ -768,6 +781,20 @@ export default function UserList() {
                         : campaignOptions(i18n.t('admin.worlds.no_campaign'))
                     }
                     placeholder={t('admin.users.pick_campaign')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
+                    {i18n.t('profile.country')}
+                  </label>
+                  <Select
+                    value={inviteCountry}
+                    onChange={setInviteCountry}
+                    placeholder={t('admin.users.country_optional')}
+                    options={[
+                      { value: '', label: t('admin.users.country_optional') },
+                      ...COUNTRY_OPTIONS,
+                    ]}
                   />
                 </div>
               </div>

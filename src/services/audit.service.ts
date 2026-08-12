@@ -21,6 +21,8 @@ export type EntityType =
   | 'course_assignments'
   | 'course_campaigns'
   | 'certifications'
+  | 'course_exams'
+  | 'exam_unlocks'
   | 'progress'
   | 'gamification'
 
@@ -91,10 +93,19 @@ export interface DeletionRequestRow {
   requested_by: string | null
   requested_by_name?: string | null
   requested_at: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: DeletionStatus
   resolved_by: string | null
   resolved_at: string | null
 }
+
+/**
+ * 'trashed' y 'restored' llegan con la papelera de 30 días
+ * (2026-08-11_superadmin_trash_30d.sql): el superadmin ya no borra en firme.
+ */
+export type DeletionStatus = 'pending' | 'approved' | 'rejected' | 'trashed' | 'restored'
+
+/** Días que algo sobrevive en la papelera antes de purgarse. Espeja el SQL. */
+export const TRASH_DAYS = 30
 
 export interface ActivityLogFilters {
   actorId?: string
@@ -128,19 +139,58 @@ export interface ActivityPulse {
 
 /**
  * Devuelve el resultado de request_deletion:
- *  - 'deleted': se borró definitivamente (llamante superadmin).
+ *  - 'trashed': se ocultó y quedó en la papelera del superadmin (30 días).
  *  - 'pending': se ocultó y quedó una solicitud para aprobación.
+ *  - 'deleted': se borró definitivamente. Sólo lo devuelve la versión ANTERIOR
+ *    del RPC; si sigue apareciendo es que falta correr el SQL de la papelera.
  */
+export type DeletionResult = 'deleted' | 'pending' | 'trashed'
+
 export async function requestDeletion(
   entityType: EntityType,
   entityId: string,
-): Promise<'deleted' | 'pending'> {
+): Promise<DeletionResult> {
   const { data, error } = await supabase.rpc('request_deletion', {
     p_entity_type: entityType,
     p_entity_id: entityId,
   })
   if (error) throw error
-  return (data as 'deleted' | 'pending') ?? 'pending'
+  return (data as DeletionResult) ?? 'pending'
+}
+
+/** Saca de la papelera (o de la cola) y devuelve el contenido a la vida. */
+export async function restoreDeletion(requestId: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.rpc as any)('restore_deletion', { p_request_id: requestId })
+  if (error) throw error
+}
+
+/** Vacía un elemento de la papelera antes de tiempo: borrado definitivo. */
+export async function purgeDeletion(requestId: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.rpc as any)('purge_deletion', { p_request_id: requestId })
+  if (error) throw error
+}
+
+/**
+ * Purga lo que ya cumplió los 30 días. Se llama al abrir el panel de
+ * aprobaciones: así la papelera se vacía sola sin depender de pg_cron. Si el
+ * RPC todavía no existe en la base, devuelve 0 en vez de romper la página.
+ */
+export async function purgeExpiredTrash(): Promise<number> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.rpc as any)('purge_expired_trash', { p_days: TRASH_DAYS })
+  if (error) {
+    console.error('purge_expired_trash error:', error)
+    return 0
+  }
+  return (data as number) ?? 0
+}
+
+/** Días que le quedan a un elemento en la papelera (0 = le toca purga). */
+export function trashDaysLeft(requestedAt: string): number {
+  const elapsed = (Date.now() - new Date(requestedAt).getTime()) / 86400000
+  return Math.max(0, Math.ceil(TRASH_DAYS - elapsed))
 }
 
 export async function approveDeletion(requestId: string): Promise<void> {
@@ -163,7 +213,7 @@ export async function getPendingDeletions(): Promise<DeletionRequestRow[]> {
  * resuelto, que es lo que permite auditar qué se aprobó o se restauró.
  */
 export async function getDeletionRequests(
-  status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending',
+  status: DeletionStatus | 'all' = 'pending',
 ): Promise<DeletionRequestRow[]> {
   let q = supabase.from('deletion_requests').select('*').order('requested_at', { ascending: false })
   if (status !== 'all') q = q.eq('status', status)

@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 import type { LearningModule, ModuleSection, SectionQuiz, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { ContentBlock } from '@/types/blocks'
 import type { GeneratedModule } from '@/services/ai.service'
-import { requestDeletion } from '@/services/audit.service'
+import { requestDeletion, type DeletionResult } from '@/services/audit.service'
 import { isMediaUrlSharedInCourse } from '@/services/mediaDuplicates.service'
 import { shortFileHash } from '@/lib/fileHash'
 
@@ -466,9 +466,9 @@ export async function toggleModulePublished(moduleId: string, isPublished: boole
 
 /**
  * "Borra" un módulo. Superadmin -> elimina definitivo. Capacitador -> lo oculta
- * y deja solicitud de eliminación para aprobación. Devuelve 'deleted' | 'pending'.
+ * y deja solicitud de eliminación para aprobación; el superadmin, a la papelera.
  */
-export async function deleteModule(moduleId: string): Promise<'deleted' | 'pending'> {
+export async function deleteModule(moduleId: string): Promise<DeletionResult> {
   return requestDeletion('modules', moduleId)
 }
 

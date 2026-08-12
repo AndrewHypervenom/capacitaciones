@@ -8,6 +8,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import * as XLSX from 'xlsx'
 import { backdropDismiss } from '@/lib/backdropDismiss'
+import { countryLabelWithFlag } from '@/lib/countries'
 import { Select } from '@/components/ui/Select'
 import { toast } from '@/stores/toastStore'
 import {
@@ -763,6 +764,11 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                             <th className="px-3 py-2 font-normal">{t('profile.national_id')}</th>
                             <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_email')}</th>
                             <th className="px-3 py-2 font-normal">{t('admin.hr.col_match')}</th>
+                            {/* El país solo se aplica a las altas: a quien ya
+                                tiene cuenta no se le pisa el perfil. */}
+                            {tab === 'create' && (
+                              <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_country')}</th>
+                            )}
                             <th className="px-3 py-2 font-normal">
                               {tab === 'create' ? t('admin.users.bulk_col_campaign') : t('admin.hr.col_why')}
                             </th>
@@ -794,6 +800,11 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                                 <td className="px-3 py-2 text-text-subtle">
                                   {e.matchedBy ? t(`admin.hr.matched_${e.matchedBy}`) : '—'}
                                 </td>
+                                {tab === 'create' && (
+                                  <td className="max-w-[150px] truncate px-3 py-2 text-text-muted">
+                                    {countryLabelWithFlag(e.country) ?? <span className="text-text-subtle">—</span>}
+                                  </td>
+                                )}
                                 {e.action === 'create' ? (
                                   <td className="px-3 py-1.5">
                                     <Select

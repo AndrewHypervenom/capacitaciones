@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
-import { requestDeletion } from '@/services/audit.service'
+import { requestDeletion, type DeletionResult } from '@/services/audit.service'
 import { onlyActive } from '@/lib/activeUsers'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
@@ -531,9 +531,9 @@ export async function updateCourse(
 /**
  * "Borra" un curso. Superadmin -> elimina definitivo (los módulos quedan con
  * course_id NULL). Capacitador -> lo oculta y deja una solicitud de eliminación
- * para que el superadmin la apruebe. Devuelve 'deleted' | 'pending'.
+ * para que el superadmin la apruebe; el superadmin la manda a la papelera.
  */
-export async function deleteCourse(courseId: string): Promise<'deleted' | 'pending'> {
+export async function deleteCourse(courseId: string): Promise<DeletionResult> {
   return requestDeletion('courses', courseId)
 }
 

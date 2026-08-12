@@ -13,6 +13,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
+import { deletionToast } from '@/lib/deletionToast'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
@@ -357,8 +358,7 @@ export default function Worlds() {
     try {
       const result = await requestDeletion('worlds', w.id)
       setWorlds(prev => prev.filter(x => x.id !== w.id))
-      if (result === 'pending') toast.success(t('deletion.pending_toast', { name: w.name }))
-      else toast.success(t('confirm.delete_world_ok', { name: w.name }))
+      toast.success(deletionToast(result, t('confirm.delete_world_ok', { name: w.name }), w.name))
     } catch (error) {
       console.error('Error deleting world:', error)
       toast.error(t('confirm.delete_world_error'), (error as Error)?.message)

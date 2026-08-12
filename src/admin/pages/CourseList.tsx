@@ -49,6 +49,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { toast } from '@/stores/toastStore'
+import { deletionToast } from '@/lib/deletionToast'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
@@ -446,7 +447,7 @@ export default function CourseList() {
       const result = await deleteCourse(course.id)
       setCourses((prev) => prev.filter((c) => c.id !== course.id))
       invalidateModulesCache()
-      toast.success(result === 'pending' ? t('deletion.pending_generic') : t('admin.courses.deleted_ok'))
+      toast.success(deletionToast(result, t('admin.courses.deleted_ok')))
     } catch {
       toast.error(t('admin.courses.error_delete'))
     }

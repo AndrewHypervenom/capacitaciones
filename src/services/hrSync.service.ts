@@ -72,6 +72,11 @@ export interface SyncEntry {
   nationalIdRaw: string
   /** Estado laboral tal como venía en el archivo. */
   status: string
+  /**
+   * País en código ISO que trae el archivo ('' si no viene o no se reconoce).
+   * Solo se aplica a las altas: a quien ya tiene cuenta no se le pisa el perfil.
+   */
+  country: string
   matchedBy: 'national_id' | 'email' | null
   /** Cuenta existente que corresponde a esta fila. */
   person?: RosterPerson
@@ -282,6 +287,7 @@ export function diffNovelties({
       nationalId: nid,
       nationalIdRaw: row.nationalIdRaw,
       status: row.status,
+      country: row.country,
       campaignRaw,
       // La campaña del archivo manda sobre el valor por defecto; si el nombre no
       // corresponde a ninguna campaña del sitio se usa el default y la interfaz
@@ -487,6 +493,7 @@ export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
                 role: 'learner',
                 campaign: campaign || undefined,
                 national_id: e.nationalId || undefined,
+                country: e.country || undefined,
               })),
             }),
           },
