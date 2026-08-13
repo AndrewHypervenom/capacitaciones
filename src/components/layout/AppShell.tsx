@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react';
+import { Suspense, useLayoutEffect } from 'react';
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Navbar } from './Navbar';
@@ -66,7 +66,13 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
         className="relative"
       >
-        <Outlet />
+        {/* Las vistas perezosas (perfil, examen, certificado, simulador…) se
+            suspenden AQUÍ dentro y no arriba, en las rutas: así la barra y el
+            marco se quedan en su sitio mientras llega el chunk, en vez de
+            parpadear la página entera. */}
+        <Suspense fallback={<div className="min-h-screen" />}>
+          <Outlet />
+        </Suspense>
       </motion.main>
       <HelpWidget />
     </div>

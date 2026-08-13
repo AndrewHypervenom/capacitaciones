@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import type { ContentBlock, GameClassifyBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
@@ -9,8 +10,13 @@ import { TabsBlockRenderer } from './TabsBlock';
 import { TimelineBlockRenderer } from './TimelineBlock';
 import { CodeBlockRenderer } from './CodeBlock';
 import { ComparisonBlockRenderer } from './ComparisonBlock';
-import SortGameBlock from './SortGameBlock';
-import { ClassifyGameBlockRenderer } from './ClassifyGameBlock';
+// Juegos: pesan (arrastrar y soltar trae su propia librería) y solo aparecen en
+// los módulos que los usan. Se cargan al llegar al bloque, no en cada visita al
+// sitio. El `Suspense` que los cubre está en `BlockContent`.
+const SortGameBlock = lazy(() => import('./SortGameBlock'));
+const ClassifyGameBlockRenderer = lazy(() =>
+  import('./ClassifyGameBlock').then((m) => ({ default: m.ClassifyGameBlockRenderer })),
+);
 import { CardsBlockRenderer } from './CardsBlock';
 import { StatBlockRenderer } from './StatBlock';
 import { HotspotImageBlockRenderer } from './HotspotImageBlock';
@@ -40,6 +46,20 @@ interface Props {
   /** Último intento guardado por actividad (clave `${sectionId}__GAME_TYPE` o `KC__quizKey`). */
   savedAttempts?: Map<string, any>;
 }
+/**
+ * Espera de un bloque que llega en su propio chunk. El hueco reserva alto para
+ * que el resto de la sección no dé un salto cuando el juego aparece.
+ */
+function LazyBlock({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={<div className="h-64 w-full rounded-2xl bg-subtle skeleton-shine" />}
+    >
+      {children}
+    </Suspense>
+  );
+}
+
 function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex, campaignId, savedAttempts }: Omit<Props, 'noAnimate'>) {
   switch (block.type) {
     // El párrafo se escribe con formato enriquecido (negrita, cursiva, saltos de
@@ -262,6 +282,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
 
     case 'game-sort':
       return (
+        <LazyBlock>
         <SortGameBlock
           block={block}
           language={language}
@@ -271,10 +292,12 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           sectionId={sectionId}
           savedAttempt={sectionId ? savedAttempts?.get(`${sectionId}__SORT_PROCESS`) : undefined}
         />
+        </LazyBlock>
       );
 
     case 'game-classify':
       return (
+        <LazyBlock>
         <ClassifyGameBlockRenderer
           block={block as GameClassifyBlock}
           language={language}
@@ -284,6 +307,7 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           sectionId={sectionId}
           savedAttempt={sectionId ? savedAttempts?.get(`${sectionId}__CLASSIFY_CASES`) : undefined}
         />
+        </LazyBlock>
       );
     case 'cards':
       return <CardsBlockRenderer block={block} language={language} />;

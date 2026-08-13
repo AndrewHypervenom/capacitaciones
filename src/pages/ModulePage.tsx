@@ -41,7 +41,8 @@ import { cn } from '@/lib/cn';
 import { setQuizSoundTheme } from '@/lib/sound';
 import { vimeoEmbedUrl } from '@/lib/vimeo';
 import type { ContentBlock } from '@/types/blocks';
-import type { ModuleSection, SectionMedia } from '@/data/modules';
+import type { LearningModule, ModuleSection, SectionMedia } from '@/data/modules';
+import { getModuleById } from '@/services/modules.service';
 import { ModulePageSkeleton } from '@/components/ui/Skeleton';
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer';
 import { toast } from '@/stores/toastStore';
@@ -120,9 +121,39 @@ export default function ModulePage() {
   const boostEvent = useActiveXPEvent();
   const boostMultiplier = boostEvent?.multiplier ?? 1;
   const isModuleDone = useModuleDone();
-  const { modules, loading } = useModules();
+  // La LISTA va ligera (sin `blocks_data`): aquí solo se usa para los hermanos
+  // del curso, la navegación al siguiente y los títulos de la retroalimentación.
+  // El contenido pesado se pide de UN solo módulo, el que se está leyendo.
+  // Antes esta pantalla descargaba el cuerpo de todos los módulos visibles —para
+  // un superadmin, el de toda la plataforma— para mostrar uno.
+  const { modules, loading: listLoading } = useModules({ lite: true });
   const { courses } = useLearnerCourses();
-  const module = useMemo(() => modules.find((m) => m.id === id), [id, modules]);
+
+  // Quién PUEDE abrir este módulo se sigue decidiendo con la lista visible,
+  // exactamente igual que antes: si no está ahí, es "Módulo no encontrado". La
+  // consulta de contenido solo trae el cuerpo, nunca amplía el acceso — y va
+  // contra el UUID que la lista ya resolvió, porque el slug no es único.
+  const listed = useMemo(() => modules.find((m) => m.id === id), [id, modules]);
+  const listedUuid = listed?.dbId ?? null;
+  // El contenido se guarda JUNTO AL id que lo produjo. Así, al pasar de un
+  // módulo al siguiente, el cuerpo anterior deja de contar por sí solo —sin
+  // ningún efecto de limpieza— y nunca se pinta el módulo viejo con la URL nueva.
+  const [content, setContent] = useState<{ id: string; module: LearningModule | null } | null>(null);
+  useEffect(() => {
+    if (!listedUuid) return;
+    let active = true;
+    getModuleById(listedUuid)
+      .then((m) => { if (active) setContent({ id: listedUuid, module: m }) })
+      .catch(() => { if (active) setContent({ id: listedUuid, module: null }) });
+    return () => { active = false };
+  }, [listedUuid]);
+
+  const fresh = content?.id === listedUuid ? content : null;
+  const module = listed && fresh?.module ? fresh.module : undefined;
+  // Sigue "cargando" mientras la lista no llegue o mientras el contenido de ESTE
+  // módulo esté en camino. Si la lista terminó y el módulo no está en ella, no
+  // hay nada que esperar: es "Módulo no encontrado".
+  const loading = listLoading || (!!listedUuid && !fresh);
 
   // Presencia: publico qué módulo estoy estudiando (modo 'view': aparezco en la
   // lista de "en línea" y en la píldora del módulo, pero no disparo el aviso de

@@ -6,29 +6,40 @@ import { useAuthStore } from '@/stores/authStore';
 import { setGlobalNavigate } from '@/lib/nav';
 import { useTranslation } from 'react-i18next';
 import { AppShell } from '@/components/layout/AppShell';
+// ─── Qué entra en el paquete inicial y qué no ───────────────────────────────
+// Estas cinco pantallas son el camino que TODO el mundo recorre —entrar, ver su
+// panel, abrir un curso, leer un módulo—, así que viajan en el paquete principal
+// y aparecen sin esperar ni un chunk extra.
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
-import ResetPassword from '@/pages/ResetPassword';
 import Dashboard from '@/pages/Dashboard';
 import Courses from '@/pages/Courses';
 import CoursePage from '@/pages/CoursePage';
 import ModulePage from '@/pages/ModulePage';
-import MyFeedback from '@/pages/MyFeedback';
-import MySuggestions from '@/pages/MySuggestions';
-import Profile from '@/pages/Profile';
-import SimulatorRun from '@/pages/SimulatorRun';
-import SimulatorResult from '@/pages/SimulatorResult';
-import ChoiceSimulatorRun from '@/pages/ChoiceSimulatorRun';
-import Certificate from '@/pages/Certificate';
-import ExamLanding from '@/pages/ExamLanding';
-import ExamRunner from '@/pages/ExamRunner';
-import ExamResult from '@/pages/ExamResult';
-import PublicCertificate from '@/pages/PublicCertificate';
-import LiveQuizPlay from '@/pages/LiveQuizPlay';
-import MissionPlayer from '@/pages/MissionPlayer';
-import ArenaHub from '@/pages/ArenaHub';
-import ArenaPlayer from '@/pages/ArenaPlayer';
-import WorldMap from '@/pages/WorldMap';
+
+// El resto se carga cuando se visita, y no antes. Son pantallas que la mayoría
+// de la gente no abre en una sesión cualquiera (el simulador, el examen, el
+// certificado con su generador de PDF, los mundos, el quiz en vivo) y que hasta
+// hoy pesaban sobre la primera carga de todos, incluido quien solo entra a leer
+// un módulo. El `Suspense` que las cubre está más abajo; si un chunk falla por
+// un despliegue nuevo, el ErrorBoundary global ya recarga (ver main.tsx).
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
+const MyFeedback = lazy(() => import('@/pages/MyFeedback'));
+const MySuggestions = lazy(() => import('@/pages/MySuggestions'));
+const Profile = lazy(() => import('@/pages/Profile'));
+const SimulatorRun = lazy(() => import('@/pages/SimulatorRun'));
+const SimulatorResult = lazy(() => import('@/pages/SimulatorResult'));
+const ChoiceSimulatorRun = lazy(() => import('@/pages/ChoiceSimulatorRun'));
+const Certificate = lazy(() => import('@/pages/Certificate'));
+const ExamLanding = lazy(() => import('@/pages/ExamLanding'));
+const ExamRunner = lazy(() => import('@/pages/ExamRunner'));
+const ExamResult = lazy(() => import('@/pages/ExamResult'));
+const PublicCertificate = lazy(() => import('@/pages/PublicCertificate'));
+const LiveQuizPlay = lazy(() => import('@/pages/LiveQuizPlay'));
+const MissionPlayer = lazy(() => import('@/pages/MissionPlayer'));
+const ArenaHub = lazy(() => import('@/pages/ArenaHub'));
+const ArenaPlayer = lazy(() => import('@/pages/ArenaPlayer'));
+const WorldMap = lazy(() => import('@/pages/WorldMap'));
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { initAuth } from '@/stores/authStore';
@@ -225,6 +236,9 @@ export default function App() {
       <XPEventsInit />
       <AiCreditsInit />
       <ConfirmProvider>
+      {/* Red para las rutas perezosas que NO cuelgan del AppShell (ese trae la
+          suya alrededor del Outlet, para no desmontar la barra al navegar). */}
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
@@ -263,15 +277,9 @@ export default function App() {
         <Route path="/arena/:id" element={<ArenaPlayer />} />
         <Route path="/world" element={<WorldMap />} />
         {/* Admin CMS — solo accesible para admin/superadmin (AdminGuard dentro) */}
-        <Route
-          path="/admin/*"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <AdminRouter />
-            </Suspense>
-          }
-        />
+        <Route path="/admin/*" element={<AdminRouter />} />
       </Routes>
+      </Suspense>
       {/* Opiniones del sitio: vive en la raíz para estar en TODAS las vistas
           (aprendiz, mundos, panel de gestión) y para que lo escrito a medias no
           se pierda al navegar. Él decide dónde no debe aparecer.

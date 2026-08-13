@@ -21,7 +21,10 @@ export function Navbar() {
   const { name, reset } = useUserStore();
   const { isAdminOrCapacitador, avatarUrl } = useAuth();
   const isModuleDone = useModuleDone();
-  const { planModules: modules } = useModules();
+  // `lite`: la barra solo cuenta módulos para el anillo de progreso, no pinta
+  // ninguno. Sin esto, estar en CUALQUIER pantalla del aprendiz (la barra vive en
+  // todas) descargaba el contenido completo de todos los módulos visibles.
+  const { planModules: modules } = useModules({ lite: true });
   // Contra los módulos del plan, no contra el total global de completados: si el
   // aprendiz completó módulos de otros cursos la barra se pasaba de 100%.
   const done = modules.filter((m) => isModuleDone(keyOfModule(m))).length;

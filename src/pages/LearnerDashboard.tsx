@@ -22,7 +22,7 @@ import { useUserStore } from '@/stores/userStore';
 import {
   useProgressStore,
   useModuleDone,
-  keyOfModule,
+  keyOfCourseModule,
 } from '@/stores/progressStore';
 import {
   useGamificationStore,
@@ -34,7 +34,6 @@ import {
   type Lang,
 } from '@/stores/gamificationStore';
 import { XPBoostCard, XPBoostPill } from '@/components/gamification/XPBoostBanner';
-import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
 import { useHasWorld } from '@/hooks/useHasWorld';
 import { useAuth } from '@/hooks/useAuth';
@@ -71,8 +70,18 @@ export default function LearnerDashboard() {
   const { t } = useTranslation();
   const reduce = useReducedMotion();
   const { name, language, reset } = useUserStore();
-  const { modules: allModules, loading: modulesLoading } = useModules();
-  const { courses } = useLearnerCourses();
+  // A PROPÓSITO no se usa `useModules()` aquí. Para un superadmin esa consulta
+  // resuelve a `getAllPublishedModules()`, que trae TODOS los módulos publicados
+  // de la plataforma con sus secciones y su `blocks_data` completo — el cuerpo
+  // entero de cada curso, megabytes de JSON— para que esta pantalla use tres
+  // campos: id, slug y curso. Se notaba sobre todo al abrir una segunda pestaña,
+  // donde la caché en memoria de `useModules` arranca vacía y hay que volver a
+  // descargarlo todo.
+  //
+  // Los módulos que este panel necesita ya vienen dentro de `useLearnerCourses`
+  // (`COURSE_MODULES_SELECT`: id, slug, icono, duración, títulos y nada más), así
+  // que se derivan de ahí y no se pide nada extra.
+  const { courses, loading: coursesLoading } = useLearnerCourses();
   const { user, avatarUrl } = useAuth();
 
   // Universo de módulos que cuenta para certificación, simulador e insignias:
@@ -98,12 +107,27 @@ export default function LearnerDashboard() {
   // asignados tiene un mundo publicado (no todos los cursos tienen mundo).
   const assignedCourseIdList = useMemo(() => [...assignedCourseIds], [assignedCourseIds]);
   const { hasWorld } = useHasWorld(assignedCourseIdList);
+  // Módulos de los cursos asignados, ya en la forma que espera el progreso
+  // (`keyOfCourseModule`: uuid + slug). Mismo universo que antes —los módulos con
+  // curso asignado— pero sin traer el contenido de ninguno.
   const modules = useMemo(
-    () => allModules.filter((m) => m.courseId && assignedCourseIds.has(m.courseId)),
-    [allModules, assignedCourseIds],
+    () =>
+      dashboardCourses.flatMap((c) =>
+        c.modules.map((m) => ({
+          ...keyOfCourseModule(m),
+          courseId: c.id,
+          duration: m.duration_min ?? 0,
+          title: pickCourseText(m.title_es, m.title_en, m.title_pt, language),
+        })),
+      ),
+    [dashboardCourses, language],
   );
-  const progressState = useProgressStore();
-  const { xp, streak, badges } = progressState;
+  // Selectores puntuales, NO `useProgressStore()` entero: suscribirse al store
+  // completo re-renderizaba todo este panel cada vez que cambiaba cualquier campo
+  // del progreso (y con dos pestañas abiertas eso pasa seguido, por `mergeFromTab`).
+  const xp = useProgressStore((s) => s.xp);
+  const streak = useProgressStore((s) => s.streak);
+  const badges = useProgressStore((s) => s.badges);
   const recheckBadges = useProgressStore((s) => s.recheckBadges);
   const reconcileModuleKeys = useProgressStore((s) => s.reconcileModuleKeys);
   const isModuleDone = useModuleDone();
@@ -126,13 +150,15 @@ export default function LearnerDashboard() {
   );
 
   useEffect(() => {
-    if (!modulesLoading && modules.length > 0) {
+    if (!coursesLoading && modules.length > 0) {
       // Antes de reevaluar logros, completar la clave que falte (slug ↔ UUID):
       // si no, un aprendiz a medio migrar contaría menos módulos de los que hizo.
-      reconcileModuleKeys(modules.map(keyOfModule));
-      recheckBadges(modules.map((m) => ({ ...keyOfModule(m), courseId: m.courseId })));
+      reconcileModuleKeys(modules.map((m) => ({ uuid: m.uuid, slug: m.slug })));
+      recheckBadges(
+        modules.map((m) => ({ uuid: m.uuid, slug: m.slug, courseId: m.courseId })),
+      );
     }
-  }, [modulesLoading, modules, recheckBadges, reconcileModuleKeys]);
+  }, [coursesLoading, modules, recheckBadges, reconcileModuleKeys]);
 
   // Avance de mundo (también retroactivo): cuenta los niveles completados en
   // cualquier mundo y deja que el motor otorgue "Explorador" y afines.
@@ -217,7 +243,7 @@ export default function LearnerDashboard() {
   const coursesDone = courseStatus.finished.length;
   const coursePct = coursesTotal > 0 ? coursesDone / coursesTotal : 0;
 
-  const pending = modules.filter((m) => !isModuleDone(keyOfModule(m)));
+  const pending = modules.filter((m) => !isModuleDone({ uuid: m.uuid, slug: m.slug }));
   const remainingMinutes = pending.reduce((acc, m) => acc + m.duration, 0);
   const nextModule = pending[0];
 
@@ -249,7 +275,7 @@ export default function LearnerDashboard() {
   // Scroll-spy: resalta en el sidebar la sección visible
   const [activeSection, setActiveSection] = useState('inicio');
   useEffect(() => {
-    if (modulesLoading) return;
+    if (coursesLoading) return;
     const sections = SECTION_IDS
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => el !== null);
@@ -269,7 +295,7 @@ export default function LearnerDashboard() {
     );
     sections.forEach((s) => observer.observe(s));
     return () => observer.disconnect();
-  }, [modulesLoading]);
+  }, [coursesLoading]);
 
   const handleLogout = async () => {
     reset();
@@ -277,7 +303,7 @@ export default function LearnerDashboard() {
     navigate('/login', { replace: true });
   };
 
-  if (modulesLoading) {
+  if (coursesLoading) {
     return (
       <div className="mx-auto max-w-5xl px-5 pb-24 pt-12">
         <div className="space-y-8">
@@ -531,11 +557,11 @@ export default function LearnerDashboard() {
             {nextModule && (
               <motion.div whileTap={reduce ? undefined : { scale: 0.97 }} className="mt-7 inline-flex max-w-full">
                 <Link
-                  to={`/modules/${nextModule.id}`}
+                  to={`/modules/${nextModule.slug}`}
                   className="group inline-flex max-w-full items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13.5px] font-medium text-on-primary transition-opacity duration-300 hover:opacity-90"
                 >
                   <span className="truncate">
-                    {t('dashboard.module_continue')}: {nextModule.title[language]}
+                    {t('dashboard.module_continue')}: {nextModule.title}
                   </span>
                   <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
                 </Link>
@@ -766,7 +792,7 @@ export default function LearnerDashboard() {
                 <>
                   {remainingMinutes > 0 && <span className="text-text-subtle/50">·</span>}
                   <span className="truncate">
-                    {t('dashboard.footer_next', { title: nextModule.title[language] })}
+                    {t('dashboard.footer_next', { title: nextModule.title })}
                   </span>
                 </>
               )}

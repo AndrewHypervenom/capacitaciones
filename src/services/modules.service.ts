@@ -404,6 +404,98 @@ export async function getPreviewModules(): Promise<LearningModule[]> {
   return (data ?? []).map((row: any) => dbRowToLearningModule(row))
 }
 
+/* ── Variante LIGERA: la misma lista, sin el cuerpo de los módulos ─────────
+   El `select` de arriba embebe `module_sections(*, section_quizzes(*))`, y ahí
+   viaja `blocks_data`: el contenido completo de cada sección (textos, videos,
+   juegos, imágenes). Es lo que hay que traer para PINTAR un módulo, pero la
+   mayoría de las pantallas solo necesita la ficha —id, slug, curso, título,
+   duración— para contar avance o armar un enlace.
+
+   Para un superadmin la diferencia no es menor: la consulta completa baja el
+   contenido de TODA la plataforma. Con esta variante se traen las mismas filas
+   sin el embed, y `dbRowToLearningModule` las mapea igual (deja `sections: []`,
+   porque hace `row.module_sections ?? []`).
+
+   Regla: si la pantalla no renderiza secciones, pide la ligera. */
+const MODULE_LITE_COLUMNS =
+  'id, campaign_id, course_id, course_sort_order, slug, icon, duration_min, sort_order, ' +
+  'title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt, ' +
+  'objectives_es, objectives_en, objectives_pt, ' +
+  'key_takeaways_es, key_takeaways_en, key_takeaways_pt, sound_theme'
+
+/** `getVisibleModules` sin el contenido de las secciones. */
+export async function getVisibleModulesLite(campaignId: string | null): Promise<LearningModule[]> {
+  const query = supabase.from('modules').select(MODULE_LITE_COLUMNS)
+
+  const { data, error } = await (campaignId
+    ? query.or(`campaign_id.eq.${campaignId},course_id.not.is.null`)
+    : query.not('course_id', 'is', null))
+    .eq('is_published', true)
+    .order('sort_order')
+
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => dbRowToLearningModule({ ...row, module_sections: [] }))
+}
+
+/** `getAllPublishedModules` sin el contenido de las secciones. */
+export async function getAllPublishedModulesLite(): Promise<LearningModule[]> {
+  const { data, error } = await supabase
+    .from('modules')
+    .select(MODULE_LITE_COLUMNS)
+    .eq('is_published', true)
+    .order('sort_order')
+
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => dbRowToLearningModule({ ...row, module_sections: [] }))
+}
+
+/** `getPreviewModules` sin el contenido de las secciones. */
+export async function getPreviewModulesLite(): Promise<LearningModule[]> {
+  const { data, error } = await supabase
+    .from('modules')
+    .select(MODULE_LITE_COLUMNS)
+    .order('sort_order')
+
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => dbRowToLearningModule({ ...row, module_sections: [] }))
+}
+
+/**
+ * UN módulo por su id, con todo su contenido. Es la contraparte de las consultas
+ * ligeras: la pantalla del módulo pide la lista sin cuerpo (para los hermanos y
+ * la navegación) y el cuerpo de UNO solo — el que se está leyendo. Antes se
+ * traía el contenido de todos los módulos visibles para mostrar uno.
+ *
+ * Va por `id` y no por `slug` a propósito: el slug NO es único en toda la base
+ * (dos campañas pueden tener cada una su "introduccion"), así que buscar por
+ * slug podía devolver el módulo de otra campaña. Quien llama ya resolvió el
+ * UUID en la lista visible, que es además donde se decide el acceso; la RLS
+ * sigue siendo la última palabra.
+ *
+ * Devuelve null si no existe o si la RLS no lo deja leer.
+ */
+export async function getModuleById(moduleId: string): Promise<LearningModule | null> {
+  const { data, error } = await supabase
+    .from('modules')
+    .select(`
+      *,
+      module_sections (
+        *,
+        section_quizzes (*)
+      )
+    `)
+    .eq('id', moduleId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return dbRowToLearningModule(data as any)
+}
+
 /** Todos los módulos publicados de todas las campañas (superadmin ve todo). */
 export async function getAllPublishedModules(): Promise<LearningModule[]> {
   const { data, error } = await supabase

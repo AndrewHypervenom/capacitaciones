@@ -1,6 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { LearningModule } from '@/data/modules'
-import { getVisibleModules, getAllPublishedModules, getPreviewModules } from '@/services/modules.service'
+import {
+  getVisibleModules,
+  getAllPublishedModules,
+  getPreviewModules,
+  getVisibleModulesLite,
+  getAllPublishedModulesLite,
+  getPreviewModulesLite,
+} from '@/services/modules.service'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
@@ -16,8 +23,23 @@ const PREVIEW_KEY = '__preview__'
 // consultaba nada: el catálogo se veía, pero al entrar decía "Módulo no
 // encontrado".
 const NO_CAMPAIGN_KEY = '__no_campaign__'
+// Prefijo de las entradas SIN contenido de secciones (ver el `lite` de abajo).
+const LITE_PREFIX = 'lite:'
 
-export function useModules() {
+/**
+ * `lite: true` trae la lista SIN el contenido de las secciones (`blocks_data`).
+ *
+ * Es lo que debe pedir cualquier pantalla que solo cuenta módulos, arma enlaces
+ * o muestra títulos: la consulta completa embebe el cuerpo entero de cada
+ * módulo y, para un superadmin (que ve todo lo publicado de la plataforma), eso
+ * son megabytes de JSON por cada pestaña nueva. Solo las pantallas que RENDERIZAN
+ * un módulo —ModulePage y los editores— necesitan la versión completa.
+ *
+ * Las dos versiones tienen cachés separadas, así que pedir la ligera nunca puede
+ * dejar a otra pantalla con módulos sin secciones.
+ */
+export function useModules(opts: { lite?: boolean } = {}) {
+  const { lite = false } = opts
   const { campaignId: profileCampaignId, isSuperAdmin, loading: authLoading } = useAuth()
   // Rol REAL (useAuth lo reporta como 'learner' dentro de la vista previa).
   const realRole = useAuthStore((s) => s.profile?.role ?? null)
@@ -25,11 +47,14 @@ export function useModules() {
     IS_LEARNER_PREVIEW && (realRole === 'superadmin' || realRole === 'capacitador')
 
   // Superadmin no depende de campaña: carga todo lo publicado
-  const cacheKey = authLoading
+  const baseKey = authLoading
     ? null
     : previewMode
       ? PREVIEW_KEY
       : isSuperAdmin ? ALL_KEY : (profileCampaignId ?? NO_CAMPAIGN_KEY)
+  // La caché ligera vive en su propio espacio: una entrada ligera jamás puede
+  // responder a quien pidió el contenido completo.
+  const cacheKey = baseKey === null ? null : lite ? `${LITE_PREFIX}${baseKey}` : baseKey
 
   const [modules, setModules] = useState<LearningModule[]>(() =>
     cacheKey ? (cache.get(cacheKey) ?? []) : [],
@@ -54,11 +79,14 @@ export function useModules() {
 
     setLoading(true)
     const fetcher =
-      cacheKey === PREVIEW_KEY
-        ? getPreviewModules()
-        : cacheKey === ALL_KEY
-          ? getAllPublishedModules()
-          : getVisibleModules(cacheKey === NO_CAMPAIGN_KEY ? null : cacheKey)
+      baseKey === PREVIEW_KEY
+        ? (lite ? getPreviewModulesLite() : getPreviewModules())
+        : baseKey === ALL_KEY
+          ? (lite ? getAllPublishedModulesLite() : getAllPublishedModules())
+          : (() => {
+              const campaign = baseKey === NO_CAMPAIGN_KEY ? null : baseKey
+              return lite ? getVisibleModulesLite(campaign) : getVisibleModules(campaign)
+            })()
     fetcher
       .then((data) => {
         cache.set(cacheKey, data)
@@ -70,7 +98,9 @@ export function useModules() {
         setModules([])
       })
       .finally(() => setLoading(false))
-  }, [cacheKey, authLoading])
+    // `baseKey` y `lite` son de donde SALE `cacheKey`: van en las dependencias por
+    // corrección formal, pero no pueden disparar el efecto por su cuenta.
+  }, [cacheKey, baseKey, lite, authLoading])
 
   // Módulos del Plan de Formación general (sin curso). Los módulos que
   // pertenecen a un curso se muestran/cuentan dentro de su curso.
@@ -81,10 +111,12 @@ export function useModules() {
 
 export function invalidateModulesCache(campaignId?: string) {
   if (campaignId) {
-    cache.delete(campaignId)
-    cache.delete(ALL_KEY)
-    // Publicar/despublicar un curso también cambia lo que ve quien no tiene campaña.
-    cache.delete(NO_CAMPAIGN_KEY)
+    // Cada clave se borra en sus DOS versiones (completa y ligera): si solo se
+    // limpiara una, la pantalla que pide la otra seguiría mostrando lo viejo.
+    for (const key of [campaignId, ALL_KEY, NO_CAMPAIGN_KEY, PREVIEW_KEY]) {
+      cache.delete(key)
+      cache.delete(`${LITE_PREFIX}${key}`)
+    }
   } else {
     cache.clear()
   }
