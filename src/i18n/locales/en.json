@@ -430,7 +430,12 @@
     "picker_type_call": "Call",
     "picker_type_choice": "Multiple choice",
     "picker_start": "Start",
-    "picker_hint": "Use ↑ ↓ to move and Enter to start"
+    "picker_hint": "Use ↑ ↓ to move and Enter to start",
+    "stop_kicker": "Practice",
+    "stop_unlocked_pill": "Unlocked",
+    "stop_locked": "Opens when you finish \"{{title}}\".",
+    "stop_default_summary": "Put the module into practice. Pass with {{score}}%.",
+    "stop_pass": "Pass with {{score}}%"
   },
   "course_cert": {
     "title": "Course certificate",
@@ -646,7 +651,23 @@
     "review_toast": "Review logged! +{{xp}} XP",
     "review_course_toast": "Whole course reviewed! +{{xp}} XP",
     "review_already_today": "You already earned this module’s review today. Come back tomorrow and keep your streak.",
-    "review_capped": "You hit today’s review XP cap. It resets tomorrow."
+    "review_capped": "You hit today’s review XP cap. It resets tomorrow.",
+    "sim_unlocked": {
+      "kicker": "Practice unlocked",
+      "title": "You earned the practice",
+      "title_many": "You earned {{n}} practices",
+      "subtitle": "You finished \"{{title}}\". Now you can apply it in a real simulation.",
+      "later": "Not now",
+      "next_module": "Next module"
+    },
+    "practice_teaser": {
+      "locked_title": "Finish this module to open a practice",
+      "locked_title_many": "Finish this module to open {{n}} practices",
+      "open_title": "Practice unlocked",
+      "open_title_many": "{{n}} practices unlocked",
+      "locked_hint": "Complete the activities and mark the module as done to get in.",
+      "open_hint": "Apply the module in a simulation. Your score counts toward certification."
+    }
   },
   "simulator": {
     "difficulty": "Difficulty",
@@ -2036,12 +2057,7 @@
       "cond_preview_module_score": "Pass each module with ≥ {{pct}}% in its activities",
       "cond_preview_simulator": "Pass the simulator with ≥ {{score}}",
       "sim_section_title": "Course simulator",
-      "sim_section_hint": "Choose which scenarios belong to this course and when they unlock.",
-      "sim_unlock_label": "Simulator unlock",
-      "sim_unlock_after_modules": "After completing modules",
-      "sim_unlock_from_start": "From the start",
-      "sim_unlock_after_module": "After a module",
-      "sim_unlock_pick_module": "Pick the module…",
+      "sim_section_hint": "Choose which simulations belong to this course and where in the path they show up.",
       "world_unlock_label": "World unlock",
       "world_gate_title": "Course world",
       "world_gate_hint": "The world is a game, separate from the simulator. Choose when learners can play it.",
@@ -2356,7 +2372,16 @@
       "sim_empty_how": "Simulations are created in the Simulations section — from a document, with AI or step by step — and linked to this course from there.",
       "sim_empty_how_or_add": "You can create a new simulation or add one of the campaign's existing ones to this course, from the list below.",
       "sim_empty_cta": "Create a simulation",
-      "sim_empty_see_all": "See all simulations"
+      "sim_empty_see_all": "See all simulations",
+      "sim_stop_hint": "Each simulation picks where in the path it shows up. What you set here is literally what the learner sees on the course page, in that order.",
+      "sim_stop_needs_sql": "To anchor the simulation to a module, run the SQL 2026-08-12_sim_after_module.sql in Supabase first.",
+      "sim_placement_label": "Shows up",
+      "sim_placement_start": "At the start of the course",
+      "sim_placement_after": "After module {{n}} · {{title}}",
+      "sim_placement_end": "At the end of the course",
+      "sim_placement_start_hint": "Open from day one. It shows at the very top, before the first module.",
+      "sim_placement_after_hint": "It shows inside the list, right below that module, and opens when it is completed — with a celebration on finishing it.",
+      "sim_placement_end_hint": "It stays in the \"Practice\" section at the end and opens once every module is done."
     },
     "simulations": {
       "save": "Save",

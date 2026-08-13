@@ -97,8 +97,29 @@ export async function getScenarioBySlug(slug: string): Promise<Scenario | null> 
   return data && data.length > 0 ? dbRowToScenario(data[0]) : null
 }
 
+/**
+ * Escenario de un curso con lo que el recorrido necesita para COLOCARLO: el
+ * módulo que lo abre y su umbral de aprobación.
+ */
+export type CourseScenario = Scenario & {
+  /** id real de la fila (el `id` del escenario es el slug). */
+  rowId: string
+  /**
+   * En qué punto del curso aparece. `null` significa que la columna todavía no
+   * existe (falta correr 2026-08-12_sim_after_module.sql): quien lo lea debe
+   * caer a la regla vieja del curso, no inventarse un punto.
+   */
+  unlockMode: SimUnlockMode | null
+  /** Módulo que lo abre cuando el modo es 'after_module'. */
+  unlockModuleId: string | null
+  passScore: number
+}
+
+/** Los tres puntos posibles del recorrido. */
+export type SimUnlockMode = 'from_start' | 'after_module' | 'after_all'
+
 /** Escenarios publicados que pertenecen a un curso (para el bloque del aprendiz). */
-export async function getScenariosForCourse(courseId: string): Promise<Scenario[]> {
+export async function getScenariosForCourse(courseId: string): Promise<CourseScenario[]> {
   const { data, error } = await supabase
     .from('scenarios')
     .select('*')
@@ -106,5 +127,13 @@ export async function getScenariosForCourse(courseId: string): Promise<Scenario[
     .eq('is_published', true)
     .order('created_at')
   if (error) throw error
-  return (data ?? []).map(dbRowToScenario)
+  return (data ?? []).map((row) => ({
+    ...dbRowToScenario(row),
+    rowId: row.id,
+    // `?? null` y no `!`: si la migración todavía no se corrió, estas columnas
+    // no vienen en la fila y la página cae a la regla vieja del curso.
+    unlockMode: row.unlock_mode ?? null,
+    unlockModuleId: row.unlock_module_id ?? null,
+    passScore: row.pass_score ?? 70,
+  }))
 }

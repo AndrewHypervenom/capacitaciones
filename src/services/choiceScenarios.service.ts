@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { ChoiceScenario } from '@/data/choiceScenarios'
 import type { Json } from '@/types/database'
+import type { SimUnlockMode } from './scenarios.service'
 
 function dbRowToChoiceScenario(row: {
   id: string
@@ -28,10 +29,21 @@ function dbRowToChoiceScenario(row: {
   }
 }
 
+/** Escenario de opción múltiple de un curso, con su ancla en el recorrido. */
+export type CourseChoiceScenario = ChoiceScenario & {
+  /** id real de la fila (el `id` del escenario es el slug). */
+  rowId: string
+  /** En qué punto del curso aparece; null = falta la migración (ver scenarios.service). */
+  unlockMode: SimUnlockMode | null
+  /** Módulo que lo abre cuando el modo es 'after_module'. */
+  unlockModuleId: string | null
+  passScore: number
+}
+
 /** Escenarios de opción múltiple publicados y ligados a un curso (con su umbral de aprobación). */
 export async function getChoiceScenariosForCourse(
   courseId: string,
-): Promise<Array<ChoiceScenario & { passScore: number }>> {
+): Promise<CourseChoiceScenario[]> {
   const { data, error } = await supabase
     .from('choice_scenarios')
     .select('*')
@@ -40,7 +52,14 @@ export async function getChoiceScenariosForCourse(
     .order('created_at')
 
   if (error) throw error
-  return (data ?? []).map((row) => ({ ...dbRowToChoiceScenario(row), passScore: row.pass_score }))
+  return (data ?? []).map((row) => ({
+    ...dbRowToChoiceScenario(row),
+    rowId: row.id,
+    // Sin la migración estas columnas no vienen: se cae a la regla del curso.
+    unlockMode: row.unlock_mode ?? null,
+    unlockModuleId: row.unlock_module_id ?? null,
+    passScore: row.pass_score,
+  }))
 }
 
 /** Un escenario de opción múltiple publicado por slug (para el runner cuando no es estático). */

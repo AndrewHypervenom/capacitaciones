@@ -430,7 +430,12 @@
     "picker_type_call": "Chamada",
     "picker_type_choice": "Múltipla escolha",
     "picker_start": "Começar",
-    "picker_hint": "Use ↑ ↓ para mover e Enter para começar"
+    "picker_hint": "Use ↑ ↓ para mover e Enter para começar",
+    "stop_kicker": "Prática",
+    "stop_unlocked_pill": "Desbloqueada",
+    "stop_locked": "Abre ao concluir «{{title}}».",
+    "stop_default_summary": "Pratique o que viu no módulo. Aprova com {{score}}%.",
+    "stop_pass": "Aprova com {{score}}%"
   },
   "course_cert": {
     "title": "Certificado do curso",
@@ -646,7 +651,23 @@
     "review_toast": "Revisão registrada! +{{xp}} XP",
     "review_course_toast": "Curso revisado por inteiro! +{{xp}} XP",
     "review_already_today": "Você já ganhou a revisão deste módulo hoje. Volte amanhã e mantenha a sequência.",
-    "review_capped": "Você atingiu o limite diário de XP por revisão. Amanhã ele reinicia."
+    "review_capped": "Você atingiu o limite diário de XP por revisão. Amanhã ele reinicia.",
+    "sim_unlocked": {
+      "kicker": "Prática desbloqueada",
+      "title": "Você ganhou a prática",
+      "title_many": "Você ganhou {{n}} práticas",
+      "subtitle": "Você concluiu «{{title}}». Agora pode aplicar em uma simulação real.",
+      "later": "Agora não",
+      "next_module": "Próximo módulo"
+    },
+    "practice_teaser": {
+      "locked_title": "Ao concluir este módulo abre uma prática",
+      "locked_title_many": "Ao concluir este módulo abrem {{n}} práticas",
+      "open_title": "Prática desbloqueada",
+      "open_title_many": "{{n}} práticas desbloqueadas",
+      "locked_hint": "Conclua as atividades e marque o módulo como concluído para entrar.",
+      "open_hint": "Aplique o módulo em uma simulação. Sua pontuação conta para a certificação."
+    }
   },
   "simulator": {
     "difficulty": "Dificuldade",
@@ -2036,12 +2057,7 @@
       "cond_preview_module_score": "Aprovar cada módulo com ≥ {{pct}}% nas atividades",
       "cond_preview_simulator": "Aprovar no simulador com ≥ {{score}}",
       "sim_section_title": "Simulador do curso",
-      "sim_section_hint": "Escolha quais cenários pertencem a este curso e quando desbloqueiam.",
-      "sim_unlock_label": "Desbloqueio do simulador",
-      "sim_unlock_after_modules": "Após concluir os módulos",
-      "sim_unlock_from_start": "Desde o início",
-      "sim_unlock_after_module": "Após um módulo",
-      "sim_unlock_pick_module": "Escolha o módulo…",
+      "sim_section_hint": "Escolha quais simulações pertencem a este curso e em que ponto do percurso aparecem.",
       "world_unlock_label": "Desbloqueio do mundo",
       "world_gate_title": "Mundo do curso",
       "world_gate_hint": "O mundo é um jogo, separado do simulador. Escolha quando o aprendiz pode jogá-lo.",
@@ -2356,7 +2372,16 @@
       "sim_empty_how": "As simulações são criadas na seção Simulações — a partir de um documento, com IA ou passo a passo — e de lá são ligadas a este curso.",
       "sim_empty_how_or_add": "Você pode criar uma simulação nova ou adicionar ao curso alguma das que já existem na campanha, na lista abaixo.",
       "sim_empty_cta": "Criar uma simulação",
-      "sim_empty_see_all": "Ver todas as simulações"
+      "sim_empty_see_all": "Ver todas as simulações",
+      "sim_stop_hint": "Cada simulação escolhe em que ponto do percurso aparece. O que definir aqui é literalmente o que o aprendiz vê na página do curso, nessa ordem.",
+      "sim_stop_needs_sql": "Para ancorar a simulação a um módulo, é preciso rodar o SQL 2026-08-12_sim_after_module.sql no Supabase.",
+      "sim_placement_label": "Aparece",
+      "sim_placement_start": "No início do curso",
+      "sim_placement_after": "Depois do módulo {{n}} · {{title}}",
+      "sim_placement_end": "No final do curso",
+      "sim_placement_start_hint": "Aberta desde o primeiro dia. Aparece no topo, antes do primeiro módulo.",
+      "sim_placement_after_hint": "Aparece dentro da lista, logo abaixo desse módulo, e abre ao concluí-lo — com uma celebração ao terminar.",
+      "sim_placement_end_hint": "Fica na seção «Praticar» do final e abre ao concluir todos os módulos."
     },
     "simulations": {
       "save": "Salvar",

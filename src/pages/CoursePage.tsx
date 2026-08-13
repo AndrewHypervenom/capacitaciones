@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Award, Check, ClipboardCheck, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { FadeIn } from '@/components/ui/motion';
 import { supabase } from '@/lib/supabase';
-import type { Scenario } from '@/data/scenarios';
+import type { CourseScenario } from '@/services/scenarios.service';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -24,7 +24,7 @@ import { useViewingPresence } from '@/hooks/usePresence';
 import { selfEnroll, unenrollSelf, previewUnenrollSelf } from '@/services/courses.service';
 import { getScenariosForCourse } from '@/services/scenarios.service';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
-import type { ChoiceScenario } from '@/data/choiceScenarios';
+import type { CourseChoiceScenario } from '@/services/choiceScenarios.service';
 import { getCourseCertStatus } from '@/services/certification.service';
 import { getExamState } from '@/services/exams.service';
 import type { ExamState } from '@/types/exam';
@@ -32,6 +32,7 @@ import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { SimulatorPickerModal, type SimPick } from '@/components/simulator/SimulatorPickerModal';
+import { PracticeStop } from '@/components/simulator/PracticeStop';
 import { toast } from '@/stores/toastStore';
 import { RichText, stripMarkdown } from '@/components/ui/RichText';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -115,8 +116,8 @@ export default function CoursePage() {
   );
 
   // Simulador y certificación del curso (capa de evaluación).
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [choiceScenarios, setChoiceScenarios] = useState<ChoiceScenario[]>([]);
+  const [scenarios, setScenarios] = useState<CourseScenario[]>([]);
+  const [choiceScenarios, setChoiceScenarios] = useState<CourseChoiceScenario[]>([]);
   const [rawCertStatus, setRawCertStatus] = useState<CourseCertStatus | null>(null);
   const [examState, setExamState] = useState<ExamState | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -289,25 +290,104 @@ export default function CoursePage() {
   const nextItem = items.find((i) => i.status === 'available');
   const completed = total > 0 && done === total;
 
-  // Desbloqueo del simulador (compartido por la sección Practicar y los botones
-  // de acceso directo). El `??` no es cosmético: en los cursos viejos la columna
-  // viene NULL y sin él ninguna rama se cumplía, así que el simulador quedaba
-  // bloqueado incluso con todos los módulos terminados.
+  // Regla VIEJA del curso. Ya no decide nada por sí sola: solo se usa como
+  // respaldo para las simulaciones que todavía no tienen su propio punto,
+  // porque la migración 2026-08-12_sim_after_module.sql no se ha corrido.
+  // El `??` no es cosmético: en los cursos viejos la columna viene NULL.
   const simRule = course.sim_unlock_rule ?? 'after_modules';
-  const simUnlockModule = course.sim_unlock_module_id
-    ? course.modules.find((m) => m.id === course.sim_unlock_module_id)
-    : null;
-  const simUnlocked =
-    simRule === 'from_start' ||
-    (simRule === 'after_modules' && completed) ||
-    (simRule === 'after_module' && !!simUnlockModule && isModuleDone(keyOfCourseModule(simUnlockModule))) ||
-    (simRule === 'after_module' && !simUnlockModule && completed);
+
+  // ── Dónde aparece cada simulación en el recorrido ──────────────────────
+  // Cada una responde una sola pregunta (`unlockMode`): al inicio, después de
+  // un módulo, o al final del curso. Las dos primeras se pintan como una parada
+  // dentro de la lista de módulos; la tercera se queda en la sección
+  // "Practicar" del final, que es donde ha estado siempre.
+  //
+  // `unlockMode === null` = la migración todavía no se corrió: se cae a la
+  // regla vieja del curso para que nada cambie de sitio mientras tanto.
+  type Placement = { at: 'start' } | { at: 'module'; moduleId: string } | { at: 'end' };
+  const courseModuleIds = new Set(course.modules.map((m) => m.id));
+  const placementOf = (s: {
+    unlockMode: 'from_start' | 'after_module' | 'after_all' | null;
+    unlockModuleId: string | null;
+  }): Placement => {
+    const mode = s.unlockMode ?? (simRule === 'after_module' ? 'after_module' : simRule === 'from_start' ? 'from_start' : 'after_all');
+    const moduleId = s.unlockMode ? s.unlockModuleId : course.sim_unlock_module_id;
+    if (mode === 'from_start') return { at: 'start' };
+    // Un módulo que ya no está en el curso (lo movieron, lo borraron) no puede
+    // sostener una parada: la simulación cae al final, que es donde se la puede
+    // encontrar, en vez de desaparecer del curso.
+    if (mode === 'after_module' && moduleId && courseModuleIds.has(moduleId)) {
+      return { at: 'module', moduleId };
+    }
+    return { at: 'end' };
+  };
+  const moduleDone = (moduleId: string) => {
+    const m = course.modules.find((x) => x.id === moduleId);
+    return !!m && isModuleDone(keyOfCourseModule(m));
+  };
+  const placementUnlocked = (p: Placement) =>
+    p.at === 'start' ? true : p.at === 'module' ? moduleDone(p.moduleId) : completed;
+
+  interface PracticeStopItem {
+    key: string;
+    pick: SimPick;
+    kind: 'call' | 'choice';
+    title: string;
+    summary: string;
+    passScore: number;
+    difficulty?: 1 | 2 | 3;
+    level?: 'basico' | 'medio' | 'avanzado';
+  }
+  // Objeto y no Map: `Map` aquí es el icono de lucide (el del botón "Jugar el
+  // mundo"), que tapa al Map del lenguaje.
+  const stopsByModule: Record<string, PracticeStopItem[]> = {};
+  const startStops: PracticeStopItem[] = [];
+  const tailScenarios = scenarios.filter((s) => placementOf(s).at === 'end');
+  const tailChoiceScenarios = choiceScenarios.filter((s) => placementOf(s).at === 'end');
+
+  const place = (p: Placement, stop: PracticeStopItem) => {
+    if (p.at === 'start') startStops.push(stop);
+    else if (p.at === 'module') (stopsByModule[p.moduleId] ??= []).push(stop);
+  };
+  for (const scn of scenarios) {
+    place(placementOf(scn), {
+      key: `call-${scn.rowId}`,
+      pick: { kind: 'call', id: scn.id },
+      kind: 'call',
+      title: scn.title[language],
+      summary: scn.summary[language],
+      passScore: scn.passScore,
+      difficulty: scn.difficulty,
+    });
+  }
+  for (const scn of choiceScenarios) {
+    place(placementOf(scn), {
+      key: `choice-${scn.rowId}`,
+      pick: { kind: 'choice', id: scn.id },
+      kind: 'choice',
+      title: scn.title[language],
+      summary: stripMarkdown(scn.description[language]),
+      passScore: scn.passScore,
+      level: scn.level,
+    });
+  }
 
   // Acceso directo a la simulación: si hay una sola y está desbloqueada, entra de una;
   // si hay varias o está bloqueada, el modal deja elegir / explica el motivo. Antes
   // esto hacía scrollIntoView a la sección Practicar, invisible cuando la sección ya
   // estaba en pantalla: el botón parecía no hacer nada.
   const totalScenarios = scenarios.length + choiceScenarios.length;
+  const tailTotal = tailScenarios.length + tailChoiceScenarios.length;
+  // Lo que se puede jugar AHORA. El botón y el selector se arman con esto, para
+  // que ninguno de los dos ofrezca algo que después dice "bloqueado".
+  const isPlayable = (s: {
+    unlockMode: 'from_start' | 'after_module' | 'after_all' | null;
+    unlockModuleId: string | null;
+  }) => placementUnlocked(placementOf(s));
+  const playableScenarios = scenarios.filter(isPlayable);
+  const playableChoiceScenarios = choiceScenarios.filter(isPlayable);
+  const playableTotal = playableScenarios.length + playableChoiceScenarios.length;
+
   const simState = {
     courseId: course.id,
     campaignId: course.campaign_id,
@@ -317,11 +397,11 @@ export default function CoursePage() {
     navigate(kind === 'call' ? `/simulator/run/${id}` : `/simulator/choice/${id}`, { state: simState });
   };
   const startSimulation = () => {
-    if (totalScenarios === 1 && simUnlocked) {
+    if (playableTotal === 1) {
       goToSim(
-        choiceScenarios.length === 1
-          ? { kind: 'choice', id: choiceScenarios[0].id }
-          : { kind: 'call', id: scenarios[0].id },
+        playableChoiceScenarios.length === 1
+          ? { kind: 'choice', id: playableChoiceScenarios[0].id }
+          : { kind: 'call', id: playableScenarios[0].id },
       );
     } else {
       setPickerOpen(true);
@@ -349,17 +429,24 @@ export default function CoursePage() {
         })
       : t('courses.world_locked');
 
-  const simLockedReason =
-    simRule === 'after_module' && simUnlockModule
-      ? t('course_practice.locked_after_module', {
-          title: pickText(
-            simUnlockModule.title_es,
-            simUnlockModule.title_en,
-            simUnlockModule.title_pt,
-            language,
-          ),
-        })
-      : t('course_practice.locked_after_modules');
+  // Motivo del candado cuando NO hay nada jugable. Si todo lo que falta cuelga
+  // de módulos, se nombra el primer módulo pendiente que abre una práctica —
+  // que es lo que el aprendiz tiene que hacer ahora. Si no, es el final del
+  // curso.
+  const firstLockedAnchor = tailTotal === 0
+    ? course.modules.find((m) => stopsByModule[m.id]?.length && !isModuleDone(keyOfCourseModule(m)))
+    : undefined;
+
+  const simLockedReason = firstLockedAnchor
+    ? t('course_practice.locked_after_module', {
+        title: pickText(
+          firstLockedAnchor.title_es,
+          firstLockedAnchor.title_en,
+          firstLockedAnchor.title_pt,
+          language,
+        ),
+      })
+    : t('course_practice.locked_after_modules');
 
   return (
     <>
@@ -630,13 +717,35 @@ export default function CoursePage() {
             {t('courses.no_modules')}
           </div>
         )}
+
+        {/* Práctica "al inicio": va ANTES del módulo 1, abierta desde el primer
+            día. Su sitio en la lista ES el mensaje. */}
+        {startStops.map((stop, i) => (
+          <PracticeStop
+            key={stop.key}
+            kind={stop.kind}
+            title={stop.title}
+            summary={stop.summary}
+            unlocked
+            unlockModuleTitle=""
+            passScore={stop.passScore}
+            difficulty={stop.difficulty}
+            level={stop.level}
+            color={course.color}
+            index={i}
+            onStart={() => goToSim(stop.pick)}
+          />
+        ))}
+
         {items.map(({ module, status }, idx) => {
           const interactive = status !== 'locked';
           const Wrapper: React.ElementType = interactive ? Link : 'div';
           const wrapperProps = interactive ? { to: `/modules/${module.slug}` } : {};
+          const stops = stopsByModule[module.id] ?? [];
+          const moduleTitle = pickText(module.title_es, module.title_en, module.title_pt, language);
           return (
+            <React.Fragment key={module.id}>
             <Wrapper
-              key={module.id}
               {...wrapperProps}
               className={cn(
                 'group flex items-center gap-4 px-2 py-4 transition-colors duration-300 sm:px-3',
@@ -700,15 +809,34 @@ export default function CoursePage() {
                 )}
               </div>
             </Wrapper>
+
+            {/* Paradas de práctica que cuelgan de este módulo: van AQUÍ, dentro
+                del recorrido, no en una sección aparte al final. */}
+            {stops.map((stop, i) => (
+              <PracticeStop
+                key={stop.key}
+                kind={stop.kind}
+                title={stop.title}
+                summary={stop.summary}
+                unlocked={moduleDone(module.id)}
+                unlockModuleTitle={moduleTitle}
+                passScore={stop.passScore}
+                difficulty={stop.difficulty}
+                level={stop.level}
+                color={course.color}
+                index={i}
+                onStart={() => goToSim(stop.pick)}
+              />
+            ))}
+            </React.Fragment>
           );
         })}
       </FadeIn>
 
-      {/* ── Practicar: simulador de llamadas del curso ── */}
-      {totalScenarios > 0 && (() => {
-        const rule = simRule;
-        const unlockModule = simUnlockModule;
-
+      {/* ── Practicar: las simulaciones que se pusieron AL FINAL del curso. Las
+             de inicio y las de módulo ya salieron arriba, en su punto del
+             recorrido. Se abren al terminar todos los módulos. ── */}
+      {tailTotal > 0 && (() => {
         return (
           <FadeIn className="mt-14">
             <SectionHead
@@ -716,7 +844,7 @@ export default function CoursePage() {
               title={t('course_practice.title')}
               subtitle={t('course_practice.subtitle')}
               aside={
-                simUnlocked && certStatus && certStatus.best_score > 0 ? (
+                completed && certStatus && certStatus.best_score > 0 ? (
                   <span className="shrink-0 text-[12.5px] tabular-nums text-text-muted">
                     {t('course_practice.best_score', { score: certStatus.best_score })}
                   </span>
@@ -724,20 +852,16 @@ export default function CoursePage() {
               }
             />
 
-            {!simUnlocked ? (
+            {!completed ? (
               <div className="flex items-center gap-3 rounded-2xl border border-line px-5 py-4">
                 <Lock className="h-4 w-4 shrink-0 text-text-subtle" />
                 <p className="text-[13.5px] text-text-muted">
-                  {rule === 'after_module' && unlockModule
-                    ? t('course_practice.locked_after_module', {
-                        title: pickText(unlockModule.title_es, unlockModule.title_en, unlockModule.title_pt, language),
-                      })
-                    : t('course_practice.locked_after_modules')}
+                  {t('course_practice.locked_after_modules')}
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {choiceScenarios.map((scn) => (
+                {tailChoiceScenarios.map((scn) => (
                   <button
                     key={scn.id}
                     onClick={() =>
@@ -771,7 +895,7 @@ export default function CoursePage() {
                     </span>
                   </button>
                 ))}
-                {scenarios.map((scn) => (
+                {tailScenarios.map((scn) => (
                   <button
                     key={scn.id}
                     onClick={() =>
@@ -1129,11 +1253,14 @@ export default function CoursePage() {
     </div>
     {pickerOpen && (
       <SimulatorPickerModal
-        scenarios={scenarios}
-        choiceScenarios={choiceScenarios}
+        /* Solo lo que se puede jugar ahora: con simulaciones ancladas a módulos
+           ya no hay un único candado para todas, y ofrecer una bloqueada aquí
+           sería prometer algo que la siguiente pantalla niega. */
+        scenarios={playableTotal > 0 ? playableScenarios : tailScenarios}
+        choiceScenarios={playableTotal > 0 ? playableChoiceScenarios : tailChoiceScenarios}
         language={language}
         accent={course.color}
-        unlocked={simUnlocked}
+        unlocked={playableTotal > 0}
         lockedReason={simLockedReason}
         bestScore={certStatus?.best_score}
         onPick={(pick) => {

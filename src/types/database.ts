@@ -651,6 +651,20 @@ export interface Database {
           course_id: string | null
           pass_score: number
           counts_for_cert: boolean
+          /**
+           * Módulo del curso que la abre, cuando `unlock_mode` es
+           * 'after_module': la simulación se muestra como una parada dentro de
+           * la lista de módulos, justo debajo de ese módulo, y se desbloquea al
+           * completarlo.
+           */
+          unlock_module_id: string | null
+          /**
+           * En qué punto del curso aparece: 'from_start' (al inicio, abierta
+           * desde el primer día), 'after_module' (después del módulo de
+           * `unlock_module_id`) o 'after_all' (al final, con todo terminado).
+           * Sustituye a `courses.sim_unlock_rule`, que ya no se lee.
+           */
+          unlock_mode: 'from_start' | 'after_module' | 'after_all'
           is_shareable: boolean
           copied_from: string | null
           /** Perfil que la creó (o que la copió del catálogo). Ver RPC get_simulation_authors. */
@@ -685,6 +699,10 @@ export interface Database {
           course_id?: string | null
           pass_score?: number
           counts_for_cert?: boolean
+          /** Módulo que la desbloquea (ver Row.unlock_module_id). */
+          unlock_module_id?: string | null
+          /** En qué punto del curso aparece (ver Row.unlock_mode). */
+          unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
           copied_from?: string | null
           /** Lo pone el DEFAULT auth.uid() de la BD; no hace falta enviarlo. */
@@ -719,6 +737,10 @@ export interface Database {
           course_id?: string | null
           pass_score?: number
           counts_for_cert?: boolean
+          /** Módulo que la desbloquea (ver Row.unlock_module_id). */
+          unlock_module_id?: string | null
+          /** En qué punto del curso aparece (ver Row.unlock_mode). */
+          unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
           copied_from?: string | null
         }
@@ -830,6 +852,10 @@ export interface Database {
           is_published: boolean
           course_id: string | null
           pass_score: number
+          /** Módulo que la abre (ver scenarios.unlock_module_id). */
+          unlock_module_id: string | null
+          /** En qué punto del curso aparece (ver scenarios.unlock_mode). */
+          unlock_mode: 'from_start' | 'after_module' | 'after_all'
           is_shareable: boolean
           copied_from: string | null
           /** Perfil que la creó (o que la copió del catálogo). Ver RPC get_simulation_authors. */
@@ -853,6 +879,10 @@ export interface Database {
           is_published?: boolean
           course_id?: string | null
           pass_score?: number
+          /** Módulo que la abre (ver scenarios.unlock_module_id). */
+          unlock_module_id?: string | null
+          /** En qué punto del curso aparece (ver scenarios.unlock_mode). */
+          unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
           copied_from?: string | null
           /** Lo pone el DEFAULT auth.uid() de la BD; no hace falta enviarlo. */
@@ -876,6 +906,10 @@ export interface Database {
           is_published?: boolean
           course_id?: string | null
           pass_score?: number
+          /** Módulo que la abre (ver scenarios.unlock_module_id). */
+          unlock_module_id?: string | null
+          /** En qué punto del curso aparece (ver scenarios.unlock_mode). */
+          unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
           copied_from?: string | null
         }

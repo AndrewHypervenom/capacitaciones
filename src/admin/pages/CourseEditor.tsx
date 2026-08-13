@@ -182,6 +182,69 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   )
 }
 
+export type SimPlacementMode = 'from_start' | 'after_module' | 'after_all'
+
+/**
+ * En qué punto del curso aparece la simulación. UNA sola pregunta con tres
+ * respuestas posibles, en el orden en que el aprendiz las vive: al inicio,
+ * después de un módulo, al final.
+ *
+ * Antes esto estaba partido en dos controles —una regla del curso arriba y un
+ * "aparece después de" por simulación abajo— que se contradecían y no dejaban
+ * claro cómo dejar una al principio. Aquí no hay nada que cruzar: lo que dice
+ * la lista es lo que ve el aprendiz, en ese mismo orden.
+ */
+function SimPlacementPicker({
+  modules,
+  mode,
+  moduleId,
+  onChange,
+}: {
+  modules: { id: string; title_es: string }[]
+  mode: SimPlacementMode
+  moduleId: string | null
+  onChange: (mode: SimPlacementMode, moduleId: string | null) => void
+}) {
+  const { t } = useTranslation()
+  // Un solo valor plano para el Select: 'start', 'm:<uuid>' o 'end'.
+  const value =
+    mode === 'from_start' ? 'start' : mode === 'after_module' && moduleId ? `m:${moduleId}` : 'end'
+
+  return (
+    <div className="mt-2 border-t border-line pt-2">
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-[11px] text-text-muted">{t('admin.courses.sim_placement_label')}</span>
+        <Select
+          className="min-w-0 flex-1"
+          value={value}
+          onChange={(v) => {
+            if (v === 'start') onChange('from_start', null)
+            else if (v === 'end') onChange('after_all', null)
+            else onChange('after_module', v.slice(2))
+          }}
+          options={[
+            { value: 'start', label: t('admin.courses.sim_placement_start') },
+            ...modules.map((m, i) => ({
+              value: `m:${m.id}`,
+              label: t('admin.courses.sim_placement_after', { n: i + 1, title: m.title_es }),
+            })),
+            { value: 'end', label: t('admin.courses.sim_placement_end') },
+          ]}
+        />
+      </div>
+      {/* Qué implica lo elegido, en una línea. Sin esto hay que adivinar si
+          "al inicio" quiere decir visible o desbloqueada. */}
+      <p className="mt-1.5 text-[11px] leading-relaxed text-text-subtle">
+        {mode === 'from_start'
+          ? t('admin.courses.sim_placement_start_hint')
+          : mode === 'after_module' && moduleId
+            ? t('admin.courses.sim_placement_after_hint')
+            : t('admin.courses.sim_placement_end_hint')}
+      </p>
+    </div>
+  )
+}
+
 export default function CourseEditor() {
   const { courseId } = useParams<{ courseId: string }>()
   const { t } = useTranslation()
@@ -323,6 +386,19 @@ export default function CourseEditor() {
   }, [])
   const [simRule, setSimRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
   const [simUnlockModuleId, setSimUnlockModuleId] = useState<string | null>(null)
+  /**
+   * Borrador de "en qué punto del curso aparece" cada simulación, indexado por
+   * `call:<id>` / `choice:<id>`. Solo guarda las que alguien tocó; el resto se
+   * lee de la fila.
+   *
+   * Va en borrador y no directo a la base porque en este editor SOLO se guarda
+   * desde la barra flotante: un cambio que se aplica solo al elegirlo no se
+   * puede deshacer con Ctrl+Z ni cancelar cerrando la pestaña, y aquí mueve de
+   * sitio algo que el aprendiz ya está viendo.
+   */
+  const [simPlacements, setSimPlacements] = useState<
+    Record<string, { mode: SimPlacementMode; moduleId: string | null }>
+  >({})
   // Desbloqueo del mundo (juego), mismo esquema que el simulador.
   const [worldRule, setWorldRule] = useState<'after_modules' | 'from_start' | 'after_module'>('after_modules')
   const [worldUnlockModuleId, setWorldUnlockModuleId] = useState<string | null>(null)
@@ -416,7 +492,7 @@ export default function CourseEditor() {
   // Cambios sin guardar de la ficha: alimenta el aviso de "Nueva versión
   // disponible" y el de cerrar la pestaña (ver lib/unsavedWork.ts).
   const unsaved = useUnsavedWork(
-    { form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId },
+    { form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, simPlacements },
     { label: form.title_es || t('common.untitled'), enabled: !loading },
   )
 
@@ -671,7 +747,7 @@ export default function CourseEditor() {
   // auditoría del 2026-08-11 15:47).
   const undoHistory = useUndoHistory({
     state: {
-      form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId,
+      form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, simPlacements,
       assign: assignLoaded ? { campaigns: draftCampaigns, users: draftUsers } : null,
     },
     apply: (s) => {
@@ -681,6 +757,7 @@ export default function CourseEditor() {
       setSimUnlockModuleId(s.simUnlockModuleId)
       setWorldRule(s.worldRule)
       setWorldUnlockModuleId(s.worldUnlockModuleId)
+      setSimPlacements(s.simPlacements)
       if (s.assign) {
         setDraftCampaigns(s.assign.campaigns)
         setDraftUsers(s.assign.users)
@@ -781,6 +858,44 @@ export default function CourseEditor() {
   const unpublishedLinkedCount =
     courseScenarios.filter((s) => !s.is_published).length +
     courseChoiceScenarios.filter((s) => !s.is_published).length
+
+  // ── Punto del recorrido de cada simulación (borrador vs. guardado) ────────
+  const savedPlacement = (row: {
+    unlock_mode?: SimPlacementMode | null
+    unlock_module_id?: string | null
+  }) => ({ mode: row.unlock_mode ?? ('after_all' as SimPlacementMode), moduleId: row.unlock_module_id ?? null })
+
+  /** Lo que hay que pintar: lo tocado si se tocó, lo guardado si no. */
+  const placementOf = (
+    kind: 'call' | 'choice',
+    row: { id: string; unlock_mode?: SimPlacementMode | null; unlock_module_id?: string | null },
+  ) => simPlacements[`${kind}:${row.id}`] ?? savedPlacement(row)
+
+  const setPlacement = (
+    kind: 'call' | 'choice',
+    id: string,
+    mode: SimPlacementMode,
+    moduleId: string | null,
+  ) =>
+    setSimPlacements((prev) => ({
+      ...prev,
+      // El módulo se limpia salvo cuando el punto ES un módulo: dejar un id
+      // colgando de un modo que no lo usa es lo que hace que la página del
+      // módulo celebre desbloqueos que no existen.
+      [`${kind}:${id}`]: { mode, moduleId: mode === 'after_module' ? moduleId : null },
+    }))
+
+  /** Cambios de punto sin guardar. Alimenta la barra y el punto de la pestaña. */
+  const placementDirty = useMemo(() => {
+    const changed = (kind: 'call' | 'choice', rows: Array<{ id: string; unlock_mode?: SimPlacementMode | null; unlock_module_id?: string | null }>) =>
+      rows.some((row) => {
+        const draft = simPlacements[`${kind}:${row.id}`]
+        if (!draft) return false
+        const saved = savedPlacement(row)
+        return draft.mode !== saved.mode || draft.moduleId !== saved.moduleId
+      })
+    return changed('call', courseScenarios) || changed('choice', courseChoiceScenarios)
+  }, [simPlacements, courseScenarios, courseChoiceScenarios])
 
   // Requiere el simulador para certificar, pero no hay escenarios ligados:
   // ningún aprendiz podría certificarse. Se resalta como configuración incompleta.
@@ -1348,10 +1463,54 @@ export default function CourseEditor() {
     }
   }
 
+  /**
+   * Escribe los puntos del recorrido que se movieron en el borrador. Va dentro
+   * del guardado de Evaluación (una sola barra, un solo "Guardar"), no al
+   * elegir en el desplegable.
+   */
+  const savePlacements = async (): Promise<boolean> => {
+    const pending = [
+      ...courseScenarios.map((row) => ({ kind: 'call' as const, row })),
+      ...courseChoiceScenarios.map((row) => ({ kind: 'choice' as const, row })),
+    ].filter(({ kind, row }) => {
+      const draft = simPlacements[`${kind}:${row.id}`]
+      if (!draft) return false
+      const saved = savedPlacement(row)
+      return draft.mode !== saved.mode || draft.moduleId !== saved.moduleId
+    })
+    if (pending.length === 0) return true
+
+    try {
+      await Promise.all(
+        pending.map(({ kind, row }) => {
+          const draft = simPlacements[`${kind}:${row.id}`]
+          const patch = { unlock_mode: draft.mode, unlock_module_id: draft.moduleId }
+          return kind === 'call'
+            ? updateScenario(row.id, patch)
+            : updateChoiceScenario(row.id, patch)
+        }),
+      )
+      setSimPlacements({})
+      await loadScenarios()
+      return true
+    } catch (e) {
+      const err = e as { code?: string }
+      toast.error(
+        err.code === '42703' || err.code === 'PGRST204'
+          ? t('admin.courses.sim_stop_needs_sql')
+          : t('admin.courses.error_save'),
+      )
+      return false
+    }
+  }
+
   const handleSaveConditions = async (opts?: { silent?: boolean }): Promise<boolean> => {
     if (!course) return false
     setSavingEval(true)
     try {
+      // Primero las simulaciones: si les falta la columna, el aviso explica qué
+      // correr y no se guarda a medias un curso que dice otra cosa.
+      if (!(await savePlacements())) return false
       await updateCourse(course.id, {
         cert_conditions: cond,
         sim_unlock_rule: simRule,
@@ -1389,7 +1548,7 @@ export default function CourseEditor() {
     // de "otra pestaña lo guardó" y cancelar todo el guardado).
     if (infoDirty && !(await handleSaveInfo({ silent: true }))) return
     // Un solo update cubre las dos pestañas (condiciones + desbloqueos).
-    if ((evalDirty || certDirty) && !(await handleSaveConditions({ silent: true }))) return
+    if ((evalDirty || placementDirty || certDirty) && !(await handleSaveConditions({ silent: true }))) return
     // El pénsum del certificado escribe en los módulos, no en el curso.
     if (pensumDirty && pensumSaveRef.current && !(await pensumSaveRef.current())) return
     if (assignDirty && !(await saveAssignments({ silent: true }))) return
@@ -1402,7 +1561,7 @@ export default function CourseEditor() {
   const pendingSaves = [
     infoDirty && { id: 'info', label: t(TAB_LABEL_KEY.info), onFocus: () => setTab('info') },
     assignDirty && { id: 'assign', label: t(TAB_LABEL_KEY.assign), onFocus: () => setTab('assign') },
-    evalDirty && { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), onFocus: () => setTab('evaluation') },
+    (evalDirty || placementDirty) && { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), onFocus: () => setTab('evaluation') },
     examDirty && { id: 'exam', label: t(TAB_LABEL_KEY.exam), onFocus: () => setTab('exam') },
     // Condiciones y pénsum comparten entrada: los dos viven en "Certificación",
     // y dos filas con el mismo rótulo en la barra no le dirían nada a nadie.
@@ -3304,38 +3463,14 @@ export default function CourseEditor() {
               <div className="border-t border-line px-4 pb-4 pt-4 space-y-4">
                 <p className="text-[12px] text-text-muted">{t('admin.courses.sim_section_hint')}</p>
 
-                {/* Regla de desbloqueo */}
-                <div className="rounded-xl border border-line px-3.5 py-3">
-                  <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_unlock_label')}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(['after_modules', 'from_start', 'after_module'] as const).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => setSimRule(r)}
-                        className={cn('px-3 py-1.5 rounded-lg text-[12px] font-medium border',
-                          simRule === r ? 'border-primary/40 bg-primary/10 text-primary' : 'border-line text-text-muted hover:text-text')}
-                      >
-                        {t(`admin.courses.sim_unlock_${r}`)}
-                      </button>
-                    ))}
-                  </div>
-                  {simRule === 'after_module' && (
-                    <Select
-                      className="mt-3"
-                      value={simUnlockModuleId ?? ''}
-                      onChange={(v) => setSimUnlockModuleId(v || null)}
-                      placeholder={t('admin.courses.sim_unlock_pick_module')}
-                      options={[
-                        { value: '', label: t('admin.courses.sim_unlock_pick_module') },
-                        ...course.modules.map((m) => ({ value: m.id, label: m.title_es })),
-                      ]}
-                    />
-                  )}
-                </div>
-
                 {/* Escenarios ligados al curso */}
                 <div>
                   <div className="text-[12px] font-medium text-text-muted mb-2">{t('admin.courses.sim_in_course')}</div>
+                  {courseScenarioCount > 0 && course.modules.length > 0 && (
+                    <p className="mb-2.5 text-[11.5px] leading-relaxed text-text-subtle">
+                      {t('admin.courses.sim_stop_hint')}
+                    </p>
+                  )}
                   {courseScenarioCount === 0 ? (
                     /* Sin escenarios había solo una frase suelta y ninguna salida:
                        "este curso no tiene escenarios" y a averiguárselas. Ahora
@@ -3404,10 +3539,11 @@ export default function CourseEditor() {
                         <div
                           key={s.id}
                           className={cn(
-                            'flex items-center gap-3 rounded-xl border px-3.5 py-2.5',
+                            'rounded-xl border px-3.5 py-2.5',
                             s.is_published ? 'border-line' : 'border-amber-500/40 bg-amber-500/5',
                           )}
                         >
+                          <div className="flex items-center gap-3">
                           <PhoneCall className="h-4 w-4 text-primary shrink-0" />
                           <span className="flex-1 min-w-0 text-[13px] text-text truncate">
                             {s.title_es}
@@ -3448,16 +3584,24 @@ export default function CourseEditor() {
                               <X className="h-4 w-4" />
                             </button>
                           </Tooltip>
+                          </div>
+                          <SimPlacementPicker
+                            modules={course.modules}
+                            mode={placementOf('call', s).mode}
+                            moduleId={placementOf('call', s).moduleId}
+                            onChange={(mode, moduleId) => setPlacement('call', s.id, mode, moduleId)}
+                          />
                         </div>
                       ))}
                       {courseChoiceScenarios.map((s) => (
                         <div
                           key={s.id}
                           className={cn(
-                            'flex items-center gap-3 rounded-xl border px-3.5 py-2.5',
+                            'rounded-xl border px-3.5 py-2.5',
                             s.is_published ? 'border-line' : 'border-amber-500/40 bg-amber-500/5',
                           )}
                         >
+                          <div className="flex items-center gap-3">
                           <ListChecks className="h-4 w-4 text-primary shrink-0" />
                           <span className="flex-1 min-w-0 text-[13px] text-text truncate">
                             {s.title_es}
@@ -3501,6 +3645,13 @@ export default function CourseEditor() {
                               <X className="h-4 w-4" />
                             </button>
                           </Tooltip>
+                          </div>
+                          <SimPlacementPicker
+                            modules={course.modules}
+                            mode={placementOf('choice', s).mode}
+                            moduleId={placementOf('choice', s).moduleId}
+                            onChange={(mode, moduleId) => setPlacement('choice', s.id, mode, moduleId)}
+                          />
                         </div>
                       ))}
                     </div>

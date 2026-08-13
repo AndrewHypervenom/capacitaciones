@@ -50,6 +50,13 @@ import { getCourseModulePassPct } from '@/services/courses.service';
 import { useModuleTimer } from '@/hooks/useModuleTimer';
 import type { Language } from '@/stores/userStore';
 import { FeedbackModal } from '@/components/modules/FeedbackModal';
+import {
+  getSimulationsUnlockedByModule,
+  simulationPath,
+  type UnlockedSimulation,
+} from '@/services/moduleSimulations.service';
+import { SimulationUnlockedModal } from '@/components/simulator/SimulationUnlockedModal';
+import { ModulePracticeTeaser } from '@/components/simulator/ModulePracticeTeaser';
 
 
 function getMediaClasses(media: SectionMedia) {
@@ -197,6 +204,35 @@ export default function ModulePage() {
   const [apprenticeComment, setApprenticeComment] = useState('');
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const [readingMode] = useState(false);
+
+  // ─── Práctica anclada a ESTE módulo ─────────────────────────────────────
+  // Simulaciones que se abren al terminarlo. Antes vivían solo al final de la
+  // página del curso y nadie las relacionaba con el módulo que las ganaba:
+  // ahora el módulo anuncia su premio antes y lo celebra al completarse.
+  const [unlockedSims, setUnlockedSims] = useState<UnlockedSimulation[]>([]);
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  useEffect(() => {
+    const moduleUuid = module?.dbId;
+    if (!moduleUuid) { setUnlockedSims([]); return; }
+    let alive = true;
+    getSimulationsUnlockedByModule(moduleUuid, language)
+      .then((sims) => { if (alive) setUnlockedSims(sims); })
+      .catch(() => { if (alive) setUnlockedSims([]); });
+    return () => { alive = false; };
+  }, [module?.dbId, language]);
+
+  // El simulador necesita saber de qué curso viene (para el puntaje que cuenta
+  // en la certificación) y a dónde volver al terminar.
+  const goToSimulation = (sim: UnlockedSimulation) => {
+    setUnlockOpen(false);
+    nav(simulationPath(sim), {
+      state: {
+        courseId: module?.courseId ?? null,
+        campaignId: module?.campaign_id ?? null,
+        returnTo: backTo,
+      },
+    });
+  };
 
   const fetchModuleFeedback = async () => {
     if (!module || !targetUserId) return;
@@ -514,6 +550,10 @@ export default function ModulePage() {
     updateStreak();
     markModule(keyOfModule(module), siblings.map(keyOfModule));
     toast.success(t('module.completed_toast', { title: module.title[language] }));
+    // Si este módulo desbloquea práctica, ESE es el final del módulo: se celebra
+    // y el aprendiz decide. Saltar solo al siguiente se llevaría por delante el
+    // premio que se acaba de ganar (y nadie volvería a buscarlo).
+    if (unlockedSims.length > 0) { setUnlockOpen(true); return; }
     if (nextModule) setTimeout(() => nav(`/modules/${nextModule.id}`), 600);
   };
 
@@ -588,6 +628,15 @@ export default function ModulePage() {
           </ul>
         </div>
       )}
+
+      {/* Práctica que cuelga de este módulo: promesa antes de terminarlo,
+          puerta de entrada después. */}
+      <ModulePracticeTeaser
+        simulations={unlockedSims}
+        unlocked={completed}
+        onStart={goToSimulation}
+        className="mt-10"
+      />
 
       <div className="mt-10 flex flex-col items-center justify-end gap-3 border-t border-line pt-6 sm:flex-row">
         {/* Sin halo ni icono latiendo: es una accion secundaria, no la principal. */}
@@ -842,6 +891,21 @@ export default function ModulePage() {
         onClose={() => setIsModalOpen(false)}
         attempts={latestAttemptsPerSection}
         computedMetrics={{ ...computedMetrics, timeSpent: activeTimeLabel } as any}
+      />
+
+      {/* Celebración del desbloqueo: solo cuando ESTE módulo abre una práctica. */}
+      <SimulationUnlockedModal
+        open={unlockOpen}
+        moduleTitle={module.title[language]}
+        simulations={unlockedSims}
+        color={backCourse?.color || undefined}
+        onStart={goToSimulation}
+        onClose={() => setUnlockOpen(false)}
+        onNext={
+          nextModule
+            ? () => { setUnlockOpen(false); nav(`/modules/${nextModule.id}`); }
+            : undefined
+        }
       />
       {/* "Volver arriba" ya no es un botón suelto: es una acción del rincón
           flotante (CornerDock), montado una sola vez en la raíz. */}
