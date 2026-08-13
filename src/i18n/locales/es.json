@@ -60,6 +60,7 @@
     "description": "Actualiza para ver los últimos cambios del sitio.",
     "description_unsaved": "Hay cambios sin guardar. Guárdalos y luego actualiza.",
     "action": "Actualizar",
+    "updating": "Actualizando…",
     "confirm_title": "¿Actualizar ahora?",
     "confirm_description": "Al actualizar se recarga la página. Si estás en medio de algo sin guardar (creando o editando contenido, respondiendo una evaluación, etc.), podrías perder ese progreso. Guarda primero y actualiza cuando termines.",
     "confirm_unsaved": "Tienes cambios sin guardar en: {{items}}. Al actualizar se recarga la página y esos cambios se pierden.",

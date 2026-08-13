@@ -60,6 +60,7 @@
     "description": "Refresh to get the latest changes.",
     "description_unsaved": "You have unsaved changes. Save them, then update.",
     "action": "Refresh",
+    "updating": "Refreshing…",
     "confirm_title": "Refresh now?",
     "confirm_description": "Refreshing reloads the page. If you're in the middle of something unsaved (creating or editing content, taking an assessment, etc.), you could lose that progress. Save first and refresh when you're done.",
     "confirm_unsaved": "You have unsaved changes in: {{items}}. Updating reloads the page and those changes are lost.",

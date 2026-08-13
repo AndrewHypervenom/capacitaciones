@@ -60,6 +60,7 @@
     "description": "Atualize para ver as últimas mudanças do site.",
     "description_unsaved": "Há alterações não salvas. Salve-as e depois atualize.",
     "action": "Atualizar",
+    "updating": "Atualizando…",
     "confirm_title": "Atualizar agora?",
     "confirm_description": "Atualizar recarrega a página. Se você estiver no meio de algo sem salvar (criando ou editando conteúdo, respondendo uma avaliação, etc.), pode perder esse progresso. Salve primeiro e atualize quando terminar.",
     "confirm_unsaved": "Você tem alterações não salvas em: {{items}}. Ao atualizar, a página recarrega e essas alterações se perdem.",

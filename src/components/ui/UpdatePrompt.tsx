@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useUnsavedWorkSummary } from '@/hooks/useUnsavedWork';
+import { cn } from '@/lib/cn';
 
 /**
  * Aviso flotante que aparece cuando hay una versión más reciente del sitio
@@ -13,6 +14,9 @@ import { useUnsavedWorkSummary } from '@/hooks/useUnsavedWork';
 export function UpdatePrompt() {
   const updateAvailable = useVersionCheck();
   const [dismissed, setDismissed] = useState(false);
+  // Entre pulsar y que la página nueva pinte pasan unos instantes. Sin señal, el
+  // botón parece no haber hecho nada y se vuelve a pulsar.
+  const [updating, setUpdating] = useState(false);
   const { t } = useTranslation();
   const confirm = useConfirm();
   const unsaved = useUnsavedWorkSummary();
@@ -32,7 +36,7 @@ export function UpdatePrompt() {
    */
   const handleUpdate = async () => {
     if (!unsaved.any) {
-      window.location.reload();
+      applyUpdate();
       return;
     }
     const ok = await confirm({
@@ -41,7 +45,25 @@ export function UpdatePrompt() {
       confirmLabel: t('update.confirm_discard'),
       cancelLabel: t('update.confirm_cancel'),
     });
-    if (ok) window.location.reload();
+    if (ok) applyUpdate();
+  };
+
+  /**
+   * Navegación normal a la misma dirección, NO `location.reload()`.
+   *
+   * `reload()` le dice al navegador "desconfía de todo": revalida cada archivo
+   * contra el servidor, incluidos los de `/assets/` que se sirven `immutable` y
+   * que `useVersionCheck` ya se trajo a la caché mientras el aviso estaba en
+   * pantalla. Eran decenas de viajes de ida y vuelta para confirmar lo que ya
+   * estaba en disco. Navegando, el `index.html` llega fresco igual (se sirve
+   * `no-store`) y los archivos salen de la caché sin tocar la red.
+   *
+   * `replace` y no `href` para no dejar una entrada repetida en el historial:
+   * el botón "atrás" debe llevar a la página anterior, no a esta misma.
+   */
+  const applyUpdate = () => {
+    setUpdating(true);
+    window.location.replace(window.location.href);
   };
 
   return (
@@ -76,14 +98,16 @@ export function UpdatePrompt() {
 
             <button
               onClick={handleUpdate}
-              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-neon-cyan/15 hover:bg-neon-cyan/25 text-neon-cyan text-[12.5px] font-semibold px-3 py-2 transition-colors"
+              disabled={updating}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-neon-cyan/15 hover:bg-neon-cyan/25 text-neon-cyan text-[12.5px] font-semibold px-3 py-2 transition-colors disabled:cursor-default disabled:hover:bg-neon-cyan/15"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
-              {t('update.action')}
+              <RefreshCw className={cn('h-3.5 w-3.5', updating && 'animate-spin')} />
+              {updating ? t('update.updating') : t('update.action')}
             </button>
 
             <button
               onClick={() => setDismissed(true)}
+              disabled={updating}
               className="shrink-0 text-text-subtle hover:text-text transition-colors"
               aria-label={t('common.close', 'Cerrar')}
             >
