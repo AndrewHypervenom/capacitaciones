@@ -27,6 +27,7 @@ import {
   Loader2,
   Lock,
   Map as MapIcon,
+  MessageSquareHeart,
   Monitor,
   PhoneCall,
   Plus,
@@ -77,6 +78,8 @@ import { SurgeryUndoBar } from '@/admin/components/SurgeryUndoBar'
 import type { PendingSurgery } from '@/services/moduleSurgery.service'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { ExamBuilder } from '@/admin/components/exam/ExamBuilder'
+import { SurveyPanel } from '@/admin/components/SurveyPanel'
+import { Toggle } from '@/components/ui/Toggle'
 import { CertificatePensumPanel } from '@/admin/components/CertificatePensumPanel'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { getCourseTranslationState } from '@/services/translation.service'
@@ -113,7 +116,7 @@ import { useUndoHistory, type PanelUndo, type RegisterUndo } from '@/hooks/useUn
 import { SaveDock, DirtyDot } from '@/admin/components/SaveDock'
 import { fingerprint } from '@/lib/fingerprint'
 
-type Tab = 'info' | 'modules' | 'assign' | 'evaluation' | 'exam' | 'cert'
+type Tab = 'info' | 'modules' | 'assign' | 'evaluation' | 'exam' | 'cert' | 'survey'
 
 /** Rótulo i18n de cada pestaña; se reusa en las pestañas y en la presencia. */
 const TAB_LABEL_KEY: Record<Tab, string> = {
@@ -123,6 +126,7 @@ const TAB_LABEL_KEY: Record<Tab, string> = {
   evaluation: 'admin.courses.tab_evaluation',
   exam: 'admin.courses.tab_exam',
   cert: 'admin.courses.tab_cert',
+  survey: 'admin.courses.tab_survey',
 }
 type Lang = 'es' | 'en' | 'pt'
 
@@ -156,30 +160,6 @@ function errMsg(e: unknown): string {
     return o.code ? `[${o.code}] ${base}` : base
   }
   return String(e)
-}
-
-/** Interruptor on/off accesible y consistente (track + perilla). */
-function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label?: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      onClick={onClick}
-      className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40',
-        on ? 'bg-primary border-primary' : 'bg-subtle border-line',
-      )}
-    >
-      <span
-        className={cn(
-          'inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform duration-200',
-          on ? 'translate-x-[22px]' : 'translate-x-[2px]',
-        )}
-      />
-    </button>
-  )
 }
 
 export type SimPlacementMode = 'from_start' | 'after_module' | 'after_all'
@@ -373,6 +353,12 @@ export default function CourseEditor() {
   const [examUndo, setExamUndo] = useState<PanelUndo>(null)
   const registerExamUndo = useCallback<RegisterUndo>((fn, canUndo) => {
     setExamUndo(fn ? { undo: fn, canUndo } : null)
+  }, [])
+  // Encuesta de satisfacción: mismo esquema de panel autónomo que el examen.
+  const [surveyDirty, setSurveyDirty] = useState(false)
+  const surveySaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const registerSurveySave = useCallback((fn: (() => Promise<boolean>) | null) => {
+    surveySaveRef.current = fn
   }, [])
   // Pénsum del certificado (lo que se publica al compartirlo): mismo esquema.
   const [pensumDirty, setPensumDirty] = useState(false)
@@ -1554,6 +1540,8 @@ export default function CourseEditor() {
     if (assignDirty && !(await saveAssignments({ silent: true }))) return
     // El examen guarda su propio trozo (reglas), igual que las demás pestañas.
     if (examDirty && examSaveRef.current && !(await examSaveRef.current())) return
+    // La encuesta guarda su configuración (switches, tiempo, umbral).
+    if (surveyDirty && surveySaveRef.current && !(await surveySaveRef.current())) return
     toast.success(t('admin.courses.saved_ok'))
   }
 
@@ -1565,6 +1553,7 @@ export default function CourseEditor() {
     examDirty && { id: 'exam', label: t(TAB_LABEL_KEY.exam), onFocus: () => setTab('exam') },
     // Condiciones y pénsum comparten entrada: los dos viven en "Certificación",
     // y dos filas con el mismo rótulo en la barra no le dirían nada a nadie.
+    surveyDirty && { id: 'survey', label: t(TAB_LABEL_KEY.survey), onFocus: () => setTab('survey') },
     (certDirty || pensumDirty) && { id: 'cert', label: t(TAB_LABEL_KEY.cert), onFocus: () => setTab('cert') },
   ].filter(Boolean) as Array<{ id: string; label: string; onFocus: () => void }>
 
@@ -1678,6 +1667,9 @@ export default function CourseEditor() {
     { id: 'assign', label: t(TAB_LABEL_KEY.assign), icon: Users },
     { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), icon: Rocket },
     { id: 'exam', label: t(TAB_LABEL_KEY.exam), icon: ClipboardCheck },
+    // La encuesta va entre el examen y la certificación porque ese es el orden
+    // real que vive el aprendiz: presenta, opina y recién ahí ve su diploma.
+    { id: 'survey', label: t(TAB_LABEL_KEY.survey), icon: MessageSquareHeart },
     { id: 'cert', label: t(TAB_LABEL_KEY.cert), icon: Award },
   ]
 
@@ -3073,6 +3065,19 @@ export default function CourseEditor() {
           onDirtyChange={setExamDirty}
           registerSave={registerExamSave}
           registerUndo={registerExamUndo}
+        />
+      )}
+
+      {/* ── Encuesta de satisfacción ──
+          No está en la pestaña "Certificación" a propósito: allí se configura
+          QUÉ hace falta para el diploma y qué se publica de él. La encuesta no
+          es un requisito académico ni contenido del pénsum — es la puerta de
+          salida del curso, y tiene su propia mesa. */}
+      {tab === 'survey' && course && (
+        <SurveyPanel
+          courseId={course.id}
+          onDirtyChange={setSurveyDirty}
+          registerSave={registerSurveySave}
         />
       )}
 

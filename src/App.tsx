@@ -31,6 +31,7 @@ const SimulatorRun = lazy(() => import('@/pages/SimulatorRun'));
 const SimulatorResult = lazy(() => import('@/pages/SimulatorResult'));
 const ChoiceSimulatorRun = lazy(() => import('@/pages/ChoiceSimulatorRun'));
 const Certificate = lazy(() => import('@/pages/Certificate'));
+const CourseSurvey = lazy(() => import('@/pages/CourseSurvey'));
 const ExamLanding = lazy(() => import('@/pages/ExamLanding'));
 const ExamRunner = lazy(() => import('@/pages/ExamRunner'));
 const ExamResult = lazy(() => import('@/pages/ExamResult'));
@@ -261,6 +262,10 @@ export default function App() {
           <Route path="/exam/:courseId" element={<ExamLanding />} />
           <Route path="/exam/:courseId/run" element={<ExamRunner />} />
           <Route path="/exam/:courseId/result/:attemptId" element={<ExamResult />} />
+          {/* Encuesta de satisfacción: el paso de cierre entre aprobar y ver el
+              certificado. Cuelga del curso porque no es contenido —no está en
+              el pénsum ni suma horas—, es la puerta de salida. */}
+          <Route path="/course/:courseId/survey" element={<CourseSurvey />} />
           <Route path="/certificate/:courseId/:userId" element={<Certificate />} />
           <Route path="/certificate/:courseId" element={<Certificate />} />
           <Route path="/certificate" element={<Certificate />} />

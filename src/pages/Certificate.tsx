@@ -11,6 +11,7 @@ import {
   getCourseActivitySummary, getCourseEvaluationResults, getCourseRecertStatus,
   type CourseActivitySummary,
 } from '@/services/certification.service';
+import { getSurveyGate } from '@/services/survey.service';
 import type { CourseCertStatus, CourseEvaluationResult, CourseRecertStatus } from '@/types/database';
 import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
@@ -106,6 +107,7 @@ function LockedPreview({ minScore, backTo }: { minScore: number; backTo: string 
 export default function Certificate() {
   const { t, i18n } = useTranslation();
   const { courseId, userId: viewUserId } = useParams<{ courseId: string; userId?: string }>();
+  const nav = useNavigate();
   const { name, language } = useUserStore();
   const { profile } = useAuth();
   // Documento del aprendiz que se imprime bajo el nombre. En la vista propia
@@ -165,6 +167,23 @@ export default function Certificate() {
       }
 
       // ── Vista propia del aprendiz ──
+      // La encuesta de satisfacción es la última puerta antes del diploma, y
+      // esta página es la ÚNICA por la que se pasa para verlo (el botón del
+      // curso, la vitrina del perfil y la URL a mano terminan todos aquí), así
+      // que el desvío vive en un solo sitio.
+      //
+      // Aplica también a quien ya estaba certificado antes de que la encuesta
+      // existiera: se le pide una vez y su diploma conserva su fecha, su
+      // cert_id y su código. La verificación pública (/verify/:certId) NO se
+      // toca nunca — hay enlaces ya compartidos afuera y romperlos le haría
+      // daño a la persona, no a nosotros.
+      const surveyGate = await getSurveyGate(courseId);
+      if (!active) return;
+      if (surveyGate.enabled && surveyGate.needs_survey) {
+        nav(`/course/${courseId}/survey`, { replace: true });
+        return;
+      }
+
       getCourseActivitySummary(courseId, moduleIds)
         .then((a) => { if (active) setActivity(a); })
         .catch(() => {});
@@ -189,7 +208,7 @@ export default function Certificate() {
     return () => {
       active = false;
     };
-  }, [courseId, viewUserId]);
+  }, [courseId, viewUserId, nav]);
 
   // Logros de certificación: solo para el aprendiz mirando su PROPIO certificado
   // ya ganado. "Certificado" al obtenerlo; "Cuadro de Honor" si el puntaje ≥95%.

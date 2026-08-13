@@ -808,6 +808,59 @@ export interface Database {
         }
         Relationships: []
       }
+      /**
+       * Configuración de la encuesta de satisfacción de un curso. El paso de
+       * cierre entre aprobar y ver el certificado.
+       */
+      course_surveys: {
+        Row: {
+          course_id: string
+          enabled: boolean
+          time_limit_min: number
+          followup_enabled: boolean
+          followup_threshold: number
+          repeat_on_recert: boolean
+          retroactive: boolean
+          /** A quién apunta la P1: 'instructor' | 'campaign'. */
+          q1_mode: string
+          /** De qué habla la P2: 'training' | 'content'. */
+          q2_mode: string
+          /** Quién dictó el curso, a mano. Puede no tener cuenta en el sitio. */
+          instructor_name: string | null
+          /** Enlace opcional a su perfil, solo para la foto. */
+          instructor_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          course_id: string
+          enabled?: boolean
+          time_limit_min?: number
+          followup_enabled?: boolean
+          followup_threshold?: number
+          repeat_on_recert?: boolean
+          retroactive?: boolean
+          q1_mode?: string
+          q2_mode?: string
+          instructor_name?: string | null
+          instructor_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          time_limit_min?: number
+          followup_enabled?: boolean
+          followup_threshold?: number
+          repeat_on_recert?: boolean
+          retroactive?: boolean
+          q1_mode?: string
+          q2_mode?: string
+          instructor_name?: string | null
+          instructor_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_notifications: {
         Row: {
           id: string
@@ -1762,6 +1815,34 @@ export interface Database {
       }
       get_course_exam_gate: {
         Args: { p_course_id: string; p_user_id: string | null }
+        Returns: Json
+      }
+      // ── Encuesta de satisfacción del curso (2026-08-13) ──
+      get_course_survey_gate: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      start_survey_attempt: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      submit_survey: {
+        Args: {
+          p_attempt_id: string
+          p_q1: number
+          p_q2: number
+          p_q3: string
+          p_followup: string | null
+          p_lang: string
+        }
+        Returns: Json
+      }
+      get_course_survey_results: {
+        Args: { p_course_id: string }
+        Returns: Json
+      }
+      get_course_instructor_options: {
+        Args: { p_course_id: string }
         Returns: Json
       }
       auth_role: {
