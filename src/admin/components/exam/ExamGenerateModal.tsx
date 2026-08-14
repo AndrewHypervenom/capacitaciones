@@ -9,6 +9,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Layers,
   Loader2,
   Recycle,
   ShieldCheck,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Select } from '@/components/ui/Select'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { NumberField } from '@/components/ui/NumberField'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
@@ -34,6 +36,7 @@ import {
   questionFingerprint,
   reusableToQuestion,
   saveQuizDifficulties,
+  split100,
   SOURCE_CHAR_LIMIT,
   type CourseSource,
   type AiExamDraft,
@@ -291,6 +294,7 @@ export function ExamGenerateModal({
               busy={busy}
               setBusy={setBusy}
               onImport={onImport}
+              onCreateDomains={onCreateDomains}
               onDone={onClose}
             />
           )}
@@ -622,6 +626,7 @@ function ReusePanel({
   busy,
   setBusy,
   onImport,
+  onCreateDomains,
   onDone,
 }: {
   /** Los carga el modal (decide con ellos la pestaña inicial). `null` = leyendo. */
@@ -635,6 +640,10 @@ function ReusePanel({
   busy: boolean
   setBusy: (b: boolean) => void
   onImport: (q: NewExamQuestion[]) => Promise<void>
+  /** Crea temas y devuelve su id por nombre. Lo usa "un tema por módulo". */
+  onCreateDomains: (
+    drafts: { name_es: string; description_es: string; weight_pct: number }[],
+  ) => Promise<Map<string, string>>
   onDone: () => void
 }) {
   const { t } = useTranslation()
@@ -648,6 +657,15 @@ function ReusePanel({
    */
   const [unpicked, setUnpicked] = useState<Set<string>>(new Set())
   const [domainId, setDomainId] = useState('')
+  /**
+   * Tema elegido para cada módulo. Vacío o ausente = usa el de arriba.
+   *
+   * Copiar cien preguntas de ocho módulos con un solo tema obliga a corregirlas
+   * después una por una en el banco. Aquí se decide de una vez, por módulo, que
+   * es como está organizado el curso.
+   */
+  const [byModuleDomain, setByModuleDomain] = useState<Record<string, string>>({})
+  const [creatingDomains, setCreatingDomains] = useState(false)
   // Nivel de cada pregunta: viene guardado del quiz, lo estima la IA o lo
   // corrige el capacitador. Lo que se toque aquí se guarda en el quiz.
   const [levels, setLevels] = useState<Record<string, ExamDifficulty>>({})
@@ -668,7 +686,89 @@ function ReusePanel({
     setLevels(saved)
   }, [items])
 
+  /**
+   * Propuesta de tema por módulo, a partir de lo que el examen ya sabe.
+   *
+   * Cada tema declara los módulos que manda a repasar cuando se reprueba
+   * (`module_ids`). Esa relación ya la escribió el capacitador, así que sirve
+   * tal cual: si el tema "Monitoreo" repasa el módulo "Introducción a VRM", las
+   * preguntas de ese módulo son de Monitoreo. Es una propuesta, no una regla —
+   * los desplegables de abajo quedan a la vista para cambiar lo que no cuadre.
+   */
+  const suggested = useMemo(() => {
+    const guess: Record<string, string> = {}
+    for (const d of domains) {
+      for (const moduleId of d.module_ids ?? []) if (!guess[moduleId]) guess[moduleId] = d.id
+    }
+    return guess
+  }, [domains])
+
+  // Nunca pisa lo ya elegido: la propuesta solo rellena los módulos sobre los
+  // que todavía nadie ha decidido nada. Sin esto, crear temas aquí mismo
+  // recalculaba la propuesta (vacía, porque los temas nuevos aún no repasan
+  // ningún módulo) y borraba la asignación recién hecha.
+  useEffect(() => {
+    setByModuleDomain((prev) => {
+      const next = { ...prev }
+      for (const [moduleId, domain] of Object.entries(suggested)) {
+        if (!(moduleId in next)) next[moduleId] = domain
+      }
+      return next
+    })
+  }, [suggested])
+
+  /** Los módulos que aportan preguntas, en el orden en que salen. */
+  const modulesInPlay = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const q of items ?? []) if (!map.has(q.moduleId)) map.set(q.moduleId, q.moduleTitle)
+    return [...map.entries()]
+  }, [items])
+
+  /**
+   * Crea un tema por módulo y deja cada módulo apuntando al suyo.
+   *
+   * Es la salida para el caso normal: un examen recién hecho no tiene temas, y
+   * sin temas el asignador no puede asignar nada. El curso ya viene organizado
+   * por módulos, así que esa es la partición honesta de partida; los nombres y
+   * los pesos se retocan después en la pestaña de Temas.
+   */
+  const createDomainsPerModule = async () => {
+    if (modulesInPlay.length === 0 || creatingDomains) return
+    setCreatingDomains(true)
+    try {
+      const pesos = split100(modulesInPlay.length)
+      const map = await onCreateDomains(
+        modulesInPlay.map(([, title], i) => ({
+          name_es: title,
+          description_es: '',
+          weight_pct: pesos[i] ?? 0,
+        })),
+      )
+      setByModuleDomain((prev) => {
+        const next = { ...prev }
+        for (const [moduleId, title] of modulesInPlay) {
+          const id = map.get(title.toLowerCase().trim())
+          if (id) next[moduleId] = id
+        }
+        return next
+      })
+      toast.success(
+        t('admin.exam.reuse_domains_made', {
+          n: map.size,
+          defaultValue: 'Listo: {{n}} temas creados y asignados a sus módulos.',
+        }),
+      )
+    } catch {
+      toast.error(t('admin.exam.reuse_domains_error', 'No se pudieron crear los temas.'))
+    } finally {
+      setCreatingDomains(false)
+    }
+  }
+
   const levelOf = (key: string): ExamDifficulty => levels[key] ?? 'medio'
+  /** El tema con el que entraría esta pregunta: el de su módulo, o el de arriba. */
+  const domainFor = (q: ReusableQuestion): string | null =>
+    byModuleDomain[q.moduleId] || domainId || null
   /** Las que todavía se pueden copiar: las que ya están en el banco no cuentan. */
   const fresh = useMemo(() => (items ?? []).filter((q) => !used.has(q.key)), [items, used])
   /** Marcadas para copiar: todas las copiables salvo las que se desmarcaron. */
@@ -682,12 +782,29 @@ function ReusePanel({
    */
   const pending = useMemo(() => fresh.filter((q) => !levels[q.key]), [fresh, levels])
   const rated = items !== null && fresh.length > 0 && pending.length === 0
+  /** Marcadas que, con lo elegido ahora mismo, entrarían sin ningún tema. */
+  const sinTema = useMemo(
+    () =>
+      fresh.filter((q) => picked.has(q.key) && !(byModuleDomain[q.moduleId] || domainId)).length,
+    [fresh, picked, byModuleDomain, domainId],
+  )
 
-  /** Guarda el nivel en el quiz de sección. Silencioso: es una comodidad. */
+  /**
+   * Guarda el nivel en el quiz de sección. Silencioso: es una comodidad.
+   *
+   * Solo se guardan las que tienen fila propia: las preguntas que viven dentro
+   * del contenido (bloque `quiz`, marcador de video) no tienen dónde escribirlo
+   * y colar su clave sintética aquí haría fallar el update y disparar el aviso
+   * de "falta correr el SQL" sin que falte nada. Su nivel vive en memoria.
+   */
   const persist = useCallback(
-    async (entries: { quizId: string; difficulty: ExamDifficulty }[]) => {
+    async (entries: { quizId: string | null; difficulty: ExamDifficulty }[]) => {
+      const rows = entries.filter(
+        (e): e is { quizId: string; difficulty: ExamDifficulty } => e.quizId !== null,
+      )
+      if (rows.length === 0) return
       try {
-        const ok = await saveQuizDifficulties(entries)
+        const ok = await saveQuizDifficulties(rows)
         if (!ok) setNoStore(true)
       } catch {
         setNoStore(true)
@@ -697,9 +814,9 @@ function ReusePanel({
   )
 
   /** Corrección a mano: se guarda igual que la estimación de la IA. */
-  const setLevel = (key: string, difficulty: ExamDifficulty) => {
-    setLevels((prev) => ({ ...prev, [key]: difficulty }))
-    void persist([{ quizId: key, difficulty }])
+  const setLevel = (q: ReusableQuestion, difficulty: ExamDifficulty) => {
+    setLevels((prev) => ({ ...prev, [q.key]: difficulty }))
+    void persist([{ quizId: q.quizId, difficulty }])
   }
 
   /**
@@ -727,7 +844,7 @@ function ReusePanel({
       const next: Record<string, ExamDifficulty> = { ...levels }
       todo.forEach((q, i) => (next[q.key] = out[i] ?? 'medio'))
       setLevels(next)
-      void persist(todo.map((q, i) => ({ quizId: q.key, difficulty: out[i] ?? 'medio' })))
+      void persist(todo.map((q, i) => ({ quizId: q.quizId, difficulty: out[i] ?? 'medio' })))
 
       // Con el examen a un nivel fijo, las que no dan la talla se desmarcan
       // solas: es lo que el capacitador haría a mano, y así el bloqueo del
@@ -789,12 +906,14 @@ function ReusePanel({
     [items, filter, levels],
   )
 
+  // Agrupadas por módulo (por id, no por título: el tema se asigna al módulo y
+  // dos módulos podrían llamarse igual).
   const byModule = useMemo(() => {
-    const map = new Map<string, ReusableQuestion[]>()
+    const map = new Map<string, { title: string; qs: ReusableQuestion[] }>()
     for (const q of visible) {
-      const arr = map.get(q.moduleTitle) ?? []
-      arr.push(q)
-      map.set(q.moduleTitle, arr)
+      const entry = map.get(q.moduleId) ?? { title: q.moduleTitle, qs: [] }
+      entry.qs.push(q)
+      map.set(q.moduleId, entry)
     }
     return [...map.entries()]
   }, [visible])
@@ -830,7 +949,7 @@ function ReusePanel({
     if (chosen.length === 0) return
     setBusy(true)
     try {
-      await onImport(chosen.map((q) => reusableToQuestion(q, domainId || null, levelOf(q.key))))
+      await onImport(chosen.map((q) => reusableToQuestion(q, domainFor(q), levelOf(q.key))))
       toast.success(
         t('admin.exam.reuse_ok_v2', {
           n: chosen.length,
@@ -901,18 +1020,52 @@ function ReusePanel({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-[200px] flex-1">
-          <Select
-            value={domainId}
-            onChange={setDomainId}
-            placeholder={t('admin.exam.q_no_domain_v2', 'Sin tema')}
-            options={[
-              { value: '', label: t('admin.exam.q_no_domain_v2', 'Sin tema') },
-              ...domains.map((d) => ({ value: d.id, label: d.name_es, color: d.color })),
-            ]}
-          />
+      {/* Sin temas no hay nada que asignar, y el desplegable solo podría decir
+          "Sin tema". En vez de enseñar una decisión de una sola opción, se
+          ofrece la que de verdad hace falta: crearlos. */}
+      {domains.length === 0 && modulesInPlay.length > 0 && (
+        <div className="rounded-2xl border border-line bg-subtle/40 px-4 py-3.5">
+          <p className="text-[12.5px] leading-relaxed text-text-muted">
+            {t(
+              'admin.exam.reuse_no_domains_yet',
+              'Este examen todavía no tiene temas, así que las preguntas entrarían todas al montón general: sin nota por tema y sin saber qué mandar a repasar cuando alguien reprueba.',
+            )}
+          </p>
+          <button
+            onClick={() => void createDomainsPerModule()}
+            disabled={busy || creatingDomains}
+            className="mt-2.5 inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[12.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-40"
+          >
+            {creatingDomains ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Layers className="h-3.5 w-3.5" />
+            )}
+            {t('admin.exam.reuse_domains_per_module', {
+              n: modulesInPlay.length,
+              defaultValue: 'Crear un tema por módulo ({{n}})',
+            })}
+          </button>
         </div>
+      )}
+
+      <div className="flex flex-wrap items-end gap-3">
+        {domains.length > 0 && (
+          <div className="min-w-[200px] flex-1">
+            <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
+              {t('admin.exam.reuse_domain_label_v2', 'Tema por defecto')}
+            </label>
+            <Select
+              value={domainId}
+              onChange={setDomainId}
+              placeholder={t('admin.exam.q_no_domain_v2', 'Sin tema')}
+              options={[
+                { value: '', label: t('admin.exam.q_no_domain_v2', 'Sin tema') },
+                ...domains.map((d) => ({ value: d.id, label: d.name_es, color: d.color })),
+              ]}
+            />
+          </div>
+        )}
         {/* "Elegir todas" nunca selecciona lo que el examen no admite: sería
             proponer un clic que el botón de copiar va a bloquear enseguida. */}
         <button
@@ -937,6 +1090,21 @@ function ReusePanel({
             : t('admin.exam.select_all', 'Elegir todas')}
         </button>
       </div>
+
+      {/* Se cuenta lo que de verdad va a pasar: cuántas de las marcadas se irían
+          sin tema después de aplicar el de su módulo. Dejarlo así es válido,
+          pero la consecuencia no se ve hasta que el aprendiz presenta el examen
+          —sin tema no hay nota por tema y el repaso no sabe qué mandar—, así que
+          se dice aquí, con el número delante. */}
+      {domains.length > 0 && sinTema > 0 && (
+        <p className="text-[12px] leading-relaxed text-text-subtle">
+          {t('admin.exam.reuse_no_domain_hint_v2', {
+            n: sinTema,
+            defaultValue:
+              '{{n}} de las marcadas entrarían sin tema: no cuentan para la nota por tema ni para saber qué mandar a repasar. Ponles uno arriba, o módulo por módulo en la lista de abajo.',
+          })}
+        </p>
+      )}
 
       {/* Nivel de las preguntas reutilizadas: el examen reparte por dificultad,
           así que sin nivel real NO se pueden copiar (entrarían todas como
@@ -1038,11 +1206,55 @@ function ReusePanel({
       )}
 
       <div className="space-y-4">
-        {byModule.map(([moduleTitle, qs]) => (
-          <div key={moduleTitle}>
-            <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-text-subtle">
-              {moduleTitle}
-            </h3>
+        {byModule.map(([moduleId, { title, qs }]) => (
+          <div key={moduleId}>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-[12px] font-semibold uppercase tracking-wide text-text-subtle">
+                {title}
+              </h3>
+              {/* El tema de TODAS las preguntas de este módulo, de un solo gesto.
+                  Sin temas creados no hay nada que elegir, así que no sale. */}
+              {domains.length > 0 && (
+                <div className="flex items-center gap-2">
+                  {byModuleDomain[moduleId] &&
+                    byModuleDomain[moduleId] === suggested[moduleId] && (
+                      <Tooltip
+                        label={t(
+                          'admin.exam.reuse_domain_suggested_tip',
+                          'Propuesto: este tema ya manda a repasar este módulo. Cámbialo si no cuadra.',
+                        )}
+                        maxWidth={250}
+                      >
+                        <span className="cursor-help text-[10.5px] font-semibold uppercase tracking-wide text-text-subtle">
+                          {t('admin.exam.reuse_domain_suggested', 'Propuesto')}
+                        </span>
+                      </Tooltip>
+                    )}
+                  <div className="w-[190px]">
+                    <Select
+                      value={byModuleDomain[moduleId] ?? ''}
+                      onChange={(v) =>
+                        setByModuleDomain((prev) => ({ ...prev, [moduleId]: v }))
+                      }
+                      compact
+                      options={[
+                        {
+                          value: '',
+                          label: domainId
+                            ? t('admin.exam.reuse_domain_inherit', 'El de arriba')
+                            : t('admin.exam.q_no_domain_v2', 'Sin tema'),
+                        },
+                        ...domains.map((d) => ({
+                          value: d.id,
+                          label: d.name_es,
+                          color: d.color,
+                        })),
+                      ]}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="space-y-1.5">
               {qs.map((q) => {
                 const inBank = used.has(q.key)
@@ -1077,6 +1289,16 @@ function ReusePanel({
                         {q.sectionHeading} · {q.options.length}{' '}
                         {t('admin.exam.options_short', 'opciones')}
                       </span>
+                      {/* De dónde salió: la misma sección puede tener la
+                          comprobación del final, preguntas sueltas en el
+                          contenido y otras dentro de un video. */}
+                      {q.origin !== 'section' && (
+                        <span className="rounded-full border border-line px-2 py-0.5 text-[10.5px] text-text-subtle">
+                          {q.origin === 'video'
+                            ? t('admin.exam.reuse_from_video', 'En un video')
+                            : t('admin.exam.reuse_from_block', 'En el contenido')}
+                        </span>
+                      )}
                       {inBank && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10.5px] font-semibold text-primary">
                           <Check className="h-3 w-3" />
@@ -1113,7 +1335,7 @@ function ReusePanel({
                       <div className="w-[128px]">
                         <Select
                           value={levelOf(q.key)}
-                          onChange={(v) => setLevel(q.key, v as ExamDifficulty)}
+                          onChange={(v) => setLevel(q, v as ExamDifficulty)}
                           options={DIFFICULTIES.map((d) => ({
                             value: d,
                             label: difficultyLabel(t, d),

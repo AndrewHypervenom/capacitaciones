@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -39,16 +39,14 @@ import {
   createExamDomain,
   createExamQuestions,
   deleteExamDomain,
-  deleteExamQuestion,
+  deleteExamQuestions,
   getCourseExam,
   getExamDomains,
   getCourseSource,
   getExamQuestions,
   getExamResults,
-  getReusableQuestions,
   grantExamAttempt,
   questionFingerprint,
-  reusableToQuestion,
   setExamPublished,
   split100,
   updateCourseExam,
@@ -384,9 +382,11 @@ export function ExamBuilder({
 
       /* ── 2. Banco ── */
       const realDomain = (id: string | null) => (id && tmpToReal.get(id)) ?? id
-      for (const q of savedQuestions) {
-        if (!questions.some((x) => x.id === q.id)) await deleteExamQuestion(q.id)
-      }
+      // De una sola vez: borrar en fila de a una hacía que vaciar un banco de
+      // cien preguntas fueran cien viajes al servidor, uno detrás de otro.
+      const vivas = new Set(questions.map((q) => q.id))
+      const borrar = savedQuestions.filter((q) => !vivas.has(q.id)).map((q) => q.id)
+      if (borrar.length > 0) await deleteExamQuestions(borrar)
       const nuevas = questions.filter((q) => isDraftId(q.id))
       if (nuevas.length > 0) {
         await createExamQuestions(
@@ -399,25 +399,35 @@ export function ExamBuilder({
           }),
         )
       }
-      for (const q of questions) {
-        if (isDraftId(q.id)) continue
-        const before = savedQuestions.find((x) => x.id === q.id)
-        if (!before || JSON.stringify(before) === JSON.stringify(q)) continue
-        await updateExamQuestion(q.id, {
-          domain_id: realDomain(q.domain_id),
-          kind: q.kind,
-          text_es: q.text_es,
-          text_en: q.text_en,
-          text_pt: q.text_pt,
-          options: q.options,
-          correct: q.correct,
-          explanation_es: q.explanation_es,
-          explanation_en: q.explanation_en,
-          explanation_pt: q.explanation_pt,
-          difficulty: q.difficulty,
-          is_active: q.is_active,
-          sort_order: q.sort_order,
-        })
+      // Solo las que de verdad cambiaron, y en tandas: "ajustar todas al nivel"
+      // toca el banco entero, y de a una eso era un viaje por pregunta.
+      const antes = new Map(savedQuestions.map((q) => [q.id, q]))
+      const tocadas = questions.filter((q) => {
+        if (isDraftId(q.id)) return false
+        const before = antes.get(q.id)
+        return Boolean(before) && JSON.stringify(before) !== JSON.stringify(q)
+      })
+      const LOTE = 10
+      for (let i = 0; i < tocadas.length; i += LOTE) {
+        await Promise.all(
+          tocadas.slice(i, i + LOTE).map((q) =>
+            updateExamQuestion(q.id, {
+              domain_id: realDomain(q.domain_id),
+              kind: q.kind,
+              text_es: q.text_es,
+              text_en: q.text_en,
+              text_pt: q.text_pt,
+              options: q.options,
+              correct: q.correct,
+              explanation_es: q.explanation_es,
+              explanation_en: q.explanation_en,
+              explanation_pt: q.explanation_pt,
+              difficulty: q.difficulty,
+              is_active: q.is_active,
+              sort_order: q.sort_order,
+            }),
+          ),
+        )
       }
 
       /* ── 3. Ajustes ── */
@@ -498,97 +508,23 @@ export function ExamBuilder({
       .catch(() => setSource(null))
   }, [courseId])
 
-  /* ── Precarga del banco con los quizzes de los módulos ────────────────────
-     Un examen con el banco vacío no sirve para nada, y el curso casi siempre
-     ya tiene preguntas escritas sobre su propio contenido: las de los quizzes
-     de sección. Entran solas — al crear el examen y también al abrir uno que se
-     quedó vacío — en vez de obligar a ir a buscarlas a un modal.
+  /* ── Por qué el banco NO se precarga solo ─────────────────────────────────
+     Antes, al crear el examen (o al abrirlo con el banco vacío), los quizzes de
+     los módulos se copiaban al banco automáticamente. Parecía una comodidad y
+     era lo contrario: entraban SIN nivel analizado — todas como "medio" — y el
+     panel "Reutilizar quizzes" abría diciendo "ya están todos en el banco",
+     que es justo lo que no había pasado. El capacitador se encontraba un banco
+     lleno de preguntas que nadie había revisado ni calificado, y su único
+     camino era ir quitándolas una por una.
 
-     Se COPIAN (misma regla que "Reutilizar quizzes"): editarlas en el examen no
-     toca el quiz del módulo, ni al revés. */
-
-  /** Exámenes a los que ya se les intentó la precarga en esta sesión. */
-  const preloadTried = useRef<Set<string>>(new Set())
-  /** …y entre sesiones: vaciar el banco a propósito no debe deshacerse solo. */
-  const preloadFlag = (examId: string) => `exam-bank-preloaded:${examId}`
-
-  /**
-   * Copia al banco los quizzes de sección del curso. Devuelve cuántos entraron.
-   *
-   * No mira lo que ya hay en el banco porque solo se le llama con el banco
-   * vacío (recién creado o vaciado): quien sí compara es el modal, que marca
-   * las que ya se usaron. Nunca lanza — es una comodidad, no un requisito: si
-   * falla, el examen se queda como estaba y siempre queda el modal a mano.
-   */
-  const preloadBank = useCallback(
-    async (examId: string, targetLevel: ExamTargetLevel) => {
-      try {
-        const reusable = await getReusableQuestions(courseId)
-        const usable = reusable.filter((q) => {
-          // Con nivel fijo solo entran los quizzes de ese nivel: colar otros
-          // dejaría el examen sin poder publicarse nada más crearlo. Los que
-          // nadie ha calificado no se adivinan — se quedan para el modal.
-          if (!isLevelLocked(targetLevel)) return true
-          return q.difficulty === targetLevel
-        })
-        if (usable.length === 0) return 0
-        await createExamQuestions(
-          examId,
-          // El nivel guardado en el quiz manda; si nadie lo ha calificado
-          // todavía entra como "medio" y se puede ajustar en el banco.
-          usable.map((q) => reusableToQuestion(q, null, q.difficulty ?? 'medio')),
-        )
-        // Solo se anota si de verdad entró algo: si el curso todavía no tenía
-        // quizzes, la próxima visita debe volver a mirar (habrá módulos nuevos).
-        try {
-          localStorage.setItem(preloadFlag(examId), '1')
-        } catch {
-          /* modo incógnito o almacenamiento lleno: se reintentará, no pasa nada */
-        }
-        await reloadBank(examId)
-        return usable.length
-      } catch {
-        return 0
-      }
-    },
-    [courseId, reloadBank],
-  )
-
-  /**
-   * Examen ya creado pero con el banco en cero: se precarga al abrir la
-   * pestaña. Una sola vez por examen (queda anotado), para que vaciar el banco
-   * a propósito no se deshaga solo en la siguiente visita.
-   */
-  useEffect(() => {
-    if (loading || !exam || questions.length > 0) return
-    // Vacío en la base Y sin nada pendiente. Si el banco está vacío porque el
-    // capacitador acaba de borrarlo todo y aún no ha guardado, precargarlo
-    // sería pisarle el borrador con preguntas que él quitó a propósito.
-    if (savedQuestions.length > 0 || dirty) return
-    if (preloadTried.current.has(exam.id)) return
-    preloadTried.current.add(exam.id)
-    let stored: string | null = null
-    try {
-      stored = localStorage.getItem(preloadFlag(exam.id))
-    } catch {
-      stored = null
-    }
-    if (stored) return
-    void preloadBank(exam.id, exam.target_level).then((n) => {
-      if (n > 0) {
-        toast.success(
-          t('admin.exam.bank_preloaded', {
-            n,
-            defaultValue: 'Se añadieron {{n}} preguntas de los quizzes de los módulos.',
-          }),
-        )
-      }
-    })
-  }, [loading, exam, questions.length, savedQuestions.length, dirty, preloadBank, t])
+     Ahora el banco empieza vacío y las preguntas de los módulos esperan en
+     "Reutilizar quizzes", donde se estima la dificultad con IA, se corrige a
+     mano y se elige cuáles entran. Copiar es una decisión, no un efecto
+     secundario de abrir la pestaña. */
 
   /* ── Acciones ── */
 
-  /** Crea el examen y lo deja ya con banco (ver "Precarga del banco"). */
+  /** Crea el examen. El banco lo llena el capacitador (ver el comentario arriba). */
   const handleCreate = async () => {
     try {
       const created = await createCourseExam(courseId, campaignId, {
@@ -597,22 +533,10 @@ export function ExamBuilder({
           defaultValue: 'Examen final — {{course}}',
         }),
       })
-      // Antes de pintarlo: si no, el efecto de arriba ve un examen con banco
-      // vacío mientras esta precarga está a medias y las copia dos veces.
-      preloadTried.current.add(created.id)
       setExam(created)
       setForm(created)
-
-      const seeded = await preloadBank(created.id, created.target_level)
-
       toast.success(
-        seeded > 0
-          ? t('admin.exam.created_seeded', {
-              n: seeded,
-              defaultValue:
-                'Examen creado con {{n}} preguntas tomadas de los quizzes de los módulos.',
-            })
-          : t('admin.exam.created', 'Examen creado. Ahora arma el banco de preguntas.'),
+        t('admin.exam.created', 'Examen creado. Ahora arma el banco de preguntas.'),
       )
     } catch {
       toast.error(t('admin.exam.create_error', 'No se pudo crear el examen.'))
@@ -726,6 +650,37 @@ export function ExamBuilder({
    */
   const handleDeleteQuestion = async (q: ExamQuestion) => {
     setQuestions((prev) => prev.filter((x) => x.id !== q.id))
+  }
+
+  /**
+   * Vacía el banco entero.
+   *
+   * Este sí pregunta, al revés que quitar una sola: borrar treinta preguntas de
+   * un clic no se reconstruye a mano si el clic fue sin querer. Sigue siendo
+   * borrador — se ve en la barra, se deshace con Ctrl+Z y no toca la base hasta
+   * que se guarda —, pero el aviso dice cuántas se van para que el número no
+   * sorprenda a nadie.
+   */
+  const handleClearBank = async () => {
+    if (questions.length === 0) return
+    const okGo = await confirm({
+      title: t('admin.exam.bank_clear_title', 'Vaciar el banco de preguntas'),
+      description: t('admin.exam.bank_clear_body', {
+        n: questions.length,
+        defaultValue:
+          'Se quitarán las {{n}} preguntas del banco. Los quizzes de los módulos no se tocan: siguen ahí y puedes volver a copiarlos cuando quieras. Se aplica al guardar, y puedes deshacerlo con Ctrl+Z.',
+      }),
+      confirmLabel: t('admin.exam.bank_clear_cta', 'Vaciar'),
+      tone: 'danger',
+    })
+    if (!okGo) return
+    setQuestions([])
+    toast.success(
+      t('admin.exam.bank_cleared', {
+        n: questions.length,
+        defaultValue: 'Banco vacío: {{n}} preguntas quitadas. Se aplica al guardar.',
+      }),
+    )
   }
 
   const handleImportQuestions = async (list: NewExamQuestion[]) => {
@@ -1635,6 +1590,24 @@ export function ExamBuilder({
             </span>
           </h2>
           <div className="flex items-center gap-2">
+            {/* Solo con algo dentro: un "vaciar" sobre un banco vacío es ruido. */}
+            {questions.length > 0 && (
+              <Tooltip
+                label={t(
+                  'admin.exam.tip_bank_clear',
+                  'Quita todas las preguntas del banco. Los quizzes de los módulos no se tocan.',
+                )}
+                maxWidth={250}
+              >
+                <button
+                  onClick={() => void handleClearBank()}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-[12.5px] font-medium text-text-muted transition-colors hover:border-red-500/40 hover:text-red-600 dark:hover:text-red-400"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t('admin.exam.bank_clear', 'Vaciar')}
+                </button>
+              </Tooltip>
+            )}
             <button
               onClick={() => setEditingQuestion(null)}
               className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-[12.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"

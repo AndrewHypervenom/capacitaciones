@@ -12,6 +12,7 @@ import {
   type ExamQuestionKind,
   type ExamResultRow,
 } from '@/types/exam'
+import type { ContentBlock, QuizBlock, VideoMarkerRaw } from '@/types/blocks'
 
 /* ────────────────────────────────────────────────────────────────────────────
    Examen final — lado del capacitador / superadmin.
@@ -347,9 +348,23 @@ export async function updateExamQuestion(
   if (error) throw error
 }
 
-export async function deleteExamQuestion(questionId: string): Promise<void> {
-  const { error } = await db.from('exam_questions').delete().eq('id', questionId)
-  if (error) throw error
+/**
+ * Borra preguntas del banco. Siempre por lista, aunque sea una.
+ *
+ * Existe porque vaciar el banco borraba de una en una: con 107 preguntas eran
+ * 107 viajes al servidor en fila, y el guardado se iba a decenas de segundos
+ * con la pantalla bloqueada. Un `in` los deja en uno. Se trocea porque la lista
+ * de ids viaja en la URL y una lo bastante larga la rechaza el servidor.
+ */
+export async function deleteExamQuestions(ids: string[]): Promise<void> {
+  const CHUNK = 100
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { error } = await db
+      .from('exam_questions')
+      .delete()
+      .in('id', ids.slice(i, i + CHUNK))
+    if (error) throw error
+  }
 }
 
 /** Reordena el banco de una sola vez (arrastrar y soltar). */
@@ -363,6 +378,14 @@ export async function reorderExamQuestions(ids: string[]): Promise<void> {
 
 export interface ReusableQuestion {
   key: string
+  /**
+   * Fila real en `section_quizzes`, o `null` si la pregunta vive dentro del
+   * contenido (bloque `quiz` o marcador de video). Solo las primeras admiten
+   * que se les guarde el nivel: las otras no tienen fila donde escribirlo.
+   */
+  quizId: string | null
+  /** De dónde salió. Se enseña para que el capacitador la ubique en el módulo. */
+  origin: 'section' | 'block' | 'video'
   moduleId: string
   moduleTitle: string
   sectionHeading: string
@@ -378,11 +401,59 @@ export interface ReusableQuestion {
   difficulty: ExamDifficulty | null
 }
 
+/** Arma las opciones del examen a partir de los tres idiomas del quiz. */
+function toExamOptions(
+  es: string[],
+  en: (string | null)[] | null | undefined,
+  pt: (string | null)[] | null | undefined,
+): ExamOption[] {
+  return (es ?? [])
+    .filter((text) => (text ?? '').trim() !== '')
+    .map((text, i) => ({
+      id: OPTION_IDS[i] ?? `o${i}`,
+      text_es: text,
+      text_en: en?.[i] ?? null,
+      text_pt: pt?.[i] ?? null,
+    }))
+}
+
 /**
- * Lee los quizzes de sección (KNOWLEDGE_CHECK) de los módulos del curso para
- * poder importarlos al examen. Se importan como COPIA: editar la pregunta del
- * examen no toca el quiz del módulo, y al revés (misma regla que la biblioteca
- * de módulos — reutilizar es clonar).
+ * Recorre un árbol de bloques y devuelve los `quiz`, en orden de lectura.
+ * Entra en las columnas: un quiz metido dentro de una columna sigue siendo una
+ * pregunta del curso, y no verlo era justo el motivo de que el panel dijera
+ * "este curso no tiene quizzes" teniéndolos.
+ */
+function collectQuizBlocks(blocks: unknown): QuizBlock[] {
+  if (!Array.isArray(blocks)) return []
+  const out: QuizBlock[] = []
+  for (const b of blocks as ContentBlock[]) {
+    if (!b || typeof b !== 'object') continue
+    if (b.type === 'quiz') out.push(b as QuizBlock)
+    else if (b.type === 'columns') {
+      for (const col of b.columns ?? []) out.push(...collectQuizBlocks(col?.blocks))
+    }
+  }
+  return out
+}
+
+/**
+ * Lee TODAS las preguntas que ya existen dentro de los módulos del curso para
+ * poder importarlas al examen. Se importan como COPIA: editar la pregunta del
+ * examen no toca la del módulo, y al revés (misma regla que la biblioteca de
+ * módulos — reutilizar es clonar).
+ *
+ * Hay tres sitios donde el capacitador puede haber escrito una pregunta, y los
+ * tres cuentan:
+ *
+ *   · `section_quizzes` — la comprobación al final de la sección.
+ *   · bloques `quiz` dentro de `blocks_data` — preguntas sueltas en medio del
+ *     contenido, que es como las escribe la IA y como quedan al importar un
+ *     documento.
+ *   · marcadores de video de tipo `quiz` — las que interrumpen el video.
+ *
+ * Solo las primeras tienen fila propia (`quizId`); las otras se identifican con
+ * una clave sintética estable (sección + posición), que es lo que va a
+ * `source_ref` para reconocer después lo que ya se copió.
  */
 export async function getReusableQuestions(courseId: string): Promise<ReusableQuestion[]> {
   const { data: modules, error: mErr } = await supabase
@@ -395,6 +466,9 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
   const mods = (modules ?? []) as { id: string; title_es: string }[]
   if (mods.length === 0) return []
 
+  // La ficha de cada sección: liviana a propósito. Aquí NO viaja `blocks_data`,
+  // que es el contenido entero del curso (textos, juegos, capítulos de video) y
+  // pesa megas en un curso grande.
   const { data: sections, error: sErr } = await supabase
     .from('module_sections')
     .select('id, module_id, heading_es, sort_order')
@@ -405,6 +479,40 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
     id: string; module_id: string; heading_es: string
   }[]
   if (secs.length === 0) return []
+
+  /**
+   * El contenido, pero SOLO de las secciones que pueden esconder una pregunta.
+   *
+   * El filtro lo hace el servidor: se piden las que contienen un bloque `quiz`,
+   * las que contienen un bloque `columns` (dentro puede haber un quiz anidado,
+   * y la contención de jsonb solo mira el primer nivel) y las que tienen un
+   * marcador de video. Una sección de puro texto —la mayoría— ya no se baja.
+   *
+   * Si el servidor no acepta el filtro, se piden todas: más lento, pero nunca
+   * se pierde una pregunta por una consulta que no se entendió.
+   */
+  type ContentRow = { id: string; blocks_data: unknown; video_markers: unknown }
+  let content: ContentRow[] = []
+  {
+    // Se filtra por módulo, no por la lista de ids de sección: esa lista viaja
+    // en la URL y con un curso grande se pasa de largo.
+    const withContent = () =>
+      supabase
+        .from('module_sections')
+        .select('id, blocks_data, video_markers')
+        .in('module_id', mods.map((m) => m.id))
+    const { data, error } = await withContent().or(
+      'blocks_data.cs.[{"type":"quiz"}],blocks_data.cs.[{"type":"columns"}],video_markers.not.is.null',
+    )
+    if (error) {
+      const all = await withContent()
+      if (all.error) throw all.error
+      content = (all.data ?? []) as ContentRow[]
+    } else {
+      content = (data ?? []) as ContentRow[]
+    }
+  }
+  const contentById = new Map(content.map((c) => [c.id, c]))
 
   const { data: quizzes, error: qErr } = await supabase
     .from('section_quizzes')
@@ -426,20 +534,19 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
   }
   const LEVELS: ExamDifficulty[] = ['basico', 'medio', 'avanzado']
 
-  return ((quizzes ?? []) as QuizRow[]).flatMap((q) => {
+  const out: ReusableQuestion[] = []
+
+  // ── 1. Las de `section_quizzes` ──────────────────────────────────────────
+  for (const q of (quizzes ?? []) as QuizRow[]) {
     const sec = secById.get(q.section_id)
     const mod = sec ? modById.get(sec.module_id) : null
-    if (!sec || !mod) return []
-    const options: ExamOption[] = (q.options_es ?? []).map((text, i) => ({
-      id: OPTION_IDS[i] ?? `o${i}`,
-      text_es: text,
-      text_en: q.options_en?.[i] ?? null,
-      text_pt: q.options_pt?.[i] ?? null,
-    }))
-    if (options.length < 2) return []
-    const correctId = options[q.correct_index]?.id ?? options[0].id
-    return [{
+    if (!sec || !mod) continue
+    const options = toExamOptions(q.options_es, q.options_en, q.options_pt)
+    if (options.length < 2) continue
+    out.push({
       key: q.id,
+      quizId: q.id,
+      origin: 'section',
       moduleId: mod.id,
       moduleTitle: mod.title_es,
       sectionHeading: sec.heading_es,
@@ -447,15 +554,83 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
       text_en: q.question_en,
       text_pt: q.question_pt,
       options,
-      correct: [correctId],
+      correct: [options[q.correct_index]?.id ?? options[0].id],
       explanation_es: q.explanation_es,
       explanation_en: q.explanation_en,
       explanation_pt: q.explanation_pt,
       difficulty: LEVELS.includes(q.difficulty as ExamDifficulty)
         ? (q.difficulty as ExamDifficulty)
         : null,
-    }]
-  })
+    })
+  }
+
+  // ── 2. Las que viven dentro del contenido ────────────────────────────────
+  for (const sec of secs) {
+    const mod = modById.get(sec.module_id)
+    // Sin fila de contenido, la sección no tenía nada que buscar: el filtro del
+    // servidor ya la descartó.
+    const body = contentById.get(sec.id)
+    if (!mod || !body) continue
+
+    // 2a. Bloques `quiz`.
+    collectQuizBlocks(body.blocks_data).forEach((b, i) => {
+      const es = (b.options ?? []).map((o) => o?.text?.es ?? '')
+      const options = toExamOptions(
+        es,
+        (b.options ?? []).map((o) => o?.text?.en ?? null),
+        (b.options ?? []).map((o) => o?.text?.pt ?? null),
+      )
+      if (options.length < 2 || !(b.question?.es ?? '').trim()) return
+      out.push({
+        key: `block:${sec.id}:${i}`,
+        quizId: null,
+        origin: 'block',
+        moduleId: mod.id,
+        moduleTitle: mod.title_es,
+        sectionHeading: sec.heading_es,
+        text_es: b.question.es,
+        text_en: b.question.en || null,
+        text_pt: b.question.pt || null,
+        options,
+        correct: [options[b.correct]?.id ?? options[0].id],
+        explanation_es: b.explanation?.es || null,
+        explanation_en: b.explanation?.en || null,
+        explanation_pt: b.explanation?.pt || null,
+        difficulty: null,
+      })
+    })
+
+    // 2b. Preguntas dentro de los marcadores de video.
+    const markers = Array.isArray(body.video_markers)
+      ? (body.video_markers as VideoMarkerRaw[])
+      : []
+    for (const m of markers) {
+      if (m?.type !== 'quiz') continue
+      ;(m.questions ?? []).forEach((q, i) => {
+        const options = toExamOptions(q.options_es, q.options_en, q.options_pt)
+        if (options.length < 2 || !(q.question_es ?? '').trim()) return
+        out.push({
+          key: `video:${sec.id}:${m.id}:${i}`,
+          quizId: null,
+          origin: 'video',
+          moduleId: mod.id,
+          moduleTitle: mod.title_es,
+          sectionHeading: sec.heading_es,
+          text_es: q.question_es,
+          text_en: q.question_en || null,
+          text_pt: q.question_pt || null,
+          options,
+          correct: [options[q.correct]?.id ?? options[0].id],
+          explanation_es: q.explanation_es || null,
+          explanation_en: q.explanation_en || null,
+          explanation_pt: q.explanation_pt || null,
+          difficulty: null,
+        })
+      })
+    }
+  }
+
+  return out
 }
 
 /**
