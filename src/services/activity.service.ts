@@ -255,19 +255,33 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
     const sectionById = new Map(sections.map((s) => [s.id, s]));
 
     // Módulos con su curso, para armar la jerarquía Campaña→Curso→Módulo.
-    const modules = await fetchByIds<{ id: string; title_es: string; course_id: string | null }>(
-      'modules',
-      'id, title_es, course_id',
-      [...attemptModuleIds, ...sections.map((s) => s.module_id)],
-    );
+    //
+    // BORRADO SUAVE: un módulo o un curso eliminado por el capacitador conserva su
+    // fila (con `deleted_at`), y los intentos siguen guardados dentro del JSON de
+    // `user_progress` porque el aprendiz sí los hizo. Sin este filtro, el panel
+    // seguía pintando ramas de contenido que ya nadie ve en el sitio: el
+    // capacitador borraba un curso y sus evaluaciones seguían pidiendo revisión.
+    // Se traen igual y se descartan aquí, para poder distinguir "eliminado" de
+    // "sin permiso de lectura" (ese caso ni siquiera devuelve la fila).
+    const allModules = await fetchByIds<{
+      id: string; title_es: string; course_id: string | null; deleted_at: string | null;
+    }>('modules', 'id, title_es, course_id, deleted_at', [
+      ...attemptModuleIds,
+      ...sections.map((s) => s.module_id),
+    ]);
+    const modules = allModules.filter((m) => !m.deleted_at);
     const moduleById = new Map(modules.map((m) => [m.id, m]));
+    const deletedModuleIds = new Set(allModules.filter((m) => m.deleted_at).map((m) => m.id));
 
     // Cursos y campañas: para agrupar las evaluaciones por contexto y escalar a
     // muchos aprendices sin volcar todo en una lista plana.
-    const courses = await fetchByIds<{
-      id: string; title_es: string; slug: string; campaign_id: string;
-    }>('courses', 'id, title_es, slug, campaign_id', modules.map((m) => m.course_id ?? ''));
+    const allCourses = await fetchByIds<{
+      id: string; title_es: string; slug: string; campaign_id: string; deleted_at: string | null;
+    }>('courses', 'id, title_es, slug, campaign_id, deleted_at', modules.map((m) => m.course_id ?? ''));
+    const courses = allCourses.filter((c) => !c.deleted_at);
     const courseById = new Map(courses.map((c) => [c.id, c]));
+    // Curso eliminado ⇒ sus módulos tampoco cuentan, aunque el módulo siga vivo.
+    const deletedCourseIds = new Set(allCourses.filter((c) => c.deleted_at).map((c) => c.id));
 
     const campaigns = await fetchByIds<{ id: string; name: string }>(
       'campaigns',
@@ -291,8 +305,14 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
         // El módulo real: primero por el module_id del intento, si no por el de la sección
         const moduleId = attempt.module_id || sectionData?.module_id || null;
         const moduleData = moduleId ? moduleById.get(moduleId) ?? null : null;
+        // Módulo eliminado (borrado suave): el intento existe, pero el contenido ya
+        // no. No se pinta. Solo se descarta lo que se sabe eliminado: si el módulo
+        // no se pudo leer (RLS) o el intento no dice a cuál pertenece, se conserva
+        // como antes — mejor mostrarlo sin nombre que hacerlo desaparecer.
+        if (moduleId && deletedModuleIds.has(moduleId)) return;
         // Curso al que pertenece el módulo (para la jerarquía).
         const courseId = moduleData?.course_id || null;
+        if (courseId && deletedCourseIds.has(courseId)) return;
         const courseData = courseId ? courseById.get(courseId) || null : null;
         const gameType = attempt.game_type || (sectionData?.section_style === 'game-classify' ? 'CLASSIFY_CASES' : 'SORT_PROCESS');
         const isEvaluated = !!attempt.trainer_comment && attempt.status === 'evaluated';

@@ -21,7 +21,7 @@ import { XPBoostCard } from '@/components/gamification/XPBoostBanner';
 import type { Lang } from '@/stores/gamificationStore';
 import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { useViewingPresence } from '@/hooks/usePresence';
-import { selfEnroll, unenrollSelf, previewUnenrollSelf } from '@/services/courses.service';
+import { selfEnroll, unenrollSelf } from '@/services/courses.service';
 import { getScenariosForCourse } from '@/services/scenarios.service';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
 import type { CourseChoiceScenario } from '@/services/choiceScenarios.service';
@@ -36,7 +36,6 @@ import { PracticeStop } from '@/components/simulator/PracticeStop';
 import { toast } from '@/stores/toastStore';
 import { RichText, stripMarkdown } from '@/components/ui/RichText';
 import { Tooltip } from '@/components/ui/Tooltip';
-import { ProgressRing } from '@/components/ui/ProgressRing';
 import { cn } from '@/lib/cn';
 
 /** Curva corporativa, la misma del catálogo y del kit de motion. */
@@ -213,16 +212,15 @@ export default function CoursePage() {
     }
   };
 
-  // El staff llega aquí por "Ver como aprendiz", que lo matricula de verdad: al
-  // salir hay que borrar esa fila para que no cuente como persona matriculada.
+  // Salir de un curso al que uno mismo se inscribió (catálogo). Es del aprendiz:
+  // el staff ya no se matricula en ningún sitio, así que no hay caso especial.
   const handleLeave = async () => {
     if (!course) return;
     setEnrollBusy(true);
     try {
-      if (isAdminOrCapacitador) await previewUnenrollSelf(course.id);
-      else await unenrollSelf(course.id);
+      await unenrollSelf(course.id);
       invalidateLearnerCoursesCache();
-      toast.success(isAdminOrCapacitador ? t('admin.courses.exit_preview_ok') : t('courses.left_ok'));
+      toast.success(t('courses.left_ok'));
       reload();
     } catch {
       toast.error(t('courses.enroll_error'));
@@ -492,14 +490,6 @@ export default function CoursePage() {
           >
             <GraduationCap className="h-6 w-6" />
           </div>
-          {total > 0 && (
-            <div className="mt-7 flex items-center gap-2.5">
-              <ProgressRing value={pct} size={34} stroke={3} showLabel color={course.color} />
-              <span className="text-[12.5px] tabular-nums text-text-muted">
-                {t('courses.progress', { done, total })}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Clasificacion en texto plano: obligatorio / nivel / categoria / campana.
@@ -539,16 +529,30 @@ export default function CoursePage() {
           )}
         </div>
 
-        {/* Hilo de progreso: la misma medida de 3px que las tarjetas. */}
+        {/* Avance: el numero se lee solo, alineado con el hilo de 3px. Antes iba
+            apretado dentro de un anillo de 34px, que a 100% no respiraba. */}
         {total > 0 && (
-          <div className="mt-5 h-[3px] w-full max-w-md overflow-hidden rounded-full bg-subtle">
-            <motion.div
-              className="h-full rounded-full"
-              style={{ background: course.color }}
-              initial={{ width: reduce ? `${Math.round(pct * 100)}%` : 0 }}
-              animate={{ width: `${Math.round(pct * 100)}%` }}
-              transition={{ duration: reduce ? 0 : 1.1, ease, delay: reduce ? 0 : 0.2 }}
-            />
+          <div className="mt-5 w-full max-w-md">
+            <div className="mb-2 flex items-baseline gap-2">
+              <span
+                className="text-[15px] font-semibold tabular-nums leading-none tracking-[-0.02em]"
+                style={{ color: course.color }}
+              >
+                {Math.round(pct * 100)}%
+              </span>
+              <span className="text-[12.5px] tabular-nums text-text-subtle">
+                {t('courses.progress', { done, total })}
+              </span>
+            </div>
+            <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
+              <motion.div
+                className="h-full rounded-full"
+                style={{ background: course.color }}
+                initial={{ width: reduce ? `${Math.round(pct * 100)}%` : 0 }}
+                animate={{ width: `${Math.round(pct * 100)}%` }}
+                transition={{ duration: reduce ? 0 : 1.1, ease, delay: reduce ? 0 : 0.2 }}
+              />
+            </div>
           </div>
         )}
 
@@ -653,7 +657,7 @@ export default function CoursePage() {
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-2.5 text-[13px] text-text-subtle transition-colors duration-300 hover:text-danger disabled:opacity-60"
             >
               <LogOut className="h-3.5 w-3.5" />
-              {isAdminOrCapacitador ? t('admin.courses.exit_preview') : t('courses.leave')}
+              {t('courses.leave')}
             </button>
           )}
         </div>

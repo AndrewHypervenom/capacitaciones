@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { motion, useAnimationControls } from 'framer-motion'
 import {
   AlertTriangle,
   Check,
@@ -25,6 +25,8 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { ExamAlertBeacon } from '@/admin/components/exam/ExamAlertBeacon'
+import { useOutOfView } from '@/hooks/useOutOfView'
 import { Select } from '@/components/ui/Select'
 import { MultiSelect } from '@/components/ui/MultiSelect'
 import { NumberField } from '@/components/ui/NumberField'
@@ -66,7 +68,7 @@ import type {
 } from '@/types/exam'
 import { difficultyLabel, isLevelLocked } from '@/lib/examLevel'
 import { ExamQuestionModal, type QuestionDraft } from './ExamQuestionModal'
-import { ExamGenerateModal } from './ExamGenerateModal'
+import { ExamGenerateModal, type ExamFillPlan } from './ExamGenerateModal'
 import { ExamLevelPicker, LevelPill } from './ExamLevelBits'
 import { cn } from '@/lib/cn'
 
@@ -224,6 +226,8 @@ export function ExamBuilder({
 
   const [editingQuestion, setEditingQuestion] = useState<ExamQuestion | null | undefined>(undefined)
   const [generateOpen, setGenerateOpen] = useState(false)
+  /** `true` cuando se entró por "Escribir las N con IA": el encargo ya va puesto. */
+  const [fillAuto, setFillAuto] = useState(false)
   const [search, setSearch] = useState('')
   const [filterDomain, setFilterDomain] = useState('')
   /** Filtro del banco: dejar solo las preguntas que no son del nivel del examen. */
@@ -506,6 +510,84 @@ export function ExamBuilder({
     [exam, form, domains, questions],
   )
 
+  /* Las cuentas de cada tema salen SIEMPRE de aquí (del borrador), nunca del
+     `question_count` que trajo la carga: ese se queda congelado en lo último
+     guardado y hacía que la tarjeta del tema dijera "0 de 4" con las cuatro
+     preguntas ya escritas en pantalla. */
+  const quotaById = useMemo(
+    () => new Map((health?.domainQuotas ?? []).map((q) => [q.id, q])),
+    [health],
+  )
+
+  /* ── El aviso que sube contigo ──
+     La pestaña es larga y el semáforo vive arriba del todo: abajo, escribiendo
+     preguntas, no existe. Contamos los avisos, y si la tarjeta no está a la
+     vista sale la cápsula que lleva de vuelta con un destello. */
+  const alertCount =
+    (health?.offLevel.length ? 1 : 0) +
+    (health?.bank === 0 ? 1 : 0) +
+    (health?.bankShortfall ? 1 : 0) +
+    (health?.mismatchDomains.length ? 1 : 0) +
+    (health?.thinDomains.length ?? 0) +
+    (domains.length > 0 && health && health.weightSum !== 100 ? 1 : 0)
+
+  const {
+    ref: statusRef,
+    out: beaconOn,
+    scrollIntoView: scrollToStatus,
+  } = useOutOfView(alertCount > 0)
+
+  /* El destello se dispara a mano y no por un cambio de `key`: remontar la
+     tarjeta entera para hacerla brillar es carísimo y parpadea. */
+  const flash = useAnimationControls()
+  const goToStatus = useCallback(() => {
+    scrollToStatus()
+    if (reduce) return
+    void flash.start({
+      // Verde corporativo: el mismo halo de la cápsula, para que se lea como
+      // "esto es lo que venías a mirar" y no como una alarma nueva.
+      boxShadow: [
+        '0 0 0 0 rgba(16,212,81,0)',
+        '0 0 0 4px rgba(16,212,81,0.45)',
+        '0 0 0 10px rgba(16,212,81,0)',
+      ],
+      // Empieza cuando el scroll ya te dejó mirando la tarjeta, no antes.
+      transition: { duration: 1.2, ease, times: [0, 0.28, 1], delay: 0.35 },
+    })
+  }, [flash, reduce, scrollToStatus])
+
+  /* El hueco del examen, listo para encargárselo a la IA. Se le pasa SIEMPRE al
+     modal: así, entres por donde entres —por el aviso o por "Añadir preguntas"—
+     la pantalla de generar sabe qué le falta al examen y lo ofrece. */
+  const fillPlan: ExamFillPlan | null =
+    health && health.fillTotal > 0
+      ? {
+          count: health.fillTotal,
+          byDomain: health.fillPlan.map((d) => ({ name: d.name, missing: d.missing })),
+        }
+      : null
+
+  /** Abre la IA con el hueco exacto ya encargado, sin pasar por la casilla. */
+  const fillWithAi = useCallback(() => {
+    setFillAuto(true)
+    setGenerateOpen(true)
+  }, [])
+
+  /** Temas que sí se quedan cortos de verdad (ver `drawsWholeBank`). */
+  const thinIds = useMemo(
+    () => new Set((health?.thinDomains ?? []).map((d) => d.id)),
+    [health],
+  )
+
+  /** Preguntas activas por tema, tal como están en el borrador. */
+  const liveCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const q of questions) {
+      if (q.is_active && q.domain_id) m.set(q.domain_id, (m.get(q.domain_id) ?? 0) + 1)
+    }
+    return m
+  }, [questions])
+
   /* ── Fuente cerrada para la IA ──
      Se baja el CONTENIDO real de los módulos (párrafos, avisos y bloques), no
      el índice: es lo único que la IA puede evaluar, y con solo los títulos no
@@ -754,7 +836,9 @@ export function ExamBuilder({
       preview: preview(equal),
     })
 
-    const counts = domains.map((d) => d.question_count ?? 0)
+    // Del borrador otra vez: si acabas de generar 30 preguntas con IA, este
+    // reparto tiene que contarlas aunque todavía no las hayas guardado.
+    const counts = domains.map((d) => liveCounts.get(d.id) ?? 0)
     if (counts.some((c) => c > 0)) {
       const byBank = split100(domains.length, counts)
       plans.push({
@@ -784,7 +868,10 @@ export function ExamBuilder({
       })
     }
     return plans
-  }, [domains, t])
+  }, [domains, liveCounts, t])
+
+  /** El reparto que se sostiene con el banco de hoy, para el botón del aviso. */
+  const bankPlan = weightPlans.find((p) => p.id === 'bank')
 
   const applyWeights = async (weights: number[]) => {
     setDomains((prev) => prev.map((d, i) => ({ ...d, weight_pct: weights[i] ?? d.weight_pct })))
@@ -838,8 +925,8 @@ export function ExamBuilder({
 
   if (missingTable) {
     return (
-      <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] px-5 py-4">
-        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+      <div className="flex items-start gap-3 rounded-2xl border border-brand-magenta/30 bg-brand-magenta/[0.06] px-5 py-4">
+        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-brand-magenta" />
         <div className="text-[13px] text-text-muted">
           <span className="mb-1 block font-semibold text-text">
             {t('admin.exam.sql_missing_title', 'Falta correr el SQL del examen')}
@@ -914,8 +1001,14 @@ export function ExamBuilder({
     'w-20 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] tabular-nums text-text outline-none focus:border-primary'
 
   return (
-    <div className="space-y-10">
-      {/* ── Estado + publicación ── */}
+    <>
+      <ExamAlertBeacon show={beaconOn} count={alertCount} onGo={goToStatus} />
+
+      <div className="space-y-10">
+      {/* ── Estado + publicación ──
+          `scroll-mt-20`: al volver desde la cápsula la tarjeta no queda pegada
+          al borde ni debajo de la barra de móvil. */}
+      <motion.div ref={statusRef} animate={flash} className="scroll-mt-20 rounded-3xl">
       <GlassCard intensity="subtle" rounded="3xl" className="p-5">
         <div className="flex flex-wrap items-start gap-4">
           <div
@@ -963,20 +1056,31 @@ export function ExamBuilder({
               </Tooltip>
             </div>
             <Tooltip
-              label={t('admin.exam.tip_bank', {
-                bank: health?.bank ?? 0,
-                needed: form.question_count,
-                defaultValue:
-                  'Cada intento sortea {{needed}} preguntas de las {{bank}} del banco. Cuanto más grande el banco, menos se repiten entre aprendices.',
-              })}
+              label={
+                (health?.effective ?? 0) < form.question_count
+                  ? t('admin.exam.tip_bank_short', {
+                      bank: health?.bank ?? 0,
+                      needed: form.question_count,
+                      defaultValue:
+                        'Pediste {{needed}} preguntas por intento, pero el banco solo tiene {{bank}}: hoy cada intento sortea esas {{bank}}. Escribe más y subirá solo.',
+                    })
+                  : t('admin.exam.tip_bank', {
+                      bank: health?.bank ?? 0,
+                      needed: form.question_count,
+                      defaultValue:
+                        'Cada intento sortea {{needed}} preguntas de las {{bank}} del banco. Cuanto más grande el banco, menos se repiten entre aprendices.',
+                    })
+              }
               maxWidth={260}
               anchor="element"
               describedBy
             >
               <p className="w-fit cursor-help text-[12.5px] text-text-muted">
+                {/* Lo que sortea de verdad, no lo que pide la casilla: con el
+                    banco corto la RPC acota el intento al banco. */}
                 {t('admin.exam.status_bank', {
                   bank: health?.bank ?? 0,
-                  needed: form.question_count,
+                  needed: health?.effective ?? form.question_count,
                   defaultValue: 'Banco: {{bank}} · el examen sortea {{needed}}',
                 })}
                 {domains.length > 0 && (
@@ -1062,11 +1166,11 @@ export function ExamBuilder({
         </div>
 
         {/* Semáforo: todo lo que falta, junto */}
-        {health && (health.bank === 0 || health.offLevel.length > 0 || health.thinDomains.length > 0 || (domains.length > 0 && health.weightSum !== 100)) && (
+        {health && (health.bank === 0 || health.offLevel.length > 0 || health.bankShortfall > 0 || health.thinDomains.length > 0 || health.mismatchDomains.length > 0 || (domains.length > 0 && health.weightSum !== 100)) && (
           <ul className="mt-4 space-y-1.5 border-t border-line pt-4">
             {health.offLevel.length > 0 && (
               <li className="flex flex-wrap items-start gap-2 text-[12.5px] text-text-muted">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
                 <span className="min-w-[200px] flex-1">
                   {t('admin.exam.warn_off_level', {
                     n: health.offLevel.length,
@@ -1090,7 +1194,7 @@ export function ExamBuilder({
                 </button>
                 <button
                   onClick={() => void handleFixOffLevel()}
-                  className="rounded-full border border-amber-500/40 px-3 py-0.5 text-[11.5px] font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300"
+                  className="rounded-full border border-brand-magenta/40 px-3 py-0.5 text-[11.5px] font-medium text-neon-magenta transition-colors hover:bg-brand-magenta/10"
                 >
                   {t('admin.exam.level_fix_all', 'Ajustar todas al nivel')}
                 </button>
@@ -1098,13 +1202,84 @@ export function ExamBuilder({
             )}
             {health.bank === 0 && (
               <li className="flex items-start gap-2 text-[12.5px] text-text-muted">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
                 {t('admin.exam.warn_empty', 'El banco está vacío: añade preguntas para publicar.')}
+              </li>
+            )}
+
+            {/* 1. El banco no da para el examen que se pidió. */}
+            {health.bankShortfall > 0 && (
+              <li className="flex flex-wrap items-start gap-2 text-[12.5px] text-text-muted">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
+                <span className="min-w-[220px] flex-1">
+                  {t('admin.exam.warn_bank_shortfall', {
+                    asked: health.needed,
+                    bank: health.bank,
+                    missing: health.bankShortfall,
+                    defaultValue:
+                      'Pediste {{asked}} preguntas por intento y el banco tiene {{bank}}: te faltan {{missing}} por escribir. Mientras tanto cada intento sortea {{bank}} y todas las personas ven las mismas.',
+                  })}
+                </span>
+                {/* La salida buena va primera: escribir lo que falta. Bajar el
+                    examen es rendirse, y se ve que lo es. */}
+                <FillWithAiButton n={health.fillTotal} onClick={fillWithAi} />
+                <Tooltip
+                  label={t('admin.exam.fit_bank_tip', {
+                    n: health.bank,
+                    defaultValue:
+                      'Deja el examen en {{n}} preguntas por intento, que es lo que hay escrito. Es lo mismo que ya está pasando, pero dicho de frente.',
+                  })}
+                  maxWidth={280}
+                >
+                  <button
+                    onClick={() =>
+                      setForm((f) => (f ? { ...f, question_count: health.bank } : f))
+                    }
+                    className="rounded-full border border-line px-3 py-0.5 text-[11.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"
+                  >
+                    {t('admin.exam.fit_bank', {
+                      n: health.bank,
+                      defaultValue: 'Ajustar a {{n}} por intento',
+                    })}
+                  </button>
+                </Tooltip>
+              </li>
+            )}
+
+            {/* 2. Entran todas las preguntas, así que los % no mandan. */}
+            {health.mismatchDomains.length > 0 && (
+              <li className="flex flex-wrap items-start gap-2 text-[12.5px] text-text-muted">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
+                <span className="min-w-[220px] flex-1">
+                  {t('admin.exam.warn_split_ignored', {
+                    n: health.effective,
+                    real: bankPlan?.preview ?? '',
+                    defaultValue:
+                      'Con el intento llevándose las {{n}} preguntas del banco no hay sorteo: entran todas, así que los porcentajes no se cumplen. El examen queda {{real}}. Para que manden los porcentajes, el banco tiene que ser más grande que las preguntas por intento.',
+                  })}
+                </span>
+                {bankPlan && (
+                  <Tooltip
+                    label={t('admin.exam.fit_weights_tip', {
+                      preview: bankPlan.preview,
+                      defaultValue:
+                        'Reparte los porcentajes según las preguntas que ya tienes escritas: {{preview}}',
+                    })}
+                    maxWidth={300}
+                  >
+                    <button
+                      onClick={() => void applyWeights(bankPlan.weights)}
+                      className="rounded-full border border-line px-3 py-0.5 text-[11.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"
+                    >
+                      {t('admin.exam.fit_weights', 'Cuadrar los % con lo que tengo')}
+                    </button>
+                  </Tooltip>
+                )}
               </li>
             )}
             {domains.length > 0 && health.weightSum !== 100 && (
               <li className="flex items-start gap-2 text-[12.5px] text-text-muted">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
                 {t('admin.exam.warn_weights_v2', {
                   sum: health.weightSum,
                   defaultValue:
@@ -1114,19 +1289,78 @@ export function ExamBuilder({
             )}
             {health.thinDomains.map((d) => (
               <li key={d.id} className="flex items-start gap-2 text-[12.5px] text-text-muted">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-                {t('admin.exam.warn_thin_v2', {
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
+                {t('admin.exam.warn_thin_v3', {
                   name: d.name,
                   have: d.have,
                   need: d.need,
+                  missing: d.need - d.have,
                   defaultValue:
-                    'Al tema "{{name}}" le tocan {{need}} preguntas y solo tienes {{have}} escritas.',
+                    'Al tema "{{name}}" le tocan {{need}} preguntas y tienes {{have}}: escribe {{missing}} más.',
                 })}
               </li>
             ))}
+
+            {/* Un aviso que no dice cómo salir de él es una queja. Aquí van las
+                dos salidas reales, con el número exacto y un botón cada una. */}
+            {health.thinDomains.length > 0 && (
+              <li className="flex flex-wrap items-start gap-2 border-t border-line/60 pt-2 text-[12.5px] text-text-muted">
+                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="min-w-[220px] flex-1">
+                  {t('admin.exam.warn_thin_fix', {
+                    missing: health.missingTotal,
+                    bank: health.bank,
+                    target: health.bank + health.missingTotal,
+                    defaultValue:
+                      'En total te faltan {{missing}} preguntas: con {{target}} en el banco (hoy tienes {{bank}}) el reparto cuadra. O ajusta el examen a lo que ya escribiste:',
+                  })}
+                </span>
+                <FillWithAiButton n={health.fillTotal} onClick={fillWithAi} />
+                {health.fitCount > 0 && health.fitCount !== form.question_count && (
+                  <Tooltip
+                    label={t('admin.exam.fit_count_tip', {
+                      n: health.fitCount,
+                      defaultValue:
+                        'Deja el examen en {{n}} preguntas por intento, que es el más grande que tu banco sostiene sin dejar corto a ningún tema. Las demás preguntas siguen en el banco y entran en otros intentos.',
+                    })}
+                    maxWidth={280}
+                  >
+                    <button
+                      onClick={() =>
+                        setForm((f) => (f ? { ...f, question_count: health.fitCount } : f))
+                      }
+                      className="rounded-full border border-line px-3 py-0.5 text-[11.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"
+                    >
+                      {t('admin.exam.fit_count', {
+                        n: health.fitCount,
+                        defaultValue: 'Bajar a {{n}} por intento',
+                      })}
+                    </button>
+                  </Tooltip>
+                )}
+                {bankPlan && (
+                  <Tooltip
+                    label={t('admin.exam.fit_weights_tip', {
+                      preview: bankPlan.preview,
+                      defaultValue:
+                        'Reparte los porcentajes según las preguntas que ya tienes escritas: {{preview}}',
+                    })}
+                    maxWidth={300}
+                  >
+                    <button
+                      onClick={() => void applyWeights(bankPlan.weights)}
+                      className="rounded-full border border-line px-3 py-0.5 text-[11.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"
+                    >
+                      {t('admin.exam.fit_weights', 'Cuadrar los % con lo que tengo')}
+                    </button>
+                  </Tooltip>
+                )}
+              </li>
+            )}
           </ul>
         )}
       </GlassCard>
+      </motion.div>
 
       {/* ── 1. Reglas ── */}
       <section>
@@ -1509,7 +1743,12 @@ export function ExamBuilder({
                   domain={d}
                   index={i}
                   modules={modules}
-                  examQuestionCount={form.question_count}
+                  // Lo que se sortea de verdad, no lo que pide la casilla:
+                  // anunciar "5 de 15" con 10 en el banco es una promesa falsa.
+                  examQuestionCount={health?.effective ?? form.question_count}
+                  have={quotaById.get(d.id)?.have ?? 0}
+                  need={quotaById.get(d.id)?.need ?? 0}
+                  short={thinIds.has(d.id)}
                   onChange={(patch) => {
                     setDomains((prev) => prev.map((x) => (x.id === d.id ? { ...x, ...patch } : x)))
                   }}
@@ -1525,13 +1764,13 @@ export function ExamBuilder({
                 'mt-3 flex flex-wrap items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12px]',
                 (health?.weightSum ?? 0) === 100
                   ? 'border-line text-text-muted'
-                  : 'border-amber-500/30 bg-amber-500/[0.05] text-text-muted',
+                  : 'border-brand-magenta/30 bg-brand-magenta/[0.05] text-text-muted',
               )}
             >
               {(health?.weightSum ?? 0) === 100 ? (
                 <Check className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={3} />
               ) : (
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-brand-magenta" />
               )}
               <span className="min-w-0 flex-1">
                 {(health?.weightSum ?? 0) === 100
@@ -1646,7 +1885,7 @@ export function ExamBuilder({
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-medium transition-colors',
                 onlyOffLevel
-                  ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                  ? 'border-brand-magenta/50 bg-brand-magenta/10 text-neon-magenta'
                   : 'border-line text-text-muted hover:text-text',
               )}
             >
@@ -1915,7 +2154,7 @@ export function ExamBuilder({
                     <span
                       className={cn(
                         'shrink-0 cursor-help text-[15px] font-semibold tabular-nums',
-                        r.passed ? 'text-primary' : 'text-amber-600',
+                        r.passed ? 'text-primary' : 'text-neon-magenta',
                       )}
                     >
                       {r.best_score ?? 0}%
@@ -1995,13 +2234,54 @@ export function ExamBuilder({
           domains={domains}
           targetLevel={form.target_level}
           bank={bank}
+          fill={fillPlan}
+          autoFill={fillAuto}
           onRemove={handleRemoveFromBank}
           onImport={handleImportQuestions}
           onCreateDomains={handleCreateDomains}
-          onClose={() => setGenerateOpen(false)}
+          onClose={() => {
+            setGenerateOpen(false)
+            setFillAuto(false)
+          }}
         />
       )}
-    </div>
+      </div>
+    </>
+  )
+}
+
+/* ── "Escríbelas con IA" ────────────────────────────────────────────────────
+   El botón que convierte un aviso en trabajo hecho: lleva el número exacto
+   encima, así que se entiende sin abrir nada. Verde de marca porque es la
+   salida buena del aviso, no una más. */
+function FillWithAiButton({ n, onClick }: { n: number; onClick: () => void }) {
+  const { t } = useTranslation()
+  const reduce = useReducedMotion()
+  if (n <= 0) return null
+
+  return (
+    <Tooltip
+      label={t('admin.exam.fill_ai_tip', {
+        n,
+        defaultValue:
+          'Abre la IA con el encargo ya puesto: {{n}} preguntas nuevas, repartidas entre los temas a los que les faltan. Las lees antes de que entren al examen.',
+      })}
+      maxWidth={290}
+    >
+      <motion.button
+        onClick={onClick}
+        whileHover={reduce ? undefined : { y: -1 }}
+        whileTap={reduce ? undefined : { scale: 0.97 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 24 }}
+        className="inline-flex items-center gap-1.5 rounded-full border border-brand-green/40 bg-brand-green/10 px-3 py-0.5 text-[11.5px] font-semibold text-primary transition-colors hover:border-brand-green/70 hover:bg-brand-green/15"
+      >
+        <Sparkles className="h-3 w-3" />
+        {t('admin.exam.fill_ai', {
+          n,
+          defaultValue: 'Escribir las {{n}} con IA',
+        })}
+      </motion.button>
+    </Tooltip>
   )
 }
 
@@ -2018,6 +2298,9 @@ function DomainRow({
   index,
   modules,
   examQuestionCount,
+  have,
+  need,
+  short,
   onChange,
   onDelete,
 }: {
@@ -2026,6 +2309,12 @@ function DomainRow({
   modules: ExamBuilderModule[]
   /** Preguntas que tendrá cada intento: convierte el % en preguntas reales. */
   examQuestionCount: number
+  /** Preguntas escritas de este tema, contadas en el borrador. */
+  have: number
+  /** Preguntas que le tocan del examen, ya repartidas sin descuadre. */
+  need: number
+  /** `true` solo si de verdad se queda corto: con el banco entero en juego, no. */
+  short: boolean
   onChange: (patch: Partial<ExamDomain>) => void
   onDelete: () => void
 }) {
@@ -2038,9 +2327,7 @@ function DomainRow({
   useEffect(() => setWeight(domain.weight_pct), [domain.weight_pct])
 
   const linked = domain.module_ids ?? []
-  const have = domain.question_count ?? 0
-  const need = Math.round((examQuestionCount * weight) / 100)
-  const missing = Math.max(0, need - have)
+  const missing = short ? Math.max(0, need - have) : 0
 
   return (
     <motion.div
@@ -2067,7 +2354,9 @@ function DomainRow({
 
         <Tooltip
           label={t('admin.exam.tip_domain_weight_v2', {
-            pct: weight,
+            // El % del borrador, no el que se está tecleando: así el % y las
+            // preguntas que anuncia el mensaje nunca se contradicen.
+            pct: domain.weight_pct,
             n: need,
             total: examQuestionCount,
             defaultValue:
@@ -2121,7 +2410,7 @@ function DomainRow({
             className={cn(
               'shrink-0 cursor-help rounded-full px-2.5 py-0.5 text-[11px] tabular-nums',
               missing > 0
-                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                ? 'bg-brand-magenta/10 text-neon-magenta'
                 : 'bg-subtle text-text-muted',
             )}
           >

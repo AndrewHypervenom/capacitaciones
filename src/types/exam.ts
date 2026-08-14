@@ -77,7 +77,11 @@ export interface ExamDomain {
   sort_order: number
   /** Módulos que se mandan a repasar si se reprueba el dominio. */
   module_ids?: string[]
-  /** Solo lectura: cuántas preguntas activas tiene. */
+  /**
+   * Solo lectura: preguntas activas que tenía en la BASE al cargar. En el
+   * constructor NO sirve para contar — allí todo es borrador y este número se
+   * queda congelado en lo último guardado; usa `ExamHealth.domainQuotas`.
+   */
   question_count?: number
 }
 

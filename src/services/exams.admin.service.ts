@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import { logActivity } from '@/services/audit.service'
+import { questionQuotas } from '@/lib/examQuotas'
 import {
   DEFAULT_EXAM,
   type CourseExam,
@@ -260,20 +261,8 @@ export function split100(n: number, weights?: number[]): number[] {
   if (n <= 0) return []
   const base = weights?.length === n && weights.some((w) => w > 0) ? weights : Array(n).fill(1)
   const total = base.reduce((s, w) => s + Math.max(0, w), 0)
-  const exact = base.map((w) => (Math.max(0, w) * 100) / total)
-  const floors = exact.map(Math.floor)
-  let left = 100 - floors.reduce((s, v) => s + v, 0)
-  // Los puntos que sobran van a las partes con mayor resto, de mayor a menor.
-  const order = exact
-    .map((v, i) => ({ i, rest: v - Math.floor(v) }))
-    .sort((a, b) => b.rest - a.rest)
-  const out = [...floors]
-  for (const { i } of order) {
-    if (left <= 0) break
-    out[i] += 1
-    left -= 1
-  }
-  return out
+  // Normalizar a 100 y repartir con el mismo resto mayor que las cuotas.
+  return questionQuotas(100, base.map((w) => (Math.max(0, w) * 100) / total))
 }
 
 export async function deleteExamDomain(domainId: string): Promise<void> {
@@ -406,20 +395,70 @@ export interface ReusableQuestion {
   difficulty: ExamDifficulty | null
 }
 
-/** Arma las opciones del examen a partir de los tres idiomas del quiz. */
+/** Una pregunta del curso que NO se puede copiar al examen, y por qué. */
+export interface SkippedQuestion {
+  moduleTitle: string
+  sectionHeading: string
+  text_es: string
+  /**
+   * `few_options` — menos de dos opciones escritas.
+   * `blank_answer` — la marcada como correcta está en blanco.
+   * `no_text`      — la pregunta no tiene enunciado.
+   */
+  reason: 'few_options' | 'blank_answer' | 'no_text'
+}
+
+/** Lo que hay en los módulos: lo copiable y lo que se quedó fuera. */
+export interface ReusableScan {
+  items: ReusableQuestion[]
+  skipped: SkippedQuestion[]
+}
+
+/**
+ * Arma las opciones del examen a partir de los tres idiomas del quiz.
+ *
+ * Las opciones en blanco se caen (un quiz con cuatro huecos y dos escritos son
+ * dos opciones, no cuatro), pero eso RENUMERA la lista, y ahí estaba el fallo:
+ * se filtraba y se mapeaba de un tirón, así que el índice de después se usaba
+ * para leer las traducciones y para localizar la respuesta correcta, que se
+ * guardan por la posición ORIGINAL. Resultado: con un hueco en medio, la
+ * pregunta entraba al examen con el inglés de otra opción y, peor, con la
+ * respuesta correcta cambiada de sitio.
+ *
+ * Por eso devuelve también `origin`: `origin[i]` es la posición que ocupaba la
+ * opción `i` antes de quitar los huecos. Quien sepa cuál era la correcta la
+ * traduce con `mapCorrect`.
+ */
 function toExamOptions(
   es: string[],
   en: (string | null)[] | null | undefined,
   pt: (string | null)[] | null | undefined,
-): ExamOption[] {
-  return (es ?? [])
-    .filter((text) => (text ?? '').trim() !== '')
-    .map((text, i) => ({
-      id: OPTION_IDS[i] ?? `o${i}`,
+): { options: ExamOption[]; origin: number[] } {
+  const options: ExamOption[] = []
+  const origin: number[] = []
+  ;(es ?? []).forEach((text, i) => {
+    if ((text ?? '').trim() === '') return
+    options.push({
+      id: OPTION_IDS[options.length] ?? `o${options.length}`,
       text_es: text,
       text_en: en?.[i] ?? null,
       text_pt: pt?.[i] ?? null,
-    }))
+    })
+    origin.push(i)
+  })
+  return { options, origin }
+}
+
+/**
+ * La respuesta correcta después de quitar los huecos.
+ *
+ * `null` = la correcta era una opción vacía. Esa pregunta está rota en el
+ * módulo y no se puede copiar: marcar la primera "por si acaso" sería meter en
+ * el examen una pregunta con la respuesta equivocada.
+ */
+function mapCorrect(origin: number[], correctIndex: number): string | null {
+  const at = origin.indexOf(correctIndex)
+  return at === -1 ? null : (OPTION_IDS[at] ?? `o${at}`)
 }
 
 /**
@@ -460,7 +499,7 @@ function collectQuizBlocks(blocks: unknown): QuizBlock[] {
  * una clave sintética estable (sección + posición), que es lo que va a
  * `source_ref` para reconocer después lo que ya se copió.
  */
-export async function getReusableQuestions(courseId: string): Promise<ReusableQuestion[]> {
+export async function getReusableQuestions(courseId: string): Promise<ReusableScan> {
   const { data: modules, error: mErr } = await supabase
     .from('modules')
     .select('id, title_es, course_sort_order')
@@ -469,7 +508,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
     .order('course_sort_order')
   if (mErr) throw mErr
   const mods = (modules ?? []) as { id: string; title_es: string }[]
-  if (mods.length === 0) return []
+  if (mods.length === 0) return { items: [], skipped: [] }
 
   // La ficha de cada sección: liviana a propósito. Aquí NO viaja `blocks_data`,
   // que es el contenido entero del curso (textos, juegos, capítulos de video) y
@@ -483,7 +522,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
   const secs = (sections ?? []) as {
     id: string; module_id: string; heading_es: string
   }[]
-  if (secs.length === 0) return []
+  if (secs.length === 0) return { items: [], skipped: [] }
 
   /**
    * El contenido, pero SOLO de las secciones que pueden esconder una pregunta.
@@ -528,6 +567,18 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
   const modById = new Map(mods.map((m) => [m.id, m]))
   const secById = new Map(secs.map((s) => [s.id, s]))
 
+  /* Lo que NO se puede copiar, con su motivo. Antes se descartaba en silencio
+     con un `continue`, y el capacitador solo veía que el número no cuadraba con
+     las preguntas que él sabe que escribió. Una pregunta que desaparece sin
+     explicación es peor que una pregunta rota. */
+  const skipped: SkippedQuestion[] = []
+  const skip = (
+    mod: { title_es: string },
+    heading: string,
+    text: string,
+    reason: SkippedQuestion['reason'],
+  ) => skipped.push({ moduleTitle: mod.title_es, sectionHeading: heading, text_es: text, reason })
+
   type QuizRow = {
     id: string; section_id: string
     question_es: string; question_en: string | null; question_pt: string | null
@@ -546,8 +597,16 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
     const sec = secById.get(q.section_id)
     const mod = sec ? modById.get(sec.module_id) : null
     if (!sec || !mod) continue
-    const options = toExamOptions(q.options_es, q.options_en, q.options_pt)
-    if (options.length < 2) continue
+    const { options, origin } = toExamOptions(q.options_es, q.options_en, q.options_pt)
+    if (options.length < 2) {
+      skip(mod, sec.heading_es, q.question_es, 'few_options')
+      continue
+    }
+    const correctId = mapCorrect(origin, q.correct_index)
+    if (!correctId) {
+      skip(mod, sec.heading_es, q.question_es, 'blank_answer')
+      continue
+    }
     out.push({
       key: q.id,
       locator: { kind: 'quiz', quizId: q.id },
@@ -558,7 +617,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
       text_en: q.question_en,
       text_pt: q.question_pt,
       options,
-      correct: [options[q.correct_index]?.id ?? options[0].id],
+      correct: [correctId],
       explanation_es: q.explanation_es,
       explanation_en: q.explanation_en,
       explanation_pt: q.explanation_pt,
@@ -579,12 +638,25 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
     // 2a. Bloques `quiz`.
     collectQuizBlocks(body.blocks_data).forEach((b, i) => {
       const es = (b.options ?? []).map((o) => o?.text?.es ?? '')
-      const options = toExamOptions(
+      const { options, origin } = toExamOptions(
         es,
         (b.options ?? []).map((o) => o?.text?.en ?? null),
         (b.options ?? []).map((o) => o?.text?.pt ?? null),
       )
-      if (options.length < 2 || !(b.question?.es ?? '').trim()) return
+      const enunciado = (b.question?.es ?? '').trim()
+      if (!enunciado) {
+        skip(mod, sec.heading_es, '', 'no_text')
+        return
+      }
+      if (options.length < 2) {
+        skip(mod, sec.heading_es, enunciado, 'few_options')
+        return
+      }
+      const correctId = mapCorrect(origin, b.correct)
+      if (!correctId) {
+        skip(mod, sec.heading_es, enunciado, 'blank_answer')
+        return
+      }
       out.push({
         key: `block:${sec.id}:${i}`,
         locator: { kind: 'block', sectionId: sec.id, index: i },
@@ -595,7 +667,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
         text_en: b.question.en || null,
         text_pt: b.question.pt || null,
         options,
-        correct: [options[b.correct]?.id ?? options[0].id],
+        correct: [correctId],
         explanation_es: b.explanation?.es || null,
         explanation_en: b.explanation?.en || null,
         explanation_pt: b.explanation?.pt || null,
@@ -613,8 +685,21 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
     for (const m of markers) {
       if (m?.type !== 'quiz') continue
       ;(m.questions ?? []).forEach((q, i) => {
-        const options = toExamOptions(q.options_es, q.options_en, q.options_pt)
-        if (options.length < 2 || !(q.question_es ?? '').trim()) return
+        const { options, origin } = toExamOptions(q.options_es, q.options_en, q.options_pt)
+        const enunciado = (q.question_es ?? '').trim()
+        if (!enunciado) {
+          skip(mod, sec.heading_es, '', 'no_text')
+          return
+        }
+        if (options.length < 2) {
+          skip(mod, sec.heading_es, enunciado, 'few_options')
+          return
+        }
+        const correctId = mapCorrect(origin, q.correct)
+        if (!correctId) {
+          skip(mod, sec.heading_es, enunciado, 'blank_answer')
+          return
+        }
         out.push({
           key: `video:${sec.id}:${m.id}:${i}`,
           locator: { kind: 'video', sectionId: sec.id, markerId: m.id, index: i },
@@ -625,7 +710,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
           text_en: q.question_en || null,
           text_pt: q.question_pt || null,
           options,
-          correct: [options[q.correct]?.id ?? options[0].id],
+          correct: [correctId],
           explanation_es: q.explanation_es || null,
           explanation_en: q.explanation_en || null,
           explanation_pt: q.explanation_pt || null,
@@ -637,7 +722,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
     }
   }
 
-  return out
+  return { items: out, skipped }
 }
 
 /**
@@ -1156,8 +1241,51 @@ export async function grantExamAttempt(
 export interface ExamHealth {
   bank: number
   needed: number
+  /**
+   * Preguntas que sorteará de verdad cada intento. La RPC acota el sorteo al
+   * tamaño del banco: pedir 20 con 12 escritas son 12, no 20.
+   */
+  effective: number
+  /** Preguntas que le faltan al banco para el examen que se pidió. 0 = alcanza. */
+  bankShortfall: number
+  /**
+   * Cuántas preguntas le tocan a cada tema y cuántas hay escritas, contadas
+   * sobre el BORRADOR (lo que se ve en pantalla), no sobre lo último guardado.
+   * El reparto se hace sobre `effective`: prometer "5 de 15" cuando solo se
+   * sortean 10 es un número que nunca se va a cumplir.
+   */
+  domainQuotas: { id: string; name: string; have: number; need: number }[]
+  /**
+   * `true` cuando el intento se lleva el banco entero. Entonces no hay sorteo:
+   * entran todas las preguntas escritas, y quien decide la composición del
+   * examen es el banco, no los porcentajes.
+   */
+  drawsWholeBank: boolean
   /** Dominios con peso > 0 pero sin suficientes preguntas para su cuota. */
   thinDomains: { id: string; name: string; have: number; need: number }[]
+  /**
+   * Con el banco entero en juego, los temas cuya presencia real no es la que
+   * prometen sus porcentajes. No se arregla escribiendo "la que falta" (eso
+   * agranda el banco y mueve el problema): o se agranda el banco por encima de
+   * las preguntas por intento, o se cuadran los % con lo escrito.
+   */
+  mismatchDomains: { id: string; name: string; have: number; need: number }[]
+  /** Preguntas que hay que escribir para que el reparto cuadre. 0 = cuadra. */
+  missingTotal: number
+  /**
+   * Qué falta escribir, tema por tema, para llegar al examen que se pidió.
+   * Es la lista que se le pasa a la IA para que rellene el hueco exacto en vez
+   * de "generar 20 más" y volver a descuadrarlo todo.
+   */
+  fillPlan: { id: string; name: string; missing: number }[]
+  /** Total de `fillPlan` (o el hueco del banco si no hay temas). */
+  fillTotal: number
+  /**
+   * El examen más grande que el banco de hoy sí sostiene sin que ningún tema
+   * se quede corto. `0` = ni con una pregunta por intento cuadra (algún tema
+   * tiene peso pero cero preguntas escritas).
+   */
+  fitCount: number
   weightSum: number
   /** Preguntas sin dominio (no entran en el informe por área). */
   orphanQuestions: number
@@ -1184,14 +1312,73 @@ export function checkExamHealth(
   const needed = exam.question_count
   const weightSum = domains.reduce((s, d) => s + d.weight_pct, 0)
 
-  const thinDomains = domains
-    .filter((d) => d.weight_pct > 0)
-    .map((d) => {
-      const have = active.filter((q) => q.domain_id === d.id).length
-      const need = Math.round((needed * d.weight_pct) / 100)
-      return { id: d.id, name: d.name_es, have, need }
-    })
-    .filter((d) => d.have < d.need)
+  // Cuántas preguntas hay escritas de cada tema, contadas del borrador: es lo
+  // único que coincide con lo que el capacitador tiene delante.
+  const have = new Map<string, number>()
+  for (const q of active) {
+    if (q.domain_id) have.set(q.domain_id, (have.get(q.domain_id) ?? 0) + 1)
+  }
+
+  const weights = domains.map((d) => d.weight_pct)
+  const counts = domains.map((d) => have.get(d.id) ?? 0)
+
+  /* Dos problemas distintos que antes se confundían en uno:
+
+     1. EL BANCO NO ALCANZA (pediste 15, hay 10). El intento sortea 10, punto.
+        Se resuelve escribiendo 5 preguntas más o bajando las preguntas por
+        intento. Es lo primero que hay que decir, y con el número exacto.
+
+     2. EL REPARTO NO SE CUMPLE. Solo tiene sentido medirlo contra lo que se
+        sortea de verdad, no contra lo que se pidió. */
+  const effective = Math.min(needed, active.length)
+  const bankShortfall = Math.max(0, needed - active.length)
+
+  const quotas = questionQuotas(effective, weights)
+  const domainQuotas = domains.map((d, i) => ({
+    id: d.id,
+    name: d.name_es,
+    have: counts[i],
+    need: quotas[i] ?? 0,
+  }))
+
+  /* Cuando el intento se lleva el banco entero no hay sorteo: entran todas.
+     Entonces ningún tema puede quedarse "corto" — pero los porcentajes tampoco
+     se cumplen, porque la composición la decide lo escrito. Son avisos
+     distintos y el segundo NO se arregla escribiendo la pregunta que falta:
+     eso agranda el banco y el mismo aviso reaparece con otro tema. */
+  const drawsWholeBank = active.length > 0 && effective >= active.length
+  const thinDomains = drawsWholeBank ? [] : domainQuotas.filter((d) => d.have < d.need)
+  const mismatchDomains = drawsWholeBank
+    ? domainQuotas.filter((d) => d.have !== d.need)
+    : []
+  const missingTotal = thinDomains.reduce((s, d) => s + (d.need - d.have), 0)
+
+  /* Qué falta para el examen que se PIDIÓ (no para el que cabe hoy): las cuotas
+     sobre `needed` menos lo escrito. Con 15 pedidas, 10 escritas y el reparto
+     25/30/15/15/15 sale "1 de cada tema" — justo las 5 que faltan, y en el
+     sitio donde faltan. */
+  const wanted = questionQuotas(needed, weights)
+  const fillPlan = domains
+    .map((d, i) => ({
+      id: d.id,
+      name: d.name_es,
+      missing: Math.max(0, (wanted[i] ?? 0) - counts[i]),
+    }))
+    .filter((d) => d.missing > 0)
+  const fillTotal =
+    fillPlan.length > 0 ? fillPlan.reduce((s, d) => s + d.missing, 0) : bankShortfall
+
+  // El examen más grande que el banco de hoy aguanta con este reparto.
+  let fitCount = 0
+  if (thinDomains.length > 0) {
+    for (let n = effective - 1; n >= 1; n--) {
+      const q = questionQuotas(n, weights)
+      if (counts.every((c, i) => c >= (q[i] ?? 0))) {
+        fitCount = n
+        break
+      }
+    }
+  }
 
   const target = exam.target_level ?? 'mixta'
   const offLevel =
@@ -1204,7 +1391,16 @@ export function checkExamHealth(
   return {
     bank: active.length,
     needed,
+    effective,
+    bankShortfall,
+    domainQuotas,
+    drawsWholeBank,
     thinDomains,
+    mismatchDomains,
+    missingTotal,
+    fillPlan,
+    fillTotal,
+    fitCount,
     weightSum,
     orphanQuestions: active.filter((q) => !q.domain_id).length,
     offLevel,

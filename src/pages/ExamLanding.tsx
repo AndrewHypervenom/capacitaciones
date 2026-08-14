@@ -38,6 +38,7 @@ import { toast } from '@/stores/toastStore';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss';
 import { cn } from '@/lib/cn';
+import { questionQuotas } from '@/lib/examQuotas';
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -258,7 +259,18 @@ export default function ExamLanding() {
     );
   }
 
-  const totalDomainQuestions = state.domains.reduce((s, d) => s + d.question_count, 0);
+  /* El tamaño del banco es el del examen, no la suma de los temas: las
+     preguntas sin tema también entran al sorteo y sumándolas por tema se
+     quedaban fuera de la cuenta. */
+  const bankSize =
+    state.bank_size || state.domains.reduce((s, d) => s + d.question_count, 0);
+
+  /* Cuántas preguntas le tocan a cada tema, repartidas de una vez: redondear
+     cada tema por su lado dejaba sumas de 21 preguntas en un examen de 20. */
+  const domainQuotas = questionQuotas(
+    state.question_count,
+    state.domains.map((d) => d.weight_pct),
+  );
 
   return (
     <>
@@ -454,7 +466,7 @@ export default function ExamLanding() {
                   <Tooltip
                     label={t('exam.tip_domain_weight', {
                       pct: d.weight_pct,
-                      n: Math.round((d.weight_pct / 100) * state.question_count),
+                      n: domainQuotas[i] ?? 0,
                       defaultValue:
                         'Alrededor de {{n}} preguntas del examen ({{pct}}%) son de este tema.',
                     })}
@@ -475,10 +487,10 @@ export default function ExamLanding() {
               ))}
             </div>
 
-            {totalDomainQuestions > 0 && (
+            {bankSize > 0 && (
               <p className="mt-3 text-[12px] text-text-subtle">
                 {t('exam.domains_bank_hint', {
-                  n: totalDomainQuestions,
+                  n: bankSize,
                   defaultValue:
                     'Las preguntas se sortean de un banco de {{n}}: cada intento es distinto.',
                 })}

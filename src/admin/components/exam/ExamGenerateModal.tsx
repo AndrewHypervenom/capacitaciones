@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import * as XLSX from 'xlsx'
 import {
   AlertTriangle,
+  ChevronDown,
   BookOpen,
   Check,
   Download,
@@ -44,6 +45,8 @@ import {
   type ParsedImportRow,
   type ReusableLocator,
   type ReusableQuestion,
+  type ReusableScan,
+  type SkippedQuestion,
 } from '@/services/exams.admin.service'
 import {
   ACCEPTED_DOC_EXTENSIONS,
@@ -74,6 +77,64 @@ type BankIndex = {
 }
 
 /** Ids de las preguntas del banco que salieron de este quiz. Vacío = no está. */
+/**
+ * "Faltan preguntas y no sé por qué" — se acabó.
+ *
+ * Las preguntas rotas del módulo (sin dos opciones, sin enunciado, o con la
+ * respuesta correcta en blanco) no se pueden copiar al examen: meterlas sería
+ * evaluar con una pregunta que no se puede responder. Antes se descartaban en
+ * silencio y el total no cuadraba con lo que el capacitador había escrito.
+ * Ahora se dicen, con módulo, sección y motivo, para poder ir a arreglarlas.
+ */
+function SkippedNotice({ skipped }: { skipped: SkippedQuestion[] }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+
+  const label: Record<SkippedQuestion['reason'], string> = {
+    few_options: t('admin.exam.skip_few_options', 'menos de dos opciones escritas'),
+    blank_answer: t('admin.exam.skip_blank_answer', 'la respuesta correcta está en blanco'),
+    no_text: t('admin.exam.skip_no_text', 'sin enunciado'),
+  }
+
+  return (
+    <div className="rounded-2xl border border-brand-magenta/30 bg-brand-magenta/[0.05] px-3.5 py-2.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-start gap-2 text-left"
+      >
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
+        <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-text-muted">
+          {t('admin.exam.skipped_count', {
+            n: skipped.length,
+            defaultValue:
+              'Hay {{n}} preguntas en tus módulos que no se pueden copiar porque están incompletas. Por eso no salen en el total de arriba.',
+          })}
+        </span>
+        <ChevronDown
+          className={cn(
+            'mt-0.5 h-3.5 w-3.5 shrink-0 text-text-subtle transition-transform',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1.5 border-t border-brand-magenta/20 pt-2">
+          {skipped.map((s, i) => (
+            <li key={i} className="text-[11.5px] leading-relaxed text-text-subtle">
+              <span className="text-text-muted">
+                {s.text_es || t('admin.exam.skip_untitled', '(pregunta sin texto)')}
+              </span>
+              <br />
+              {s.moduleTitle} · {s.sectionHeading} —{' '}
+              <span className="text-brand-magenta">{label[s.reason]}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function bankIdsFor(q: ReusableQuestion, bank?: BankIndex): string[] {
   if (!bank) return []
   const byRef = bank.byRef.get(q.key) ?? []
@@ -105,11 +166,25 @@ export interface ExamCourseContext {
    Nada se guarda hasta que el capacitador ve lo que va a entrar y lo confirma.
    ──────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Encargo concreto con el que puede abrirse el modal: "escribe las que faltan,
+ * y estas de cada tema". Sale del semáforo del constructor, así que el
+ * capacitador no tiene que traducir un aviso a una casilla de números.
+ */
+export interface ExamFillPlan {
+  /** Cuántas faltan en total. */
+  count: number
+  /** Cuántas de cada tema (por nombre, que es lo que entiende la IA). */
+  byDomain: { name: string; missing: number }[]
+}
+
 export function ExamGenerateModal({
   context,
   domains,
   targetLevel = 'mixta',
   bank,
+  fill,
+  autoFill = false,
   onRemove,
   onImport,
   onCreateDomains,
@@ -117,6 +192,13 @@ export function ExamGenerateModal({
 }: {
   context: ExamCourseContext
   domains: ExamDomain[]
+  /**
+   * Lo que le falta al examen. Se pasa SIEMPRE que falte algo: la pestaña de IA
+   * lo ofrece con un botón aunque el capacitador haya entrado por su cuenta.
+   */
+  fill?: ExamFillPlan | null
+  /** `true` si se entró desde el aviso: entonces el encargo va ya aplicado. */
+  autoFill?: boolean
   /**
    * Nivel al que evalúa el examen. Si es fijo, manda sobre las tres vías: la IA
    * solo escribe a ese nivel, los quizzes de otro nivel no se copian y las
@@ -142,28 +224,27 @@ export function ExamGenerateModal({
 }) {
   const { t } = useTranslation()
   const reduce = useReducedMotion()
+  // Con un encargo de relleno la pestaña de IA manda: es la vía que lo resuelve.
   const [source, setSource] = useState<Source>('ai')
   const [busy, setBusy] = useState(false)
   const backdrop = useBackdropDismiss(onClose, !busy)
   const abortRef = useRef<AbortController | null>(null)
 
   /**
-   * Los quizzes del curso se leen aquí (no dentro del panel) porque de ellos
-   * depende qué pestaña se abre: si hay preguntas de los módulos que todavía no
-   * están en el banco, esa es la vía que sale por defecto — es material del
-   * propio curso, ya revisado, y no cuesta ni un peso de IA.
+   * Los quizzes del curso se leen aquí (no dentro del panel) porque el número de
+   * los que faltan por copiar se enseña en la pestaña, antes de entrar en ella.
+   * Es material del propio curso, ya revisado, y no cuesta ni un peso de IA.
    */
-  const [reusable, setReusable] = useState<ReusableQuestion[] | null>(null)
-  /** Si el capacitador ya eligió pestaña, la carga no se la mueve debajo. */
-  const pickedTab = useRef(false)
+  const [scan, setScan] = useState<ReusableScan | null>(null)
+  const reusable = scan?.items ?? null
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
   useEffect(() => {
     let alive = true
     getReusableQuestions(context.courseId)
-      .then((r) => alive && setReusable(r))
-      .catch(() => alive && setReusable([]))
+      .then((r) => alive && setScan(r))
+      .catch(() => alive && setScan({ items: [], skipped: [] }))
     return () => {
       alive = false
     }
@@ -172,11 +253,19 @@ export function ExamGenerateModal({
     // borrado era una consulta por clic.
   }, [context.courseId])
 
-  // Solo se abre en "Reutilizar" si de verdad queda algo por copiar.
-  useEffect(() => {
-    if (!reusable || pickedTab.current) return
-    if (reusable.some((q) => bankIdsFor(q, bank).length === 0)) setSource('reuse')
-  }, [reusable, bank])
+  /**
+   * Quizzes del curso que todavía no están en el banco.
+   *
+   * Esto ANTES cambiaba de pestaña solo: los quizzes tardan en llegar, así que
+   * abrías en "Con IA" y a los dos segundos te saltaba a "Reutilizar" con el
+   * cursor ya puesto en otra cosa. Cambiar de sitio lo que el usuario está
+   * mirando nunca es una ayuda. Ahora solo se cuenta y se enseña como una marca
+   * en la pestaña: la información está, y quien decide sigue siendo él.
+   */
+  const pending = useMemo(
+    () => (reusable ?? []).filter((q) => bankIdsFor(q, bank).length === 0).length,
+    [reusable, bank],
+  )
 
   /**
    * Quiz de módulo → preguntas del banco que salieron de él. Es lo que permite
@@ -234,10 +323,7 @@ export function ExamGenerateModal({
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => {
-                pickedTab.current = true
-                setSource(id)
-              }}
+              onClick={() => setSource(id)}
               disabled={busy}
               className={cn(
                 'relative flex items-center gap-1.5 px-3.5 py-3 text-[13px] font-medium transition-colors disabled:opacity-50',
@@ -246,6 +332,22 @@ export function ExamGenerateModal({
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
+              {/* Cuántos quizzes del curso quedan sin copiar. Es el dato que
+                  antes justificaba el salto de pestaña, ahora sin el salto. */}
+              {id === 'reuse' && pending > 0 && (
+                <Tooltip
+                  label={t('admin.exam.reuse_pending_tip', {
+                    n: pending,
+                    defaultValue:
+                      'Hay {{n}} quizzes de tus módulos que todavía no están en el banco. Copiarlos no cuesta IA: ya los escribiste tú.',
+                  })}
+                  maxWidth={260}
+                >
+                  <span className="rounded-full bg-brand-green/15 px-1.5 py-px text-[10.5px] font-semibold tabular-nums text-primary">
+                    {pending}
+                  </span>
+                </Tooltip>
+              )}
               {source === id && (
                 <motion.span
                   layoutId="exam-src-underline"
@@ -276,6 +378,8 @@ export function ExamGenerateModal({
               context={context}
               domains={domains}
               targetLevel={targetLevel}
+              fill={fill}
+              autoFill={autoFill}
               busy={busy}
               setBusy={setBusy}
               abortRef={abortRef}
@@ -287,6 +391,7 @@ export function ExamGenerateModal({
           {source === 'reuse' && (
             <ReusePanel
               items={reusable}
+              skipped={scan?.skipped ?? []}
               used={used}
               onRemove={onRemove}
               courseTitle={context.courseTitle}
@@ -339,14 +444,14 @@ function SourceCard({ source, enough }: { source: CourseSource | null; enough: b
     <div
       className={cn(
         'rounded-2xl border px-4 py-3',
-        enough ? 'border-line' : 'border-amber-500/40 bg-amber-500/[0.06]',
+        enough ? 'border-line' : 'border-brand-magenta/40 bg-brand-magenta/[0.06]',
       )}
     >
       <div className="flex items-start gap-2.5">
         {enough ? (
           <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-neon-magenta" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-medium text-text">
@@ -370,7 +475,7 @@ function SourceCard({ source, enough }: { source: CourseSource | null; enough: b
           </p>
 
           {source.truncated && (
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-amber-700 dark:text-amber-300">
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-neon-magenta">
               {t('admin.exam.source_truncated', {
                 chars: SOURCE_CHAR_LIMIT.toLocaleString('es-CO'),
                 defaultValue:
@@ -400,6 +505,8 @@ function AiPanel({
   context,
   domains,
   targetLevel,
+  fill,
+  autoFill,
   busy,
   setBusy,
   abortRef,
@@ -410,6 +517,8 @@ function AiPanel({
   context: ExamCourseContext
   domains: ExamDomain[]
   targetLevel: ExamTargetLevel
+  fill?: ExamFillPlan | null
+  autoFill?: boolean
   busy: boolean
   setBusy: (b: boolean) => void
   abortRef: React.MutableRefObject<AbortController | null>
@@ -420,11 +529,19 @@ function AiPanel({
   onDone: () => void
 }) {
   const { t } = useTranslation()
-  const [count, setCount] = useState(20)
+  /* Viniendo del aviso, el panel llega resuelto: la cantidad exacta que falta
+     (tope 40 por tanda) y los temas marcados. Entrando por cuenta propia, el
+     hueco se OFRECE con un botón en vez de cambiarle los números por sorpresa. */
+  const fillCount = fill ? Math.min(40, Math.max(1, fill.count)) : 0
+  const [fillApplied, setFillApplied] = useState(Boolean(autoFill && fill))
+  const [count, setCount] = useState(autoFill && fill ? fillCount : 20)
   // Arranca en el nivel del examen: es el único que va a aceptar el banco.
   const [difficulty, setDifficulty] = useState<ExamTargetLevel>(targetLevel)
   const [instruction, setInstruction] = useState('')
-  const [useOwnDomains, setUseOwnDomains] = useState(domains.length > 0)
+  /* Si el examen ya tiene temas, se usan. Y si no los tiene, la IA los propone.
+     No hay tercera opción: no había caso real en el que "tengo temas pero
+     quiero que te inventes otros" fuera lo que alguien quería. */
+  const useOwnDomains = domains.length > 0
   const levelOk = !isLevelLocked(targetLevel) || difficulty === targetLevel
   const src = context.source
   /** Con menos de esto no hay materia: la IA tendría que inventar para llenar. */
@@ -432,6 +549,14 @@ function AiPanel({
 
   const inputCls =
     'w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none transition-colors focus:border-primary'
+
+  /** El reparto que se le pide a la IA, en su idioma: prosa, no una tabla. */
+  const fillNote =
+    fillApplied && fill && fill.byDomain.length > 0
+      ? `Reparte las preguntas así: ${fill.byDomain
+          .map((d) => `${d.missing} de «${d.name}»`)
+          .join(', ')}. No repitas enunciados que ya estén en el examen.`
+      : ''
 
   const run = async () => {
     if (!levelOk || !enoughSource) return
@@ -444,7 +569,9 @@ function AiPanel({
         count,
         domains: useOwnDomains ? domains.map((d) => d.name_es) : undefined,
         difficulty,
-        instruction: instruction.trim() || undefined,
+        // El encargo del semáforo viaja por delante de lo que escriba el
+        // capacitador: es el reparto exacto que le falta al examen.
+        instruction: [fillNote, instruction.trim()].filter(Boolean).join(' ') || undefined,
         signal: abortRef.current.signal,
       })
 
@@ -508,6 +635,65 @@ function AiPanel({
         )}
       </p>
 
+      {/* El encargo, a la vista y en cristiano. Sin esto el capacitador tendría
+          que fiarse de que la casilla trae el número correcto. */}
+      {fill && (
+        <div className="rounded-2xl border border-brand-green/35 bg-brand-green/[0.07] px-4 py-3.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+            <span className="min-w-[200px] flex-1 text-[13px] font-semibold text-text">
+              {fillApplied
+                ? t('admin.exam.fill_title', {
+                    n: fill.count,
+                    defaultValue: 'Completar las {{n}} preguntas que faltan',
+                  })
+                : t('admin.exam.fill_offer', {
+                    n: fill.count,
+                    defaultValue: 'A este examen le faltan {{n}} preguntas',
+                  })}
+            </span>
+            {!fillApplied && (
+              <button
+                onClick={() => {
+                  setCount(fillCount)
+                  setFillApplied(true)
+                }}
+                className="shrink-0 rounded-full border border-brand-green/45 bg-brand-green/10 px-3 py-1 text-[12px] font-semibold text-primary transition-colors hover:border-brand-green/70 hover:bg-brand-green/15"
+              >
+                {t('admin.exam.fill_apply', {
+                  n: fill.count,
+                  defaultValue: 'Completar las {{n}} que faltan',
+                })}
+              </button>
+            )}
+          </div>
+          {fill.byDomain.length > 0 && (
+            <ul className="mt-2.5 flex flex-wrap gap-1.5">
+              {fill.byDomain.map((d) => (
+                <li
+                  key={d.name}
+                  className="rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11.5px] text-text-muted"
+                >
+                  <span className="font-semibold tabular-nums text-text">{d.missing}</span>{' '}
+                  {d.name}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2.5 text-[11.5px] leading-relaxed text-text-subtle">
+            {fillApplied
+              ? t(
+                  'admin.exam.fill_hint',
+                  'Ya está todo puesto: solo pulsa generar. Las preguntas entran al borrador y se guardan con el resto del examen.',
+                )
+              : t(
+                  'admin.exam.fill_offer_hint',
+                  'Es lo que le falta para cuadrar con las preguntas por intento y el peso de cada tema. Pulsa el botón y se pone solo, o pide lo que quieras a mano.',
+                )}
+          </p>
+        </div>
+      )}
+
       <SourceCard source={src} enough={enoughSource} />
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -535,26 +721,35 @@ function AiPanel({
         />
       </div>
 
-      {domains.length > 0 && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line px-4 py-3">
-          <input
-            type="checkbox"
-            checked={useOwnDomains}
-            onChange={(e) => setUseOwnDomains(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-[rgb(var(--neon-green))]"
-          />
+      {/* Los temas del examen NO son una opción.
+          Esto era una casilla que se podía desmarcar, y desmarcarla dejaba a la
+          IA inventarse sus propios temas: aparecían áreas paralelas a las que ya
+          tenías, con peso 0, y el reparto que habías cuadrado se iba al traste.
+          Nunca fue un interruptor de "de dónde saca el contenido" —eso siempre
+          es tu curso, y lo dice el bloque de arriba—, solo de con qué etiquetas
+          se guardan. Con temas ya definidos, esa decisión ya la tomaste. */}
+      {domains.length > 0 ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-line px-4 py-3">
+          <Layers className="mt-0.5 h-4 w-4 shrink-0 text-text-subtle" />
           <span className="min-w-0">
             <span className="block text-[13.5px] font-medium text-text">
-              {t('admin.exam.ai_use_domains_v2', 'Usar mis temas')}
+              {t('admin.exam.ai_domains_fixed', 'Se reparten entre tus temas')}
             </span>
             <span className="block text-[12px] text-text-muted">
-              {t('admin.exam.ai_use_domains_hint', {
-                list: domains.map((d) => d.name_es).join(', '),
-                defaultValue: 'Repartirá las preguntas entre tus temas: {{list}}',
-              })}
+              {domains.map((d) => d.name_es).join(' · ')}
             </span>
           </span>
-        </label>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 rounded-2xl border border-line px-4 py-3">
+          <Layers className="mt-0.5 h-4 w-4 shrink-0 text-text-subtle" />
+          <span className="min-w-0 text-[12.5px] leading-relaxed text-text-muted">
+            {t(
+              'admin.exam.ai_domains_proposed',
+              'Todavía no tienes temas: la IA propondrá unos a partir del contenido del curso y podrás renombrarlos y darles peso después.',
+            )}
+          </span>
+        </div>
       )}
 
       <div>
@@ -619,6 +814,7 @@ function AiPanel({
 
 function ReusePanel({
   items,
+  skipped,
   used,
   onRemove,
   courseTitle,
@@ -632,6 +828,8 @@ function ReusePanel({
 }: {
   /** Los carga el modal (decide con ellos la pestaña inicial). `null` = leyendo. */
   items: ReusableQuestion[] | null
+  /** Preguntas de los módulos que no se pueden copiar, y por qué. */
+  skipped: SkippedQuestion[]
   /** Quiz ya copiado → preguntas del banco que salieron de él. */
   used: ReadonlyMap<string, string[]>
   onRemove?: (questionIds: string[]) => Promise<void>
@@ -1007,6 +1205,11 @@ function ReusePanel({
               '{{total}} quizzes en los módulos · {{used}} ya están en el banco · {{fresh}} por copiar',
           })}
         </p>
+
+        {/* Lo que se quedó fuera, con nombre y motivo. Sin esto el número de
+            arriba no cuadra con las preguntas que el capacitador sabe que
+            escribió, y no hay forma de averiguar por qué. */}
+        {skipped.length > 0 && <SkippedNotice skipped={skipped} />}
         {fresh.length === 0 && (
           <p className="flex items-start gap-2 rounded-2xl border border-line bg-subtle/50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-text-muted">
             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
@@ -1114,13 +1317,13 @@ function ReusePanel({
       <div
         className={cn(
           'rounded-2xl border px-4 py-3',
-          rated ? 'border-line' : 'border-amber-500/30 bg-amber-500/[0.05]',
+          rated ? 'border-line' : 'border-brand-magenta/30 bg-brand-magenta/[0.05]',
         )}
       >
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 text-[13px] font-medium text-text">
-              {!rated && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />}
+              {!rated && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-neon-magenta" />}
               {t('admin.exam.reuse_rate_title', 'Nivel de estas preguntas')}
             </p>
             <p className="text-[11.5px] leading-relaxed text-text-muted">
@@ -1147,7 +1350,7 @@ function ReusePanel({
                     )}
             </p>
             {noStore && (
-              <p className="mt-1 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+              <p className="mt-1 text-[11px] leading-relaxed text-neon-magenta">
                 {t('admin.exam.reuse_rate_nostore', {
                   file: 'supabase/sql/2026-08-12_section_quiz_difficulty.sql',
                   defaultValue:
@@ -1796,12 +1999,15 @@ function FilePanel({
             />
           </div>
 
+          {/* Mismo criterio que en la pestaña de IA: los temas del examen son
+              los que hay, aquí solo se informa de cuáles son. */}
           {domains.length > 0 && (
             <p className="text-[12px] text-text-muted">
-              {t('admin.exam.ai_use_domains_hint', {
-                list: domains.map((d) => d.name_es).join(', '),
-                defaultValue: 'Repartirá las preguntas entre tus temas: {{list}}',
-              })}
+              <span className="font-medium text-text">
+                {t('admin.exam.ai_domains_fixed', 'Se reparten entre tus temas')}
+              </span>
+              {': '}
+              {domains.map((d) => d.name_es).join(' · ')}
             </p>
           )}
 
@@ -1918,7 +2124,7 @@ function FilePanel({
                   className={cn(
                     'flex items-start gap-3 rounded-xl border px-3.5 py-2.5',
                     !fits
-                      ? 'border-amber-500/30 bg-amber-500/[0.05]'
+                      ? 'border-brand-magenta/30 bg-brand-magenta/[0.05]'
                       : pickedQ.has(i)
                         ? 'border-primary/40 bg-primary/[0.04]'
                         : 'border-line',
@@ -1984,7 +2190,7 @@ function FilePanel({
               {t('admin.exam.file_valid', { n: ok.length, defaultValue: 'Válidas: {{n}}' })}
             </span>
             {bad.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 text-[13px] text-amber-600">
+              <span className="inline-flex items-center gap-1.5 text-[13px] text-neon-magenta">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {t('admin.exam.file_invalid', {
                   n: bad.length,
@@ -2002,7 +2208,7 @@ function FilePanel({
                   key={r.row}
                   className={cn(
                     'flex items-start gap-3 rounded-xl border px-3.5 py-2.5 text-[12.5px]',
-                    r.error || off ? 'border-amber-500/30 bg-amber-500/[0.05]' : 'border-line',
+                    r.error || off ? 'border-brand-magenta/30 bg-brand-magenta/[0.05]' : 'border-line',
                   )}
                 >
                   <span className="w-8 shrink-0 tabular-nums text-text-subtle">{r.row}</span>
@@ -2014,7 +2220,7 @@ function FilePanel({
                   </span>
                   {off && <LevelPill level={r.question!.difficulty} target={targetLevel} />}
                   {r.error && (
-                    <span className="shrink-0 text-amber-600">
+                    <span className="shrink-0 text-neon-magenta">
                       {t(`admin.exam.file_err_${r.error}`, r.error)}
                     </span>
                   )}

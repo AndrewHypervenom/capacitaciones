@@ -217,45 +217,19 @@ export async function selfEnroll(courseId: string): Promise<void> {
   if (error) throw error
 }
 
-/**
- * Auto-inscribe al staff (capacitador/superadmin) en un curso PROPIO ya publicado
- * para poder previsualizarlo "como aprendiz". A diferencia de `selfEnroll` (solo
- * cursos de catálogo), esto acepta cualquier curso publicado que el staff gestione.
- * SECURITY DEFINER en el RPC valida rol, propiedad y publicación.
- */
-export async function previewEnrollSelf(courseId: string): Promise<void> {
-  const { error } = await supabase.rpc('preview_enroll_self', { p_course_id: courseId })
-  if (error) throw error
-}
+// NOTA: aquí vivían `previewEnrollSelf` / `previewUnenrollSelf` y
+// `getSelfEnrolledCourseIds`, el andamiaje del viejo "Ver como aprendiz": el
+// staff se matriculaba de verdad en su propio curso para verlo, y luego había
+// que ofrecerle salir. Todo eso se eliminó (el staff revisa con la vista previa
+// en modal, que no toca la base) y los RPC `preview_enroll_self` /
+// `preview_unenroll_self` se borran de la BD con
+// supabase/sql/quitar-ver-como-aprendiz.sql.
 
 /** Salir de un curso en el que el aprendiz se auto-inscribió. */
 export async function unenrollSelf(courseId: string): Promise<void> {
   if (IS_LEARNER_PREVIEW) return
   const { error } = await supabase.rpc('unenroll_self', { p_course_id: courseId })
   if (error) throw error
-}
-
-/**
- * Deshace la matrícula de previsualización del staff. Sin esto, cada clic en
- * "Ver como aprendiz" dejaba una fila permanente en `course_assignments` que
- * inflaba los contadores del curso. El RPC solo borra la fila si el propio
- * usuario se la puso (assigned_by = auth.uid()): nunca quita una asignación
- * hecha por otra persona.
- */
-export async function previewUnenrollSelf(courseId: string): Promise<void> {
-  const { error } = await supabase.rpc('preview_unenroll_self', { p_course_id: courseId })
-  if (error) throw error
-}
-
-/** Cursos en los que el usuario actual se inscribió a sí mismo (preview o catálogo). */
-export async function getSelfEnrolledCourseIds(userId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('course_assignments')
-    .select('course_id')
-    .eq('user_id', userId)
-    .eq('assigned_by', userId)
-  if (error) throw error
-  return (data ?? []).map((r) => r.course_id)
 }
 
 /**

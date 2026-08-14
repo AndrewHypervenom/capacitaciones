@@ -1927,15 +1927,7 @@ export interface Database {
         Args: { p_course_id: string }
         Returns: undefined
       }
-      preview_enroll_self: {
-        Args: { p_course_id: string }
-        Returns: undefined
-      }
       unenroll_self: {
-        Args: { p_course_id: string }
-        Returns: undefined
-      }
-      preview_unenroll_self: {
         Args: { p_course_id: string }
         Returns: undefined
       }

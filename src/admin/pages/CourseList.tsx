@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, LogOut, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,15 +11,11 @@ import {
   updateCourse,
   deleteCourse,
   getShareableCourses,
-  previewEnrollSelf,
-  previewUnenrollSelf,
-  getSelfEnrolledCourseIds,
   type CourseWithModules,
   type AdminCourse,
   type ShareableCourse,
 } from '@/services/courses.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
-import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
 import { runCourseAiGeneration, COURSE_AI_CREATED_EVENT } from '@/services/courseAi.service'
 import {
   extractDocumentText, ACCEPTED_DOC_EXTENSIONS,
@@ -67,16 +63,10 @@ export default function CourseList() {
   const confirm = useConfirm()
   const navigate = useNavigate()
   const { user, campaignId: authCampaignId, isSuperAdmin } = useAuth()
-  // Curso que se está abriendo "como aprendiz" (auto-inscripción en curso).
-  const [previewingId, setPreviewingId] = useState<string | null>(null)
-  // Cursos donde el staff ya se auto-inscribió para previsualizar. Esa matrícula
-  // es real (cuenta en `course_assignments`), así que la pantalla ofrece salir
-  // en vez de dejarla ahí sumando gente que no es alumna del curso.
-  const [previewEnrolled, setPreviewEnrolled] = useState<Set<string>>(new Set())
   // Curso abierto en la vista previa (modal con la página del aprendiz).
   const [previewCourse, setPreviewCourse] = useState<AdminCourse | null>(null)
-  // El pulso que señala "Ver como aprendiz" late hasta que se usa una vez y
-  // luego no vuelve: es una ayuda de descubrimiento, no un adorno permanente.
+  // El pulso que señala la vista previa late hasta que se usa una vez y luego
+  // no vuelve: es una ayuda de descubrimiento, no un adorno permanente.
   const [previewHintSeen, setPreviewHintSeen] = useState(() => {
     try { return localStorage.getItem(PREVIEW_HINT_KEY) === '1' } catch { return true }
   })
@@ -224,14 +214,6 @@ export default function CourseList() {
     setSelectedCampaignId(focusCampaignId)
   }, [focusCampaignId, campaigns])
 
-  // Qué cursos tengo yo mismo matriculados por haber previsualizado antes.
-  useEffect(() => {
-    if (!user?.id) return
-    getSelfEnrolledCourseIds(user.id)
-      .then((ids) => setPreviewEnrolled(new Set(ids)))
-      .catch(() => {})
-  }, [user?.id])
-
   useEffect(() => {
     if (!focusId || loading) return
     focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -371,70 +353,20 @@ export default function CourseList() {
     }
   }
 
-  // Apaga para siempre el pulso que señala "Ver como aprendiz".
+  // Apaga para siempre el pulso que señala la vista previa.
   const markPreviewHintSeen = () => {
     setPreviewHintSeen(true)
     try { localStorage.setItem(PREVIEW_HINT_KEY, '1') } catch { /* modo privado */ }
   }
 
-  // "Ver como aprendiz": matricula al staff en el curso y lo lleva a la RUTA
-  // REAL del aprendiz, fuera del panel. Es la vista de verdad —sin `?preview=1`,
-  // sin iframe—, así que sirve para reproducir fallos que solo aparecen (o que
-  // se sospecha que solo aparecen) en la experiencia real. La matrícula es real
-  // y cuenta en los contadores: por eso la tarjeta muestra después el aviso con
-  // "Salir", que la deshace.
-  //
-  // El curso en BORRADOR no se puede matricular (el RPC exige publicado): en ese
-  // caso cae a la vista previa en modal, que sí funciona sin publicar.
-  const handleViewAsLearner = async (course: AdminCourse) => {
-    markPreviewHintSeen()
-
-    if (!course.is_published) {
-      toast.info(t('admin.courses.view_as_learner_publish_first'))
-      setPreviewCourse(course)
-      return
-    }
-
-    setPreviewingId(course.id)
-    try {
-      await previewEnrollSelf(course.id)
-      setPreviewEnrolled((prev) => new Set(prev).add(course.id))
-      invalidateLearnerCoursesCache()
-      toast.success(t('admin.courses.view_as_learner_ok'))
-      navigate(`/courses/${course.slug}`)
-    } catch {
-      toast.error(t('admin.courses.view_as_learner_error'))
-    } finally {
-      setPreviewingId(null)
-    }
-  }
-
   // Vista previa en modal: la página real del aprendiz dentro de un <iframe>
   // marcado como vista previa. No matricula a nadie y nada de lo que se haga ahí
-  // se guarda, así que es la forma de revisar un curso ANTES de publicarlo.
+  // se guarda: es LA forma de revisar un curso, publicado o en borrador. Antes
+  // convivía con "Ver como aprendiz", que sí matriculaba al staff de verdad y
+  // lo sumaba a los contadores de aprendices; eso ya no existe.
   const handleQuickPreview = (course: AdminCourse) => {
     markPreviewHintSeen()
     setPreviewCourse(course)
-  }
-
-  // Deshace la previsualización: quita al staff de la matrícula del curso para
-  // que no siga contando como persona matriculada en las métricas.
-  const handleExitPreview = async (course: CourseWithModules) => {
-    setPreviewingId(course.id)
-    try {
-      await previewUnenrollSelf(course.id)
-      setPreviewEnrolled((prev) => {
-        const next = new Set(prev)
-        next.delete(course.id)
-        return next
-      })
-      invalidateLearnerCoursesCache()
-      toast.success(t('admin.courses.exit_preview_ok'))
-    } catch {
-      toast.error(t('admin.courses.exit_preview_error'))
-    } finally {
-      setPreviewingId(null)
-    }
   }
 
   const handleDelete = async (course: CourseWithModules) => {
@@ -780,62 +712,25 @@ export default function CourseList() {
                 </div>
               </div>
 
-              {/* Aviso de previsualización: cuando el staff se auto-inscribió, el
-                  estado se explica con palabras antes de ofrecer el botón. Antes
-                  "Salir de la vista de aprendiz" competía con la acción principal
-                  en la misma fila y se partía en tres líneas. */}
-              {previewEnrolled.has(course.id) && (
-                <div className="mx-4 mb-3 flex items-center gap-3 rounded-xl border border-primary/25 bg-primary/8 px-3 py-2">
-                  <Eye className="h-4 w-4 shrink-0 text-primary" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-semibold text-text leading-tight">
-                      {t('admin.courses.preview_state_title')}
-                    </p>
-                    <p className="text-[11px] text-text-muted leading-tight">
-                      {t('admin.courses.preview_state_hint')}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleExitPreview(course)}
-                    disabled={previewingId === course.id}
-                    title={t('admin.courses.exit_preview_hint')}
-                    className="shrink-0 min-h-[32px] flex items-center gap-1.5 rounded-lg border border-line bg-bg/40 px-2.5 text-[12px] font-semibold text-text-muted hover:border-danger/40 hover:text-danger transition-colors disabled:opacity-60"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    {t('admin.courses.exit_preview_short')}
-                  </button>
-                </div>
-              )}
-
               {/* Acciones — todas con etiqueta de texto: los iconos sueltos se
                   confundían entre sí (el ojo de "despublicar" parecía "ver"). La
                   acción principal va arriba y sola; publicar/borrar van abajo,
                   más discretas y con la destructiva separada a la derecha. */}
               <div className="border-t border-line/70 px-4 py-3 space-y-2">
                 <div className="flex items-center gap-2">
+                  {/* Vista previa en modal: la única forma de ver el curso como
+                      lo ve el aprendiz. Funciona igual publicado o en borrador y
+                      no deja rastro en la matrícula. */}
                   <PulseHint active={!previewHintSeen} className="flex-1 min-w-0">
                     <button
-                      onClick={() => handleViewAsLearner(course)}
-                      disabled={previewingId === course.id}
-                      title={t('admin.courses.exit_preview_hint')}
-                      className="w-full min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 hover:border-primary/40 active:scale-[0.98] disabled:opacity-60"
+                      onClick={() => handleQuickPreview(course)}
+                      title={t('admin.preview.button_hint')}
+                      className="w-full min-h-[44px] flex items-center justify-center gap-2 px-3 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 text-primary bg-primary/10 border border-primary/25 hover:bg-primary/15 hover:border-primary/40 active:scale-[0.98]"
                     >
-                      {previewingId === course.id
-                        ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                        : <GraduationCap className="h-4 w-4 shrink-0" />}
-                      <span className="truncate">{t('admin.courses.view_as_learner')}</span>
+                      <Eye className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{t('admin.preview.button')}</span>
                     </button>
                   </PulseHint>
-                  {/* Vista previa en modal: sigue siendo la única forma de revisar
-                      un curso en borrador (matricularse exige publicado). */}
-                  <button
-                    onClick={() => handleQuickPreview(course)}
-                    title={t('admin.preview.button_hint')}
-                    aria-label={t('admin.preview.button')}
-                    className="min-h-[44px] w-11 shrink-0 flex items-center justify-center rounded-xl text-text-muted border border-line hover:text-text hover:bg-glass/8 hover:border-glass-border/25 transition-colors"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </button>
                   <Link
                     to={`/admin/courses/${course.id}`}
                     className="min-h-[44px] shrink-0 flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-semibold text-text-muted border border-line hover:text-text hover:bg-glass/8 hover:border-glass-border/25 transition-colors"
