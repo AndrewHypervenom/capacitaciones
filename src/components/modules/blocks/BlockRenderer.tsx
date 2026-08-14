@@ -24,8 +24,6 @@ import { PdfBlockRenderer } from './PdfBlock';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
 import { SimpleVideo } from '@/components/modules/SimpleVideo';
 import { inlineVideoSection } from '@/lib/videoPlaylist';
-import { extractYouTubeId } from '@/lib/youtube';
-import { extractVimeoId, vimeoEmbedUrl } from '@/lib/vimeo';
 import { cn } from '@/lib/cn';
 import { RichText, RichTextInline } from '@/components/ui/RichText';
 
@@ -134,17 +132,19 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
     case 'video': {
       const isYT = block.kind === 'youtube';
       const isVM = block.kind === 'vimeo';
-      // Defensivo: contenido antiguo pudo guardar la URL completa en vez del id;
-      // el embed/reproductor necesita solo el id.
-      const youtubeId = extractYouTubeId(block.url) ?? block.url;
-      const vimeoId = extractVimeoId(block.url) ?? block.url;
+      // (El id se saca dentro de `inlineVideoSection`, que ya limpia las URLs
+      // completas que pudo guardar el contenido antiguo.)
 
       // Video interactivo inline: si el capacitador agregó capítulos/quiz se
       // reproduce con el mismo motor que la sección "Video interactivo"
       // (compuertas de quiz, capítulos, guardado de intentos). Reutiliza
       // sectionId/userId para que los intentos crucen con los ya guardados y
       // cuenten en la compuerta.
-      if (block.markers && block.markers.length > 0) {
+      // YouTube y Vimeo van SIEMPRE por el reproductor propio, aunque no tengan
+      // capítulos ni quiz: con el iframe de ellos no hay forma de sostener el
+      // candado de la primera pasada (ni de medir la conexión), y un video que
+      // se puede adelantar rompe la regla justo donde nadie la vigila.
+      if ((block.markers && block.markers.length > 0) || isYT || isVM) {
         const section = inlineVideoSection(block, sectionId, blockIndex ?? 0);
 
         // Restaurar quizzes ya hechos (markerId → {score,total}) desde los intentos.
@@ -175,26 +175,12 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
         );
       }
 
-      if (isYT || isVM) {
-        return (
-          <div className="rounded-2xl overflow-hidden border border-line relative bg-black" style={{ paddingTop: '56.25%' }}>
-            <iframe
-              src={isYT
-                ? `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1`
-                : vimeoEmbedUrl(vimeoId)}
-              title={block.caption?.[language] || 'Video'}
-              loading="lazy"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="absolute inset-0 w-full h-full border-0"
-            />
-          </div>
-        );
-      }
       return (
         <SimpleVideo
           src={block.url}
           title={block.caption?.[language] || block.caption?.es || undefined}
+          sectionId={sectionId}
+          blockIndex={blockIndex ?? 0}
         />
       );
     }

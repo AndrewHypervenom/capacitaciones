@@ -22,6 +22,8 @@ import { cn } from '@/lib/cn'
 import { VideoQuizOverlay, type QuizAnswerDetail } from './VideoQuizOverlay'
 import { ConnectionBadge } from './ConnectionBadge'
 import { useConnectionQuality } from '@/hooks/useConnectionQuality'
+import { useVideoSeekGate } from '@/hooks/useVideoSeekGate'
+import { buildVideoWatchId } from '@/lib/videoWatch'
 import { YouTubePlayer } from './YouTubePlayer'
 import { VimeoPlayer } from './VimeoPlayer'
 import type { PlayerLike } from '@/lib/youtube'
@@ -47,6 +49,8 @@ export interface VideoPlayerState {
   playing: boolean
   /** Tiempo del primer quiz pendiente: todo lo que venga después está bloqueado. */
   gateTime: number | null
+  /** Candado de la primera pasada: hasta dónde se puede saltar (null = sin candado). */
+  watchLimit: number | null
   activeChapterIdx: number
   completedQuizzes: Record<string, QuizResult>
 }
@@ -295,6 +299,17 @@ export function InteractiveVideoModule({
   const sortedMarkers = [...markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
   const quizCount = sortedMarkers.filter((m) => m.type === 'quiz').length
 
+  // ── Candado de la primera pasada ──
+  // Mientras no se haya terminado el video una vez, no se puede adelantar.
+  // La identidad lleva dónde está (la sección y su encabezado —un bloque de
+  // video comparte id con los demás de la sección, y por eso el encabezado es el
+  // sintético `vb:<seccion>:<indice>`) y qué es (la fuente): así, reemplazar el
+  // archivo no hereda el "ya lo vi" del video anterior.
+  const watchId = buildVideoWatchId(section.id, section.heading?.es, videoUrl)
+  const seekGate = useVideoSeekGate(watchId)
+  // Tope de los saltos por el candado: lo ya visto, con una pizca de holgura.
+  const watchLimit = seekGate.active ? seekGate.maxWatched + 1 : null
+
   const activeChapterIdx = sortedMarkers.reduce((acc, m, i) => {
     if (m.timeSeconds <= currentTime) return i
     return acc
@@ -449,6 +464,10 @@ export function InteractiveVideoModule({
   const handleEndedEvent = useCallback(() => {
     if (endedRef.current) return // YouTube emite "pausado" pegado a "terminado"
     endedRef.current = true
+    // Se vio entero: se levanta el candado de la primera pasada aunque todavía
+    // quede una verificación por responder (el video ya se vio; el quiz es otra
+    // compuerta y sigue en pie por su cuenta).
+    seekGate.markDone(videoRef.current?.duration || duration)
     clearTimeout(pendingTimeout.current)
     setPending(false)
     setPlaying(false)
@@ -482,7 +501,7 @@ export function InteractiveVideoModule({
     nextTargetRef.current = target
     setNextTitle(target?.title ?? null)
     if (target && getAutoplayNext()) setNextCountdown(NEXT_UP_SECONDS)
-  }, [nextUp, onEnded, playerId, openPendingQuiz])
+  }, [nextUp, onEnded, playerId, openPendingQuiz, seekGate, duration])
 
   // Cuenta regresiva de "a continuación". Vive aparte para que cancelarla sea
   // simplemente poner el contador en null.
@@ -598,6 +617,12 @@ export function InteractiveVideoModule({
     const cur = v.currentTime
     lastTimeRef.current = cur
     setCurrentTime(cur)
+    // Anotar lo visto: es lo único que abre el video hacia adelante. Y si ya
+    // está a un suspiro del final, se levanta el candado sin esperar al evento
+    // de "terminado": hay videos cuyo último segundo el reproductor nunca
+    // reporta, y el aprendiz se quedaría con el candado puesto para siempre.
+    seekGate.note(cur, v.duration)
+    if (v.duration > 0 && cur >= v.duration - 1.5) seekGate.markDone(v.duration)
     // Mantener la duración fresca (YouTube la expone tarde y sin evento propio).
     if (v.duration) setDuration((d) => (Math.abs(v.duration - d) > 0.5 ? v.duration : d))
 
@@ -617,7 +642,7 @@ export function InteractiveVideoModule({
     // colocado en un segundo que el video nunca reporta. Con "ya lo pasaste" el
     // quiz sale siempre; `triggeredRef` evita que se repita en la misma pasada.
     if (!showOverlay) openPendingQuiz(cur)
-  }, [openPendingQuiz, showOverlay, section.heading?.es])
+  }, [openPendingQuiz, showOverlay, section.heading?.es, seekGate])
 
   const togglePlay = () => {
     const v = videoRef.current
@@ -643,10 +668,13 @@ export function InteractiveVideoModule({
     return null
   }
 
-  const seekTo = (secs: number) => {
-    const v = videoRef.current
-    if (!v) return
-    let target = Math.max(0, Math.min(secs, duration))
+  /**
+   * El ÚNICO lugar donde se decide hasta dónde se puede saltar. Lo usan tanto
+   * nuestros controles como el guardia de `seeking` del <video> nativo, para que
+   * ningún camino se salte las compuertas.
+   */
+  const clampSeekTarget = (secs: number): number => {
+    let target = Math.max(0, duration > 0 ? Math.min(secs, duration) : secs)
     // Compuerta de avance: si hay un quiz pendiente por delante, no se puede saltar
     // hasta él ni más allá. Usamos `>=` a propósito: aterrizar EXACTAMENTE sobre el
     // marcador rompería la detección por cruce (prev < t && cur >= t) y el quiz se
@@ -655,10 +683,36 @@ export function InteractiveVideoModule({
     if (gate != null && target >= gate) {
       target = Math.max(0, gate - 0.4)
     }
+    // Candado de la primera pasada: no se salta más allá de lo ya visto. Recortar
+    // no basta —un salto que "no hace nada" parece una falla del sitio—, así que
+    // `clamp` levanta el aviso cuando corta.
+    return Math.max(0, seekGate.clamp(target))
+  }
+
+  const seekTo = (secs: number) => {
+    const v = videoRef.current
+    if (!v) return
+    const target = clampSeekTarget(secs)
     v.currentTime = target
     // Sincronizar la referencia de cruce: un salto manual no debe disparar quizzes
     // intermedios; solo el avance natural de la reproducción los cruza.
     lastTimeRef.current = target
+  }
+
+  /**
+   * Guardia de último recurso sobre el <video> nativo: hay caminos que mueven el
+   * tiempo sin pasar por nuestros controles —la ventana flotante (PiP), las
+   * teclas de medios del teclado, un gesto del navegador—. Si el salto se pasa
+   * de la raya, se devuelve el video a donde puede estar.
+   */
+  const handleNativeSeeking = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const v = e.currentTarget
+    const allowed = clampSeekTarget(v.currentTime)
+    // Con holgura: reponerlo por unas milésimas encadenaría `seeking` sin fin.
+    if (v.currentTime - allowed > 0.25) {
+      v.currentTime = allowed
+      lastTimeRef.current = allowed
+    }
   }
 
   // El contenedor (modo cine) maneja los capítulos desde el panel lateral.
@@ -688,6 +742,7 @@ export function InteractiveVideoModule({
       Math.round(duration),
       playing,
       gateForState,
+      Math.round(watchLimit ?? -1),
       activeChapterIdx,
       Object.keys(completedQuizzes).length,
     ].join('|')
@@ -698,10 +753,32 @@ export function InteractiveVideoModule({
       duration,
       playing,
       gateTime: gateForState,
+      watchLimit,
       activeChapterIdx,
       completedQuizzes,
     })
-  }, [onState, currentTime, duration, playing, gateForState, activeChapterIdx, completedQuizzes])
+  }, [onState, currentTime, duration, playing, gateForState, watchLimit, activeChapterIdx, completedQuizzes])
+
+  // ── "Continuar desde…" ──
+  //
+  // Espera a que llegue la marca que manda (la de la base). Con el candado
+  // puesto, el punto de reanudación NO es la última posición guardada por el
+  // navegador —esa no prueba nada— sino lo que el servidor acredita como visto.
+  // Si alguien vio 3 minutos y el navegador guardó 20, se ofrece continuar en 3.
+  const resumeOfferedRef = useRef(false)
+  useEffect(() => {
+    if (resumeOfferedRef.current || !seekGate.ready || duration <= 0) return
+    resumeOfferedRef.current = true
+    let saved = 0
+    try {
+      saved = parseFloat(localStorage.getItem(getProgressKey(section.heading?.es)) ?? '0') || 0
+    } catch { /* ignore */ }
+    const target = seekGate.active ? Math.min(saved, seekGate.maxWatched) : saved
+    if (target > 10 && target < duration - 5) {
+      setSavedTime(target)
+      setShowResumeToast(true)
+    }
+  }, [seekGate, duration, section.heading?.es])
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressBarRef.current || !duration) return
@@ -867,14 +944,6 @@ export function InteractiveVideoModule({
     }
     lastTimeRef.current = videoRef.current?.currentTime ?? 0
 
-    try {
-      const saved = parseFloat(localStorage.getItem(getProgressKey(section.heading?.es)) ?? '0')
-      if (saved > 10 && saved < dur - 5) {
-        setSavedTime(saved)
-        setShowResumeToast(true)
-      }
-    } catch { /* ignore */ }
-
     // Encadenado: este reproductor se montó porque el anterior TERMINÓ. Arranca
     // una sola vez; si el navegador bloquea el arranque, el temporizador de
     // `requestPlay` devuelve el botón grande y el aprendiz decide.
@@ -899,8 +968,18 @@ export function InteractiveVideoModule({
   // pulso de la verificación requerida y se la trae a la vista dentro de la lista.
   const handleLockedClick = (markerId: string) => {
     setShakeMarkerId(markerId)
-    setPulseGate(true)
     window.setTimeout(() => setShakeMarkerId((c) => (c === markerId ? null : c)), 550)
+
+    // Si lo que cierra el paso es el candado de la primera pasada, el aviso lo
+    // dice con todas las letras: señalar una verificación que ni siquiera es el
+    // motivo dejaría al aprendiz buscando lo que no falla.
+    const marker = sortedMarkers.find((mm) => mm.id === markerId)
+    if (watchLimit != null && marker && marker.timeSeconds > watchLimit) {
+      seekGate.warn()
+      return
+    }
+
+    setPulseGate(true)
     window.setTimeout(() => setPulseGate(false), 1300)
     const gate = firstPendingQuizTime()
     if (gate != null && chapterListRef.current) {
@@ -940,6 +1019,13 @@ export function InteractiveVideoModule({
   // Tope actual: tiempo del primer quiz pendiente. Todo marcador posterior está
   // bloqueado hasta que se realice esa verificación.
   const gateTime = firstPendingQuizTime()
+  /** Un marcador está fuera de alcance por el quiz pendiente o por el candado. */
+  const isMarkerLocked = (seconds: number) =>
+    (gateTime != null && seconds > gateTime) || (watchLimit != null && seconds > watchLimit)
+  /** Porcentaje de la barra ya desbloqueado: hasta ahí se puede saltar. */
+  const unlockedPct = watchLimit != null && duration > 0
+    ? Math.min(100, (seekGate.maxWatched / duration) * 100)
+    : 100
 
   if (!videoUrl) {
     return (
@@ -963,8 +1049,9 @@ export function InteractiveVideoModule({
         const markerLang = m.title[lang] || m.title.es
         const quizResult = m.type === 'quiz' ? completedQuizzes[m.id] : undefined
         const isPassing = isVideoQuizPassed(quizResult)
-        // Bloqueado: hay un quiz pendiente antes de este marcador en la línea de tiempo.
-        const isLocked = gateTime != null && m.timeSeconds > gateTime
+        // Bloqueado: hay un quiz pendiente antes de este marcador en la línea de
+        // tiempo, o todavía no se ha llegado ahí viendo el video.
+        const isLocked = isMarkerLocked(m.timeSeconds)
         // Requerido: es justamente el quiz pendiente que abre la compuerta.
         const isRequired = gateTime != null && m.type === 'quiz' && !quizResult && m.timeSeconds === gateTime
 
@@ -1143,6 +1230,7 @@ export function InteractiveVideoModule({
             onPause={handlePauseEvent}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
+            onSeeking={handleNativeSeeking}
             onEnded={handleEndedEvent}
           />
         )}
@@ -1223,6 +1311,28 @@ export function InteractiveVideoModule({
           )}
         </AnimatePresence>
 
+        {/* Aviso de "no se puede adelantar todavía". Sale cuando el aprendiz lo
+            intenta —arrastrando la barra, con la flecha derecha o tocando un
+            capítulo que aún no toca— porque el silencio se lee como una falla
+            del sitio y termina en "no me deja adelantar el video". */}
+        <AnimatePresence>
+          {seekGate.notice && (
+            <motion.div
+              key="no-skip"
+              className="absolute inset-x-0 bottom-24 z-40 flex justify-center px-6 pointer-events-none"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <span className="flex max-w-[min(92%,26rem)] items-start gap-2 rounded-2xl border border-amber-400/25 bg-zinc-900/95 px-4 py-2.5 text-[12px] leading-snug text-amber-100/90 shadow-xl backdrop-blur-sm">
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+                {t('video.no_skip_notice')}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Botón grande de play cuando está pausado. Desaparece en cuanto se pide
             reproducir (`pending`) para dejar ver la ruedita de carga del reproductor. */}
         <AnimatePresence>
@@ -1245,6 +1355,18 @@ export function InteractiveVideoModule({
                 {quizCount > 0 && currentTime < 1 && (
                   <span className="max-w-[min(90%,22rem)] text-center rounded-full bg-black/55 backdrop-blur-sm px-4 py-2 text-[11.5px] leading-snug text-white/85 border border-white/10">
                     {t('video.has_checks', { count: quizCount })}
+                  </span>
+                )}
+                {/* La regla se anuncia ANTES, no cuando choca contra ella. Nadie
+                    reporta como falla algo que le avisaron de entrada.
+                    El mensaje es el mismo para todos: aquí solo se explica que
+                    esto es normal por ser la primera vez. La llave del staff no
+                    se menciona —vive en la barra de controles, donde estorba a
+                    nadie. */}
+                {seekGate.active && (
+                  <span className="flex max-w-[min(90%,24rem)] items-center gap-2 rounded-full border border-amber-300/25 bg-black/55 px-4 py-2 text-center text-[11.5px] leading-snug text-amber-100/90 backdrop-blur-sm">
+                    <Lock className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                    {t('video.no_skip_intro')}
                   </span>
                 )}
               </div>
@@ -1314,12 +1436,17 @@ export function InteractiveVideoModule({
                     <Lock className="h-3 w-3 shrink-0" /> {t('video.locked_hint')}
                   </p>
                 )}
+                {seekGate.active && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-amber-400">
+                    <Lock className="h-3 w-3 shrink-0" /> {t('video.no_skip_hint')}
+                  </p>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto">
                 {sortedMarkers.map((m, i) => {
                   const isActive = i === activeChapterIdx
                   const quizResult = m.type === 'quiz' ? completedQuizzes[m.id] : undefined
-                  const isLocked = gateTime != null && m.timeSeconds > gateTime
+                  const isLocked = isMarkerLocked(m.timeSeconds)
                   const isRequired = gateTime != null && m.type === 'quiz' && !quizResult && m.timeSeconds === gateTime
                   return (
                     <motion.button
@@ -1484,6 +1611,26 @@ export function InteractiveVideoModule({
                 className="absolute h-full rounded-full bg-neon-green transition-[width] duration-100"
                 style={{ width: `${progressPct}%` }}
               />
+              {/* Tramo aún no desbloqueado (primera pasada). Rayado y con un
+                  candado en la frontera: el aprendiz VE por qué la barra no le
+                  responde ahí, en vez de pensar que el reproductor está roto. */}
+              {watchLimit != null && duration > 0 && unlockedPct < 100 && (
+                <>
+                  <div
+                    aria-hidden
+                    className="absolute inset-y-0 right-0 rounded-r-full bg-[repeating-linear-gradient(135deg,rgba(255,255,255,0.28)_0_4px,transparent_4px_8px)]"
+                    style={{ left: `${unlockedPct}%` }}
+                  />
+                  <div
+                    aria-hidden
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-900/90 ring-1 ring-white/40"
+                    style={{ left: `${unlockedPct}%` }}
+                  >
+                    <Lock className="h-2.5 w-2.5 text-white/85" />
+                  </div>
+                </>
+              )}
+
               {/* Indicador de posición */}
               <div
                 className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-3.5 w-3.5 rounded-full bg-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1597,6 +1744,26 @@ export function InteractiveVideoModule({
                 </button>
               )}
 
+              {/* Llave de mantenimiento del staff. El candado se ve igual que
+                  para el aprendiz —así se comprueba que funciona— pero quien
+                  sube el contenido necesita poder ir al minuto 15 de un video de
+                  veinte sin verlo entero. Es un clic explícito, no una exención
+                  silenciosa, y dura solo lo que dure este video en pantalla. */}
+              {seekGate.canOverride && seekGate.active && (
+                <button
+                  type="button"
+                  onClick={seekGate.override}
+                  title={t('video.staff_unlock_hint')}
+                  className={cn(
+                    ctrlBtn,
+                    'flex items-center gap-1.5 text-[11px] font-semibold text-amber-300/90 hover:bg-white/10 hover:text-amber-200',
+                  )}
+                >
+                  <Lock className={ctrlIconSm} />
+                  <span className="hidden md:inline">{t('video.staff_unlock')}</span>
+                </button>
+              )}
+
               {/* Semáforo de conexión. Cuando el video se traba, la respuesta a
                   "¿es mi internet?" tiene que estar a la vista y no obligar a
                   salir a probar otra página. */}
@@ -1702,12 +1869,24 @@ export function InteractiveVideoModule({
             <AnimatePresence>
               {gateTime != null && (
                 <motion.p
+                  key="quiz-gate"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   className="mt-1.5 flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 overflow-hidden"
                 >
                   <Lock className="h-3 w-3 shrink-0" /> {t('video.locked_hint')}
+                </motion.p>
+              )}
+              {seekGate.active && (
+                <motion.p
+                  key="seek-gate"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-1.5 flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 overflow-hidden"
+                >
+                  <Lock className="h-3 w-3 shrink-0" /> {t('video.no_skip_hint')}
                 </motion.p>
               )}
             </AnimatePresence>

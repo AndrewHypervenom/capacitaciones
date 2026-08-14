@@ -577,7 +577,13 @@ function PlaylistRow({
             <div className="space-y-0.5 border-l border-line/70 ml-[30px] mr-3 pl-2 py-1">
               {chapters.map((m, ci) => {
                 const gate = state?.gateTime ?? null
-                const locked = gate != null && m.timeSeconds > gate
+                const quizLocked = gate != null && m.timeSeconds > gate
+                // Candado de la primera pasada: todavía no se ha llegado ahí
+                // viendo. A diferencia del quiz, este ítem NO se deshabilita:
+                // se deja pulsar para que el reproductor conteste con el aviso
+                // en vez de quedarse mudo, que es lo que se lee como falla.
+                const notYet = state?.watchLimit != null && m.timeSeconds > state.watchLimit
+                const locked = quizLocked || notYet
                 const isQuiz = m.type === 'quiz'
                 // La nota sale del reproductor si este es el video activo, y si no
                 // de lo acumulado (base + sesión), para que la lista nunca mienta.
@@ -588,14 +594,16 @@ function PlaylistRow({
                   <div key={m.id} className="flex items-center gap-1">
                     <button
                       type="button"
-                      disabled={locked}
+                      disabled={quizLocked}
                       onClick={() => onSeek(m.timeSeconds)}
-                      title={locked ? t('video.locked_hint') : undefined}
+                      title={quizLocked ? t('video.locked_hint') : notYet ? t('video.no_skip_hint') : undefined}
                       className={cn(
                         'flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
-                        locked
+                        quizLocked
                           ? 'cursor-not-allowed opacity-45'
-                          : isActive
+                          : notYet
+                            ? 'opacity-55 hover:opacity-80'
+                            : isActive
                             ? 'bg-glass/15 text-text'
                             : 'text-text-muted hover:bg-glass/10 hover:text-text',
                       )}

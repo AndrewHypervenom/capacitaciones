@@ -68,8 +68,25 @@ function getMediaClasses(media: SectionMedia) {
   return cn(sizeMap[media.size ?? 'full'] ?? 'w-full', media.size !== 'full' && media.size !== 'bleed' ? alignMap[media.align ?? 'center'] ?? 'mx-auto' : '');
 }
 
-function MediaBlock({ media, language }: { media: SectionMedia; language: Language }) {
+function MediaBlock({ media, language, section }: { media: SectionMedia; language: Language; section?: ModuleSection }) {
   const wrapperCls = cn('rounded-2xl overflow-hidden border border-line', getMediaClasses(media), media.shadow && 'shadow-2xl shadow-black/12 ring-1 ring-black/5');
+
+  // Video de sección (YouTube/Vimeo) por el reproductor propio y no por el
+  // iframe de ellos: es la única forma de sostener el candado de la primera
+  // pasada. Con el embed crudo el aprendiz adelanta con la barra de YouTube y
+  // nosotros ni nos enteramos.
+  if ((media.type === 'youtube' || media.type === 'vimeo') && section) {
+    return (
+      <div className={getMediaClasses(media)}>
+        <InteractiveVideoModule
+          section={section}
+          language={language}
+          title={media.caption?.[language] ?? undefined}
+        />
+      </div>
+    );
+  }
+
   return (
     <figure className={wrapperCls}>
       {media.type === 'image' && <img src={media.url} alt={media.caption?.[language] ?? ''} loading="lazy" className="w-full object-cover block" />}
@@ -990,7 +1007,7 @@ export default function ModulePage() {
                         </div>
                       )}
 
-                      {s.media && <div className="mt-8"><MediaBlock media={s.media} language={language} /></div>}
+                      {s.media && <div className="mt-8"><MediaBlock media={s.media} language={language} section={s} /></div>}
                       
                       {s.quiz && (
                       <KnowledgeCheck
