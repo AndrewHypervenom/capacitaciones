@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   Clock,
   ChevronRight,
@@ -49,6 +50,7 @@ import { toast } from '@/stores/toastStore';
 import { getModuleFeedbackForUser } from '@/services/activity.service';
 import { getCourseModulePassPct } from '@/services/courses.service';
 import { useModuleTimer } from '@/hooks/useModuleTimer';
+import { useReinforcementStudy } from '@/hooks/useReinforcementStudy';
 import type { Language } from '@/stores/userStore';
 import { FeedbackModal } from '@/components/modules/FeedbackModal';
 import {
@@ -210,6 +212,11 @@ export default function ModulePage() {
   // pestaña, sobrevive recargas, se persiste en BD y se congela al completar).
   // Usamos dbId (UUID real) porque module.id es el slug y el FK apunta a modules.id.
   const { label: activeTimeLabel } = useModuleTimer(module?.dbId ?? module?.id, userId, completed);
+
+  // Repaso del examen: si este módulo está en la ruta de refuerzo, cronometramos
+  // el tiempo real que se le dedica. Ese tiempo —y no un clic— es lo que abre el
+  // check de la antesala del examen (ver lib/reinforcementStudy.ts).
+  const reinforcement = useReinforcementStudy(module?.dbId, userId);
 
   // Enlace directo a una sección: `/modules/:slug#section-2`. Lo usa la vista
   // previa del panel ("ver esta sección como la ve el aprendiz"), pero sirve
@@ -704,6 +711,99 @@ export default function ModulePage() {
   return (
     <>
       <div className={cn('mx-auto px-5 pt-12 pb-28 transition-all duration-500', readingMode ? 'max-w-2xl' : 'max-w-6xl')}>
+        {/* ── Repaso de la ruta de refuerzo ────────────────────────────────
+            El aprendiz llegó aquí porque no aprobó el examen. Va pegado arriba
+            —fuera del header, para que siga a la vista mientras baja— porque
+            es el estado que decide si podrá marcar el módulo: cuántas pantallas
+            lleva repasadas y si el reloj está corriendo o detenido. */}
+        {reinforcement.active && (
+          <div
+            className="sticky top-4 z-30 mb-6 rounded-2xl border p-4 backdrop-blur-md"
+            style={{
+              borderColor: reinforcement.ready
+                ? 'rgb(16 212 81 / 0.4)'
+                : 'rgb(245 158 11 / 0.35)',
+              background: reinforcement.ready
+                ? 'rgb(16 212 81 / 0.08)'
+                : 'rgb(245 158 11 / 0.08)',
+            }}
+          >
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="inline-flex items-center gap-2 text-[13.5px] font-medium text-text">
+                {reinforcement.ready ? (
+                  <Check className="h-4 w-4 text-primary" strokeWidth={3} />
+                ) : (
+                  <BookOpen className="h-4 w-4 text-amber-500" />
+                )}
+                {reinforcement.ready
+                  ? t('module.reinforcement_ready', 'Repaso cumplido')
+                  : t('module.reinforcement_title', 'Repaso para tu próximo intento')}
+              </span>
+
+              <span className="text-[12.5px] tabular-nums text-text-muted">
+                {reinforcement.ready
+                  ? t('module.reinforcement_ready_hint', 'Vuelve al examen y márcalo en tu ruta.')
+                  : t('module.reinforcement_progress', {
+                      pct: reinforcement.pct,
+                      n: Math.max(1, Math.ceil(reinforcement.remainingMs / 60_000)),
+                      defaultValue: 'Repasado {{pct}}% · te faltan unos {{n}} min',
+                    })}
+              </span>
+
+              {reinforcement.examHref && (
+                <Link
+                  to={reinforcement.examHref}
+                  className="ml-auto shrink-0 rounded-full border border-line px-3 py-1 text-[12.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"
+                >
+                  {t('module.reinforcement_back_to_exam', 'Ir al examen')}
+                </Link>
+              )}
+            </div>
+
+            <div className="mt-3 h-[4px] w-full overflow-hidden rounded-full bg-subtle">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-[width] duration-1000 ease-linear',
+                  reinforcement.ready ? 'bg-primary' : 'bg-amber-500',
+                )}
+                style={{ width: `${reinforcement.pct}%` }}
+              />
+            </div>
+
+            {/* Por qué el reloj no avanza. Un contador congelado sin explicación
+                se lee como una aplicación rota, no como una regla. */}
+            {!reinforcement.ready && (
+              <p
+                className={cn(
+                  'mt-2 text-[11.5px]',
+                  reinforcement.paused ? 'font-medium text-amber-600' : 'text-text-subtle',
+                )}
+              >
+                {reinforcement.paused === 'hidden'
+                  ? t(
+                      'module.reinforcement_paused_hidden',
+                      'En pausa: vuelve a esta pestaña para seguir repasando.',
+                    )
+                  : reinforcement.paused === 'idle'
+                    ? t(
+                        'module.reinforcement_paused_idle',
+                        'En pausa: llevas un buen rato sin señales de vida. Vuelve al módulo para seguir.',
+                      )
+                    : reinforcement.needsCoverage
+                      ? t('module.reinforcement_coverage', {
+                          pct: reinforcement.depth,
+                          defaultValue:
+                            'Ya tienes el tiempo: baja hasta el final del módulo y queda listo (vas por el {{pct}}%).',
+                        })
+                      : t(
+                          'module.reinforcement_pause_hint',
+                          'Cada parte del módulo pide su tiempo: recórrelo entero, saltar al final no cuenta.',
+                        )}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* ── Portada del módulo: meta + título + subtítulo + objetivos ── */}
         <header className="mb-12">
           <Reveal>
@@ -715,6 +815,7 @@ export default function ModulePage() {
               {backLabel}
             </Link>
           </Reveal>
+
           <Reveal>
             {/* Ficha del modulo en texto plano: posicion, duracion y estado. Antes
                 eran dos NeonBadge de colores compitiendo con el titulo. */}

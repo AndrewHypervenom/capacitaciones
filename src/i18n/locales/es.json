@@ -668,7 +668,16 @@
       "open_title_many": "{{n}} prácticas desbloqueadas",
       "locked_hint": "Completa las actividades y marca el módulo como completado para entrar.",
       "open_hint": "Aplica lo del módulo en una simulación. Tu puntaje cuenta para la certificación."
-    }
+    },
+    "reinforcement_title": "Repaso para tu próximo intento",
+    "reinforcement_progress": "Repasado {{pct}}% · te faltan unos {{n}} min",
+    "reinforcement_ready": "Repaso cumplido",
+    "reinforcement_ready_hint": "Vuelve al examen y márcalo en tu ruta.",
+    "reinforcement_back_to_exam": "Ir al examen",
+    "reinforcement_pause_hint": "Cada parte del módulo pide su tiempo: recórrelo entero, saltar al final no cuenta.",
+    "reinforcement_paused_hidden": "En pausa: vuelve a esta pestaña para seguir repasando.",
+    "reinforcement_paused_idle": "En pausa: llevas un buen rato sin señales de vida. Vuelve al módulo para seguir.",
+    "reinforcement_coverage": "Ya tienes el tiempo: baja hasta el final del módulo y queda listo (vas por el {{pct}}%)."
   },
   "simulator": {
     "difficulty": "Dificultad",
@@ -4563,7 +4572,9 @@
       "skip_few_options": "menos de dos opciones escritas",
       "skip_blank_answer": "la respuesta correcta está en blanco",
       "skip_no_text": "sin enunciado",
-      "skip_untitled": "(pregunta sin texto)"
+      "skip_untitled": "(pregunta sin texto)",
+      "study_line": "{{title}}: {{min}} min · leyó hasta el {{depth}}% ({{pct}}%)",
+      "results_study": "repaso: {{done}}/{{total}} módulos · {{min}} min"
     }
   },
   "themes": {
@@ -5680,12 +5691,11 @@
     "ready_subtitle": "Busca un lugar tranquilo: el reloj no se detiene una vez que empieces.",
     "ready_title": "Todo listo para presentarlo",
     "reinforcement_done": "¡Refuerzo completado! Ya puedes reintentar.",
-    "reinforcement_locked_hint": "Termina el módulo para poder marcarlo",
+    "reinforcement_locked_hint": "Ábrelo y recórrelo entero: cada pantalla del módulo pide su tiempo. Te faltan {{n}} min para poder marcarlo.",
     "reinforcement_mark": "Marcar como repasado",
-    "reinforcement_open_hint": "ábrelo antes de marcarlo",
     "reinforcement_progress": "Avance del refuerzo",
     "reinforcement_review": "Repasar",
-    "reinforcement_subtitle": "No aprobaste todavía. Estos son los módulos de las áreas que se te complicaron: repásalos y márcalos aquí. Cuando termines la ruta se habilita tu siguiente intento.",
+    "reinforcement_subtitle": "No aprobaste todavía. Estos son los módulos de las áreas que se te complicaron: ábrelos, recórrelos enteros y márcalos aquí. Cuando termines la ruta se habilita tu siguiente intento.",
     "reinforcement_title": "Tu ruta de refuerzo",
     "report_detail_sub": "Tu respuesta, la correcta y por qué. Es la mejor forma de cerrar el vacío.",
     "report_detail_title": "Revisa cada pregunta",
@@ -5766,7 +5776,11 @@
     "wait_hours_minutes": "{{h}} h {{m}} min",
     "wait_minutes": "{{n}} min",
     "warn_1min": "Queda 1 minuto. Revisa lo que te falte.",
-    "warn_5min": "Quedan 5 minutos."
+    "warn_5min": "Quedan 5 minutos.",
+    "reinforcement_left": "repasado {{pct}}% · te faltan unos {{n}} min",
+    "reinforcement_not_started": "ábrelo y recórrelo entero (unos {{n}} min)",
+    "reinforcement_studied": "repasado, ya puedes marcarlo",
+    "reinforcement_rejected": "Todavía no está repasado: ábrelo y recórrelo entero para poder marcarlo."
   },
   "survey": {
     "badge": "Último paso",

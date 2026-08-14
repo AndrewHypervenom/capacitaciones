@@ -24,8 +24,21 @@ import {
 import { FadeIn } from '@/components/ui/motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  getReinforcementStudy,
+  type ReinforcementStudyRow,
+} from '@/services/reinforcementStudy.service';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
-import { useModuleDone, keyOfCourseModule } from '@/stores/progressStore';
+import {
+  REINFORCEMENT_STUDY_EVENT,
+  isStudyDone,
+  readStudy,
+  remainingMs,
+  requiredStudyMs,
+  saveActiveReinforcement,
+  studyPct,
+} from '@/lib/reinforcementStudy';
 import {
   ExamBlockedError,
   getExamState,
@@ -95,15 +108,34 @@ function StatCard({
       initial={reduce ? undefined : { opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease, delay: reduce ? 0 : 0.1 + index * 0.06 }}
+      // `flex` a propósito: el Tooltip envuelve a su hijo en un span `inline-flex`,
+      // que se encoge al ancho del texto y se alinea por línea base. Dentro de un
+      // flex el span se vuelve bloque y estira, y así las cuatro tarjetas miden
+      // exactamente lo mismo aunque una lleve una línea de más.
+      className="flex"
     >
-      <Tooltip label={tooltip} maxWidth={240} anchor="element" describedBy>
-        <div className="h-full cursor-help rounded-2xl border border-line px-4 py-3.5 transition-colors duration-300 hover:border-text-subtle/40">
-          <Icon className="mb-2 h-4 w-4 text-text-subtle" />
-          <div className="text-[19px] font-semibold leading-none tabular-nums text-text">
+      <Tooltip label={tooltip} maxWidth={240} anchor="element" describedBy className="w-full">
+        <div className="flex h-full w-full cursor-help flex-col rounded-2xl border border-line px-4 py-4 text-left transition-colors duration-300 hover:border-text-subtle/40">
+          <Icon className="mb-3 h-4 w-4 shrink-0 text-text-subtle" />
+          {/* El valor pegado abajo: con o sin pista, la cifra y la etiqueta de
+              las cuatro tarjetas quedan a la misma altura. */}
+          <div className="mt-auto text-[19px] font-semibold leading-none tabular-nums text-text">
             {value}
           </div>
-          <div className="mt-1.5 text-[11.5px] text-text-muted">{label}</div>
-          {hint && <div className="mt-0.5 text-[11px] text-text-subtle">{hint}</div>}
+          {/* La pista va en la MISMA línea que la etiqueta, no debajo: tres
+              renglones apilados en una tarjeta tan chica se leían amontonados.
+              Así las cuatro tarjetas tienen exactamente el mismo pie. */}
+          <div className="mt-2 text-[11.5px] leading-[1.35] text-text-muted">
+            {label}
+            {hint && (
+              <>
+                <span className="mx-1 text-text-subtle/60" aria-hidden>
+                  ·
+                </span>
+                <span className="text-text-subtle">{hint}</span>
+              </>
+            )}
+          </div>
         </div>
       </Tooltip>
     </motion.div>
@@ -116,7 +148,8 @@ export default function ExamLanding() {
   const { t } = useTranslation();
   const language = useUserStore((s) => s.language);
   const reduce = useReducedMotion();
-  const isModuleDone = useModuleDone();
+  const { profile } = useAuth();
+  const userId = profile?.id;
 
   const { courses, loading: coursesLoading } = useLearnerCourses();
   const course = useMemo(() => courses.find((c) => c.id === courseId), [courses, courseId]);
@@ -182,22 +215,109 @@ export default function ExamLanding() {
     }
   };
 
+  /* Repaso medido: cada módulo de la ruta pide un mínimo de tiempo ACTIVO
+     dentro del módulo (lo cuenta useReinforcementStudy en la página del
+     módulo). `studyTick` obliga a releerlo cuando el aprendiz vuelve a esta
+     pestaña o cuando el propio módulo avisa que ya cumplió. */
+  const [studyTick, setStudyTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setStudyTick((n) => n + 1);
+    const onVisible = () => {
+      if (!document.hidden) bump();
+    };
+    window.addEventListener(REINFORCEMENT_STUDY_EVENT, bump);
+    window.addEventListener('focus', bump);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener(REINFORCEMENT_STUDY_EVENT, bump);
+      window.removeEventListener('focus', bump);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  /* Lo que la base ya tiene por repasado. La medición ocurre en el navegador,
+     así que sin esto alguien que repasó en el computador de la oficina y entra
+     desde otro equipo vería su ruta en cero. */
+  const [remoteStudy, setRemoteStudy] = useState<Record<string, ReinforcementStudyRow>>({});
+  useEffect(() => {
+    const rid = state?.reinforcement?.id;
+    if (!rid || !userId) return;
+    let alive = true;
+    getReinforcementStudy(userId, rid)
+      .then((rows) => {
+        if (alive) setRemoteStudy(rows);
+      })
+      .catch(() => {
+        /* sin la tabla en BD la ruta sigue funcionando con lo local */
+      });
+    return () => {
+      alive = false;
+    };
+    // `studyTick` refresca al volver a esta pestaña desde el módulo.
+  }, [state?.reinforcement?.id, userId, studyTick]);
+
   // Módulos de la ruta de refuerzo, resueltos contra el curso.
   const reinforcementModules = useMemo(() => {
     if (!state?.reinforcement || !course) return [];
+    const rid = state.reinforcement.id;
     const done = new Set(state.reinforcement.done_ids);
+    void studyTick; // releer el repaso acumulado, no es un valor que se pinte
     return state.reinforcement.module_ids.flatMap((id) => {
       const m = course.modules.find((mm) => mm.id === id);
       if (!m) return [];
+      const requiredMs = requiredStudyMs(m.duration_min);
+      const rec = readStudy(userId, rid, id);
+      /* Repasado de verdad = haber recorrido el módulo entero dándole tiempo a
+         cada pantalla, acreditado por el servidor (RPC `reinforcement_beat`).
+         Antes pedíamos que el módulo estuviera "completado", y eso no probaba
+         nada: para llegar al examen ya hay que haber completado el curso, así
+         que el check se abría sin haber repasado — y a quien le faltaba el
+         completado se le quedaba trabado sin manera de reintentar nunca.
+
+         Cuando la base tiene la fila, manda ella; lo local solo pinta mientras
+         llega la respuesta o si el SQL todavía no está corrido. El candado de
+         verdad no es este cálculo: es el trigger que rechaza marcar un módulo
+         sin repaso cumplido. */
+      const srv = remoteStudy[id];
+      const studied = srv ? srv.completedAt !== null : isStudyDone(rec, requiredMs);
+      const remaining = srv
+        ? Math.max(0, srv.requiredMs - srv.creditedMs)
+        : remainingMs(rec, requiredMs);
       return [{
         module: m,
         done: done.has(id),
-        // Repasado de verdad: además de marcarlo, el módulo tiene que estar
-        // completado en el progreso. Marcar sin abrir no cuenta.
-        studied: isModuleDone(keyOfCourseModule(m)),
+        requiredMs,
+        /* Avance del repaso, 0-100. El 100% coincide exactamente con "cumplido":
+           una barra que llega al final con el botón todavía apagado es la peor
+           forma de explicar una regla. */
+        pct: studied ? 100 : srv ? srv.progressPct : studyPct(rec, requiredMs),
+        remainingMin: Math.max(1, Math.ceil(remaining / 60_000)),
+        studied,
       }];
     });
-  }, [state, course, isModuleDone]);
+  }, [state, course, userId, studyTick, remoteStudy]);
+
+  /* Publicamos la ruta vigente para que la página del módulo sepa que lo que
+     se está abriendo es un repaso y lo cronometre. Si ya no hay ruta (o se
+     terminó), se borra: nada debe seguir contando. */
+  useEffect(() => {
+    if (!courseId) return;
+    if (!state?.reinforcement || !course) {
+      saveActiveReinforcement(userId, courseId, null);
+      return;
+    }
+    const done = new Set(state.reinforcement.done_ids);
+    saveActiveReinforcement(userId, courseId, {
+      reinforcementId: state.reinforcement.id,
+      courseId: course.id,
+      modules: state.reinforcement.module_ids
+        .filter((id) => !done.has(id))
+        .flatMap((id) => {
+          const m = course.modules.find((mm) => mm.id === id);
+          return m ? [{ id, requiredMs: requiredStudyMs(m.duration_min) }] : [];
+        }),
+    });
+  }, [state, course, userId, courseId]);
 
   const handleMarkReviewed = async (moduleId: string) => {
     if (!state?.reinforcement) return;
@@ -208,8 +328,23 @@ export default function ExamLanding() {
         toast.success(t('exam.reinforcement_done', '¡Refuerzo completado! Ya puedes reintentar.'));
       }
       load();
-    } catch {
-      toast.error(t('exam.error_generic', 'No se pudo guardar.'));
+    } catch (err) {
+      /* La base valida el repaso por su cuenta (trigger `reinforcement_done_guard`).
+         Si lo rechaza no es un fallo de guardado: es que ese módulo todavía no
+         está repasado, y hay que decirlo así. */
+      const msg = err instanceof Error ? err.message : String(err ?? '');
+      if (msg.includes('REPASO_INCOMPLETO')) {
+        toast.error(
+          t(
+            'exam.reinforcement_rejected',
+            'Todavía no está repasado: ábrelo y recórrelo entero para poder marcarlo.',
+          ),
+        );
+        setRemoteStudy({});
+        load();
+      } else {
+        toast.error(t('exam.error_generic', 'No se pudo guardar.'));
+      }
     } finally {
       setMarkingId(null);
     }
@@ -515,7 +650,7 @@ export default function ExamLanding() {
               <p className="mb-5 text-[13.5px] leading-relaxed text-text-muted">
                 {t(
                   'exam.reinforcement_subtitle',
-                  'No aprobaste todavía. Estos son los módulos de los temas que se te complicaron: repásalos y márcalos aquí. Cuando termines, se habilita tu siguiente intento.',
+                  'No aprobaste todavía. Estos son los módulos de los temas que se te complicaron: ábrelos, dedícales el tiempo que se indica y márcalos aquí. Cuando termines la ruta se habilita tu siguiente intento.',
                 )}
               </p>
 
@@ -547,7 +682,10 @@ export default function ExamLanding() {
               </div>
 
               <div className="space-y-2">
-                {reinforcementModules.map(({ module, done, studied }, i) => (
+                {reinforcementModules.map((
+                  { module, done, studied, pct, remainingMin, requiredMs },
+                  i,
+                ) => (
                   <motion.div
                     key={module.id}
                     initial={reduce ? undefined : { opacity: 0, y: 8 }}
@@ -578,10 +716,37 @@ export default function ExamLanding() {
                       </div>
                       <div className="text-[12px] text-text-muted">
                         {module.duration_min} min
-                        {!studied && !done && (
-                          <> · {t('exam.reinforcement_open_hint', 'ábrelo antes de marcarlo')}</>
+                        {!done && studied && (
+                          <> · {t('exam.reinforcement_studied', 'repasado, ya puedes marcarlo')}</>
+                        )}
+                        {!done && !studied && (
+                          <>
+                            {' · '}
+                            {pct === 0
+                              ? t('exam.reinforcement_not_started', {
+                                  n: Math.round(requiredMs / 60_000),
+                                  defaultValue: 'ábrelo y recórrelo entero (unos {{n}} min)',
+                                })
+                              : t('exam.reinforcement_left', {
+                                  pct,
+                                  n: remainingMin,
+                                  defaultValue: 'repasado {{pct}}% · te faltan unos {{n}} min',
+                                })}
+                          </>
                         )}
                       </div>
+
+                      {/* Barra del repaso: el aprendiz ve cuánto lleva, no un
+                          check apagado sin explicación. Solo aparece cuando ya
+                          empezó a repasar. */}
+                      {!done && !studied && pct > 0 && (
+                        <div className="mt-1.5 h-[3px] w-full max-w-[180px] overflow-hidden rounded-full bg-subtle">
+                          <div
+                            className="h-full rounded-full bg-amber-500/70"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <Link
@@ -596,10 +761,11 @@ export default function ExamLanding() {
                         label={
                           studied
                             ? t('exam.reinforcement_mark', 'Marcar como repasado')
-                            : t(
-                                'exam.reinforcement_locked_hint',
-                                'Termina el módulo para poder marcarlo',
-                              )
+                            : t('exam.reinforcement_locked_hint', {
+                                n: remainingMin,
+                                defaultValue:
+                                  'Ábrelo y recórrelo entero: cada pantalla del módulo pide su tiempo. Te faltan {{n}} min para poder marcarlo.',
+                              })
                         }
                       >
                         <button

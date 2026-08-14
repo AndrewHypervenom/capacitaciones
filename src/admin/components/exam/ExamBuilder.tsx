@@ -67,6 +67,10 @@ import type {
   ExamUnlockRule,
 } from '@/types/exam'
 import { difficultyLabel, isLevelLocked } from '@/lib/examLevel'
+import {
+  getReinforcementStudyAudit,
+  type ReinforcementStudyAudit,
+} from '@/services/reinforcementStudy.service'
 import { ExamQuestionModal, type QuestionDraft } from './ExamQuestionModal'
 import { ExamGenerateModal, type ExamFillPlan } from './ExamGenerateModal'
 import { ExamLevelPicker, LevelPill } from './ExamLevelBits'
@@ -269,6 +273,25 @@ export function ExamBuilder({
     if (!exam) return
     getExamResults(courseId).then(setResults).catch(() => setResults([]))
   }, [courseId, exam])
+
+  /* Auditoría del repaso: quién recorrió qué módulo de su ruta de refuerzo y
+     cuánto tiempo le dedicó de verdad. Sin esto, "en refuerzo" es una etiqueta
+     que no dice si la persona repasó o solo dejó pasar el tiempo. */
+  const [study, setStudy] = useState<ReinforcementStudyAudit[]>([])
+  useEffect(() => {
+    if (!exam) return
+    getReinforcementStudyAudit(courseId).then(setStudy).catch(() => setStudy([]))
+  }, [courseId, exam])
+
+  const studyByUser = useMemo(() => {
+    const map = new Map<string, ReinforcementStudyAudit[]>()
+    for (const row of study) {
+      const list = map.get(row.userId)
+      if (list) list.push(row)
+      else map.set(row.userId, [row])
+    }
+    return map
+  }, [study])
 
   /**
    * Con qué reconocer un quiz de módulo que YA está en el banco: por la
@@ -2103,7 +2126,13 @@ export function ExamBuilder({
 
           {resultsOpen && (
             <div className="mt-3 divide-y divide-line rounded-2xl border border-line">
-              {results.map((r) => (
+              {results.map((r) => {
+                const rows = studyByUser.get(r.user_id) ?? []
+                const studiedDone = rows.filter((s) => s.completedAt).length
+                const studiedMin = Math.round(
+                  rows.reduce((acc, s) => acc + s.creditedMs, 0) / 60_000,
+                )
+                return (
                 <div key={r.user_id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13.5px] font-medium text-text">
@@ -2135,6 +2164,39 @@ export function ExamBuilder({
                           >
                             <span className="cursor-help underline decoration-dotted underline-offset-2">
                               {t('admin.exam.results_reinforcing', 'en refuerzo')}
+                            </span>
+                          </Tooltip>
+                        </>
+                      )}
+                      {/* Auditoría del repaso: no "dice que repasó", sino cuánto
+                          tiempo estuvo de verdad dentro de cada módulo de su
+                          ruta. El detalle va en el tooltip para no convertir la
+                          lista en una tabla. */}
+                      {rows.length > 0 && (
+                        <>
+                          {' · '}
+                          <Tooltip
+                            label={rows
+                              .map((s) =>
+                                t('admin.exam.study_line', {
+                                  title: s.moduleTitle,
+                                  min: Math.max(1, Math.round(s.creditedMs / 60_000)),
+                                  pct: s.progressPct,
+                                  depth: s.depthPct,
+                                  defaultValue:
+                                    '{{title}}: {{min}} min · leyó hasta el {{depth}}% ({{pct}}%)',
+                                }),
+                              )
+                              .join('\n')}
+                            maxWidth={320}
+                          >
+                            <span className="cursor-help underline decoration-dotted underline-offset-2">
+                              {t('admin.exam.results_study', {
+                                done: studiedDone,
+                                total: rows.length,
+                                min: studiedMin,
+                                defaultValue: 'repaso: {{done}}/{{total}} módulos · {{min}} min',
+                              })}
                             </span>
                           </Tooltip>
                         </>
@@ -2185,7 +2247,8 @@ export function ExamBuilder({
                     </Tooltip>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>

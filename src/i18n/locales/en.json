@@ -668,7 +668,16 @@
       "open_title_many": "{{n}} practices unlocked",
       "locked_hint": "Complete the activities and mark the module as done to get in.",
       "open_hint": "Apply the module in a simulation. Your score counts toward certification."
-    }
+    },
+    "reinforcement_title": "Review for your next attempt",
+    "reinforcement_progress": "{{pct}}% reviewed · about {{n}} min left",
+    "reinforcement_ready": "Review complete",
+    "reinforcement_ready_hint": "Go back to the exam and mark it in your path.",
+    "reinforcement_back_to_exam": "Go to the exam",
+    "reinforcement_pause_hint": "Every part of the module asks for its time: go through all of it, jumping to the end doesn't count.",
+    "reinforcement_paused_hidden": "Paused: come back to this tab to keep reviewing.",
+    "reinforcement_paused_idle": "Paused: no sign of life for a while. Come back to the module to keep going.",
+    "reinforcement_coverage": "Time's done: scroll to the end of the module and it's complete (you're at {{pct}}%)."
   },
   "simulator": {
     "difficulty": "Difficulty",
@@ -4562,7 +4571,9 @@
       "skip_few_options": "fewer than two options written",
       "skip_blank_answer": "the correct answer is blank",
       "skip_no_text": "no question text",
-      "skip_untitled": "(question with no text)"
+      "skip_untitled": "(question with no text)",
+      "study_line": "{{title}}: {{min}} min · read up to {{depth}}% ({{pct}}%)",
+      "results_study": "review: {{done}}/{{total}} modules · {{min}} min"
     }
   },
   "themes": {
@@ -5679,12 +5690,11 @@
     "ready_subtitle": "Find a quiet spot: the clock doesn't stop once you begin.",
     "ready_title": "You're ready to take it",
     "reinforcement_done": "Reinforcement complete! You can retake the exam now.",
-    "reinforcement_locked_hint": "Finish the module before marking it",
+    "reinforcement_locked_hint": "Open it and go through all of it: every screen of the module asks for its time. About {{n}} min left before you can mark it.",
     "reinforcement_mark": "Mark as reviewed",
-    "reinforcement_open_hint": "open it before marking it",
     "reinforcement_progress": "Reinforcement progress",
     "reinforcement_review": "Review",
-    "reinforcement_subtitle": "You didn't pass yet. These are the modules for the areas you struggled with: review them and mark them here. Finishing the path unlocks your next attempt.",
+    "reinforcement_subtitle": "You didn't pass yet. These are the modules for the areas you struggled with: open them, go through all of them and mark them here. Finishing the path unlocks your next attempt.",
     "reinforcement_title": "Your reinforcement path",
     "report_detail_sub": "Your answer, the correct one and why. The fastest way to close the gap.",
     "report_detail_title": "Review every question",
@@ -5765,7 +5775,11 @@
     "wait_hours_minutes": "{{h}} h {{m}} min",
     "wait_minutes": "{{n}} min",
     "warn_1min": "1 minute left. Check whatever's still missing.",
-    "warn_5min": "5 minutes left."
+    "warn_5min": "5 minutes left.",
+    "reinforcement_left": "{{pct}}% reviewed · about {{n}} min left",
+    "reinforcement_not_started": "open it and go through all of it (about {{n}} min)",
+    "reinforcement_studied": "reviewed, you can mark it now",
+    "reinforcement_rejected": "It isn't reviewed yet: open it and go through all of it before you can mark it."
   },
   "survey": {
     "badge": "Last step",
