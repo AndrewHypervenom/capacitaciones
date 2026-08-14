@@ -19,9 +19,12 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
 import { useAuth } from '@/hooks/useAuth'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { SaveDock } from '@/admin/components/SaveDock'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { FadeIn } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -41,6 +44,8 @@ export default function CampaignList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [campaigns, setCampaigns] = useState<CampaignWithModules[]>([])
+  /** Lo que hay en la base: contra esto se cuenta lo que está sin guardar. */
+  const [savedCampaigns, setSavedCampaigns] = useState<CampaignWithModules[]>([])
   const [loading, setLoading] = useState(true)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -69,24 +74,58 @@ export default function CampaignList() {
         }),
       )
       setCampaigns(withCounts)
+      setSavedCampaigns(withCounts)
       setLoading(false)
       if (withCounts.length === 1) setExpanded(withCounts[0].id)
     }
     load()
   }, [isSuperAdmin, campaignId, user?.id])
 
-  const handleToggleActive = async (c: CampaignWithModules) => {
-    await supabase.from('campaigns').update({ is_active: !c.is_active }).eq('id', c.id)
+  /* ── Editar es borrador ──
+     Activar una campaña o cambiarle el nombre escribía en la base al instante.
+     Ahora se acumula en la barra del pie (igual que en los editores) y se
+     guarda de una vez con Ctrl+S. */
+  const handleToggleActive = (c: CampaignWithModules) => {
     setCampaigns((prev) =>
       prev.map((x) => (x.id === c.id ? { ...x, is_active: !c.is_active } : x)),
     )
   }
 
-  const handleSaveName = async (id: string) => {
+  const handleSaveName = (id: string) => {
     if (!editName.trim()) return
-    await supabase.from('campaigns').update({ name: editName.trim() }).eq('id', id)
     setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, name: editName.trim() } : c)))
     setEditingId(null)
+  }
+
+  // Deshacer (Ctrl+Z) de lo que se edita aquí: sin esto, la barra ofrecía un
+  // botón Deshacer apagado justo cuando había algo sin guardar.
+  const { undo, canUndo } = useUndoHistory({
+    state: campaigns,
+    apply: setCampaigns,
+    enabled: !loading,
+  })
+
+  const dirtyCampaigns = campaigns.filter((c) => {
+    const before = savedCampaigns.find((x) => x.id === c.id)
+    return before && (before.name !== c.name || before.is_active !== c.is_active)
+  })
+
+  const saveCampaigns = async (): Promise<boolean> => {
+    try {
+      for (const c of dirtyCampaigns) {
+        const { error } = await supabase
+          .from('campaigns')
+          .update({ name: c.name, is_active: c.is_active })
+          .eq('id', c.id)
+        if (error) throw error
+      }
+      setSavedCampaigns(campaigns)
+      toast.success(t('admin.campaigns.saved', { defaultValue: 'Campañas guardadas' }))
+      return true
+    } catch {
+      toast.error(t('admin.campaigns.save_error', { defaultValue: 'No se pudieron guardar las campañas.' }))
+      return false
+    }
   }
 
   const handleDelete = async (c: CampaignWithModules) => {
@@ -113,6 +152,7 @@ export default function CampaignList() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? t('admin.campaigns.delete_error'))
       setCampaigns((prev) => prev.filter((c) => c.id !== id))
+      setSavedCampaigns((prev) => prev.filter((c) => c.id !== id))
       if (expanded === id) setExpanded(null)
     } catch (err) {
       alert(err instanceof Error ? err.message : t('admin.campaigns.delete_error'))
@@ -357,6 +397,7 @@ export default function CampaignList() {
         onClose={() => setWizardOpen(false)}
         onCreated={(campaign) => {
           setCampaigns((prev) => [...prev, campaign])
+          setSavedCampaigns((prev) => [...prev, campaign])
           setExpanded(campaign.id)
         }}
       />
@@ -368,6 +409,17 @@ export default function CampaignList() {
           onClose={() => setSharing(null)}
         />
       )}
+
+      <SaveDock
+        pending={
+          dirtyCampaigns.length > 0
+            ? [{ id: 'campaigns', label: t('admin.campaigns.title', { defaultValue: 'Campañas' }) }]
+            : []
+        }
+        onSave={saveCampaigns}
+        onUndo={undo}
+        canUndo={canUndo}
+      />
     </div>
   )
 }

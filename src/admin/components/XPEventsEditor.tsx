@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Pencil, Trash2, X, Save, Loader2, Rocket, Clock, CalendarClock } from 'lucide-react'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Select } from '@/components/ui/Select'
-import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -15,7 +14,6 @@ import {
   type XPEvent,
   type XPEventStatus,
 } from '@/stores/xpEventStore'
-import { listAllXPEvents, upsertXPEvent, deleteXPEvent, loadXPEvents } from '@/services/xpEvents.service'
 import { XP_REWARDS, reviewValue } from '@/stores/progressStore'
 import type { Lang } from '@/stores/gamificationStore'
 
@@ -69,32 +67,29 @@ function formatRange(e: XPEvent, lang: Lang): string {
   return `${new Date(e.startsAt).toLocaleString(locale, opts)} → ${new Date(e.endsAt).toLocaleString(locale, opts)}`
 }
 
-export function XPEventsEditor({ lang }: { lang: Lang }) {
+/**
+ * Los eventos son parte del borrador de la pantalla de gamificación: llegan por
+ * prop y los cambios se suben. Antes cada interruptor escribía en la base al
+ * instante, lo que dejaba media pantalla con "cambios sin guardar" y la otra
+ * media guardando sola — la peor combinación posible.
+ */
+export function XPEventsEditor({
+  lang,
+  events,
+  loading,
+  onChange,
+}: {
+  lang: Lang
+  events: XPEvent[]
+  loading: boolean
+  onChange: (events: XPEvent[]) => void
+}) {
   const { t } = useTranslation()
-  const confirm = useConfirm()
   const reduce = useReducedMotion()
   const now = useXPEventStore((s) => s.now)
 
-  const [events, setEvents] = useState<XPEvent[]>([])
-  const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<XPEvent | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const refresh = async () => {
-    try {
-      setEvents(await listAllXPEvents())
-    } catch {
-      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
-    }
-  }
-
-  useEffect(() => {
-    void (async () => {
-      await refresh()
-      setLoading(false)
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const busy = false
 
   const grouped = useMemo(() => {
     const order: Record<XPEventStatus, number> = { active: 0, scheduled: 1, off: 2, ended: 3 }
@@ -106,46 +101,18 @@ export function XPEventsEditor({ lang }: { lang: Lang }) {
     })
   }, [events, now])
 
-  const save = async (e: XPEvent) => {
-    await upsertXPEvent(e)
-    await refresh()
-    // El store vivo también: el banner del aprendiz (y el de esta pestaña) se
-    // entera sin esperar al refresco de 10 min.
-    await loadXPEvents()
+  const save = (e: XPEvent) => {
+    onChange(
+      events.some((x) => x.id === e.id)
+        ? events.map((x) => (x.id === e.id ? e : x))
+        : [...events, e],
+    )
   }
 
-  const remove = async (e: XPEvent) => {
-    const ok = await confirm({
-      title: t('admin.gamification.delete_event', 'Eliminar evento'),
-      description: t('admin.gamification.delete_event_desc', {
-        name: xpEventLabel(e, lang),
-        defaultValue: `¿Eliminar el evento "${xpEventLabel(e, lang)}"?`,
-      }),
-    })
-    if (!ok) return
-    try {
-      setBusy(true)
-      await deleteXPEvent(e.id)
-      await refresh()
-      await loadXPEvents()
-      toast.success(t('admin.gamification.event_deleted', 'Evento eliminado'))
-    } catch {
-      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  /** Borrador: sale en la barra y se deshace con Ctrl+Z, sin diálogo previo. */
+  const remove = (e: XPEvent) => onChange(events.filter((x) => x.id !== e.id))
 
-  const toggle = async (e: XPEvent) => {
-    try {
-      setBusy(true)
-      await save({ ...e, enabled: !e.enabled })
-    } catch {
-      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const toggle = (e: XPEvent) => save({ ...e, enabled: !e.enabled })
 
   return (
     <section className="mt-10">
@@ -279,7 +246,7 @@ export function XPEventsEditor({ lang }: { lang: Lang }) {
           draft={editing}
           onClose={() => setEditing(null)}
           onSave={async (e) => {
-            await save(e)
+            save(e)
             setEditing(null)
             toast.success(t('admin.gamification.event_saved', 'Evento guardado'))
           }}

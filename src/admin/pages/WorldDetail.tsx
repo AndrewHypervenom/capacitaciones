@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Plus, X, Pencil, Trash2, ArrowLeft, ChevronRight, Sparkles, BookOpen, AlertTriangle, Play, Lock } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { EmojiPicker } from '@/components/ui/EmojiPicker'
+import { SaveDock } from '@/admin/components/SaveDock'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -81,6 +83,15 @@ function ModalShell({ onClose, className, reduce, children }: {
   )
 }
 
+/**
+ * Id de mentira para lo que todavía no existe en la base (una región o un nivel
+ * recién creados en el borrador). Al guardar se cambia por el id real que
+ * devuelve la base, y los niveles se recuelgan de la región de verdad.
+ */
+let draftSeq = 0
+const draftId = (kind: 'r' | 'l') => `draft-${kind}-${Date.now().toString(36)}-${draftSeq++}`
+const isDraftId = (id: string) => id.startsWith('draft-')
+
 export default function WorldDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -106,6 +117,8 @@ export default function WorldDetail() {
   }, [authLoading, scopedToCampaign, isSuperAdmin, campaignId, user?.id])
 
   const [world, setWorld]     = useState<World | null>(null)
+  /** Lo que hay guardado del mundo: contra esto se mide qué está sin guardar. */
+  const [savedWorld, setSavedWorld] = useState<World | null>(null)
 
   // Presencia colaborativa: coeditores que tienen abierto este mundo.
   const coeditors = useEditingPresence(
@@ -114,6 +127,13 @@ export default function WorldDetail() {
 
   const [regions, setRegions] = useState<Region[]>([])
   const [levels, setLevels]   = useState<Level[]>([])
+  /* Regiones y niveles también son borrador. Lo que hay en la base vive aquí:
+     contra esto se cuenta lo pendiente y se calcula qué insertar, actualizar o
+     borrar al guardar. */
+  const [savedRegions, setSavedRegions] = useState<Region[]>([])
+  const [savedLevels, setSavedLevels]   = useState<Level[]>([])
+  /** Quizzes que se quedarán sin nivel al guardar: se limpian entonces, no antes. */
+  const [quizzesToCheck, setQuizzesToCheck] = useState<string[]>([])
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string,boolean>>({})
@@ -127,7 +147,6 @@ export default function WorldDetail() {
   const [editingRegion, setEditingRegion] = useState<Region | null>(null)
   const [regionForm, setRegionForm] = useState({ name:'', description:'', icon:'📍', order_index:0 })
   const [regionModuleId, setRegionModuleId] = useState<string>('') // '' = región personalizada (sin módulo)
-  const [savingRegion, setSavingRegion] = useState(false)
 
   // Level modal
   const [levelModal, setLevelModal] = useState(false)
@@ -139,7 +158,6 @@ export default function WorldDetail() {
   const [loadingQuizEdit, setLoadingQuizEdit] = useState(false)
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null)
   const [levelForm, setLevelForm] = useState({ name:'', description:'', icon:'⭐', order_index:0, quiz_id:'', min_score_pct: null as number | null })
-  const [savingLevel, setSavingLevel] = useState(false)
   const [levelScoreError, setLevelScoreError] = useState<string | null>(null)
 
   // Generar niveles con IA (por región)
@@ -180,12 +198,14 @@ export default function WorldDetail() {
       const { data: wData } = await supabase.from('worlds').select('*').eq('id', id).single()
       if (wData) {
         const raw = wData as Record<string,unknown>
-        setWorld({
+        const loaded = {
           ...wData,
           sound_theme:     (raw.sound_theme     as string) ?? 'neutral',
           transition_type: (raw.transition_type as string) ?? 'clouds',
           character_emoji: (raw.character_emoji as string) ?? '🧑',
-        })
+        }
+        setWorld(loaded)
+        setSavedWorld(loaded)
         // Solo los quizzes de ESTE mundo (no toda la campaña), para que el picker
         // no se llene con quizzes de otros mundos.
         const { data: qData } = await supabase
@@ -202,11 +222,13 @@ export default function WorldDetail() {
       const { data: rData } = await supabase.from('world_regions').select('*').eq('world_id', id).order('order_index')
       const regionList = (rData ?? []) as Region[]
       setRegions(regionList)
+      setSavedRegions(regionList)
       // Expand first region by default
       if (regionList.length > 0) setExpanded({ [regionList[0].id]: true })
 
       const { data: lData } = await supabase.from('world_levels').select('*').eq('world_id', id).order('order_index')
       setLevels((lData ?? []) as Level[])
+      setSavedLevels((lData ?? []) as Level[])
       setLoading(false)
     }
     load()
@@ -226,8 +248,17 @@ export default function WorldDetail() {
       supabase.from('world_levels').select('*').eq('world_id', id).order('order_index'),
       supabase.from('arena_quizzes').select('id, title').eq('world_id', id).order('created_at'),
     ])
-    setRegions((rData ?? []) as Region[])
-    setLevels((lData ?? []) as Level[])
+    const rows = (rData ?? []) as Region[]
+    const lvls = (lData ?? []) as Level[]
+    setSavedRegions(rows)
+    setSavedLevels(lvls)
+    // Lo que llega de fuera (otra pestaña, una generación que terminó) NO puede
+    // borrar lo que se está editando aquí. Si hay borrador a medias, solo se
+    // actualiza la línea base; la pantalla se queda con lo del capacitador.
+    if (!contentDirtyRef.current) {
+      setRegions(rows)
+      setLevels(lvls)
+    }
     setQuizzes((qData ?? []) as Quiz[])
   }, [id])
 
@@ -247,12 +278,144 @@ export default function WorldDetail() {
     return () => window.removeEventListener(WORLD_LEVELS_EVENT, onGenerated)
   }, [id, refreshWorldContent])
 
-  /* ── Theme autosave ── */
-  const handleTheme = async (field: string, value: string) => {
-    if (!world) return
+  /* ── Ambientación: borrador, como en el resto del panel ──
+     Antes cada control escribía en la base en cuanto lo movías (autoguardado
+     invisible): no había forma de probar un color y arrepentirse, ni de saber
+     si lo que veías ya estaba guardado. Ahora se acumula en la barra del pie y
+     se guarda con Ctrl+S. */
+  const handleTheme = (field: string, value: string) => {
     setWorld(prev => prev ? { ...prev, [field]: value } : prev)
-    const { error } = await supabase.from('worlds').update({ [field]: value } as any).eq('id', world.id)
-    if (error) console.error('Error updating theme:', error)
+  }
+
+  const themeDirty = JSON.stringify(world) !== JSON.stringify(savedWorld)
+  const contentDirty =
+    JSON.stringify(regions) !== JSON.stringify(savedRegions) ||
+    JSON.stringify(levels) !== JSON.stringify(savedLevels) ||
+    quizzesToCheck.length > 0
+  /** Para que el refresco de fondo sepa si puede pisar la pantalla. */
+  const contentDirtyRef = useRef(false)
+  useEffect(() => { contentDirtyRef.current = contentDirty }, [contentDirty])
+  /** Id de mentira → id real del último guardado (para generar con IA). */
+  const regionIdMap = useRef(new Map<string, string>())
+
+  /**
+   * Deshacer de toda la pantalla (Ctrl+Z): ambientación, regiones y niveles.
+   *
+   * Va sobre el borrador completo, así que cubre lo que antes daba miedo:
+   * borrar una región con sus niveles se recupera con una tecla. Es lo que
+   * permite que quitar cosas de aquí ya no pregunte "¿seguro?".
+   */
+  const undoState = useMemo(
+    () => ({ world, regions, levels }),
+    [world, regions, levels],
+  )
+  const { undo, canUndo } = useUndoHistory({
+    state: undoState,
+    apply: useCallback((snap: { world: World | null; regions: Region[]; levels: Level[] }) => {
+      setWorld(snap.world)
+      setRegions(snap.regions)
+      setLevels(snap.levels)
+    }, []),
+    enabled: !loading && !!world,
+  })
+
+  /**
+   * Guarda TODO el mundo: ambientación, regiones y niveles.
+   *
+   * Las regiones van antes que los niveles porque un nivel nuevo puede colgar
+   * de una región que tampoco existe todavía: hay que cambiarle el id de
+   * mentira (`draft-r-…`) por el que devuelve la base antes de insertarlo.
+   */
+  const saveWorldAll = async (): Promise<boolean> => {
+    if (!world || !savedWorld) return true
+    try {
+      /* ── 1. Ambientación ── */
+      const patch: Record<string, unknown> = {}
+      for (const k of ['sound_theme','transition_type','character_emoji','color'] as const) {
+        if (world[k as keyof World] !== savedWorld[k as keyof World]) patch[k] = world[k as keyof World]
+      }
+      if (Object.keys(patch).length > 0) {
+        const { error } = await supabase.from('worlds').update(patch as never).eq('id', world.id)
+        if (error) throw error
+      }
+
+      /* ── 2. Niveles y regiones que ya no están ── */
+      const goneLevels = savedLevels.filter(l => !levels.some(x => x.id === l.id)).map(l => l.id)
+      if (goneLevels.length > 0) {
+        const { error } = await supabase.from('world_levels').delete().in('id', goneLevels)
+        if (error) throw error
+      }
+      const goneRegions = savedRegions.filter(r => !regions.some(x => x.id === r.id)).map(r => r.id)
+      if (goneRegions.length > 0) {
+        // Por si quedó algún nivel colgando del lado del servidor.
+        await supabase.from('world_levels').delete().in('region_id', goneRegions)
+        const { error } = await supabase.from('world_regions').delete().in('id', goneRegions)
+        if (error) throw error
+      }
+
+      /* ── 3. Regiones: nuevas y editadas ── */
+      // Se reutiliza el Map del ref (no se reemplaza) para no escribir en
+      // `.current` desde aquí: así el mapa sigue vivo para "Generar con IA".
+      const realRegion = regionIdMap.current
+      realRegion.clear()
+      // Solo las columnas que esta pantalla edita: `select('*')` trae de vuelta
+      // cosas como `created_at`, y reenviarlas en un update es pedir problemas.
+      const regionPayload = (r: Region) => ({
+        name: r.name, description: r.description, icon: r.icon,
+        order_index: r.order_index, world_id: r.world_id, module_id: r.module_id,
+      })
+      for (const r of regions) {
+        const payload = regionPayload(r)
+        if (isDraftId(r.id)) {
+          const { data, error } = await supabase.from('world_regions').insert(payload).select().single()
+          if (error) throw error
+          realRegion.set(r.id, (data as Region).id)
+        } else {
+          const before = savedRegions.find(x => x.id === r.id)
+          if (before && JSON.stringify(before) !== JSON.stringify(r)) {
+            const { error } = await supabase.from('world_regions').update(payload).eq('id', r.id)
+            if (error) throw error
+          }
+        }
+      }
+
+      /* ── 4. Niveles: nuevos y editados, ya con la región de verdad ── */
+      for (const l of levels) {
+        const payload = {
+          name: l.name, description: l.description, icon: l.icon,
+          order_index: l.order_index, quiz_id: l.quiz_id, min_score_pct: l.min_score_pct,
+          world_id: l.world_id,
+          region_id: realRegion.get(l.region_id) ?? l.region_id,
+        }
+        if (isDraftId(l.id)) {
+          const { error } = await supabase.from('world_levels').insert(payload).select().single()
+          if (error) throw error
+        } else {
+          const before = savedLevels.find(x => x.id === l.id)
+          if (before && JSON.stringify(before) !== JSON.stringify(l)) {
+            const { error } = await supabase.from('world_levels').update(payload).eq('id', l.id)
+            if (error) throw error
+          }
+        }
+      }
+
+      /* ── 5. Quizzes que se quedaron sin ningún nivel ── */
+      for (const qid of quizzesToCheck) await deleteQuizIfOrphan(qid)
+      setQuizzesToCheck([])
+
+      setSavedWorld(world)
+      // Relee: los ids de mentira pasan a ser los de verdad y la línea base
+      // vuelve a coincidir con la base.
+      contentDirtyRef.current = false
+      await refreshWorldContent()
+      return true
+    } catch (err) {
+      toast.error(
+        i18n.t('admin.worlds.save_error', { defaultValue: 'No se pudo guardar el mundo.' }),
+        (err as Error).message,
+      )
+      return false
+    }
   }
 
   /* ── Publicar / despublicar ──
@@ -268,6 +431,7 @@ export default function WorldDetail() {
     setPublishing(false)
     if (error) { toast.error(i18n.t('admin.worlds.publish_error'), error.message); return }
     setWorld(prev => prev ? { ...prev, status: next } : prev)
+    setSavedWorld(prev => prev ? { ...prev, status: next } : prev)
     toast.success(next === 'published' ? i18n.t('admin.worlds.publish_ok') : i18n.t('admin.worlds.unpublish_ok'))
   }
 
@@ -295,21 +459,17 @@ export default function WorldDetail() {
       icon: (m.icon && m.icon.length <= 2) ? m.icon : f.icon,
     }))
   }
-  const saveRegion = async () => {
+  const saveRegion = () => {
     if (!regionForm.name.trim() || !world) return
-    setSavingRegion(true)
     const payload = { name:regionForm.name.trim(), description:regionForm.description.trim(), icon:regionForm.icon||'📍', order_index:regionForm.order_index, world_id:world.id, module_id: regionModuleId || null }
     if (editingRegion) {
-      const { data, error } = await supabase.from('world_regions').update(payload).eq('id', editingRegion.id).select().single()
-      if (!error && data) setRegions(prev => prev.map(r => r.id === editingRegion.id ? data as Region : r))
+      setRegions(prev => prev.map(r => r.id === editingRegion.id ? { ...r, ...payload } : r))
     } else {
-      const { data, error } = await supabase.from('world_regions').insert(payload).select().single()
-      if (!error && data) {
-        setRegions(prev => [...prev, data as Region])
-        setExpanded(prev => ({ ...prev, [(data as Region).id]: true }))
-      }
+      const nueva = { ...payload, id: draftId('r') } as Region
+      setRegions(prev => [...prev, nueva])
+      setExpanded(prev => ({ ...prev, [nueva.id]: true }))
     }
-    setSavingRegion(false); setRegionModal(false)
+    setRegionModal(false)
   }
   // Borra el arena_quiz de un nivel si ningún otro nivel lo usa (evita quizzes
   // huérfanos que después ensucian el picker "Quiz del nivel").
@@ -323,21 +483,23 @@ export default function WorldDetail() {
     }
   }
 
-  const deleteRegion = async (r: Region) => {
-    const ok = await confirm({
-      title: t('confirm.delete_region_title'),
-      description: t('confirm.delete_region_desc', { name: r.name }),
-    })
-    if (!ok) return
-    // Quizzes de los niveles de esta región, para borrarlos si quedan huérfanos.
+  /**
+   * Quitar una región es borrador: sale en la barra y se puede descartar. Sus
+   * niveles se van con ella, y los quizzes que queden sin dueño se limpian al
+   * guardar (no antes: hasta entonces no ha pasado nada en la base).
+   */
+  /**
+   * Sin "¿seguro?": la región se va al borrador, sale en la barra, se recupera
+   * con Ctrl+Z y no toca la base hasta que se guarda. Pedir permiso para algo
+   * que todavía no ha pasado —y que se deshace con una tecla— es solo ruido.
+   */
+  const deleteRegion = (r: Region) => {
     const quizIds = Array.from(new Set(
       levels.filter(x => x.region_id === r.id).map(x => x.quiz_id).filter(Boolean),
     )) as string[]
-    await supabase.from('world_levels').delete().eq('region_id', r.id)
-    await supabase.from('world_regions').delete().eq('id', r.id)
     setRegions(prev => prev.filter(x => x.id !== r.id))
     setLevels(prev => prev.filter(x => x.region_id !== r.id))
-    for (const qid of quizIds) await deleteQuizIfOrphan(qid)
+    setQuizzesToCheck(prev => [...new Set([...prev, ...quizIds])])
   }
 
   /* ── Level CRUD ── */
@@ -353,34 +515,24 @@ export default function WorldDetail() {
     setLevelForm({ name:l.name, description:l.description, icon:l.icon, order_index:l.order_index, quiz_id:l.quiz_id||'', min_score_pct: l.min_score_pct ?? null })
     setLevelModal(true)
   }
-  const saveLevel = async () => {
+  const saveLevel = () => {
     if (!levelForm.name.trim() || !world || !activeRegionId) return
     if (levelForm.min_score_pct !== null && (levelForm.min_score_pct < 0 || levelForm.min_score_pct > 100)) {
       setLevelScoreError('El valor debe estar entre 0 y 100.')
       return
     }
     setLevelScoreError(null)
-    setSavingLevel(true)
     const payload = { name:levelForm.name.trim(), description:levelForm.description.trim(), icon:levelForm.icon||'⭐', order_index:levelForm.order_index, quiz_id:levelForm.quiz_id||null, min_score_pct:levelForm.min_score_pct, region_id:activeRegionId, world_id:world.id }
     if (editingLevel) {
-      const { data, error } = await supabase.from('world_levels').update(payload).eq('id', editingLevel.id).select().single()
-      if (!error && data) setLevels(prev => prev.map(l => l.id === editingLevel.id ? data as Level : l))
+      setLevels(prev => prev.map(l => l.id === editingLevel.id ? { ...l, ...payload } : l))
     } else {
-      const { data, error } = await supabase.from('world_levels').insert(payload).select().single()
-      if (!error && data) setLevels(prev => [...prev, data as Level])
-      else console.error('Error saving level:', error)
+      setLevels(prev => [...prev, { ...payload, id: draftId('l') } as Level])
     }
-    setSavingLevel(false); setLevelModal(false)
+    setLevelModal(false)
   }
-  const deleteLevel = async (l: Level) => {
-    const ok = await confirm({
-      title: t('confirm.delete_level_title'),
-      description: t('confirm.delete_level_desc', { name: l.name }),
-    })
-    if (!ok) return
-    await supabase.from('world_levels').delete().eq('id', l.id)
+  const deleteLevel = (l: Level) => {
     setLevels(prev => prev.filter(x => x.id !== l.id))
-    await deleteQuizIfOrphan(l.quiz_id)
+    if (l.quiz_id) setQuizzesToCheck(prev => [...new Set([...prev, l.quiz_id as string])])
   }
 
   // Quizzes de este mundo que no están asignados a ningún nivel (huérfanos,
@@ -448,9 +600,25 @@ export default function WorldDetail() {
   }
   // Dispara la generación EN SEGUNDO PLANO (cancelable) y cierra el modal: el
   // avance vive en el indicador global. Al terminar, WORLD_LEVELS_EVENT refresca.
-  const runAiGen = () => {
+  /**
+   * La generación corre en el servidor y escribe los niveles directamente, así
+   * que necesita una región que exista de verdad. Si hay algo sin guardar, se
+   * guarda primero y se toma el id real de la región recién creada: es lo que
+   * el capacitador haría a mano, y así "Generar con IA" nunca falla en silencio.
+   */
+  const ensureSaved = async (): Promise<boolean> => {
+    if (!themeDirty && !contentDirty) return true
+    const ok = await saveWorldAll()
+    if (ok) toast.info(i18n.t('admin.worlds.saved_before_ai', { defaultValue: 'Se guardaron los cambios pendientes antes de generar.' }))
+    return ok
+  }
+
+  const runAiGen = async () => {
     if (!world || !aiRegion) return
-    const region = aiRegion
+    if (!(await ensureSaved())) return
+    const realId = regionIdMap.current.get(aiRegion.id) ?? aiRegion.id
+    if (isDraftId(realId)) return
+    const region = { ...aiRegion, id: realId }
     const perSection = aiPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(aiPerSection)
     generateLevelsForRegion({
       worldId: world.id,
@@ -476,8 +644,9 @@ export default function WorldDetail() {
   /* ── Generar en bloque: una región por módulo pendiente + sus niveles ── */
   // En SEGUNDO PLANO (cancelable): crea la región y genera niveles por cada módulo
   // pendiente. Al terminar, WORLD_LEVELS_EVENT refresca la vista.
-  const runBulkGen = () => {
+  const runBulkGen = async () => {
     if (!world || modulesWithoutRegion.length === 0) return
+    if (!(await ensureSaved())) return
     const lvl = bulkLevels === '' ? 3 : Number(bulkLevels)
     const perSection = bulkPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(bulkPerSection)
     const qpl = (bulkSections === '' ? 2 : Number(bulkSections)) * perSection
@@ -494,8 +663,9 @@ export default function WorldDetail() {
   /* ── Generar regiones desde módulos elegidos a mano (multi-curso) ── */
   // Mismo motor que el bloque del curso enlazado, pero la fuente son módulos de
   // cualquier curso accesible: cada uno se vuelve una región completa.
-  const runPickerGen = (mods: PickedModule[], opts: WorldGenOptions) => {
+  const runPickerGen = async (mods: PickedModule[], opts: WorldGenOptions) => {
     if (!world || mods.length === 0) return
+    if (!(await ensureSaved())) return
     generateBulkModuleRegions(world as unknown as WorldRow, mods, regions.length, opts)
     toast.success(i18n.t('admin.worlds.ai_gen_started'))
     setPickerOpen(false)
@@ -1006,9 +1176,9 @@ export default function WorldDetail() {
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => setRegionModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
-              <button onClick={saveRegion} disabled={savingRegion} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
+              <button onClick={saveRegion} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
                 style={{ background:'rgba(16,212,81,0.14)', color:'#10D451', border:'1px solid rgba(16,212,81,0.28)' }}>
-                {savingRegion ? i18n.t('common.saving') : editingRegion ? i18n.t('common.save') : i18n.t('admin.worlds.create_region')}
+                {editingRegion ? i18n.t('common.save') : i18n.t('admin.worlds.create_region')}
               </button>
             </div>
         </ModalShell>
@@ -1105,9 +1275,9 @@ export default function WorldDetail() {
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
               <button onClick={() => setLevelModal(false)} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">{i18n.t('confirm.cancel')}</button>
-              <button onClick={saveLevel} disabled={savingLevel} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
+              <button onClick={saveLevel} className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium disabled:opacity-50"
                 style={{ background:'rgba(16,212,81,0.14)', color:'#10D451', border:'1px solid rgba(16,212,81,0.28)' }}>
-                {savingLevel ? i18n.t('common.saving') : editingLevel ? i18n.t('common.save') : i18n.t('admin.worlds.create_level')}
+                {editingLevel ? i18n.t('common.save') : i18n.t('admin.worlds.create_level')}
               </button>
             </div>
         </ModalShell>
@@ -1175,7 +1345,7 @@ export default function WorldDetail() {
                 className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">
                 {i18n.t('confirm.cancel')}
               </button>
-              <button onClick={runAiGen}
+              <button onClick={() => void runAiGen()}
                 className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium"
                 style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
                 <Sparkles className="h-4 w-4"/> {i18n.t('admin.worlds.ai_gen_submit')}
@@ -1257,7 +1427,7 @@ export default function WorldDetail() {
                 className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted border border-line hover:text-text transition-colors">
                 {i18n.t('confirm.cancel')}
               </button>
-              <button onClick={runBulkGen}
+              <button onClick={() => void runBulkGen()}
                 className="flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium"
                 style={{ background:'rgba(139,92,246,0.16)', color:'#8B5CF6', border:'1px solid rgba(139,92,246,0.30)' }}>
                 <Sparkles className="h-4 w-4"/>
@@ -1331,6 +1501,21 @@ export default function WorldDetail() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Una sola barra: cuenta lo pendiente y guarda con Ctrl+S. */}
+      <SaveDock
+        pending={[
+          ...(themeDirty
+            ? [{ id: 'world', label: i18n.t('admin.worlds.theme', { defaultValue: 'Ambientación' }) }]
+            : []),
+          ...(contentDirty
+            ? [{ id: 'content', label: i18n.t('admin.worlds.regions_levels', { defaultValue: 'Regiones y niveles' }) }]
+            : []),
+        ]}
+        onSave={saveWorldAll}
+        onUndo={undo}
+        canUndo={canUndo}
+      />
     </>
   )
 }

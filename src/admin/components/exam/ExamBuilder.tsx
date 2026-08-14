@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -45,10 +45,11 @@ import {
   getCourseSource,
   getExamQuestions,
   getExamResults,
+  getReusableQuestions,
   grantExamAttempt,
-  setDomainWeights,
+  questionFingerprint,
+  reusableToQuestion,
   setExamPublished,
-  setQuestionsDifficulty,
   split100,
   updateCourseExam,
   updateExamDomain,
@@ -74,6 +75,70 @@ import { cn } from '@/lib/cn'
 const ease = [0.16, 1, 0.3, 1] as const
 
 const DOMAIN_COLORS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899']
+
+/**
+ * Id de mentira para lo que todavía no existe en la base (una pregunta recién
+ * escrita, un tema que acaba de proponer la IA). Al guardar se cambia por el
+ * id de verdad. Mismo truco que los ids locales de los bloques del módulo.
+ */
+let draftSeq = 0
+const draftId = (kind: 'q' | 'd') => `draft-${kind}-${Date.now().toString(36)}-${draftSeq++}`
+const isDraftId = (id: string) => id.startsWith('draft-')
+
+/** Pregunta nueva en el borrador: mismo aspecto que una de la base, sin fila. */
+function newDraftQuestion(
+  examId: string,
+  patch: Partial<ExamQuestion>,
+  sortOrder: number,
+  source: ExamQuestion['source'] = 'manual',
+): ExamQuestion {
+  return {
+    id: draftId('q'),
+    exam_id: examId,
+    domain_id: null,
+    kind: 'single',
+    text_es: '',
+    text_en: null,
+    text_pt: null,
+    options: [],
+    correct: [],
+    explanation_es: null,
+    explanation_en: null,
+    explanation_pt: null,
+    difficulty: 'medio',
+    source,
+    source_ref: null,
+    is_active: true,
+    sort_order: sortOrder,
+    created_at: new Date().toISOString(),
+    ...patch,
+  }
+}
+
+/** Tema nuevo en el borrador. */
+function newDraftDomain(
+  examId: string,
+  sortOrder: number,
+  patch: Partial<ExamDomain>,
+): ExamDomain {
+  return {
+    id: draftId('d'),
+    exam_id: examId,
+    name_es: '',
+    name_en: null,
+    name_pt: null,
+    description_es: null,
+    description_en: null,
+    description_pt: null,
+    weight_pct: 0,
+    min_score: 0,
+    color: DOMAIN_COLORS[sortOrder % DOMAIN_COLORS.length],
+    icon: '',
+    sort_order: sortOrder,
+    module_ids: [],
+    ...patch,
+  }
+}
 
 export interface ExamBuilderModule {
   id: string
@@ -143,8 +208,13 @@ export function ExamBuilder({
   const confirm = useConfirm()
 
   const [exam, setExam] = useState<CourseExam | null>(null)
+  /* El banco y los temas se editan como borrador, igual que la ficha del
+     módulo: nada se escribe hasta que se pulsa Guardar (o Ctrl+S). `saved*` es
+     lo que hay en la base y contra eso se mide qué está sin guardar. */
   const [domains, setDomains] = useState<ExamDomain[]>([])
+  const [savedDomains, setSavedDomains] = useState<ExamDomain[]>([])
   const [questions, setQuestions] = useState<ExamQuestion[]>([])
+  const [savedQuestions, setSavedQuestions] = useState<ExamQuestion[]>([])
   const [results, setResults] = useState<ExamResultRow[]>([])
   const [loading, setLoading] = useState(true)
   const [missingTable, setMissingTable] = useState(false)
@@ -172,10 +242,14 @@ export function ExamBuilder({
       if (e) {
         const [d, q] = await Promise.all([getExamDomains(e.id), getExamQuestions(e.id)])
         setDomains(d)
+        setSavedDomains(d)
         setQuestions(q)
+        setSavedQuestions(q)
       } else {
         setDomains([])
+        setSavedDomains([])
         setQuestions([])
+        setSavedQuestions([])
       }
     } catch (err) {
       // 42P01 = las tablas del examen no existen todavía (falta correr el SQL).
@@ -194,18 +268,166 @@ export function ExamBuilder({
     getExamResults(courseId).then(setResults).catch(() => setResults([]))
   }, [courseId, exam])
 
-  /* ── Cambios sin guardar de los ajustes ── */
-  const dirty = useMemo(() => {
-    if (!exam || !form) return false
-    return JSON.stringify(exam) !== JSON.stringify(form)
-  }, [exam, form])
+  /**
+   * Con qué reconocer un quiz de módulo que YA está en el banco: por la
+   * referencia al quiz original y, para lo que llegó por otra vía (a mano, un
+   * Excel, una copia vieja sin referencia), por el enunciado normalizado.
+   *
+   * Memorizado porque el modal lo usa como dependencia de su carga.
+   */
+  const bank = useMemo(() => {
+    const byRef = new Map<string, string[]>()
+    const byPrint = new Map<string, string[]>()
+    const add = (map: Map<string, string[]>, key: string, id: string) => {
+      const list = map.get(key)
+      if (list) list.push(id)
+      else map.set(key, [id])
+    }
+    for (const q of questions) {
+      if (q.source_ref) add(byRef, q.source_ref, q.id)
+      add(byPrint, questionFingerprint(q.text_es), q.id)
+    }
+    return { byRef, byPrint }
+  }, [questions])
 
-  const saveSettings = useCallback(async (): Promise<boolean> => {
+  /**
+   * Quitar del banco desde el propio panel de reutilizar: ahí es donde se ve
+   * qué quizzes ya están dentro, así que es donde hay que poder sacarlos, sin
+   * ir a buscarlos al listado del banco uno por uno.
+   */
+  const handleRemoveFromBank = async (ids: string[]) => {
+    const drop = new Set(ids)
+    setQuestions((prev) => prev.filter((q) => !drop.has(q.id)))
+  }
+
+  /**
+   * Relee banco y temas. `examId` explícito para el examen recién creado, que
+   * todavía no está en el estado.
+   */
+  const reloadBank = useCallback(
+    async (examId?: string) => {
+      const id = examId ?? exam?.id
+      if (!id) return
+      const [d, q] = await Promise.all([getExamDomains(id), getExamQuestions(id)])
+      setDomains(d)
+      setSavedDomains(d)
+      setQuestions(q)
+      setSavedQuestions(q)
+    },
+    [exam?.id],
+  )
+
+  /* ── Cambios sin guardar ──
+     Todo lo que se toca aquí (ajustes, temas y banco de preguntas) es borrador
+     hasta que se guarda, para que la barra del editor pueda decir la verdad:
+     si aparece "1 cambio sin guardar", es que hay algo sin guardar de verdad. */
+  const settingsDirty = useMemo(
+    () => Boolean(exam && form) && JSON.stringify(exam) !== JSON.stringify(form),
+    [exam, form],
+  )
+  const domainsDirty = useMemo(
+    () => JSON.stringify(domains) !== JSON.stringify(savedDomains),
+    [domains, savedDomains],
+  )
+  const bankDirty = useMemo(
+    () => JSON.stringify(questions) !== JSON.stringify(savedQuestions),
+    [questions, savedQuestions],
+  )
+  const dirty = settingsDirty || domainsDirty || bankDirty
+
+  /**
+   * Guarda TODO lo pendiente del examen de una vez: ajustes, temas y banco.
+   *
+   * El orden importa: los temas van primero porque una pregunta nueva puede
+   * apuntar a un tema que tampoco existe todavía (los dos los acaba de crear la
+   * IA), y hay que cambiarle el id de mentira por el de verdad antes de
+   * insertarla.
+   */
+  const saveExam = useCallback(async (): Promise<boolean> => {
     if (!form || !exam) return true
     setSaving(true)
     try {
+      /* ── 1. Temas ── */
+      const tmpToReal = new Map<string, string>()
+      for (const d of savedDomains) {
+        if (!domains.some((x) => x.id === d.id)) await deleteExamDomain(d.id)
+      }
+      for (const d of domains) {
+        if (isDraftId(d.id)) {
+          const created = await createExamDomain(exam.id, {
+            name_es: d.name_es,
+            description_es: d.description_es,
+            weight_pct: d.weight_pct,
+            min_score: d.min_score,
+            color: d.color,
+            icon: d.icon,
+            sort_order: d.sort_order,
+            module_ids: d.module_ids,
+          })
+          tmpToReal.set(d.id, created.id)
+          continue
+        }
+        const before = savedDomains.find((x) => x.id === d.id)
+        if (before && JSON.stringify(before) !== JSON.stringify(d)) {
+          await updateExamDomain(d.id, {
+            name_es: d.name_es,
+            description_es: d.description_es,
+            weight_pct: d.weight_pct,
+            min_score: d.min_score,
+            color: d.color,
+            icon: d.icon,
+            sort_order: d.sort_order,
+            module_ids: d.module_ids,
+          })
+        }
+      }
+
+      /* ── 2. Banco ── */
+      const realDomain = (id: string | null) => (id && tmpToReal.get(id)) ?? id
+      for (const q of savedQuestions) {
+        if (!questions.some((x) => x.id === q.id)) await deleteExamQuestion(q.id)
+      }
+      const nuevas = questions.filter((q) => isDraftId(q.id))
+      if (nuevas.length > 0) {
+        await createExamQuestions(
+          exam.id,
+          nuevas.map((q) => {
+            // `sort_order` fuera: lo pone el servicio al final del banco. El
+            // índice del borrador chocaría con el de las filas que ya existen.
+            const { id: _id, exam_id: _e, created_at: _c, sort_order: _s, ...rest } = q
+            return { ...rest, domain_id: realDomain(q.domain_id) } as unknown as NewExamQuestion
+          }),
+        )
+      }
+      for (const q of questions) {
+        if (isDraftId(q.id)) continue
+        const before = savedQuestions.find((x) => x.id === q.id)
+        if (!before || JSON.stringify(before) === JSON.stringify(q)) continue
+        await updateExamQuestion(q.id, {
+          domain_id: realDomain(q.domain_id),
+          kind: q.kind,
+          text_es: q.text_es,
+          text_en: q.text_en,
+          text_pt: q.text_pt,
+          options: q.options,
+          correct: q.correct,
+          explanation_es: q.explanation_es,
+          explanation_en: q.explanation_en,
+          explanation_pt: q.explanation_pt,
+          difficulty: q.difficulty,
+          is_active: q.is_active,
+          sort_order: q.sort_order,
+        })
+      }
+
+      /* ── 3. Ajustes ── */
       await updateCourseExam(exam.id, form)
       setExam(form)
+      // Relee: los ids de mentira pasan a ser los de verdad y la línea base
+      // vuelve a coincidir con la base (si no, todo seguiría "sin guardar").
+      if (tmpToReal.size > 0 || nuevas.length > 0 || domainsDirty || bankDirty) {
+        await reloadBank(exam.id)
+      }
       return true
     } catch (err) {
       // El resto de ajustes SÍ se guardó: solo falta la columna del nivel.
@@ -220,27 +442,36 @@ export function ExamBuilder({
         )
         return false
       }
-      toast.error(t('admin.exam.save_error', 'No se pudieron guardar los ajustes del examen.'))
+      toast.error(t('admin.exam.save_error', 'No se pudieron guardar los cambios del examen.'))
       return false
     } finally {
       setSaving(false)
     }
-  }, [form, exam, t])
+  }, [form, exam, t, domains, savedDomains, questions, savedQuestions, domainsDirty, bankDirty, reloadBank])
 
   useEffect(() => {
     onDirtyChange?.(dirty)
   }, [dirty, onDirtyChange])
 
   useEffect(() => {
-    registerSave?.(saveSettings)
+    registerSave?.(saveExam)
     return () => registerSave?.(null)
-  }, [registerSave, saveSettings])
+  }, [registerSave, saveExam])
 
   // Deshacer de los ajustes del examen (nivel, puntaje, intentos…). Sin esto,
   // la barra mostraba "Examen · sin guardar" con un botón Deshacer apagado.
+  // Deshacer de TODO el examen: ajustes, temas y banco. Si solo cubriera los
+  // ajustes, borrar una pregunta sin querer no tendría vuelta atrás.
   const { undo: undoSettings, canUndo: canUndoSettings } = useUndoHistory({
-    state: form,
-    apply: setForm,
+    state: useMemo(() => ({ form, domains, questions }), [form, domains, questions]),
+    apply: useCallback(
+      (snap: { form: CourseExam | null; domains: ExamDomain[]; questions: ExamQuestion[] }) => {
+        setForm(snap.form)
+        setDomains(snap.domains)
+        setQuestions(snap.questions)
+      },
+      [],
+    ),
     enabled: !loading && !!form,
   })
   useEffect(() => {
@@ -267,8 +498,97 @@ export function ExamBuilder({
       .catch(() => setSource(null))
   }, [courseId])
 
+  /* ── Precarga del banco con los quizzes de los módulos ────────────────────
+     Un examen con el banco vacío no sirve para nada, y el curso casi siempre
+     ya tiene preguntas escritas sobre su propio contenido: las de los quizzes
+     de sección. Entran solas — al crear el examen y también al abrir uno que se
+     quedó vacío — en vez de obligar a ir a buscarlas a un modal.
+
+     Se COPIAN (misma regla que "Reutilizar quizzes"): editarlas en el examen no
+     toca el quiz del módulo, ni al revés. */
+
+  /** Exámenes a los que ya se les intentó la precarga en esta sesión. */
+  const preloadTried = useRef<Set<string>>(new Set())
+  /** …y entre sesiones: vaciar el banco a propósito no debe deshacerse solo. */
+  const preloadFlag = (examId: string) => `exam-bank-preloaded:${examId}`
+
+  /**
+   * Copia al banco los quizzes de sección del curso. Devuelve cuántos entraron.
+   *
+   * No mira lo que ya hay en el banco porque solo se le llama con el banco
+   * vacío (recién creado o vaciado): quien sí compara es el modal, que marca
+   * las que ya se usaron. Nunca lanza — es una comodidad, no un requisito: si
+   * falla, el examen se queda como estaba y siempre queda el modal a mano.
+   */
+  const preloadBank = useCallback(
+    async (examId: string, targetLevel: ExamTargetLevel) => {
+      try {
+        const reusable = await getReusableQuestions(courseId)
+        const usable = reusable.filter((q) => {
+          // Con nivel fijo solo entran los quizzes de ese nivel: colar otros
+          // dejaría el examen sin poder publicarse nada más crearlo. Los que
+          // nadie ha calificado no se adivinan — se quedan para el modal.
+          if (!isLevelLocked(targetLevel)) return true
+          return q.difficulty === targetLevel
+        })
+        if (usable.length === 0) return 0
+        await createExamQuestions(
+          examId,
+          // El nivel guardado en el quiz manda; si nadie lo ha calificado
+          // todavía entra como "medio" y se puede ajustar en el banco.
+          usable.map((q) => reusableToQuestion(q, null, q.difficulty ?? 'medio')),
+        )
+        // Solo se anota si de verdad entró algo: si el curso todavía no tenía
+        // quizzes, la próxima visita debe volver a mirar (habrá módulos nuevos).
+        try {
+          localStorage.setItem(preloadFlag(examId), '1')
+        } catch {
+          /* modo incógnito o almacenamiento lleno: se reintentará, no pasa nada */
+        }
+        await reloadBank(examId)
+        return usable.length
+      } catch {
+        return 0
+      }
+    },
+    [courseId, reloadBank],
+  )
+
+  /**
+   * Examen ya creado pero con el banco en cero: se precarga al abrir la
+   * pestaña. Una sola vez por examen (queda anotado), para que vaciar el banco
+   * a propósito no se deshaga solo en la siguiente visita.
+   */
+  useEffect(() => {
+    if (loading || !exam || questions.length > 0) return
+    // Vacío en la base Y sin nada pendiente. Si el banco está vacío porque el
+    // capacitador acaba de borrarlo todo y aún no ha guardado, precargarlo
+    // sería pisarle el borrador con preguntas que él quitó a propósito.
+    if (savedQuestions.length > 0 || dirty) return
+    if (preloadTried.current.has(exam.id)) return
+    preloadTried.current.add(exam.id)
+    let stored: string | null = null
+    try {
+      stored = localStorage.getItem(preloadFlag(exam.id))
+    } catch {
+      stored = null
+    }
+    if (stored) return
+    void preloadBank(exam.id, exam.target_level).then((n) => {
+      if (n > 0) {
+        toast.success(
+          t('admin.exam.bank_preloaded', {
+            n,
+            defaultValue: 'Se añadieron {{n}} preguntas de los quizzes de los módulos.',
+          }),
+        )
+      }
+    })
+  }, [loading, exam, questions.length, savedQuestions.length, dirty, preloadBank, t])
+
   /* ── Acciones ── */
 
+  /** Crea el examen y lo deja ya con banco (ver "Precarga del banco"). */
   const handleCreate = async () => {
     try {
       const created = await createCourseExam(courseId, campaignId, {
@@ -277,9 +597,23 @@ export function ExamBuilder({
           defaultValue: 'Examen final — {{course}}',
         }),
       })
+      // Antes de pintarlo: si no, el efecto de arriba ve un examen con banco
+      // vacío mientras esta precarga está a medias y las copia dos veces.
+      preloadTried.current.add(created.id)
       setExam(created)
       setForm(created)
-      toast.success(t('admin.exam.created', 'Examen creado. Ahora arma el banco de preguntas.'))
+
+      const seeded = await preloadBank(created.id, created.target_level)
+
+      toast.success(
+        seeded > 0
+          ? t('admin.exam.created_seeded', {
+              n: seeded,
+              defaultValue:
+                'Examen creado con {{n}} preguntas tomadas de los quizzes de los módulos.',
+            })
+          : t('admin.exam.created', 'Examen creado. Ahora arma el banco de preguntas.'),
+      )
     } catch {
       toast.error(t('admin.exam.create_error', 'No se pudo crear el examen.'))
     }
@@ -307,13 +641,9 @@ export function ExamBuilder({
       tone: 'default',
     })
     if (!okGo) return
-    try {
-      await setQuestionsDifficulty(health.offLevel.map((q) => q.id), target)
-      await reloadBank()
-      toast.success(t('admin.exam.level_fix_ok', 'Listo: el banco quedó todo al mismo nivel.'))
-    } catch {
-      toast.error(t('admin.exam.level_fix_error', 'No se pudo cambiar el nivel de las preguntas.'))
-    }
+    const fix = new Set(health.offLevel.map((q) => q.id))
+    setQuestions((prev) => prev.map((q) => (fix.has(q.id) ? { ...q, difficulty: target } : q)))
+    toast.success(t('admin.exam.level_fix_ok_v2', 'Listo: el banco quedó todo al mismo nivel. Recuerda guardar.'))
   }
 
   const handlePublish = async () => {
@@ -348,7 +678,7 @@ export function ExamBuilder({
     }
     setPublishing(true)
     try {
-      if (dirty) await saveSettings()
+      if (dirty) await saveExam()
       await setExamPublished(exam.id, next)
       setExam({ ...exam, is_published: next })
       setForm((f) => (f ? { ...f, is_published: next } : f))
@@ -368,13 +698,6 @@ export function ExamBuilder({
     }
   }
 
-  const reloadBank = async () => {
-    if (!exam) return
-    const [d, q] = await Promise.all([getExamDomains(exam.id), getExamQuestions(exam.id)])
-    setDomains(d)
-    setQuestions(q)
-  }
-
   const handleSaveQuestion = async (draft: QuestionDraft) => {
     if (!exam) return
     const payload = {
@@ -386,43 +709,31 @@ export function ExamBuilder({
       explanation_es: draft.explanation_es.trim() || null,
       difficulty: draft.difficulty,
     }
-    try {
-      if (editingQuestion) {
-        await updateExamQuestion(editingQuestion.id, payload)
-      } else {
-        await createExamQuestions(exam.id, [
-          { ...payload, text_en: null, text_pt: null, explanation_en: null, explanation_pt: null, source: 'manual' } as unknown as NewExamQuestion,
-        ])
-      }
-      await reloadBank()
-    } catch {
-      toast.error(t('admin.exam.q_save_error', 'No se pudo guardar la pregunta.'))
+    if (editingQuestion) {
+      setQuestions((prev) =>
+        prev.map((q) => (q.id === editingQuestion.id ? { ...q, ...payload } : q)),
+      )
+      return
     }
+    setQuestions((prev) => [...prev, newDraftQuestion(exam.id, payload, prev.length, 'manual')])
   }
 
+  /**
+   * Quitar una pregunta ya no pregunta "¿seguro?": ahora es un borrador que se
+   * ve en la barra ("1 cambio sin guardar"), se deshace con Ctrl+Z y no toca la
+   * base hasta que se guarda. Un diálogo encima de eso sería pedir permiso dos
+   * veces para algo que no ha pasado todavía.
+   */
   const handleDeleteQuestion = async (q: ExamQuestion) => {
-    const okGo = await confirm({
-      title: t('admin.exam.q_delete_title', 'Eliminar pregunta'),
-      description: t(
-        'admin.exam.q_delete_body',
-        'Se quita del banco. Los intentos que ya la usaron conservan su resultado.',
-      ),
-      confirmLabel: t('common.delete', 'Eliminar'),
-      tone: 'danger',
-    })
-    if (!okGo) return
-    try {
-      await deleteExamQuestion(q.id)
-      setQuestions((prev) => prev.filter((x) => x.id !== q.id))
-    } catch {
-      toast.error(t('admin.exam.q_delete_error', 'No se pudo eliminar.'))
-    }
+    setQuestions((prev) => prev.filter((x) => x.id !== q.id))
   }
 
   const handleImportQuestions = async (list: NewExamQuestion[]) => {
     if (!exam) return
-    await createExamQuestions(exam.id, list)
-    await reloadBank()
+    setQuestions((prev) => [
+      ...prev,
+      ...list.map((q, i) => newDraftQuestion(exam.id, q, prev.length + i)),
+    ])
   }
 
   /** Crea dominios (IA / importación) y devuelve el mapa nombre→id, ya completo. */
@@ -431,19 +742,19 @@ export function ExamBuilder({
   ): Promise<Map<string, string>> => {
     if (!exam) return new Map()
     const map = new Map(domains.map((d) => [d.name_es.toLowerCase().trim(), d.id]))
+    const nuevos: ExamDomain[] = []
     for (const [i, d] of drafts.entries()) {
       const key = d.name_es.toLowerCase().trim()
       if (map.has(key)) continue
-      const created = await createExamDomain(exam.id, {
+      const draft = newDraftDomain(exam.id, domains.length + nuevos.length + i, {
         name_es: d.name_es,
         description_es: d.description_es || null,
         weight_pct: d.weight_pct,
-        color: DOMAIN_COLORS[(domains.length + i) % DOMAIN_COLORS.length],
-        sort_order: domains.length + i,
       })
-      map.set(key, created.id)
+      nuevos.push(draft)
+      map.set(key, draft.id)
     }
-    await reloadBank()
+    if (nuevos.length > 0) setDomains((prev) => [...prev, ...nuevos])
     return map
   }
 
@@ -451,7 +762,6 @@ export function ExamBuilder({
      Tres formas de llegar a 100, cada una con su preview: partes iguales,
      proporcional a las preguntas que ya hay escritas, y "cuadrar" lo que el
      capacitador ya escribió a mano sin cambiarle las proporciones. */
-  const [weighing, setWeighing] = useState(false)
 
   const weightPlans = useMemo(() => {
     if (domains.length === 0) return []
@@ -511,47 +821,30 @@ export function ExamBuilder({
   }, [domains, t])
 
   const applyWeights = async (weights: number[]) => {
-    setWeighing(true)
-    const patch = domains.map((d, i) => ({ id: d.id, weight_pct: weights[i] ?? 0 }))
-    try {
-      await setDomainWeights(patch)
-      setDomains((prev) => prev.map((d, i) => ({ ...d, weight_pct: weights[i] ?? d.weight_pct })))
-      toast.success(t('admin.exam.weights_applied', 'Listo: los porcentajes ya suman 100%.'))
-    } catch {
-      toast.error(t('admin.exam.weights_error', 'No se pudieron guardar los porcentajes.'))
-    } finally {
-      setWeighing(false)
-    }
+    setDomains((prev) => prev.map((d, i) => ({ ...d, weight_pct: weights[i] ?? d.weight_pct })))
+    toast.success(
+      t('admin.exam.weights_applied_v2', 'Listo: los porcentajes ya suman 100%. Recuerda guardar.'),
+    )
   }
 
   const handleAddDomain = async () => {
     if (!exam) return
-    try {
-      await createExamDomain(exam.id, {
+    setDomains((prev) => [
+      ...prev,
+      newDraftDomain(exam.id, prev.length, {
         name_es: t('admin.exam.domain_new_v2', 'Tema nuevo'),
-        color: DOMAIN_COLORS[domains.length % DOMAIN_COLORS.length],
-        sort_order: domains.length,
-        weight_pct: 0,
-      })
-      await reloadBank()
-    } catch {
-      toast.error(t('admin.exam.domain_error_v2', 'No se pudo crear el tema.'))
-    }
+      }),
+    ])
   }
 
+  /** Igual que borrar una pregunta: es borrador, se ve en la barra y se deshace. */
   const handleDeleteDomain = async (d: ExamDomain) => {
-    const okGo = await confirm({
-      title: t('admin.exam.domain_delete_title_v2', 'Eliminar tema'),
-      description: t(
-        'admin.exam.domain_delete_body_v2',
-        'Sus preguntas NO se borran: se quedan sin tema y siguen entrando al examen.',
-      ),
-      confirmLabel: t('common.delete', 'Eliminar'),
-      tone: 'danger',
-    })
-    if (!okGo) return
-    await deleteExamDomain(d.id)
-    await reloadBank()
+    setDomains((prev) => prev.filter((x) => x.id !== d.id))
+    // Sus preguntas NO se van: se quedan sin tema, como decía el aviso que
+    // esto tenía antes.
+    setQuestions((prev) =>
+      prev.map((q) => (q.domain_id === d.id ? { ...q, domain_id: null } : q)),
+    )
   }
 
   const handleGrantAttempt = async (userId: string, name: string) => {
@@ -1251,9 +1544,8 @@ export function ExamBuilder({
                   index={i}
                   modules={modules}
                   examQuestionCount={form.question_count}
-                  onChange={async (patch) => {
+                  onChange={(patch) => {
                     setDomains((prev) => prev.map((x) => (x.id === d.id ? { ...x, ...patch } : x)))
-                    await updateExamDomain(d.id, patch)
                   }}
                   onDelete={() => handleDeleteDomain(d)}
                 />
@@ -1313,7 +1605,6 @@ export function ExamBuilder({
                     >
                       <button
                         onClick={() => void applyWeights(plan.weights)}
-                        disabled={weighing}
                         className="rounded-full border border-line px-3.5 py-1.5 text-[12px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
                       >
                         {plan.label}
@@ -1681,13 +1972,19 @@ export function ExamBuilder({
       {dirty && (
         <div className="flex items-center justify-end gap-2">
           <button
-            onClick={() => setForm(exam)}
+            onClick={() => {
+              // Descartar es descartar TODO lo del examen: dejar el banco a
+              // medias mientras la ficha vuelve atrás sería lo peor de ambos.
+              setForm(exam)
+              setDomains(savedDomains)
+              setQuestions(savedQuestions)
+            }}
             className="rounded-full px-4 py-2 text-[13px] text-text-muted transition-colors hover:text-text"
           >
             {t('common.discard', 'Descartar')}
           </button>
           <button
-            onClick={() => void saveSettings()}
+            onClick={() => void saveExam()}
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-[13px] font-medium text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
@@ -1713,6 +2010,8 @@ export function ExamBuilder({
           context={{ courseId, courseTitle, source }}
           domains={domains}
           targetLevel={form.target_level}
+          bank={bank}
+          onRemove={handleRemoveFromBank}
           onImport={handleImportQuestions}
           onCreateDomains={handleCreateDomains}
           onClose={() => setGenerateOpen(false)}
@@ -1743,7 +2042,7 @@ function DomainRow({
   modules: ExamBuilderModule[]
   /** Preguntas que tendrá cada intento: convierte el % en preguntas reales. */
   examQuestionCount: number
-  onChange: (patch: Partial<ExamDomain>) => Promise<void>
+  onChange: (patch: Partial<ExamDomain>) => void
   onDelete: () => void
 }) {
   const { t } = useTranslation()

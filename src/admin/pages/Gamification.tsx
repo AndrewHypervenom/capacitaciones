@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import type { TFunction } from 'i18next'
@@ -32,7 +32,16 @@ import {
   deleteLevel,
   seedDefaults,
 } from '@/services/gamification.service'
+import {
+  listAllXPEvents,
+  upsertXPEvent,
+  deleteXPEvent,
+  loadXPEvents,
+} from '@/services/xpEvents.service'
+import type { XPEvent } from '@/stores/xpEventStore'
 import { XP_REWARDS, reviewValue } from '@/stores/progressStore'
+import { SaveDock } from '@/admin/components/SaveDock'
+import { usePageDraft } from '@/admin/hooks/usePageDraft'
 import { XPEventsEditor } from '@/admin/components/XPEventsEditor'
 
 const CATEGORIES: BadgeCategory[] = ['progress', 'streak', 'excellence', 'certification', 'optional']
@@ -65,53 +74,107 @@ export default function Gamification() {
   const [editing, setEditing] = useState<BadgeDef | null>(null)
   const [busy, setBusy] = useState(false)
 
+  /** Los eventos de XP viven en otra tabla, pero se editan en esta pantalla. */
+  const [xpEvents, setXpEvents] = useState<XPEvent[]>([])
+
   useEffect(() => {
-    loadGamification(true).finally(() => setLoading(false))
+    void (async () => {
+      await loadGamification(true)
+      try {
+        setXpEvents(await listAllXPEvents())
+      } catch {
+        setXpEvents([])
+      }
+      setLoading(false)
+    })()
   }, [])
+
+  /* ── Todo esto se edita como borrador ──
+     Antes, apagar un logro o cambiar un rango escribía en la base al instante:
+     no había forma de ver qué estaba pendiente ni de arrepentirse. Ahora es lo
+     mismo que en el editor de módulos — se acumula, la barra del pie lo cuenta
+     y se guarda de una vez con Ctrl+S. */
+  const saved = useMemo(
+    () => ({ badges: badgeDefs, levels: xpLevels, events: xpEvents }),
+    [badgeDefs, xpLevels, xpEvents],
+  )
+
+  const persist = async (d: { badges: BadgeDef[]; levels: XPLevel[]; events: XPEvent[] }) => {
+    if (d.levels.some((r) => !r.label.trim())) {
+      toast.error(t('admin.gamification.level_label_required', 'Cada nivel necesita un nombre'))
+      return false
+    }
+    try {
+      setBusy(true)
+      const keepBadges = new Set(d.badges.map((b) => b.id))
+      for (const b of badgeDefs) if (!keepBadges.has(b.id)) await deleteBadge(b.id)
+      for (const b of d.badges) {
+        const before = badgeDefs.find((x) => x.id === b.id)
+        if (!before || JSON.stringify(before) !== JSON.stringify(b)) await upsertBadge(b)
+      }
+      const keepLevels = new Set(d.levels.map((r) => r.level))
+      for (const l of xpLevels) if (!keepLevels.has(l.level)) await deleteLevel(l.level)
+      for (const r of d.levels) {
+        const before = xpLevels.find((x) => x.level === r.level)
+        if (!before || JSON.stringify(before) !== JSON.stringify(r)) await upsertLevel(r)
+      }
+      const keepEvents = new Set(d.events.map((e) => e.id))
+      for (const e of xpEvents) if (!keepEvents.has(e.id)) await deleteXPEvent(e.id)
+      for (const e of d.events) {
+        const before = xpEvents.find((x) => x.id === e.id)
+        if (!before || JSON.stringify(before) !== JSON.stringify(e)) await upsertXPEvent(e)
+      }
+      await loadGamification(true)
+      setXpEvents(await listAllXPEvents())
+      // El store vivo: el banner del aprendiz se entera sin esperar 10 minutos.
+      await loadXPEvents()
+      toast.success(t('admin.gamification.saved_all', 'Cambios guardados'))
+      return true
+    } catch {
+      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const draft = usePageDraft({
+    saved,
+    onSave: persist,
+    id: 'gamification',
+    enabled: !loading,
+    // Los niveles traen ruido cosmético (colores en hex corto, espacios): sin
+    // normalizarlos, la barra avisaría de un cambio que nadie hizo.
+    fingerprint: useCallback(
+      (d: { badges: BadgeDef[]; levels: XPLevel[]; events: XPEvent[] }) =>
+        `${JSON.stringify(d.badges)}|${levelsFingerprint(d.levels)}|${JSON.stringify(d.events)}`,
+      [],
+    ),
+  })
+  const badges = draft.value?.badges ?? badgeDefs
+  const levels = draft.value?.levels ?? xpLevels
 
   const catLabel = (c: BadgeCategory) => t(`admin.gamification.cat.${c}`, c)
 
   const byCategory = useMemo(() => {
     const map = new Map<BadgeCategory, BadgeDef[]>()
     for (const c of CATEGORIES) map.set(c, [])
-    for (const b of [...badgeDefs].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))) {
+    for (const b of [...badges].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))) {
       map.get(b.category)?.push(b)
     }
     return map
-  }, [badgeDefs])
+  }, [badges])
 
-  const toggleEnabled = async (b: BadgeDef) => {
-    try {
-      setBusy(true)
-      await upsertBadge({ ...b, enabled: b.enabled === false })
-      await loadGamification(true)
-    } catch {
-      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const toggleEnabled = (b: BadgeDef) =>
+    draft.set((d) => ({
+      ...d,
+      badges: d.badges.map((x) => (x.id === b.id ? { ...x, enabled: x.enabled === false } : x)),
+    }))
 
-  const removeBadge = async (b: BadgeDef) => {
+  /** Sin "¿seguro?": es borrador, sale en la barra y se deshace con Ctrl+Z. */
+  const removeBadge = (b: BadgeDef) => {
     if (b.builtin) return
-    const ok = await confirm({
-      title: t('admin.gamification.delete_badge', 'Eliminar logro'),
-      description: t('admin.gamification.delete_badge_desc', {
-        name: badgeLabel(b, lang),
-        defaultValue: `¿Eliminar el logro "${badgeLabel(b, lang)}"?`,
-      }),
-    })
-    if (!ok) return
-    try {
-      setBusy(true)
-      await deleteBadge(b.id)
-      await loadGamification(true)
-      toast.success(t('admin.gamification.deleted', 'Logro eliminado'))
-    } catch {
-      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
-    } finally {
-      setBusy(false)
-    }
+    draft.set((d) => ({ ...d, badges: d.badges.filter((x) => x.id !== b.id) }))
   }
 
   const restoreDefaults = async () => {
@@ -211,25 +274,47 @@ export default function Gamification() {
       </section>
 
       {/* ── Niveles de XP ── */}
-      <XPLevelsEditor levels={xpLevels} busy={busy} setBusy={setBusy} />
+      <XPLevelsEditor
+        levels={levels}
+        onChange={(rows) => draft.set((d) => ({ ...d, levels: rows }))}
+      />
 
       {/* ── Días de XP multiplicado (×2, ×5…) ── */}
-      <XPEventsEditor lang={lang} />
+      <XPEventsEditor
+        lang={lang}
+        events={draft.value?.events ?? xpEvents}
+        loading={loading}
+        onChange={(events) => draft.set((d) => ({ ...d, events }))}
+      />
 
       {/* ── De dónde sale el XP (solo lectura: vive en código) ── */}
-      <XPSourcesCard levels={xpLevels} lang={lang} />
+      <XPSourcesCard levels={levels} lang={lang} />
 
       {editing && (
         <BadgeModal
           draft={editing}
-          lang={lang}
           onClose={() => setEditing(null)}
-          onSaved={async () => {
+          onSaved={(badge) => {
             setEditing(null)
-            await loadGamification(true)
+            draft.set((d) => ({
+              ...d,
+              badges: d.badges.some((x) => x.id === badge.id)
+                ? d.badges.map((x) => (x.id === badge.id ? badge : x))
+                : [...d.badges, badge],
+            }))
           }}
         />
       )}
+
+      {/* Una sola barra para toda la pantalla: dice cuántos cambios hay,
+          deshace (Ctrl+Z) y guarda (Ctrl+S). */}
+      <SaveDock
+        pending={draft.pending(t('admin.gamification.title', 'Gamificación'))}
+        onSave={draft.save}
+        saving={draft.saving}
+        onUndo={draft.undo}
+        canUndo={draft.canUndo}
+      />
     </div>
   )
 }
@@ -309,12 +394,12 @@ function BadgeRow({
 }
 
 function BadgeModal({
-  draft, lang, onClose, onSaved,
+  draft, onClose, onSaved,
 }: {
   draft: BadgeDef
-  lang: Lang
   onClose: () => void
-  onSaved: () => void
+  /** Devuelve el logro editado; escribirlo es cosa de la barra de guardado. */
+  onSaved: (badge: BadgeDef) => void
 }) {
   const { t, i18n } = useTranslation()
   const adminLang = (i18n.resolvedLanguage ?? 'es') as Lang
@@ -324,20 +409,13 @@ function BadgeModal({
   const set = <K extends keyof BadgeDef>(k: K, v: BadgeDef[K]) => setForm((f) => ({ ...f, [k]: v }))
   const unit = metricMeta(form.metric).unit
 
-  const save = async () => {
+  const save = () => {
     if (!form.label.trim()) {
       toast.error(t('admin.gamification.label_required', 'El nombre (español) es obligatorio'))
       return
     }
-    try {
-      setSaving(true)
-      await upsertBadge(form)
-      toast.success(t('admin.gamification.saved', 'Logro guardado'))
-      onSaved()
-    } catch {
-      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
-      setSaving(false)
-    }
+    setSaving(true)
+    onSaved(form)
   }
 
   const field = 'w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-[14px] text-text outline-none focus:border-primary min-h-[44px]'
@@ -523,68 +601,30 @@ function levelsFingerprint(rows: XPLevel[]): string {
 }
 
 function XPLevelsEditor({
-  levels, busy, setBusy,
+  levels: rows,
+  onChange,
 }: {
   levels: XPLevel[]
-  busy: boolean
-  setBusy: (b: boolean) => void
+  /** Sube el cambio al borrador de la página: aquí ya no se guarda nada. */
+  onChange: (rows: XPLevel[]) => void
 }) {
   const { t } = useTranslation()
-  const confirm = useConfirm()
-  const [rows, setRows] = useState<XPLevel[]>(levels)
-
-  useEffect(() => { setRows(levels) }, [levels])
-
-  // "Sucio" se COMPARA contra lo guardado, no es una bandera que se prende al
-  // primer tecleo: si dejas 200, lo bajas a 199 y lo vuelves a 200, no hay nada
-  // que guardar y el botón desaparece solo.
-  const dirty = useMemo(
-    () => levelsFingerprint(rows) !== levelsFingerprint(levels),
-    [rows, levels],
-  )
 
   const update = (idx: number, patch: Partial<XPLevel>) => {
-    setRows((r) => r.map((row, i) => (i === idx ? { ...row, ...patch } : row)))
+    onChange(rows.map((row, i) => (i === idx ? { ...row, ...patch } : row)))
   }
 
   const addLevel = () => {
     const nextLevel = rows.length > 0 ? Math.max(...rows.map((r) => r.level)) + 1 : 1
     const lastMax = rows.length > 0 ? rows[rows.length - 1].maxXP : 0
-    setRows((r) => [
-      ...r,
+    onChange([
+      ...rows,
       { level: nextLevel, label: '', minXP: lastMax, maxXP: lastMax + 500, color: '#888' },
     ])
   }
 
   const removeRow = (idx: number) => {
-    setRows((r) => r.filter((_, i) => i !== idx))
-  }
-
-  const saveAll = async () => {
-    if (rows.some((r) => !r.label.trim())) {
-      toast.error(t('admin.gamification.level_label_required', 'Cada nivel necesita un nombre'))
-      return
-    }
-    const ok = await confirm({
-      title: t('admin.gamification.save_levels', 'Guardar niveles'),
-      description: t('admin.gamification.save_levels_desc', 'Se aplicará a todos los aprendices.'),
-      confirmLabel: t('common.save', 'Guardar'),
-      tone: 'default',
-    })
-    if (!ok) return
-    try {
-      setBusy(true)
-      // Borrar los niveles que ya no están.
-      const keep = new Set(rows.map((r) => r.level))
-      for (const l of levels) if (!keep.has(l.level)) await deleteLevel(l.level)
-      for (const r of rows) await upsertLevel(r)
-      await loadGamification(true)
-      toast.success(t('admin.gamification.levels_saved', 'Niveles guardados'))
-    } catch {
-      toast.error(t('admin.gamification.save_error', 'No se pudo guardar'))
-    } finally {
-      setBusy(false)
-    }
+    onChange(rows.filter((_, i) => i !== idx))
   }
 
   const field = 'w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-[13px] text-text outline-none focus:border-primary'
@@ -657,18 +697,6 @@ function XPLevelsEditor({
         </table>
       </div>
 
-      {dirty && (
-        <div className="mt-3 flex justify-end">
-          <button
-            onClick={saveAll}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-on-primary hover:opacity-90 min-h-[44px] disabled:opacity-40"
-          >
-            <Save className="h-4 w-4" />
-            {t('admin.gamification.save_levels', 'Guardar niveles')}
-          </button>
-        </div>
-      )}
     </section>
   )
 }

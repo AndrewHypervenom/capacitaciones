@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
+import { SaveDock } from '@/admin/components/SaveDock'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
@@ -88,7 +90,6 @@ export default function UserList() {
   const [hrOpen, setHrOpen] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   // Permiso de "puede crear aprendices" guardándose para un capacitador.
-  const [togglingPermFor, setTogglingPermFor] = useState<string | null>(null)
   // Contraseña predeterminada para usuarios nuevos (ajuste global de superadmin).
   const [pwdOpen, setPwdOpen] = useState(false)
   const [defaultPwdOn, setDefaultPwdOn] = useState(false)
@@ -97,10 +98,14 @@ export default function UserList() {
   // Las cuentas dadas de baja no estorban el día a día: se ven si se piden.
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active')
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
+  /* Lo que hay en la base. Editar aquí es borrador: nombre, rol, permiso de
+     altas y campañas se acumulan en la barra del pie y se guardan de una vez.
+     Dar de baja o eliminar NO son ediciones (son órdenes) y siguen al momento. */
+  const [savedUsers, setSavedUsers] = useState<ProfileWithEmail[]>([])
   // Campañas de cada usuario: casa + colaboraciones. El capacitador puede tener
   // varias (equipos compartidos), así que no basta con profiles.campaign_id.
   const [userCampaigns, setUserCampaigns] = useState<Record<string, string[]>>({})
-  const [savingCampaignsFor, setSavingCampaignsFor] = useState<string | null>(null)
+  const [savedUserCampaigns, setSavedUserCampaigns] = useState<Record<string, string[]>>({})
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // Campañas a las que se puede ASIGNAR a alguien recién creado. Para el
   // capacitador habilitado son TODAS (no solo las suyas): da de alta gente que
@@ -115,7 +120,6 @@ export default function UserList() {
   // Edición inline del nombre de un usuario existente
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
-  const [savingName, setSavingName] = useState(false)
   const [inviteRole, setInviteRole] = useState<'learner' | 'capacitador' | 'superadmin'>('learner')
   const [inviteCampaign, setInviteCampaign] = useState('')
   // País opcional: si se deja vacío, la persona lo elige en su onboarding.
@@ -214,7 +218,10 @@ export default function UserList() {
       ])
       const rows = profiles.data ?? []
       setUsers(rows)
-      setUserCampaigns(await getCampaignIdsByUser(rows))
+      setSavedUsers(rows)
+      const byUser = await getCampaignIdsByUser(rows)
+      setUserCampaigns(byUser)
+      setSavedUserCampaigns(byUser)
       setTempCreds(mapCreds(creds.data))
       setLoading(false)
       // Quién entra con huella. Va después de pintar la lista y en una sola
@@ -250,7 +257,10 @@ export default function UserList() {
     ])
     const rows = updated ?? []
     setUsers(rows)
-    setUserCampaigns(await getCampaignIdsByUser(rows))
+    setSavedUsers(rows)
+    const byUser = await getCampaignIdsByUser(rows)
+    setUserCampaigns(byUser)
+    setSavedUserCampaigns(byUser)
     setTempCreds(mapCreds(creds))
   }
 
@@ -359,16 +369,10 @@ export default function UserList() {
     setEditName(user.display_name ?? '')
   }
 
-  const handleSaveName = async (userId: string) => {
+  const handleSaveName = (userId: string) => {
     const name = editName.trim()
-    setSavingName(true)
-    try {
-      await supabase.from('profiles').update({ display_name: name || null }).eq('id', userId)
-      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, display_name: name || null } : u))
-      setEditingId(null)
-    } finally {
-      setSavingName(false)
-    }
+    setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, display_name: name || null } : u))
+    setEditingId(null)
   }
 
   const handleRoleChange = async (userId: string, newRole: Profile['role']) => {
@@ -377,7 +381,6 @@ export default function UserList() {
     const patch = newRole === 'capacitador'
       ? { role: newRole }
       : { role: newRole, can_create_learners: false }
-    await supabase.from('profiles').update(patch).eq('id', userId)
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, ...patch } : u))
   }
 
@@ -386,29 +389,9 @@ export default function UserList() {
    * sus campañas. Solo el superadmin lo mueve: la interfaz lo esconde y un
    * trigger en la base impide que nadie más lo cambie por su cuenta.
    */
-  const handleToggleCanCreate = async (user: ProfileWithEmail) => {
+  const handleToggleCanCreate = (user: ProfileWithEmail) => {
     const next = user.can_create_learners !== true
-    const name = user.display_name ?? user.email ?? user.id.slice(0, 8)
-    // Optimista: el interruptor responde ya y se revierte si la BD rechaza.
     setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_create_learners: next } : u)))
-    setTogglingPermFor(user.id)
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ can_create_learners: next })
-        .eq('id', user.id)
-      if (error) throw error
-      toast.success(
-        next ? t('admin.users.can_create_granted', { name }) : t('admin.users.can_create_revoked', { name }),
-      )
-    } catch (err) {
-      setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, can_create_learners: !next } : u)),
-      )
-      toast.error(t('admin.users.can_create_error'), (err as Error).message)
-    } finally {
-      setTogglingPermFor(null)
-    }
   }
 
   /**
@@ -416,19 +399,77 @@ export default function UserList() {
    * de verse de inmediato (la RLS deriva el acceso de esta pertenencia), y sin
    * ninguna el usuario queda sin campaña: no ve ni crea contenido.
    */
-  const handleCampaignsChange = async (user: ProfileWithEmail, ids: string[]) => {
-    const previous = userCampaigns[user.id] ?? []
-    // Optimista: el select responde ya y revertimos si la BD rechaza.
+  const handleCampaignsChange = (user: ProfileWithEmail, ids: string[]) => {
     setUserCampaigns((prev) => ({ ...prev, [user.id]: ids }))
-    setSavingCampaignsFor(user.id)
+  }
+
+  // Deshacer (Ctrl+Z) del borrador: nombre, rol, permiso y campañas.
+  const undoState = useMemo(() => ({ users, userCampaigns }), [users, userCampaigns])
+  const { undo, canUndo } = useUndoHistory({
+    state: undoState,
+    apply: useCallback(
+      (snap: { users: ProfileWithEmail[]; userCampaigns: Record<string, string[]> }) => {
+        setUsers(snap.users)
+        setUserCampaigns(snap.userCampaigns)
+      },
+      [],
+    ),
+    enabled: !loading,
+  })
+
+  /* ── Lo que está sin guardar ── */
+  const dirtyUsers = users.filter((u) => {
+    const before = savedUsers.find((x) => x.id === u.id)
+    if (!before) return false
+    return (
+      before.display_name !== u.display_name ||
+      before.role !== u.role ||
+      before.can_create_learners !== u.can_create_learners
+    )
+  })
+  const dirtyCampaignUsers = users.filter((u) => {
+    const before = savedUserCampaigns[u.id] ?? []
+    const now = userCampaigns[u.id] ?? []
+    return JSON.stringify([...before].sort()) !== JSON.stringify([...now].sort())
+  })
+  const pendingCount = new Set([
+    ...dirtyUsers.map((u) => u.id),
+    ...dirtyCampaignUsers.map((u) => u.id),
+  ]).size
+
+  const saveUsers = async (): Promise<boolean> => {
     try {
-      const home = await saveUserCampaigns(user.id, ids, user.campaign_id ?? null)
-      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, campaign_id: home } : u)))
+      for (const u of dirtyUsers) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            display_name: u.display_name,
+            role: u.role,
+            can_create_learners: u.can_create_learners,
+          })
+          .eq('id', u.id)
+        if (error) throw error
+      }
+      // La campaña "de casa" la decide el servidor, así que el resultado se
+      // aplica sobre una sola lista final: si no, la línea base se quedaría con
+      // la versión de antes y la barra volvería a decir que hay algo pendiente.
+      let after = users
+      for (const u of dirtyCampaignUsers) {
+        const home = await saveUserCampaigns(
+          u.id,
+          userCampaigns[u.id] ?? [],
+          u.campaign_id ?? null,
+        )
+        after = after.map((x) => (x.id === u.id ? { ...x, campaign_id: home } : x))
+      }
+      setUsers(after)
+      setSavedUsers(after)
+      setSavedUserCampaigns(userCampaigns)
+      toast.success(t('admin.users.saved_all', { defaultValue: 'Cambios guardados' }))
+      return true
     } catch (err) {
-      setUserCampaigns((prev) => ({ ...prev, [user.id]: previous }))
       toast.error(t('admin.users.campaigns_save_error'), (err as Error).message)
-    } finally {
-      setSavingCampaignsFor(null)
+      return false
     }
   }
 
@@ -501,9 +542,10 @@ export default function UserList() {
       if (updated === 0) {
         throw new Error(skipped[0]?.reason ?? t('admin.users.status_no_change'))
       }
-      setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, is_active: !deactivating } : u)),
-      )
+      const setActive = (list: ProfileWithEmail[]) =>
+        list.map((u) => (u.id === user.id ? { ...u, is_active: !deactivating } : u))
+      setUsers(setActive)
+      setSavedUsers(setActive)
       toast.success(
         deactivating
           ? t('admin.users.deactivate_done', { name })
@@ -540,6 +582,7 @@ export default function UserList() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error al eliminar usuario')
       setUsers((prev) => prev.filter((u) => u.id !== userId))
+      setSavedUsers((prev) => prev.filter((u) => u.id !== userId))
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al eliminar usuario')
     } finally {
@@ -938,11 +981,10 @@ export default function UserList() {
                         <Tooltip label={t('admin.courses.save')} className="shrink-0">
                         <button
                           onClick={() => handleSaveName(user.id)}
-                          disabled={savingName}
-                          className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-green-600 hover:bg-green-500/10 disabled:opacity-50 transition-colors"
+                          className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-green-600 hover:bg-green-500/10 transition-colors"
                           aria-label={t('admin.courses.save')}
                         >
-                          {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-4 w-4" />}
+                          <Check className="h-4 w-4" />
                         </button>
                         </Tooltip>
                         <Tooltip label={t('admin.courses.cancel')} className="shrink-0">
@@ -1088,9 +1130,6 @@ export default function UserList() {
                         aria-label={t('admin.users.col_campaign')}
                       />
                     )}
-                    {savingCampaignsFor === user.id && (
-                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-text-subtle" />
-                    )}
                   </div>
                 )}
                 {/* Cada acción explica QUÉ hace al pasar el mouse: los iconos
@@ -1154,8 +1193,7 @@ export default function UserList() {
                     >
                       <button
                         onClick={() => handleToggleCanCreate(user)}
-                        disabled={togglingPermFor === user.id}
-                        className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+                        className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors ${
                           user.can_create_learners
                             ? 'text-green-600 hover:bg-green-500/10'
                             : 'text-text-subtle hover:text-text hover:bg-glass/6'
@@ -1163,9 +1201,7 @@ export default function UserList() {
                         aria-label={t('admin.users.can_create_label')}
                         aria-pressed={user.can_create_learners === true}
                       >
-                        {togglingPermFor === user.id
-                          ? <Loader2 className="h-4 w-4 animate-spin" />
-                          : <UserRoundPlus className="h-4 w-4" />}
+                        <UserRoundPlus className="h-4 w-4" />
                       </button>
                     </Tooltip>
                   )}
@@ -1266,6 +1302,18 @@ export default function UserList() {
       {pwdOpen && (
         <DefaultPasswordModal onClose={() => setPwdOpen(false)} onSaved={setDefaultPwdOn} />
       )}
+
+      {/* Una sola barra para toda la pantalla, como en los editores. */}
+      <SaveDock
+        pending={
+          pendingCount > 0
+            ? [{ id: 'users', label: t('admin.users.title', { defaultValue: 'Usuarios' }) }]
+            : []
+        }
+        onSave={saveUsers}
+        onUndo={undo}
+        canUndo={canUndo}
+      />
     </div>
   )
 }

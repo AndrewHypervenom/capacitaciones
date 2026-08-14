@@ -13,6 +13,7 @@ import {
   Recycle,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Upload,
   Wand2,
   X,
@@ -30,6 +31,7 @@ import {
   generateExamWithAi,
   getReusableQuestions,
   parseExamSheet,
+  questionFingerprint,
   reusableToQuestion,
   saveQuizDifficulties,
   SOURCE_CHAR_LIMIT,
@@ -54,6 +56,26 @@ import { cn } from '@/lib/cn'
 const ease = [0.16, 1, 0.3, 1] as const
 
 type Source = 'ai' | 'reuse' | 'file'
+
+/**
+ * El banco visto desde aquí: de cada quiz de módulo, qué preguntas del examen
+ * salieron de él. Se indexa por las dos vías porque una sola miente — la
+ * referencia al quiz original (lo que copia este panel) y la huella del
+ * enunciado (lo que entró a mano, por Excel o antes de que existiera la
+ * referencia).
+ */
+type BankIndex = {
+  byRef: ReadonlyMap<string, string[]>
+  byPrint: ReadonlyMap<string, string[]>
+}
+
+/** Ids de las preguntas del banco que salieron de este quiz. Vacío = no está. */
+function bankIdsFor(q: ReusableQuestion, bank?: BankIndex): string[] {
+  if (!bank) return []
+  const byRef = bank.byRef.get(q.key) ?? []
+  const byPrint = bank.byPrint.get(questionFingerprint(q.text_es)) ?? []
+  return [...new Set([...byRef, ...byPrint])]
+}
 
 export interface ExamCourseContext {
   courseId: string
@@ -83,6 +105,8 @@ export function ExamGenerateModal({
   context,
   domains,
   targetLevel = 'mixta',
+  bank,
+  onRemove,
   onImport,
   onCreateDomains,
   onClose,
@@ -95,6 +119,15 @@ export function ExamGenerateModal({
    * filas del Excel que no cuadren no se importan.
    */
   targetLevel?: ExamTargetLevel
+  /**
+   * Con qué reconocer lo que YA está en el banco: `refs` = `source_ref` de cada
+   * pregunta, `prints` = huella de su enunciado (`questionFingerprint`) para lo
+   * que entró sin referencia. Los quizzes ya usados siguen a la vista, pero
+   * marcados y sin marcar: verlos es la única forma de saber qué falta.
+   */
+  bank?: BankIndex
+  /** Borra del banco las preguntas indicadas (quitar un quiz ya copiado). */
+  onRemove?: (questionIds: string[]) => Promise<void>
   /** Guarda las preguntas elegidas en el banco. */
   onImport: (questions: NewExamQuestion[]) => Promise<void>
   /** Crea los dominios que propuso la IA y devuelve su id por nombre. */
@@ -110,7 +143,49 @@ export function ExamGenerateModal({
   const backdrop = useBackdropDismiss(onClose, !busy)
   const abortRef = useRef<AbortController | null>(null)
 
+  /**
+   * Los quizzes del curso se leen aquí (no dentro del panel) porque de ellos
+   * depende qué pestaña se abre: si hay preguntas de los módulos que todavía no
+   * están en el banco, esa es la vía que sale por defecto — es material del
+   * propio curso, ya revisado, y no cuesta ni un peso de IA.
+   */
+  const [reusable, setReusable] = useState<ReusableQuestion[] | null>(null)
+  /** Si el capacitador ya eligió pestaña, la carga no se la mueve debajo. */
+  const pickedTab = useRef(false)
+
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  useEffect(() => {
+    let alive = true
+    getReusableQuestions(context.courseId)
+      .then((r) => alive && setReusable(r))
+      .catch(() => alive && setReusable([]))
+    return () => {
+      alive = false
+    }
+    // A propósito NO depende del banco: los quizzes del curso no cambian
+    // porque se quite una pregunta del examen, y volver a pedirlos en cada
+    // borrado era una consulta por clic.
+  }, [context.courseId])
+
+  // Solo se abre en "Reutilizar" si de verdad queda algo por copiar.
+  useEffect(() => {
+    if (!reusable || pickedTab.current) return
+    if (reusable.some((q) => bankIdsFor(q, bank).length === 0)) setSource('reuse')
+  }, [reusable, bank])
+
+  /**
+   * Quiz de módulo → preguntas del banco que salieron de él. Es lo que permite
+   * marcarlas como usadas y, ahora, quitarlas del banco desde aquí mismo.
+   */
+  const used = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const q of reusable ?? []) {
+      const ids = bankIdsFor(q, bank)
+      if (ids.length > 0) map.set(q.key, ids)
+    }
+    return map
+  }, [reusable, bank])
 
   const tabs: { id: Source; label: string; icon: typeof Sparkles }[] = [
     { id: 'ai', label: t('admin.exam.src_ai', 'Con IA'), icon: Sparkles },
@@ -155,7 +230,10 @@ export function ExamGenerateModal({
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setSource(id)}
+              onClick={() => {
+                pickedTab.current = true
+                setSource(id)
+              }}
               disabled={busy}
               className={cn(
                 'relative flex items-center gap-1.5 px-3.5 py-3 text-[13px] font-medium transition-colors disabled:opacity-50',
@@ -204,7 +282,9 @@ export function ExamGenerateModal({
           )}
           {source === 'reuse' && (
             <ReusePanel
-              courseId={context.courseId}
+              items={reusable}
+              used={used}
+              onRemove={onRemove}
               courseTitle={context.courseTitle}
               domains={domains}
               targetLevel={targetLevel}
@@ -392,16 +472,16 @@ function AiPanel({
       await onImport(questions)
       toast.success(
         dropped > 0
-          ? t('admin.exam.ai_ok_dropped', {
+          ? t('admin.exam.ai_ok_dropped_v2', {
               n: questions.length,
               dropped,
               level: difficultyLabel(t, targetLevel),
               defaultValue:
-                'Preguntas añadidas: {{n}}. Se descartaron {{dropped}} que no quedaron en nivel {{level}}.',
+                'Preguntas añadidas al borrador: {{n}}. Se descartaron {{dropped}} que no quedaron en nivel {{level}}. Recuerda guardar.',
             })
-          : t('admin.exam.ai_ok', {
+          : t('admin.exam.ai_ok_v2', {
               n: questions.length,
-              defaultValue: 'Preguntas añadidas al banco: {{n}}',
+              defaultValue: 'Añadidas al banco: {{n}}. Se guardan con el resto del examen.',
             }),
       )
       onDone()
@@ -533,7 +613,9 @@ function AiPanel({
 /* ── 2. Reutilizar quizzes de los módulos ──────────────────────────────────── */
 
 function ReusePanel({
-  courseId,
+  items,
+  used,
+  onRemove,
   courseTitle,
   domains,
   targetLevel,
@@ -542,7 +624,11 @@ function ReusePanel({
   onImport,
   onDone,
 }: {
-  courseId: string
+  /** Los carga el modal (decide con ellos la pestaña inicial). `null` = leyendo. */
+  items: ReusableQuestion[] | null
+  /** Quiz ya copiado → preguntas del banco que salieron de él. */
+  used: ReadonlyMap<string, string[]>
+  onRemove?: (questionIds: string[]) => Promise<void>
   courseTitle: string
   domains: ExamDomain[]
   targetLevel: ExamTargetLevel
@@ -552,36 +638,50 @@ function ReusePanel({
   onDone: () => void
 }) {
   const { t } = useTranslation()
-  const [items, setItems] = useState<ReusableQuestion[] | null>(null)
-  const [picked, setPicked] = useState<Set<string>>(new Set())
+  /**
+   * Lo DESmarcado a mano, no lo marcado.
+   *
+   * La selección se deriva: "todas las copiables menos estas". Guardar la lista
+   * de marcadas obligaba a rehacerla cada vez que cambiaba el banco (al quitar
+   * una pregunta desde aquí, por ejemplo) y eso pisaba lo que el capacitador
+   * acababa de desmarcar.
+   */
+  const [unpicked, setUnpicked] = useState<Set<string>>(new Set())
   const [domainId, setDomainId] = useState('')
   // Nivel de cada pregunta: viene guardado del quiz, lo estima la IA o lo
   // corrige el capacitador. Lo que se toque aquí se guarda en el quiz.
   const [levels, setLevels] = useState<Record<string, ExamDifficulty>>({})
   const [rating, setRating] = useState(false)
+  /** Quiz que se está quitando del banco ahora mismo. */
+  const [removing, setRemoving] = useState<string | null>(null)
   /** El SQL del nivel guardado no está corrido: se avisa una sola vez. */
   const [noStore, setNoStore] = useState(false)
   const [filter, setFilter] = useState<'todas' | ExamDifficulty>('todas')
 
   useEffect(() => {
-    getReusableQuestions(courseId)
-      .then((r) => {
-        setItems(r)
-        setPicked(new Set(r.map((q) => q.key)))
-        // El nivel que ya está guardado en el quiz se respeta tal cual: si
-        // alguien lo estimó (o lo corrigió) la semana pasada, no hay que volver
-        // a pedírselo a la IA ni a él.
-        const saved: Record<string, ExamDifficulty> = {}
-        for (const q of r) if (q.difficulty) saved[q.key] = q.difficulty
-        setLevels(saved)
-      })
-      .catch(() => setItems([]))
-  }, [courseId])
+    if (!items) return
+    // El nivel que ya está guardado en el quiz se respeta tal cual: si alguien
+    // lo estimó (o lo corrigió) la semana pasada, no hay que volver a
+    // pedírselo a la IA ni a él.
+    const saved: Record<string, ExamDifficulty> = {}
+    for (const q of items) if (q.difficulty) saved[q.key] = q.difficulty
+    setLevels(saved)
+  }, [items])
 
   const levelOf = (key: string): ExamDifficulty => levels[key] ?? 'medio'
-  /** Preguntas que todavía no tienen nivel: son las únicas que hay que calificar. */
-  const pending = useMemo(() => (items ?? []).filter((q) => !levels[q.key]), [items, levels])
-  const rated = items !== null && items.length > 0 && pending.length === 0
+  /** Las que todavía se pueden copiar: las que ya están en el banco no cuentan. */
+  const fresh = useMemo(() => (items ?? []).filter((q) => !used.has(q.key)), [items, used])
+  /** Marcadas para copiar: todas las copiables salvo las que se desmarcaron. */
+  const picked = useMemo(
+    () => new Set(fresh.filter((q) => !unpicked.has(q.key)).map((q) => q.key)),
+    [fresh, unpicked],
+  )
+  /**
+   * Preguntas que hay que calificar: solo las copiables. Pedir el nivel de las
+   * que ya están en el banco era trabajo (y gasto de IA) para nada.
+   */
+  const pending = useMemo(() => fresh.filter((q) => !levels[q.key]), [fresh, levels])
+  const rated = items !== null && fresh.length > 0 && pending.length === 0
 
   /** Guarda el nivel en el quiz de sección. Silencioso: es una comodidad. */
   const persist = useCallback(
@@ -609,8 +709,8 @@ function ReusePanel({
    * resultado se guarda en el quiz para no repetir el gasto en cada visita.
    */
   const rate = async (all = false) => {
-    if (!items?.length) return
-    const todo = all ? items : pending
+    if (fresh.length === 0) return
+    const todo = all ? fresh : pending
     if (todo.length === 0) return
     setRating(true)
     try {
@@ -633,13 +733,12 @@ function ReusePanel({
       // solas: es lo que el capacitador haría a mano, y así el bloqueo del
       // botón no lo obliga a repasar treinta casillas una por una.
       if (isLevelLocked(targetLevel)) {
-        const fit = items.filter((q) => next[q.key] === targetLevel)
-        setPicked(new Set(fit.map((q) => q.key)))
-        const off = items.length - fit.length
-        if (off > 0) {
+        const off = fresh.filter((q) => next[q.key] !== targetLevel)
+        setUnpicked(new Set(off.map((q) => q.key)))
+        if (off.length > 0) {
           toast.info(
             t('admin.exam.reuse_rated_off', {
-              n: off,
+              n: off.length,
               level: difficultyLabel(t, targetLevel),
               defaultValue:
                 'Se desmarcaron {{n}} preguntas que no son de nivel {{level}}: este examen no las admite.',
@@ -655,6 +754,31 @@ function ReusePanel({
       toast.error((err as Error).message)
     } finally {
       setRating(false)
+    }
+  }
+
+  /**
+   * Saca del banco las preguntas que salieron de este quiz. No pregunta antes:
+   * es reversible de un clic — la fila se queda ahí y vuelve a ser copiable.
+   */
+  const removeFromBank = async (q: ReusableQuestion) => {
+    const ids = used.get(q.key)
+    if (!onRemove || !ids?.length || removing) return
+    setRemoving(q.key)
+    try {
+      await onRemove(ids)
+      toast.success(
+        t('admin.exam.reuse_removed_v2', {
+          count: ids.length,
+          defaultValue: 'Quitada del banco. Se aplica al guardar; puedes deshacerlo con Ctrl+Z.',
+          defaultValue_other:
+            'Quitadas {{count}} preguntas del banco. Se aplica al guardar; puedes deshacerlo con Ctrl+Z.',
+        }),
+      )
+    } catch {
+      toast.error(t('admin.exam.reuse_remove_error', 'No se pudo quitar del banco.'))
+    } finally {
+      setRemoving(null)
     }
   }
 
@@ -676,7 +800,7 @@ function ReusePanel({
   }, [visible])
 
   const toggle = (key: string) =>
-    setPicked((prev) => {
+    setUnpicked((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -687,30 +811,30 @@ function ReusePanel({
   const offLevelPicked = useMemo(
     () =>
       isLevelLocked(targetLevel)
-        ? (items ?? []).filter((q) => picked.has(q.key) && levels[q.key] !== targetLevel)
+        ? fresh.filter((q) => picked.has(q.key) && levels[q.key] !== targetLevel)
         : [],
-    [items, picked, levels, targetLevel],
+    [fresh, picked, levels, targetLevel],
   )
 
   const dropOffLevel = () =>
-    setPicked((prev) => {
+    setUnpicked((prev) => {
       const next = new Set(prev)
-      for (const q of offLevelPicked) next.delete(q.key)
+      for (const q of offLevelPicked) next.add(q.key)
       return next
     })
 
   const run = async () => {
     // Sin nivel estimado no se copia nada: ver el aviso de arriba.
     if (!rated || offLevelPicked.length > 0) return
-    const chosen = (items ?? []).filter((q) => picked.has(q.key))
+    const chosen = fresh.filter((q) => picked.has(q.key))
     if (chosen.length === 0) return
     setBusy(true)
     try {
       await onImport(chosen.map((q) => reusableToQuestion(q, domainId || null, levelOf(q.key))))
       toast.success(
-        t('admin.exam.reuse_ok', {
+        t('admin.exam.reuse_ok_v2', {
           n: chosen.length,
-          defaultValue: 'Preguntas copiadas al banco: {{n}}',
+          defaultValue: 'Copiadas al banco: {{n}}. Se guardan con el resto del examen.',
         }),
       )
       onDone()
@@ -729,14 +853,16 @@ function ReusePanel({
     )
   }
 
+  // Vacío de verdad: los módulos no tienen ni un quiz. Es lo único que aquí no
+  // se puede resolver — el resto (ya copiadas) sí se enseña, marcado.
   if (items.length === 0) {
     return (
       <div className="py-12 text-center">
         <Recycle className="mx-auto mb-3 h-7 w-7 text-text-subtle" />
         <p className="text-[13.5px] text-text-muted">
           {t(
-            'admin.exam.reuse_empty',
-            'Los módulos de este curso todavía no tienen quizzes de sección que reutilizar.',
+            'admin.exam.reuse_empty_v3',
+            'Los módulos de este curso todavía no tienen ningún quiz de sección.',
           )}
         </p>
       </div>
@@ -745,12 +871,35 @@ function ReusePanel({
 
   return (
     <div className="space-y-4">
-      <p className="text-[13.5px] leading-relaxed text-text-muted">
-        {t(
-          'admin.exam.reuse_intro',
-          'Se copian al examen: editarlas aquí no toca el quiz del módulo, y al revés.',
+      <div className="space-y-1.5">
+        <p className="text-[13.5px] leading-relaxed text-text-muted">
+          {t(
+            'admin.exam.reuse_intro',
+            'Se copian al examen: editarlas aquí no toca el quiz del módulo, y al revés.',
+          )}
+        </p>
+        {/* El recuento exacto: cuántos quizzes hay, cuántos ya se usaron y
+            cuántos quedan. Antes esto era una frase de una línea que decía "o
+            no hay, o ya están todos" — que es justo lo que hay que saber. */}
+        <p className="text-[12.5px] text-text-subtle">
+          {t('admin.exam.reuse_count', {
+            total: items.length,
+            used: used.size,
+            fresh: fresh.length,
+            defaultValue:
+              '{{total}} quizzes en los módulos · {{used}} ya están en el banco · {{fresh}} por copiar',
+          })}
+        </p>
+        {fresh.length === 0 && (
+          <p className="flex items-start gap-2 rounded-2xl border border-line bg-subtle/50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-text-muted">
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            {t(
+              'admin.exam.reuse_all_used_v2',
+              'Ya están todos en el banco: abajo ves cuáles son y puedes quitar los que no quieras. Para más preguntas, escríbelas con IA o impórtalas.',
+            )}
+          </p>
         )}
-      </p>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-[200px] flex-1">
@@ -770,12 +919,15 @@ function ReusePanel({
           onClick={() => {
             const selectable =
               rated && isLevelLocked(targetLevel)
-                ? items.filter((q) => levelOf(q.key) === targetLevel)
-                : items
-            setPicked(
+                ? fresh.filter((q) => levelOf(q.key) === targetLevel)
+                : fresh
+            const keys = new Set(selectable.map((q) => q.key))
+            setUnpicked(
               picked.size >= selectable.length && selectable.length > 0
-                ? new Set()
-                : new Set(selectable.map((q) => q.key)),
+                ? // Quitar todas: desmarcadas todas las copiables.
+                  new Set(fresh.map((q) => q.key))
+                : // Elegir todas: solo quedan fuera las que el examen no admite.
+                  new Set(fresh.filter((q) => !keys.has(q.key)).map((q) => q.key)),
             )
           }}
           className="rounded-full border border-line px-3.5 py-2 text-[12.5px] font-medium text-text-muted transition-colors hover:text-text"
@@ -788,7 +940,11 @@ function ReusePanel({
 
       {/* Nivel de las preguntas reutilizadas: el examen reparte por dificultad,
           así que sin nivel real NO se pueden copiar (entrarían todas como
-          "medio" y el sorteo por nivel quedaría mintiendo). */}
+          "medio" y el sorteo por nivel quedaría mintiendo).
+
+          Si no queda ninguna por copiar, esta tarjeta no pinta nada: pedir el
+          nivel de preguntas que ya están en el banco es trabajo inventado. */}
+      {fresh.length > 0 && (
       <div
         className={cn(
           'rounded-2xl border px-4 py-3',
@@ -879,6 +1035,7 @@ function ReusePanel({
           </div>
         )}
       </div>
+      )}
 
       <div className="space-y-4">
         {byModule.map(([moduleTitle, qs]) => (
@@ -887,26 +1044,65 @@ function ReusePanel({
               {moduleTitle}
             </h3>
             <div className="space-y-1.5">
-              {qs.map((q) => (
+              {qs.map((q) => {
+                const inBank = used.has(q.key)
+                return (
                 <div
                   key={q.key}
                   className={cn(
                     'flex items-start gap-3 rounded-2xl border px-4 py-3 transition-colors',
-                    picked.has(q.key) ? 'border-primary/40 bg-primary/[0.04]' : 'border-line',
+                    inBank
+                      ? 'border-line bg-subtle/40'
+                      : picked.has(q.key)
+                        ? 'border-primary/40 bg-primary/[0.04]'
+                        : 'border-line',
                   )}
                 >
                   <input
                     type="checkbox"
                     checked={picked.has(q.key)}
                     onChange={() => toggle(q.key)}
+                    // Ya está en el banco: dejar copiarla otra vez solo sirve
+                    // para tener la misma pregunta dos veces en el examen.
+                    disabled={inBank}
                     aria-label={q.text_es}
-                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-[rgb(var(--neon-green))]"
+                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-[rgb(var(--neon-green))] disabled:cursor-not-allowed disabled:opacity-40"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13.5px] text-text">{q.text_es}</p>
-                    <p className="mt-0.5 text-[11.5px] text-text-subtle">
-                      {q.sectionHeading} · {q.options.length}{' '}
-                      {t('admin.exam.options_short', 'opciones')}
+                    <p className={cn('text-[13.5px]', inBank ? 'text-text-muted' : 'text-text')}>
+                      {q.text_es}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-text-subtle">
+                      <span>
+                        {q.sectionHeading} · {q.options.length}{' '}
+                        {t('admin.exam.options_short', 'opciones')}
+                      </span>
+                      {inBank && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10.5px] font-semibold text-primary">
+                          <Check className="h-3 w-3" />
+                          {(used.get(q.key)?.length ?? 1) > 1
+                            ? t('admin.exam.reuse_in_bank_n', {
+                                n: used.get(q.key)?.length ?? 1,
+                                defaultValue: 'En el banco · {{n}} copias',
+                              })
+                            : t('admin.exam.reuse_in_bank', 'Ya en el banco')}
+                        </span>
+                      )}
+                      {inBank && onRemove && (
+                        <button
+                          type="button"
+                          onClick={() => void removeFromBank(q)}
+                          disabled={busy || removing !== null}
+                          className="inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[10.5px] font-medium text-text-muted transition-colors hover:border-red-500/40 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                        >
+                          {removing === q.key ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3" />
+                          )}
+                          {t('admin.exam.reuse_remove', 'Quitar del banco')}
+                        </button>
+                      )}
                     </p>
                   </div>
                   {levels[q.key] ? (
@@ -932,7 +1128,8 @@ function ReusePanel({
                     </span>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ))}
@@ -962,7 +1159,9 @@ function ReusePanel({
 
       <div className="sticky bottom-0 -mx-6 flex items-center justify-end gap-2 border-t border-line bg-surface px-6 py-3">
         <span className="mr-auto text-[12.5px] text-text-muted">
-          {!rated
+          {fresh.length === 0
+            ? t('admin.exam.reuse_nothing_left', 'No queda ningún quiz por copiar.')
+            : !rated
             ? t('admin.exam.reuse_blocked', 'Primero define el nivel de las preguntas.')
             : offLevelPicked.length > 0
               ? t('admin.exam.reuse_blocked_level', {
@@ -1153,7 +1352,10 @@ function FilePanel({
         })),
       )
       toast.success(
-        t('admin.exam.file_ok', { n: ok.length, defaultValue: 'Preguntas importadas: {{n}}' }),
+        t('admin.exam.file_ok_v2', {
+          n: ok.length,
+          defaultValue: 'Importadas: {{n}}. Se guardan con el resto del examen.',
+        }),
       )
       onDone()
     } catch {
@@ -1242,9 +1444,9 @@ function FilePanel({
       }
       await onImport(questions)
       toast.success(
-        t('admin.exam.file_ok', {
+        t('admin.exam.file_ok_v2', {
           n: questions.length,
-          defaultValue: 'Preguntas importadas: {{n}}',
+          defaultValue: 'Importadas: {{n}}. Se guardan con el resto del examen.',
         }),
       )
       onDone()

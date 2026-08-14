@@ -459,6 +459,25 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
 }
 
 /**
+ * Huella de una pregunta para saber si YA está en el banco.
+ *
+ * El `source_ref` es la vía fiable, pero no cubre todo: preguntas copiadas a
+ * mano, importadas de un Excel o traídas antes de que existiera esa columna
+ * quedan sin referencia y volvían a ofrecerse como si fueran nuevas. Comparar
+ * también el enunciado normalizado (sin acentos, ni signos, ni mayúsculas, ni
+ * dobles espacios) las reconoce igual, y aguanta los retoques de redacción que
+ * no cambian la pregunta.
+ */
+export function questionFingerprint(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+/**
  * Guarda el nivel en el propio quiz de sección, para no volver a pagarle a la
  * IA la misma estimación cada vez que se abre "Reutilizar quizzes" (y para que
  * la corrección que hizo el capacitador a mano no se pierda al cerrar).
