@@ -4,13 +4,16 @@ import {
   AlertCircle,
   Clock,
   Loader2,
+  MessageSquare,
   MessageSquareHeart,
+  Quote,
   RefreshCw,
   Repeat,
   History,
   Users,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { Toggle } from '@/components/ui/Toggle'
 import { NumberField } from '@/components/ui/NumberField'
 import { Select } from '@/components/ui/Select'
@@ -44,20 +47,101 @@ import {
    muestran en solo lectura para que quede claro qué se está preguntando.
    ──────────────────────────────────────────────────────────────────────────── */
 
+/* ── La escala de color ──────────────────────────────────────────────────────
+   Un 3 y un 9 no son "dos barras verdes de distinto largo": son dos noticias
+   opuestas. Se agrupan como la escala de satisfacción de siempre —bajas 0-6,
+   tibias 7-8, altas 9-10— para que el panel se lea de un vistazo sin tener que
+   sumar barras con la mirada. El mismo tono viste el promedio, la franja
+   resumen y el filo de cada comentario, así que el color siempre significa lo
+   mismo en toda la pestaña.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+type Tone = 'low' | 'mid' | 'high'
+
+function toneOf(score: number): Tone {
+  if (score <= 6) return 'low'
+  if (score <= 8) return 'mid'
+  return 'high'
+}
+
+const TONE = {
+  low: {
+    bar: 'bg-danger',
+    text: 'text-danger',
+    /* Los tonos ámbar van literales porque no hay token de "aviso" en la
+       paleta; es lo que ya usan los avisos de esta misma pestaña. */
+    soft: 'bg-danger/10',
+    /* Solo el filo IZQUIERDO: `border-danger/40` a secas teñiría los cuatro
+       lados y la tarjeta dejaría de parecer una tarjeta. */
+    edge: 'border-l-danger/50',
+    dot: 'bg-danger',
+  },
+  mid: {
+    bar: 'bg-amber-500',
+    text: 'text-amber-600 dark:text-amber-400',
+    soft: 'bg-amber-500/10',
+    edge: 'border-l-amber-500/50',
+    dot: 'bg-amber-500',
+  },
+  high: {
+    bar: 'bg-primary',
+    text: 'text-primary',
+    soft: 'bg-primary/10',
+    edge: 'border-l-primary/50',
+    dot: 'bg-primary',
+  },
+} as const satisfies Record<Tone, Record<string, string>>
+
 /** Barra de una nota en la distribución 0-10. */
-function HistBar({ n, max, label }: { n: number; max: number; label: string }) {
+function HistBar({
+  n,
+  max,
+  total,
+  label,
+  tip,
+}: {
+  n: number
+  max: number
+  total: number
+  label: string
+  tip: string
+}) {
   const pct = max > 0 ? (n / max) * 100 : 0
+  const tone = TONE[toneOf(Number(label))]
+  const share = total > 0 ? Math.round((n / total) * 100) : 0
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-text-subtle">{label}</span>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-subtle">
-        <div
-          className="h-full rounded-full bg-primary transition-[width] duration-500"
-          style={{ width: `${pct}%` }}
-        />
+    // El disparador del Tooltip es un `span inline-flex`: sin `w-full` la fila
+    // se encogería al ancho de su contenido y las barras dejarían de alinearse.
+    <Tooltip label={tip} anchor="element" disabled={n === 0} maxWidth={220} className="w-full">
+      <div className="group flex w-full items-center gap-2 rounded-md px-1 py-px transition-colors hover:bg-subtle/60">
+        <span
+          className={cn(
+            'w-5 shrink-0 text-right text-[11px] tabular-nums',
+            n > 0 ? cn(tone.text, 'font-medium') : 'text-text-subtle/60',
+          )}
+        >
+          {label}
+        </span>
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-subtle">
+          <div
+            className={cn('h-full rounded-full transition-[width] duration-500', tone.bar)}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {/* El conteo manda; el porcentaje solo asoma al pasar por encima, para
+            no convertir la columna en una tabla de dos números. */}
+        <span className="w-11 shrink-0 text-right text-[11px] tabular-nums text-text-subtle">
+          {n > 0 ? (
+            <>
+              <span className="text-text-muted">{n}</span>
+              <span className="ml-1 opacity-0 transition-opacity group-hover:opacity-100">
+                {share}%
+              </span>
+            </>
+          ) : null}
+        </span>
       </div>
-      <span className="w-6 shrink-0 text-[11px] tabular-nums text-text-subtle">{n || ''}</span>
-    </div>
+    </Tooltip>
   )
 }
 
@@ -66,32 +150,185 @@ function ScoreCard({
   avg,
   hist,
   emptyLabel,
+  toneLabels,
+  tip,
 }: {
   title: string
   avg: number | null
   hist: Record<string, number>
   emptyLabel: string
+  toneLabels: Record<Tone, string>
+  tip: (score: number, n: number, total: number) => string
 }) {
-  const max = Math.max(1, ...Object.values(hist))
-  const has = Object.keys(hist).length > 0
+  const values = Object.values(hist)
+  const max = Math.max(1, ...values)
+  const total = values.reduce((a, b) => a + b, 0)
+  const has = total > 0
+
+  // Reparto por zonas para la franja resumen.
+  const buckets: Record<Tone, number> = { low: 0, mid: 0, high: 0 }
+  for (const [k, n] of Object.entries(hist)) buckets[toneOf(Number(k))] += n
+
+  const avgTone = avg === null ? null : TONE[toneOf(avg)]
+
   return (
     <div className="rounded-xl border border-line p-4">
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <span className="text-[12px] font-medium text-text">{title}</span>
-        <span className="text-[22px] font-bold tabular-nums leading-none text-text">
+        <span className="min-w-0 break-words text-[12px] font-medium text-text">{title}</span>
+        <span
+          className={cn(
+            'shrink-0 text-[26px] font-bold tabular-nums leading-none',
+            avgTone ? avgTone.text : 'text-text-subtle',
+          )}
+        >
           {avg === null ? '—' : avg.toFixed(1)}
           <span className="ml-0.5 text-[12px] font-normal text-text-subtle">/10</span>
         </span>
       </div>
+
       {has ? (
-        <div className="space-y-1">
-          {Array.from({ length: 11 }, (_, i) => (
-            <HistBar key={i} label={String(i)} n={hist[String(i)] ?? 0} max={max} />
-          ))}
-        </div>
+        <>
+          {/* Franja resumen: cuánto pesa cada zona, antes de mirar barra por
+              barra. Es la lectura de tres segundos. */}
+          <div className="mb-1.5 flex h-1.5 overflow-hidden rounded-full bg-subtle">
+            {(['low', 'mid', 'high'] as const).map((k) =>
+              buckets[k] > 0 ? (
+                <div
+                  key={k}
+                  className={cn('h-full transition-[width] duration-500', TONE[k].bar)}
+                  style={{ width: `${(buckets[k] / total) * 100}%` }}
+                />
+              ) : null,
+            )}
+          </div>
+          <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-text-subtle">
+            {(['high', 'mid', 'low'] as const).map((k) =>
+              buckets[k] > 0 ? (
+                <span key={k} className="inline-flex items-center gap-1">
+                  <span className={cn('h-1.5 w-1.5 rounded-full', TONE[k].dot)} />
+                  {toneLabels[k]}
+                  <span className="tabular-nums text-text-muted">{buckets[k]}</span>
+                </span>
+              ) : null,
+            )}
+          </div>
+
+          <div className="flex flex-col gap-0.5">
+            {Array.from({ length: 11 }, (_, i) => {
+              const n = hist[String(i)] ?? 0
+              return (
+                <HistBar
+                  key={i}
+                  label={String(i)}
+                  n={n}
+                  max={max}
+                  total={total}
+                  tip={tip(i, n, total)}
+                />
+              )
+            })}
+          </div>
+        </>
       ) : (
         <p className="text-[12px] text-text-subtle">{emptyLabel}</p>
       )}
+    </div>
+  )
+}
+
+/* ── Un comentario ───────────────────────────────────────────────────────────
+   El filo de color lo dice antes de leerlo: viene de alguien contento o de
+   alguien que la pasó mal. Y el texto va con corte agresivo de palabra a
+   propósito — la gente pega tiras de asteriscos y URLs kilométricas, y sin
+   esto una sola respuesta empujaba scroll horizontal en TODO el panel.
+   ─────────────────────────────────────────────────────────────────────────── */
+function CommentCard({
+  c,
+  labels,
+}: {
+  c: {
+    at: string
+    q1: number
+    q2: number
+    text: string
+    followup: string | null
+    lang: string
+    retro: boolean
+  }
+  labels: { q1: string; q2: string; retro: string; followup: string }
+}) {
+  const tone = TONE[toneOf((c.q1 + c.q2) / 2)]
+  const date = new Date(c.at)
+  return (
+    <div
+      className={cn(
+        'overflow-hidden rounded-xl border border-l-2 border-line bg-surface',
+        tone.edge,
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line/60 bg-subtle/30 px-3.5 py-2 text-[11px] text-text-subtle">
+        <span className="tabular-nums">
+          {date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+        </span>
+        <span className="text-text-subtle/40">·</span>
+        {/* Las dos notas con su rótulo: "1/10 · 6/10" suelto no dice cuál era
+            cuál, y son preguntas distintas. */}
+        <Tooltip label={labels.q1} anchor="element">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium tabular-nums',
+              TONE[toneOf(c.q1)].soft,
+              TONE[toneOf(c.q1)].text,
+            )}
+          >
+            <span className={cn('h-1.5 w-1.5 rounded-full', TONE[toneOf(c.q1)].dot)} />
+            {c.q1}
+          </span>
+        </Tooltip>
+        <Tooltip label={labels.q2} anchor="element">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium tabular-nums',
+              TONE[toneOf(c.q2)].soft,
+              TONE[toneOf(c.q2)].text,
+            )}
+          >
+            <span className={cn('h-1.5 w-1.5 rounded-full', TONE[toneOf(c.q2)].dot)} />
+            {c.q2}
+          </span>
+        </Tooltip>
+        <span className="ml-auto flex items-center gap-2">
+          {c.retro && (
+            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-600 dark:text-amber-400">
+              {labels.retro}
+            </span>
+          )}
+          <span className="rounded-full border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-text-subtle">
+            {c.lang}
+          </span>
+        </span>
+      </div>
+
+      <div className="px-3.5 py-3">
+        <div className="flex gap-2.5">
+          <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-subtle/50" />
+          <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-text [overflow-wrap:anywhere]">
+            {c.text}
+          </p>
+        </div>
+
+        {c.followup && (
+          <div className="mt-2.5 rounded-lg border-l-2 border-amber-500/40 bg-amber-500/5 px-3 py-2">
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              {labels.followup}
+            </div>
+            <p className="min-w-0 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-text-muted [overflow-wrap:anywhere]">
+              {c.followup}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -252,6 +489,20 @@ export function SurveyPanel({
   // variante de campaña, pero hay que decirlo aquí y ofrecer la salida — o el
   // capacitador creería que está preguntando algo que nadie va a ver.
   const instructorMissing = cfg.q1_mode === 'instructor' && !effectiveName
+
+  // Rótulos de la escala de color y del globo de cada barra. Se arman aquí
+  // porque `t` vive en el componente, y las tarjetas los reciben ya traducidos.
+  const toneLabels: Record<Tone, string> = {
+    high: t('admin.courses.survey.tone_high'),
+    mid: t('admin.courses.survey.tone_mid'),
+    low: t('admin.courses.survey.tone_low'),
+  }
+  const histTip = (score: number, n: number, total: number) =>
+    t('admin.courses.survey.hist_tip', {
+      n,
+      score,
+      pct: total > 0 ? Math.round((n / total) * 100) : 0,
+    })
 
   return (
     <div className="space-y-10">
@@ -599,12 +850,16 @@ export function SurveyPanel({
                 avg={results.q1_avg ?? results.q1_avg_all}
                 hist={results.q1_hist}
                 emptyLabel={t('admin.courses.survey.no_answers')}
+                toneLabels={toneLabels}
+                tip={histTip}
               />
               <ScoreCard
                 title={t(labelKeys.q2)}
                 avg={results.q2_avg ?? results.q2_avg_all}
                 hist={results.q2_hist}
                 emptyLabel={t('admin.courses.survey.no_answers')}
+                toneLabels={toneLabels}
+                tip={histTip}
               />
             </div>
 
@@ -623,48 +878,56 @@ export function SurveyPanel({
                 no se acuerda igual, y mezclarlas mueve el promedio sin que
                 nadie sepa por qué. */}
             <div className="flex flex-wrap gap-2 text-[11px]">
-              <span className="rounded-full border border-line px-2.5 py-1 text-text-muted">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-text-muted">
+                <Users className="h-3 w-3 shrink-0" />
                 {t('admin.courses.survey.count_total', { n: results.total })}
               </span>
+              {results.comments.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-text-muted">
+                  <MessageSquare className="h-3 w-3 shrink-0" />
+                  {t('admin.courses.survey.count_comments', { n: results.comments.length })}
+                </span>
+              )}
               {results.total_retro > 0 && (
-                <span className="rounded-full border border-amber-500/25 bg-amber-500/5 px-2.5 py-1 text-amber-600 dark:text-amber-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/5 px-2.5 py-1 text-amber-600 dark:text-amber-400">
+                  <History className="h-3 w-3 shrink-0" />
                   {t('admin.courses.survey.count_retro', { n: results.total_retro })}
                 </span>
               )}
             </div>
 
             <div>
-              <div className="mb-2 text-[12px] font-medium text-text">
+              <div className="mb-2 flex items-center gap-2 text-[12px] font-medium text-text">
+                <MessageSquare className="h-3.5 w-3.5 text-text-muted" />
                 {t('admin.courses.survey.comments_title')}
+                {results.comments.length > 0 && (
+                  <span className="rounded-full bg-subtle px-1.5 py-px text-[10px] tabular-nums font-normal text-text-muted">
+                    {results.comments.length}
+                  </span>
+                )}
               </div>
-              <div className="space-y-2">
-                {results.comments.map((c, i) => (
-                  <div key={i} className="rounded-xl border border-line p-3.5">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] text-text-subtle">
-                      <span className="tabular-nums">
-                        {new Date(c.at).toLocaleDateString()}
-                      </span>
-                      <span className="rounded-full bg-subtle px-2 py-0.5 tabular-nums">
-                        {c.q1}/10 · {c.q2}/10
-                      </span>
-                      <span className="uppercase">{c.lang}</span>
-                      {c.retro && (
-                        <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-600 dark:text-amber-400">
-                          {t('admin.courses.survey.tag_retro')}
-                        </span>
-                      )}
-                    </div>
-                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-text">
-                      {c.text}
-                    </p>
-                    {c.followup && (
-                      <p className="mt-2 whitespace-pre-wrap rounded-lg border-l-2 border-amber-500/40 bg-amber-500/5 px-3 py-2 text-[12px] leading-relaxed text-text-muted">
-                        {c.followup}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+              {results.comments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-line p-6 text-center">
+                  <p className="text-[12px] text-text-subtle">
+                    {t('admin.courses.survey.no_comments')}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {results.comments.map((c, i) => (
+                    <CommentCard
+                      key={i}
+                      c={c}
+                      labels={{
+                        q1: t(labelKeys.q1),
+                        q2: t(labelKeys.q2),
+                        retro: t('admin.courses.survey.tag_retro'),
+                        followup: t('admin.courses.survey.followup_label'),
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
