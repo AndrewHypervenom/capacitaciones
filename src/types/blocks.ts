@@ -76,6 +76,8 @@ export interface VideoQuestionRaw {
   explanation_es: string;
   explanation_en: string;
   explanation_pt: string;
+  /** Nivel para el examen final. Mismo trato que en `QuizBlock`. */
+  difficulty?: QuizDifficulty;
 }
 
 export interface VideoMarkerRaw {
@@ -136,12 +138,22 @@ export interface QuizOption {
   text: ML;
 }
 
+/** Nivel de una pregunta, tal como lo reparte el examen final. */
+export type QuizDifficulty = 'basico' | 'medio' | 'avanzado';
+
 export interface QuizBlock {
   type: 'quiz';
   question: ML;
   options: QuizOption[];
   correct: number;
   explanation: ML;
+  /**
+   * Nivel, para el examen final. Lo estima la IA una vez (o lo corrige el
+   * capacitador) y se queda aquí: sin esto habría que volver a calcularlo —y a
+   * pagarlo— cada vez que se abre "Reutilizar quizzes". No se usa para nada
+   * dentro del módulo; la pregunta se ve y se responde igual.
+   */
+  difficulty?: QuizDifficulty;
 }
 
 export interface FlashcardItem {

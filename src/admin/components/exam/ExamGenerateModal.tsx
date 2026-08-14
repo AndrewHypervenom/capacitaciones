@@ -42,6 +42,7 @@ import {
   type AiExamDraft,
   type NewExamQuestion,
   type ParsedImportRow,
+  type ReusableLocator,
   type ReusableQuestion,
 } from '@/services/exams.admin.service'
 import {
@@ -790,21 +791,18 @@ function ReusePanel({
   )
 
   /**
-   * Guarda el nivel en el quiz de sección. Silencioso: es una comodidad.
+   * Guarda el nivel donde vive cada pregunta: la fila de `section_quizzes`, o
+   * el propio bloque dentro del contenido. Silencioso: es una comodidad.
    *
-   * Solo se guardan las que tienen fila propia: las preguntas que viven dentro
-   * del contenido (bloque `quiz`, marcador de video) no tienen dónde escribirlo
-   * y colar su clave sintética aquí haría fallar el update y disparar el aviso
-   * de "falta correr el SQL" sin que falte nada. Su nivel vive en memoria.
+   * Que se guarde es lo que hace que calcular el nivel sea una vez y no cada
+   * visita — es la diferencia entre pagarle a la IA una sola vez o pagarle
+   * cada vez que alguien abre este panel.
    */
   const persist = useCallback(
-    async (entries: { quizId: string | null; difficulty: ExamDifficulty }[]) => {
-      const rows = entries.filter(
-        (e): e is { quizId: string; difficulty: ExamDifficulty } => e.quizId !== null,
-      )
-      if (rows.length === 0) return
+    async (entries: { locator: ReusableLocator; difficulty: ExamDifficulty }[]) => {
+      if (entries.length === 0) return
       try {
-        const ok = await saveQuizDifficulties(rows)
+        const ok = await saveQuizDifficulties(entries)
         if (!ok) setNoStore(true)
       } catch {
         setNoStore(true)
@@ -816,7 +814,7 @@ function ReusePanel({
   /** Corrección a mano: se guarda igual que la estimación de la IA. */
   const setLevel = (q: ReusableQuestion, difficulty: ExamDifficulty) => {
     setLevels((prev) => ({ ...prev, [q.key]: difficulty }))
-    void persist([{ quizId: q.quizId, difficulty }])
+    void persist([{ locator: q.locator, difficulty }])
   }
 
   /**
@@ -844,7 +842,7 @@ function ReusePanel({
       const next: Record<string, ExamDifficulty> = { ...levels }
       todo.forEach((q, i) => (next[q.key] = out[i] ?? 'medio'))
       setLevels(next)
-      void persist(todo.map((q, i) => ({ quizId: q.quizId, difficulty: out[i] ?? 'medio' })))
+      void persist(todo.map((q, i) => ({ locator: q.locator, difficulty: out[i] ?? 'medio' })))
 
       // Con el examen a un nivel fijo, las que no dan la talla se desmarcan
       // solas: es lo que el capacitador haría a mano, y así el bloqueo del
@@ -1292,9 +1290,9 @@ function ReusePanel({
                       {/* De dónde salió: la misma sección puede tener la
                           comprobación del final, preguntas sueltas en el
                           contenido y otras dentro de un video. */}
-                      {q.origin !== 'section' && (
+                      {q.locator.kind !== 'quiz' && (
                         <span className="rounded-full border border-line px-2 py-0.5 text-[10.5px] text-text-subtle">
-                          {q.origin === 'video'
+                          {q.locator.kind === 'video'
                             ? t('admin.exam.reuse_from_video', 'En un video')
                             : t('admin.exam.reuse_from_block', 'En el contenido')}
                         </span>

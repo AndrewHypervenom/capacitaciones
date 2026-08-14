@@ -376,16 +376,21 @@ export async function reorderExamQuestions(ids: string[]): Promise<void> {
 
 // ─── Reutilizar los quizzes que ya existen en los módulos ──────────────────
 
+/**
+ * Dónde vive exactamente una pregunta reutilizable, para poder volver a ella y
+ * escribirle el nivel. Se guarda como dato, no como texto: la clave sintética
+ * (`block:<sección>:0`) sirve para identificarla en la pantalla, pero volver a
+ * partirla para escribir sería inventar un formato frágil.
+ */
+export type ReusableLocator =
+  | { kind: 'quiz'; quizId: string }
+  | { kind: 'block'; sectionId: string; index: number }
+  | { kind: 'video'; sectionId: string; markerId: string; index: number }
+
 export interface ReusableQuestion {
   key: string
-  /**
-   * Fila real en `section_quizzes`, o `null` si la pregunta vive dentro del
-   * contenido (bloque `quiz` o marcador de video). Solo las primeras admiten
-   * que se les guarde el nivel: las otras no tienen fila donde escribirlo.
-   */
-  quizId: string | null
-  /** De dónde salió. Se enseña para que el capacitador la ubique en el módulo. */
-  origin: 'section' | 'block' | 'video'
+  /** Dónde está, y por tanto dónde se le guarda el nivel. */
+  locator: ReusableLocator
   moduleId: string
   moduleTitle: string
   sectionHeading: string
@@ -545,8 +550,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
     if (options.length < 2) continue
     out.push({
       key: q.id,
-      quizId: q.id,
-      origin: 'section',
+      locator: { kind: 'quiz', quizId: q.id },
       moduleId: mod.id,
       moduleTitle: mod.title_es,
       sectionHeading: sec.heading_es,
@@ -583,8 +587,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
       if (options.length < 2 || !(b.question?.es ?? '').trim()) return
       out.push({
         key: `block:${sec.id}:${i}`,
-        quizId: null,
-        origin: 'block',
+        locator: { kind: 'block', sectionId: sec.id, index: i },
         moduleId: mod.id,
         moduleTitle: mod.title_es,
         sectionHeading: sec.heading_es,
@@ -596,7 +599,10 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
         explanation_es: b.explanation?.es || null,
         explanation_en: b.explanation?.en || null,
         explanation_pt: b.explanation?.pt || null,
-        difficulty: null,
+        // El nivel que ya se le calculó vive en el propio bloque.
+        difficulty: LEVELS.includes(b.difficulty as ExamDifficulty)
+          ? (b.difficulty as ExamDifficulty)
+          : null,
       })
     })
 
@@ -611,8 +617,7 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
         if (options.length < 2 || !(q.question_es ?? '').trim()) return
         out.push({
           key: `video:${sec.id}:${m.id}:${i}`,
-          quizId: null,
-          origin: 'video',
+          locator: { kind: 'video', sectionId: sec.id, markerId: m.id, index: i },
           moduleId: mod.id,
           moduleTitle: mod.title_es,
           sectionHeading: sec.heading_es,
@@ -624,7 +629,9 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableQu
           explanation_es: q.explanation_es || null,
           explanation_en: q.explanation_en || null,
           explanation_pt: q.explanation_pt || null,
-          difficulty: null,
+          difficulty: LEVELS.includes(q.difficulty as ExamDifficulty)
+            ? (q.difficulty as ExamDifficulty)
+            : null,
         })
       })
     }
@@ -661,23 +668,92 @@ export function questionFingerprint(text: string): string {
  * modal sigue funcionando con los niveles en memoria y lo avisa.
  */
 export async function saveQuizDifficulties(
-  levels: { quizId: string; difficulty: ExamDifficulty }[],
+  levels: { locator: ReusableLocator; difficulty: ExamDifficulty }[],
 ): Promise<boolean> {
   if (levels.length === 0) return true
-  const now = new Date().toISOString()
-  const results = await Promise.all(
-    levels.map((l) =>
-      db
-        .from('section_quizzes')
-        .update({ difficulty: l.difficulty, difficulty_rated_at: now })
-        .eq('id', l.quizId),
-    ),
+
+  /* ── 1. Las que tienen fila propia ── */
+  const rows = levels.filter(
+    (l): l is { locator: { kind: 'quiz'; quizId: string }; difficulty: ExamDifficulty } =>
+      l.locator.kind === 'quiz',
   )
-  const failed = results.find((r) => r.error)
-  if (!failed) return true
-  // 42703 = falta la columna. Cualquier otro error sí es un problema real.
-  if (failed.error?.code === '42703') return false
-  throw failed.error
+  let ok = true
+  if (rows.length > 0) {
+    const now = new Date().toISOString()
+    const results = await Promise.all(
+      rows.map((l) =>
+        db
+          .from('section_quizzes')
+          .update({ difficulty: l.difficulty, difficulty_rated_at: now })
+          .eq('id', l.locator.quizId),
+      ),
+    )
+    const failed = results.find((r) => r.error)
+    if (failed) {
+      // 42703 = falta la columna. Cualquier otro error sí es un problema real.
+      if (failed.error?.code === '42703') ok = false
+      else throw failed.error
+    }
+  }
+
+  /* ── 2. Las que viven dentro del contenido ──
+     Van al propio jsonb de la sección, junto a la pregunta. No hace falta
+     ninguna columna nueva, y el nivel viaja con el contenido: si el módulo se
+     clona o se mueve de curso, se lo lleva puesto.
+
+     Es leer-modificar-escribir sobre `blocks_data`, así que se lee justo antes
+     de escribir y solo se toca el campo `difficulty` de la pregunta concreta:
+     lo demás vuelve tal como estaba. Aun así, si alguien está editando ese
+     módulo en otra pestaña en este mismo instante, gana quien guarde el último
+     — es un dato de conveniencia, no una edición del contenido. */
+  const bySection = new Map<string, typeof levels>()
+  for (const l of levels) {
+    if (l.locator.kind === 'quiz') continue
+    const arr = bySection.get(l.locator.sectionId) ?? []
+    arr.push(l)
+    bySection.set(l.locator.sectionId, arr)
+  }
+
+  for (const [sectionId, entries] of bySection) {
+    const { data, error } = await supabase
+      .from('module_sections')
+      .select('blocks_data, video_markers')
+      .eq('id', sectionId)
+      .maybeSingle()
+    if (error) throw error
+    if (!data) continue
+
+    const blocks = (data as { blocks_data: unknown }).blocks_data
+    const markers = (data as { video_markers: unknown }).video_markers
+    const quizBlocks = collectQuizBlocks(blocks)
+    const markerList = Array.isArray(markers) ? (markers as VideoMarkerRaw[]) : []
+
+    let touchedBlocks = false
+    let touchedMarkers = false
+    for (const { locator, difficulty } of entries) {
+      if (locator.kind === 'block') {
+        const b = quizBlocks[locator.index]
+        if (!b) continue
+        b.difficulty = difficulty
+        touchedBlocks = true
+      } else if (locator.kind === 'video') {
+        const m = markerList.find((x) => x?.id === locator.markerId)
+        const q = m?.questions?.[locator.index]
+        if (!q) continue
+        q.difficulty = difficulty
+        touchedMarkers = true
+      }
+    }
+    if (!touchedBlocks && !touchedMarkers) continue
+
+    const patch: Record<string, unknown> = {}
+    if (touchedBlocks) patch.blocks_data = blocks
+    if (touchedMarkers) patch.video_markers = markers
+    const { error: upErr } = await db.from('module_sections').update(patch).eq('id', sectionId)
+    if (upErr) throw upErr
+  }
+
+  return ok
 }
 
 /**
@@ -716,7 +792,7 @@ export function reusableToQuestion(
      * referencia y se reconocen por la huella del enunciado, que es la vía que
      * `questionFingerprint` ya cubre para todo lo que entró sin `source_ref`.
      */
-    source_ref: r.quizId,
+    source_ref: r.locator.kind === 'quiz' ? r.locator.quizId : null,
     created_by: null,
     updated_at: new Date().toISOString(),
   } as unknown as NewExamQuestion
