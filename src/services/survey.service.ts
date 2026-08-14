@@ -4,12 +4,17 @@ import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 /* ────────────────────────────────────────────────────────────────────────────
    Encuesta de satisfacción del curso
 
-   Es el paso de cierre entre aprobar y ver el certificado. Tres preguntas
-   fijas, textuales, que vienen del negocio y NO se tocan:
+   Es el paso de cierre entre aprobar y ver el certificado. Tres preguntas:
 
-     1. De 0 a 10, satisfacción con el instructor y los conocimientos.
-     2. De 0 a 10, satisfacción con la capacitación.
-     3. Sugerencias de mejora (abierta).
+     1. De 0 a 10, quien dictó el curso o —si no hay a quién calificar— el
+        contenido y los materiales.
+     2. De 0 a 10, la experiencia general.
+     3. Ideas, sugerencias y comentarios (abierta).
+
+   Las dos escalas miden cosas distintas a propósito. La primera versión
+   preguntaba dos veces "tu satisfacción con la capacitación" y la gente veía
+   la misma pregunta repetida: ningún par de variantes puede volver a
+   solaparse.
 
    Y una cuarta condicional —"¿qué pasó?"— que solo aparece si alguna de las
    dos notas cae en el umbral (5 por defecto) y que SIEMPRE es opcional.
@@ -25,17 +30,19 @@ import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
    ──────────────────────────────────────────────────────────────────────────── */
 
 /**
- * A quién apunta la pregunta 1.
+ * Qué califica la pregunta 1.
  * · `instructor` → a quien dictó el curso (con su nombre y su foto delante).
- * · `campaign`   → a la capacitación de la campaña, cuando no hay una persona
- *                  a quien calificar.
+ * · `campaign`   → el contenido y los materiales, cuando no hay una persona a
+ *                  quien calificar. El nombre `campaign` se queda como está
+ *                  porque ya vive escrito en la base y en las respuestas
+ *                  guardadas; renombrarlo solo agregaría una migración.
  */
 export type Q1Mode = 'instructor' | 'campaign'
 
 /**
- * De qué habla la pregunta 2.
- * · `training` → "la capacitación": cursos dictados, con sesiones.
- * · `content`  → "el contenido del curso": autoservicio, se recorre solo.
+ * Cómo nombra la pregunta 2 —la experiencia general— a lo que se cursó.
+ * · `training` → "esta capacitación": cursos dictados, con sesiones.
+ * · `content`  → "este curso": autoservicio, se recorre solo.
  */
 export type Q2Mode = 'training' | 'content'
 

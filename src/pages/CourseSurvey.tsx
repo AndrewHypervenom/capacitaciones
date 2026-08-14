@@ -21,9 +21,9 @@ import {
 /* ────────────────────────────────────────────────────────────────────────────
    Encuesta de satisfacción — paso de cierre del curso
 
-   Va entre aprobar y ver el certificado. Tres preguntas fijas que vienen del
-   negocio y no se tocan, más una cuarta condicional y opcional para quien
-   quedó insatisfecho.
+   Va entre aprobar y ver el certificado. Tres preguntas —dos escalas que miden
+   cosas distintas y una abierta— más una cuarta condicional y opcional para
+   quien quedó insatisfecho.
 
    Dos decisiones que explican casi todo el archivo:
 
