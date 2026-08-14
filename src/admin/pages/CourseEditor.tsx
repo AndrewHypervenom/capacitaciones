@@ -103,6 +103,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Select } from '@/components/ui/Select'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { Button } from '@/components/ui/Button'
+import { PulseHint } from '@/components/ui/motion'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
@@ -1064,6 +1065,10 @@ export default function CourseEditor() {
           console.error('[CourseEditor] auto-assign on publish', e)
         }
       }
+      // Publicar/despublicar (y la auto-asignación de arriba) cambian lo que ve
+      // el aprendiz. Va DESPUÉS del bloque para que la caché se tire con el
+      // estado ya escrito, no en medio.
+      invalidateLearnerCoursesCache()
 
       if (!next) toast.success(t('admin.courses.course_unpublished'))
       else if (assignedNow) {
@@ -1439,7 +1444,23 @@ export default function CourseEditor() {
       setAssignments(aa)
       setDraftUsers(Object.fromEntries(aa.map((r) => [r.user_id, r.is_mandatory])))
       invalidateModulesCache()
+      // La lista de cursos del aprendiz vive en una caché en memoria con la
+      // clave `usuario:campaña`. Asignarse el curso a UNO MISMO no cambia esa
+      // clave, así que al pasar a la vista de aprendiz (misma pestaña, sin
+      // recarga) se seguía sirviendo la lista anterior y el curso "no aparecía"
+      // hasta un F5. Al tocar asignaciones esa caché deja de valer para
+      // cualquiera, no solo para quien guarda.
+      invalidateLearnerCoursesCache()
       if (!opts?.silent) toast.success(t('admin.courses.assign_saved_ok'))
+      // Asignar un curso en borrador no le llega a nadie. Se avisa en el momento
+      // exacto del error —al guardar— y también en el guardado silencioso de la
+      // barra: es la confusión que hace pensar que la asignación no funcionó.
+      if (!course.is_published && (aa.length > 0 || cc.length > 0)) {
+        toast.info(
+          t('admin.courses.assign_saved_draft_title'),
+          t('admin.courses.assign_saved_draft_desc'),
+        )
+      }
       return true
     } catch {
       toast.error(t('admin.courses.error_save'))
@@ -1983,12 +2004,28 @@ export default function CourseEditor() {
                     <Check className="h-3.5 w-3.5" /> {t('admin.courses.all_published')}
                   </span>
                 ) : (
-                  <Button variant="neon" size="sm" onClick={handlePublishAll} className="flex items-center gap-1.5 shrink-0">
-                    <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all')}
-                  </Button>
+                  // El latido solo se enciende cuando la omisión ya CUESTA algo:
+                  // hay gente esperando el curso y sigue en borrador. Un pulso
+                  // permanente en cada curso a medio armar sería ruido.
+                  <PulseHint active={!course.is_published && hasAudience} color="rgb(245 158 11)">
+                    <Button variant="neon" size="sm" onClick={handlePublishAll} className="flex items-center gap-1.5 shrink-0">
+                      <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all')}
+                    </Button>
+                  </PulseHint>
                 )}
               </div>
             </div>
+
+            {/* El simétrico del de abajo, y el que más se cobra: hay gente
+                asignada esperando un curso que sigue en borrador. Es el "se lo
+                asigné y no le sale" —ni recargando, porque la vista de aprendiz
+                filtra por publicado. */}
+            {!course.is_published && hasAudience && (
+              <p className="flex items-start gap-1.5 mt-2 text-[11px] text-amber-500">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                {t('admin.courses.draft_with_audience_warn')}
+              </p>
+            )}
 
             {/* Aviso clave: publicado ≠ visible. Sin campañas ni personas
                 asignadas (y sin catálogo abierto) el curso no le aparece a
@@ -2810,13 +2847,15 @@ export default function CourseEditor() {
                 <p className="text-[13px] font-semibold text-text">{t('admin.courses.draft_notice_title')}</p>
                 <p className="text-[12px] text-text-muted mt-0.5">{t('admin.courses.draft_notice_desc')}</p>
               </div>
-              <button
-                onClick={handleTogglePublished}
-                className="shrink-0 flex items-center justify-center gap-1.5 min-h-[40px] px-4 rounded-xl text-[13px] font-medium transition-colors"
-                style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.30)' }}
-              >
-                <Eye className="h-4 w-4" /> {t('admin.courses.publish')}
-              </button>
+              <PulseHint className="shrink-0" color="rgb(245 158 11)">
+                <button
+                  onClick={handleTogglePublished}
+                  className="w-full flex items-center justify-center gap-1.5 min-h-[40px] px-4 rounded-xl text-[13px] font-medium transition-colors"
+                  style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.30)' }}
+                >
+                  <Eye className="h-4 w-4" /> {t('admin.courses.publish')}
+                </button>
+              </PulseHint>
             </div>
           )}
 

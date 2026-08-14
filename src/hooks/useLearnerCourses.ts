@@ -4,7 +4,36 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
-let cache: { key: string; data: LearnerCourse[] } | null = null
+/**
+ * Sello de "esto ya no vale", FUERA del módulo.
+ *
+ * La caché de abajo es una variable de módulo: `cache = null` solo alcanza a la
+ * pestaña que lo ejecuta. Con el panel abierto en una pestaña y la vista de
+ * aprendiz en otra —lo normal cuando alguien reparte cursos—, asignar en la
+ * primera dejaba a la segunda sirviendo su lista vieja hasta recargarla.
+ *
+ * Con el sello en `localStorage` la caché no se cree a sí misma: se descarta si
+ * el sello cambió, lo escribiera la pestaña que sea.
+ */
+const EPOCH_KEY = 'learningai.learnerCoursesEpoch'
+
+function readEpoch(): string {
+  try {
+    return localStorage.getItem(EPOCH_KEY) ?? '0'
+  } catch {
+    // Almacenamiento bloqueado (incógnito estricto): sin sello, la caché de
+    // memoria manda como antes. Degrada a lo de siempre, no rompe.
+    return '0'
+  }
+}
+
+let cache: { key: string; epoch: string; data: LearnerCourse[] } | null = null
+
+/** ¿La caché sirve para esta clave y sigue siendo la vigente? */
+function cacheHit(key: string): LearnerCourse[] | null {
+  if (!cache || cache.key !== key) return null
+  return cache.epoch === readEpoch() ? cache.data : null
+}
 
 /** Cursos visibles para el usuario actual (asignados + catálogo abierto). */
 export function useLearnerCourses() {
@@ -14,10 +43,8 @@ export function useLearnerCourses() {
   const preview =
     IS_LEARNER_PREVIEW && (realRole === 'superadmin' || realRole === 'capacitador')
   const key = `${user?.id ?? ''}:${campaignId ?? ''}:${preview ? 'preview' : 'live'}`
-  const [courses, setCourses] = useState<LearnerCourse[]>(() =>
-    cache?.key === key ? cache.data : [],
-  )
-  const [loading, setLoading] = useState(() => authLoading || cache?.key !== key)
+  const [courses, setCourses] = useState<LearnerCourse[]>(() => cacheHit(key) ?? [])
+  const [loading, setLoading] = useState(() => authLoading || !cacheHit(key))
   const [error, setError] = useState<Error | null>(null)
 
   // Solo la ÚLTIMA petición manda. `authStore` publica la sesión ANTES de tener
@@ -44,18 +71,23 @@ export function useLearnerCourses() {
         setLoading(false)
         return
       }
-      if (!force && cache?.key === key) {
+      const hit = force ? null : cacheHit(key)
+      if (hit) {
         reqRef.current++
-        setCourses(cache.data)
+        setCourses(hit)
         setLoading(false)
         return
       }
       const seq = ++reqRef.current
+      // El sello se lee ANTES de pedir: si alguien invalida mientras la consulta
+      // viaja, la respuesta se guarda con el sello viejo y la próxima lectura la
+      // descarta, en vez de sellar como fresco un resultado ya caducado.
+      const epoch = readEpoch()
       setLoading(true)
       getLearnerCourses(campaignId, user.id, { preview })
         .then((data) => {
           if (seq !== reqRef.current) return
-          cache = { key, data }
+          cache = { key, epoch, data }
           setCourses(data)
           setError(null)
         })
@@ -83,4 +115,11 @@ export function useLearnerCourses() {
 
 export function invalidateLearnerCoursesCache() {
   cache = null
+  // El sello viaja fuera del módulo: alcanza a las otras copias del módulo (HMR)
+  // y a las otras pestañas, que es donde el `cache = null` no llegaba.
+  try {
+    localStorage.setItem(EPOCH_KEY, `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`)
+  } catch {
+    /* almacenamiento bloqueado: queda solo la invalidación en memoria */
+  }
 }

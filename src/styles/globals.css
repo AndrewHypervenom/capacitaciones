@@ -458,6 +458,42 @@ body.is-dragging * {
   cursor: grabbing !important;
 }
 
+/* Contenido protegido (rol aprendiz) — ver ContentProtection.tsx.
+   Quita la selección del contenido del curso, pero NUNCA de aquello donde la
+   persona escribe: sin esta excepción no podría corregir su propia respuesta
+   abierta, ni seleccionar lo que acaba de teclear en el simulador. */
+body.protected-content {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.protected-content input,
+body.protected-content textarea,
+body.protected-content select,
+body.protected-content [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Imprimir a PDF es la vía de escape más cómoda para llevarse un módulo entero.
+   No se puede impedir el diálogo del sistema, pero sí que lo impreso sirva. */
+@media print {
+  body.protected-content * {
+    visibility: hidden !important;
+  }
+  body.protected-content::after {
+    content: attr(data-print-notice);
+    visibility: visible !important;
+    display: block;
+    padding: 4rem 2rem;
+    font-family: system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #000;
+    text-align: center;
+  }
+}
+
 @media print {
   body {
     background: #fff !important;

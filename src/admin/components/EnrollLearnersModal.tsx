@@ -17,6 +17,8 @@ import {
   type CourseAssignmentRow,
   type CourseStats,
 } from '@/services/courses.service'
+import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
+import { invalidateModulesCache } from '@/hooks/useModules'
 
 interface Learner {
   id: string
@@ -126,6 +128,11 @@ export function EnrollLearnersModal({ course, campaignId, onClose, onSaved }: En
       setAssignments(fresh)
       setDraft(Object.fromEntries(fresh.map((r) => [r.user_id, r.is_mandatory])))
       void loadStats()
+      // Si el capacitador se inscribió a sí mismo, la vista de aprendiz debe
+      // mostrarle el curso al cambiar de vista, sin recargar la pestaña: las
+      // cachés en memoria de cursos y módulos dejan de valer aquí.
+      invalidateLearnerCoursesCache()
+      invalidateModulesCache()
       toast.success(t('admin.courses.enroll_saved_ok'))
       onSaved?.()
     } catch {

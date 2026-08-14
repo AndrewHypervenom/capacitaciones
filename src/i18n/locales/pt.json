@@ -2227,6 +2227,9 @@
       "published_auto_assigned": "Atribuído a {{name}}: já aparece para os seus aprendizes.",
       "no_audience_warn": "Publicado, mas ainda não aparece para ninguém: falta atribuí-lo a uma campanha ou a pessoas.",
       "no_audience_cta": "Atribuir agora",
+      "draft_with_audience_warn": "Já tem pessoas atribuídas, mas continua em rascunho: ninguém o vê até você publicá-lo.",
+      "assign_saved_draft_title": "Atribuído, mas ninguém verá ainda",
+      "assign_saved_draft_desc": "O curso continua em rascunho. Publique-o para que chegue até eles.",
       "course_unpublished": "Curso despublicado",
       "world_published": "Mundo publicado",
       "world_unpublished": "Mundo despublicado",
@@ -5824,5 +5827,13 @@
     "retry": "Recomeçar",
     "start_error": "Não foi possível abrir a pesquisa.",
     "send_error": "Não foi possível enviar sua resposta. O que você escreveu continua aqui: tente de novo."
+  },
+  "protection": {
+    "blocked_title": "Conteúdo da Positivos+",
+    "blocked_body": "Este material é para ser usado aqui dentro. Se precisar guardá-lo, peça ao seu instrutor.",
+    "clipboard_title": "— Conteúdo da Positivos+ —",
+    "clipboard_body": "Este material de capacitação é propriedade da Positivos+ e do seu cliente, e não pode ser reproduzido fora da plataforma. Se precisar dele para o seu trabalho, peça ao seu instrutor.",
+    "clipboard_by": "Copiado por",
+    "print_notice": "Este material de capacitação é da Positivos+ e não pode ser impresso. Consulte-o na plataforma."
   }
 }

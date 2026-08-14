@@ -2227,6 +2227,9 @@
       "published_auto_assigned": "Assigned to {{name}}: its learners can see it now.",
       "no_audience_warn": "Published, but nobody can see it yet: assign it to a campaign or to people.",
       "no_audience_cta": "Assign now",
+      "draft_with_audience_warn": "People are already assigned, but it's still a draft: nobody sees it until you publish it.",
+      "assign_saved_draft_title": "Assigned, but nobody will see it yet",
+      "assign_saved_draft_desc": "The course is still a draft. Publish it so it reaches them.",
       "course_unpublished": "Course unpublished",
       "world_published": "World published",
       "world_unpublished": "World unpublished",
@@ -5824,5 +5827,13 @@
     "retry": "Start again",
     "start_error": "We couldn't open the survey.",
     "send_error": "We couldn't send your answer. What you wrote is still here — please try again."
+  },
+  "protection": {
+    "blocked_title": "Positivos+ content",
+    "blocked_body": "This material is meant to be used in here. If you need to save it, ask your trainer for it.",
+    "clipboard_title": "— Positivos+ content —",
+    "clipboard_body": "This training material belongs to Positivos+ and its client, and may not be reproduced outside the platform. If you need it for your work, ask your trainer for it.",
+    "clipboard_by": "Copied by",
+    "print_notice": "This training material belongs to Positivos+ and cannot be printed. Please read it on the platform."
   }
 }

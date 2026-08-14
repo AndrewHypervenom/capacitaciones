@@ -2227,6 +2227,9 @@
       "published_auto_assigned": "Asignado a {{name}}: ya les aparece a sus aprendices.",
       "no_audience_warn": "Publicado, pero todavía no le aparece a nadie: falta asignarlo a una campaña o a personas.",
       "no_audience_cta": "Asignar ahora",
+      "draft_with_audience_warn": "Ya tiene gente asignada, pero sigue en borrador: no le aparece a nadie hasta que lo publiques.",
+      "assign_saved_draft_title": "Asignado, pero nadie lo verá aún",
+      "assign_saved_draft_desc": "El curso sigue en borrador. Publícalo para que les llegue.",
       "course_unpublished": "Curso despublicado",
       "world_published": "Mundo publicado",
       "world_unpublished": "Mundo despublicado",
@@ -5825,5 +5828,13 @@
     "retry": "Volver a empezar",
     "start_error": "No pudimos abrir la encuesta.",
     "send_error": "No pudimos enviar tu respuesta. Lo que escribiste sigue aquí: inténtalo otra vez."
+  },
+  "protection": {
+    "blocked_title": "Contenido de Positivos+",
+    "blocked_body": "Este material es para usarse aquí dentro. Si necesitas guardarlo, pídeselo a tu capacitador.",
+    "clipboard_title": "— Contenido de Positivos+ —",
+    "clipboard_body": "Este material de capacitación es propiedad de Positivos+ y de su cliente, y no puede reproducirse fuera de la plataforma. Si lo necesitas para tu trabajo, pídeselo a tu capacitador.",
+    "clipboard_by": "Copiado por",
+    "print_notice": "Este material de capacitación es de Positivos+ y no puede imprimirse. Consúltalo en la plataforma."
   }
 }

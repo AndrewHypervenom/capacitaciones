@@ -53,6 +53,7 @@ import { Toaster } from '@/components/ui/Toast';
 import { UpdatePrompt } from '@/components/ui/UpdatePrompt';
 import { ServiceStatusBanner } from '@/components/ui/ServiceStatusBanner';
 import { BottomBannerStack } from '@/components/ui/BottomBannerStack';
+import { ContentProtection } from '@/components/security/ContentProtection';
 import { BgTaskIndicator } from '@/components/ui/BgTaskIndicator';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { PasskeyInvite } from '@/components/auth/PasskeyInvite';
@@ -299,6 +300,10 @@ export default function App() {
       {/* Avisos en vivo del staff: "alguien pide ayuda en el chat" (superadmin) y
           "llegó una opinión del sitio" (superadmin + capacitadores de la campaña). */}
       <StaffPings />
+      {/* Portapapeles secuestrado para el rol aprendiz. Vive en la raíz para
+          cubrir TODO el sitio (módulos, examen, simulador, mundos, arena) sin
+          depender de que cada vista se acuerde de invocarla. No pinta nada. */}
+      <ContentProtection />
       <Toaster />
       {/* "+XP" flotante: cada acreditación del store se ve al instante, en
           cualquier vista y para cualquier rol (incluido el staff probando). */}
