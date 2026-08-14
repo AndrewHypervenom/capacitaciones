@@ -706,7 +706,17 @@ export function reusableToQuestion(
     explanation_pt: r.explanation_pt,
     difficulty,
     source: 'reused',
-    source_ref: r.key,
+    /**
+     * Solo la referencia de verdad: el id de la fila en `section_quizzes`.
+     *
+     * Las preguntas que viven dentro del contenido usan una clave sintética
+     * (`block:<sección>:<posición>`) que NO es un id de nada — la columna la
+     * rechaza y el insert entero se va con un 400. Y aunque cupiera, sería una
+     * referencia falsa: reordenar los bloques la cambia. Esas van sin
+     * referencia y se reconocen por la huella del enunciado, que es la vía que
+     * `questionFingerprint` ya cubre para todo lo que entró sin `source_ref`.
+     */
+    source_ref: r.quizId,
     created_by: null,
     updated_at: new Date().toISOString(),
   } as unknown as NewExamQuestion

@@ -4477,6 +4477,7 @@
       "rules_hint": "This is what learners see before starting. Be explicit: an exam with clear rules feels fair.",
       "rules_title": "Exam rules",
       "save_error": "The exam changes could not be saved.",
+      "save_error_why": "The exam changes could not be saved: {{reason}}",
       "select_all": "Select all",
       "select_none": "Clear all",
       "selected_n": "Selected: {{n}}",

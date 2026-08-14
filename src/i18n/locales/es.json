@@ -4478,6 +4478,7 @@
       "rules_hint": "Es lo que el aprendiz ve antes de empezar. Sé explícito: un examen con reglas claras se siente justo.",
       "rules_title": "Reglas del examen",
       "save_error": "No se pudieron guardar los cambios del examen.",
+      "save_error_why": "No se pudieron guardar los cambios del examen: {{reason}}",
       "select_all": "Elegir todas",
       "select_none": "Quitar todas",
       "selected_n": "Seleccionadas: {{n}}",

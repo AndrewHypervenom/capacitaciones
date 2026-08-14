@@ -452,7 +452,18 @@ export function ExamBuilder({
         )
         return false
       }
-      toast.error(t('admin.exam.save_error', 'No se pudieron guardar los cambios del examen.'))
+      // Con el motivo delante. "No se pudo guardar" a secas obliga a abrir la
+      // consola del navegador para saber si falta una columna, si un dato no
+      // cabe o si es la RLS: el capacitador no puede hacer eso.
+      const motivo = (err as { message?: string })?.message
+      toast.error(
+        motivo
+          ? t('admin.exam.save_error_why', {
+              reason: motivo,
+              defaultValue: 'No se pudieron guardar los cambios del examen: {{reason}}',
+            })
+          : t('admin.exam.save_error', 'No se pudieron guardar los cambios del examen.'),
+      )
       return false
     } finally {
       setSaving(false)

@@ -4477,6 +4477,7 @@
       "rules_hint": "É o que o aprendiz vê antes de começar. Seja explícito: uma prova com regras claras parece justa.",
       "rules_title": "Regras da prova",
       "save_error": "Não foi possível salvar as alterações da prova.",
+      "save_error_why": "Não foi possível salvar as alterações da prova: {{reason}}",
       "select_all": "Escolher todas",
       "select_none": "Limpar todas",
       "selected_n": "Selecionadas: {{n}}",
