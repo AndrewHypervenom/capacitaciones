@@ -101,8 +101,8 @@ export function AdminNav() {
       icon: Users,
       items: [
         { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false },
-        // Panel global (matriz usuarios × cursos): solo superadmin.
-        ...(isSuperAdmin ? [{ to: '/admin/overview', label: t('admin.nav.overview', 'Vista global'), end: false }] : []),
+        // La "Vista global" ya no es una entrada aparte: su matriz vive dentro
+        // del Panorama de Progreso, con los mismos filtros y su exportación.
         // Gamificación (logros + niveles XP): solo superadmin.
         ...(isSuperAdmin ? [{ to: '/admin/gamification', label: t('admin.nav.gamification', 'Gamificación'), end: false }] : []),
         // Progreso unificado: Mundos y Módulos viven en una sola vista con selector.

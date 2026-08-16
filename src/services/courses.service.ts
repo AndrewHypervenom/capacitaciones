@@ -642,6 +642,52 @@ export interface AdminUserCourse {
   certified: boolean
 }
 
+/** Estado real de una persona en un curso (ver `courseState`). */
+export type CourseState =
+  | 'certified'           // certificado y con el temario cubierto
+  | 'certified_outdated'  // certificado, pero el curso tiene módulos que no hizo
+  | 'completed'
+  | 'in_progress'
+  | 'not_started'
+
+/**
+ * En qué punto está alguien en un curso. ÚNICA fuente de esta regla.
+ *
+ * OJO con `completed_at`: pese al nombre, es la fecha del ÚLTIMO quiz o juego
+ * resuelto, no la de terminar el curso. Usarlo como prueba de finalización daba
+ * "Completado" a quien llevaba 1 de 5 módulos —lo dijo el propio panel, en la
+ * misma fila donde mostraba "1 de 5"— y de paso inflaba el contador de cursos
+ * completados de la ficha. Aquí solo cuenta como señal de que hubo actividad.
+ *
+ * `modulesDone` es null mientras no ha llegado el detalle del curso: sin el
+ * temario delante no se puede afirmar que esté completo, así que como mucho se
+ * dice "en curso".
+ */
+export function courseState(c: AdminUserCourse, modulesDone: number | null): CourseState {
+  if (c.certified) {
+    // Un certificado se emite contra el temario que había ESE día. Si después
+    // se publicaron módulos, sigue siendo válido pero ya no cubre el curso
+    // entero: decir solo "Certificado" haría creer que está al día. Es el caso
+    // que la plataforma resuelve con la recertificación (pestaña Certificación
+    // del curso), y hasta que se pida, la ficha tiene que decirlo.
+    if (modulesDone !== null && c.total_modules > 0 && modulesDone < c.total_modules) {
+      return 'certified_outdated'
+    }
+    return 'certified'
+  }
+  if (modulesDone !== null && c.total_modules > 0 && modulesDone >= c.total_modules) return 'completed'
+  if ((modulesDone ?? 0) > 0 || c.score != null || c.completed_at != null) return 'in_progress'
+  return 'not_started'
+}
+
+/** ¿Terminó el curso? (certificado o temario completo; nada más cuenta) */
+export function isCourseFinished(c: AdminUserCourse, modulesDone: number | null): boolean {
+  const st = courseState(c, modulesDone)
+  // El certificado desactualizado cuenta como terminado: la persona cumplió lo
+  // que se le pidió. Lo que cambió fue el curso, no su esfuerzo.
+  return st === 'certified' || st === 'certified_outdated' || st === 'completed'
+}
+
 /**
  * TODO el catálogo de cursos con el progreso de una persona (asignados o no),
  * con bandera `is_assigned`. Solo superadmin: la RPC corre SECURITY DEFINER y

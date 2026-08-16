@@ -1,3 +1,25 @@
+/**
+ * Texto listo para BUSCAR: minúsculas y sin tildes ni diéresis, pero
+ * conservando puntos, arrobas y guiones (si no, no se podría buscar un correo).
+ *
+ * Nadie escribe "Rocío" con tilde en un buscador. Sin esto, la búsqueda de
+ * personas devolvía "ningún resultado" para gente que sí existe — que es la
+ * peor respuesta posible: parece que el dato no está.
+ */
+export function fold(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim();
+}
+
+/** ¿El texto contiene lo buscado, ignorando tildes y mayúsculas? */
+export function matches(text: string | null | undefined, query: string): boolean {
+  if (!query) return true;
+  return fold(text ?? '').includes(fold(query));
+}
+
 export function normalize(input: string): string {
   return input
     .toLowerCase()

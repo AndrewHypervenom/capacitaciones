@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { Tooltip } from '@/components/ui/Tooltip'
 
 /* ────────────────────────────────────────────────────────────────────────
    "Chrome" premium compartido por las vistas de Progreso (Módulos, Mundos,
@@ -35,8 +36,10 @@ export function PanelHeader({
           {icon}
         </div>
         <div className="min-w-0">
-          <h1 className="text-[20px] sm:text-[25px] font-bold text-text leading-tight truncate tracking-tight">{title}</h1>
-          <p className="text-[12.5px] sm:text-[13px] text-text-muted mt-0.5 line-clamp-2">{subtitle}</p>
+          {/* Ni `truncate` ni `line-clamp`: el título y el subtítulo de un panel
+              son la única explicación de lo que se está mirando. */}
+          <h1 className="text-[20px] sm:text-[25px] font-bold text-text leading-tight tracking-tight">{title}</h1>
+          <p className="text-[12.5px] sm:text-[13px] text-text-muted mt-1 leading-snug">{subtitle}</p>
         </div>
       </div>
       {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}
@@ -44,18 +47,31 @@ export function PanelHeader({
   )
 }
 
-/** Fila de KPIs con entrada escalonada 100% CSS (siempre queda visible). */
+/**
+ * Fila de KPIs. Se estrecha por pasos (1 → 2 → 3 → 4) en vez de mantener cuatro
+ * columnas siempre: con cuatro fijas, en un portátil la etiqueta no cabía y
+ * terminaba recortada a media palabra.
+ */
 export function KpiRow({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn('rise-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5', className)}>
+    <div className={cn('rise-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5', className)}>
       {children}
     </div>
   )
 }
 
-/** Tarjeta KPI premium: ícono con acento, valor grande y sublínea opcional. */
+/**
+ * Tarjeta KPI premium, con el mismo lenguaje que el Panorama de Módulos:
+ *
+ * · El ícono va anclado arriba a la derecha y NO le quita ancho al texto.
+ * · La etiqueta se parte en dos líneas antes que recortarse.
+ * · Al pasar por encima, el tooltip da el nombre completo y qué mide; si la
+ *   métrica está definida por una norma, la referencia va al pie, discreta.
+ * · Si es clicable, filtra: un KPI que no lleva a ninguna parte es un adorno.
+ */
 export function Kpi({
   icon, label, value, sub, accent = 'rgb(var(--brand-green))', highlight,
+  hint, frame, onClick, active,
 }: {
   icon: ReactNode
   label: string
@@ -64,30 +80,73 @@ export function Kpi({
   accent?: string
   /** Resalta el valor con el acento (para el KPI principal). */
   highlight?: boolean
+  /** Qué mide exactamente y cómo se calcula (va al tooltip y bajo el número). */
+  hint?: string
+  /** Referencia de la norma. Solo al pie del tooltip, nunca como sello visible. */
+  frame?: string
+  onClick?: () => void
+  active?: boolean
 }) {
+  const Tag: React.ElementType = onClick ? 'button' : 'div'
   return (
-    <div
-      className="group relative overflow-hidden rounded-2xl border bg-surface p-4 sm:p-5 h-full transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover"
-      style={{ borderColor: highlight ? tint(accent, 35) : undefined }}
+    <Tooltip
+      anchor="element"
+      delay={120}
+      maxWidth={290}
+      className="h-full w-full"
+      label={
+        <span className="block">
+          <span className="block font-semibold">{label}</span>
+          {hint && <span className="mt-0.5 block opacity-80">{hint}</span>}
+          {frame && <span className="mt-1 block text-[10.5px] uppercase tracking-wider opacity-70">{frame}</span>}
+        </span>
+      }
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-10 -right-10 h-24 w-24 rounded-full blur-2xl opacity-[0.10] group-hover:opacity-20 transition-opacity"
-        style={{ background: accent }}
-      />
-      <div className="relative flex items-start justify-between gap-2">
-        <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-text-muted truncate pt-1">{label}</span>
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl" style={{ background: tint(accent, 12), color: accent }}>
+      <Tag
+        onClick={onClick}
+        type={onClick ? 'button' : undefined}
+        aria-pressed={onClick ? !!active : undefined}
+        className={cn(
+          'group relative h-full w-full overflow-hidden rounded-3xl border bg-surface p-5 text-left transition-all duration-500 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover',
+          onClick && 'cursor-pointer',
+          active || highlight ? '' : 'border-line',
+        )}
+        style={{ borderColor: active ? tint(accent, 55) : highlight ? tint(accent, 35) : undefined }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full blur-2xl opacity-[0.10] group-hover:opacity-25 transition-opacity"
+          style={{ background: accent }}
+        />
+        <span
+          className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-2xl text-white shadow-lg transition-transform duration-500 ease-apple group-hover:scale-110 group-hover:-rotate-3"
+          style={{
+            background: `linear-gradient(135deg, ${accent}, ${darken(accent, 65)})`,
+            boxShadow: `0 10px 24px -12px ${tint(accent, 70)}`,
+          }}
+        >
           {icon}
         </span>
-      </div>
-      <div className="relative mt-1.5 flex items-baseline gap-1.5">
-        <span className="text-2xl sm:text-[32px] font-bold text-text tabular-nums leading-none" style={highlight ? { color: accent } : undefined}>
-          {value}
-        </span>
-        {sub && <span className="text-[12px] text-text-muted tabular-nums">{sub}</span>}
-      </div>
-    </div>
+
+        <div className="relative min-w-0">
+          <p className="min-h-[2.1em] pr-12 text-[10.5px] font-bold uppercase leading-tight tracking-[0.06em] text-text-muted">
+            {label}
+          </p>
+          <div className="mt-1.5 flex items-baseline gap-1.5">
+            <span
+              className="text-[30px] font-bold leading-none tracking-tight text-text tabular-nums"
+              style={highlight ? { color: accent } : undefined}
+            >
+              {value}
+            </span>
+            {sub && <span className="text-[12px] text-text-muted tabular-nums">{sub}</span>}
+          </div>
+          {hint && (
+            <p className="mt-2 line-clamp-2 text-[11.5px] leading-snug text-text-muted [overflow-wrap:anywhere]">{hint}</p>
+          )}
+        </div>
+      </Tag>
+    </Tooltip>
   )
 }
 
@@ -111,8 +170,8 @@ export function InsightBanner({
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold text-text truncate">{title}</div>
-        {detail && <div className="text-[12px] text-text-muted truncate">{detail}</div>}
+        <div className="text-[13px] font-semibold text-text">{title}</div>
+        {detail && <div className="mt-0.5 text-[12px] leading-snug text-text-muted">{detail}</div>}
       </div>
       {actionLabel && onAction && (
         <button

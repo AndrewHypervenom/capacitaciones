@@ -152,7 +152,15 @@ export interface ProgressState {
   /** Cursos repasados por completo al menos una vez (para la UI y las métricas). */
   courseReviewCount: Record<string, number>;
 
-  markModule: (key: ModuleKey, courseModules?: ModuleKey[]) => string[];
+  /**
+   * Marca el módulo como completado y paga su XP.
+   *
+   * `xpFactor` (0..1) recorta ese XP cuando el módulo se pasó de afán: el ritmo
+   * real de estudio lo mide `useModulePace` y la pantalla lo anuncia ANTES de
+   * completar. Por defecto 1 (sin recorte). Nunca cambia el completado en sí:
+   * ir rápido paga menos, pero el módulo queda hecho.
+   */
+  markModule: (key: ModuleKey, courseModules?: ModuleKey[], opts?: { xpFactor?: number }) => string[];
   unmarkModule: (key: ModuleKey) => void;
   /**
    * Rellena la clave que falte en cada módulo conocido: si un módulo está
@@ -309,6 +317,16 @@ function boosted(base: number, reason: XPReason): number {
   return amount;
 }
 
+/**
+ * XP base de un módulo con el recorte por ritmo ya aplicado. El factor se acota
+ * a [0.25, 1]: por muy de afán que se haya pasado, completar siempre paga algo
+ * (si no, saldría a cuenta no marcarlo) y nunca puede pagar de más.
+ */
+export function moduleXP(xpFactor?: number): number {
+  const f = typeof xpFactor === 'number' && Number.isFinite(xpFactor) ? xpFactor : 1;
+  return Math.max(1, Math.round(XP_REWARDS.module * Math.min(1, Math.max(0.25, f))));
+}
+
 /** Estado inicial del subsistema de repaso (reutilizado por reset y migraciones). */
 const REVIEW_INITIAL = {
   reviewedAt: {} as Record<string, string>,
@@ -386,7 +404,7 @@ export const useProgressStore = create<ProgressState>()(
         return toAward;
       },
 
-      markModule: (key, courseModules) => {
+      markModule: (key, courseModules, opts) => {
         const s = get();
         if (doneIn(s.completedModuleIds, s.completedModules, key)) return [];
 
@@ -403,8 +421,10 @@ export const useProgressStore = create<ProgressState>()(
           completedModuleIds: ids,
           completedModules: slugs,
           // El XP del módulo vive aquí, después del candado de arriba: así vale
-          // una sola vez aunque la pantalla llame a completar dos veces.
-          xp: s.xp + boosted(XP_REWARDS.module, 'module'),
+          // una sola vez aunque la pantalla llame a completar dos veces. El
+          // recorte por ritmo se aplica sobre la base, antes del evento del día:
+          // así un día ×2 sigue duplicando lo que de verdad se ganó.
+          xp: s.xp + boosted(moduleXP(opts?.xpFactor), 'module'),
           ...(key.uuid ? { moduleSlugToId: { ...s.moduleSlugToId, [key.slug]: key.uuid } } : {}),
         });
 

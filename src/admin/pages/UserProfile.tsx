@@ -183,7 +183,9 @@ export default function UserProfile() {
 
   const assigned = useMemo(() => courses.filter((c) => c.is_assigned), [courses])
   const stats = useMemo(() => {
-    const completed = assigned.filter((c) => c.completed_at != null).length
+    // `completed_at` es la última actividad, no una finalización: contar con él
+    // daba por terminados cursos con 1 de 5 módulos (ver courseState).
+    const completed = assigned.filter((c) => c.certified).length
     const certsCount = assigned.filter((c) => c.certified).length
     const scored = assigned.filter((c) => c.score != null)
     const avg = scored.length ? Math.round(scored.reduce((a, c) => a + (c.score ?? 0), 0) / scored.length) : null
@@ -384,7 +386,7 @@ export default function UserProfile() {
                           ) : !c.certified ? (
                             <span>{t('admin.users.no_activity')}</span>
                           ) : null}
-                          <span>{t('courses.modules_count', { n: c.total_modules })}</span>
+                          <span>{t('courses.modules_count', { count: c.total_modules })}</span>
                           {completed && <span>{t('admin.users.col_completed')}: {completed}</span>}
                         </div>
                       </div>

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import {
   X, Loader2, Award, BookOpen, ChevronDown, Globe, PhoneCall,
   CheckCircle2, Circle, Flame, Sparkles, Search, IdCard, BarChart3,
-  ListChecks, GraduationCap, ArrowUpRight,
+  ListChecks, GraduationCap, ArrowUpRight, AlertTriangle,
 } from 'lucide-react'
 
 import { Avatar } from '@/components/ui/Avatar'
@@ -15,7 +15,10 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/cn'
-import { getUserCoursesAdmin, type AdminUserCourse } from '@/services/courses.service'
+import { supabase } from '@/lib/supabase'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { fold } from '@/lib/normalize'
+import { getUserCoursesAdmin, courseState, isCourseFinished, type AdminUserCourse } from '@/services/courses.service'
 import { getUserCourseDetailAdmin, type AdminCourseDetail } from '@/services/notifications.service'
 import { getUserGamification, type GamificationSummary } from '@/services/progress.service'
 import type { Profile } from '@/types/database'
@@ -53,6 +56,10 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
   const [courses, setCourses] = useState<AdminUserCourse[]>([])
   const [detail, setDetail] = useState<Record<string, DetailState>>({})
   const [game, setGame] = useState<GamificationSummary | null>(null)
+  /** Cuándo se certificó cada curso (`course_id` → ISO). Es lo que explica los
+      "certificado pero le faltan módulos": el certificado es anterior al
+      temario de hoy. */
+  const [certifiedAt, setCertifiedAt] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [tab, setTab] = useState<'assigned' | 'catalog'>('assigned')
   const [query, setQuery] = useState('')
@@ -137,6 +144,24 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
   const assigned = useMemo(() => courses.filter((c) => c.is_assigned), [courses])
   const catalog = useMemo(() => courses.filter((c) => !c.is_assigned), [courses])
 
+  // Una sola consulta por persona (no por curso): la fecha de sus certificados.
+  useEffect(() => {
+    let alive = true
+    void supabase
+      .from('certifications')
+      .select('course_id, issued_at')
+      .eq('user_id', user.id)
+      .then(({ data, error }) => {
+        if (!alive || error || !data) return
+        const map: Record<string, string> = {}
+        for (const row of data as Array<{ course_id: string; issued_at: string }>) {
+          map[row.course_id] = row.issued_at
+        }
+        setCertifiedAt(map)
+      })
+    return () => { alive = false }
+  }, [user.id])
+
   const modulesDone = (courseId: string): number | null => {
     const dt = detail[courseId]
     if (!dt || dt === 'loading' || dt === 'error') return null
@@ -144,7 +169,7 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
   }
 
   const stats = useMemo(() => {
-    const done = assigned.filter((c) => c.certified || c.completed_at != null).length
+    const done = assigned.filter((c) => isCourseFinished(c, modulesDone(c.course_id))).length
     const scored = assigned.filter((c) => c.score != null)
     const avg = scored.length
       ? Math.round(scored.reduce((a, c) => a + (c.score ?? 0), 0) / scored.length)
@@ -166,11 +191,46 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assigned, detail])
 
-  const visible = useMemo(() => {
+  /**
+   * Los cursos se agrupan por lo que la persona YA HIZO, no por orden
+   * alfabético: lo hecho arriba, lo empezado en medio y lo que ni ha tocado al
+   * final —y ese último grupo, plegado—.
+   *
+   * Con veintiséis cursos asignados y cuatro terminados, la lista alfabética
+   * obligaba a recorrerla entera para encontrar la única información que se
+   * está buscando al abrir la ficha de alguien: qué ha hecho.
+   */
+  const groups = useMemo(() => {
     const list = tab === 'assigned' ? assigned : catalog
-    const q = query.trim().toLowerCase()
-    return q ? list.filter((c) => c.title_es.toLowerCase().includes(q)) : list
-  }, [tab, assigned, catalog, query])
+    const q = fold(query)
+    const filtered = q ? list.filter((c) => fold(c.title_es).includes(q)) : list
+
+    const isDone = (c: AdminUserCourse) => isCourseFinished(c, modulesDone(c.course_id))
+    const isStarted = (c: AdminUserCourse) =>
+      courseState(c, modulesDone(c.course_id)) === 'in_progress'
+
+    const done = filtered.filter(isDone).sort((a, b) => {
+      const ta = a.completed_at ? Date.parse(a.completed_at) : 0
+      const tb = b.completed_at ? Date.parse(b.completed_at) : 0
+      return tb - ta || a.title_es.localeCompare(b.title_es)
+    })
+    const started = filtered.filter(isStarted).sort((a, b) => a.title_es.localeCompare(b.title_es))
+    const idle = filtered
+      .filter((c) => !isDone(c) && !isStarted(c))
+      .sort((a, b) => {
+        // Lo obligatorio primero: es lo que hay que empujar.
+        if (!!a.is_mandatory !== !!b.is_mandatory) return a.is_mandatory ? -1 : 1
+        return a.title_es.localeCompare(b.title_es)
+      })
+
+    return { done, started, idle, total: filtered.length }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, assigned, catalog, query, detail])
+
+  /* El grupo "sin empezar" se abre a petición: es el más largo y el que menos
+     dice. Con una búsqueda escrita se muestra siempre (buscar es pedirlo). */
+  const [showIdle, setShowIdle] = useState(false)
+  const idleOpen = showIdle || query.trim().length > 0
 
   const fmtDate = (iso: string | null) =>
     iso
@@ -182,7 +242,7 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
 
   const panel = (
     <motion.aside
-      className="fixed inset-y-0 right-0 z-[130] flex w-full max-w-[560px] flex-col border-l border-line bg-surface shadow-glass-lg"
+      className="fixed inset-y-0 right-0 z-[9995] flex w-full max-w-[560px] flex-col border-l border-line bg-surface shadow-glass-lg"
       initial={reduce ? { opacity: 0 } : { x: '100%' }}
       animate={reduce ? { opacity: 1 } : { x: 0 }}
       exit={reduce ? { opacity: 0 } : { x: '100%' }}
@@ -325,7 +385,7 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
           </div>
         ) : denied ? (
           <Empty icon={<BarChart3 className="h-5 w-5" />} text={t('admin.users.courses_only_superadmin')} />
-        ) : visible.length === 0 ? (
+        ) : groups.total === 0 ? (
           <Empty
             icon={<BookOpen className="h-5 w-5" />}
             text={query ? t('admin.users.no_results') : t('admin.users.no_courses_assigned')}
@@ -337,17 +397,70 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
             animate="show"
             variants={{ hidden: {}, show: { transition: { staggerChildren: reduce ? 0 : 0.045 } } }}
           >
-            {visible.map((c) => (
-              <CourseCard
-                key={c.course_id}
-                course={c}
-                detail={detail[c.course_id]}
-                open={expanded === c.course_id}
-                onToggle={() => toggle(c.course_id)}
-                completedLabel={fmtDate(c.completed_at)}
-                reduce={reduce}
-              />
+            {([
+              { key: 'done', items: groups.done, label: t('admin.users.group_done', 'Ya los hizo'), tone: '#22c55e' },
+              { key: 'started', items: groups.started, label: t('admin.users.group_started', 'En curso'), tone: '#3b82f6' },
+            ] as const).map((g) => (
+              g.items.length === 0 ? null : (
+                <div key={g.key} className="space-y-2">
+                  <p className="flex items-center gap-2 px-1 pt-1 text-[10.5px] font-bold uppercase tracking-wider text-text-muted">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: g.tone }} />
+                    {g.label}
+                    <span className="tabular-nums text-text-subtle">{g.items.length}</span>
+                  </p>
+                  {g.items.map((c) => (
+                    <CourseCard
+                      key={c.course_id}
+                      course={c}
+                      detail={detail[c.course_id]}
+                      open={expanded === c.course_id}
+                      onToggle={() => toggle(c.course_id)}
+                      completedLabel={fmtDate(c.completed_at)}
+                      certifiedLabel={fmtDate(certifiedAt[c.course_id] ?? null)}
+                      reduce={reduce}
+                    />
+                  ))}
+                </div>
+              )
             ))}
+
+            {groups.idle.length > 0 && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowIdle((v) => !v)}
+                  className="flex w-full items-center gap-2 rounded-xl px-1 py-2 text-left text-[10.5px] font-bold uppercase tracking-wider text-text-muted transition-colors hover:text-text"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+                  {t('admin.users.group_idle', 'Sin empezar')}
+                  <span className="tabular-nums text-text-subtle">{groups.idle.length}</span>
+                  {!idleOpen && (
+                    <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold normal-case tracking-normal text-text-muted">
+                      {t('admin.users.group_idle_show', 'Ver')}
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                  {idleOpen && !query && (
+                    <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold normal-case tracking-normal text-text-muted">
+                      {t('admin.users.group_idle_hide', 'Ocultar')}
+                      <ChevronDown className="h-3.5 w-3.5 rotate-180" />
+                    </span>
+                  )}
+                </button>
+                {idleOpen && groups.idle.map((c) => (
+                  <CourseCard
+                    key={c.course_id}
+                    course={c}
+                    detail={detail[c.course_id]}
+                    open={expanded === c.course_id}
+                    onToggle={() => toggle(c.course_id)}
+                    completedLabel={fmtDate(c.completed_at)}
+                    certifiedLabel={fmtDate(certifiedAt[c.course_id] ?? null)}
+                    reduce={reduce}
+                  />
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
       </div>
@@ -362,7 +475,10 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
           {t('admin.users.view_profile')}
         </button>
         <button
-          onClick={() => { onClose(); navigate(`/admin/progress?view=worlds&user=${user.id}`) }}
+          /* A SUS MÓDULOS, no a Mundos: quien abre la ficha de alguien viene
+             mirando cursos y módulos, y este botón lo sacaba al progreso
+             gamificado —otra pantalla, otro tema— sin haberlo pedido. */
+          onClick={() => { onClose(); navigate(`/admin/progress?view=modules&tab=inbox&user=${user.id}`) }}
           className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold text-black transition-transform hover:scale-[1.02]"
           style={{ background: GREEN }}
         >
@@ -377,7 +493,7 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
     <AnimatePresence>
       <motion.div
         key="progress-drawer"
-        className="fixed inset-0 z-[125]"
+        className="fixed inset-0 z-[9994]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -460,13 +576,15 @@ function Empty({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 /* ── Tarjeta de curso, desplegable ───────────────────────────────────────── */
 function CourseCard({
-  course: c, detail: dt, open, onToggle, completedLabel, reduce,
+  course: c, detail: dt, open, onToggle, completedLabel, certifiedLabel, reduce,
 }: {
   course: AdminUserCourse
   detail: DetailState | undefined
   open: boolean
   onToggle: () => void
   completedLabel: string | null
+  /** Fecha de emisión del certificado, ya formateada (o null). */
+  certifiedLabel: string | null
   reduce: boolean
 }) {
   const { t } = useTranslation()
@@ -474,7 +592,18 @@ function CourseCard({
   const total = ready ? ready.modules.length : c.total_modules
   const done = ready ? ready.modules.filter((m) => m.completed).length : 0
   const pct = total > 0 ? (done / total) * 100 : 0
-  const isDone = c.certified || c.completed_at != null
+  // `ready` = ya llegó el temario; sin él no se puede afirmar que esté completo.
+  const state = courseState(c, ready ? done : null)
+  const isDone = state === 'certified' || state === 'certified_outdated' || state === 'completed'
+  const stateLabel =
+    state === 'certified' || state === 'certified_outdated'
+      ? t('admin.users.status_certified', 'Certificado')
+      : state === 'completed' ? t('admin.users.status_done')
+        : state === 'in_progress' ? t('admin.users.status_in_progress', 'En curso')
+          : t('admin.users.status_pending')
+  // Certificado con el temario incompleto: se dice, y se dice cuánto falta.
+  const outdated = state === 'certified_outdated'
+  const missing = outdated ? total - done : 0
 
   return (
     <motion.div
@@ -528,8 +657,8 @@ function CourseCard({
           <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-text-muted">
             <span className="tabular-nums">
               {ready
-                ? t('admin.users.progress_modules_done', { done, total })
-                : t('courses.modules_count', { n: c.total_modules })}
+                ? t('admin.users.progress_modules_done', { done, count: total })
+                : t('courses.modules_count', { count: c.total_modules })}
             </span>
             {c.score != null && (
               <span className="inline-flex items-center gap-1">
@@ -537,7 +666,9 @@ function CourseCard({
                 <b className="text-text tabular-nums">{c.score}%</b>
               </span>
             )}
-            {completedLabel && <span>{completedLabel}</span>}
+            {completedLabel && (
+              <span>{t('admin.users.last_activity_at', { date: completedLabel, defaultValue: 'Últ. actividad {{date}}' })}</span>
+            )}
             {!ready && c.is_assigned && dt !== 'error' && (
               <Loader2 className="h-3 w-3 animate-spin text-text-subtle" />
             )}
@@ -546,12 +677,31 @@ function CourseCard({
 
         <span
           className={cn(
-            'shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold',
-            isDone ? 'bg-[rgba(16,212,81,0.15)] text-[#0ca23e]' : 'bg-subtle text-text-muted',
+            'shrink-0 whitespace-nowrap rounded-lg px-2 py-1 text-[10px] font-semibold',
+            isDone
+              ? 'bg-[rgba(16,212,81,0.15)] text-[#0ca23e]'
+              : state === 'in_progress'
+                ? 'bg-blue-500/12 text-blue-600 dark:text-blue-400'
+                : 'bg-subtle text-text-muted',
           )}
         >
-          {isDone ? t('admin.users.status_done') : t('admin.users.status_pending')}
+          {stateLabel}
         </span>
+        {outdated && (
+          <Tooltip
+            anchor="element"
+            delay={120}
+            maxWidth={280}
+            label={t('admin.users.cert_outdated_hint', {
+              count: missing,
+              defaultValue: 'Se certificó con el temario de entonces; después se publicaron {{count}} módulos que no ha hecho. El certificado sigue siendo válido: para ponerlo al día, pide la recertificación desde la pestaña Certificación del curso.',
+            })}
+          >
+            <span className="shrink-0 whitespace-nowrap rounded-lg bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+              {t('admin.users.cert_outdated', { count: missing, defaultValue: 'Faltan {{count}} módulos' })}
+            </span>
+          </Tooltip>
+        )}
         <motion.span
           className="shrink-0 text-text-subtle"
           animate={{ rotate: open ? 180 : 0 }}
@@ -572,6 +722,31 @@ function CourseCard({
             className="overflow-hidden"
           >
             <div className="border-t border-line px-4 py-3">
+              {/* Por qué está certificado con módulos pendientes. Va VISIBLE, no
+                  en un tooltip: es justo la pregunta que el capacitador iba a
+                  hacer, y la respuesta tiene fecha. */}
+              {outdated && (
+                <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2.5">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                  <p className="text-[11.5px] leading-relaxed text-text-muted">
+                    <b className="text-text">
+                      {t('admin.users.cert_outdated_title', 'Certificado antes de que el curso creciera')}
+                    </b>
+                    <br />
+                    {certifiedLabel
+                      ? t('admin.users.cert_outdated_when', {
+                          date: certifiedLabel, count: missing,
+                          defaultValue: 'Se certificó el {{date}}, cuando el temario era más corto. Desde entonces el curso tiene {{count}} módulos que no ha hecho.',
+                        })
+                      : t('admin.users.cert_outdated_generic', {
+                          count: missing,
+                          defaultValue: 'Se certificó con el temario que había entonces. Hoy el curso tiene {{count}} módulos que no ha hecho.',
+                        })}
+                    {' '}
+                    {t('admin.users.cert_outdated_action', 'Su certificado sigue siendo válido; para ponerlo al día, pide la recertificación del curso en Contenido → Cursos → pestaña Certificación.')}
+                  </p>
+                </div>
+              )}
               {!dt || dt === 'loading' ? (
                 <div className="flex justify-center py-5">
                   <Loader2 className="h-4 w-4 animate-spin text-text-subtle" />

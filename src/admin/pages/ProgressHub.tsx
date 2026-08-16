@@ -1,19 +1,34 @@
 import { useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Globe2, ClipboardCheck, ArrowRight, Map, Star, MessageSquare, GaugeCircle, PhoneCall, HeartHandshake, Phone, LayoutGrid } from 'lucide-react'
+import { Globe2, ClipboardCheck, ArrowRight, Map, Star, MessageSquare, GaugeCircle, PhoneCall, HeartHandshake, Phone, LayoutGrid, BarChart3, Inbox } from 'lucide-react'
 import FeedbackPanel from './FeedbackPanel'
 import { TrainerFeedbackPanel } from './TrainerFeedbackPanel'
 import SimulationFeedbackPanel from './SimulationFeedbackPanel'
+import ProgressOverview from './progress/ProgressOverview'
 import { tint } from './progress/ProgressChrome'
 import { cn } from '@/lib/cn'
 
 type ProgressView = 'worlds' | 'modules' | 'simulations'
+/** Dentro de Módulos: el tablero de dirección o la bandeja de evaluación. */
+type ModulesTab = 'overview' | 'inbox'
 
 // Vista unificada de "Progreso": primero se elige qué progreso ver (Mundos o
 // Módulos) y solo entonces se monta el panel correspondiente — así no se
 // consulta ningún dato antes de la selección. La elección vive en la URL
 // (?view=worlds|modules) para que atrás/adelante y los deep-links funcionen.
+/** Última vista usada: entrar siempre por el selector era un clic de peaje. */
+const LAST_VIEW_KEY = 'learningai.progressView'
+
+function readLastView(): ProgressView | null {
+  try {
+    const v = localStorage.getItem(LAST_VIEW_KEY)
+    return v === 'worlds' || v === 'modules' || v === 'simulations' ? v : null
+  } catch {
+    return null
+  }
+}
+
 export default function ProgressHub() {
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -21,15 +36,31 @@ export default function ProgressHub() {
   const view: ProgressView | null =
     raw === 'worlds' || raw === 'modules' || raw === 'simulations' ? raw : null
 
+  /* Sin vista en la URL se abre la última que se usó. El selector sigue estando
+     —y sigue sin cargar datos— pero solo la primera vez o cuando se pide con el
+     botón de rejilla: quien entra veinte veces al día a lo mismo no debería
+     tener que elegirlo veinte veces. */
+  const remembered = view === null ? readLastView() : null
+
   const select = useCallback((v: ProgressView) => {
+    try { localStorage.setItem(LAST_VIEW_KEY, v) } catch { /* modo privado */ }
     const next = new URLSearchParams(searchParams)
     next.set('view', v)
     setSearchParams(next)
   }, [searchParams, setSearchParams])
 
+  const selectTab = useCallback((tab: ModulesTab) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('view', 'modules')
+    next.set('tab', tab)
+    setSearchParams(next)
+  }, [searchParams, setSearchParams])
+
   const goBack = useCallback(() => {
+    try { localStorage.removeItem(LAST_VIEW_KEY) } catch { /* modo privado */ }
     const next = new URLSearchParams(searchParams)
     next.delete('view')
+    next.delete('tab')
     setSearchParams(next)
   }, [searchParams, setSearchParams])
 
@@ -43,11 +74,25 @@ export default function ProgressHub() {
   }
 
   if (view === 'modules') {
+    // Dos trabajos distintos que antes compartían una sola pantalla saturada:
+    // el Panorama responde "¿cómo va el programa?" y la Bandeja "¿qué me falta
+    // calificar?". Separarlos es lo que le devolvió el aire a esta vista.
+    const tab: ModulesTab = searchParams.get('tab') === 'inbox' ? 'inbox' : 'overview'
     return (
       <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
-        <ViewTabs current="modules" onSelect={select} onBack={goBack} />
-        <div className="flex-1 overflow-hidden">
-          <TrainerFeedbackPanel />
+        <ViewTabs
+          current="modules"
+          onSelect={select}
+          onBack={goBack}
+          modulesTab={tab}
+          onModulesTab={selectTab}
+        />
+        {/* El Panorama scrollea por su cuenta; la Bandeja gestiona su propio
+            alto y no debe heredar scroll del contenedor (rompería sus sticky). */}
+        <div className={cn('flex-1', tab === 'overview' ? 'overflow-auto' : 'overflow-hidden')}>
+          {tab === 'overview'
+            ? <ProgressOverview onOpenInbox={() => selectTab('inbox')} />
+            : <TrainerFeedbackPanel />}
         </div>
       </div>
     )
@@ -62,6 +107,9 @@ export default function ProgressHub() {
     )
   }
 
+  // Redirección a la vista recordada (replace: el "atrás" no debe rebotar).
+  if (remembered) return <Navigate to={`/admin/progress?view=${remembered}`} replace />
+
   return <ProgressChooser onSelect={select} />
 }
 
@@ -73,7 +121,13 @@ const VIEW_TABS: Array<{ key: ProgressView; icon: typeof Globe2; labelKey: strin
   { key: 'simulations', icon: PhoneCall, labelKey: 'admin.progress_hub.sim_tab', fallback: 'Simulaciones', accent: 'rgb(var(--brand-cyan, 6 182 212))' },
 ]
 
-function ViewTabs({ current, onSelect, onBack }: { current: ProgressView; onSelect: (v: ProgressView) => void; onBack: () => void }) {
+function ViewTabs({ current, onSelect, onBack, modulesTab, onModulesTab }: {
+  current: ProgressView
+  onSelect: (v: ProgressView) => void
+  onBack: () => void
+  modulesTab?: ModulesTab
+  onModulesTab?: (t: ModulesTab) => void
+}) {
   const { t } = useTranslation()
   return (
     <div className="sticky top-0 z-20 flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b border-line bg-bg/85 backdrop-blur shrink-0">
@@ -104,6 +158,32 @@ function ViewTabs({ current, onSelect, onBack }: { current: ProgressView; onSele
           )
         })}
       </div>
+
+      {/* Solo en Módulos: tablero vs. bandeja. Vive aquí arriba, junto al resto
+          de la navegación, para que no sea un control más dentro del panel. */}
+      {current === 'modules' && modulesTab && onModulesTab && (
+        <div className="ml-auto flex items-center gap-1 rounded-2xl border border-line bg-subtle/50 p-1">
+          {([
+            { key: 'overview' as const, Icon: BarChart3, label: t('admin.progress_hub.tab_overview', 'Panorama') },
+            { key: 'inbox' as const, Icon: Inbox, label: t('admin.progress_hub.tab_inbox', 'Bandeja') },
+          ]).map(({ key, Icon, label }) => {
+            const active = key === modulesTab
+            return (
+              <button
+                key={key}
+                onClick={() => !active && onModulesTab(key)}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-[12.5px] font-semibold whitespace-nowrap transition-all',
+                  active ? 'bg-surface shadow-sm text-text' : 'text-text-muted hover:text-text',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -242,8 +322,20 @@ function ProgressChooser({ onSelect }: { onSelect: (v: ProgressView) => void }) 
           ))}
         </div>
 
+        {/* Dónde vive cada cosa. Es la pregunta que más se repite —"¿y los
+            resultados del examen? ¿y la encuesta?"— y la respuesta es que no
+            son vistas aparte: son pestañas dentro de Progreso de Módulos. */}
+        <div className="animate-rise mt-8 rounded-2xl border border-line bg-surface/60 px-5 py-4">
+          <p className="text-[12px] font-semibold text-text">
+            {t('admin.progress_hub.where_title', '¿Y el examen final y la encuesta de satisfacción?')}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-text-muted">
+            {t('admin.progress_hub.where_desc', 'Sus resultados viven en Progreso de Módulos → Panorama, en las pestañas “Examen final” y “Satisfacción”: ahí están la tasa de aprobación, los temas que más se fallan y el NPS. Se configuran en cada curso, en las pestañas Evaluación y Certificación.')}
+          </p>
+        </div>
+
         {/* Nota de privacidad de datos: nada se consulta hasta elegir */}
-        <p className="animate-rise text-center text-[11px] text-text-subtle mt-8">
+        <p className="animate-rise text-center text-[11px] text-text-subtle mt-6">
           {t('admin.progress_hub.hint', 'Los datos se cargan únicamente al seleccionar una vista.')}
         </p>
       </div>

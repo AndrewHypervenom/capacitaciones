@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
+import { fold } from '@/lib/normalize'
 import { SaveDock } from '@/admin/components/SaveDock'
 import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { useAuth } from '@/hooks/useAuth'
@@ -144,12 +145,13 @@ export default function UserList() {
   const [optProgress, setOptProgress] = useState<RecompressProgress | null>(null)
 
   const filteredUsers = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    // Búsqueda insensible a tildes: nadie escribe "Rocío" con tilde.
+    const q = fold(search)
     return users.filter((u) => {
       const matchesQuery =
         !q ||
-        (u.display_name ?? '').toLowerCase().includes(q) ||
-        (u.email ?? '').toLowerCase().includes(q) ||
+        fold(u.display_name ?? '').includes(q) ||
+        fold(u.email ?? '').includes(q) ||
         u.id.toLowerCase().includes(q)
       // Filtra por pertenencia real (casa o colaboración), no solo por la casa:
       // si no, un capacitador con campaña casa A no aparecería al filtrar por B

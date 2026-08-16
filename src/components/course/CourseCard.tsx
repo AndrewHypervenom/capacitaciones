@@ -152,7 +152,7 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
       : null;
 
   const meta = [
-    t('courses.modules_count', { n: total }),
+    t('courses.modules_count', { count: total }),
     totalMin > 0 ? `${totalMin} min` : null,
     t(`courses.level_${course.level}`),
   ].filter(Boolean) as string[];
@@ -270,7 +270,7 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] tabular-nums text-text-subtle">
-              {t('courses.progress', { done, total })}
+              {t('courses.progress', { done, count: total })}
             </span>
             {course.isAssigned ? (
               <span

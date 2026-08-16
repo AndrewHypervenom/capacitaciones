@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Target,
   AlertTriangle,
+  Gauge,
   Lightbulb,
   Lock,
   UserCheck,
@@ -24,6 +25,7 @@ import {
   useProgressStore,
   useModuleDone,
   keyOfModule,
+  moduleXP,
   reviewValue,
   XP_REWARDS,
 } from '@/stores/progressStore';
@@ -50,7 +52,9 @@ import { toast } from '@/stores/toastStore';
 import { getModuleFeedbackForUser } from '@/services/activity.service';
 import { getCourseModulePassPct } from '@/services/courses.service';
 import { useModuleTimer } from '@/hooks/useModuleTimer';
+import { useModulePace } from '@/hooks/useModulePace';
 import { useReinforcementStudy } from '@/hooks/useReinforcementStudy';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import type { Language } from '@/stores/userStore';
 import { FeedbackModal } from '@/components/modules/FeedbackModal';
 import {
@@ -228,7 +232,24 @@ export default function ModulePage() {
   // Cronómetro real de tiempo activo en el módulo (se pausa al cambiar de
   // pestaña, sobrevive recargas, se persiste en BD y se congela al completar).
   // Usamos dbId (UUID real) porque module.id es el slug y el FK apunta a modules.id.
-  const { label: activeTimeLabel } = useModuleTimer(module?.dbId ?? module?.id, userId, completed);
+  const { elapsedMs: activeMs, label: activeTimeLabel } = useModuleTimer(
+    module?.dbId ?? module?.id,
+    userId,
+    completed,
+  );
+
+  // Ritmo: ese mismo tiempo activo contra la duración estimada del módulo, más
+  // las señales que el cronómetro no ve (hasta dónde bajó, pegados de texto,
+  // salidas de pestaña). De aquí salen el aviso de afán y el recorte de XP.
+  const pace = useModulePace(
+    module?.dbId,
+    userId,
+    module?.duration,
+    activeMs,
+    completed,
+    { enabled: !isTrainer },
+  );
+  const confirm = useConfirm();
 
   // Repaso del examen: si este módulo está en la ruta de refuerzo, cronometramos
   // el tiempo real que se le dedica. Ese tiempo —y no un clic— es lo que abre el
@@ -599,11 +620,34 @@ export default function ModulePage() {
   if (loading) return <ModulePageSkeleton />;
   if (!module) return <div className="text-center pt-20 text-text-muted">{t('module.not_found')}</div>;
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (!moduleGate.canComplete) return; // compuerta: no aprobó las actividades
+
+    // Ritmo de afán: no se bloquea nada (el módulo se puede marcar), pero se
+    // dice de frente lo que va a pasar ANTES de pulsar: cuánto XP se paga, que
+    // el tiempo activo queda registrado y que el capacitador lo ve.
+    if (pace.level !== 'ok') {
+      const ok = await confirm({
+        tone: 'default',
+        title: t('module.pace_confirm_title', 'Vas muy rápido para este módulo'),
+        description: t('module.pace_confirm_desc', {
+          defaultValue:
+            'Llevas {{time}} de estudio activo y este módulo está estimado en {{expected}} min. Puedes marcarlo igual, pero se guarda como completado de afán: recibirás {{xp}} XP en vez de {{full}}, y tu capacitador ve el tiempo real, hasta dónde bajaste, si pegaste texto y cuántas veces saliste de la pestaña.',
+          time: activeTimeLabel,
+          expected: module.duration,
+          xp: moduleXP(pace.xpFactor),
+          full: XP_REWARDS.module,
+        }),
+        confirmLabel: t('module.pace_confirm_ok', 'Marcarlo así'),
+        cancelLabel: t('module.pace_confirm_back', 'Volver a repasarlo'),
+      });
+      if (!ok) return;
+    }
+
     // El XP del módulo lo otorga `markModule` (ver XP_REWARDS): aquí duplicaba.
     updateStreak();
-    markModule(keyOfModule(module), siblings.map(keyOfModule));
+    markModule(keyOfModule(module), siblings.map(keyOfModule), { xpFactor: pace.xpFactor });
+    pace.flush(); // el ritmo con el que se cerró queda escrito en la misma fila
     toast.success(t('module.completed_toast', { title: module.title[language] }));
     // Si este módulo desbloquea práctica, ESE es el final del módulo: se celebra
     // y el aprendiz decide. Saltar solo al siguiente se llevaría por delante el
@@ -704,7 +748,7 @@ export default function ModulePage() {
           {t('module.view_feedback_progress')}
         </button>
         {!completed && (
-          <Button variant="neon" size="md" onClick={handleComplete} disabled={!moduleGate.canComplete}>
+          <Button variant="neon" size="md" onClick={() => void handleComplete()} disabled={!moduleGate.canComplete}>
             <Check className="h-4 w-4" strokeWidth={3} /> {t('module.mark_complete')}
           </Button>
         )}
@@ -818,6 +862,60 @@ export default function ModulePage() {
                         )}
               </p>
             )}
+          </div>
+        )}
+
+        {/* ── Aviso de ritmo ───────────────────────────────────────────────
+            Salta solo cuando la persona YA bajó hasta el final (si no, ir
+            "rápido" solo significa que acaba de entrar) y como mucho dos veces:
+            un aviso que aparece siempre deja de leerse. No bloquea nada — dice
+            qué se está midiendo y qué XP va a pagar el módulo así. */}
+        {pace.warn && (
+          <div
+            className="sticky top-4 z-30 mb-6 rounded-2xl border border-amber-500/40 bg-amber-500/[0.07] p-4 backdrop-blur-md"
+            role="status"
+          >
+            <div className="flex items-start gap-3">
+              <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[13.5px] font-medium text-text">
+                  {pace.level === 'rush'
+                    ? t('module.pace_rush_title', 'Estás pasando el módulo de afán')
+                    : t('module.pace_fast_title', 'Vas más rápido de lo que este módulo pide')}
+                </h3>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-text-muted">
+                  {t('module.pace_body', {
+                    defaultValue:
+                      'Llevas {{time}} de estudio activo sobre los {{expected}} min estimados. El tiempo real, hasta dónde bajas, el texto que pegas y las veces que sales de la pestaña quedan registrados y los ve tu capacitador. Terminar así paga {{xp}} XP en vez de {{full}}.',
+                    time: activeTimeLabel,
+                    expected: module.duration,
+                    xp: moduleXP(pace.xpFactor),
+                    full: XP_REWARDS.module,
+                  })}
+                </p>
+                <p className="mt-1.5 text-[11.5px] text-text-subtle">
+                  {t(
+                    'module.pace_ai_hint',
+                    'Si resuelves las actividades con ayuda de una IA, el patrón se nota aquí: lo que te evalúan después es lo que aprendiste, no lo que respondiste.',
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={pace.dismiss}
+                className="shrink-0 rounded-lg p-1 text-text-subtle transition-colors hover:bg-subtle hover:text-text"
+                aria-label={t('common.close', 'Cerrar')}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line/60">
+              <div
+                className="h-full rounded-full bg-amber-500 transition-[width] duration-1000 ease-linear"
+                style={{ width: `${pace.pct}%` }}
+              />
+            </div>
           </div>
         )}
 

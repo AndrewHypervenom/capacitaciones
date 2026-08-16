@@ -9,6 +9,7 @@ import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
+import { fold } from '@/lib/normalize'
 import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
 
 const SIM_ACCENT = 'rgb(var(--brand-cyan, 6 182 212))'
@@ -262,20 +263,27 @@ export default function SimulationFeedbackPanel() {
     const totalAttempts = scoped.reduce((s, r) => s + r.attemptsCount, 0)
     const statusCounts: Record<LearnerStatus, number> = { not_started: 0, in_progress: 0, at_risk: 0, completed: 0 }
     for (const r of scoped) statusCounts[r.status]++
+    // Mismas tasas normalizadas que en las otras vistas de Progreso, para que
+    // "participación" signifique lo mismo en las tres.
+    const practiced = withAttempts.length
     return {
       learners,
       totalAttempts,
       desempeno: Math.round(avg(withAttempts.map((r) => r.avgScore))),
       resolucion: Math.round(avg(withAttempts.map((r) => r.resolvedRate))),
+      empatia: Math.round(avg(withAttempts.map((r) => r.avgEmpathy))),
       statusCounts,
+      practiced,
+      participation: learners > 0 ? Math.round((practiced / learners) * 100) : 0,
+      attemptsPerLearner: practiced > 0 ? Math.round((totalAttempts / practiced) * 10) / 10 : 0,
     }
   }, [scoped])
 
   const tableRows = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = fold(search)
     let list = scoped.filter((r) => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
-      if (q && !r.displayName.toLowerCase().includes(q)) return false
+      if (q && !fold(r.displayName).includes(q)) return false
       return true
     })
     const m = sort.dir === 'asc' ? 1 : -1
@@ -410,12 +418,62 @@ export default function SimulationFeedbackPanel() {
         </div>
       ) : (
         <>
-          {/* KPIs */}
-          <KpiRow>
-            <Kpi accent={SIM_ACCENT} icon={<Sparkles className="h-4 w-4" />} label={t('admin.sim_panel.kpi_learners', 'Aprendices')} value={String(stats.learners)} />
-            <Kpi accent={SIM_ACCENT} highlight icon={<Phone className="h-4 w-4" />} label={t('admin.sim_panel.kpi_attempts', 'Intentos')} value={String(stats.totalAttempts)} />
-            <Kpi accent={SIM_ACCENT} icon={<ListChecks className="h-4 w-4" />} label={t('admin.sim_panel.kpi_score', 'Desempeño')} value={`${stats.desempeno}%`} />
-            <Kpi accent={SIM_ACCENT} icon={<CheckCircle2 className="h-4 w-4" />} label={t('admin.sim_panel.kpi_resolved', 'Resolución')} value={`${stats.resolucion}%`} />
+          {/* Ojo con lo que se puede afirmar aquí: esto es desempeño en un
+              entorno SIMULADO, no en el puesto real. Anticipa cómo va a
+              atender, no demuestra cómo atiende. El orden va de cuánta gente
+              practica a con qué calidad lo hace. */}
+          <KpiRow className="xl:grid-cols-3 2xl:grid-cols-6">
+            <Kpi
+              accent={SIM_ACCENT}
+              icon={<Sparkles className="h-4 w-4" />}
+              label={t('admin.sim_panel.kpi_learners', 'Aprendices alcanzados')}
+              value={String(stats.learners)}
+              hint={t('admin.sim_panel.kpi_learners_hint', 'Personas con simuladores disponibles en este alcance.')}
+              frame={t('admin.progress_std.iso_coverage', 'ISO 30414 · Cobertura')}
+            />
+            <Kpi
+              accent="#3b82f6"
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              label={t('admin.sim_panel.kpi_participation', 'Participación')}
+              value={`${stats.participation}%`}
+              sub={`${stats.practiced}/${stats.learners}`}
+              hint={t('admin.sim_panel.kpi_participation_hint', 'Quiénes han practicado al menos una vez.')}
+              frame={t('admin.progress_std.iso_participation', 'ISO 30414 · Participación')}
+              onClick={() => setStatusFilter(statusFilter === 'not_started' ? 'all' : 'not_started')}
+              active={statusFilter === 'not_started'}
+            />
+            <Kpi
+              accent={SIM_ACCENT}
+              highlight
+              icon={<Phone className="h-4 w-4" />}
+              label={t('admin.sim_panel.kpi_attempts', 'Intentos de práctica')}
+              value={String(stats.totalAttempts)}
+              sub={t('admin.sim_panel.kpi_attempts_sub', { n: stats.attemptsPerLearner, defaultValue: '{{n}} por persona' })}
+              hint={t('admin.sim_panel.kpi_attempts_hint', 'Volumen de práctica: repetir es justo lo que se busca aquí.')}
+            />
+            <Kpi
+              accent={SIM_ACCENT}
+              icon={<ListChecks className="h-4 w-4" />}
+              label={t('admin.sim_panel.kpi_score', 'Desempeño')}
+              value={`${stats.desempeno}%`}
+              hint={t('admin.sim_panel.kpi_score_hint', 'Puntaje promedio de quienes practicaron. Es desempeño en simulación: para el nivel de conducta hace falta la observación en el puesto real.')}
+            />
+            <Kpi
+              accent="#22c55e"
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              label={t('admin.sim_panel.kpi_resolved', 'Tasa de resolución')}
+              value={`${stats.resolucion}%`}
+              hint={t('admin.sim_panel.kpi_resolved_hint', 'Llamadas SIMULADAS que terminaron resueltas. Anticipa el resultado de negocio, pero no lo sustituye: el FCR real vive en los sistemas del contact center.')}
+            />
+            <Kpi
+              accent="#ef4444"
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label={t('admin.sim_panel.kpi_at_risk', 'En riesgo')}
+              value={String(stats.statusCounts.at_risk)}
+              hint={t('admin.sim_panel.kpi_at_risk_hint', 'Practicaron, pero su mejor puntaje no llega al 60%.')}
+              onClick={() => setStatusFilter(statusFilter === 'at_risk' ? 'all' : 'at_risk')}
+              active={statusFilter === 'at_risk'}
+            />
           </KpiRow>
 
           {/* Insight accionable: aprendices en riesgo */}

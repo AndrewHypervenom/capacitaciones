@@ -563,7 +563,7 @@ export default function CourseList() {
                     )}
                     <div className="flex items-center gap-1.5 text-[12px] text-text-subtle">
                       <BookOpen className="h-3.5 w-3.5" />
-                      {t('admin.courses.modules_count', { n: course.modules.length })}
+                      {t('admin.courses.modules_count', { count: course.modules.length })}
                     </div>
                     <p className="text-[11px] text-text-subtle mt-1">
                       {t('admin.courses.shared_from', { name: course.campaign_name ?? '—' })}
@@ -696,7 +696,7 @@ export default function CourseList() {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-muted">
                     <BookOpen className="h-3 w-3" />
-                    {t('admin.courses.modules_count', { n: course.modules.length })}
+                    {t('admin.courses.modules_count', { count: course.modules.length })}
                   </span>
                   <span className="inline-flex items-center rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-muted">
                     {t(`admin.courses.level_${course.level}`)}

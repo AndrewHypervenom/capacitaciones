@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import { cn } from '@/lib/cn'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -168,12 +169,15 @@ export function StatTile({
   active?: boolean
 }) {
   const Tag: React.ElementType = onClick ? 'button' : 'div'
+  // La etiqueta se recorta cuando la tarjeta es estrecha; el texto completo
+  // sale al pasar por encima para no tener que adivinarlo.
   return (
+    <Tooltip anchor="element" delay={120} maxWidth={240} label={label} className="min-w-0 w-full">
     <Tag
       onClick={onClick}
       type={onClick ? 'button' : undefined}
       className={cn(
-        'group relative min-w-0 overflow-hidden rounded-2xl border bg-surface px-3.5 py-2.5 text-left transition-all duration-300 ease-apple',
+        'group relative w-full min-w-0 overflow-hidden rounded-2xl border bg-surface px-3.5 py-2.5 text-left transition-all duration-300 ease-apple',
         onClick && 'hover:-translate-y-0.5 hover:shadow-card-hover cursor-pointer',
       )}
       style={{ borderColor: active ? tint(accent, 45) : undefined }}
@@ -196,6 +200,7 @@ export function StatTile({
       </div>
       {sub && <div className="relative mt-2">{sub}</div>}
     </Tag>
+    </Tooltip>
   )
 }
 

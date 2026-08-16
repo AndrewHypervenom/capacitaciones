@@ -541,7 +541,7 @@ export default function CoursePage() {
                 {Math.round(pct * 100)}%
               </span>
               <span className="text-[12.5px] tabular-nums text-text-subtle">
-                {t('courses.progress', { done, total })}
+                {t('courses.progress', { done, count: total })}
               </span>
             </div>
             <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">

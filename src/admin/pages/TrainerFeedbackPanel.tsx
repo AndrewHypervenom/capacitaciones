@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getPendingAttempts, saveTrainerFeedback, FeedbackPayload } from '@/services/activity.service';
-import { notifyLearnerFeedback } from '@/services/notifications.service';
+import {
+  notifyLearnerFeedback, getUserCourseDetailAdmin, type AdminCourseDetail,
+} from '@/services/notifications.service';
 import { getModuleTimesForUsers, type ModuleTimeRow } from '@/services/moduleTime.service';
+import { getModulePacesForUsers, type ModulePaceRow } from '@/services/modulePace.service';
 import { formatElapsed } from '@/hooks/useModuleTimer';
 import { useAuth } from '@/hooks/useAuth';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
@@ -13,9 +17,10 @@ import {
   SlidersHorizontal, ChevronDown, ArrowDownUp, Clock, Send, Sparkles,
   ClipboardCheck, Award, ChevronRight, GraduationCap, Gamepad2, Video, HelpCircle,
   ArrowLeft, Building2, BookOpen, Layers, Users, ChevronLeft, RotateCcw,
-  UserRound, TrendingUp, Zap, X, CornerDownLeft,
+  UserRound, TrendingUp, Zap, X, CornerDownLeft, Gauge,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { fold } from '@/lib/normalize';
 import {
   CountUp, ProgressBar, ScoreDistribution, ScoreRing, StatTile, Highlight, useSearchHotkey,
   scoreHex, scoreTextTone, initials, tint,
@@ -114,10 +119,22 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { user, isSuperAdmin } = useAuth();
   const confirm = useConfirm();
+  // `?user=<id>`: se llega aquí desde la ficha de una persona ("Progreso
+  // detallado"). Al cargar las entregas se enfoca a esa persona directamente,
+  // sin obligar a bajar campaña → curso → módulo para volver a encontrarla.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkUser = searchParams.get('user');
 
   const [attempts, setAttempts] = useState<PendingAttempt[]>([]);
   // Tiempo activo por aprendiz+módulo, indexado por `${user_id}:${module_id}`.
   const [moduleTimes, setModuleTimes] = useState<Record<string, ModuleTimeRow>>({});
+  // Ritmo con el que pasó cada módulo (misma clave). Vacío mientras el ALTER de
+  // `module_pace` no esté corrido: el panel se pinta igual, sin la etiqueta.
+  const [modulePaces, setModulePaces] = useState<Record<string, ModulePaceRow>>({});
+  // Avance real por curso de la persona enfocada, indexado por `${user_id}:${course_id}`.
+  // Las entregas solo cuentan lo que el aprendiz mandó; el curso sabe cuántas
+  // actividades TIENE cada módulo y cuáles resolvió, que es el avance de verdad.
+  const [courseDetails, setCourseDetails] = useState<Record<string, AdminCourseDetail>>({});
   const [selectedAttempt, setSelectedAttempt] = useState<PendingAttempt | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +225,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
           // Tiempo activo de todos los aprendices con entregas, en una sola consulta.
           const userIds = rows.map((r) => r.user_id).filter(Boolean);
           getModuleTimesForUsers(userIds).then((m) => { if (!cancelled) setModuleTimes(m); });
+          // Ritmo de esos mismos módulos (consulta aparte para que, si el ALTER
+          // todavía no se corrió, el tiempo se siga viendo igual).
+          getModulePacesForUsers(userIds).then((p) => { if (!cancelled) setModulePaces(p); });
         }
       } catch (e) {
         if (!cancelled) { console.error('TrainerFeedbackPanel load error:', e); setError(t('admin.trainer_panel.load_err_title')); }
@@ -218,6 +238,51 @@ export const TrainerFeedbackPanel: React.FC = () => {
     loadAttempts();
     return () => { cancelled = true; };
   }, [isSuperAdmin, t]);
+
+  // Enfoque automático del deep link. Se consume el parámetro al aplicarlo para
+  // que al navegar dentro del panel la URL no lo siga arrastrando.
+  const deepLinkDone = useRef(false);
+  useEffect(() => {
+    if (!deepLinkUser || deepLinkDone.current || attempts.length === 0) return;
+    const mine = attempts.find((a) => a.user_id === deepLinkUser);
+    deepLinkDone.current = true;
+    if (!mine) return;
+    setPath({
+      learner: {
+        id: deepLinkUser,
+        name: mine.student?.name || t('admin.trainer_panel.student_fallback'),
+      },
+    });
+    setStatusFilter('all');
+    const next = new URLSearchParams(searchParams);
+    next.delete('user');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkUser, attempts]);
+
+  // Al enfocar a una persona se pide el detalle de cada curso donde tiene
+  // entregas: de ahí salen los módulos completos (aunque no haya entregado nada
+  // en ellos) y cuántas actividades resolvió de las que el módulo trae.
+  useEffect(() => {
+    const learnerId = path.learner?.id;
+    if (!learnerId) return;
+    const ids = [...new Set(
+      attempts.filter((a) => a.user_id === learnerId && a.course_id).map((a) => a.course_id as string),
+    )].filter((cid) => !courseDetails[`${learnerId}:${cid}`]);
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(ids.map(async (cid) => {
+      try {
+        const dt = await getUserCourseDetailAdmin(learnerId, cid);
+        if (!cancelled) setCourseDetails((d) => ({ ...d, [`${learnerId}:${cid}`]: dt }));
+      } catch {
+        // Sin permiso o sin RPC: la ficha cae al conteo por entregas.
+      }
+    }));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path.learner?.id, attempts]);
 
   useEffect(() => {
     // En una entrega ya evaluada precargamos el comentario existente para poder
@@ -394,8 +459,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
       if (at > node.lastAt) node.lastAt = at;
     }
     let arr = [...map.values()];
-    const s = searchTerm.trim().toLowerCase();
-    if (s) arr = arr.filter((n) => n.name.toLowerCase().includes(s));
+    const s = fold(searchTerm);
+    if (s) arr = arr.filter((n) => fold(n.name).includes(s));
     // Prioriza lo que tiene pendientes; luego lo más reciente; luego alfabético.
     arr.sort((a, b) => b.pending - a.pending || b.lastAt - a.lastAt || a.name.localeCompare(b.name));
     return arr;
@@ -405,7 +470,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
   // Entregas del nivel hoja (aprendiz seleccionado): estado + búsqueda + orden.
   const leafAttempts = useMemo(() => {
     if (level !== 'attempt') return [] as PendingAttempt[];
-    const s = searchTerm.trim().toLowerCase();
+    const s = fold(searchTerm);
     const filtered = pool.filter((a) => {
       if (!inPrefix(a)) return false;
       let matchesStatus = true;
@@ -414,10 +479,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
       if (!matchesStatus) return false;
       if (!s) return true;
       return (
-        formatGameType(a.game_type).toLowerCase().includes(s) ||
-        (a.section?.heading_es || '').toLowerCase().includes(s) ||
-        (a.module?.title_es || '').toLowerCase().includes(s) ||
-        (a.course_title || '').toLowerCase().includes(s)
+        fold(formatGameType(a.game_type)).includes(s) ||
+        fold(a.section?.heading_es || '').includes(s) ||
+        fold(a.module?.title_es || '').includes(s) ||
+        fold(a.course_title || '').includes(s)
       );
     });
     const sorted = [...filtered];
@@ -439,13 +504,13 @@ export const TrainerFeedbackPanel: React.FC = () => {
   // un clic salta directo a todas sus entregas. Es el atajo que pidió el equipo:
   // "quiero buscar por persona", sin tener que adivinar campaña → curso → módulo.
   const peopleMatches = useMemo<PersonHit[]>(() => {
-    const s = searchTerm.trim().toLowerCase();
+    const s = fold(searchTerm);
     if (s.length < 2) return [];
     const map = new Map<string, PersonHit & { courseIds: Set<string>; moduleIds: Set<string> }>();
     for (const a of pool) {
       const name = a.student?.name || t('admin.trainer_panel.student_fallback');
       const email = a.student?.email ?? null;
-      if (!name.toLowerCase().includes(s) && !(email || '').toLowerCase().includes(s)) continue;
+      if (!fold(name).includes(s) && !fold(email || '').includes(s)) continue;
       let hit = map.get(a.user_id);
       if (!hit) {
         hit = {
@@ -496,57 +561,105 @@ export const TrainerFeedbackPanel: React.FC = () => {
   // la pregunta real del capacitador es "¿cuántos cursos y módulos lleva?", no
   // "¿cuántas filas hay?". Cada módulo cuenta como completado cuando el
   // cronómetro registró su finalización (misma señal que ve el aprendiz).
+  //
+  // Dos cifras distintas conviven aquí y antes se confundían en un solo "0/4":
+  //   · AVANCE  = actividades resueltas de las que el módulo trae (del curso).
+  //   · REVISIÓN = entregas que el capacitador ya evaluó (del pozo de entregas).
+  // Un módulo puede ir 4/4 con 100% y seguir con 0 evaluadas; la barra muestra el
+  // avance y lo pendiente de evaluar se dice aparte, con todas sus letras.
   const personSummary = useMemo(() => {
     if (!path.learner) return null;
-    const mine = pool.filter((a) => a.user_id === path.learner!.id);
+    const learnerId = path.learner.id;
+    const mine = pool.filter((a) => a.user_id === learnerId);
     if (mine.length === 0) return null;
 
-    interface PMod { key: string; title: string; total: number; done: number; scoreSum: number; timeMs: number; completed: boolean }
-    interface PCourse { key: string; title: string; modules: Map<string, PMod>; total: number; done: number; scoreSum: number }
+    interface PMod {
+      key: string; title: string;
+      /** Entregas de este módulo en el pozo y cuántas están evaluadas. */
+      attempts: number; reviewed: number; scoreSum: number;
+      timeMs: number; completed: boolean;
+      /** Actividades resueltas / que trae el módulo (null si no llegó el detalle). */
+      actDone: number | null; actTotal: number | null;
+    }
+    interface PCourse { key: string; title: string; modules: Map<string, PMod>; attempts: number; reviewed: number; scoreSum: number }
     const byCourse = new Map<string, PCourse>();
+
+    const newMod = (key: string, title: string, moduleId?: string | null): PMod => {
+      const mt = moduleId ? moduleTimes[`${learnerId}:${moduleId}`] : undefined;
+      return {
+        key, title,
+        attempts: 0, reviewed: 0, scoreSum: 0,
+        timeMs: mt?.elapsedMs ?? 0,
+        completed: !!mt?.completedAt,
+        actDone: null, actTotal: null,
+      };
+    };
 
     for (const a of mine) {
       const cKey = a.course_id ?? NONE_KEY;
       let course = byCourse.get(cKey);
       if (!course) {
-        course = { key: cKey, title: a.course_title || t('admin.trainer_panel.no_course'), modules: new Map(), total: 0, done: 0, scoreSum: 0 };
+        course = { key: cKey, title: a.course_title || t('admin.trainer_panel.no_course'), modules: new Map(), attempts: 0, reviewed: 0, scoreSum: 0 };
         byCourse.set(cKey, course);
       }
       const mKey = a.module_id ?? NONE_KEY;
       let mod = course.modules.get(mKey);
       if (!mod) {
-        const mt = a.module_id ? moduleTimes[`${a.user_id}:${a.module_id}`] : undefined;
-        mod = {
-          key: mKey,
-          title: a.module?.title_es || t('admin.trainer_panel.module_fallback'),
-          total: 0, done: 0, scoreSum: 0,
-          timeMs: mt?.elapsedMs ?? 0,
-          completed: !!mt?.completedAt,
-        };
+        mod = newMod(mKey, a.module?.title_es || t('admin.trainer_panel.module_fallback'), a.module_id);
         course.modules.set(mKey, mod);
       }
-      mod.total++; course.total++;
-      if (a.is_evaluated) { mod.done++; course.done++; }
+      mod.attempts++; course.attempts++;
+      if (a.is_evaluated) { mod.reviewed++; course.reviewed++; }
       mod.scoreSum += a.score; course.scoreSum += a.score;
+    }
+
+    // Se cruza con el curso: los módulos que el aprendiz aún no tocó aparecen
+    // igual (en 0), y los que tocó estrenan su avance real de actividades.
+    for (const course of byCourse.values()) {
+      const dt = courseDetails[`${learnerId}:${course.key}`];
+      if (!dt) continue;
+      for (const dm of dt.modules) {
+        let mod = course.modules.get(dm.id);
+        if (!mod) {
+          mod = newMod(dm.id, dm.title_es, dm.id);
+          course.modules.set(dm.id, mod);
+        }
+        mod.title = dm.title_es || mod.title;
+        mod.completed = mod.completed || dm.completed;
+        mod.actTotal = dm.sections.length;
+        mod.actDone = dm.sections.filter((s) => s.has_attempt).length;
+      }
     }
 
     const courses = [...byCourse.values()]
       .map((c) => {
         const modules = [...c.modules.values()]
-          .map((m) => ({ ...m, avg: Math.round(m.scoreSum / m.total) }))
-          .sort((a, b) => (b.total - b.done) - (a.total - a.done) || a.title.localeCompare(b.title));
+          .map((m) => ({
+            ...m,
+            // Sin entregas en el pozo no hay nota que promediar (p. ej. un módulo
+            // que solo se leyó, o cuyas entregas quedaron fuera por los filtros).
+            avg: m.attempts > 0 ? Math.round(m.scoreSum / m.attempts) : null,
+            // Cuando no hay detalle del curso, el avance se lee de las entregas.
+            progDone: m.actDone ?? m.attempts,
+            progTotal: m.actTotal ?? m.attempts,
+          }))
+          .sort((a, b) =>
+            (b.attempts - b.reviewed) - (a.attempts - a.reviewed) || a.title.localeCompare(b.title));
         return {
           key: c.key,
           title: c.title,
           modules,
-          total: c.total,
-          done: c.done,
-          avg: Math.round(c.scoreSum / c.total),
+          attempts: c.attempts,
+          reviewed: c.reviewed,
+          avg: Math.round(c.scoreSum / c.attempts),
           modulesDone: modules.filter((m) => m.completed).length,
+          actDone: modules.reduce((s, m) => s + m.progDone, 0),
+          actTotal: modules.reduce((s, m) => s + m.progTotal, 0),
           timeMs: modules.reduce((s, m) => s + m.timeMs, 0),
         };
       })
-      .sort((a, b) => (b.total - b.done) - (a.total - a.done) || a.title.localeCompare(b.title));
+      .sort((a, b) =>
+        (b.attempts - b.reviewed) - (a.attempts - a.reviewed) || a.title.localeCompare(b.title));
 
     const allModules = courses.flatMap((c) => c.modules);
     const pending = mine.filter((a) => !a.is_evaluated).length;
@@ -564,10 +677,12 @@ export const TrainerFeedbackPanel: React.FC = () => {
       coursesCount: courses.length,
       modulesCount: allModules.length,
       modulesDone: allModules.filter((m) => m.completed).length,
+      actDone: allModules.reduce((s, m) => s + m.progDone, 0),
+      actTotal: allModules.reduce((s, m) => s + m.progTotal, 0),
       totalTimeMs: allModules.reduce((s, m) => s + m.timeMs, 0),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool, path.learner, moduleTimes, i18n.language]);
+  }, [pool, path.learner, moduleTimes, courseDetails, i18n.language]);
 
   // ── Navegación por la jerarquía ──
   const enterNode = (node: HierNode) => {
@@ -577,6 +692,30 @@ export const TrainerFeedbackPanel: React.FC = () => {
     else if (level === 'learner') setPath((p) => ({ ...p, learner: { id: node.key, name: node.name } }));
     setSelectedAttempt(null);
     setSearchTerm('');
+  };
+
+  /**
+   * Atajo "empezar a evaluar": abre la entrega pendiente que más lleva
+   * esperando, sin obligar a bajar campaña → curso → módulo → aprendiz.
+   *
+   * Con cientos de pendientes, esos cuatro clics eran el peaje que había que
+   * pagar ANTES de poder trabajar. El foco se pone en la persona dueña de la
+   * entrega, para que al terminar se sigan viendo las suyas.
+   */
+  const startOldestPending = () => {
+    const oldest = pool
+      .filter((a) => !a.is_evaluated)
+      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())[0];
+    if (!oldest) return;
+    setPath({
+      learner: {
+        id: oldest.user_id,
+        name: oldest.student?.name || t('admin.trainer_panel.student_fallback'),
+      },
+    });
+    setStatusFilter('pending');
+    setSearchTerm('');
+    setSelectedAttempt(oldest);
   };
 
   // Salto directo a una persona desde la búsqueda global: se limpian los demás
@@ -635,7 +774,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
     <div className="flex flex-col h-full bg-bg text-text overflow-hidden font-sans">
 
       {/* ===== Barra superior: identidad del panel + pulso del avance ===== */}
-      <header className="relative shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-3 sm:py-4">
+      <header className="relative shrink-0 border-b border-line bg-white/60 dark:bg-zinc-900/30 backdrop-blur px-4 sm:px-6 py-4 sm:py-5">
         <div aria-hidden className="absolute inset-x-0 top-0 h-0.5" style={{ background: 'linear-gradient(90deg, rgb(var(--brand-magenta)), transparent)' }} />
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
@@ -660,8 +799,11 @@ export const TrainerFeedbackPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* KPIs: los dos primeros filtran (menos clics para llegar a lo urgente) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 w-full sm:w-auto">
+          {/* KPIs de EVALUACIÓN, no del programa: aquí solo vive lo que cambia
+              la decisión de a qué entrega ir primero. El alcance, la
+              participación, los certificados y el NPS se mudaron al Panorama;
+              tenerlos también aquí era la mitad del agobio de esta pantalla. */}
+          <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full sm:w-auto">
             <StatTile
               icon={<ClipboardCheck className="w-4 h-4" />}
               label={t('admin.trainer_panel.stat_pending')}
@@ -676,12 +818,6 @@ export const TrainerFeedbackPanel: React.FC = () => {
               suffix="%"
               accent={scoreHex(stats.avg)}
               sub={<ScoreDistribution perfect={stats.perfect} passed={stats.passed} failed={stats.failed} />}
-            />
-            <StatTile
-              icon={<Users className="w-4 h-4" />}
-              label={t('admin.trainer_panel.stat_learners', 'Aprendices')}
-              value={stats.learners}
-              accent="rgb(var(--brand-green))"
             />
             <StatTile
               icon={<TrendingUp className="w-4 h-4" />}
@@ -699,10 +835,12 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
         {/* ===== Columna Izquierda: navegador jerárquico ===== */}
         <aside className={cn(
-          'w-full md:w-[360px] xl:w-[400px] md:shrink-0 border-r border-line flex-col h-full bg-bg',
+          'w-full md:w-[380px] xl:w-[430px] md:shrink-0 border-r border-line flex-col h-full bg-bg',
           selectedAttempt ? 'hidden md:flex' : 'flex',
         )}>
-          <div className="p-3.5 border-b border-line shrink-0 space-y-2" ref={filtersRef}>
+          {/* Más aire en la cabecera de la columna: migas, buscador y filtros
+              son tres cosas distintas y antes se leían como un bloque apretado. */}
+          <div className="p-4 border-b border-line shrink-0 space-y-2.5" ref={filtersRef}>
             {/* Migas de pan: Campañas › Campaña › Curso › Módulo › Aprendiz.
                 El "subir un nivel" va como flecha a la izquierda de las migas:
                 una sola fila de navegación en vez de dos. */}
@@ -1248,11 +1386,13 @@ export const TrainerFeedbackPanel: React.FC = () => {
                         </div>
                         {/* Tiempo activo real que el aprendiz pasó en el módulo */}
                         {(() => {
-                          const mt = selectedAttempt.module_id
-                            ? moduleTimes[`${selectedAttempt.user_id}:${selectedAttempt.module_id}`]
-                            : undefined;
+                          const pairKey = selectedAttempt.module_id
+                            ? `${selectedAttempt.user_id}:${selectedAttempt.module_id}`
+                            : '';
+                          const mt = pairKey ? moduleTimes[pairKey] : undefined;
+                          const mp = pairKey ? modulePaces[pairKey] : undefined;
                           return (
-                            <div className="flex items-center gap-1.5 mt-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
                                 <Clock className="w-3 h-3" />
                                 {t('admin.trainer_panel.module_time_label')}:{' '}
@@ -1262,6 +1402,35 @@ export const TrainerFeedbackPanel: React.FC = () => {
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/10 border border-green-500/20 text-[10px] font-bold uppercase tracking-wide text-green-600 dark:text-green-400">
                                   <CheckCircle2 className="w-3 h-3" />
                                   {t('admin.trainer_panel.module_time_completed')}
+                                </span>
+                              )}
+                              {/* Ritmo: solo se pinta cuando hay algo que mirar
+                                  (afán o señales). Un módulo estudiado a ritmo
+                                  normal no necesita etiqueta. */}
+                              {mp && (mp.level !== 'ok' || mp.pastes > 0 || mp.tabOuts >= 3) && (
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-semibold',
+                                    mp.level === 'rush'
+                                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                                      : 'bg-zinc-500/10 border-zinc-500/25 text-text-muted',
+                                  )}
+                                  title={t('admin.trainer_panel.pace_detail', {
+                                    defaultValue:
+                                      'Recorrió el {{depth}}% del módulo · pegó texto {{pastes}} vez(ces) · salió de la pestaña {{tabs}} vez(ces) · avisos mostrados: {{warns}} · XP pagado: {{xp}}%',
+                                    depth: mp.maxDepth,
+                                    pastes: mp.pastes,
+                                    tabs: mp.tabOuts,
+                                    warns: mp.warnings,
+                                    xp: Math.round(mp.xpFactor * 100),
+                                  })}
+                                >
+                                  <Gauge className="w-3 h-3" />
+                                  {mp.level === 'rush'
+                                    ? t('admin.trainer_panel.pace_rush', 'Pasado de afán')
+                                    : mp.level === 'fast'
+                                      ? t('admin.trainer_panel.pace_fast', 'Ritmo rápido')
+                                      : t('admin.trainer_panel.pace_signals', 'Señales para revisar')}
                                 </span>
                               )}
                             </div>
@@ -1453,7 +1622,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                     <MiniStat
                       icon={<ClipboardCheck className="h-3.5 w-3.5" />}
                       label={t('admin.trainer_panel.lvl_activities')}
-                      value={personSummary.total}
+                      text={`${personSummary.actDone}/${personSummary.actTotal}`}
                       accent="#f59e0b"
                       note={t('admin.trainer_panel.n_pending_short', '{{count}} por evaluar', { count: personSummary.pending })}
                     />
@@ -1485,7 +1654,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
                           <p className="mt-0.5 text-[11.5px] text-text-muted">
                             {t('admin.trainer_panel.sub_modules', { count: c.modules.length })}
                             {' · '}
-                            {t('admin.trainer_panel.sub_activities', { count: c.total })}
+                            {t('admin.trainer_panel.acts_done', '{{done}} de {{total}} actividades', {
+                              done: c.actDone, total: c.actTotal,
+                            })}
                             {c.timeMs > 0 && ` · ${formatElapsed(c.timeMs)}`}
                           </p>
                         </div>
@@ -1493,28 +1664,48 @@ export const TrainerFeedbackPanel: React.FC = () => {
                       </div>
 
                       <div className="mt-4 space-y-3">
-                        {c.modules.map((m, i) => (
-                          <div key={m.key}>
-                            <div className="flex items-baseline justify-between gap-3">
-                              <span className="flex min-w-0 items-center gap-1.5">
-                                {m.completed && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />}
-                                <span className="truncate text-[12.5px] font-medium text-text">{m.title}</span>
-                              </span>
-                              <span className={cn('shrink-0 text-[12px] font-bold tabular-nums', scoreTextTone(m.avg))}>{m.avg}%</span>
+                        {c.modules.map((m, i) => {
+                          const full = m.progTotal > 0 && m.progDone === m.progTotal;
+                          const toReview = m.attempts - m.reviewed;
+                          return (
+                            <div key={m.key}>
+                              <div className="flex items-baseline justify-between gap-3">
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  {m.completed && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />}
+                                  <span className="truncate text-[12.5px] font-medium text-text">{m.title}</span>
+                                </span>
+                                <span className={cn(
+                                  'shrink-0 text-[12px] font-bold tabular-nums',
+                                  m.avg == null ? 'text-text-muted/60' : scoreTextTone(m.avg),
+                                )}>
+                                  {m.avg == null ? '—' : `${m.avg}%`}
+                                </span>
+                              </div>
+                              {/* La barra es el AVANCE: actividades resueltas del módulo. */}
+                              <div className="mt-1.5 flex items-center gap-2">
+                                <ProgressBar
+                                  pct={m.progTotal > 0 ? (m.progDone / m.progTotal) * 100 : 0}
+                                  accent={full ? '#22c55e' : '#f59e0b'}
+                                  height={4}
+                                  delay={0.06 + ci * 0.06 + i * 0.04}
+                                />
+                                <span className="shrink-0 text-[10px] tabular-nums text-text-muted/80">
+                                  {t('admin.trainer_panel.acts_done_short', '{{done}}/{{total}} act.', {
+                                    done: m.progDone, total: m.progTotal,
+                                  })}
+                                </span>
+                              </div>
+                              {/* La revisión va aparte y con su nombre: nunca es "avance". */}
+                              {m.attempts > 0 && (
+                                <p className="mt-1 text-[10px] text-text-muted/70">
+                                  {toReview > 0
+                                    ? t('admin.trainer_panel.n_pending_short', '{{count}} por evaluar', { count: toReview })
+                                    : t('admin.trainer_panel.all_reviewed', 'Todo evaluado')}
+                                </p>
+                              )}
                             </div>
-                            <div className="mt-1.5 flex items-center gap-2">
-                              <ProgressBar
-                                pct={(m.done / m.total) * 100}
-                                accent={m.done === m.total ? '#22c55e' : '#f59e0b'}
-                                height={4}
-                                delay={0.06 + ci * 0.06 + i * 0.04}
-                              />
-                              <span className="shrink-0 text-[10px] tabular-nums text-text-muted/80">
-                                {m.done}/{m.total}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </motion.div>
                   ))}
@@ -1535,6 +1726,17 @@ export const TrainerFeedbackPanel: React.FC = () => {
               </motion.div>
               <p className="text-sm font-medium text-text">{t('admin.trainer_panel.select_side')}</p>
               <p className="text-xs text-text-muted/60 max-w-xs">{t('admin.trainer_panel.review_before')}</p>
+              {stats.total > 0 && (
+                <button
+                  type="button"
+                  onClick={startOldestPending}
+                  className="mt-1 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold text-white shadow-lg transition-transform duration-300 hover:scale-[1.03]"
+                  style={{ background: 'linear-gradient(135deg, rgb(var(--brand-magenta)), color-mix(in srgb, rgb(var(--brand-magenta)) 62%, #000))' }}
+                >
+                  <Zap className="h-4 w-4" />
+                  {t('admin.trainer_panel.start_oldest', 'Empezar por la que más lleva esperando')}
+                </button>
+              )}
               <p className="inline-flex items-center gap-1.5 text-[11px] text-text-muted/60">
                 <Search className="h-3 w-3" />
                 {t('admin.trainer_panel.hint_people_search', 'Escribe un nombre en el buscador para saltar directo a una persona')}

@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
+import { fold } from '@/lib/normalize'
 import StarDisplay from '@/components/StarDisplay'
 import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
 
@@ -252,21 +253,28 @@ export default function FeedbackPanel() {
       statusCounts[r.status]++
     }
 
+    // Tasas normalizadas (las que pide cualquier informe de formación):
+    // participación = quién empezó de quién podía; finalización = quién terminó
+    // de quién empezó. Se calculan sobre el mismo conjunto para que sumen.
+    const started = learners - statusCounts.not_started
     return {
       learners,
       avance: totalLevels > 0 ? Math.round((totalCompleted / totalLevels) * 100) : 0,
       desempeno: Math.round(avg(scores)),
       avgStars: avg(starsPerLearner),
       statusCounts,
+      started,
+      participation: learners > 0 ? Math.round((started / learners) * 100) : 0,
+      completion: started > 0 ? Math.round((statusCounts.completed / started) * 100) : 0,
     }
   }, [scoped])
 
   // Filas de la tabla: ámbito + chip de estado + búsqueda, ordenadas.
   const tableRows = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = fold(search)
     let list = scoped.filter(r => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
-      if (q && !r.displayName.toLowerCase().includes(q)) return false
+      if (q && !fold(r.displayName).includes(q)) return false
       return true
     })
     const m = sort.dir === 'asc' ? 1 : -1
@@ -473,11 +481,65 @@ export default function FeedbackPanel() {
       ) : (
         <>
           {/* ── KPIs ── */}
-          <KpiRow>
-            <Kpi accent={WORLD_ACCENT} icon={<Globe2 className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices')} value={String(stats.learners)} />
-            <Kpi accent={WORLD_ACCENT} highlight icon={<MapIcon className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_avance', 'Avance')} value={`${stats.avance}%`} />
-            <Kpi accent={WORLD_ACCENT} icon={<GaugeCircle className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_desempeno', 'Desempeño')} value={`${stats.desempeno}%`} />
-            <Kpi accent="#f59e0b" icon={<Star className="h-4 w-4" />} label={i18n.t('admin.feedback_panel.kpi_avg_stars', 'Prom. estrellas')} value={stats.avgStars.toFixed(1)} />
+          {/* Seis métricas y ninguna suelta: alcance → participación →
+              finalización → aprendizaje → calidad → riesgo. Cada una dice de
+              qué marco sale, para que el informe se pueda defender fuera. */}
+          <KpiRow className="xl:grid-cols-3 2xl:grid-cols-6">
+            <Kpi
+              accent={WORLD_ACCENT}
+              icon={<Globe2 className="h-4 w-4" />}
+              label={i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices alcanzados')}
+              value={String(stats.learners)}
+              hint={i18n.t('admin.feedback_panel.kpi_learners_hint', 'Personas con mundos disponibles en este alcance.')}
+              frame={i18n.t('admin.progress_std.iso_coverage', 'ISO 30414 · Cobertura')}
+            />
+            <Kpi
+              accent="#3b82f6"
+              icon={<GaugeCircle className="h-4 w-4" />}
+              label={i18n.t('admin.feedback_panel.kpi_participation', 'Participación')}
+              value={`${stats.participation}%`}
+              sub={`${stats.started}/${stats.learners}`}
+              hint={i18n.t('admin.feedback_panel.kpi_participation_hint', 'Quiénes empezaron, de todos los que podían.')}
+              frame={i18n.t('admin.progress_std.iso_participation', 'ISO 30414 · Participación')}
+              onClick={() => setStatusFilter(statusFilter === 'not_started' ? 'all' : 'not_started')}
+              active={statusFilter === 'not_started'}
+            />
+            <Kpi
+              accent={WORLD_ACCENT}
+              highlight
+              icon={<MapIcon className="h-4 w-4" />}
+              label={i18n.t('admin.feedback_panel.kpi_avance', 'Avance de niveles')}
+              value={`${stats.avance}%`}
+              hint={i18n.t('admin.feedback_panel.kpi_avance_hint', 'Niveles completados sobre los niveles que les tocan.')}
+            />
+            <Kpi
+              accent="#22c55e"
+              icon={<GaugeCircle className="h-4 w-4" />}
+              label={i18n.t('admin.feedback_panel.kpi_completion', 'Finalización')}
+              value={`${stats.completion}%`}
+              sub={`${stats.statusCounts.completed}/${stats.started}`}
+              hint={i18n.t('admin.feedback_panel.kpi_completion_hint', 'De los que empezaron, cuántos terminaron todos sus niveles.')}
+              frame={i18n.t('admin.progress_std.iso_completion', 'ISO 30414 · Finalización')}
+              onClick={() => setStatusFilter(statusFilter === 'completed' ? 'all' : 'completed')}
+              active={statusFilter === 'completed'}
+            />
+            <Kpi
+              accent="#f59e0b"
+              icon={<Star className="h-4 w-4" />}
+              label={i18n.t('admin.feedback_panel.kpi_avg_stars', 'Estrellas promedio')}
+              value={stats.avgStars.toFixed(1)}
+              sub="/ 3"
+              hint={i18n.t('admin.feedback_panel.kpi_stars_hint', 'Calidad con la que superan los niveles, no solo si los superan.')}
+            />
+            <Kpi
+              accent="#ef4444"
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label={i18n.t('admin.feedback_panel.kpi_at_risk', 'En riesgo')}
+              value={String(stats.statusCounts.at_risk)}
+              hint={i18n.t('admin.feedback_panel.kpi_at_risk_hint', 'Empezaron pero su desempeño promedio no llega al 60%.')}
+              onClick={() => setStatusFilter(statusFilter === 'at_risk' ? 'all' : 'at_risk')}
+              active={statusFilter === 'at_risk'}
+            />
           </KpiRow>
 
           {/* Insight accionable: aprendices en riesgo */}

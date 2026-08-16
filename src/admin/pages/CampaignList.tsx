@@ -136,7 +136,9 @@ export default function CampaignList() {
     if (!ok) return
     const id = c.id
     setDeletingId(id)
-    try {
+
+    /** `force` limpia el histórico huérfano; solo se manda tras el segundo sí. */
+    const callDelete = async (force = false) => {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-campaign`,
@@ -146,16 +148,61 @@ export default function CampaignList() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${session?.access_token}`,
           },
-          body: JSON.stringify({ campaignId: id }),
+          body: JSON.stringify({ campaignId: id, force }),
         },
       )
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? t('admin.campaigns.delete_error'))
+      return { res, json: await res.json() }
+    }
+
+    const listar = (rows?: { label: string; count: number }[]) =>
+      rows?.map((b) => `${b.count} ${b.label}`).join(', ')
+
+    try {
+      let { res, json } = await callDelete()
+
+      // Solo queda rastro huérfano: no hay pantalla desde donde limpiarlo, así
+      // que lo borramos nosotros — pero con el sí explícito del superadmin.
+      if (res.status === 409 && json.historyOnly) {
+        const purge = await confirm({
+          title: t('admin.campaigns.delete_history_title', {
+            defaultValue: 'Queda histórico de «{{name}}»',
+            name: c.name,
+          }),
+          description: t('admin.campaigns.delete_history_desc', {
+            defaultValue:
+              'El contenido ya no existe, pero siguen ahí: {{detalle}}. Al eliminar la campaña se borran también, y no se pueden recuperar.',
+            detalle: listar(json.history),
+          }),
+        })
+        if (!purge) return
+        ;({ res, json } = await callDelete(true))
+      }
+
+      if (!res.ok) {
+        // 409 = todavía cuelga contenido de la campaña. Decimos qué, no "error 500".
+        if (res.status === 409) {
+          toast.error(
+            t('admin.campaigns.delete_blocked', {
+              defaultValue: 'No se puede eliminar «{{name}}»',
+              name: c.name,
+            }),
+            t('admin.campaigns.delete_blocked_desc', {
+              defaultValue: 'Todavía tiene: {{detalle}}. Muévelo o elimínalo primero.',
+              detalle: listar(json.blockers) ?? (json.detail as string | undefined),
+            }),
+          )
+          return
+        }
+        throw new Error(json.error ?? t('admin.campaigns.delete_error'))
+      }
       setCampaigns((prev) => prev.filter((c) => c.id !== id))
       setSavedCampaigns((prev) => prev.filter((c) => c.id !== id))
       if (expanded === id) setExpanded(null)
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('admin.campaigns.delete_error'))
+      toast.error(
+        t('admin.campaigns.delete_error'),
+        err instanceof Error ? err.message : undefined,
+      )
     } finally {
       setDeletingId(null)
     }
