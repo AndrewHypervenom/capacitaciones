@@ -180,12 +180,16 @@ export interface ProgramData {
   /** Tiempo de estudio: estado de la carga diferida. */
   study: { loading: boolean; loaded: boolean; partial: boolean; totalMs: number };
   loadStudyTime: () => void;
-  /** Encuestas: estado de la carga diferida (una llamada por curso). */
+  /**
+   * Encuestas: estado de la carga diferida (una llamada por curso).
+   * Devuelve los resultados además de guardarlos, para que quien no pueda
+   * esperar al re-render (la exportación) los use de una vez.
+   */
   surveys: { loading: boolean; loaded: boolean; byCourse: Record<string, SurveyResults> };
-  loadSurveys: (courseIds: string[]) => void;
+  loadSurveys: (courseIds: string[]) => Promise<Record<string, SurveyResults>>;
   /** Exámenes finales: igual de diferidos, y por la misma razón. */
   exams: { loading: boolean; loaded: boolean; byCourse: Record<string, ExamResultRow[]> };
-  loadExams: (courseIds: string[]) => void;
+  loadExams: (courseIds: string[]) => Promise<Record<string, ExamResultRow[]>>;
   reload: () => void;
 }
 
@@ -248,28 +252,35 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
   const [modulesByCourse, setModulesByCourse] = useState<Record<string, ProgramModule[]>>({});
   const [doneModules, setDoneModules] = useState<Record<string, string[]>>({});
 
-  const [studyMs, setStudyMs] = useState<Record<string, number>>({});
-  const [study, setStudy] = useState({ loading: false, loaded: false, partial: false, totalMs: 0 });
+  // El tiempo se guarda crudo (una fila por persona y módulo) y se suma después
+  // contra el catálogo vivo: el borrado de un módulo tiene que descontar sus
+  // horas sin volver a pedir nada, y las dos cargas son independientes.
+  const [studyRows, setStudyRows] = useState<Array<{ user_id: string; module_id: string; elapsed_ms: number }>>([]);
+  const [liveModuleIds, setLiveModuleIds] = useState<Set<string>>(new Set());
+  const [study, setStudy] = useState({ loading: false, loaded: false, partial: false });
   const [surveyMap, setSurveyMap] = useState<Record<string, SurveyResults>>({});
   const [surveyState, setSurveyState] = useState({ loading: false, loaded: false });
   const [examMap, setExamMap] = useState<Record<string, ExamResultRow[]>>({});
   const [examState, setExamState] = useState({ loading: false, loaded: false });
 
   // Evita relanzar las cargas diferidas si el usuario va y vuelve de pestaña.
+  // Encuestas y exámenes guardan la promesa, no un booleano: quien llegue
+  // mientras la carga va en camino (abrir la pestaña y exportar a la vez) se
+  // engancha a la misma y recibe los mismos datos.
   const studyStarted = useRef(false);
-  const surveysStarted = useRef(false);
-  const examsStarted = useRef(false);
+  const surveysRun = useRef<Promise<Record<string, SurveyResults>> | null>(null);
+  const examsRun = useRef<Promise<Record<string, ExamResultRow[]>> | null>(null);
 
   const reload = useCallback(() => {
     studyStarted.current = false;
-    surveysStarted.current = false;
-    examsStarted.current = false;
-    setStudy({ loading: false, loaded: false, partial: false, totalMs: 0 });
+    surveysRun.current = null;
+    examsRun.current = null;
+    setStudy({ loading: false, loaded: false, partial: false });
     setSurveyState({ loading: false, loaded: false });
     setExamState({ loading: false, loaded: false });
     setSurveyMap({});
     setExamMap({});
-    setStudyMs({});
+    setStudyRows([]);
     setNonce((n) => n + 1);
   }, []);
 
@@ -286,7 +297,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           modulesRes, progressRes, attemptsRes,
         ] = await Promise.allSettled([
             supabase.from('profiles').select('id, display_name, role, campaign_id, avatar_url, created_at, job_title, country'),
-            supabase.from('campaigns').select('id, name').order('name'),
+            supabase.from('campaigns').select('id, name, deleted_at').order('name'),
             supabase.from('courses').select('id, title_es, title_en, title_pt, campaign_id, is_published, icon, deleted_at'),
             supabase.from('course_assignments').select('course_id, user_id, is_mandatory'),
             supabase.from('course_campaigns').select('course_id, campaign_id, is_mandatory'),
@@ -313,7 +324,11 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           campaign_id: string | null; avatar_url: string | null; created_at: string | null;
           job_title: string | null; country: string | null;
         }>(profilesRes as never);
-        const campaignRows = ok<{ id: string; name: string }>(campaignsRes as never);
+        // Las campañas también se borran en suave: una eliminada no puede seguir
+        // ofreciéndose como filtro ni ponerle nombre a una columna del Excel.
+        const campaignRows = ok<{ id: string; name: string; deleted_at: string | null }>(campaignsRes as never)
+          .filter((c) => !c.deleted_at)
+          .map(({ id, name }) => ({ id, name }));
         const courseRows = ok<{
           id: string; title_es: string; title_en: string | null; title_pt: string | null;
           campaign_id: string | null; is_published: boolean; icon: string | null; deleted_at: string | null;
@@ -358,8 +373,22 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         // mismo módulo se contaría dos veces y el curso saldría "terminado".
         const moduleIdOfKey = new Map<string, string>();
         const courseOfModuleId = new Map<string, string>();
+        // Borrar un curso no marca sus módulos, pero deja de haber contenido:
+        // igual que en el panel de entregas, curso eliminado ⇒ sus módulos
+        // tampoco cuentan, aunque el módulo siga vivo por su cuenta.
+        const deletedCourseIds = new Set(
+          courseRows.filter((c) => c.deleted_at).map((c) => c.id),
+        );
+        const isLiveModule = (m: { deleted_at: string | null; course_id: string | null }) =>
+          !m.deleted_at && !(m.course_id && deletedCourseIds.has(m.course_id));
+
+        // Ids de TODOS los módulos vivos, tengan curso o no: es contra esto que
+        // se juzga si unas horas de estudio siguen valiendo.
+        const liveModules = new Set<string>();
+        for (const m of moduleRows) if (isLiveModule(m)) liveModules.add(m.id);
+
         for (const m of moduleRows) {
-          if (m.deleted_at || !m.course_id) continue;
+          if (!isLiveModule(m) || !m.course_id) continue;
           modulesPerCourse.set(m.course_id, (modulesPerCourse.get(m.course_id) ?? 0) + 1);
           (syllabus[m.course_id] ??= []).push({
             id: m.id,
@@ -483,10 +512,24 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         }
 
         // Actividad real (entregas).
+        //
+        // BORRADO SUAVE, segunda pasada: `getPendingAttempts` ya descarta lo que
+        // sabe eliminado, pero solo puede saberlo si logra LEER la fila del
+        // módulo. Cuando la RLS ya se la oculta, el intento llega "huérfano"
+        // (module_id que no existe, curso en blanco) y se colaba al Excel como
+        // una fila sin curso ni módulo. Aquí se contrasta contra el catálogo vivo
+        // que este mismo tablero acaba de traer: si el intento dice pertenecer a
+        // un módulo o a un curso que no está vivo, no entra. Los intentos
+        // antiguos que no dicen a qué módulo pertenecen se conservan, como antes:
+        // de esos no se puede afirmar que estén borrados.
         const activityRows: ActivityRow[] = [];
         for (const a of attemptRows) {
           const person = personById.get(a.user_id);
           if (!person) continue;
+          // Contra `liveModules`, no contra el índice del temario: un módulo vivo
+          // sin curso (biblioteca) no está en el temario y sus entregas sí valen.
+          if (a.module_id && !liveModules.has(a.module_id)) continue;
+          if (a.course_id && !courseById.has(a.course_id)) continue;
           const at = new Date(a.started_at).getTime();
           const when = Number.isNaN(at) ? null : at;
           activityRows.push({
@@ -572,6 +615,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         }
 
         for (const list of Object.values(syllabus)) list.sort((a, b) => a.order - b.order);
+        setLiveModuleIds(liveModules);
         setModulesByCourse(syllabus);
         setDoneModules(
           Object.fromEntries([...doneByUserCourse.entries()].map(([k, v]) => [k, [...v]])),
@@ -606,36 +650,47 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
     setStudy((s) => ({ ...s, loading: true }));
     void (async () => {
       try {
-        const { rows, partial } = await fetchAll<{ user_id: string; elapsed_ms: number }>(
-          'module_time',
-          'user_id, elapsed_ms',
-          STUDY_MAX_ROWS,
-        );
-        const map: Record<string, number> = {};
-        let total = 0;
-        for (const r of rows) {
-          const ms = Number(r.elapsed_ms) || 0;
-          map[r.user_id] = (map[r.user_id] ?? 0) + ms;
-          total += ms;
-        }
-        setStudyMs(map);
-        setStudy({ loading: false, loaded: true, partial, totalMs: total });
+        // Se pide `module_id` además del tiempo: sin él no hay forma de saber si
+        // esas horas son de un módulo que todavía existe.
+        const { rows, partial } = await fetchAll<{
+          user_id: string; module_id: string; elapsed_ms: number;
+        }>('module_time', 'user_id, module_id, elapsed_ms', STUDY_MAX_ROWS);
+        setStudyRows(rows);
+        setStudy({ loading: false, loaded: true, partial });
       } catch (e) {
         console.warn('loadStudyTime:', e);
-        setStudy({ loading: false, loaded: true, partial: false, totalMs: 0 });
+        setStudyRows([]);
+        setStudy({ loading: false, loaded: true, partial: false });
       }
     })();
   }, []);
+
+  /* Horas por persona, contando SOLO módulos vivos. Mientras el catálogo no haya
+     llegado no se suma nada: es preferible un tablero que dice "cargando" a uno
+     que enseña horas de contenido borrado. */
+  const { studyMs, studyTotalMs } = useMemo(() => {
+    const map: Record<string, number> = {};
+    let total = 0;
+    if (liveModuleIds.size > 0) {
+      for (const r of studyRows) {
+        if (!liveModuleIds.has(r.module_id)) continue;
+        const ms = Number(r.elapsed_ms) || 0;
+        map[r.user_id] = (map[r.user_id] ?? 0) + ms;
+        total += ms;
+      }
+    }
+    return { studyMs: map, studyTotalMs: total };
+  }, [studyRows, liveModuleIds]);
 
   /* ── Encuestas (diferido) ───────────────────────────────────────────────
      Una llamada por curso, de a 5, y solo de los cursos visibles. Si el SQL de
      la encuesta no está corrido, cada llamada devuelve resultados vacíos y el
      panel lo dice sin romperse. */
   const loadSurveys = useCallback((courseIds: string[]) => {
-    if (surveysStarted.current || courseIds.length === 0) return;
-    surveysStarted.current = true;
+    if (surveysRun.current) return surveysRun.current;
+    if (courseIds.length === 0) return Promise.resolve({});
     setSurveyState({ loading: true, loaded: false });
-    void (async () => {
+    const run = (async () => {
       const out: Record<string, SurveyResults> = {};
       const queue = [...courseIds];
       const worker = async () => {
@@ -648,7 +703,10 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
       await Promise.all(Array.from({ length: Math.min(5, queue.length) }, worker));
       setSurveyMap(out);
       setSurveyState({ loading: false, loaded: true });
+      return out;
     })();
+    surveysRun.current = run;
+    return run;
   }, []);
 
   /* ── Exámenes finales (diferido) ────────────────────────────────────────
@@ -656,10 +714,10 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
      intentos, su mejor nota y los dominios en los que falló. Si el curso no
      tiene examen (o el SQL no está corrido) devuelve lista vacía. */
   const loadExams = useCallback((courseIds: string[]) => {
-    if (examsStarted.current || courseIds.length === 0) return;
-    examsStarted.current = true;
+    if (examsRun.current) return examsRun.current;
+    if (courseIds.length === 0) return Promise.resolve({});
     setExamState({ loading: true, loaded: false });
-    void (async () => {
+    const run = (async () => {
       const out: Record<string, ExamResultRow[]> = {};
       const queue = [...courseIds];
       const worker = async () => {
@@ -677,7 +735,10 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
       await Promise.all(Array.from({ length: Math.min(5, queue.length) }, worker));
       setExamMap(out);
       setExamState({ loading: false, loaded: true });
+      return out;
     })();
+    examsRun.current = run;
+    return run;
   }, []);
 
   // El tiempo de estudio entra en las personas sin rehacer toda la carga.
@@ -698,7 +759,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
     assignmentsKnown,
     modulesByCourse,
     doneModules,
-    study,
+    study: { ...study, totalMs: studyTotalMs },
     loadStudyTime,
     surveys: { ...surveyState, byCourse: surveyMap },
     loadSurveys,
@@ -714,6 +775,8 @@ interface RawAttempt {
   user_id: string;
   course_id?: string | null;
   course_title?: string | null;
+  /** UUID real del módulo. Sirve para descartar contenido ya borrado. */
+  module_id?: string | null;
   game_type: string;
   score: number;
   started_at: string;

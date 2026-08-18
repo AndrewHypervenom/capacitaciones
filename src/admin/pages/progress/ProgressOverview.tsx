@@ -1,5 +1,5 @@
 // src/admin/pages/progress/ProgressOverview.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Users, UserCheck, Award, Gauge, HeartHandshake, ClipboardCheck, Download,
@@ -437,16 +437,18 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   }, [tab, loadStudyTime]);
 
   useEffect(() => {
-    if (tab === 'survey' && courses.length > 0) loadSurveys(courses.map((c) => c.id));
+    if (tab === 'survey' && courses.length > 0) void loadSurveys(courses.map((c) => c.id));
   }, [tab, courses, loadSurveys]);
 
   useEffect(() => {
-    if (tab === 'exam' && courses.length > 0) loadExams(courses.map((c) => c.id));
+    if (tab === 'exam' && courses.length > 0) void loadExams(courses.map((c) => c.id));
   }, [tab, courses, loadExams]);
 
   /* ── Examen final: agregados del alcance ──────────────────────────────── */
 
-  const examSummary = useMemo(() => {
+  /* Recibe el mapa en vez de leerlo del estado: la exportación lo calcula con
+     lo que acaba de traer, sin tener que esperar a que React vuelva a pintar. */
+  const computeExamSummary = useCallback((byCourse: typeof exams.byCourse) => {
     const perCourse: Array<{
       course: ProgramCourse;
       taken: number; passed: number; passRate: number;
@@ -458,7 +460,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     let taken = 0, passed = 0, attempts = 0, scoreSum = 0, scored = 0, reinforcement = 0;
 
     for (const c of scopedCourses) {
-      const rows = exams.byCourse[c.id];
+      const rows = byCourse[c.id];
       if (!rows || rows.length === 0) continue;
       // Solo cuenta quien de verdad presentó: tener el examen abierto no es dato.
       const presented = rows.filter((r) => r.attempts > 0);
@@ -510,7 +512,14 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         .sort((a, b) => b.hits - a.hits || a.avg - b.avg)
         .slice(0, 8),
     };
-  }, [scopedCourses, exams.byCourse, lang]);
+  }, [scopedCourses, lang]);
+
+  const examSummary = useMemo(
+    () => computeExamSummary(exams.byCourse),
+    [computeExamSummary, exams.byCourse],
+  );
+
+  type ExamSummary = ReturnType<typeof computeExamSummary>;
 
   /* ── Exportaciones ────────────────────────────────────────────────────── */
 
@@ -573,10 +582,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     })),
   });
 
-  const coursesSheet = (): Sheet => ({
+  const coursesSheet = (byCourse: typeof surveys.byCourse): Sheet => ({
     name: t('admin.progress_overview.sheet_courses', 'Cursos'),
     rows: visibleCourses.map<SheetRow>((c) => {
-      const n = npsFromHistogram(surveys.byCourse[c.id]?.q2_hist);
+      const n = npsFromHistogram(byCourse[c.id]?.q2_hist);
       return {
         [L.course]: c.title,
         [L.campaignCol]: c.campaignName ?? '',
@@ -659,9 +668,9 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     })),
   });
 
-  const examSheet = (): Sheet => ({
+  const examSheet = (summary: ExamSummary): Sheet => ({
     name: t('admin.progress_overview.sheet_exam', 'Examen final'),
-    rows: examSummary.perCourse.map<SheetRow>((r) => ({
+    rows: summary.perCourse.map<SheetRow>((r) => ({
       [L.course]: r.course.title,
       [L.campaignCol]: r.course.campaignName ?? '',
       [t('admin.progress_overview.exam_col_taken', 'Presentaron')]: r.taken,
@@ -673,19 +682,19 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     })),
   });
 
-  const weakSheet = (): Sheet => ({
+  const weakSheet = (summary: ExamSummary): Sheet => ({
     name: t('admin.progress_overview.sheet_weak', 'Temas flojos'),
-    rows: examSummary.weakDomains.map<SheetRow>((d) => ({
+    rows: summary.weakDomains.map<SheetRow>((d) => ({
       [t('admin.progress_overview.exam_weak_domain', 'Tema')]: d.name,
       [t('admin.progress_overview.exam_weak_people', 'Personas por debajo del mínimo')]: d.hits,
       [t('admin.progress_overview.exam_weak_avg', 'Acierto promedio')]: d.avg,
     })),
   });
 
-  const surveySheet = (): Sheet => {
+  const surveySheet = (byCourse: typeof surveys.byCourse): Sheet => {
     const rowsOut: SheetRow[] = [];
     for (const c of visibleCourses) {
-      const res = surveys.byCourse[c.id];
+      const res = byCourse[c.id];
       if (!res) continue;
       const n = npsFromHistogram(res.q2_hist);
       rowsOut.push({
@@ -702,10 +711,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     return { name: t('admin.progress_overview.sheet_survey', 'Satisfacción'), rows: rowsOut };
   };
 
-  const commentsSheet = (): Sheet => {
+  const commentsSheet = (byCourse: typeof surveys.byCourse): Sheet => {
     const rowsOut: SheetRow[] = [];
     for (const c of visibleCourses) {
-      for (const cm of surveys.byCourse[c.id]?.comments ?? []) {
+      for (const cm of byCourse[c.id]?.comments ?? []) {
         rowsOut.push({
           [L.course]: c.title,
           [L.date]: xlsDate(cm.at, i18n.language),
@@ -721,17 +730,45 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const runExport = async (kind: 'all' | 'people' | 'courses' | 'matrix' | 'certificates' | 'deliveries' | 'exam' | 'survey') => {
     setExporting(true);
     try {
+      // Examen y satisfacción se cargan al abrir su pestaña. Quien exporta sin
+      // haber pasado por ahí las trae ahora: un informe con hojas vacías se lee
+      // como "no hubo datos", que sería mentira. Si ya están, esto no cuesta
+      // nada — el cargador devuelve la misma promesa ya resuelta.
+      const courseIds = courses.map((c) => c.id);
+      const needsExam = kind === 'exam' || kind === 'all';
+      // La hoja de Cursos también trae NPS y respuestas, así que necesita la
+      // encuesta aunque no sea la hoja de satisfacción.
+      const needsSurvey = kind === 'survey' || kind === 'courses' || kind === 'all';
+      const [examData, surveyData] = await Promise.all([
+        needsExam ? loadExams(courseIds) : Promise.resolve(exams.byCourse),
+        needsSurvey ? loadSurveys(courseIds) : Promise.resolve(surveys.byCourse),
+      ]);
+      const summary = computeExamSummary(examData);
+
       const sheets: Sheet[] =
         kind === 'people' ? [peopleSheet()]
-          : kind === 'courses' ? [coursesSheet()]
+          : kind === 'courses' ? [coursesSheet(surveyData)]
             : kind === 'matrix' ? [matrixSheet()]
               : kind === 'certificates' ? [certificatesSheet()]
                 : kind === 'deliveries' ? [deliveriesSheet()]
-                  : kind === 'exam' ? [examSheet(), weakSheet()]
-                    : kind === 'survey' ? [surveySheet(), commentsSheet()]
-                      : [peopleSheet(), coursesSheet(), matrixSheet(), certificatesSheet(), deliveriesSheet(), examSheet(), weakSheet(), surveySheet(), commentsSheet()];
+                  : kind === 'exam' ? [examSheet(summary), weakSheet(summary)]
+                    : kind === 'survey' ? [surveySheet(surveyData), commentsSheet(surveyData)]
+                      : [peopleSheet(), coursesSheet(surveyData), matrixSheet(), certificatesSheet(), deliveriesSheet(), examSheet(summary), weakSheet(summary), surveySheet(surveyData), commentsSheet(surveyData)];
+      // El nombre del archivo se lee fuera de la app —en el correo, en la
+      // carpeta de Descargas—, así que va en el idioma del usuario y no con la
+      // clave interna en inglés: "progreso-entregas-2026-08-15.xlsx".
+      const kindName: Record<typeof kind, string> = {
+        all: t('admin.progress_overview.file_all', 'informe-completo'),
+        people: t('admin.progress_overview.file_people', 'personas'),
+        courses: t('admin.progress_overview.file_courses', 'cursos'),
+        matrix: t('admin.progress_overview.file_matrix', 'matriz'),
+        certificates: t('admin.progress_overview.file_certificates', 'certificados'),
+        deliveries: t('admin.progress_overview.file_deliveries', 'entregas'),
+        exam: t('admin.progress_overview.file_exam', 'examen-final'),
+        survey: t('admin.progress_overview.file_survey', 'satisfaccion'),
+      };
       const base = t('admin.progress_overview.file_base', 'progreso');
-      const total = await downloadWorkbook(`${base}-${kind}`, sheets);
+      const total = await downloadWorkbook(`${base}-${kindName[kind]}`, sheets);
       toast.success(
         t('admin.progress_overview.export_ok', 'Excel descargado'),
         t('admin.progress_overview.export_ok_desc', { count: total, defaultValue: '{{count}} filas exportadas.' }),
@@ -854,8 +891,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
                     label={t('admin.progress_overview.export_exam', 'Examen final y temas flojos')}
                     description={exams.loaded
                       ? undefined
-                      : t('admin.progress_overview.export_exam_hint', 'Abre la pestaña Examen final primero')}
-                    disabled={!exams.loaded}
+                      : t('admin.progress_overview.export_exam_hint', 'Se consultan al exportar')}
                     onClick={() => { close(); void runExport('exam'); }}
                   />
                   <MenuItem
@@ -863,8 +899,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
                     label={t('admin.progress_overview.export_survey', 'Satisfacción y comentarios')}
                     description={surveys.loaded
                       ? undefined
-                      : t('admin.progress_overview.export_survey_hint', 'Abre la pestaña Satisfacción primero')}
-                    disabled={!surveys.loaded}
+                      : t('admin.progress_overview.export_survey_hint', 'Se consultan al exportar')}
                     onClick={() => { close(); void runExport('survey'); }}
                   />
                 </>
