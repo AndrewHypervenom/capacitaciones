@@ -18,11 +18,16 @@ export interface MultiSelectProps {
   'aria-label'?: string
 }
 
+/** Alto ideal del menú (16rem, como el max-h-64 de antes). */
+const PANEL_MAX_H = 256
+
 interface PanelPos {
   top: number
   left: number
   width: number
   openUp: boolean
+  /** Alto máximo real disponible: el panel nunca se sale de la ventana. */
+  maxH: number
 }
 
 /**
@@ -47,15 +52,24 @@ export function MultiSelect({
   const [activeIdx, setActiveIdx] = useState(-1)
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<PanelPos>({ top: 0, left: 0, width: 0, openUp: false })
+  const [pos, setPos] = useState<PanelPos>({ top: 0, left: 0, width: 0, openUp: false, maxH: PANEL_MAX_H })
 
   const measure = useCallback(() => {
     const btn = btnRef.current
     if (!btn) return
     const r = btn.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - r.bottom
-    const openUp = spaceBelow < 220 && r.top > spaceBelow
-    setPos({ top: openUp ? r.top : r.bottom + 6, left: r.left, width: r.width, openUp })
+    // Hueco real arriba y abajo, ya descontados el respiro del panel (6px) y
+    // el margen con el borde de la ventana (12px).
+    const below = window.innerHeight - r.bottom - 18
+    const above = r.top - 18
+    // Se abre hacia arriba solo si abajo no cabe y arriba hay más sitio: en la
+    // última fila de una tabla el menú ya no se queda cortado contra el borde.
+    const openUp = below < Math.min(PANEL_MAX_H, above)
+    const maxH = Math.max(120, Math.min(PANEL_MAX_H, openUp ? above : below))
+    // El panel se mide para no desbordar por la derecha (última columna).
+    const panelW = panelRef.current?.offsetWidth ?? r.width
+    const left = Math.max(12, Math.min(r.left, window.innerWidth - panelW - 12))
+    setPos({ top: openUp ? r.top : r.bottom + 6, left, width: r.width, openUp, maxH })
   }, [])
 
   useLayoutEffect(() => {
@@ -160,7 +174,7 @@ export function MultiSelect({
             ref={panelRef}
             role="listbox"
             aria-multiselectable
-            className="fixed max-h-64 overflow-y-auto rounded-xl border border-line bg-surface text-text shadow-xl py-1"
+            className="fixed overflow-y-auto rounded-xl border border-line bg-surface text-text shadow-xl py-1"
             style={{
               top: pos.openUp ? undefined : pos.top,
               bottom: pos.openUp ? window.innerHeight - pos.top + 6 : undefined,
@@ -168,6 +182,7 @@ export function MultiSelect({
               width: 'max-content',
               minWidth: pos.width,
               maxWidth: Math.min(360, window.innerWidth - 24),
+              maxHeight: pos.maxH,
               zIndex: 9999,
             }}
           >
