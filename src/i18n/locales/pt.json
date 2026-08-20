@@ -1661,15 +1661,18 @@
         "invite_badge": "Campanha criada",
         "invite_title": "Convide sua equipe",
         "invite_hint": "Adicione instrutores como colaboradores: poderão ver e editar os cursos e módulos desta campanha. Você também pode fazer isso depois em «Compartilhar campanha».",
-        "invite_done": "Concluir"
+        "invite_done": "Concluir",
+        "test_label": "Campanha de teste",
+        "test_hint": "Ambiente isolado: não aparece para os capacitadores reais e seus dados ficam fora de KPIs, relatórios e Excel.",
+        "review_env": "Ambiente"
       },
       "delete_error": "Erro ao excluir a campanha",
       "delete_blocked": "Não é possível excluir \"{{name}}\"",
       "delete_blocked_desc": "Ainda tem: {{detalle}}. Mova ou exclua isso primeiro.",
       "delete_history_title": "Ainda há histórico de \"{{name}}\"",
       "delete_history_desc": "O conteúdo já não existe, mas continuam aí: {{detalle}}. Ao excluir a campanha eles também somem, sem volta.",
-      "toggle_deactivate": "Desativar campanha",
-      "toggle_activate": "Ativar campanha",
+      "toggle_deactivate": "Desativar a campanha: ela fecha, mas os dados dela continuam contando em KPIs e relatórios. Para isolá-la do mundo real use a marca de teste (o frasco ao lado).",
+      "toggle_activate": "Ativar a campanha: volta a funcionar. Atenção, isto não tem nada a ver com a marca de teste (o frasco ao lado).",
       "share": {
         "card_title": "Compartilhar campanha",
         "card_desc": "Convide outros instrutores para co-gerenciar o conteúdo",
@@ -1684,7 +1687,13 @@
         "removed": "{{name}} não colabora mais na campanha",
         "save_error": "Não foi possível atualizar o colaborador",
         "load_error": "Não foi possível carregar os instrutores"
-      }
+      },
+      "mark_test": "Transformar em campanha de teste: a gente, os cursos e o progresso dela deixam de aparecer para os capacitadores reais e saem de KPIs, relatórios e Excel.",
+      "unmark_test": "Tirar a marca de teste: esta campanha volta ao mundo real e os dados dela passam a contar em KPIs, relatórios e Excel.",
+      "mark_test_title": "Marcar «{{name}}» como campanha de teste?",
+      "mark_test_desc": "O conteúdo, a gente e o progresso dela deixam de aparecer para os capacitadores reais e não entram em KPIs, relatórios ou Excel. Os cursos dela só podem ser atribuídos a campanhas e usuários de teste. Nada é apagado e você pode tirar a marca quando quiser. Ao salvar, o painel entra no ambiente de teste e se atualiza.",
+      "mark_test_confirm": "Marcar como teste",
+      "scope_reload": "O ambiente mudou: atualizando o painel para que tudo carregue certo…"
     },
     "users": {
       "saved_all": "Alterações salvas",
@@ -1827,12 +1836,13 @@
       "view_progress_hint": "Veja o avanço dela em mundos e módulos.",
       "manage_courses_hint": "Revise os cursos e redefina o progresso que precisar.",
       "reset_pwd_hint": "Devolve a pessoa à senha inicial e a copia.",
-      "deactivate_hint": "Bloqueia o acesso sem apagar nada. É reversível.",
-      "reactivate_hint": "Devolve o acesso com todo o histórico intacto.",
+      "deactivate_hint": "Dá baixa: bloqueia o acesso e tira a pessoa de listas e KPIs, sem apagar nada. Só o superadmin pode fazer isso, e dá para reverter quando quiser.",
+      "reactivate_hint": "Devolve o acesso com todo o histórico intacto, exatamente onde parou. Só o superadmin pode fazer isso.",
       "delete_user_hint": "Apaga a conta e o histórico. Não dá para desfazer.",
       "can_create_label": "Permissão para criar aprendizes",
-      "can_create_on_hint": "Pode criar aprendizes nas campanhas dele. Clique para retirar a permissão.",
-      "can_create_off_hint": "Não pode criar aprendizes. Clique para liberar.",
+      "can_create_badge": "Dá alta",
+      "can_create_on_hint": "Liberado: pode dar alta a APRENDIZES, e só nas campanhas dele. Não pode criar capacitadores nem dar baixa em ninguém. Clique para retirar a permissão.",
+      "can_create_off_hint": "Não pode criar usuários. A permissão não vem com o cargo: só os capacitadores que você liberar aqui, um por um, podem dar alta a aprendizes. Clique para liberar.",
       "can_create_granted": "{{name}} já pode criar aprendizes",
       "can_create_revoked": "{{name}} não pode mais criar aprendizes",
       "can_create_error": "Não foi possível alterar a permissão",
@@ -1935,7 +1945,8 @@
       "cert_outdated_when_other": "Certificou-se em {{date}}, quando o conteúdo era menor. Desde então o curso tem {{count}} módulos que não fez.",
       "cert_outdated_generic_one": "Certificou-se com o conteúdo da época. Hoje o curso tem {{count}} módulo que não fez.",
       "cert_outdated_generic_other": "Certificou-se com o conteúdo da época. Hoje o curso tem {{count}} módulos que não fez.",
-      "cert_outdated_action": "O certificado continua válido; para atualizá-lo, peça a recertificação do curso em Conteúdo → Cursos → aba Certificação."
+      "cert_outdated_action": "O certificado continua válido; para atualizá-lo, peça a recertificação do curso em Conteúdo → Cursos → aba Certificação.",
+      "can_create_badge_hint": "Você o liberou para dar alta a aprendizes nas campanhas dele. Continua sem poder dar baixa em ninguém."
     },
     "hr": {
       "title": "Sincronizar com o RH",
@@ -2502,7 +2513,11 @@
       "recert_confirm_msg_one": "O certificado já emitido ficará marcado como desatualizado e o aprendiz verá que precisa se certificar de novo. Nenhum certificado é apagado: os atuais continuam válidos e verificáveis.",
       "recert_confirm_msg_other": "Os {{count}} certificados já emitidos ficarão marcados como desatualizados e os aprendizes verão que precisam se certificar de novo. Nenhum certificado é apagado: os atuais continuam válidos e verificáveis.",
       "recert_done_one": "Recertificação solicitada a {{count}} aprendiz.",
-      "recert_done_other": "Recertificação solicitada a {{count}} aprendizes."
+      "recert_done_other": "Recertificação solicitada a {{count}} aprendizes.",
+      "world_unlink_title": "Desvincular mundo",
+      "world_unlink_desc": "“{{name}}” deixa de estar ligado a este curso, mas não é apagado: continua disponível em Mundos como mundo solto.",
+      "world_unlink_confirm": "Desvincular",
+      "world_unlinked": "Mundo desvinculado"
     },
     "simulations": {
       "save": "Salvar",
@@ -4973,6 +4988,15 @@
       "skip_untitled": "(pergunta sem texto)",
       "study_line": "{{title}}: {{min}} min · leu até {{depth}}% ({{pct}}%)",
       "results_study": "revisão: {{done}}/{{total}} módulos · {{min}} min"
+    },
+    "test_mode": {
+      "label": "Modo de testes",
+      "badge": "Teste",
+      "tip_on": "Ligado: você vê também as campanhas de teste, sempre marcadas com a insígnia âmbar. Atenção, os KPIs, relatórios e Excel incluem dados de teste. Ao mudar, a tela recarrega.",
+      "tip_off": "Desligado: para o painel, as campanhas de teste não existem. Nada de teste entra em seletores, KPIs, relatórios ou Excel. Ao mudar, a tela recarrega.",
+      "banner": "Modo de testes ativo: você também está vendo as campanhas de teste. Relatórios e Excel incluem dados de teste.",
+      "exit": "Sair",
+      "badge_hint": "Campanha de teste: ambiente isolado. A gente, os cursos e o progresso dela não aparecem para os capacitadores reais nem entram em KPIs, relatórios ou Excel."
     }
   },
   "themes": {
@@ -6223,5 +6247,10 @@
     "clipboard_body": "Este material de capacitação é propriedade da Positivos+ e do seu cliente, e não pode ser reproduzido fora da plataforma. Se precisar dele para o seu trabalho, peça ao seu instrutor.",
     "clipboard_by": "Copiado por",
     "print_notice": "Este material de capacitação é da Positivos+ e não pode ser impresso. Consulte-o na plataforma."
+  },
+  "test_mode": {
+    "mix_users": "Não é possível misturar campanhas de teste com campanhas reais na mesma pessoa. Deixe só de um tipo.",
+    "mix_course_title": "Ambientes separados",
+    "mix_course": "Um curso de uma campanha de teste só pode ser atribuído a campanhas e pessoas de teste (e vice-versa)."
   }
 }

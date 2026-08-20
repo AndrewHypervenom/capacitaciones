@@ -84,7 +84,7 @@ import { CertificatePensumPanel } from '@/admin/components/CertificatePensumPane
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { getCourseTranslationState } from '@/services/translation.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
-import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { getAccessibleCampaigns, isTestScopeError } from '@/services/campaigns.service'
 import { getAllScenariosAdmin, updateScenario, type ScenarioRow } from '@/services/scenarios.admin.service'
 import { getAllChoiceScenariosAdmin, updateChoiceScenario, type ChoiceScenarioRow } from '@/services/choiceScenarios.admin.service'
 import {
@@ -1019,6 +1019,9 @@ export default function CourseEditor() {
     const ok = await confirm({
       title: t('admin.courses.move_campaign_title'),
       description: t('admin.courses.move_campaign_confirm', { name: targetName }),
+      // Mover no borra: sin esto el botón salía rojo y decía "Eliminar".
+      confirmLabel: t('admin.courses.move_campaign_action'),
+      tone: 'default',
     })
     if (!ok) return
     setMovingCampaign(true)
@@ -1201,15 +1204,19 @@ export default function CourseEditor() {
   const handleUnlinkWorld = async () => {
     if (!course || !world) return
     const ok = await confirm({
-      title: t('admin.courses.world_unlink_title', { defaultValue: 'Desenlazar mundo' }),
-      description: t('admin.courses.world_unlink_desc', { name: world.name, defaultValue: `“${world.name}” dejará de estar ligado a este curso, pero no se borra: seguirá disponible en Mundos como mundo suelto.` }),
+      title: t('admin.courses.world_unlink_title'),
+      description: t('admin.courses.world_unlink_desc', { name: world.name }),
+      // El mundo NO se borra (lo dice la descripción): el botón tampoco puede
+      // decir "Eliminar", que es lo que trae el diálogo por defecto.
+      confirmLabel: t('admin.courses.world_unlink_confirm'),
+      tone: 'default',
     })
     if (!ok) return
     setLinkingWorld(true)
     try {
       await unlinkWorldFromCourse(course.id)
       setWorld(null)
-      toast.success(t('admin.courses.world_unlinked', { defaultValue: 'Mundo desenlazado' }))
+      toast.success(t('admin.courses.world_unlinked'))
     } catch (e) {
       toast.error(t('admin.courses.error_save'), (e as Error)?.message)
     } finally {
@@ -1462,7 +1469,19 @@ export default function CourseEditor() {
         )
       }
       return true
-    } catch {
+    } catch (err) {
+      // Entorno de pruebas y entorno real no se cruzan (lo bloquea también un
+      // trigger de la base): se dice qué pasó, no "error al guardar".
+      if (isTestScopeError(err)) {
+        toast.error(
+          t('test_mode.mix_course_title', { defaultValue: 'Entornos separados' }),
+          t('test_mode.mix_course', {
+            defaultValue:
+              'Un curso de una campaña de prueba solo se asigna a campañas y personas de prueba (y al revés).',
+          }),
+        )
+        return false
+      }
       toast.error(t('admin.courses.error_save'))
       return false
     } finally {

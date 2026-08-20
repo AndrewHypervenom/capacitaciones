@@ -146,6 +146,8 @@ export interface Database {
           description: string | null
           logo_url: string | null
           is_active: boolean
+          /** Entorno de pruebas: se oculta a capacitadores reales y no cuenta en reportes. */
+          is_test: boolean
           created_at: string
         }
         Insert: {
@@ -155,6 +157,7 @@ export interface Database {
           description?: string | null
           logo_url?: string | null
           is_active?: boolean
+          is_test?: boolean
           created_at?: string
         }
         Update: {
@@ -164,6 +167,7 @@ export interface Database {
           description?: string | null
           logo_url?: string | null
           is_active?: boolean
+          is_test?: boolean
           created_at?: string
         }
         Relationships: []

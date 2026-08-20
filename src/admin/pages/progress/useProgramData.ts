@@ -5,6 +5,8 @@ import { getPendingAttempts } from '@/services/activity.service';
 import { getSurveyResults, type SurveyResults } from '@/services/survey.service';
 import { getExamResults } from '@/services/exams.admin.service';
 import type { ExamResultRow } from '@/types/exam';
+import { useAuth } from '@/hooks/useAuth';
+import { shouldHideTestData } from '@/stores/testModeStore';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Datos del Panorama de Progreso.
@@ -238,6 +240,13 @@ async function fetchAll<T>(
 }
 
 export function useProgramData(lang: Lang, excludeSuperadmins: boolean): ProgramData {
+  // Entorno de pruebas: con el Modo pruebas apagado, las campañas marcadas
+  // `is_test` no existen para este tablero — ni su gente, ni sus cursos, ni su
+  // progreso. Es lo que evita que las cuentas de prueba ensucien los KPIs, el
+  // NPS y los Excel que se mandan afuera.
+  const { isSuperAdmin } = useAuth();
+  const hideTest = shouldHideTestData(isSuperAdmin);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -297,7 +306,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           modulesRes, progressRes, attemptsRes,
         ] = await Promise.allSettled([
             supabase.from('profiles').select('id, display_name, role, campaign_id, avatar_url, created_at, job_title, country'),
-            supabase.from('campaigns').select('id, name, deleted_at').order('name'),
+            supabase.from('campaigns').select('id, name, deleted_at, is_test').order('name'),
             supabase.from('courses').select('id, title_es, title_en, title_pt, campaign_id, is_published, icon, deleted_at'),
             supabase.from('course_assignments').select('course_id, user_id, is_mandatory'),
             supabase.from('course_campaigns').select('course_id, campaign_id, is_mandatory'),
@@ -326,13 +335,21 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         }>(profilesRes as never);
         // Las campañas también se borran en suave: una eliminada no puede seguir
         // ofreciéndose como filtro ni ponerle nombre a una columna del Excel.
-        const campaignRows = ok<{ id: string; name: string; deleted_at: string | null }>(campaignsRes as never)
-          .filter((c) => !c.deleted_at)
+        const campaignRaw = ok<{ id: string; name: string; deleted_at: string | null; is_test?: boolean | null }>(campaignsRes as never)
+          .filter((c) => !c.deleted_at);
+        // Ids de prueba a esconder. Si `is_test` todavía no existe en la base,
+        // el conjunto queda vacío y el tablero se comporta como siempre.
+        const hiddenCampaignIds = new Set(
+          hideTest ? campaignRaw.filter((c) => c.is_test === true).map((c) => c.id) : [],
+        );
+        const campaignRows = campaignRaw
+          .filter((c) => !hiddenCampaignIds.has(c.id))
           .map(({ id, name }) => ({ id, name }));
         const courseRows = ok<{
           id: string; title_es: string; title_en: string | null; title_pt: string | null;
           campaign_id: string | null; is_published: boolean; icon: string | null; deleted_at: string | null;
-        }>(coursesRes as never);
+        }>(coursesRes as never)
+          .filter((c) => !c.campaign_id || !hiddenCampaignIds.has(c.campaign_id));
         const assignRows = ok<{ course_id: string; user_id: string; is_mandatory: boolean }>(assignRes as never);
         const campAssignRows = ok<{ course_id: string; campaign_id: string; is_mandatory: boolean }>(campAssignRes as never);
         const moduleRows = ok<{
@@ -437,6 +454,9 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         for (const p of profileRows) {
           const role = (p.role === 'superadmin' || p.role === 'capacitador' ? p.role : 'learner') as ProgramPerson['role'];
           if (excludeSuperadmins && role === 'superadmin') continue;
+          // Gente del entorno de pruebas: fuera de la tabla, de los KPIs y del
+          // Excel mientras el Modo pruebas esté apagado.
+          if (p.campaign_id && hiddenCampaignIds.has(p.campaign_id)) continue;
           personById.set(p.id, {
             id: p.id,
             name: p.display_name || emailOf.get(p.id) || p.id.slice(0, 8),

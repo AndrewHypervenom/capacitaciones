@@ -4,7 +4,8 @@ import { motion } from 'framer-motion'
 import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
-import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { getAccessibleCampaigns, getTestCampaignIds } from '@/services/campaigns.service'
+import { shouldHideTestData } from '@/stores/testModeStore'
 import { useAuth } from '@/hooks/useAuth'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { FadeIn } from '@/components/ui/motion'
@@ -37,22 +38,30 @@ export default function AdminDashboard() {
       // Sin campañas accesibles: nada que contar (evita filtros vacíos).
       const scope = ids.length ? ids : ['']
 
+      // El superadmin cuenta sobre TODO, así que las campañas de prueba se
+      // descuentan a mano; si no, los KPIs del tablero subirían con cada
+      // módulo y cada cuenta creada para probar. Con el Modo pruebas encendido
+      // no se descuenta nada: ahí se quieren ver.
+      const testIds = shouldHideTestData(isSuperAdmin) ? await getTestCampaignIds() : []
+      const notTest = <T extends { not: (c: string, op: string, v: string) => T }>(q: T): T =>
+        testIds.length ? q.not('campaign_id', 'in', `(${testIds.join(',')})`) : q
+
       const [modsCount, scensCount, usersCount] = await Promise.all([
         isSuperAdmin
-          ? supabase.from('modules').select('id', { count: 'exact', head: true })
+          ? notTest(supabase.from('modules').select('id', { count: 'exact', head: true }))
           : supabase.from('modules').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
         isSuperAdmin
-          ? supabase.from('scenarios').select('id', { count: 'exact', head: true })
+          ? notTest(supabase.from('scenarios').select('id', { count: 'exact', head: true }))
           : supabase.from('scenarios').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
         // El capacitador solo cuenta las personas de sus campañas y nunca a superadmins.
         isSuperAdmin
-          ? supabase.from('profiles').select('id', { count: 'exact', head: true })
+          ? notTest(supabase.from('profiles').select('id', { count: 'exact', head: true }))
           : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope).neq('role', 'superadmin'),
       ])
       setStats({
-        campaigns: isSuperAdmin
-          ? (await supabase.from('campaigns').select('id', { count: 'exact', head: true })).count ?? 0
-          : ids.length,
+        // Las campañas ya vienen filtradas por `getAccessibleCampaigns`, así que
+        // para el superadmin también vale contar la lista que trajo.
+        campaigns: ids.length,
         modules: modsCount.count ?? 0,
         scenarios: scensCount.count ?? 0,
         users: usersCount.count ?? 0,

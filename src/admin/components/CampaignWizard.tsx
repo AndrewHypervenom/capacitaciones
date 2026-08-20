@@ -2,12 +2,14 @@ import { useState } from 'react'
 import i18n from '@/i18n'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Check, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
+import { X, Check, ChevronRight, ChevronLeft, Loader2, FlaskConical } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Campaign } from '@/types/database'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
-import { addCollaborator } from '@/services/campaigns.service'
+import { addCollaborator, setCampaignTest } from '@/services/campaigns.service'
+import { useTestMode } from '@/stores/testModeStore'
+import { Toggle } from '@/components/ui/Toggle'
 import { CollaboratorPicker } from '@/admin/components/CollaboratorPicker'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -134,6 +136,10 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
   const [description, setDescription] = useState('')
   // Las campañas siempre se crean activas (sin opción de elegir).
   const isActive = true
+  // Campaña de prueba: entorno aislado que no le sale a los capacitadores
+  // reales ni entra en reportes. Solo el superadmin puede crearlas.
+  const [isTest, setIsTest] = useState(false)
+  const setTestMode = useTestMode((s) => s.setEnabled)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   // Campaña ya creada: al fijarse, el asistente pasa al paso de invitar colaboradores.
@@ -188,7 +194,23 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
   }
 
   // Notifica la campaña creada y pasa al paso de invitar colaboradores.
-  const finalize = async (campaign: Campaign) => {
+  const finalize = async (created: Campaign) => {
+    let campaign = created
+    // La marca de prueba va en un update aparte: el RPC `create_campaign` no la
+    // recibe, y así esto sigue funcionando aunque el RPC no cambie. No-fatal:
+    // si el SQL de campañas de prueba aún no se corrió, la campaña nace normal
+    // y el superadmin puede marcarla luego desde la lista.
+    if (isTest && isSuperAdmin) {
+      try {
+        await setCampaignTest(campaign.id, true)
+        campaign = { ...campaign, is_test: true }
+        // Al crear el entorno de pruebas, se entra en él: si no, la campaña
+        // recién creada desaparecería de la lista al recargar.
+        setTestMode(true)
+      } catch {
+        /* columna is_test sin crear todavía: se ignora */
+      }
+    }
     // Si un capacitador o superadmin crea una campaña sin tener ninguna asignada
     // (cuenta creada sin campaña casa), se la asignamos como campaña casa para que
     // no le quede oculta y aparezca de una vez al recargar.
@@ -219,6 +241,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     setName('')
     setSlug('')
     setDescription('')
+    setIsTest(false)
     setError('')
     setCreatedCampaign(null)
     onClose()
@@ -320,6 +343,30 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           onChange={setDescription}
                         />
                       </div>
+
+                      {/* Entorno de pruebas: decisión del superadmin y de nadie
+                          más — separa esta campaña de la data real. */}
+                      {isSuperAdmin && (
+                        <div className={cn(
+                          'flex items-start gap-3 rounded-2xl border px-4 py-3 transition-colors',
+                          isTest ? 'border-amber-500/30 bg-amber-500/8' : 'border-line bg-subtle/50',
+                        )}>
+                          <FlaskConical className={cn('h-4 w-4 mt-0.5 shrink-0', isTest ? 'text-amber-600 dark:text-amber-400' : 'text-text-subtle')} />
+                          <div className="min-w-0 flex-1">
+                            <div className={cn('text-[13px] font-medium', isTest ? 'text-amber-700 dark:text-amber-300' : 'text-text')}>
+                              {i18n.t('admin.campaigns.wizard.test_label', 'Campaña de prueba')}
+                            </div>
+                            <p className="text-[11.5px] text-text-muted mt-0.5">
+                              {i18n.t('admin.campaigns.wizard.test_hint', 'Entorno aislado: no le sale a los capacitadores reales y su data no entra en KPIs, reportes ni Excel.')}
+                            </p>
+                          </div>
+                          <Toggle
+                            on={isTest}
+                            onClick={() => setIsTest(!isTest)}
+                            label={i18n.t('admin.campaigns.wizard.test_label', 'Campaña de prueba')}
+                          />
+                        </div>
+                      )}
                     </motion.div>
                   )}
 
@@ -341,6 +388,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           { id: 'slug', label: 'Slug', value: slug, mono: true },
                           description && { id: 'description', label: i18n.t('admin.campaigns.wizard.review_description'), value: description },
                           { id: 'status', label: i18n.t('admin.campaigns.wizard.review_status'), value: isActive ? i18n.t('admin.campaigns.wizard.status_active') : i18n.t('admin.campaigns.wizard.status_inactive'), colored: true },
+                          isTest && { id: 'test', label: i18n.t('admin.campaigns.wizard.review_env', 'Entorno'), value: i18n.t('admin.campaigns.wizard.test_label', 'Campaña de prueba') },
                         ].filter(Boolean).map((row: any) => (
                           <div key={row.id} className="flex items-start gap-4 px-4 py-3">
                             <span className="text-[11px] uppercase tracking-wider text-text-subtle w-24 shrink-0 pt-0.5">

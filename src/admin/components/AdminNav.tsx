@@ -9,6 +9,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher'
+import { TestModeSwitch } from '@/admin/components/TestModeSwitch'
 import { Avatar } from '@/components/ui/Avatar'
 import { WorkspacePresenceBar } from '@/components/presence/WorkspacePresenceBar'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
@@ -356,6 +357,9 @@ export function AdminNav() {
 
         {/* Footer */}
         <div className="px-3 pb-4 pt-3 space-y-1.5 border-t border-glass-border/8">
+          {/* Entorno de pruebas: solo el superadmin lo ve, y solo desde aquí se
+              entra o se sale (ver TestModeSwitch). */}
+          <TestModeSwitch />
           <div className="flex items-center justify-between px-1 py-1">
             <LanguageSwitcher />
             <ThemeToggle />

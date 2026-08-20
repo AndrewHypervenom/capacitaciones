@@ -1661,15 +1661,18 @@
         "invite_badge": "Campaign created",
         "invite_title": "Invite your team",
         "invite_hint": "Add trainers as collaborators: they'll be able to view and edit this campaign's courses and modules. You can also do this later from \"Share campaign\".",
-        "invite_done": "Finish"
+        "invite_done": "Finish",
+        "test_label": "Test campaign",
+        "test_hint": "Isolated environment: real trainers never see it and its data stays out of KPIs, reports and Excel files.",
+        "review_env": "Environment"
       },
       "delete_error": "Error deleting the campaign",
       "delete_blocked": "Can't delete \"{{name}}\"",
       "delete_blocked_desc": "It still has: {{detalle}}. Move or delete that first.",
       "delete_history_title": "\"{{name}}\" still has history",
       "delete_history_desc": "The content is gone, but this remains: {{detalle}}. Deleting the campaign also deletes it, with no way back.",
-      "toggle_deactivate": "Deactivate campaign",
-      "toggle_activate": "Activate campaign",
+      "toggle_deactivate": "Deactivate the campaign: it closes, but its data still counts in KPIs and reports. To isolate it from the real world use the test flag (the flask next to it).",
+      "toggle_activate": "Activate the campaign: it's running again. Note this has nothing to do with the test flag (the flask next to it).",
       "share": {
         "card_title": "Share campaign",
         "card_desc": "Invite other trainers to co-manage the content",
@@ -1684,7 +1687,13 @@
         "removed": "{{name}} no longer collaborates on the campaign",
         "save_error": "Could not update the collaborator",
         "load_error": "Could not load trainers"
-      }
+      },
+      "mark_test": "Turn into a test campaign: its people, courses and progress stop showing to real trainers and drop out of KPIs, reports and Excel.",
+      "unmark_test": "Remove the test flag: this campaign returns to the real world and its data starts counting in KPIs, reports and Excel.",
+      "mark_test_title": "Mark “{{name}}” as a test campaign?",
+      "mark_test_desc": "Its content, its people and their progress stop showing to real trainers and don't enter KPIs, reports or Excel. Its courses can only be assigned to test campaigns and test users. Nothing is deleted and you can remove the flag whenever you want. On saving, the panel enters the test environment and refreshes.",
+      "mark_test_confirm": "Mark as test",
+      "scope_reload": "Environment changed: refreshing the panel so everything loads correctly…"
     },
     "users": {
       "saved_all": "Changes saved",
@@ -1827,12 +1836,13 @@
       "view_progress_hint": "See their progress across worlds and modules.",
       "manage_courses_hint": "Review their courses and reset the progress you need.",
       "reset_pwd_hint": "Sends the person back to their initial password and copies it.",
-      "deactivate_hint": "Blocks sign-in without deleting anything. Reversible.",
-      "reactivate_hint": "Gives access back with their history untouched.",
+      "deactivate_hint": "Deactivates: blocks sign-in and removes them from lists and KPIs, without deleting anything. Only the superadmin can do it, and it's reversible.",
+      "reactivate_hint": "Restores access with their full history intact, right where they left off. Only the superadmin can do it.",
       "delete_user_hint": "Deletes the account and its history. Cannot be undone.",
       "can_create_label": "Permission to create learners",
-      "can_create_on_hint": "Can create learners in their campaigns. Click to revoke.",
-      "can_create_off_hint": "Cannot create learners. Click to allow it.",
+      "can_create_badge": "Can add users",
+      "can_create_on_hint": "Enabled: can add LEARNERS, and only in their own campaigns. Cannot create trainers or deactivate anyone. Click to revoke.",
+      "can_create_off_hint": "Cannot create users. The permission doesn't come with the role: only the trainers you enable here, one by one, can add learners. Click to allow it.",
       "can_create_granted": "{{name}} can now create learners",
       "can_create_revoked": "{{name}} can no longer create learners",
       "can_create_error": "Couldn't change the permission",
@@ -1935,7 +1945,8 @@
       "cert_outdated_when_other": "They certified on {{date}}, when the syllabus was shorter. Since then the course has {{count}} modules they haven't done.",
       "cert_outdated_generic_one": "They certified against the syllabus of that time. Today the course has {{count}} module they haven't done.",
       "cert_outdated_generic_other": "They certified against the syllabus of that time. Today the course has {{count}} modules they haven't done.",
-      "cert_outdated_action": "Their certificate is still valid; to bring it up to date, request the course recertification in Content → Courses → Certification tab."
+      "cert_outdated_action": "Their certificate is still valid; to bring it up to date, request the course recertification in Content → Courses → Certification tab.",
+      "can_create_badge_hint": "You enabled them to add learners in their campaigns. They still cannot deactivate anyone."
     },
     "hr": {
       "title": "Sync with HR",
@@ -2502,7 +2513,11 @@
       "recert_confirm_msg_one": "The certificate already issued will be flagged as outdated and the learner will see they need to certify again. No certificate is deleted: existing ones remain valid and verifiable.",
       "recert_confirm_msg_other": "The {{count}} certificates already issued will be flagged as outdated and learners will see they need to certify again. No certificate is deleted: existing ones remain valid and verifiable.",
       "recert_done_one": "Recertification requested for {{count}} learner.",
-      "recert_done_other": "Recertification requested for {{count}} learners."
+      "recert_done_other": "Recertification requested for {{count}} learners.",
+      "world_unlink_title": "Unlink world",
+      "world_unlink_desc": "“{{name}}” will no longer be tied to this course, but it isn't deleted: it stays available in Worlds as a standalone world.",
+      "world_unlink_confirm": "Unlink",
+      "world_unlinked": "World unlinked"
     },
     "simulations": {
       "save": "Save",
@@ -4973,6 +4988,15 @@
       "skip_untitled": "(question with no text)",
       "study_line": "{{title}}: {{min}} min · read up to {{depth}}% ({{pct}}%)",
       "results_study": "review: {{done}}/{{total}} modules · {{min}} min"
+    },
+    "test_mode": {
+      "label": "Test mode",
+      "badge": "Test",
+      "tip_on": "On: you also see test campaigns, always marked with the amber badge. Careful — KPIs, reports and Excel include test data. Flipping it reloads the view.",
+      "tip_off": "Off: for the admin panel, test campaigns don't exist. Nothing from testing enters pickers, KPIs, reports or Excel. Flipping it reloads the view.",
+      "banner": "Test mode on: you are also seeing test campaigns. Reports and Excel files include test data.",
+      "exit": "Exit",
+      "badge_hint": "Test campaign: isolated environment. Its people, courses and progress don't show to real trainers and don't enter KPIs, reports or Excel."
     }
   },
   "themes": {
@@ -6223,5 +6247,10 @@
     "clipboard_body": "This training material belongs to Positivos+ and its client, and may not be reproduced outside the platform. If you need it for your work, ask your trainer for it.",
     "clipboard_by": "Copied by",
     "print_notice": "This training material belongs to Positivos+ and cannot be printed. Please read it on the platform."
+  },
+  "test_mode": {
+    "mix_users": "Test campaigns and real campaigns cannot be mixed on the same person. Leave only one kind.",
+    "mix_course_title": "Separate environments",
+    "mix_course": "A course from a test campaign can only be assigned to test campaigns and test people (and vice versa)."
   }
 }

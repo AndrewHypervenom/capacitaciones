@@ -3,6 +3,7 @@ import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { requestDeletion, type DeletionResult } from '@/services/audit.service'
 import { onlyActive } from '@/lib/activeUsers'
+import { getTestCampaignIds, TestScopeError } from '@/services/campaigns.service'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
 
 // ─── Tipos ───────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ export async function getLearnerCourses(
     .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
     .order('sort_order')
 
-  const [coursesRes, ccRes, caRes] = await Promise.all([
+  const [coursesRes, ccRes, caRes, testIds] = await Promise.all([
     preview ? coursesQuery : coursesQuery.eq('is_published', true),
     campaignId
       ? supabase
@@ -129,6 +130,7 @@ export async function getLearnerCourses(
       .from('course_assignments')
       .select('course_id, user_id, is_mandatory, assigned_by')
       .eq('user_id', userId),
+    getTestCampaignIds(),
   ])
 
   if (coursesRes.error) throw coursesRes.error
@@ -138,6 +140,10 @@ export async function getLearnerCourses(
   const byUser = new Map(
     ((caRes.data ?? []) as CourseAssignmentRow[]).map((r) => [r.course_id, r]),
   )
+  // ¿Quien mira vive en el entorno de pruebas? Si la columna `is_test` aún no
+  // existe o la RLS no deja leerla, la lista llega vacía y todo cuenta como
+  // real: se comporta igual que antes.
+  const viewerIsTest = !!campaignId && testIds.includes(campaignId)
 
   const rows = ((coursesRes.data ?? []) as unknown as (CourseWithModules & {
     campaigns: { name: string } | null
@@ -148,7 +154,16 @@ export async function getLearnerCourses(
     // campaña NO debe aparecer: el RPC self_enroll_course lo rechazaría
     // ("Curso no disponible para auto-inscripción") y el botón Inscribirme
     // fallaría con 400.
-    .filter((c) => preview || byCampaign.has(c.id) || byUser.has(c.id) || c.visibility === 'catalog')
+    //
+    // Al de PRUEBA se le esconde además el catálogo compartido. Un curso de una
+    // campaña de prueba nunca llega al catálogo (lo corta un trigger), así que
+    // todo lo que hay ahí es del mundo real: si se lo ofrecemos, al pulsar
+    // "Inscribirme" la base le responde TEST_SCOPE_MISMATCH. Mejor no
+    // ofrecérselo que enseñarle un error. Sus cursos asignados no se tocan.
+    .filter((c) => {
+      if (preview || byCampaign.has(c.id) || byUser.has(c.id)) return true
+      return c.visibility === 'catalog' && !viewerIsTest
+    })
 
   // Completamos los nombres que la RLS no dejó traer en el embed.
   const missing = [...new Set(rows.filter((c) => !c.campaigns?.name).map((c) => c.campaign_id))]
@@ -183,6 +198,7 @@ export async function enrollUsers(
   isMandatory = false,
 ): Promise<void> {
   if (userIds.length === 0) return
+  await assertCourseScopeMatches(courseId, { userIds })
   const { error } = await supabase.from('course_assignments').upsert(
     userIds.map((user_id) => ({ course_id: courseId, user_id, is_mandatory: isMandatory })),
   )
@@ -554,6 +570,44 @@ export async function reorderCourseModules(
 
 // ─── Asignaciones ────────────────────────────────────────────────
 
+/**
+ * Entorno de pruebas y entorno real no se cruzan: un curso de una campaña de
+ * prueba solo se asigna a campañas y personas de prueba, y al revés. Si no, el
+ * progreso de las cuentas de prueba acabaría en los KPIs, en el Panorama y en
+ * los Excel de verdad.
+ *
+ * La base tiene el mismo candado (triggers `trg_guard_course_*_test`); esto es
+ * para poder dar un mensaje entendible antes de intentarlo.
+ */
+async function assertCourseScopeMatches(
+  courseId: string,
+  target: { campaignIds?: string[]; userIds?: string[] },
+): Promise<void> {
+  const testIds = new Set(await getTestCampaignIds())
+  if (testIds.size === 0) return // sin campañas de prueba no hay nada que separar
+
+  const { data: course } = await supabase
+    .from('courses')
+    .select('campaign_id')
+    .eq('id', courseId)
+    .maybeSingle()
+  const courseIsTest = testIds.has((course as { campaign_id: string } | null)?.campaign_id ?? '')
+
+  const campaignIds = [...(target.campaignIds ?? [])]
+  if (target.userIds?.length) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('campaign_id')
+      .in('id', target.userIds)
+    for (const p of (profiles ?? []) as Array<{ campaign_id: string | null }>) {
+      if (p.campaign_id) campaignIds.push(p.campaign_id)
+    }
+  }
+
+  if (campaignIds.some((id) => testIds.has(id) !== courseIsTest)) throw new TestScopeError()
+}
+
+
 export async function getCourseCampaigns(courseId: string): Promise<CourseCampaignRow[]> {
   const { data, error } = await supabase
     .from('course_campaigns')
@@ -568,6 +622,7 @@ export async function setCourseCampaign(
   campaignId: string,
   isMandatory: boolean,
 ): Promise<void> {
+  await assertCourseScopeMatches(courseId, { campaignIds: [campaignId] })
   const { error } = await supabase
     .from('course_campaigns')
     .upsert({ course_id: courseId, campaign_id: campaignId, is_mandatory: isMandatory })
@@ -607,6 +662,7 @@ export async function setCourseAssignment(
   userId: string,
   isMandatory: boolean,
 ): Promise<void> {
+  await assertCourseScopeMatches(courseId, { userIds: [userId] })
   const { error } = await supabase
     .from('course_assignments')
     .upsert({ course_id: courseId, user_id: userId, is_mandatory: isMandatory })

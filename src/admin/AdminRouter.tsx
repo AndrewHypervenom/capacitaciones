@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useHasNoCampaigns } from '@/hooks/useHasNoCampaigns'
 
 import { AdminNav } from './components/AdminNav'
+import { TestModeBanner } from './components/TestModeSwitch'
 import { CampaignWizard } from './components/CampaignWizard'
 import { Button } from '@/components/ui/Button'
 import { ViewPresenceChip } from '@/components/presence/ViewPresenceChip'
@@ -106,6 +107,9 @@ export default function AdminRouter() {
     <div className="flex h-screen overflow-hidden bg-bg">
       <AdminNav />
       <div ref={scrollRef} className="flex-1 md:ml-56 overflow-auto pt-14 md:pt-0">
+        {/* Mientras el modo pruebas esté encendido, el panel lo dice arriba de
+            todo: sin esto es facilísimo exportar un Excel con data de prueba. */}
+        <TestModeBanner />
         <Routes>
           <Route index element={<AdminDashboard />} />
           <Route path="campaigns" element={<CampaignList />} />

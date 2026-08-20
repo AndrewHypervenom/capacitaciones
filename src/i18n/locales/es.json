@@ -1661,15 +1661,18 @@
         "invite_badge": "Campaña creada",
         "invite_title": "Invita a tu equipo",
         "invite_hint": "Agrega capacitadores como colaboradores: podrán ver y editar los cursos y módulos de esta campaña. Puedes hacerlo también después desde «Compartir campaña».",
-        "invite_done": "Finalizar"
+        "invite_done": "Finalizar",
+        "test_label": "Campaña de prueba",
+        "test_hint": "Entorno aislado: no le sale a los capacitadores reales y su data no entra en KPIs, reportes ni Excel.",
+        "review_env": "Entorno"
       },
       "delete_error": "Error al eliminar la campaña",
       "delete_blocked": "No se puede eliminar «{{name}}»",
       "delete_blocked_desc": "Todavía tiene: {{detalle}}. Muévelo o elimínalo primero.",
       "delete_history_title": "Queda histórico de «{{name}}»",
       "delete_history_desc": "El contenido ya no existe, pero siguen ahí: {{detalle}}. Al eliminar la campaña se borran también, y no se pueden recuperar.",
-      "toggle_deactivate": "Desactivar campaña",
-      "toggle_activate": "Activar campaña",
+      "toggle_deactivate": "Desactivar la campaña: se cierra, pero su data sigue contando en KPIs y reportes. Para aislarla del mundo real usa la marca de prueba (el matraz de al lado).",
+      "toggle_activate": "Activar la campaña: vuelve a estar en marcha. Ojo, esto no tiene nada que ver con la marca de prueba (el matraz de al lado).",
       "share": {
         "card_title": "Compartir campaña",
         "card_desc": "Invita a otros capacitadores a co-gestionar el contenido",
@@ -1684,7 +1687,13 @@
         "removed": "{{name}} ya no colabora en la campaña",
         "save_error": "No se pudo actualizar el colaborador",
         "load_error": "No se pudieron cargar los capacitadores"
-      }
+      },
+      "mark_test": "Convertir en campaña de prueba: su gente, sus cursos y su progreso dejan de verse para los capacitadores reales y salen de KPIs, reportes y Excel.",
+      "unmark_test": "Quitar la marca de prueba: esta campaña vuelve al mundo real y su data empieza a contar en KPIs, reportes y Excel.",
+      "mark_test_title": "¿Marcar «{{name}}» como campaña de prueba?",
+      "mark_test_desc": "Su contenido, su gente y su progreso dejan de verse para los capacitadores reales y no entran en KPIs, reportes ni Excel. Sus cursos solo podrán asignarse a campañas y usuarios de prueba. No se borra nada y puedes quitar la marca cuando quieras. Al guardar, el panel entra al entorno de pruebas y se actualiza.",
+      "mark_test_confirm": "Marcar como prueba",
+      "scope_reload": "Cambió el entorno: actualizando el panel para que todo cargue bien…"
     },
     "users": {
       "saved_all": "Cambios guardados",
@@ -1827,12 +1836,13 @@
       "view_progress_hint": "Mira su avance en mundos y módulos.",
       "manage_courses_hint": "Revisa sus cursos y restablece el progreso que necesites.",
       "reset_pwd_hint": "Devuelve a la persona a su contraseña inicial y la copia.",
-      "deactivate_hint": "Bloquea el ingreso sin borrar nada. Se puede revertir.",
-      "reactivate_hint": "Le devuelve el acceso con todo su historial intacto.",
+      "deactivate_hint": "Da de baja: bloquea el ingreso y la saca de listados y KPIs, sin borrar nada. Solo el superadmin puede hacerlo, y se revierte cuando quieras.",
+      "reactivate_hint": "Le devuelve el acceso con todo su historial intacto, justo donde lo dejó. Solo el superadmin puede hacerlo.",
       "delete_user_hint": "Borra la cuenta y su historial. No se puede deshacer.",
       "can_create_label": "Permiso para crear aprendices",
-      "can_create_on_hint": "Puede crear aprendices en sus campañas. Clic para quitarle el permiso.",
-      "can_create_off_hint": "No puede crear aprendices. Clic para habilitarlo.",
+      "can_create_badge": "Da de alta",
+      "can_create_on_hint": "Habilitado: puede dar de alta APRENDICES, y solo en sus propias campañas. No puede crear capacitadores ni dar de baja a nadie. Clic para quitarle el permiso.",
+      "can_create_off_hint": "No puede crear usuarios. El permiso no viene con el rol: solo los capacitadores que habilites aquí, uno por uno, pueden dar de alta aprendices. Clic para habilitarlo.",
       "can_create_granted": "{{name}} ya puede crear aprendices",
       "can_create_revoked": "{{name}} ya no puede crear aprendices",
       "can_create_error": "No se pudo cambiar el permiso",
@@ -1935,7 +1945,8 @@
       "cert_outdated_when_other": "Se certificó el {{date}}, cuando el temario era más corto. Desde entonces el curso tiene {{count}} módulos que no ha hecho.",
       "cert_outdated_generic_one": "Se certificó con el temario que había entonces. Hoy el curso tiene {{count}} módulo que no ha hecho.",
       "cert_outdated_generic_other": "Se certificó con el temario que había entonces. Hoy el curso tiene {{count}} módulos que no ha hecho.",
-      "cert_outdated_action": "Su certificado sigue siendo válido; para ponerlo al día, pide la recertificación del curso en Contenido → Cursos → pestaña Certificación."
+      "cert_outdated_action": "Su certificado sigue siendo válido; para ponerlo al día, pide la recertificación del curso en Contenido → Cursos → pestaña Certificación.",
+      "can_create_badge_hint": "Lo habilitaste para dar de alta aprendices en sus campañas. Sigue sin poder dar de baja a nadie."
     },
     "hr": {
       "title": "Sincronizar con Talento Humano",
@@ -2405,7 +2416,6 @@
         "no_answers": "Todavía nadie la ha contestado.",
         "score_instructor": "Instructor y conocimientos",
         "score_training": "La capacitación",
-        "mixed_note": "variantes mezcladas",
         "count_total": "{{n}} respuestas",
         "count_retro": "{{n}} de memoria (ya estaban certificados)",
         "count_comments": "{{n}} con comentario",
@@ -2503,7 +2513,11 @@
       "recert_confirm_msg_one": "El certificado ya emitido quedará marcado como desactualizado y el aprendiz verá que debe volver a certificarse. No se borra ningún certificado: los actuales siguen siendo válidos y verificables.",
       "recert_confirm_msg_other": "Los {{count}} certificados ya emitidos quedarán marcados como desactualizados y los aprendices verán que deben volver a certificarse. No se borra ningún certificado: los actuales siguen siendo válidos y verificables.",
       "recert_done_one": "Recertificación solicitada a {{count}} aprendiz.",
-      "recert_done_other": "Recertificación solicitada a {{count}} aprendices."
+      "recert_done_other": "Recertificación solicitada a {{count}} aprendices.",
+      "world_unlink_title": "Desenlazar mundo",
+      "world_unlink_desc": "«{{name}}» dejará de estar ligado a este curso, pero no se borra: seguirá disponible en Mundos como mundo suelto.",
+      "world_unlink_confirm": "Desenlazar",
+      "world_unlinked": "Mundo desenlazado"
     },
     "simulations": {
       "save": "Guardar",
@@ -4974,6 +4988,15 @@
       "skip_untitled": "(pregunta sin texto)",
       "study_line": "{{title}}: {{min}} min · leyó hasta el {{depth}}% ({{pct}}%)",
       "results_study": "repaso: {{done}}/{{total}} módulos · {{min}} min"
+    },
+    "test_mode": {
+      "label": "Modo pruebas",
+      "badge": "Prueba",
+      "tip_on": "Encendido: ves también las campañas de prueba, siempre marcadas con la insignia ámbar. Ojo, los KPIs, reportes y Excel incluyen datos de prueba. Al cambiarlo la vista se recarga.",
+      "tip_off": "Apagado: para el panel las campañas de prueba no existen. Nada de prueba entra en selectores, KPIs, reportes ni Excel. Al cambiarlo la vista se recarga.",
+      "banner": "Modo pruebas activo: estás viendo también las campañas de prueba. Los reportes y Excel incluyen datos de prueba.",
+      "exit": "Salir",
+      "badge_hint": "Campaña de prueba: entorno aislado. Su gente, sus cursos y su progreso no le salen a los capacitadores reales ni entran en KPIs, reportes ni Excel."
     }
   },
   "themes": {
@@ -6224,5 +6247,10 @@
     "clipboard_body": "Este material de capacitación es propiedad de Positivos+ y de su cliente, y no puede reproducirse fuera de la plataforma. Si lo necesitas para tu trabajo, pídeselo a tu capacitador.",
     "clipboard_by": "Copiado por",
     "print_notice": "Este material de capacitación es de Positivos+ y no puede imprimirse. Consúltalo en la plataforma."
+  },
+  "test_mode": {
+    "mix_users": "No se pueden mezclar campañas de prueba con campañas reales en la misma persona. Déjale solo unas o solo otras.",
+    "mix_course_title": "Entornos separados",
+    "mix_course": "Un curso de una campaña de prueba solo se asigna a campañas y personas de prueba (y al revés)."
   }
 }

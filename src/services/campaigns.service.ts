@@ -1,5 +1,108 @@
 import { supabase } from '@/lib/supabase'
+import { shouldHideTestData } from '@/stores/testModeStore'
 import type { Campaign, CollaboratorProfile } from '@/types/database'
+
+/* ─── Campañas de prueba ──────────────────────────────────────────────────
+ *
+ * Una campaña `is_test` es un entorno de pruebas: su gente, su contenido y su
+ * progreso no deben mezclarse con lo real. Aquí viven las tres reglas:
+ *   1. al superadmin se le esconden salvo que encienda el Modo pruebas;
+ *   2. al capacitador solo le llegan si se las asignaron (eso ya lo hace el
+ *      conjunto casa + colaboraciones, y el trigger de all_campaigns dejó de
+ *      meterlo en las de prueba);
+ *   3. nadie puede quedar con un pie en cada mundo (`assertSameTestScope`).
+ *
+ * `is_test` puede no existir todavía en la base (SQL sin correr): en ese caso
+ * la columna llega `undefined`, todo cuenta como "no es de prueba" y el panel
+ * se comporta exactamente como antes.
+ */
+
+/** ¿La campaña está marcada como entorno de pruebas? */
+export function isTestCampaign(c: { is_test?: boolean | null } | null | undefined): boolean {
+  return c?.is_test === true
+}
+
+/** Ids de las campañas de prueba, para excluirlas de consultas y reportes. */
+let testIdsCache: Promise<string[]> | null = null
+
+export async function getTestCampaignIds(): Promise<string[]> {
+  if (!testIdsCache) {
+    testIdsCache = (async () => {
+      try {
+        const { data, error } = await supabase.from('campaigns').select('id').eq('is_test', true)
+        // Un error aquí (columna sin crear, RLS) no puede tumbar la pantalla:
+        // sin campañas de prueba el panel se comporta como siempre.
+        if (error) return []
+        return (data ?? []).map((r) => (r as { id: string }).id)
+      } catch {
+        return []
+      }
+    })()
+  }
+  return testIdsCache
+}
+
+/** Tras marcar/desmarcar una campaña hay que volver a preguntar. */
+export function invalidateTestCampaigns(): void {
+  testIdsCache = null
+}
+
+/** Marca (o desmarca) una campaña como entorno de pruebas. Solo superadmin. */
+export async function setCampaignTest(campaignId: string, isTest: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('campaigns')
+    .update({ is_test: isTest })
+    .eq('id', campaignId)
+  if (error) throw error
+  invalidateTestCampaigns()
+}
+
+/**
+ * Error de mezcla de mundos: lo real y lo de prueba no se cruzan. Lo lanzan
+ * los guardas del cliente y también los triggers de la base, que responden con
+ * el mismo texto `TEST_SCOPE_MISMATCH` para poder reconocerlo.
+ */
+export class TestScopeError extends Error {
+  constructor(message = 'TEST_SCOPE_MISMATCH') {
+    super(message)
+    this.name = 'TestScopeError'
+  }
+}
+
+/** ¿El mensaje de error viene de un guarda de entorno de pruebas? */
+export function isTestScopeError(err: unknown): boolean {
+  if (err instanceof TestScopeError) return true
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  return msg.includes('TEST_SCOPE_MISMATCH')
+}
+
+/**
+ * Exige que un conjunto de campañas sea todo de prueba o todo real. Se usa al
+ * asignarle campañas a una persona: con un pie en cada mundo, su progreso de
+ * pruebas acabaría en los reportes de verdad.
+ */
+export async function assertSameTestScope(campaignIds: string[]): Promise<void> {
+  if (campaignIds.length < 2) return
+  const testIds = new Set(await getTestCampaignIds())
+  const hasTest = campaignIds.some((id) => testIds.has(id))
+  const hasReal = campaignIds.some((id) => !testIds.has(id))
+  if (hasTest && hasReal) throw new TestScopeError()
+}
+
+/**
+ * Quita de una lista de personas a las del entorno de pruebas (las de una
+ * campaña `is_test`), salvo que el Modo pruebas esté encendido. Se usa donde el
+ * superadmin lee perfiles sin acotar por campaña (p. ej. /admin/users).
+ */
+export async function withoutTestPeople<T extends { campaign_id: string | null }>(
+  rows: T[],
+  isSuperAdmin: boolean,
+): Promise<T[]> {
+  if (!shouldHideTestData(isSuperAdmin)) return rows
+  const testIds = new Set(await getTestCampaignIds())
+  if (testIds.size === 0) return rows
+  return rows.filter((r) => !r.campaign_id || !testIds.has(r.campaign_id))
+}
 
 /**
  * Campañas que el usuario puede gestionar: su campaña "casa"
@@ -11,13 +114,25 @@ export async function getAccessibleCampaigns(opts: {
   isSuperAdmin: boolean
   homeCampaignId: string | null
   userId: string | null
+  /**
+   * Traer también las campañas de prueba aunque el Modo pruebas esté apagado,
+   * para esconderlas al pintar en vez de al consultar. Solo tiene sentido en
+   * /admin/campaigns, que es donde se PONE la marca: ahí encender el modo debe
+   * revelar en el acto las que ya estaban marcadas, sin recargar y sin
+   * tragarse lo que haya sin guardar. En el resto del panel va apagado, que es
+   * lo correcto: lo de prueba ni se pide.
+   */
+  includeTest?: boolean
 }): Promise<Campaign[]> {
-  const { isSuperAdmin, homeCampaignId, userId } = opts
+  const { isSuperAdmin, homeCampaignId, userId, includeTest } = opts
 
   if (isSuperAdmin) {
     const { data, error } = await supabase.from('campaigns').select('*').order('created_at')
     if (error) throw error
-    return (data ?? []) as Campaign[]
+    const all = (data ?? []) as Campaign[]
+    // Con el Modo pruebas apagado, para el superadmin las campañas de prueba
+    // sencillamente no existen: ni en selectores ni en conteos.
+    return shouldHideTestData(true) && !includeTest ? all.filter((c) => !isTestCampaign(c)) : all
   }
 
   // Ids de campañas donde colabora. No-fatal: si la tabla aún no existe (SQL sin
@@ -78,7 +193,20 @@ export async function getAssignableCampaigns(opts: {
   }
   const rows = (data ?? []) as Campaign[]
   // Sin permiso el RPC devuelve vacío: en ese caso vale lo de siempre.
-  return rows.length > 0 ? rows : getAccessibleCampaigns(opts)
+  if (rows.length === 0) return getAccessibleCampaigns(opts)
+
+  // El RPC devuelve TODAS las campañas (por eso existe), así que aquí se acota
+  // al mundo de quien pregunta: el capacitador de prueba da de alta solo en
+  // campañas de prueba y el real solo en las reales. Sin esto, dar de alta
+  // sería la puerta trasera para meter gente real al entorno de pruebas.
+  const own = await getAccessibleCampaigns(opts)
+  const viewerIsTest = own.length > 0 && own.every(isTestCampaign)
+  // Dos señales porque ninguna basta sola: la marca viene en la fila si el RPC
+  // devuelve la columna, y la lista de ids solo la puede leer quien tenga
+  // visibilidad sobre esas campañas (la RLS acota a un capacitador real).
+  const testIds = new Set(await getTestCampaignIds())
+  const rowIsTest = (c: Campaign) => isTestCampaign(c) || testIds.has(c.id)
+  return rows.filter((c) => rowIsTest(c) === viewerIsTest)
 }
 
 /**
@@ -127,6 +255,8 @@ export async function setUserCampaigns(
   currentHomeId: string | null,
 ): Promise<string | null> {
   const wanted = Array.from(new Set(campaignIds.filter(Boolean)))
+  // Nadie con un pie en cada mundo: o todo prueba o todo real.
+  await assertSameTestScope(wanted)
   const home =
     currentHomeId && wanted.includes(currentHomeId) ? currentHomeId : wanted[0] ?? null
 

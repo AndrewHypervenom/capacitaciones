@@ -18,6 +18,8 @@ import {
   getAssignableCampaigns,
   getCampaignIdsByUser,
   setUserCampaigns as saveUserCampaigns,
+  withoutTestPeople,
+  isTestScopeError,
 } from '@/services/campaigns.service'
 import { Avatar } from '@/components/ui/Avatar'
 import { FadeIn } from '@/components/ui/motion'
@@ -218,7 +220,9 @@ export default function UserList() {
         // capacitador solo las de la gente de sus campañas.
         supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
       ])
-      const rows = profiles.data ?? []
+      // La gente del entorno de pruebas no aparece mientras el Modo pruebas
+      // esté apagado (el superadmin lee TODOS los perfiles, sin acotar).
+      const rows = await withoutTestPeople(profiles.data ?? [], isSuperAdmin)
       setUsers(rows)
       setSavedUsers(rows)
       const byUser = await getCampaignIdsByUser(rows)
@@ -257,7 +261,7 @@ export default function UserList() {
       profilesQuery,
       supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
     ])
-    const rows = updated ?? []
+    const rows = await withoutTestPeople(updated ?? [], isSuperAdmin)
     setUsers(rows)
     setSavedUsers(rows)
     const byUser = await getCampaignIdsByUser(rows)
@@ -470,6 +474,18 @@ export default function UserList() {
       toast.success(t('admin.users.saved_all', { defaultValue: 'Cambios guardados' }))
       return true
     } catch (err) {
+      // Mezclar campañas de prueba con campañas reales está prohibido: el
+      // progreso de una cuenta de prueba acabaría en los reportes de verdad.
+      if (isTestScopeError(err)) {
+        toast.error(
+          t('admin.users.campaigns_save_error'),
+          t('test_mode.mix_users', {
+            defaultValue:
+              'No se pueden mezclar campañas de prueba con campañas reales en la misma persona. Déjale solo unas o solo otras.',
+          }),
+        )
+        return false
+      }
       toast.error(t('admin.users.campaigns_save_error'), (err as Error).message)
       return false
     }
@@ -1031,6 +1047,23 @@ export default function UserList() {
                             >
                               <Fingerprint className="h-3 w-3" />
                               {passkeys[user.id].count}
+                            </span>
+                          </Tooltip>
+                        )}
+                        {/* De un vistazo: a quiénes escogió el superadmin.
+                            Sin esto el permiso solo se ve entrando al icono. */}
+                        {isSuperAdmin && user.role === 'capacitador' && user.can_create_learners && (
+                          <Tooltip
+                            label={t('admin.users.can_create_badge_hint')}
+                            className="shrink-0"
+                            maxWidth={250}
+                          >
+                            <span
+                              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{ background: 'rgba(16,212,81,0.14)', color: '#0ca23e' }}
+                            >
+                              <UserRoundPlus className="h-3 w-3" />
+                              {t('admin.users.can_create_badge')}
                             </span>
                           </Tooltip>
                         )}
