@@ -97,8 +97,24 @@ export function useUndoHistory<T>(opts: {
   /** Mientras sea false no se graba nada (p. ej. mientras carga). */
   enabled?: boolean
   limit?: number
+  /**
+   * El editor JURA que nada cambia su estado salvo una persona: lo que abre ya
+   * viene cargado (no hay datos que lleguen después y se vuelquen solos).
+   *
+   * Con esto se deja de exigir que el cambio ocurra pegado a un clic o una
+   * tecla, y ahí estaba el "Deshacer que no deshacía nada" del editor de
+   * módulos: subir un PDF o una imagen a un bloque, generar contenido con IA o
+   * migrar un medio viejo tardan SEGUNDOS. El cambio llega mucho después de tu
+   * clic, la ventana de gesto humano ya se cerró y el paso se adoptaba en
+   * silencio: la barra decía "1 cambio sin guardar" con el botón apagado y sin
+   * forma de volver atrás.
+   *
+   * Solo para editores cuyo estado se inicializa entero al montar; si algo del
+   * servidor puede volcarse después, se deja en false y se usa `adopt()`.
+   */
+  trustChanges?: boolean
 }): UndoHistory {
-  const { state, enabled = true, limit = DEFAULT_LIMIT } = opts
+  const { state, enabled = true, limit = DEFAULT_LIMIT, trustChanges = false } = opts
 
   const applyRef = useRef(opts.apply)
   const stateRef = useRef(state)
@@ -182,10 +198,15 @@ export function useUndoHistory<T>(opts: {
   }, [limit, syncCounts])
 
   /** ¿El cambio pendiente lo hizo una persona? */
+  const trustRef = useRef(trustChanges)
+  trustRef.current = trustChanges
   const isUserEdit = () =>
     !justAppliedRef.current &&
     !adoptNextRef.current &&
-    Date.now() - lastInputRef.current <= USER_WINDOW_MS
+    // Un rebote del propio salto o algo adoptado a propósito nunca es un paso,
+    // se confíe o no en el resto. Lo que cambia con `trustChanges` es solo si
+    // hace falta, además, un gesto reciente.
+    (trustRef.current || Date.now() - lastInputRef.current <= USER_WINDOW_MS)
 
   const clearPending = useCallback(() => {
     if (pendingRef.current) clearTimeout(pendingRef.current)

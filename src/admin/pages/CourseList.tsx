@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowDownAZ, BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
@@ -71,6 +71,7 @@ export default function CourseList() {
     try { return localStorage.getItem(PREVIEW_HINT_KEY) === '1' } catch { return true }
   })
 
+  const [searchParams, setSearchParams] = useSearchParams()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // El superadmin arranca viendo TODOS los cursos (no una campaña suelta como
   // filtro). El resto arranca vacío y cae en su campaña al cargarlas: partir de
@@ -205,6 +206,19 @@ export default function CourseList() {
     if (!selectedCampaignId || selectedCampaignId === ALL_CAMPAIGNS) return
     setActiveCampaignId(selectedCampaignId)
   }, [selectedCampaignId, setActiveCampaignId])
+
+  /* Llegando desde Campañas: `?campaign=<id>` planta la vista en esa campaña.
+     No se abre ningún modal: aquí la persona elige si crea el curso a mano o
+     con IA. Se limpia la URL para no dejar el parámetro pegado. */
+  const deepLinkDone = useRef(false)
+  useEffect(() => {
+    if (deepLinkDone.current) return
+    const camp = searchParams.get('campaign')
+    if (!camp) return
+    deepLinkDone.current = true
+    setSelectedCampaignId(camp)
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // Venimos siguiendo a alguien desde la barra de presencia: pararse en SU
   // campaña y resaltar su curso, sin abrirlo.

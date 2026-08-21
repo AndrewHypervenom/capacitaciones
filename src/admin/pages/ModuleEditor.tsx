@@ -643,6 +643,11 @@ function SectionEditorPanel({
       setCorrectIndex(s.correctIndex)
       setExplanation(s.explanation)
     },
+    // Esta sección abre con TODO cargado (el estado sale de `section`, que ya
+    // vino con el módulo): nada del servidor se vuelca después. Así, subir un
+    // PDF, generar con IA o migrar un medio viejo —que tardan segundos— siguen
+    // contando como pasos deshacibles en vez de quedar fuera del historial.
+    trustChanges: true,
   })
 
   const { undo: undoPanel, canUndo: canUndoPanel } = undoHistory
@@ -1288,6 +1293,8 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo
       setDuration(s.duration)
       setSoundTheme(s.soundTheme)
     },
+    // Igual que la sección: los datos del módulo se cargan al montar el panel.
+    trustChanges: true,
   })
 
   const { undo: undoPanel, canUndo: canUndoPanel } = undoHistory

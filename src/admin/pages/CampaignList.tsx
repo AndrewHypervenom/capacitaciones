@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plus,
-  BookOpen,
+  GraduationCap,
   ChevronDown,
   ChevronUp,
   ToggleLeft,
@@ -45,6 +45,8 @@ import { cn } from '@/lib/cn'
 
 interface CampaignWithModules extends Campaign {
   moduleCount?: number
+  /** Cursos de la campaña: es lo que se ofrece crear desde el panel. */
+  courseCount?: number
 }
 
 export default function CampaignList() {
@@ -81,13 +83,27 @@ export default function CampaignList() {
       }).catch(() => null)
       if (!data) { setLoading(false); return }
 
+      // Los cursos se cuentan de una sola vez (una fila por curso, no una
+      // consulta por campaña): son pocos y así el panel no dispara N llamadas.
+      // Los borrados suaves no cuentan.
+      const coursesByCampaign = new Map<string, number>()
+      const { data: courseRows } = await supabase
+        .from('courses')
+        .select('campaign_id')
+        .is('deleted_at', null)
+        .in('campaign_id', data.map((c) => c.id))
+      for (const cr of (courseRows ?? []) as { campaign_id: string | null }[]) {
+        if (!cr.campaign_id) continue
+        coursesByCampaign.set(cr.campaign_id, (coursesByCampaign.get(cr.campaign_id) ?? 0) + 1)
+      }
+
       const withCounts = await Promise.all(
         data.map(async (c) => {
           const { count } = await supabase
             .from('modules')
             .select('id', { count: 'exact', head: true })
             .eq('campaign_id', c.id)
-          return { ...c, moduleCount: count ?? 0 }
+          return { ...c, moduleCount: count ?? 0, courseCount: coursesByCampaign.get(c.id) ?? 0 }
         }),
       )
       setCampaigns(withCounts)
@@ -526,22 +542,32 @@ export default function CampaignList() {
                     >
                       <div className="border-t border-glass-border/8 px-3 sm:px-5 py-3 sm:py-4">
                         <div className="grid sm:grid-cols-2 gap-3">
+                          {/* Desde la campaña se arma el curso, no el módulo.
+                              Solo lleva a Cursos: allá se decide si se crea a
+                              mano o con IA. */}
                           <Link
-                            to="/admin/modules"
+                            to={`/admin/courses?campaign=${c.id}`}
                             className={cn(
                               'flex items-center gap-3 p-4 rounded-xl transition-all duration-200',
-                              'glass hover:border-glass-border/20 hover:bg-glass/6',
+                              'glass hover:border-neon-violet/25 hover:bg-glass/6',
                             )}
                           >
-                            <div className="h-9 w-9 rounded-lg bg-glass/8 flex items-center justify-center shrink-0 ring-1 ring-glass-border/8">
-                              <BookOpen className="h-4 w-4 text-text-muted" />
+                            <div className="h-9 w-9 rounded-lg bg-neon-violet/10 flex items-center justify-center shrink-0 ring-1 ring-neon-violet/15">
+                              <GraduationCap className="h-4 w-4 text-neon-violet" />
                             </div>
                             <div>
                               <div className="text-[14px] font-medium text-text">
-                                {c.moduleCount} módulos
+                                {t('admin.campaigns.course_card_title', { defaultValue: 'Crear curso' })}
                               </div>
                               <div className="text-[12px] text-text-muted">
-                                Ver y editar el contenido
+                                {c.courseCount
+                                  ? t('admin.campaigns.course_card_has', {
+                                      defaultValue: '{{count}} cursos · a mano o con IA',
+                                      count: c.courseCount,
+                                    })
+                                  : t('admin.campaigns.course_card_none', {
+                                      defaultValue: 'Aún no tiene cursos · a mano o con IA',
+                                    })}
                               </div>
                             </div>
                           </Link>
