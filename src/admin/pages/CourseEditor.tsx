@@ -106,6 +106,7 @@ import { Button } from '@/components/ui/Button'
 import { PulseHint } from '@/components/ui/motion'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
+import { fold } from '@/lib/normalize'
 import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useUnsavedWork } from '@/hooks/useUnsavedWork'
@@ -589,22 +590,35 @@ export default function CourseEditor() {
       .select('*')
       .order('name')
       .then(({ data }) => setCampaigns(data ?? []))
-    // El capacitador solo asigna a los aprendices de su propia campaña; el
-    // superadmin puede asignar a CUALQUIER usuario del sitio (todos los roles y
-    // campañas), por lo que no se filtra ni por rol ni por campaña.
-    {
-      let profilesQuery = supabase
-        .from('profiles')
-        .select('*')
-        .order('display_name')
-      if (!isSuperAdmin) {
-        profilesQuery = profilesQuery.eq('role', 'learner')
-        if (authCampaignId) profilesQuery = profilesQuery.eq('campaign_id', authCampaignId)
-      }
-      profilesQuery.then(({ data }) => setProfiles((data ?? []) as Profile[]))
-    }
     return () => { active = false }
   }, [courseId, course?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Personas asignables. El capacitador ve a los aprendices de TODAS sus
+  // campañas accesibles (casa + aquellas donde colabora), no solo la casa: con
+  // una campaña compartida la lista salía vacía y solo quedaba asignar por
+  // campaña completa. El superadmin puede asignar a CUALQUIER usuario del sitio
+  // (todos los roles y campañas), por lo que no se filtra ni por rol ni por
+  // campaña. Va en su propio efecto porque depende de `accessibleCampaigns`,
+  // que llega después del curso.
+  useEffect(() => {
+    if (!courseId) return
+    const ids = Array.from(
+      new Set([authCampaignId, ...accessibleCampaigns.map((c) => c.id)].filter(Boolean)),
+    ) as string[]
+    // Sin campañas accesibles todavía no hay a quién ofrecer: evitamos pedir
+    // toda la tabla y dejamos la lista como está hasta que lleguen.
+    if (!isSuperAdmin && ids.length === 0) { setProfiles([]); return }
+    let active = true
+    let profilesQuery = supabase
+      .from('profiles')
+      .select('*')
+      .order('display_name')
+    if (!isSuperAdmin) {
+      profilesQuery = profilesQuery.eq('role', 'learner').in('campaign_id', ids)
+    }
+    profilesQuery.then(({ data }) => { if (active) setProfiles((data ?? []) as Profile[]) })
+    return () => { active = false }
+  }, [courseId, isSuperAdmin, authCampaignId, accessibleCampaigns])
 
   // Cuánta gente alcanza cada campaña marcada (se recalcula al marcar/desmarcar).
   const draftCampaignIds = useMemo(() => Object.keys(draftCampaigns), [draftCampaigns])
@@ -688,16 +702,23 @@ export default function CourseEditor() {
   }, [campaigns, isSuperAdmin, accessibleCampaigns, authCampaignId])
 
   const filteredCampaigns = useMemo(() => {
-    const q = campaignSearch.trim().toLowerCase()
+    const q = fold(campaignSearch.trim())
     if (!q) return visibleCampaigns
-    return visibleCampaigns.filter((c) => (c.name ?? '').toLowerCase().includes(q))
+    return visibleCampaigns.filter((c) => fold(c.name ?? '').includes(q))
   }, [visibleCampaigns, campaignSearch])
 
+  // Con varias campañas la lista de personas se mezcla, así que el buscador
+  // también mira el nombre de la campaña: escribir "Piloto" deja solo su gente.
   const filteredProfiles = useMemo(() => {
-    const q = userSearch.trim().toLowerCase()
+    const q = fold(userSearch.trim())
     if (!q) return profiles
-    return profiles.filter((p) => (p.display_name ?? '').toLowerCase().includes(q))
-  }, [profiles, userSearch])
+    const campaignById = new Map(campaigns.map((c) => [c.id, c.name ?? '']))
+    return profiles.filter(
+      (p) =>
+        fold(p.display_name ?? '').includes(q) ||
+        fold(campaignById.get(p.campaign_id ?? '') ?? '').includes(q),
+    )
+  }, [profiles, userSearch, campaigns])
 
   // ¿Hay cambios pendientes respecto a lo guardado en BD?
   const assignDirty = useMemo(() => {
