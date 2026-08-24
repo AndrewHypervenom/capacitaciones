@@ -10,6 +10,7 @@ import {
   ArrowLeftRight,
   ArrowUp,
   BookOpen,
+  CalendarClock,
   Check,
   ChevronDown,
   ClipboardCheck,
@@ -19,6 +20,7 @@ import {
   FolderOpen,
   Globe,
   GraduationCap,
+  HelpCircle,
   ImagePlus,
   Info,
   Languages,
@@ -94,6 +96,7 @@ import {
 } from '@/services/certification.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
+import { DEADLINE_MAX_DAYS, type DeadlineMode } from '@/lib/courseDeadline'
 import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseRecertStatus } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -101,6 +104,7 @@ import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/Cour
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Select } from '@/components/ui/Select'
+import { NumberField } from '@/components/ui/NumberField'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { Button } from '@/components/ui/Button'
 import { PulseHint } from '@/components/ui/motion'
@@ -294,6 +298,11 @@ export default function CourseEditor() {
     visibility: 'assigned' as 'assigned' | 'catalog',
     is_shareable: false,
     cover_fit: 'cover' as 'cover' | 'contain',
+    // Límite de tiempo para terminarlo (ver src/lib/courseDeadline.ts).
+    deadline_mode: 'none' as DeadlineMode,
+    deadline_days: 15,
+    deadline_date: '',
+    deadline_blocks: false,
   })
   const coverInputRef = useRef<HTMLInputElement>(null)
   // Qué variante de portada dispara la subida (móvil/tablet/pc/nítida).
@@ -445,6 +454,15 @@ export default function CourseEditor() {
       visibility: c.visibility,
       is_shareable: c.is_shareable ?? false,
       cover_fit: c.cover_fit ?? 'cover',
+      // Si el SQL del plazo todavía no se corrió, las columnas llegan
+      // `undefined` y el curso se comporta como si no tuviera límite.
+      deadline_mode: (c.deadline_mode ?? 'none') as DeadlineMode,
+      // El plazo en días conserva un valor por defecto usable aunque el modo
+      // esté apagado: así el capacitador no tiene que teclear un número para
+      // ver de qué le estamos hablando.
+      deadline_days: c.deadline_days ?? 15,
+      deadline_date: c.deadline_date ?? '',
+      deadline_blocks: c.deadline_blocks ?? false,
     }
     const nextEval = {
       cond: { ...DEFAULT_CERT_CONDITIONS, ...(c.cert_conditions ?? {}) },
@@ -792,6 +810,14 @@ export default function CourseEditor() {
     () => !loading && fingerprint(form) !== baseline.info,
     [form, loading, baseline.info],
   )
+  // ¿La fecha límite escogida ya pasó? Se compara como texto 'YYYY-MM-DD'
+  // contra el hoy LOCAL: convertirla a Date la movería un día en medio mundo.
+  const deadlineDateIsPast = useMemo(() => {
+    if (!form.deadline_date) return false
+    const today = new Date()
+    const local = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    return form.deadline_date < local
+  }, [form.deadline_date])
   // Pestaña "Evaluación": desbloqueo del mundo y del simulador.
   const evalDirty = useMemo(
     () =>
@@ -1003,6 +1029,13 @@ export default function CourseEditor() {
         visibility: form.visibility,
         is_shareable: form.is_shareable,
         cover_fit: form.cover_fit,
+        // El plazo se guarda coherente: las columnas del modo que NO está
+        // activo se limpian, para que apagar y volver a encender no reviva una
+        // fecha vieja que nadie recordaba haber puesto.
+        deadline_mode: form.deadline_mode,
+        deadline_days: form.deadline_mode === 'days' ? form.deadline_days : null,
+        deadline_date: form.deadline_mode === 'date' ? form.deadline_date || null : null,
+        deadline_blocks: form.deadline_mode === 'none' ? false : form.deadline_blocks,
       })
       if (!opts?.silent) toast.success(t('admin.courses.saved_ok'))
       invalidateModulesCache()
@@ -2470,6 +2503,167 @@ export default function CourseEditor() {
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
                   {t('admin.courses.shareable_needs_publish')}
                 </p>
+              )}
+            </div>
+
+            {/* ── Límite de tiempo ──────────────────────────────────────────
+                Tres modos excluyentes: sin plazo, N días desde que se le
+                asigna a cada persona, o una fecha única para todos. El
+                interruptor de abajo decide si al vencer solo se avisa o el
+                curso se cierra. */}
+            <div
+              className={cn(
+                'rounded-2xl border p-4 transition-colors',
+                form.deadline_mode !== 'none'
+                  ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/20'
+                  : 'border-line',
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                    form.deadline_mode !== 'none' ? 'bg-primary/15 text-primary' : 'bg-glass/10 text-text-muted',
+                  )}
+                >
+                  <CalendarClock className="h-4 w-4" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Tooltip
+                    anchor="element"
+                    maxWidth={320}
+                    label={t('admin.courses.deadline_help')}
+                  >
+                    <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-text">
+                      {t('admin.courses.deadline_title')}
+                      <HelpCircle className="h-3.5 w-3.5 text-text-subtle" aria-hidden />
+                    </span>
+                  </Tooltip>
+                  <p className="text-[12px] text-text-muted mt-1 leading-relaxed">
+                    {t('admin.courses.deadline_hint')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(['none', 'days', 'date'] as DeadlineMode[]).map((mode) => (
+                  <Tooltip
+                    key={mode}
+                    anchor="element"
+                    maxWidth={300}
+                    label={t(`admin.courses.deadline_mode_${mode}_help`)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, deadline_mode: mode })}
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                        form.deadline_mode === mode
+                          ? 'border-primary bg-primary/15 text-primary'
+                          : 'border-line text-text-muted hover:text-text',
+                      )}
+                    >
+                      {t(`admin.courses.deadline_mode_${mode}`)}
+                    </button>
+                  </Tooltip>
+                ))}
+              </div>
+
+              {form.deadline_mode === 'days' && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <NumberField
+                    value={form.deadline_days}
+                    onChange={(n) => setForm((f) => ({ ...f, deadline_days: n }))}
+                    min={1}
+                    max={DEADLINE_MAX_DAYS}
+                    aria-label={t('admin.courses.deadline_days_label')}
+                    className="w-20 rounded-xl border border-line bg-glass/5 px-3 py-1.5 text-[13px] tabular-nums text-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <span className="text-[12px] text-text-muted">
+                    {t('admin.courses.deadline_days_label')}
+                  </span>
+                </div>
+              )}
+
+              {form.deadline_mode === 'date' && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={form.deadline_date}
+                    onChange={(e) => setForm({ ...form, deadline_date: e.target.value })}
+                    aria-label={t('admin.courses.deadline_date_label')}
+                    className="rounded-xl border border-line bg-glass/5 px-3 py-1.5 text-[13px] text-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <span className="text-[12px] text-text-muted">
+                    {t('admin.courses.deadline_date_label')}
+                  </span>
+                </div>
+              )}
+
+              {/* Una fecha ya pasada no es un error —se usa para cerrar una
+                  convocatoria— pero sí conviene decirlo en voz alta. */}
+              {form.deadline_mode === 'date' && form.deadline_date && deadlineDateIsPast && (
+                <p className="mt-3 flex items-start gap-1.5 text-[11px] text-amber-500">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {t('admin.courses.deadline_date_past')}
+                </p>
+              )}
+              {form.deadline_mode === 'date' && !form.deadline_date && (
+                <p className="mt-3 flex items-start gap-1.5 text-[11px] text-amber-500">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {t('admin.courses.deadline_date_missing')}
+                </p>
+              )}
+
+              {/* Qué pasa al vencer. Antes era un interruptor "Cerrar el curso
+                  al vencer" y no se entendía: apagado, el capacitador no tenía
+                  forma de saber qué SÍ pasaba. Ahora las dos salidas están a la
+                  vista, se escoge una y debajo se lee en voz alta la que quedó. */}
+              {form.deadline_mode !== 'none' && (
+                <div className="mt-3 border-t border-line/60 pt-3">
+                  <span className="text-[12.5px] font-medium text-text">
+                    {t('admin.courses.deadline_expiry_question')}
+                  </span>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {([false, true] as const).map((blocks) => (
+                      <Tooltip
+                        key={String(blocks)}
+                        anchor="element"
+                        maxWidth={320}
+                        label={t(
+                          blocks
+                            ? 'admin.courses.deadline_blocks_on_help'
+                            : 'admin.courses.deadline_blocks_off_help',
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, deadline_blocks: blocks }))}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                            form.deadline_blocks === blocks
+                              ? 'border-primary bg-primary/15 text-primary'
+                              : 'border-line text-text-muted hover:text-text',
+                          )}
+                        >
+                          {blocks ? <Lock className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                          {t(
+                            blocks
+                              ? 'admin.courses.deadline_expiry_block'
+                              : 'admin.courses.deadline_expiry_warn',
+                          )}
+                        </button>
+                      </Tooltip>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11.5px] text-text-muted leading-relaxed">
+                    {t(
+                      form.deadline_blocks
+                        ? 'admin.courses.deadline_blocks_on_hint'
+                        : 'admin.courses.deadline_blocks_off_hint',
+                    )}
+                  </p>
+                </div>
               )}
             </div>
 

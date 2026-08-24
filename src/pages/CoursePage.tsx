@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Award, Check, ClipboardCheck, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Award, CalendarClock, Check, ClipboardCheck, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { FadeIn } from '@/components/ui/motion';
@@ -23,6 +23,7 @@ import { useLearnerCourses, invalidateLearnerCoursesCache } from '@/hooks/useLea
 import { useViewingPresence } from '@/hooks/usePresence';
 import { selfEnroll, unenrollSelf } from '@/services/courses.service';
 import { getScenariosForCourse } from '@/services/scenarios.service';
+import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
 import type { CourseChoiceScenario } from '@/services/choiceScenarios.service';
 import { getCourseCertStatus } from '@/services/certification.service';
@@ -229,17 +230,31 @@ export default function CoursePage() {
     }
   };
 
+  // Límite de tiempo del curso. Va aquí arriba —antes del `return` de carga—
+  // porque los módulos se cierran con él: si el plazo venció y el curso está
+  // configurado para bloquear, no queda nada por empezar.
+  const deadline = useMemo(() => {
+    if (!course) return deadlineInfo(null);
+    const allDone =
+      course.modules.length > 0 &&
+      course.modules.every((m) => isModuleDone(keyOfCourseModule(m)));
+    return deadlineInfo(course, { assignedAt: course.assignedAt, completed: allDone });
+  }, [course, isModuleDone]);
+
   const items = useMemo(() => {
     if (!course) return [];
     return course.modules.map((m, idx) => {
       let status: ModuleStatus;
       if (isModuleDone(keyOfCourseModule(m))) status = 'completed';
+      // Plazo vencido con bloqueo: lo ya hecho se conserva (y se puede repasar),
+      // pero no se abre nada nuevo hasta que el capacitador amplíe el plazo.
+      else if (deadline.blocked) status = 'locked';
       else if (idx === 0 || isModuleDone(keyOfCourseModule(course.modules[idx - 1])))
         status = 'available';
       else status = 'locked';
       return { module: m, status };
     });
-  }, [course, isModuleDone]);
+  }, [course, isModuleDone, deadline.blocked]);
 
   if (loading) {
     return (
@@ -287,6 +302,23 @@ export default function CoursePage() {
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
   const nextItem = items.find((i) => i.status === 'available');
   const completed = total > 0 && done === total;
+
+  // Qué dice el aviso del plazo. Sin plazo fechado, un curso de catálogo con
+  // límite por días anuncia cuánto tendrá desde que se inscriba.
+  const daysFromEnroll =
+    deadline.state === 'none' && !completed && deadlineMode(course) === 'days'
+      ? (course.deadline_days ?? 0)
+      : 0;
+  const deadlineBanner =
+    deadline.dueMs === null
+      ? daysFromEnroll > 0
+        ? t('courses.deadline_from_enroll', { count: daysFromEnroll })
+        : null
+      : deadline.state === 'overdue'
+        ? t('courses.deadline_overdue', { count: Math.abs(deadline.daysLeft) })
+        : deadline.daysLeft === 0
+          ? t('courses.deadline_today')
+          : t('courses.deadline_left', { count: deadline.daysLeft });
 
   // Regla VIEJA del curso. Ya no decide nada por sí sola: solo se usa como
   // respaldo para las simulaciones que todavía no tienen su propio punto,
@@ -528,6 +560,51 @@ export default function CoursePage() {
             </>
           )}
         </div>
+
+        {/* ── Límite de tiempo ────────────────────────────────────────────
+            Un solo aviso, del color de lo que pasa: gris mientras sobra
+            tiempo, rojo cuando aprieta o ya venció. Si el curso bloquea al
+            vencer, también dice qué hacer (pedir ampliación), porque el
+            aprendiz no puede resolverlo solo. */}
+        {deadlineBanner && (
+          <div
+            className={cn(
+              'mt-5 flex items-start gap-3 rounded-2xl border px-4 py-3',
+              deadline.state === 'overdue' || deadline.state === 'soon'
+                ? 'border-danger/40 bg-danger/8'
+                : 'border-line bg-subtle/50',
+            )}
+          >
+            <span
+              className={cn(
+                'mt-0.5 shrink-0',
+                deadline.state === 'overdue' || deadline.state === 'soon'
+                  ? 'text-danger'
+                  : 'text-text-subtle',
+              )}
+            >
+              {deadline.blocked ? <Lock className="h-4 w-4" /> : <CalendarClock className="h-4 w-4" />}
+            </span>
+            <div className="min-w-0">
+              <p
+                className={cn(
+                  'text-[13.5px] font-medium',
+                  deadline.state === 'overdue' || deadline.state === 'soon'
+                    ? 'text-danger'
+                    : 'text-text',
+                )}
+              >
+                {deadlineBanner}
+              </p>
+              {deadline.dueMs !== null && (
+                <p className="mt-0.5 text-[12.5px] text-text-muted">
+                  {t('courses.deadline_due_on', { date: formatDueDate(deadline.dueMs, language) })}
+                  {deadline.blocked && ` · ${t('courses.deadline_blocked_hint')}`}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Avance: el numero se lee solo, alineado con el hilo de 3px. Antes iba
             apretado dentro de un anillo de 34px, que a 100% no respiraba. */}
@@ -781,7 +858,9 @@ export default function CoursePage() {
                 </h3>
                 <p className="truncate text-[12.5px] text-text-muted">
                   {status === 'locked'
-                    ? t('courses.module_locked_hint')
+                    ? deadline.blocked
+                      ? t('courses.deadline_module_locked_hint')
+                      : t('courses.module_locked_hint')
                     : stripMarkdown(pickText(module.subtitle_es, module.subtitle_en, module.subtitle_pt, language))}
                 </p>
               </div>

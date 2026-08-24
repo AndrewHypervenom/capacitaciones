@@ -417,7 +417,19 @@
     "modules_count_one": "{{count}} módulo",
     "modules_count_other": "{{count}} módulos",
     "progress_one": "{{done}} de {{count}} módulo",
-    "progress_other": "{{done}} de {{count}} módulos"
+    "progress_other": "{{done}} de {{count}} módulos",
+    "deadline_expired": "Vencido",
+    "deadline_soon_badge": "Por vencer",
+    "deadline_left_one": "Queda {{count}} día",
+    "deadline_left_other": "Quedan {{count}} días",
+    "deadline_today": "Vence hoy",
+    "deadline_overdue_one": "Vencido hace {{count}} día",
+    "deadline_overdue_other": "Vencido hace {{count}} días",
+    "deadline_from_enroll_one": "Tendrás {{count}} día desde que te inscribas",
+    "deadline_from_enroll_other": "Tendrás {{count}} días desde que te inscribas",
+    "deadline_due_on": "Fecha límite: {{date}}",
+    "deadline_blocked_hint": "el curso está cerrado; pídele a tu capacitador que amplíe el plazo",
+    "deadline_module_locked_hint": "Cerrado: se venció el plazo del curso"
   },
   "course_practice": {
     "title": "Practica la llamada",
@@ -966,6 +978,7 @@
     "use": "Usar",
     "translate_error": "Error al traducir. Intenta de nuevo.",
     "ai_review_notice": "La IA puede cometer errores. Verifica la información antes de publicar o eliminar.",
+    "ai_language_notice": "Se creará en {{lang}} (el idioma que tienes puesto en el sitio), aunque el material que subas esté en otro idioma.",
     "stale": {
       "message": "Esto cambió en otra pestaña (o alguien más lo editó) después de que lo abriste. Lo que ves aquí ya no es la última versión.",
       "reload": "Traer lo último",
@@ -2521,7 +2534,27 @@
       "world_unlink_title": "Desenlazar mundo",
       "world_unlink_desc": "«{{name}}» dejará de estar ligado a este curso, pero no se borra: seguirá disponible en Mundos como mundo suelto.",
       "world_unlink_confirm": "Desenlazar",
-      "world_unlinked": "Mundo desenlazado"
+      "world_unlinked": "Mundo desenlazado",
+      "deadline_title": "Límite de tiempo",
+      "deadline_hint": "Cuánto tiempo tiene cada persona para terminar el curso. Se le muestra en su tarjeta y en la portada del curso.",
+      "deadline_mode_none": "Sin límite",
+      "deadline_mode_days": "Días desde la asignación",
+      "deadline_mode_date": "Fecha fija",
+      "deadline_days_label": "días desde que se le asigna a cada persona",
+      "deadline_date_label": "la misma fecha límite para todos",
+      "deadline_date_past": "Esa fecha ya pasó: el curso quedará vencido en cuanto guardes.",
+      "deadline_date_missing": "Escoge una fecha o el curso se guardará sin límite.",
+      "deadline_blocks_on_hint": "No podrá abrir módulos nuevos. Lo que ya hizo se conserva y lo puede repasar.",
+      "deadline_blocks_off_hint": "Se le avisa que se le venció, pero puede entrar y terminar el curso tarde.",
+      "deadline_help": "El plazo se le muestra al aprendiz en su tarjeta y en la portada del curso: los días que le quedan y la fecha exacta. A quien ya terminó el curso no se le muestra nada.",
+      "deadline_mode_none_help": "El curso no caduca: cada quien lo hace cuando pueda. Es como funcionan todos los cursos hoy.",
+      "deadline_mode_days_help": "Cada persona tiene su propio plazo, contado desde el día en que se le asignó el curso (a ella o a su campaña). Sirve para una inducción: \"los primeros 15 días\".",
+      "deadline_mode_date_help": "Una única fecha para todo el mundo, sin importar cuándo se le asignó. Sirve para lo normativo: \"todos antes del 30 de noviembre\".",
+      "deadline_expiry_question": "¿Qué pasa cuando se le vence el plazo?",
+      "deadline_expiry_warn": "Solo avisarle",
+      "deadline_expiry_block": "Cerrarle el curso",
+      "deadline_blocks_off_help": "El curso le queda marcado como vencido en rojo, pero sigue abierto: puede entrar y terminarlo tarde. Tú ves quiénes se pasaron en Progreso, columna \"Vencidos\".",
+      "deadline_blocks_on_help": "El curso deja de abrirse: no puede empezar módulos nuevos. Lo que ya completó se conserva y lo puede repasar, y se le dice que te pida una ampliación del plazo."
     },
     "simulations": {
       "save": "Guardar",
@@ -3348,7 +3381,14 @@
       "kpi_nps_hint_one": "De {{count}} encuesta de cierre",
       "kpi_nps_hint_other": "De {{count}} encuestas de cierre",
       "matrix_hidden_one": "{{count}} curso más solo en el Excel",
-      "matrix_hidden_other": "{{count}} cursos más solo en el Excel"
+      "matrix_hidden_other": "{{count}} cursos más solo en el Excel",
+      "col_overdue": "Vencidos",
+      "help_overdue": "Cursos que se le pasaron de plazo sin terminarlos. Solo cuentan los cursos con límite de tiempo configurado.",
+      "help_course_overdue": "Personas a las que se les pasó el plazo de este curso sin terminarlo. Solo cuenta si el curso tiene límite de tiempo.",
+      "kpi_overdue": "Fuera de plazo",
+      "kpi_overdue_hint": "{{count}} cursos asignados con el plazo vencido",
+      "kpi_overdue_none": "Nadie con el plazo vencido (solo cuentan los cursos con límite de tiempo)",
+      "focus_overdue": "Solo con cursos vencidos"
     },
     "feedback_panel": {
       "title": "Progreso de Aprendices",

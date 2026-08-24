@@ -18,6 +18,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { detectLang } from '@/lib/detectLang'
 import { uploadSectionMedia } from '@/services/modules.service'
 import { findDuplicateMedia, type DuplicateMatch } from '@/services/mediaDuplicates.service'
 import { shortFileHash } from '@/lib/fileHash'
@@ -247,24 +248,33 @@ function MarkerEditForm({
           if (q.explanation_es) fields[`q${i}exp`] = q.explanation_es
         })
       }
-      const res = await moduleAiAssist({ action: 'translate', contentType: 'meta', sourceLang: 'es', targetLangs: ['en', 'pt'], fields })
+      // El marcador pudo escribirse en cualquier idioma (el contenido se genera en
+      // el idioma de la interfaz), así que el origen se detecta y se traduce a los
+      // otros dos, no siempre "del español a en/pt".
+      const from = detectLang(Object.values(fields).join('\n'))
+      const targets = (['es', 'en', 'pt'] as const).filter(l => l !== from)
+      const res = await moduleAiAssist({ action: 'translate', contentType: 'meta', sourceLang: from, targetLangs: [...targets], fields })
       const data = res.data as Record<string, Record<string, string>>
       setDraft(p => {
-        const updated: VideoMarkerRaw = { ...p }
-        if (data.en?.title) updated.title_en = data.en.title
-        if (data.pt?.title) updated.title_pt = data.pt.title
-        if (p.questions) {
-          updated.questions = p.questions.map((q, i) => ({
-            ...q,
-            question_en: data.en?.[`q${i}`] || q.question_en,
-            question_pt: data.pt?.[`q${i}`] || q.question_pt,
-            options_en: (q.options_en ?? ['','','','']).map((_, j) => data.en?.[`q${i}o${j}`] || q.options_en?.[j] || ''),
-            options_pt: (q.options_pt ?? ['','','','']).map((_, j) => data.pt?.[`q${i}o${j}`] || q.options_pt?.[j] || ''),
-            explanation_en: data.en?.[`q${i}exp`] || q.explanation_en,
-            explanation_pt: data.pt?.[`q${i}exp`] || q.explanation_pt,
-          }))
+        const updated = { ...p } as unknown as Record<string, unknown>
+        for (const l of targets) {
+          if (data[l]?.title) updated[`title_${l}`] = data[l].title
         }
-        return updated
+        if (p.questions) {
+          updated.questions = p.questions.map((q, i) => {
+            const next = { ...q } as unknown as Record<string, unknown>
+            for (const l of targets) {
+              const d = data[l]
+              if (!d) continue
+              if (d[`q${i}`]) next[`question_${l}`] = d[`q${i}`]
+              const opts = (q as unknown as Record<string, string[] | undefined>)[`options_${l}`] ?? ['', '', '', '']
+              next[`options_${l}`] = opts.map((o, j) => d[`q${i}o${j}`] || o || '')
+              if (d[`q${i}exp`]) next[`explanation_${l}`] = d[`q${i}exp`]
+            }
+            return next as unknown as typeof q
+          })
+        }
+        return updated as unknown as VideoMarkerRaw
       })
     } catch {
       setTranslateError(t('common.translate_error'))
@@ -541,26 +551,34 @@ export function VideoMarkerEditor({
           })
         }
       })
-      const res = await moduleAiAssist({ action: 'translate', contentType: 'meta', sourceLang: 'es', targetLangs: ['en', 'pt'], fields })
+      // Igual que en el marcador suelto: el idioma de origen se detecta del texto,
+      // porque la columna base ya no siempre trae español.
+      const from = detectLang(Object.values(fields).join('\n'))
+      const targets = (['es', 'en', 'pt'] as const).filter(l => l !== from)
+      const res = await moduleAiAssist({ action: 'translate', contentType: 'meta', sourceLang: from, targetLangs: [...targets], fields })
       const data = res.data as Record<string, Record<string, string>>
       const updated = markers.map(m => {
         const idx = withEs.findIndex(x => x.id === m.id)
         if (idx === -1) return m
-        const next: VideoMarkerRaw = { ...m }
-        if (data.en?.[`m${idx}_title`]) next.title_en = data.en[`m${idx}_title`]
-        if (data.pt?.[`m${idx}_title`]) next.title_pt = data.pt[`m${idx}_title`]
-        if (m.questions) {
-          next.questions = m.questions.map((q, qi) => ({
-            ...q,
-            question_en: data.en?.[`m${idx}q${qi}`] || q.question_en,
-            question_pt: data.pt?.[`m${idx}q${qi}`] || q.question_pt,
-            options_en: (q.options_en ?? ['','','','']).map((_, oi) => data.en?.[`m${idx}q${qi}o${oi}`] || q.options_en?.[oi] || ''),
-            options_pt: (q.options_pt ?? ['','','','']).map((_, oi) => data.pt?.[`m${idx}q${qi}o${oi}`] || q.options_pt?.[oi] || ''),
-            explanation_en: data.en?.[`m${idx}q${qi}exp`] || q.explanation_en,
-            explanation_pt: data.pt?.[`m${idx}q${qi}exp`] || q.explanation_pt,
-          }))
+        const next = { ...m } as unknown as Record<string, unknown>
+        for (const l of targets) {
+          if (data[l]?.[`m${idx}_title`]) next[`title_${l}`] = data[l][`m${idx}_title`]
         }
-        return next
+        if (m.questions) {
+          next.questions = m.questions.map((q, qi) => {
+            const nq = { ...q } as unknown as Record<string, unknown>
+            for (const l of targets) {
+              const d = data[l]
+              if (!d) continue
+              if (d[`m${idx}q${qi}`]) nq[`question_${l}`] = d[`m${idx}q${qi}`]
+              const opts = (q as unknown as Record<string, string[] | undefined>)[`options_${l}`] ?? ['', '', '', '']
+              nq[`options_${l}`] = opts.map((o, oi) => d[`m${idx}q${qi}o${oi}`] || o || '')
+              if (d[`m${idx}q${qi}exp`]) nq[`explanation_${l}`] = d[`m${idx}q${qi}exp`]
+            }
+            return nq as unknown as typeof q
+          })
+        }
+        return next as unknown as VideoMarkerRaw
       })
       onMarkersChange(updated)
     } catch {

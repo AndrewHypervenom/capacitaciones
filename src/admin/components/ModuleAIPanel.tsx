@@ -335,7 +335,7 @@ export function ModuleAIPanel({
       {open && (
         <div className="px-4 pb-4 pt-3 border-t border-glass-border/10 space-y-3">
           <AiCreditsNotice />
-          <AiReviewNotice />
+          <AiReviewNotice showLanguage={false} />
           {error && (
             <div className="flex items-start gap-2 text-xs text-danger p-2.5 rounded-xl bg-danger/8 border border-danger/20">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />

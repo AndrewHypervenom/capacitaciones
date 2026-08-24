@@ -2,7 +2,7 @@ import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue } from 'framer-motion';
-import { Building2, CheckCircle2, GraduationCap, Loader2, Plus } from 'lucide-react';
+import { Building2, CalendarClock, CheckCircle2, GraduationCap, Loader2, Lock, Plus } from 'lucide-react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -14,6 +14,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { stripMarkdown } from '@/components/ui/RichText';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { cn } from '@/lib/cn';
+import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Tarjeta de curso ÚNICA del sitio. La usan el catálogo (/courses) y el panel
@@ -143,13 +144,42 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
     }
   };
 
+  // Límite de tiempo para terminarlo. A quien ya lo completó no se le dice
+  // nada (deadlineInfo devuelve 'none'): el plazo era para que lo hiciera.
+  const deadline = deadlineInfo(course, {
+    assignedAt: course.assignedAt,
+    completed,
+  });
+  // Curso de catálogo con plazo por días: todavía no hay fecha (se cuenta desde
+  // que se inscriba), así que se anuncia el plazo en crudo.
+  const daysFromEnroll =
+    deadline.state === 'none' && !completed && deadlineMode(course) === 'days'
+      ? (course.deadline_days ?? 0)
+      : 0;
+
   // Una sola etiqueta sobre la portada, y solo cuando dice algo que no se ve en
-  // otro lado: obligatorio PENDIENTE, o curso ya completado.
-  const badge = course.isMandatory && !completed
-    ? { text: t('courses.mandatory'), tone: 'danger' as const }
-    : completed
-      ? { text: t('courses.status_completed'), tone: 'primary' as const }
-      : null;
+  // otro lado. El plazo vencido/a punto manda sobre "obligatorio": es lo que de
+  // verdad necesita saber ahora.
+  const badge = deadline.state === 'overdue'
+    ? { text: t('courses.deadline_expired'), tone: 'danger' as const }
+    : deadline.state === 'soon'
+      ? { text: t('courses.deadline_soon_badge'), tone: 'danger' as const }
+      : course.isMandatory && !completed
+        ? { text: t('courses.mandatory'), tone: 'danger' as const }
+        : completed
+          ? { text: t('courses.status_completed'), tone: 'primary' as const }
+          : null;
+
+  const deadlineText =
+    deadline.dueMs === null
+      ? daysFromEnroll > 0
+        ? t('courses.deadline_from_enroll', { count: daysFromEnroll })
+        : null
+      : deadline.state === 'overdue'
+        ? t('courses.deadline_overdue', { count: Math.abs(deadline.daysLeft) })
+        : deadline.daysLeft === 0
+          ? t('courses.deadline_today')
+          : t('courses.deadline_left', { count: deadline.daysLeft });
 
   const meta = [
     t('courses.modules_count', { count: total }),
@@ -258,6 +288,30 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
               </Tooltip>
             )}
           </div>
+
+          {deadlineText && (
+            <div
+              className={cn(
+                'mb-2.5 inline-flex items-center gap-1.5 text-[11.5px] font-medium',
+                deadline.state === 'overdue' || deadline.state === 'soon'
+                  ? 'text-danger'
+                  : 'text-text-subtle',
+              )}
+            >
+              {deadline.blocked ? (
+                <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              ) : (
+                <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              )}
+              {deadline.dueMs !== null ? (
+                <Tooltip label={formatDueDate(deadline.dueMs, language)}>
+                  <span>{deadlineText}</span>
+                </Tooltip>
+              ) : (
+                <span>{deadlineText}</span>
+              )}
+            </div>
+          )}
 
           <div className="mb-2.5 h-[3px] w-full overflow-hidden rounded-full bg-subtle">
             <motion.div

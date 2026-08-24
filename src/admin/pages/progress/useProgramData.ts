@@ -7,6 +7,7 @@ import { getExamResults } from '@/services/exams.admin.service';
 import type { ExamResultRow } from '@/types/exam';
 import { useAuth } from '@/hooks/useAuth';
 import { shouldHideTestData } from '@/stores/testModeStore';
+import { courseDueMs, type CourseDeadline } from '@/lib/courseDeadline';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Datos del Panorama de Progreso.
@@ -18,8 +19,11 @@ import { shouldHideTestData } from '@/stores/testModeStore';
 
      · profiles              → universo de personas (la RLS ya acota al capacitador)
      · courses               → universo de cursos vivos (sin borrado suave)
-     · course_assignments    → cursos asignados a una persona
+     · course_assignments    → cursos asignados a una persona (con `assigned_at`,
+                               desde donde se cuenta el plazo por días)
      · course_campaigns      → cursos asignados a una campaña entera
+     · courses (plazo)       → columnas deadline_* aparte, para que un curso sin
+                               el SQL corrido no tumbe el resto del tablero
      · certifications        → certificados emitidos, con fecha y código
      · getPendingAttempts()  → actividad real: entregas, notas y qué falta evaluar
      · module_time           → tiempo activo (DIFERIDO: se pide aparte, es pesado)
@@ -28,6 +32,13 @@ import { shouldHideTestData } from '@/stores/testModeStore';
    Todo degrada solo: si una consulta falla por permisos o porque su SQL aún no
    está corrido, esa dimensión se queda vacía y el resto del tablero funciona.
    ──────────────────────────────────────────────────────────────────────────── */
+
+/** La más antigua de dos marcas ISO (ignora las vacías). */
+function earliestDate(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a <= b ? a : b;
+}
 
 export interface ProgramPerson {
   id: string;
@@ -59,6 +70,8 @@ export interface ProgramPerson {
   avgScore: number | null;
   /** Entregas suyas que el capacitador todavía no evaluó. */
   pendingReviews: number;
+  /** Cursos asignados cuyo plazo venció sin que los terminara. */
+  overdue: number;
   /** Última señal de actividad (ms epoch) o null. */
   lastActivity: number | null;
   /** Tiempo activo acumulado en módulos (ms). 0 hasta que se cargue. */
@@ -83,6 +96,8 @@ export interface ProgramCourse {
   certified: number;
   avgScore: number | null;
   pendingReviews: number;
+  /** Personas con el plazo del curso vencido y el curso sin terminar. */
+  overdue: number;
   lastActivity: number | null;
 }
 
@@ -104,6 +119,10 @@ export interface ProgramCell {
   lastAt: number | null;
   certifiedAt: string | null;
   certId: string | null;
+  /** Cuándo vence el curso para esta persona (ms epoch), o null si no hay plazo. */
+  dueAt: number | null;
+  /** El plazo ya pasó y el curso no está terminado. */
+  overdue: boolean;
 }
 
 /**
@@ -303,13 +322,13 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         // puede tumbar el tablero entero.
         const [
           profilesRes, campaignsRes, coursesRes, assignRes, campAssignRes, certsRes, credsRes,
-          modulesRes, progressRes, attemptsRes,
+          modulesRes, progressRes, attemptsRes, deadlineRes,
         ] = await Promise.allSettled([
             supabase.from('profiles').select('id, display_name, role, campaign_id, avatar_url, created_at, job_title, country'),
             supabase.from('campaigns').select('id, name, deleted_at, is_test').order('name'),
             supabase.from('courses').select('id, title_es, title_en, title_pt, campaign_id, is_published, icon, deleted_at'),
-            supabase.from('course_assignments').select('course_id, user_id, is_mandatory'),
-            supabase.from('course_campaigns').select('course_id, campaign_id, is_mandatory'),
+            supabase.from('course_assignments').select('course_id, user_id, is_mandatory, assigned_at'),
+            supabase.from('course_campaigns').select('course_id, campaign_id, is_mandatory, assigned_at'),
             supabase.from('certifications').select('user_id, course_id, cert_id, score, issued_at'),
             supabase.from('user_temp_credentials').select('user_id, email'),
             // El temario: qué módulos vivos tiene cada curso. Es el denominador
@@ -322,6 +341,12 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
               'user_progress', 'user_id, completed_modules',
             ),
             getPendingAttempts({ excludeSuperadmins }),
+            // El plazo del curso va en SU PROPIA consulta a propósito: si el SQL
+            // de `deadline_*` todavía no se corrió, PostgREST responde 400 por
+            // columna inexistente. Pedirlo junto al catálogo se llevaría por
+            // delante el tablero entero; aquí solo se queda vacía la columna
+            // "Vencidos" y todo lo demás sigue igual.
+            supabase.from('courses').select('id, deadline_mode, deadline_days, deadline_date, deadline_blocks'),
           ]);
         if (cancelled) return;
 
@@ -350,8 +375,8 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           campaign_id: string | null; is_published: boolean; icon: string | null; deleted_at: string | null;
         }>(coursesRes as never)
           .filter((c) => !c.campaign_id || !hiddenCampaignIds.has(c.campaign_id));
-        const assignRows = ok<{ course_id: string; user_id: string; is_mandatory: boolean }>(assignRes as never);
-        const campAssignRows = ok<{ course_id: string; campaign_id: string; is_mandatory: boolean }>(campAssignRes as never);
+        const assignRows = ok<{ course_id: string; user_id: string; is_mandatory: boolean; assigned_at: string | null }>(assignRes as never);
+        const campAssignRows = ok<{ course_id: string; campaign_id: string; is_mandatory: boolean; assigned_at: string | null }>(campAssignRes as never);
         const moduleRows = ok<{
           id: string; slug: string; title_es: string; title_en: string | null; title_pt: string | null;
           sort_order: number | null; course_id: string | null; deleted_at: string | null;
@@ -363,6 +388,11 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           user_id: string; course_id: string; cert_id: string; score: number; issued_at: string;
         }>(certsRes as never);
         const credRows = ok<{ user_id: string; email: string }>(credsRes as never);
+        // Plazo por curso. Si la consulta falló (columnas aún sin crear) el mapa
+        // queda vacío y `courseDueMs` devuelve null para todos: sin vencidos.
+        const deadlineOf = new Map<string, CourseDeadline>(
+          ok<{ id: string } & CourseDeadline>(deadlineRes as never).map((r) => [r.id, r]),
+        );
 
         const attemptRows: RawAttempt[] =
           attemptsRes.status === 'fulfilled' && !attemptsRes.value.error
@@ -445,7 +475,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             modules: modulesPerCourse.get(c.id) ?? 0,
             mandatory: false,
             assigned: 0, started: 0, completed: 0, certified: 0,
-            avgScore: null, pendingReviews: 0, lastActivity: null,
+            avgScore: null, pendingReviews: 0, overdue: 0, lastActivity: null,
           });
         }
 
@@ -470,12 +500,12 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             createdAt: p.created_at,
             assigned: 0, mandatory: 0, mandatoryDone: 0, started: 0, completed: 0, certified: 0,
             modulesDone: 0, modulesTotal: 0,
-            avgScore: null, pendingReviews: 0, lastActivity: null, studyMs: 0,
+            avgScore: null, pendingReviews: 0, overdue: 0, lastActivity: null, studyMs: 0,
           });
         }
 
         // ── Celdas persona × curso ────────────────────────────────────────
-        const cellMap = new Map<string, ProgramCell & { scoreSum: number }>();
+        const cellMap = new Map<string, ProgramCell & { scoreSum: number; assignedAt: string | null }>();
         const cellOf = (userId: string, courseId: string) => {
           const key = `${userId}|${courseId}`;
           let cell = cellMap.get(key);
@@ -487,7 +517,9 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
               modulesDone: done,
               modulesTotal: modulesPerCourse.get(courseId) ?? 0,
               lastAt: null, certifiedAt: null, certId: null,
+              dueAt: null, overdue: false,
               scoreSum: 0,
+              assignedAt: null,
             };
             cellMap.set(key, cell);
           }
@@ -500,6 +532,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           const cell = cellOf(a.user_id, a.course_id);
           cell.assigned = true;
           if (a.is_mandatory) cell.mandatory = true;
+          cell.assignedAt = earliestDate(cell.assignedAt, a.assigned_at);
         }
         // Asignación por campaña: le toca a toda la gente de esa campaña.
         const peopleByCampaign = new Map<string, string[]>();
@@ -515,6 +548,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             const cell = cellOf(uid, ca.course_id);
             cell.assigned = true;
             if (ca.is_mandatory) cell.mandatory = true;
+            cell.assignedAt = earliestDate(cell.assignedAt, ca.assigned_at);
           }
         }
 
@@ -577,6 +611,9 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         }
 
         // ── Cierre de cuentas por celda, persona y curso ──────────────────
+        // Un solo "ahora" para toda la pasada: si se leyera el reloj por celda,
+        // dos filas de la misma carga podrían caer a lados distintos del plazo.
+        const now = Date.now();
         const finalCells: ProgramCell[] = [];
         for (const cell of cellMap.values()) {
           // "Iniciado" no puede depender solo de haber ENTREGADO algo: un módulo
@@ -584,8 +621,17 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           // implica haber hecho el curso entero. Sin esto salían cursos con más
           // completados que iniciados, que es imposible de explicar.
           if (cell.modulesDone > 0 || cell.certifiedAt) cell.started = true;
-          const { scoreSum, ...rest } = cell;
+          const { scoreSum, assignedAt, ...rest } = cell;
           const score = cell.attempts > 0 ? Math.round(scoreSum / cell.attempts) : null;
+          // Vencido = tiene plazo, ya pasó, le está asignado y NO lo terminó.
+          // Sin asignación no hay plazo que exigir (curso de catálogo suelto).
+          rest.dueAt = cell.assigned
+            ? courseDueMs(deadlineOf.get(cell.courseId), assignedAt)
+            : null;
+          rest.overdue =
+            rest.dueAt !== null &&
+            rest.dueAt < now &&
+            !isCourseCompleted({ ...rest, score });
           finalCells.push({ ...rest, score });
 
           const person = personById.get(cell.userId);
@@ -593,6 +639,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           if (!person || !course) continue;
 
           if (cell.assigned) { person.assigned++; course.assigned++; }
+          if (rest.overdue) { person.overdue++; course.overdue++; }
           if (cell.mandatory) { person.mandatory++; course.mandatory = true; }
           if (cell.started) { person.started++; course.started++; }
           if (cell.certifiedAt) { person.certified++; course.certified++; }

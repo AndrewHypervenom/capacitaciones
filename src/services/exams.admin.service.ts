@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import { logActivity } from '@/services/audit.service'
 import { questionQuotas } from '@/lib/examQuotas'
+import { currentAiLang } from '@/lib/aiLang'
 import {
   DEFAULT_EXAM,
   type CourseExam,
@@ -1139,7 +1140,9 @@ async function callGenerateExam(
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(body),
+      // El idioma sale de la interfaz: con el sitio en portugués el examen se
+      // escribe en portugués aunque el curso o el documento estén en español.
+      body: JSON.stringify({ language: currentAiLang(), ...body }),
       signal,
     },
   )
@@ -1168,12 +1171,17 @@ export function aiDraftToQuestions(
   domainIdByName: Map<string, string>,
 ): NewExamQuestion[] {
   const key = (s: string) => s.toLowerCase().trim()
+  // La IA devuelve los campos con nombre "*_es" (contrato de la función), pero el
+  // texto está en el idioma de la interfaz: se copia también a esa columna para que
+  // el aprendiz que ve el sitio en ese idioma no caiga al de respaldo.
+  const lang = currentAiLang()
+  const forLang = (text: string | null, l: 'en' | 'pt') => (lang === l ? text : null)
   return draft.questions.flatMap((q) => {
     const options: ExamOption[] = q.options.map((text, i) => ({
       id: OPTION_IDS[i] ?? `o${i}`,
       text_es: text,
-      text_en: null,
-      text_pt: null,
+      text_en: forLang(text, 'en'),
+      text_pt: forLang(text, 'pt'),
     }))
     if (options.length < 2) return []
     const correct = q.correct
@@ -1185,13 +1193,13 @@ export function aiDraftToQuestions(
       domain_id: q.domain ? domainIdByName.get(key(q.domain)) ?? null : null,
       kind: correct.length > 1 ? 'multi' : q.kind,
       text_es: q.text_es,
-      text_en: null,
-      text_pt: null,
+      text_en: forLang(q.text_es, 'en'),
+      text_pt: forLang(q.text_es, 'pt'),
       options,
       correct,
       explanation_es: q.explanation_es || null,
-      explanation_en: null,
-      explanation_pt: null,
+      explanation_en: forLang(q.explanation_es || null, 'en'),
+      explanation_pt: forLang(q.explanation_es || null, 'pt'),
       difficulty: q.difficulty ?? 'medio',
       source: 'ai',
       source_ref: null,

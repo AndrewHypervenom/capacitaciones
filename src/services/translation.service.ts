@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import { blankTranslations, deepFillTranslations, translateGenerated } from '@/services/ai.service'
+import { detectBaseLang } from '@/lib/detectLang'
 import { getModuleWithSectionsRaw, type DbModuleWithSections } from '@/services/modules.service'
 
 /**
@@ -401,16 +402,24 @@ export interface TranslateProgress {
 
 type OnProgress = (p: TranslateProgress) => void
 
-/** Vacía en/pt y pide la traducción; si la IA falla, devuelve el original. */
+/**
+ * Vacía los otros dos idiomas y pide la traducción; si la IA falla, devuelve el original.
+ *
+ * El idioma de ORIGEN se detecta leyendo el texto, no se supone: desde que el
+ * contenido se genera en el idioma de la interfaz, la columna base puede traer
+ * portugués o inglés. Traducir "desde el español" un texto en portugués dejaba el
+ * español mal para siempre (ver [[detectLang]]).
+ */
 async function translatePiece<T>(piece: T, signal?: AbortSignal): Promise<T> {
-  const blank = blankTranslations(piece) as T
+  const from = detectBaseLang(piece)
+  const blank = blankTranslations(piece, from) as T
   try {
-    const out = await translateGenerated<T>(blank, signal)
-    return deepFillTranslations(out ?? piece) as T
+    const out = await translateGenerated<T>(blank, signal, from)
+    return deepFillTranslations(out ?? piece, from) as T
   } catch (e) {
     if (signal?.aborted || (e as Error)?.name === 'AbortError') throw e
-    // Red de seguridad: mejor dejar el español que romper el módulo.
-    return deepFillTranslations(piece) as T
+    // Red de seguridad: mejor dejar el idioma original que romper el módulo.
+    return deepFillTranslations(piece, from) as T
   }
 }
 

@@ -417,7 +417,19 @@
     "modules_count_one": "{{count}} module",
     "modules_count_other": "{{count}} modules",
     "progress_one": "{{done}} of {{count}} module",
-    "progress_other": "{{done}} of {{count}} modules"
+    "progress_other": "{{done}} of {{count}} modules",
+    "deadline_expired": "Overdue",
+    "deadline_soon_badge": "Due soon",
+    "deadline_left_one": "{{count}} day left",
+    "deadline_left_other": "{{count}} days left",
+    "deadline_today": "Due today",
+    "deadline_overdue_one": "Overdue by {{count}} day",
+    "deadline_overdue_other": "Overdue by {{count}} days",
+    "deadline_from_enroll_one": "You'll have {{count}} day from the moment you enroll",
+    "deadline_from_enroll_other": "You'll have {{count}} days from the moment you enroll",
+    "deadline_due_on": "Due date: {{date}}",
+    "deadline_blocked_hint": "the course is closed; ask your trainer to extend the deadline",
+    "deadline_module_locked_hint": "Closed: the course deadline has passed"
   },
   "course_practice": {
     "title": "Practice the call",
@@ -966,6 +978,7 @@
     "use": "Use",
     "translate_error": "Translation failed. Please try again.",
     "ai_review_notice": "AI can make mistakes. Check the information before publishing or deleting.",
+    "ai_language_notice": "It will be written in {{lang}} (the language you have set on the site), even if the material you upload is in another language.",
     "stale": {
       "message": "This changed in another tab (or someone else edited it) after you opened it. What you see here is no longer the latest version.",
       "reload": "Get the latest",
@@ -2521,7 +2534,27 @@
       "world_unlink_title": "Unlink world",
       "world_unlink_desc": "“{{name}}” will no longer be tied to this course, but it isn't deleted: it stays available in Worlds as a standalone world.",
       "world_unlink_confirm": "Unlink",
-      "world_unlinked": "World unlinked"
+      "world_unlinked": "World unlinked",
+      "deadline_title": "Time limit",
+      "deadline_hint": "How long each person has to finish the course. It shows on their card and on the course page.",
+      "deadline_mode_none": "No limit",
+      "deadline_mode_days": "Days from assignment",
+      "deadline_mode_date": "Fixed date",
+      "deadline_days_label": "days from the moment it is assigned to each person",
+      "deadline_date_label": "the same due date for everyone",
+      "deadline_date_past": "That date has already passed: the course will be overdue as soon as you save.",
+      "deadline_date_missing": "Pick a date or the course will be saved with no limit.",
+      "deadline_blocks_on_hint": "They will not be able to open new modules. What they already did is kept and can be reviewed.",
+      "deadline_blocks_off_hint": "They are warned that it expired, but they can come in and finish the course late.",
+      "deadline_help": "The deadline is shown to the learner on their card and on the course page: days left and the exact date. Anyone who already finished the course is shown nothing.",
+      "deadline_mode_none_help": "The course never expires: everyone takes it when they can. This is how every course works today.",
+      "deadline_mode_days_help": "Each person gets their own deadline, counted from the day the course was assigned to them (or to their campaign). Good for onboarding: \"the first 15 days\".",
+      "deadline_mode_date_help": "One date for everyone, no matter when it was assigned. Good for compliance: \"everyone before November 30\".",
+      "deadline_expiry_question": "What happens when their deadline passes?",
+      "deadline_expiry_warn": "Just warn them",
+      "deadline_expiry_block": "Close the course",
+      "deadline_blocks_off_help": "The course is flagged as overdue in red but stays open: they can come in and finish it late. You can see who missed it in Progress, \"Overdue\" column.",
+      "deadline_blocks_on_help": "The course stops opening: they cannot start new modules. What they already completed is kept and can be reviewed, and they are told to ask you for an extension."
     },
     "simulations": {
       "save": "Save",
@@ -3348,7 +3381,14 @@
       "kpi_nps_hint_one": "From {{count}} closing survey",
       "kpi_nps_hint_other": "From {{count}} closing surveys",
       "matrix_hidden_one": "{{count}} more course, in the Excel file only",
-      "matrix_hidden_other": "{{count}} more courses, in the Excel file only"
+      "matrix_hidden_other": "{{count}} more courses, in the Excel file only",
+      "col_overdue": "Overdue",
+      "help_overdue": "Courses whose deadline passed without them finishing. Only courses with a time limit count.",
+      "help_course_overdue": "People who missed this course deadline without finishing it. Only counts if the course has a time limit.",
+      "kpi_overdue": "Past due",
+      "kpi_overdue_hint": "{{count}} assigned courses past their deadline",
+      "kpi_overdue_none": "Nobody past their deadline (only courses with a time limit count)",
+      "focus_overdue": "Only with overdue courses"
     },
     "feedback_panel": {
       "title": "Learner Progress",

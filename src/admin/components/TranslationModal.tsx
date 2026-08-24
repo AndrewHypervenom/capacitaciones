@@ -310,7 +310,7 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
             {/* ── Pie: cupo + acción ── */}
             {!running && phase !== 'done' && (
               <div className="border-t border-line px-5 py-3.5">
-                <AiReviewNotice className="mb-3" />
+                <AiReviewNotice showLanguage={false} className="mb-3" />
                 <div className="flex items-center justify-between gap-3">
                 <QuotaHint quota={quota} t={t} />
                 <button

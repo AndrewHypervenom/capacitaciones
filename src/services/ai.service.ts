@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { type AiLang, currentAiLang, otherLangs } from '@/lib/aiLang'
 import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import { unloopScenario, deferEndings, collapseEndings, minTurnsFor, isEndNode } from '@/lib/scenarioFlow'
 import type { ContentBlock } from '@/types/blocks'
@@ -138,6 +139,7 @@ export async function condenseSimulationDocument(opts: {
     mode: 'condense',
     type: 'dialogue',
     description: opts.description ?? '',
+    language: currentAiLang(),
     documentContext: opts.documentContext,
     documentName: opts.documentName,
   }, signal)
@@ -354,7 +356,10 @@ export async function generateSimulation(opts: {
     detail: `Claude está diseñando el mapa de la simulación: ~${nodes} momentos, con sus caminos, objeciones y finales. Todavía no escribe diálogos.`,
   })
 
-  const base = { ...opts, existing: undefined, documentContext, length, esOnly: true, callType: opts.callType ?? 'auto' }
+  // El idioma lo pone la interfaz, no el documento: con el sitio en portugués la
+  // simulación se escribe en portugués aunque el manual esté en español.
+  const lang = currentAiLang()
+  const base = { ...opts, existing: undefined, documentContext, length, esOnly: true, language: lang, callType: opts.callType ?? 'auto' }
 
   const { data: outlineData, usage: outlineUsage } = await postGenerateSimulation(
     { ...base, mode: 'outline' },
@@ -429,12 +434,12 @@ export async function generateSimulation(opts: {
   const scenario = assembleScenario(plan, outline, writtenNodes, opts.type, MIN_TURNS_BEFORE_END[length])
 
   if (!opts.translate) {
-    // Sin traducción: en/pt quedan con el español (mejor que un hueco) hasta que el
-    // capacitador pida "Traducir" desde el panel.
-    return { data: deepFillTranslations(scenario) as GeneratedScenario, usage }
+    // Sin traducción: los otros dos idiomas quedan con una copia del generado (mejor
+    // que un hueco) hasta que el capacitador pida "Traducir" desde el panel.
+    return { data: deepFillTranslations(scenario, lang) as GeneratedScenario, usage }
   }
 
-  return { data: await translateScenario(scenario, signal, onProgress), usage }
+  return { data: await translateScenario(scenario, signal, onProgress, lang), usage }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -481,18 +486,23 @@ export interface ScenarioEditSummary {
  * idiomas: mandarlo entero era pagar dos tercios de tokens por nada).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function stripTranslations(value: any): any {
-  if (Array.isArray(value)) return value.map(stripTranslations)
-  if (value && typeof value === 'object') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const o: any = {}
-    for (const k of Object.keys(value)) {
-      if (k.endsWith('_en') || k.endsWith('_pt') || k === 'en' || k === 'pt') continue
-      o[k] = stripTranslations(value[k])
+function stripTranslations(value: any, base: AiLang = 'es'): any {
+  const rest = otherLangs(base)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (v: any): any => {
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const o: any = {}
+      for (const k of Object.keys(v)) {
+        if (rest.some((l) => k === l || k.endsWith(`_${l}`))) continue
+        o[k] = walk(v[k])
+      }
+      return o
     }
-    return o
+    return v
   }
-  return value
+  return walk(value)
 }
 
 /**
@@ -537,7 +547,8 @@ export async function editSimulation(opts: {
     description: '',
     callType,
     esOnly: true,
-    current: stripTranslations(opts.current),
+    language: currentAiLang(),
+    current: stripTranslations(opts.current, currentAiLang()),
     instructions: opts.instructions,
     focusIds: opts.focusIds ?? [],
     moduleContext: opts.moduleContext,
@@ -619,13 +630,14 @@ export function applyScenarioPatch(
     ? { ...(current.metadata as unknown as Record<string, unknown>), ...patch.metadata }
     : current.metadata
 
-  // La IA edita en español; en/pt de lo tocado se rellenan con el español para que
-  // nada quede en blanco. El capacitador traduce de verdad con "Traducir a EN/PT".
+  // La IA edita en el idioma de la interfaz; los otros dos idiomas de lo tocado se
+  // rellenan con una copia para que nada quede en blanco. El capacitador traduce de
+  // verdad con "Traducir a los otros idiomas".
   const scenario = deepFillTranslations({
     metadata,
     start_node_id: start,
     nodes,
-  }) as GeneratedScenario
+  }, currentAiLang()) as GeneratedScenario
 
   return {
     scenario,
@@ -641,45 +653,52 @@ export function applyScenarioPatch(
 const TRANSLATE_NODE_BATCH = 4
 
 /**
- * Vacía inglés y portugués para que la pasada de traducción los rellene de verdad.
- * Hace falta porque `deepFillTranslations` copia el español en en/pt: sin esto, al
- * traducir después Haiku ve los campos "llenos" (en español) y no los toca.
+ * Vacía los idiomas que NO son el base, para que la pasada de traducción los rellene
+ * de verdad. Hace falta porque `deepFillTranslations` copia el idioma base en los otros:
+ * sin esto, al traducir después Haiku ve los campos "llenos" y no los toca.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function blankTranslations(value: any): any {
-  if (Array.isArray(value)) return value.map(blankTranslations)
-  if (value && typeof value === 'object') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const o: any = {}
-    for (const k of Object.keys(value)) o[k] = blankTranslations(value[k])
-    if (typeof o.es === 'string') {
-      if (typeof o.en === 'string') o.en = ''
-      if (typeof o.pt === 'string') o.pt = ''
-    }
-    for (const k of Object.keys(o)) {
-      if (!k.endsWith('_es')) continue
-      const base = k.slice(0, -3)
-      for (const lang of ['en', 'pt']) {
-        const key = `${base}_${lang}`
-        if (typeof o[key] === 'string') o[key] = ''
-        else if (Array.isArray(o[key])) o[key] = []
+export function blankTranslations(value: any, base: AiLang = 'es'): any {
+  const rest = otherLangs(base)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (v: any): any => {
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const o: any = {}
+      for (const k of Object.keys(v)) o[k] = walk(v[k])
+      if (typeof o[base] === 'string') {
+        for (const l of rest) if (typeof o[l] === 'string') o[l] = ''
       }
+      const suffix = `_${base}`
+      for (const k of Object.keys(o)) {
+        if (!k.endsWith(suffix)) continue
+        const stem = k.slice(0, -suffix.length)
+        for (const l of rest) {
+          const key = `${stem}_${l}`
+          if (typeof o[key] === 'string') o[key] = ''
+          else if (Array.isArray(o[key])) o[key] = []
+        }
+      }
+      return o
     }
-    return o
+    return v
   }
-  return value
+  return walk(value)
 }
 
 /**
- * Traduce a inglés y portugués un escenario ya escrito en español (Haiku, por lotes).
+ * Traduce a los otros dos idiomas un escenario ya escrito (Haiku, por lotes).
  * Se usa cuando el capacitador ya pulió el contenido y recién ahí quiere los 3 idiomas.
+ * `from` es el idioma en el que está escrito (el que se eligió al generar).
  */
 export async function translateScenario(
   scenario: GeneratedScenario,
   signal?: AbortSignal,
   onProgress?: (p: SimProgress) => void,
+  from: AiLang = 'es',
 ): Promise<GeneratedScenario> {
-  const source = blankTranslations(scenario) as GeneratedScenario
+  const source = blankTranslations(scenario, from) as GeneratedScenario
   const entries = Object.entries(source.nodes ?? {})
   const batches = Math.ceil(entries.length / TRANSLATE_NODE_BATCH)
   const total = batches + 1 // + la metadata
@@ -688,7 +707,7 @@ export async function translateScenario(
   onProgress?.({ stage: 'translating', detail: 'Traduciendo la ficha del escenario…', done: 0, total })
 
   try {
-    const meta = await translateGenerated<{ metadata: unknown }>({ metadata: source.metadata }, signal)
+    const meta = await translateGenerated<{ metadata: unknown }>({ metadata: source.metadata }, signal, from)
     if (meta?.metadata) out = { ...out, metadata: meta.metadata } as GeneratedScenario
   } catch { /* red de seguridad al final */ }
 
@@ -698,19 +717,19 @@ export async function translateScenario(
     const n = i / TRANSLATE_NODE_BATCH + 1
     onProgress?.({
       stage: 'translating',
-      detail: `Traduciendo los momentos de la conversación a inglés y portugués (lote ${n} de ${batches}).`,
+      detail: `Traduciendo los momentos de la conversación a los otros idiomas (lote ${n} de ${batches}).`,
       done: n,
       total,
     })
     const batch = Object.fromEntries(entries.slice(i, i + TRANSLATE_NODE_BATCH))
     let translated = batch
     try {
-      translated = await translateGenerated<Record<string, unknown>>(batch, signal)
+      translated = await translateGenerated<Record<string, unknown>>(batch, signal, from)
     } catch { /* red de seguridad al final */ }
     Object.assign(nodes, translated ?? batch)
   }
 
-  return deepFillTranslations({ ...out, nodes }) as GeneratedScenario
+  return deepFillTranslations({ ...out, nodes }, from) as GeneratedScenario
 }
 
 /**
@@ -900,38 +919,48 @@ export interface ModuleOutline {
 }
 
 /**
- * Rellena inglés/portugués a partir del español, de forma recursiva y en JS puro.
- * Red de seguridad: garantiza que ningún campo quede vacío aunque la traducción con
- * IA falle o se saltee algo. En el peor caso muestra el español (mejor que un hueco).
+ * Rellena los otros dos idiomas a partir del idioma BASE (el que se generó), de forma
+ * recursiva y en JS puro. Red de seguridad: garantiza que ningún campo quede vacío aunque
+ * la traducción con IA falle o se saltee algo. En el peor caso muestra el idioma base
+ * (mejor que un hueco).
+ *
+ * `base` ya no es siempre 'es': es el idioma que el capacitador tenía puesto al generar.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function deepFillTranslations(value: any): any {
-  if (Array.isArray(value)) return value.map(deepFillTranslations)
-  if (value && typeof value === 'object') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const o: any = {}
-    for (const k of Object.keys(value)) o[k] = deepFillTranslations(value[k])
-    // Objetos de texto { es, en, pt }
-    if (typeof o.es === 'string') {
-      if (!o.en) o.en = o.es
-      if (!o.pt) o.pt = o.es
+export function deepFillTranslations(value: any, base: AiLang = 'es'): any {
+  const rest = otherLangs(base)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (v: any): any => {
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const o: any = {}
+      for (const k of Object.keys(v)) o[k] = walk(v[k])
+      // Objetos de texto { es, en, pt }
+      if (typeof o[base] === 'string') {
+        for (const l of rest) if (!o[l]) o[l] = o[base]
+      }
+      // Tríos *_es / *_en / *_pt (strings o arrays)
+      const suffix = `_${base}`
+      for (const k of Object.keys(o)) {
+        if (!k.endsWith(suffix)) continue
+        const stem = k.slice(0, -suffix.length)
+        const empty = (x: unknown) => x == null || x === '' || (Array.isArray(x) && x.length === 0)
+        for (const l of rest) if (empty(o[`${stem}_${l}`])) o[`${stem}_${l}`] = o[k]
+      }
+      return o
     }
-    // Tríos *_es / *_en / *_pt (strings o arrays)
-    for (const k of Object.keys(o)) {
-      if (!k.endsWith('_es')) continue
-      const base = k.slice(0, -3)
-      const empty = (v: unknown) => v == null || v === '' || (Array.isArray(v) && v.length === 0)
-      if (empty(o[`${base}_en`])) o[`${base}_en`] = o[k]
-      if (empty(o[`${base}_pt`])) o[`${base}_pt`] = o[k]
-    }
-    return o
+    return v
   }
-  return value
+  return walk(value)
 }
 
-/** Traduce (en/pt) un JSON generado en español, con Haiku. Devuelve el mismo objeto relleno. */
-export async function translateGenerated<T>(payload: T, signal?: AbortSignal): Promise<T> {
-  const { data } = await postGenerateModule({ mode: 'translate', payload, description: '' }, signal)
+/**
+ * Traduce a los otros dos idiomas un JSON generado en `from`, con Haiku.
+ * Devuelve el mismo objeto relleno.
+ */
+export async function translateGenerated<T>(payload: T, signal?: AbortSignal, from: AiLang = 'es'): Promise<T> {
+  const { data } = await postGenerateModule({ mode: 'translate', payload, description: '', sourceLanguage: from }, signal)
   return data as T
 }
 
@@ -991,29 +1020,31 @@ export async function detectCaptures(opts: {
 export async function generateModule(opts: {
   description: string
 } & DocContext): Promise<{ data: GeneratedModule; usage: CacheUsage }> {
-  // Solo español: traducir aquí costaba plata en contenido que casi siempre se
-  // reescribe después. En/pt quedan con el español y el capacitador pide la
-  // traducción cuando el curso ya está listo (ver translation.service.ts).
-  const { data, usage } = await postGenerateModule({ esOnly: true, ...opts })
-  return { data: deepFillTranslations(data as GeneratedModule) as GeneratedModule, usage }
+  // Un solo idioma: traducir aquí costaba plata en contenido que casi siempre se
+  // reescribe después. Los otros dos quedan con una copia del idioma generado y el
+  // capacitador pide la traducción cuando el curso ya está listo (translation.service.ts).
+  const lang = currentAiLang()
+  const { data, usage } = await postGenerateModule({ esOnly: true, language: lang, ...opts })
+  return { data: deepFillTranslations(data as GeneratedModule, lang) as GeneratedModule, usage }
 }
 
 /**
- * Paso 1 (a prueba de límites): genera solo el esquema del módulo, en español.
- * En/pt se rellenan con el español hasta que se pida traducir de verdad.
+ * Paso 1 (a prueba de límites): genera solo el esquema del módulo, en el idioma de la
+ * interfaz. Los otros dos se rellenan con una copia hasta que se pida traducir de verdad.
  */
 export async function generateModuleOutline(opts: {
   description: string
   /** Cantidad de secciones sugerida (proporcional al tamaño del documento). */
   targetSections?: number
 } & DocContext, signal?: AbortSignal): Promise<{ data: ModuleOutline; usage: CacheUsage }> {
-  const { data, usage } = await postGenerateModule({ mode: 'outline', esOnly: true, ...opts }, signal)
-  return { data: deepFillTranslations(data as ModuleOutline) as ModuleOutline, usage }
+  const lang = currentAiLang()
+  const { data, usage } = await postGenerateModule({ mode: 'outline', esOnly: true, language: lang, ...opts }, signal)
+  return { data: deepFillTranslations(data as ModuleOutline, lang) as ModuleOutline, usage }
 }
 
 /**
- * Paso 2 (a prueba de límites): genera los bloques de UNA sección, en español.
- * La traducción va aparte, al final, cuando el capacitador da el curso por listo.
+ * Paso 2 (a prueba de límites): genera los bloques de UNA sección, en el idioma de la
+ * interfaz. La traducción va aparte, cuando el capacitador da el curso por listo.
  */
 export async function generateModuleSection(opts: {
   description: string
@@ -1025,9 +1056,10 @@ export async function generateModuleSection(opts: {
   totalSections: number
   allHeadings: string[]
 } & DocContext, signal?: AbortSignal): Promise<{ data: { blocks: GeneratedBlock[] }; usage: CacheUsage }> {
-  const { data, usage } = await postGenerateModule({ mode: 'section', esOnly: true, ...opts }, signal)
+  const lang = currentAiLang()
+  const { data, usage } = await postGenerateModule({ mode: 'section', esOnly: true, language: lang, ...opts }, signal)
   const blocks = (data as { blocks?: GeneratedBlock[] })?.blocks ?? []
-  return { data: { blocks: deepFillTranslations(blocks) as GeneratedBlock[] }, usage }
+  return { data: { blocks: deepFillTranslations(blocks, lang) as GeneratedBlock[] }, usage }
 }
 
 export interface ProposedModule {
@@ -1055,7 +1087,9 @@ export async function analyzeDocument(opts: {
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(opts),
+      // El idioma sale de la interfaz: la propuesta de módulos se escribe en el
+      // idioma del sitio aunque el documento esté en otro.
+      body: JSON.stringify({ language: currentAiLang(), ...opts }),
     },
   )
 
@@ -1124,7 +1158,9 @@ export async function moduleAiAssist(opts: AssistRequest): Promise<{ data: Recor
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(opts),
+      // Solo lo usan los modos que ESCRIBEN texto nuevo (separar/unir/pénsum);
+      // traducir y mejorar se guían por sourceLang/targetLangs.
+      body: JSON.stringify({ language: currentAiLang(), ...opts }),
     },
   )
 

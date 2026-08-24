@@ -5,6 +5,7 @@ import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
 import { bgTask } from '@/stores/bgTaskStore'
 import i18n from '@/i18n'
+import { currentAiLang } from '@/lib/aiLang'
 
 /**
  * Puntaje mínimo (%) por defecto para niveles/quizzes generados con IA. Sin un
@@ -75,7 +76,9 @@ async function postGenerateWorld(body: Record<string, unknown>, signal?: AbortSi
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(body),
+      // El idioma sale de la interfaz: con el sitio en portugués el mundo se escribe
+      // en portugués aunque el módulo de origen esté en español.
+      body: JSON.stringify({ language: currentAiLang(), ...body }),
       signal,
     },
   )

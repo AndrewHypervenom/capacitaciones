@@ -6,6 +6,7 @@ import {
   Search, RefreshCw, Sparkles, TrendingUp, Clock, Layers, GraduationCap,
   ChevronRight, Inbox, FileSpreadsheet, CalendarRange, Filter, BarChart3,
   MessageSquareQuote, AlertTriangle, Hourglass, CircleSlash, ShieldCheck, ListChecks,
+  CalendarClock,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
@@ -43,12 +44,12 @@ import { CourseProgressDrawer } from './CourseProgressDrawer';
    ──────────────────────────────────────────────────────────────────────────── */
 
 type Tab = 'summary' | 'people' | 'courses' | 'exam' | 'survey';
-type Focus = 'none' | 'started' | 'idle' | 'certified' | 'pending' | 'risk' | 'mandatory';
+type Focus = 'none' | 'started' | 'idle' | 'certified' | 'pending' | 'risk' | 'mandatory' | 'overdue';
 type RangeKey = '7' | '30' | '90' | 'all';
 type PeopleSort =
   | 'name' | 'campaign' | 'assigned' | 'mandatory' | 'syllabus' | 'started' | 'completed'
-  | 'certified' | 'score' | 'time' | 'last' | 'pending';
-type CourseSort = 'title' | 'assigned' | 'started' | 'completed' | 'certified' | 'score' | 'nps' | 'last';
+  | 'certified' | 'score' | 'time' | 'last' | 'pending' | 'overdue';
+type CourseSort = 'title' | 'assigned' | 'started' | 'completed' | 'certified' | 'overdue' | 'score' | 'nps' | 'last';
 
 const RANGE_DAYS: Record<RangeKey, number | null> = { '7': 7, '30': 30, '90': 90, all: null };
 
@@ -82,6 +83,20 @@ function ScoreCell({ score }: { score: number | null }) {
   return (
     <span className="font-bold tabular-nums" style={{ color: scoreHex(score) }}>
       {score}
+    </span>
+  );
+}
+
+/**
+ * Cursos vencidos. Cero NO se pinta como "0": un cero de verdad y un curso sin
+ * plazo configurado se leen igual en una tabla, y el guion no promete nada.
+ */
+function OverdueCell({ n }: { n: number }) {
+  if (n <= 0) return <span className="text-text-subtle">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1 font-bold tabular-nums text-red-600 dark:text-red-400">
+      <CalendarClock className="h-3.5 w-3.5" />
+      {n}
     </span>
   );
 }
@@ -184,14 +199,14 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     // filtra por campaña, "5 cursos asignados" tiene que ser 5 EN ESA campaña.
     type Agg = {
       assigned: number; mandatory: number; mandatoryDone: number; started: number;
-      completed: number; certified: number; pending: number;
+      completed: number; certified: number; pending: number; overdue: number;
       modulesDone: number; modulesTotal: number; last: number | null;
     };
     const byUser = new Map<string, Agg>();
     for (const cell of scopedCells) {
       const agg: Agg = byUser.get(cell.userId) ?? {
         assigned: 0, mandatory: 0, mandatoryDone: 0, started: 0, completed: 0,
-        certified: 0, pending: 0, modulesDone: 0, modulesTotal: 0, last: null,
+        certified: 0, pending: 0, overdue: 0, modulesDone: 0, modulesTotal: 0, last: null,
       };
       if (cell.assigned) agg.assigned++;
       if (cell.started) agg.started++;
@@ -201,6 +216,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         if (cell.mandatory) agg.mandatoryDone++;
       }
       if (cell.mandatory) agg.mandatory++;
+      if (cell.overdue) agg.overdue++;
       agg.modulesDone += cell.modulesDone;
       if (cell.assigned) agg.modulesTotal += cell.modulesTotal;
       agg.pending += cell.pending;
@@ -227,6 +243,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         modulesDone: agg?.modulesDone ?? 0,
         modulesTotal: agg?.modulesTotal ?? 0,
         pendingReviews: agg?.pending ?? 0,
+        overdue: agg?.overdue ?? 0,
         lastActivity: agg?.last ?? p.lastActivity,
         avgScore: s && s.n > 0 ? Math.round(s.sum / s.n) : null,
       } as ProgramPerson;
@@ -268,8 +285,15 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     const modulesDone = reached.reduce((s, p) => s + p.modulesDone, 0);
     const modulesTotal = reached.reduce((s, p) => s + p.modulesTotal, 0);
 
+    // Fuera de plazo. Se reportan las dos cifras porque responden preguntas
+    // distintas: a cuánta GENTE hay que perseguir, y cuántas ASIGNACIONES se
+    // pasaron (una sola persona puede arrastrar cinco cursos vencidos).
+    const overduePeople = reached.filter((p) => p.overdue > 0).length;
+    const overdueAssignments = reached.reduce((s, p) => s + p.overdue, 0);
+
     return {
       total, started, idle, certified, completedCourses, pending, risk, avgScore, studyMs,
+      overduePeople, overdueAssignments,
       mandatoryTotal, mandatoryDone,
       compliance: mandatoryTotal > 0 ? Math.round((mandatoryDone / mandatoryTotal) * 100) : null,
       modulesDone, modulesTotal,
@@ -318,10 +342,11 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   /* ── Cursos recalculados ──────────────────────────────────────────────── */
 
   const courseRows = useMemo(() => {
-    const agg = new Map<string, { assigned: number; started: number; completed: number; certified: number; pending: number; last: number | null; sum: number; n: number }>();
+    const agg = new Map<string, { assigned: number; started: number; completed: number; certified: number; pending: number; overdue: number; last: number | null; sum: number; n: number }>();
     for (const cell of scopedCells) {
-      const a = agg.get(cell.courseId) ?? { assigned: 0, started: 0, completed: 0, certified: 0, pending: 0, last: null, sum: 0, n: 0 };
+      const a = agg.get(cell.courseId) ?? { assigned: 0, started: 0, completed: 0, certified: 0, pending: 0, overdue: 0, last: null, sum: 0, n: 0 };
       if (cell.assigned) a.assigned++;
+      if (cell.overdue) a.overdue++;
       if (cell.started) a.started++;
       if (cell.certifiedAt) a.certified++;
       if (isCourseCompleted(cell)) a.completed++;
@@ -344,6 +369,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         completed: a?.completed ?? 0,
         certified: a?.certified ?? 0,
         pendingReviews: a?.pending ?? 0,
+        overdue: a?.overdue ?? 0,
         lastActivity: a?.last ?? null,
         avgScore: a && a.n > 0 ? Math.round(a.sum / a.n) : null,
       } as ProgramCourse;
@@ -361,6 +387,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       if (focus === 'pending' && p.pendingReviews === 0) return false;
       if (focus === 'risk' && !(p.started > 0 && p.avgScore !== null && p.avgScore < 70)) return false;
       if (focus === 'mandatory' && !(p.mandatory > p.mandatoryDone)) return false;
+      if (focus === 'overdue' && p.overdue === 0) return false;
       if (!q) return true;
       return fold(p.name).includes(q) || fold(p.email ?? '').includes(q);
     });
@@ -376,6 +403,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         case 'completed': return p.completed;
         case 'certified': return p.certified;
         case 'pending': return p.pendingReviews;
+        case 'overdue': return p.overdue;
         case 'score': return p.avgScore ?? -1;
         case 'time': return p.studyMs;
         case 'last':
@@ -400,6 +428,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         case 'started': return c.started;
         case 'completed': return c.completed;
         case 'certified': return c.certified;
+        case 'overdue': return c.overdue;
         case 'score': return c.avgScore ?? -1;
         case 'nps': return npsFromHistogram(surveys.byCourse[c.id]?.q2_hist).score ?? -101;
         case 'last': return c.lastActivity ?? 0;
@@ -555,6 +584,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     syllabus: t('admin.progress_overview.col_syllabus_pct', 'Avance del temario (%)'),
     mandatoryCol: t('admin.progress_overview.mandatory', 'Obligatorio'),
     modulesCol: t('admin.progress_overview.col_modules', 'Módulos'),
+    overdue: t('admin.progress_overview.col_overdue', 'Vencidos'),
     yes: t('admin.progress_overview.yes', 'Sí'),
     no: t('admin.progress_overview.no', 'No'),
   };
@@ -577,6 +607,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       [L.certified]: p.certified,
       [L.score]: p.avgScore ?? '',
       [L.hours]: study.loaded ? xlsHours(p.studyMs) : '',
+      [L.overdue]: p.overdue,
       [L.pending]: p.pendingReviews,
       [L.last]: p.lastActivity ? new Date(p.lastActivity).toLocaleString(i18n.language) : '',
     })),
@@ -599,6 +630,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         [L.score]: c.avgScore ?? '',
         [L.nps]: n.score ?? '',
         [L.responses]: n.total,
+        [L.overdue]: c.overdue,
         [L.pending]: c.pendingReviews,
         [L.last]: c.lastActivity ? new Date(c.lastActivity).toLocaleString(i18n.language) : '',
       };
@@ -798,6 +830,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     pending: t('admin.progress_overview.focus_pending', 'Solo con entregas por evaluar'),
     risk: t('admin.progress_overview.focus_risk', 'Solo en riesgo'),
     mandatory: t('admin.progress_overview.focus_mandatory', 'Solo con formación obligatoria pendiente'),
+    overdue: t('admin.progress_overview.focus_overdue', 'Solo con cursos vencidos'),
   };
 
   const toggleFocus = (next: Exclude<Focus, 'none'>) => {
@@ -1120,6 +1153,22 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           hint={nps.total > 0
             ? t('admin.progress_overview.kpi_nps_hint', { count: nps.total, defaultValue: 'De {{count}} encuestas de cierre' })
             : t('admin.progress_overview.kpi_nps_empty', 'Abre Satisfacción para calcularlo')}
+        />
+        {/* Vencidos: solo cuenta lo que tiene límite de tiempo configurado, así
+            que un 0 aquí puede significar "nadie se pasó" o "ningún curso tiene
+            plazo". El pie lo dice en vez de dejarlo a la imaginación. */}
+        <KpiCard
+          delay={0.24}
+          icon={<CalendarClock className="h-5 w-5" />}
+          label={t('admin.progress_overview.kpi_overdue', 'Fuera de plazo')}
+          value={loading ? null : kpi.overduePeople}
+          accent="#ef4444"
+          loading={loading}
+          active={focus === 'overdue'}
+          onClick={kpi.overdueAssignments > 0 ? () => toggleFocus('overdue') : undefined}
+          hint={kpi.overdueAssignments > 0
+            ? t('admin.progress_overview.kpi_overdue_hint', { count: kpi.overdueAssignments, defaultValue: '{{count}} cursos asignados con el plazo vencido' })
+            : t('admin.progress_overview.kpi_overdue_none', 'Nadie con el plazo vencido (solo cuentan los cursos con límite de tiempo)')}
         />
         <KpiCard
           delay={0.22}
@@ -1817,7 +1866,7 @@ function PeopleTab({
       ) : (
         <>
           <div className="group/table -mx-2 overflow-x-auto px-2">
-            <table className="w-full min-w-[1120px] table-fixed border-separate border-spacing-0 text-[12.5px]">
+            <table className="w-full min-w-[1210px] table-fixed border-separate border-spacing-0 text-[12.5px]">
               <thead>
                 <tr>
                   {th('name', t('admin.progress_overview.col_person', 'Persona'), 'left', undefined, 'w-[215px]')}
@@ -1829,6 +1878,7 @@ function PeopleTab({
                   {th('certified', t('admin.progress_overview.col_certified', 'Certificados'), 'right', t('admin.progress_overview.help_certified', 'Certificados emitidos a esta persona.'))}
                   {th('score', t('admin.progress_overview.col_score_short', 'Nota'), 'right', t('admin.progress_overview.help_score', 'Promedio de todas sus entregas dentro del alcance elegido.'))}
                   {th('time', t('admin.progress_overview.col_time', 'Tiempo'), 'right', t('admin.progress_overview.help_time', 'Tiempo activo dentro de los módulos: no cuenta la pestaña abierta de fondo.'))}
+                  {th('overdue', t('admin.progress_overview.col_overdue', 'Vencidos'), 'right', t('admin.progress_overview.help_overdue', 'Cursos que se le pasaron de plazo sin terminarlos. Solo cuentan los cursos con límite de tiempo configurado.'))}
                   {th('pending', t('admin.progress_overview.col_pending_short', 'Por evaluar'), 'right', t('admin.progress_overview.help_pending', 'Entregas suyas que todavía esperan retroalimentación.'))}
                   {th('last', t('admin.progress_overview.col_last', 'Última actividad'), 'right', t('admin.progress_overview.help_last', 'Cuándo fue su última entrega dentro del alcance.'), 'w-[118px]')}
                 </tr>
@@ -1924,6 +1974,7 @@ function PeopleTab({
                     <td className="whitespace-nowrap border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums text-text-muted">
                       {study.loaded ? (p.studyMs > 0 ? formatElapsed(p.studyMs) : '—') : '·'}
                     </td>
+                    <td className="border-b border-line/60 px-2.5 py-2.5 text-right"><OverdueCell n={p.overdue} /></td>
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-right">
                       {p.pendingReviews > 0
                         ? <StatusPill tone="amber">{p.pendingReviews}</StatusPill>
@@ -1997,7 +2048,7 @@ function CoursesTab({
         />
       ) : (
         <div className="group/table -mx-2 overflow-x-auto px-2">
-          <table className="w-full min-w-[860px] border-separate border-spacing-0 text-[12.5px]">
+          <table className="w-full min-w-[940px] border-separate border-spacing-0 text-[12.5px]">
             <thead>
               <tr>
                 {th('title', t('admin.progress_overview.col_course', 'Curso'), 'left')}
@@ -2005,6 +2056,7 @@ function CoursesTab({
                 {th('started', t('admin.progress_overview.col_started', 'Iniciados'), 'right', t('admin.progress_overview.help_course_started', 'Personas que ya resolvieron algo en este curso.'))}
                 {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos certificados, o con todas sus entregas aprobadas y ninguna pendiente de evaluar.'))}
                 {th('certified', t('admin.progress_overview.col_certified', 'Certificados'), 'right', t('admin.progress_overview.help_course_certified', 'Certificados emitidos de este curso.'))}
+                {th('overdue', t('admin.progress_overview.col_overdue', 'Vencidos'), 'right', t('admin.progress_overview.help_course_overdue', 'Personas a las que se les pasó el plazo de este curso sin terminarlo. Solo cuenta si el curso tiene límite de tiempo.'))}
                 {th('score', t('admin.progress_overview.col_score_short', 'Nota'), 'right', t('admin.progress_overview.help_course_score', 'Promedio de las entregas de este curso.'))}
                 {th('nps', t('admin.progress_overview.col_nps', 'NPS'), 'right', t('admin.progress_overview.help_nps', 'Promotores (9-10) menos detractores (0-6) de la encuesta de cierre, de −100 a +100.'))}
                 {th('last', t('admin.progress_overview.col_last', 'Última actividad'), 'right', t('admin.progress_overview.help_last', 'Cuándo fue su última entrega dentro del alcance.'))}
@@ -2054,6 +2106,7 @@ function CoursesTab({
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums" style={{ color: c.certified ? VIOLET : undefined }}>
                       {c.certified || '—'}
                     </td>
+                    <td className="border-b border-line/60 px-2.5 py-2.5 text-right"><OverdueCell n={c.overdue} /></td>
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-right"><ScoreCell score={c.avgScore} /></td>
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums">
                       {n.score === null

@@ -32,6 +32,7 @@ export interface CourseCampaignRow {
   course_id: string
   campaign_id: string
   is_mandatory: boolean
+  assigned_at?: string
 }
 
 export interface CourseAssignmentRow {
@@ -39,6 +40,7 @@ export interface CourseAssignmentRow {
   user_id: string
   is_mandatory: boolean
   assigned_by?: string | null
+  assigned_at?: string
 }
 
 /** Curso enriquecido para el aprendiz. */
@@ -50,6 +52,12 @@ export interface LearnerCourse extends CourseWithModules {
   selfEnrolled: boolean
   /** Nombre de la campaña dueña del curso (para mostrarlo sutilmente). */
   campaign_name: string | null
+  /**
+   * Desde cuándo lo tiene: la marca de asignación MÁS ANTIGUA que le aplica
+   * (la suya directa o la de su campaña). Es el punto de partida del límite de
+   * tiempo por días; null si solo lo ve por catálogo y aún no se inscribió.
+   */
+  assignedAt: string | null
 }
 
 // Desambiguamos la relación courses<->modules nombrando la FK modules.course_id.
@@ -57,6 +65,13 @@ export interface LearnerCourse extends CourseWithModules {
 // ambiguo el embed y PostgREST responde 400 ("more than one relationship").
 const COURSE_MODULES_SELECT =
   'modules!modules_course_id_fkey(id, slug, icon, duration_min, course_sort_order, is_published, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt, deleted_at)'
+
+/** La más antigua de dos marcas ISO (ignora las vacías). */
+function earliest(a?: string | null, b?: string | null): string | null {
+  if (!a) return b ?? null
+  if (!b) return a
+  return a <= b ? a : b
+}
 
 function sortCourseModules<T extends { modules: CourseModuleSummary[] }>(course: T): T {
   // Descartamos los borrados suave: el borrado (request_deletion) solo marca
@@ -123,12 +138,12 @@ export async function getLearnerCourses(
     campaignId
       ? supabase
           .from('course_campaigns')
-          .select('course_id, campaign_id, is_mandatory')
+          .select('course_id, campaign_id, is_mandatory, assigned_at')
           .eq('campaign_id', campaignId)
       : Promise.resolve({ data: [], error: null }),
     supabase
       .from('course_assignments')
-      .select('course_id, user_id, is_mandatory, assigned_by')
+      .select('course_id, user_id, is_mandatory, assigned_by, assigned_at')
       .eq('user_id', userId),
     getTestCampaignIds(),
   ])
@@ -179,6 +194,9 @@ export async function getLearnerCourses(
       isMandatory: (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false),
       // Auto-inscrito: existe asignación directa creada por él mismo.
       selfEnrolled: !!ca && ca.assigned_by === userId,
+      // Manda la más antigua: el plazo se cuenta desde que de verdad lo tuvo,
+      // no desde la última vez que alguien volvió a asignárselo.
+      assignedAt: earliest(ca?.assigned_at, cc?.assigned_at),
       campaign_name: c.campaigns?.name ?? names.get(c.campaign_id) ?? null,
     }
   })

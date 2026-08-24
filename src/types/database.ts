@@ -224,6 +224,11 @@ export interface Database {
           sim_max_attempts: number | null
           world_unlock_rule: 'after_modules' | 'from_start' | 'after_module'
           world_unlock_module_id: string | null
+          /** Límite de tiempo para terminar el curso (ver lib/courseDeadline). */
+          deadline_mode: 'none' | 'days' | 'date'
+          deadline_days: number | null
+          deadline_date: string | null
+          deadline_blocks: boolean
           created_at: string
           updated_at: string
         }
@@ -257,6 +262,10 @@ export interface Database {
           sim_max_attempts?: number | null
           world_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
           world_unlock_module_id?: string | null
+          deadline_mode?: 'none' | 'days' | 'date'
+          deadline_days?: number | null
+          deadline_date?: string | null
+          deadline_blocks?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -287,6 +296,10 @@ export interface Database {
           sim_max_attempts?: number | null
           world_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
           world_unlock_module_id?: string | null
+          deadline_mode?: 'none' | 'days' | 'date'
+          deadline_days?: number | null
+          deadline_date?: string | null
+          deadline_blocks?: boolean
           updated_at?: string
         }
         Relationships: []
