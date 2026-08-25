@@ -6,6 +6,7 @@ import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
 import { fold } from '@/lib/normalize'
+import { cn } from '@/lib/cn'
 import { SaveDock } from '@/admin/components/SaveDock'
 import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { useAuth } from '@/hooks/useAuth'
@@ -41,6 +42,45 @@ import type { Profile, Campaign } from '@/types/database'
 const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
 
 type ProfileWithEmail = Profile & { email?: string }
+
+/** Lo que la Edge Function averiguó sobre un correo que ya tiene cuenta. */
+interface ExistingAccount {
+  known?: boolean
+  orphan?: boolean
+  /** Tomado sin que ninguna cuenta lo muestre: cambio sin confirmar o correo anterior. */
+  ghost?: boolean
+  reason?: 'pending_change' | 'old_identity'
+  currentEmail?: string | null
+  displayName?: string | null
+  role?: string | null
+  campaignName?: string | null
+  isActive?: boolean
+}
+
+/**
+ * Traduce "A user with this email address has already been registered" a algo
+ * accionable: quién es, en qué campaña está y si está dada de baja — o el aviso
+ * de que la cuenta quedó a medias (existe el acceso pero no el perfil, por eso
+ * no sale en esta lista y aun así el alta falla).
+ */
+function describeTakenEmail(
+  existing: ExistingAccount | undefined,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (existing?.orphan) return t('admin.users.email_taken_orphan')
+  if (existing?.ghost) {
+    return existing.reason === 'pending_change'
+      ? t('admin.users.email_taken_pending_change')
+      : t('admin.users.email_taken_old_identity', {
+          email: existing.currentEmail ?? t('admin.users.email_unknown'),
+        })
+  }
+  if (!existing?.known || !existing.displayName) return t('admin.users.email_taken')
+  const who = existing.displayName
+  const where = existing.campaignName ?? t('admin.users.bulk_campaign_none')
+  const base = t('admin.users.email_taken_who', { name: who, campaign: where })
+  return existing.isActive === false ? `${base} ${t('admin.users.email_taken_inactive')}` : base
+}
 
 interface TempCred {
   email: string
@@ -130,6 +170,12 @@ export default function UserList() {
   const [countryIgnored, setCountryIgnored] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
+  // Comprobación del CORREO contra auth.users: es lo único que decide si se
+  // puede dar de alta. Se resuelve antes de crear nada, para no llenar el
+  // formulario entero y estrellarse al final.
+  const [emailCheck, setEmailCheck] = useState<
+    { state: 'checking' } | { state: 'free' } | { state: 'taken'; message: string } | null
+  >(null)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [createdEmail, setCreatedEmail] = useState('')
   const [createdPassword, setCreatedPassword] = useState('')
@@ -150,10 +196,16 @@ export default function UserList() {
     // Búsqueda insensible a tildes: nadie escribe "Rocío" con tilde.
     const q = fold(search)
     return users.filter((u) => {
+      // El correo NO está en `profiles` (vive en auth.users), así que `u.email`
+      // solo llega si algún día se sincroniza esa columna. Mientras tanto se
+      // busca también en la credencial temporal, que sí guarda el correo — pero
+      // el trigger la borra al onboardear, así que a quien ya entró no se le
+      // puede buscar por correo desde aquí. Ver `describeTakenEmail`.
       const matchesQuery =
         !q ||
         fold(u.display_name ?? '').includes(q) ||
         fold(u.email ?? '').includes(q) ||
+        fold(tempCreds[u.id]?.email ?? '').includes(q) ||
         u.id.toLowerCase().includes(q)
       // Filtra por pertenencia real (casa o colaboración), no solo por la casa:
       // si no, un capacitador con campaña casa A no aparecería al filtrar por B
@@ -167,7 +219,7 @@ export default function UserList() {
         statusFilter === 'all' || (statusFilter === 'active' ? active : !active)
       return matchesQuery && matchesCampaign && matchesStatus
     })
-  }, [users, search, campaignFilter, statusFilter, userCampaigns])
+  }, [users, search, campaignFilter, statusFilter, userCampaigns, tempCreds])
 
   const inactiveCount = useMemo(() => users.filter((u) => u.is_active === false).length, [users])
 
@@ -322,6 +374,50 @@ export default function UserList() {
     setInviting(true)
   }
 
+  /**
+   * Pregunta al servidor si ese correo se puede usar. Va contra `auth.users`
+   * —donde vive el correo de verdad— e incluye los casos en que está tomado sin
+   * que ninguna cuenta lo muestre: un cambio de correo sin confirmar, o el
+   * correo anterior de alguien, que queda guardado en su identidad.
+   */
+  const checkEmailAvailability = async (raw: string) => {
+    const email = raw.trim().toLowerCase()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailCheck(null)
+      return
+    }
+    setEmailCheck({ state: 'checking' })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ mode: 'check', email }),
+        },
+      )
+      const json = await res.json()
+      // Una Edge Function anterior a este soporte ignoraría `mode` y crearía la
+      // cuenta; por eso el modo check exige que el servidor conteste `available`.
+      if (!res.ok || typeof json.available !== 'boolean') {
+        setEmailCheck(null)
+        return
+      }
+      setEmailCheck(
+        json.available
+          ? { state: 'free' }
+          : { state: 'taken', message: describeTakenEmail(json.existing, t) },
+      )
+    } catch {
+      // Sin red no se bloquea el alta: el servidor volverá a decidir al crear.
+      setEmailCheck(null)
+    }
+  }
+
   const handleInvite = async () => {
     if (!inviteEmail.trim() || missingCampaign) return
     setInviteLoading(true)
@@ -350,6 +446,13 @@ export default function UserList() {
         },
       )
       const json = await res.json()
+      // El correo ya tiene cuenta: el servidor devuelve dónde está esa persona,
+      // porque el buscador de esta pantalla no puede encontrarla por correo
+      // (public.profiles no guarda el email, vive en auth.users).
+      if (res.status === 409 && json.error === 'email_exists') {
+        setInviteError(describeTakenEmail(json.existing, t))
+        return
+      }
       if (!res.ok) throw new Error(json.error ?? 'Error al crear usuario')
 
       setCreatedEmail(json.email ?? inviteEmail.trim())
@@ -810,13 +913,36 @@ export default function UserList() {
                 onChange={(e) => setInviteName(e.target.value)}
                 className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none min-h-[44px]"
               />
-              <input
-                type="email"
-                placeholder={i18n.t('admin.users.ph_email')}
-                value={inviteEmail}
-                onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null) }}
-                className="w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border border-line outline-none min-h-[44px]"
-              />
+              <div>
+                <input
+                  type="email"
+                  placeholder={i18n.t('admin.users.ph_email')}
+                  value={inviteEmail}
+                  onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null); setEmailCheck(null) }}
+                  onBlur={() => checkEmailAvailability(inviteEmail)}
+                  className={cn(
+                    'w-full rounded-xl px-4 py-2.5 text-[14px] text-text bg-subtle border outline-none min-h-[44px]',
+                    emailCheck?.state === 'taken' ? 'border-red-500/60' : 'border-line',
+                  )}
+                />
+                {/* Lo que decide si se puede dar de alta es el CORREO, no el
+                    nombre: se comprueba contra auth.users antes de crear nada. */}
+                {emailCheck?.state === 'checking' && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-text-muted">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {t('admin.users.email_checking')}
+                  </p>
+                )}
+                {emailCheck?.state === 'free' && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px]" style={{ color: '#16a34a' }}>
+                    <Check className="h-3 w-3" />
+                    {t('admin.users.email_free')}
+                  </p>
+                )}
+                {emailCheck?.state === 'taken' && (
+                  <p className="mt-1.5 text-[11.5px] text-red-500">{emailCheck.message}</p>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
@@ -880,7 +1006,7 @@ export default function UserList() {
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleInvite}
-                  disabled={inviteLoading || !inviteEmail || missingCampaign}
+                  disabled={inviteLoading || !inviteEmail || missingCampaign || emailCheck?.state === 'taken' || emailCheck?.state === 'checking'}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
                   style={{ background: '#10D451' }}
                 >

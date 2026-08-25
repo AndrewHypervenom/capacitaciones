@@ -2018,7 +2018,16 @@
       "can_approve_badge_hint": "The superadmin picked them to authorize which courses go live.",
       "can_approve_label": "Permission to approve publishing",
       "can_approve_on_hint": "Can approve which courses go live. Turn it off if they should no longer authorize publishing.",
-      "can_approve_off_hint": "Does not approve publishing: they can only request that their courses go live. Turn it on to let them authorize."
+      "can_approve_off_hint": "Does not approve publishing: they can only request that their courses go live. Turn it on to let them authorize.",
+      "email_taken": "That email already has an account. Search for it by name in the list: the search box cannot find people by email once they have signed in.",
+      "email_taken_who": "That email already belongs to {{name}} (campaign: {{campaign}}). Search for them by name to edit the account or assign courses.",
+      "email_taken_inactive": "They are also deactivated: reactivate the account instead of creating it again, so their history is kept.",
+      "email_taken_orphan": "That email already has sign-in access, but its profile was left half-created: that is why it does not show in the list and cannot be created again either. Ask the superadmin to repair the account.",
+      "email_checking": "Checking the email…",
+      "email_free": "That email is available.",
+      "email_unknown": "another email",
+      "email_taken_pending_change": "That email is held by an unconfirmed email change. Until it is confirmed (or undone) it is not free for anyone else.",
+      "email_taken_old_identity": "That email belonged to an account whose address was later changed (it now uses {{email}}), and it is still held by the old identity. Changing the email from the Supabase dashboard does not release it: that identity has to be cleaned up before the address can be reused."
     },
     "hr": {
       "title": "Sync with HR",
@@ -5756,7 +5765,17 @@
       "staff_mandatory": "How do I make a course mandatory?",
       "staff_create_sim": "How do I create a simulation?",
       "staff_ai_sim": "How do I generate a simulation with AI?",
-      "staff_evaluate": "Where do I see evaluations?"
+      "staff_evaluate": "Where do I see evaluations?",
+      "learner_exam": "How does the final exam work?",
+      "learner_reinforcement": "I failed, what now?",
+      "learner_survey": "What is the survey for?",
+      "learner_report": "I want to report a problem",
+      "staff_exam": "How do I build the final exam?",
+      "staff_progress": "Where do I see the stats?",
+      "staff_publish_course": "How do I publish a course?",
+      "staff_reset": "How do I reset progress?",
+      "staff_ai_quota": "I ran out of AI quota",
+      "staff_feedback_inbox": "How do I answer feedback?"
     },
     "greeting_name": "Hi, {{name}} 👋",
     "assistant_name": "Guide",

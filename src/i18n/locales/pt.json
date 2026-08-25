@@ -2018,7 +2018,16 @@
       "can_approve_badge_hint": "O superadmin o designou para autorizar quais cursos são publicados.",
       "can_approve_label": "Permissão para aprovar publicações",
       "can_approve_on_hint": "Pode aprovar quais cursos são publicados. Desative se não deve mais autorizar publicações.",
-      "can_approve_off_hint": "Não aprova publicações: só pode pedir que seus cursos sejam publicados. Ative para que autorize."
+      "can_approve_off_hint": "Não aprova publicações: só pode pedir que seus cursos sejam publicados. Ative para que autorize.",
+      "email_taken": "Esse e-mail já tem uma conta. Procure por nome na lista: a busca não encontra por e-mail quem já entrou alguma vez.",
+      "email_taken_who": "Esse e-mail já é de {{name}} (campanha: {{campaign}}). Procure por nome na lista para editar a conta ou atribuir cursos.",
+      "email_taken_inactive": "Além disso está desativada: reative a conta em vez de criá-la de novo, assim todo o histórico é mantido.",
+      "email_taken_orphan": "Esse e-mail já tem acesso, mas o perfil ficou pela metade: por isso não aparece na lista e também não dá para criar de novo. Avise o superadmin para reparar a conta.",
+      "email_checking": "Verificando o e-mail…",
+      "email_free": "Esse e-mail está livre.",
+      "email_unknown": "outro e-mail",
+      "email_taken_pending_change": "Esse e-mail está reservado por uma troca de e-mail não confirmada. Até que seja confirmada (ou desfeita) ele não fica livre para mais ninguém.",
+      "email_taken_old_identity": "Esse e-mail foi de uma conta que depois teve o endereço trocado (hoje usa {{email}}), e continua ocupado pela identidade anterior. Trocar o e-mail pelo painel do Supabase não o libera: é preciso limpar essa identidade para reutilizá-lo."
     },
     "hr": {
       "title": "Sincronizar com o RH",
@@ -5756,7 +5765,17 @@
       "staff_mandatory": "Como torno um curso obrigatório?",
       "staff_create_sim": "Como crio uma simulação?",
       "staff_ai_sim": "Como gero uma simulação com IA?",
-      "staff_evaluate": "Onde vejo as avaliações?"
+      "staff_evaluate": "Onde vejo as avaliações?",
+      "learner_exam": "Como funciona a prova final?",
+      "learner_reinforcement": "Não passei, e agora?",
+      "learner_survey": "Para que serve a pesquisa?",
+      "learner_report": "Quero relatar um erro",
+      "staff_exam": "Como monto a prova final?",
+      "staff_progress": "Onde vejo as estatísticas?",
+      "staff_publish_course": "Como publico um curso?",
+      "staff_reset": "Como redefino o progresso?",
+      "staff_ai_quota": "Acabou minha cota de IA",
+      "staff_feedback_inbox": "Como respondo uma opinião?"
     },
     "greeting_name": "Olá, {{name}} 👋",
     "assistant_name": "Guia",

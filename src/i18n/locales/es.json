@@ -2018,7 +2018,16 @@
       "can_approve_badge_hint": "El superadmin lo designó para autorizar qué cursos se publican.",
       "can_approve_label": "Permiso para aprobar publicaciones",
       "can_approve_on_hint": "Puede aprobar qué cursos se publican. Quítaselo si ya no debe autorizar publicaciones.",
-      "can_approve_off_hint": "No aprueba publicaciones: solo puede pedir que se publiquen sus cursos. Actívalo para que autorice."
+      "can_approve_off_hint": "No aprueba publicaciones: solo puede pedir que se publiquen sus cursos. Actívalo para que autorice.",
+      "email_taken": "Ese correo ya tiene una cuenta en la plataforma. Búscala por nombre en la lista: el buscador no encuentra por correo a quien ya entró alguna vez.",
+      "email_taken_who": "Ese correo ya es de {{name}} (campaña: {{campaign}}). Búscala por nombre en la lista para editarla o asignarle cursos.",
+      "email_taken_inactive": "Además está dada de baja: reactívala en lugar de crearla de nuevo, así conserva todo su historial.",
+      "email_taken_orphan": "Ese correo ya tiene acceso, pero su perfil quedó a medias: por eso no aparece en la lista y tampoco se puede volver a crear. Avísale al superadmin para que repare la cuenta.",
+      "email_checking": "Comprobando el correo…",
+      "email_free": "Ese correo está libre.",
+      "email_unknown": "otro correo",
+      "email_taken_pending_change": "Ese correo está reservado por un cambio de correo sin confirmar. Hasta que se confirme (o se deshaga) no queda libre para nadie más.",
+      "email_taken_old_identity": "Ese correo fue de una cuenta a la que después le cambiaron el correo (hoy usa {{email}}), y sigue ocupado por su identidad anterior. Cambiar el correo desde el panel de Supabase no lo libera: hay que limpiar esa identidad para poder reutilizarlo."
     },
     "hr": {
       "title": "Sincronizar con Talento Humano",
@@ -5756,7 +5765,17 @@
       "staff_mandatory": "¿Cómo hago un curso obligatorio?",
       "staff_create_sim": "¿Cómo creo una simulación?",
       "staff_ai_sim": "¿Cómo genero una simulación con IA?",
-      "staff_evaluate": "¿Dónde veo las evaluaciones?"
+      "staff_evaluate": "¿Dónde veo las evaluaciones?",
+      "learner_exam": "¿Cómo es el examen final?",
+      "learner_reinforcement": "Reprobé, ¿y ahora?",
+      "learner_survey": "¿Para qué es la encuesta?",
+      "learner_report": "Quiero reportar un error",
+      "staff_exam": "¿Cómo armo el examen final?",
+      "staff_progress": "¿Dónde veo las estadísticas?",
+      "staff_publish_course": "¿Cómo publico un curso?",
+      "staff_reset": "¿Cómo restablezco el progreso?",
+      "staff_ai_quota": "Se me acabó el cupo de IA",
+      "staff_feedback_inbox": "¿Cómo respondo una opinión?"
     },
     "greeting_name": "Hola, {{name}} 👋",
     "assistant_name": "Guía",

@@ -42,9 +42,9 @@ export const FAQ: FaqEntry[] = [
     strong: ['certificado', 'certificate', 'diploma', 'constancia'],
     keywords: ['descargar', 'download', 'obtener', 'get', 'pdf', 'baixar', 'terminar'],
     answer: {
-      es: 'El certificado se habilita cuando completas todos los módulos de tu curso. Luego lo encuentras en [Certificado](/certificate) y puedes descargarlo en PDF.',
-      en: 'Your certificate unlocks once you complete all the modules in your course. You can then find it under [Certificate](/certificate) and download it as a PDF.',
-      pt: 'O certificado é liberado quando você conclui todos os módulos do seu curso. Depois você o encontra em [Certificado](/certificate) e pode baixá-lo em PDF.',
+      es: 'El certificado se habilita cuando cumples las condiciones que puso tu capacitador: completar los módulos, alcanzar la nota mínima, el puntaje del simulador y, si el curso los tiene, aprobar el examen final y contestar la encuesta. Luego lo encuentras en [Certificado](/certificate), lo descargas en PDF y lo compartes con su código verificable. Si el curso está en construcción, aparece "Próximamente" con lo que falta.',
+      en: 'Your certificate unlocks once you meet the conditions your trainer set: completing the modules, reaching the minimum score, the simulator score and, if the course has them, passing the final exam and answering the survey. You can then find it under [Certificate](/certificate), download it as a PDF and share it with its verifiable code. If the course is still being built, you will see "Coming soon" with what is missing.',
+      pt: 'O certificado é liberado quando você cumpre as condições definidas pelo instrutor: concluir os módulos, atingir a nota mínima, a pontuação do simulador e, se o curso tiver, passar na prova final e responder a pesquisa. Depois você o encontra em [Certificado](/certificate), baixa em PDF e compartilha com seu código verificável. Se o curso ainda está em construção, aparece "Em breve" com o que falta.',
     },
   },
   {
@@ -223,6 +223,162 @@ export const FAQ: FaqEntry[] = [
       es: 'Hay 3 roles: **superadmin** (control total, incluidas campañas y creación de usuarios), **capacitador** (gestiona su campaña: contenido, aprendices y asignación de cursos) y **learner** (consume la capacitación).',
       en: 'There are 3 roles: **superadmin** (full control, including campaigns and user creation), **capacitador/trainer** (manages their campaign: content, learners and course assignment) and **learner** (takes the training).',
       pt: 'Há 3 funções: **superadmin** (controle total, incluindo campanhas e criação de usuários), **capacitador/instrutor** (gerencia sua campanha: conteúdo, aprendizes e atribuição de cursos) e **learner** (faz a capacitação).',
+    },
+  },
+  // ─── Aprendiz: evaluación, certificación y opinión ─────────
+  {
+    id: 'final-exam',
+    audience: 'learner',
+    strong: ['examen final', 'examen', 'final exam', 'exame final', 'prueba final'],
+    keywords: ['presentar', 'intentos', 'attempts', 'tiempo', 'aprobar', 'pass', 'banco', 'reprobe'],
+    answer: {
+      es: 'El **examen final** se abre desde tu curso, cuando el capacitador lo habilita. Antes de empezar ves las reglas: cuántas preguntas trae, el tiempo, el puntaje para aprobar y los intentos. Las preguntas se sortean de un banco, así que cada intento es distinto; el reloj corre en el servidor (sigue aunque cierres la pestaña) y tus respuestas se guardan solas. Al terminar recibes un informe con tu desempeño por área.',
+      en: 'The **final exam** opens from your course once your trainer enables it. Before starting you see the rules: how many questions, the time limit, the passing score and the attempts allowed. Questions are drawn from a bank, so every attempt is different; the clock runs on the server (it keeps going even if you close the tab) and your answers save themselves. At the end you get a report with your performance per area.',
+      pt: 'A **prova final** abre dentro do seu curso, quando o instrutor a habilita. Antes de começar você vê as regras: quantas perguntas, o tempo, a nota para aprovar e as tentativas. As perguntas são sorteadas de um banco, então cada tentativa é diferente; o relógio corre no servidor (continua mesmo se você fechar a aba) e suas respostas são salvas sozinhas. No fim você recebe um relatório por área.',
+    },
+  },
+  {
+    id: 'reinforcement',
+    audience: 'learner',
+    strong: ['refuerzo', 'repaso', 'reinforcement', 'reforco', 'reintentar', 'volver a presentar'],
+    keywords: ['reprobe', 'perdi', 'failed', 'examen', 'marcar', 'repasar'],
+    answer: {
+      es: 'Si reprobaste el examen y tu curso lo exige, se abre una **ruta de refuerzo**: tienes que volver a recorrer los módulos de las áreas que fallaste y marcarlos como repasados antes de reintentar. Se mide el tiempo real que pasas dentro del módulo, así que saltar al final no cuenta. Cuando termines el refuerzo, el examen se habilita de nuevo.',
+      en: 'If you failed the exam and your course requires it, a **reinforcement path** opens: you must go through the modules of the areas you failed and mark them as reviewed before retrying. Real time spent inside the module is measured, so skipping to the end does not count. Once you finish the reinforcement, the exam unlocks again.',
+      pt: 'Se você não passou na prova e o curso exige, abre uma **rota de reforço**: é preciso percorrer de novo os módulos das áreas em que errou e marcá-los como revisados antes de tentar outra vez. O tempo real dentro do módulo é medido, então pular para o fim não conta. Ao terminar o reforço, a prova é liberada novamente.',
+    },
+  },
+  {
+    id: 'survey',
+    audience: 'learner',
+    strong: ['encuesta', 'survey', 'pesquisa', 'satisfaccion', 'satisfacao'],
+    keywords: ['curso', 'certificado', 'contestar', 'responder', 'cierre'],
+    answer: {
+      es: 'Algunos cursos cierran con una **encuesta de satisfacción** de tres preguntas cortas. Es el último paso antes del certificado: mientras no la contestes, el certificado no se emite. Si se te vence el tiempo no pasa nada, simplemente vuelves a empezarla.',
+      en: 'Some courses end with a short three-question **satisfaction survey**. It is the last step before the certificate: until you answer it, the certificate is not issued. If the time runs out nothing is lost, you just start it again.',
+      pt: 'Alguns cursos terminam com uma **pesquisa de satisfação** de três perguntas curtas. É o último passo antes do certificado: enquanto não respondê-la, o certificado não é emitido. Se o tempo acabar não há problema, basta recomeçar.',
+    },
+  },
+  {
+    id: 'verify-certificate',
+    audience: 'all',
+    strong: ['verificar certificado', 'codigo del certificado', 'qr', 'linkedin', 'compartir certificado'],
+    keywords: ['valido', 'verify', 'enlace', 'link', 'publico', 'comprobar'],
+    answer: {
+      es: 'Cada certificado trae un **código verificable** y un enlace público: quien lo abra ve quién se certificó, en qué curso, la intensidad horaria y el pénsum módulo a módulo. Ese mismo enlace es el que se comparte en LinkedIn desde el botón del certificado.',
+      en: 'Every certificate carries a **verifiable code** and a public link: whoever opens it sees who got certified, in which course, the hours and the full syllabus module by module. That same link is what the certificate button shares to LinkedIn.',
+      pt: 'Cada certificado traz um **código verificável** e um link público: quem abrir vê quem se certificou, em qual curso, a carga horária e a ementa módulo a módulo. Esse mesmo link é o que o botão do certificado compartilha no LinkedIn.',
+    },
+  },
+  {
+    id: 'course-deadline',
+    audience: 'learner',
+    strong: ['plazo', 'vencio', 'cerrado', 'deadline', 'expirou', 'se me cerro'],
+    keywords: ['curso', 'fecha', 'tiempo', 'no puedo entrar', 'bloqueado'],
+    answer: {
+      es: 'Algunos cursos tienen **plazo**. Si se vence, el curso queda cerrado y no puedes seguir avanzando: escríbele a tu capacitador para que amplíe el plazo. Tu avance no se pierde.',
+      en: 'Some courses have a **deadline**. Once it passes the course closes and you cannot keep going: ask your trainer to extend it. Your progress is not lost.',
+      pt: 'Alguns cursos têm **prazo**. Quando vence, o curso fecha e você não consegue avançar: peça ao seu instrutor que amplie o prazo. Seu progresso não se perde.',
+    },
+  },
+  {
+    id: 'report-problem',
+    audience: 'all',
+    strong: ['reportar', 'sugerencia', 'opinion', 'feedback del sitio', 'algo fallo', 'report a bug', 'sugestao'],
+    keywords: ['error', 'idea', 'proponer', 'captura', 'no funciona', 'bug'],
+    answer: {
+      es: 'Usa el **botón de opinión** que está flotando en la pantalla: eliges si es "Algo falló", "Tengo una idea", "Algo me encantó" o "Tengo una duda", lo escribes y puedes adjuntar una captura (pégala con Ctrl+V o arrástrala). Después le haces seguimiento en [Mis sugerencias](/suggestions), donde también te responde el equipo.',
+      en: 'Use the floating **feedback button**: pick whether it is "Something broke", "I have an idea", "I loved something" or "I have a question", write it and attach a screenshot if you want (paste with Ctrl+V or drag it in). You can follow it up in [My suggestions](/suggestions), where the team replies to you.',
+      pt: 'Use o **botão de opinião** flutuante na tela: escolha se é "Algo falhou", "Tenho uma ideia", "Amei algo" ou "Tenho uma dúvida", escreva e anexe uma captura se quiser (cole com Ctrl+V ou arraste). Depois acompanhe em [Minhas sugestões](/suggestions), onde a equipe responde.',
+    },
+  },
+  {
+    id: 'biometric-login',
+    audience: 'all',
+    strong: ['huella', 'face id', 'biometrico', 'windows hello', 'passkey', 'dactilar'],
+    keywords: ['entrar', 'login', 'activar', 'seguridad', 'ingreso'],
+    answer: {
+      es: 'El ingreso con huella o Face ID se activa en [Mi perfil](/profile) → pestaña **Seguridad** → "Activar en este dispositivo". Hay que hacerlo en cada equipo o celular que uses, y la primera entrada siempre es con correo y contraseña. Tu huella nunca sale del dispositivo, y la contraseña sigue funcionando como respaldo.',
+      en: 'Fingerprint or Face ID sign-in is enabled in [My profile](/profile) → **Security** tab → "Enable on this device". You must do it on each computer or phone you use, and the first sign-in is always with email and password. Your fingerprint never leaves the device, and your password still works as a fallback.',
+      pt: 'A entrada com digital ou Face ID é ativada em [Meu perfil](/profile) → aba **Segurança** → "Ativar neste dispositivo". É preciso fazer isso em cada computador ou celular que usar, e a primeira entrada é sempre com e-mail e senha. Sua digital nunca sai do aparelho, e a senha continua como alternativa.',
+    },
+  },
+  // ─── Gestión: publicación, examen, progreso, IA ────────────
+  {
+    id: 'publish-course',
+    audience: 'staff',
+    strong: ['publicar curso', 'aprobacion', 'publicaciones', 'publish course', 'en revision'],
+    keywords: ['borrador', 'draft', 'aprobar', 'devolver', 'no lo ve', 'visible'],
+    answer: {
+      es: 'El aprendiz solo ve lo **publicado**. En el editor del curso, panel de **Publicación**, publicas el curso y sus módulos. Si el sitio tiene aprobación activada, el curso queda "En revisión" y un aprobador designado lo aprueba, lo devuelve con un motivo o lo baja después desde **Supervisión → Publicaciones**. Si asignaste el curso y nadie lo ve, casi siempre sigue en borrador o esperando aprobación.',
+      en: 'Learners only see what is **published**. In the course editor, the **Publishing** panel is where you publish the course and its modules. If approval is enabled, the course sits "Under review" until a designated approver approves it, sends it back with a reason, or takes it down later from **Supervision → Publishing**. If you assigned a course and nobody sees it, it is almost always still a draft or awaiting approval.',
+      pt: 'O aprendiz só vê o que está **publicado**. No editor do curso, no painel de **Publicação**, você publica o curso e seus módulos. Se a aprovação estiver ativa, o curso fica "Em revisão" até que um aprovador designado aprove, devolva com um motivo ou o baixe depois em **Supervisão → Publicações**. Se você atribuiu o curso e ninguém o vê, quase sempre ele ainda é rascunho ou aguarda aprovação.',
+    },
+  },
+  {
+    id: 'staff-exam',
+    audience: 'staff',
+    strong: ['crear examen', 'banco de preguntas', 'examen final', 'exam bank', 'areas de conocimiento'],
+    keywords: ['curso', 'preguntas', 'aprobar', 'intentos', 'generar', 'ia'],
+    answer: {
+      es: 'Abre el curso → pestaña **Examen**. Ahí defines las **áreas de conocimiento** (reparten las preguntas y deciden qué se manda a repasar), las preguntas por intento, el puntaje para aprobar, los intentos y el tiempo. Después llenas el **banco**: a mano, con la plantilla, reutilizando quizzes ya calificados del curso o generando con IA por tandas. El banco tiene que ser más grande que el examen para poder publicarlo.',
+      en: 'Open the course → **Exam** tab. There you set the **knowledge areas** (they split the questions and drive what gets sent to review), questions per attempt, passing score, attempts and time. Then you fill the **bank**: by hand, from the template, by reusing already graded quizzes from the course, or generating with AI in batches. The bank must be larger than the exam before you can publish it.',
+      pt: 'Abra o curso → aba **Prova**. Ali você define as **áreas de conhecimento** (distribuem as perguntas e definem o que vai para revisão), perguntas por tentativa, nota para aprovar, tentativas e tempo. Depois preenche o **banco**: à mão, pelo modelo, reaproveitando quizzes já corrigidos do curso ou gerando com IA em lotes. O banco precisa ser maior que a prova para publicar.',
+    },
+  },
+  {
+    id: 'staff-reset-progress',
+    audience: 'staff',
+    strong: ['restablecer', 'reiniciar progreso', 'reset', 'borrar avance', 'zerar'],
+    keywords: ['usuario', 'aprendiz', 'curso', 'modulo', 'simulador', 'mundo'],
+    answer: {
+      es: 'Ve a **Personas → Usuarios**, abre a la persona y entra a "Ver y restablecer cursos". Puedes restablecer un curso entero, un módulo, una actividad puntual, el mundo o los intentos del simulador. Ojo: restablecer **no se puede deshacer**.',
+      en: 'Go to **People → Users**, open the person and use "View and reset courses". You can reset a whole course, one module, a single activity, the world or the simulator attempts. Careful: a reset **cannot be undone**.',
+      pt: 'Vá em **Pessoas → Usuários**, abra a pessoa e use "Ver e redefinir cursos". Você pode redefinir um curso inteiro, um módulo, uma atividade específica, o mundo ou as tentativas do simulador. Atenção: redefinir **não pode ser desfeito**.',
+    },
+  },
+  {
+    id: 'staff-ai-quota',
+    audience: 'staff',
+    strong: ['cupo de ia', 'limite de ia', 'se acabo la ia', 'ai quota', 'cota de ia', 'operaciones con ia'],
+    keywords: ['generar', 'tope', 'diario', 'ampliar', 'bloqueado'],
+    answer: {
+      es: 'Cada capacitador tiene un **cupo diario de operaciones con IA** (generar módulos, mundos, simulaciones, traducciones). Si se agota, el superadmin lo amplía en **Inteligencia Artificial → Límites de IA**: puede subir el cupo por defecto, dar un cupo propio, un extra solo por hoy o quitar el tope. Ahí mismo se ve cuánto se ha usado.',
+      en: 'Each trainer has a **daily AI operations quota** (generating modules, worlds, simulations, translations). If it runs out, the superadmin raises it in **Artificial Intelligence → AI limits**: they can raise the default, give a personal quota, a bonus just for today, or remove the cap. Usage is visible there too.',
+      pt: 'Cada instrutor tem uma **cota diária de operações com IA** (gerar módulos, mundos, simulações, traduções). Se acabar, o superadmin amplia em **Inteligência Artificial → Limites de IA**: dá para subir a cota padrão, dar cota própria, um extra só para hoje ou tirar o limite. O uso também aparece ali.',
+    },
+  },
+  {
+    id: 'staff-progress',
+    audience: 'staff',
+    strong: ['progreso', 'panorama', 'estadisticas', 'reportes', 'excel', 'kpi'],
+    keywords: ['curso', 'aprendices', 'certificados', 'exportar', 'nps', 'bandeja'],
+    answer: {
+      es: 'Todo vive en **Personas → Progreso**, con tres vistas: **Progreso de Módulos** (pestaña *Panorama* con KPIs, certificados, resultados del examen final, NPS de la encuesta y exportación a Excel; pestaña *Bandeja* para revisar entregas y dar retroalimentación), **Progreso de Mundos** y **Progreso de Simulaciones**. El **Panel** solo tiene contadores.',
+      en: 'It all lives in **People → Progress**, with three views: **Module progress** (the *Overview* tab has KPIs, certificates, final exam results, survey NPS and Excel export; the *Inbox* tab is where you review submissions and send feedback), **World progress** and **Simulation progress**. The **Dashboard** only has counters.',
+      pt: 'Tudo fica em **Pessoas → Progresso**, com três visões: **Progresso de Módulos** (aba *Panorama* com KPIs, certificados, resultados da prova final, NPS da pesquisa e exportação para Excel; aba *Caixa* para revisar entregas e dar retorno), **Progresso de Mundos** e **Progresso de Simulações**. O **Painel** tem apenas contadores.',
+    },
+  },
+  {
+    id: 'staff-module-library',
+    audience: 'staff',
+    strong: ['biblioteca de modulos', 'reutilizar modulo', 'copiar modulo', 'mover modulo'],
+    keywords: ['curso', 'otra campana', 'duplicar', 'agregar'],
+    answer: {
+      es: 'En el curso → pestaña **Módulos** → **Biblioteca de módulos**: ahí reutilizas módulos de tu campaña o de otras. **Mover** traslada el mismo módulo (deja de estar donde estaba) y **Copiar** crea una copia independiente que puedes editar sin tocar el original.',
+      en: 'In the course → **Modules** tab → **Module library**: reuse modules from your campaign or others. **Move** relocates the same module (it leaves its previous place) and **Copy** creates an independent copy you can edit without touching the original.',
+      pt: 'No curso → aba **Módulos** → **Biblioteca de módulos**: reaproveite módulos da sua campanha ou de outras. **Mover** transfere o mesmo módulo (sai de onde estava) e **Copiar** cria uma cópia independente, editável sem mexer no original.',
+    },
+  },
+  {
+    id: 'staff-restore-deleted',
+    audience: 'staff',
+    strong: ['recuperar', 'papelera', 'restaurar', 'borre sin querer', 'trash', 'lixeira'],
+    keywords: ['eliminado', 'borrado', 'aprobaciones', 'volver'],
+    answer: {
+      es: 'Lo que se borra no desaparece de una: queda en **Supervisión → Aprobaciones**, en la pestaña *Papelera*, unos días. Desde ahí el superadmin lo **restaura** tal como estaba, aprueba el borrado definitivo o vacía la papelera antes de tiempo.',
+      en: 'Deleted items do not vanish right away: they sit in **Supervision → Approvals**, under the *Trash* tab, for a few days. From there the superadmin can **restore** them exactly as they were, approve the permanent deletion, or empty the trash early.',
+      pt: 'O que é apagado não some de imediato: fica em **Supervisão → Aprovações**, na aba *Lixeira*, por alguns dias. Dali o superadmin **restaura** como estava, aprova a exclusão definitiva ou esvazia a lixeira antes do prazo.',
     },
   },
 ]
