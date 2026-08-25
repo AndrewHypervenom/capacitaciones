@@ -77,10 +77,24 @@ export interface SiteFeedbackNotificationPayload {
   for_staff?: boolean
 }
 
+/**
+ * Datos de los avisos de la puerta de publicación: 'course_publish_request' (a
+ * los aprobadores: alguien pide publicar un curso) y 'course_publish_resolved'
+ * (de vuelta al autor: aprobado, devuelto o bajado). Los arman el trigger
+ * `courses_publication_guard` y los RPC de aprobación.
+ */
+export interface PublishApprovalPayload {
+  /** true = aprobado y publicado. false = devuelto o bajado. */
+  approved?: boolean
+  /** true cuando se bajó un curso que YA estaba en aire (no un rechazo). */
+  revoked?: boolean
+}
+
 /** Todo lo que puede venir en `payload`, según el `kind` de la notificación. */
 export type NotificationPayload = ResetPayload &
   HelpChatPayload &
-  SiteFeedbackNotificationPayload
+  SiteFeedbackNotificationPayload &
+  PublishApprovalPayload
 
 export interface AppNotification {
   id: string

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useAnimation } from 'framer-motion'
 import {
   Bell, BellRing, RotateCcw, Check, CheckCheck, MessageSquare, Inbox,
-  LifeBuoy, Megaphone, Settings2, Volume2, VolumeX, Play,
+  LifeBuoy, Megaphone, Settings2, Volume2, VolumeX, Play, ShieldCheck,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
@@ -301,13 +301,19 @@ export function NotificationBell({ className }: { className?: string }) {
                           // Respuesta en el hilo de una opinión: la reciben los
                           // dos lados, y cada uno va a su propia pantalla.
                           const isReply = n.kind === 'site_feedback_reply'
+                          // La puerta de publicación: la solicitud va a los
+                          // aprobadores y la decisión vuelve a quien la pidió.
+                          const isPublishReq = n.kind === 'course_publish_request'
+                          const isPublishRes = n.kind === 'course_publish_resolved'
                           const Icon = isHelp
                             ? LifeBuoy
                             : isSiteFeedback
                               ? Megaphone
-                              : isFeedback || isReply
-                                ? MessageSquare
-                                : RotateCcw
+                              : isPublishReq || isPublishRes
+                                ? ShieldCheck
+                                : isFeedback || isReply
+                                  ? MessageSquare
+                                  : RotateCcw
                           return (
                             <motion.div
                               key={n.id}
@@ -329,6 +335,19 @@ export function NotificationBell({ className }: { className?: string }) {
                                   // retroalimentación a la del aprendiz, el del
                                   // chat de ayuda a su historial y la opinión a
                                   // la bandeja donde se atiende.
+                                  // La solicitud lleva a la bandeja de
+                                  // aprobación; la decisión, al curso.
+                                  if (isPublishReq || isPublishRes) {
+                                    setOpen(false)
+                                    navigate(
+                                      isPublishReq
+                                        ? '/admin/publish-approvals'
+                                        : n.course_id
+                                          ? `/admin/courses/${n.course_id}`
+                                          : '/admin/courses',
+                                    )
+                                    return
+                                  }
                                   if (isFeedback || isHelp || isSiteFeedback || isReply) {
                                     setOpen(false)
                                     const fid = n.payload?.feedback_id
@@ -367,11 +386,13 @@ export function NotificationBell({ className }: { className?: string }) {
                                       ? 'bg-neon-green/12 text-neon-green'
                                       : isSiteFeedback
                                         ? 'bg-neon-violet/12 text-neon-violet'
-                                        : isReply
-                                          ? 'bg-sky-500/12 text-sky-400'
-                                          : isFeedback
-                                            ? 'bg-violet-500/12 text-violet-500'
-                                            : 'bg-amber-500/12 text-amber-500',
+                                        : isPublishReq || isPublishRes
+                                          ? 'bg-amber-500/12 text-amber-500'
+                                          : isReply
+                                            ? 'bg-sky-500/12 text-sky-400'
+                                            : isFeedback
+                                              ? 'bg-violet-500/12 text-violet-500'
+                                              : 'bg-amber-500/12 text-amber-500',
                                   )}
                                 >
                                   <Icon className="h-4 w-4" />

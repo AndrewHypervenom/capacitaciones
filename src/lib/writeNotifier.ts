@@ -69,6 +69,11 @@ const TOPIC_BY_RPC: Record<string, string> = {
   request_deletion: 'approvals',
   approve_deletion: 'approvals',
   reject_deletion: 'approvals',
+  // Tema propio, no 'courses': el contador de publicaciones pendientes escucha
+  // aquí, y colgarlo de 'courses' lo haría recontar con cada guardado de curso.
+  approve_course_publication: 'publications',
+  reject_course_publication: 'publications',
+  revoke_course_publication: 'publications',
 }
 
 const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])

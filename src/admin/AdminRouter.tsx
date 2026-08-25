@@ -36,6 +36,8 @@ import AiLimits from './pages/AiLimits'
 import Gamification from './pages/Gamification'
 import ActivityLog from './pages/ActivityLog'
 import DeletionApprovals from './pages/DeletionApprovals'
+import PublishApprovals from './pages/PublishApprovals'
+import { usePendingPublicationsSync } from '@/stores/pendingPublicationsStore'
 import SiteFeedback from './pages/SiteFeedback'
 import { HelpWidget } from '@/components/help/HelpWidget'
 
@@ -46,7 +48,11 @@ function LegacyPreviewRedirect() {
 }
 
 export default function AdminRouter() {
-  const { loading, isAuthenticated, isCapacitador, isSuperAdmin } = useAuth()
+  const { loading, isAuthenticated, isCapacitador, isSuperAdmin, canApproveCourses } = useAuth()
+
+  // Cuenta los cursos en cola mientras el panel esté abierto, para el globo del
+  // menú y la tarjeta del tablero. Solo pide si quien mira puede aprobar.
+  usePendingPublicationsSync(canApproveCourses)
   const location = useLocation()
   const profile = useAuthStore((s) => s.profile)
   const { t } = useTranslation()
@@ -137,6 +143,9 @@ export default function AdminRouter() {
           <Route path="activity" element={isSuperAdmin ? <ActivityLog /> : <Navigate to="/admin" replace />} />
           {/* Aprobación de eliminaciones (borrado suave de capacitadores): solo superadmin */}
           <Route path="approvals" element={isSuperAdmin ? <DeletionApprovals /> : <Navigate to="/admin" replace />} />
+          {/* Aprobación de publicaciones: el superadmin y el capacitador al que
+              él le dio el permiso (profiles.can_approve_courses). */}
+          <Route path="publish-approvals" element={canApproveCourses ? <PublishApprovals /> : <Navigate to="/admin" replace />} />
           {/* Opiniones del sitio: el capacitador ve las de su campaña (lo acota
               la RLS), el superadmin las ve todas. */}
           <Route path="site-feedback" element={<SiteFeedback />} />

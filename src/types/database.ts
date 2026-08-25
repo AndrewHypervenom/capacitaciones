@@ -237,6 +237,14 @@ export interface Database {
           deadline_days: number | null
           deadline_date: string | null
           deadline_blocks: boolean
+          /** Puerta de publicación (ver services/courseApprovals.service). */
+          approval_status: 'draft' | 'pending' | 'approved' | 'rejected'
+          /** Motivo del rechazo, o la nota con que se aprobó / revocó. */
+          approval_note: string | null
+          approval_requested_at: string | null
+          approval_requested_by: string | null
+          approved_at: string | null
+          approved_by: string | null
           created_at: string
           updated_at: string
         }
@@ -274,6 +282,12 @@ export interface Database {
           deadline_days?: number | null
           deadline_date?: string | null
           deadline_blocks?: boolean
+          approval_status?: 'draft' | 'pending' | 'approved' | 'rejected'
+          approval_note?: string | null
+          approval_requested_at?: string | null
+          approval_requested_by?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -308,6 +322,12 @@ export interface Database {
           deadline_days?: number | null
           deadline_date?: string | null
           deadline_blocks?: boolean
+          approval_status?: 'draft' | 'pending' | 'approved' | 'rejected'
+          approval_note?: string | null
+          approval_requested_at?: string | null
+          approval_requested_by?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1017,6 +1037,9 @@ export interface Database {
            *  aprendices en sus campañas. No viene con el rol, se concede uno por
            *  uno. */
           can_create_learners: boolean
+          /** Solo para capacitadores: el superadmin lo designó para aprobar la
+           *  publicación de cursos. El superadmin aprueba siempre. */
+          can_approve_courses: boolean
           /** Última nómina de Talento Humano en la que apareció la persona. */
           hr_last_seen_at: string | null
           created_at: string
@@ -1040,6 +1063,7 @@ export interface Database {
           deactivated_by?: string | null
           deactivation_reason?: string | null
           can_create_learners?: boolean
+          can_approve_courses?: boolean
           hr_last_seen_at?: string | null
           created_at?: string
           updated_at?: string
@@ -1061,6 +1085,7 @@ export interface Database {
           deactivated_by?: string | null
           deactivation_reason?: string | null
           can_create_learners?: boolean
+          can_approve_courses?: boolean
           hr_last_seen_at?: string | null
           updated_at?: string
         }

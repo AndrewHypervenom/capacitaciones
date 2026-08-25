@@ -14,6 +14,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { WorkspacePresenceBar } from '@/components/presence/WorkspacePresenceBar'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useNotificationsStore } from '@/stores/notificationsStore'
+import { usePendingPublicationsStore } from '@/stores/pendingPublicationsStore'
 import { cn } from '@/lib/cn'
 
 type NeonColor = 'green' | 'violet' | 'cyan' | 'magenta' | 'amber' | 'neutral'
@@ -32,7 +33,7 @@ interface MenuCategory {
 
 export function AdminNav() {
   const { t } = useTranslation()
-  const { displayName, avatarUrl, isSuperAdmin, isCapacitador } = useAuth()
+  const { displayName, avatarUrl, isSuperAdmin, isCapacitador, canApproveCourses } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
@@ -57,6 +58,11 @@ export function AdminNav() {
       )
     )).length,
   )
+
+  // Cursos esperando el permiso para publicarse. A diferencia de los dos de
+  // arriba, este NO cuenta avisos sin leer sino cursos realmente en cola: si lo
+  // apruebas desde su editor, el globo baja aunque el aviso siga sin abrir.
+  const pendingPublications = usePendingPublicationsStore((s) => s.count)
 
   const toggleCategory = (title: string) => {
     setOpenCategories(prev =>
@@ -125,13 +131,21 @@ export function AdminNav() {
         { to: '/admin/limits', label: t('admin.nav.ai_limits', 'Límites de IA'), end: false },
       ]
     }] : []),
-    // Supervisión (bitácora de actividad + aprobación de eliminaciones).
-    ...(isSuperAdmin ? [{
+    // Supervisión: bitácora, aprobación de eliminaciones y la puerta de
+    // publicación. Esta última también la ve el capacitador al que el
+    // superadmin le dio el permiso de aprobar cursos, así que el grupo aparece
+    // con lo único que le toca cuando no es superadmin.
+    ...(isSuperAdmin || canApproveCourses ? [{
       title: t('admin.nav.group_supervision', 'Supervisión'),
       icon: ShieldCheck,
       items: [
-        { to: '/admin/activity', label: t('admin.nav.activity', 'Actividad'), end: false },
-        { to: '/admin/approvals', label: t('admin.nav.approvals', 'Aprobaciones'), end: false },
+        ...(isSuperAdmin ? [
+          { to: '/admin/activity', label: t('admin.nav.activity', 'Actividad'), end: false },
+          { to: '/admin/approvals', label: t('admin.nav.approvals', 'Aprobaciones'), end: false },
+        ] : []),
+        ...(canApproveCourses ? [
+          { to: '/admin/publish-approvals', label: t('admin.nav.publish_approvals', 'Publicaciones'), end: false },
+        ] : []),
       ]
     }] : []),
   ];
@@ -265,6 +279,11 @@ export function AdminNav() {
                         )} />
                       )}
                       <span>{category.title}</span>
+                      {/* Punto en el titulo: si el acordeon esta cerrado, el
+                          globo del hijo no se ve y el trabajo queda invisible. */}
+                      {!isCategoryOpen && category.items.some((i) => i.to === '/admin/publish-approvals') && pendingPublications > 0 && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" aria-hidden />
+                      )}
                     </div>                     
                     <ChevronDown 
                       className={cn(
@@ -330,6 +349,18 @@ export function AdminNav() {
                                 className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-neon-green px-1 text-[10px] font-bold leading-none text-black"
                               >
                                 {helpUnread > 9 ? '9+' : helpUnread}
+                              </motion.span>
+                            )}
+                            {to === '/admin/publish-approvals' && pendingPublications > 0 && (
+                              <motion.span
+                                key={pendingPublications}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ type: 'spring', stiffness: 600, damping: 20 }}
+                                className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-black"
+                              >
+                                {pendingPublications > 9 ? '9+' : pendingPublications}
                               </motion.span>
                             )}
                             {to === '/admin/site-feedback' && feedbackUnread > 0 && (

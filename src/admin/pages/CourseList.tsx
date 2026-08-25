@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
+import {
+  approvalStatusOf,
+  canPublishNow,
+  requestCoursePublication,
+} from '@/services/courseApprovals.service'
 import {
   getCoursesForCampaign,
   getAllCourses,
@@ -62,7 +67,7 @@ export default function CourseList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const navigate = useNavigate()
-  const { user, campaignId: authCampaignId, isSuperAdmin } = useAuth()
+  const { user, campaignId: authCampaignId, isSuperAdmin, canApproveCourses } = useAuth()
   // Curso abierto en la vista previa (modal con la página del aprendiz).
   const [previewCourse, setPreviewCourse] = useState<AdminCourse | null>(null)
   // El pulso que señala la vista previa late hasta que se usa una vez y luego
@@ -356,6 +361,21 @@ export default function CourseList() {
 
   const handleTogglePublished = async (course: CourseWithModules) => {
     const next = !course.is_published
+    // Publicar pasa por una aprobación (ver courseApprovals.service): sin ella
+    // el botón no publica, pide la revisión. Sin esto el clic solo conseguiría
+    // el rechazo del trigger, que en la lista se vería como un error suelto.
+    if (next && !canPublishNow(course, canApproveCourses)) {
+      try {
+        await requestCoursePublication(course.id)
+        setCourses((prev) =>
+          prev.map((c) => (c.id === course.id ? { ...c, approval_status: 'pending' } : c)),
+        )
+        toast.success(t('admin.courses.approval_requested'), t('admin.courses.approval_requested_body'))
+      } catch {
+        toast.error(t('admin.courses.approval_request_error'))
+      }
+      return
+    }
     try {
       await updateCourse(course.id, { is_published: next })
       setCourses((prev) =>
@@ -756,13 +776,29 @@ export default function CourseList() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleTogglePublished(course)}
-                    className="min-h-[36px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-                  >
-                    {course.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    {course.is_published ? t('admin.courses.unpublish') : t('admin.courses.publish')}
-                  </button>
+                  {/* El botón dice lo que de verdad va a pasar: publicar si se
+                      puede, pedir la aprobación si no, y nada mientras está en
+                      revisión. */}
+                  {(() => {
+                    const allowed = canPublishNow(course, canApproveCourses)
+                    const status = approvalStatusOf(course)
+                    const waiting = !allowed && status === 'pending'
+                    return (
+                      <button
+                        onClick={() => handleTogglePublished(course)}
+                        disabled={waiting}
+                        className="min-h-[36px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors disabled:opacity-60 disabled:pointer-events-none"
+                      >
+                        {course.is_published
+                          ? <><EyeOff className="h-3.5 w-3.5" /> {t('admin.courses.unpublish')}</>
+                          : allowed
+                            ? <><Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish')}</>
+                            : waiting
+                              ? <><Clock className="h-3.5 w-3.5" /> {t('admin.courses.approval_pending_badge')}</>
+                              : <><Send className="h-3.5 w-3.5" /> {t('admin.courses.approval_request')}</>}
+                      </button>
+                    )
+                  })()}
                   <button
                     onClick={() => handleDelete(course)}
                     className="min-h-[36px] ml-auto flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-subtle hover:text-danger hover:bg-danger/8 transition-colors"

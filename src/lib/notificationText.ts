@@ -57,6 +57,33 @@ export function notificationText(n: AppNotification): { title: string; body: str
     }
   }
 
+  // Un capacitador pide que se publique un curso: lo reciben los aprobadores.
+  if (n.kind === 'course_publish_request') {
+    const who = p.from_name?.trim() || t('notifications.site_feedback.someone')
+    return {
+      title: t('notifications.publish_request.title', { name: who }),
+      body: t('notifications.publish_request.body', { course: course || '—' }),
+    }
+  }
+
+  // La decisión del aprobador, de vuelta a quien pidió (o escribió) el curso.
+  if (n.kind === 'course_publish_resolved') {
+    if (p.approved) {
+      return {
+        title: t('notifications.publish_resolved.approved_title'),
+        body: t('notifications.publish_resolved.approved_body', { course: course || '—' }),
+      }
+    }
+    return {
+      title: p.revoked
+        ? t('notifications.publish_resolved.revoked_title')
+        : t('notifications.publish_resolved.rejected_title'),
+      body: p.message
+        ? `“${p.message}”`
+        : t('notifications.publish_resolved.rejected_body', { course: course || '—' }),
+    }
+  }
+
   // Aviso de retroalimentación del capacitador (no es un reset).
   if (n.kind === 'feedback') {
     return {

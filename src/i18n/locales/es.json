@@ -260,6 +260,17 @@
       "title_staff": "{{name}} respondió en su opinión",
       "title_learner": "El equipo respondió tu opinión",
       "body": "Hay un mensaje nuevo en la conversación."
+    },
+    "publish_request": {
+      "title": "{{name}} pide publicar un curso",
+      "body": "“{{course}}” está esperando tu aprobación."
+    },
+    "publish_resolved": {
+      "approved_title": "Tu curso fue aprobado",
+      "approved_body": "“{{course}}” ya está publicado.",
+      "rejected_title": "Te devolvieron el curso",
+      "rejected_body": "“{{course}}” volvió a borrador.",
+      "revoked_title": "Bajaron tu curso"
     }
   },
   "dashboard": {
@@ -1322,7 +1333,8 @@
       "group_ai": "Inteligencia Artificial",
       "group_supervision": "Supervisión",
       "ai_limits": "Límites de IA",
-      "site_feedback": "Opiniones"
+      "site_feedback": "Opiniones",
+      "publish_approvals": "Publicaciones"
     },
     "entity_types": {
       "campaigns": "Campaña",
@@ -1648,7 +1660,11 @@
       "missions_cta": "Ver misiones",
       "worlds_title": "Mundos",
       "worlds_desc": "Mundos gamificados con regiones, niveles y quizzes por campaña",
-      "worlds_cta": "Ver mundos"
+      "worlds_cta": "Ver mundos",
+      "pending_pub_title_one": "1 curso está esperando tu aprobación",
+      "pending_pub_title_other": "{{count}} cursos están esperando tu aprobación",
+      "pending_pub_desc": "Hasta que los apruebes, nadie los ve.",
+      "pending_pub_cta": "Revisar"
     },
     "campaigns": {
       "saved": "Campañas guardadas",
@@ -1997,7 +2013,12 @@
       "cert_outdated_generic_one": "Se certificó con el temario que había entonces. Hoy el curso tiene {{count}} módulo que no ha hecho.",
       "cert_outdated_generic_other": "Se certificó con el temario que había entonces. Hoy el curso tiene {{count}} módulos que no ha hecho.",
       "cert_outdated_action": "Su certificado sigue siendo válido; para ponerlo al día, pide la recertificación del curso en Contenido → Cursos → pestaña Certificación.",
-      "can_create_badge_hint": "Lo habilitaste para dar de alta aprendices en sus campañas. Sigue sin poder dar de baja a nadie."
+      "can_create_badge_hint": "Lo habilitaste para dar de alta aprendices en sus campañas. Sigue sin poder dar de baja a nadie.",
+      "can_approve_badge": "Aprueba cursos",
+      "can_approve_badge_hint": "El superadmin lo designó para autorizar qué cursos se publican.",
+      "can_approve_label": "Permiso para aprobar publicaciones",
+      "can_approve_on_hint": "Puede aprobar qué cursos se publican. Quítaselo si ya no debe autorizar publicaciones.",
+      "can_approve_off_hint": "No aprueba publicaciones: solo puede pedir que se publiquen sus cursos. Actívalo para que autorice."
     },
     "hr": {
       "title": "Sincronizar con Talento Humano",
@@ -2593,7 +2614,33 @@
       "cond_coming_soon_hint": "Retiene el certificado: aunque el aprendiz cumpla todo lo publicado hoy, no se emite hasta que apagues esto.",
       "cond_coming_soon_note_ph": "Ej.: faltan los módulos 4 y 5, salen en septiembre.",
       "cond_coming_soon_note_hint": "Esto es lo que lee el aprendiz. Si lo dejas vacío se muestra un texto genérico.",
-      "cond_coming_soon_note_label": "Lo lee el aprendiz"
+      "cond_coming_soon_note_label": "Lo lee el aprendiz",
+      "approval_pending_badge": "En revisión",
+      "approval_rejected_badge": "Devuelto",
+      "approval_state_draft": "Este curso todavía no se ha pedido para publicar",
+      "approval_state_pending": "Esperando aprobación",
+      "approval_state_rejected": "Te devolvieron el curso",
+      "approval_state_approved": "Curso aprobado",
+      "approval_hint_draft": "Cuando lo tengas listo, pide la publicación: un aprobador lo revisa y lo pone en aire.",
+      "approval_hint_approver": "Puedes publicarlo tú mismo: tu permiso de aprobación es el que lo autoriza.",
+      "approval_hint_pending": "Ya avisamos a quienes aprueban. Mientras tanto puedes seguir editándolo.",
+      "approval_hint_approved": "Está autorizado a verse. Puedes ocultarlo y volver a mostrarlo sin pedir permiso otra vez.",
+      "approval_note_prefix": "Motivo: {{note}}",
+      "approval_request": "Solicitar aprobación",
+      "approval_cancel": "Retirar solicitud",
+      "approval_approve": "Aprobar y publicar",
+      "approval_return": "Devolver",
+      "approval_revoke": "Revocar",
+      "approval_locked": "Necesita aprobación",
+      "approval_locked_hint": "Un aprobador tiene que autorizar este curso antes de que se vea.",
+      "approval_requested": "Solicitud enviada",
+      "approval_requested_body": "Quienes aprueban ya recibieron el aviso.",
+      "approval_request_error": "No se pudo enviar la solicitud",
+      "approval_cancelled": "Solicitud retirada",
+      "approval_approved": "Curso aprobado y publicado",
+      "approval_rejected": "Curso devuelto con el motivo",
+      "approval_revoked": "Curso bajado y devuelto a borrador",
+      "approval_error": "No se pudo completar la aprobación"
     },
     "simulations": {
       "save": "Guardar",
@@ -5080,6 +5127,48 @@
       "banner": "Modo pruebas activo: estás viendo también las campañas de prueba. Los reportes y Excel incluyen datos de prueba.",
       "exit": "Salir",
       "badge_hint": "Campaña de prueba: entorno aislado. Su gente, sus cursos y su progreso no le salen a los capacitadores reales ni entran en KPIs, reportes ni Excel."
+    },
+    "publish_approvals": {
+      "title": "Aprobación de publicaciones",
+      "subtitle": "Qué cursos están pidiendo permiso para verse. Aprobar es publicar.",
+      "error": "No se pudo cargar la bandeja",
+      "sql_pending": "Falta correr el SQL de aprobación de publicaciones.",
+      "sql_pending_body": "Mientras tanto los cursos se publican como antes, sin pasar por esta puerta.",
+      "kpi_pending": "Esperando",
+      "kpi_rejected": "Devueltos",
+      "kpi_approved": "Aprobados",
+      "kpi_oldest": "La más vieja",
+      "tab_pending": "Esperando",
+      "tab_rejected": "Devueltos",
+      "tab_approved": "Aprobados",
+      "tab_draft": "Sin pedir",
+      "tab_all": "Todos",
+      "status_pending": "En revisión",
+      "status_rejected": "Devuelto",
+      "status_approved": "Aprobado",
+      "status_draft": "Sin pedir",
+      "search_ph": "Buscar por curso, campaña o quien lo pidió…",
+      "empty": "Nada por aquí",
+      "empty_pending": "No hay cursos esperando aprobación",
+      "requested_by": "Lo pidió {{name}} · {{when}}",
+      "modules_hint": "Módulos publicados de los que tiene el curso.",
+      "audience_hint": "Campañas y personas con el curso asignado: a cuánta gente le llega en cuanto se apruebe.",
+      "review": "Revisar",
+      "approve": "Aprobar",
+      "reject": "Devolver",
+      "revoke": "Bajar",
+      "approved_ok": "“{{name}}” aprobado y publicado",
+      "rejected_ok": "“{{name}}” devuelto con el motivo",
+      "revoked_ok": "“{{name}}” bajado y devuelto a borrador",
+      "reject_title": "Devolver el curso",
+      "reject_desc": "Vas a devolver “{{name}}” a quien lo escribió. Le llegará el motivo por la campana y le quedará escrito en el editor.",
+      "revoke_title": "Bajar el curso",
+      "revoke_desc": "“{{name}}” dejará de verse y volverá a borrador: para publicarse otra vez tendrá que pasar de nuevo por aprobación.",
+      "reason_label": "Qué hay que corregir",
+      "reason_label_optional": "Motivo (opcional)",
+      "reason_ph": "Escribe qué falta o qué hay que cambiar…",
+      "warn_no_modules": "Este curso no tiene módulos: publicarlo dejaría a la gente con una página vacía.",
+      "warn_no_audience": "No está asignado a ninguna campaña ni persona: aunque se publique, no le aparecerá a nadie."
     }
   },
   "themes": {

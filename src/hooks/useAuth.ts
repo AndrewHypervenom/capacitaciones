@@ -25,6 +25,13 @@ export function useAuth() {
     // botones de alta (y las Edge Functions rechazan igual a quien insista).
     canCreateLearners:
       role === 'superadmin' || (role === 'capacitador' && profile?.can_create_learners === true),
+    // Aprobar la publicación de un curso tampoco viene con el rol: el
+    // superadmin siempre puede, y designa a mano qué capacitador más puede
+    // (profiles.can_approve_courses, desde /admin/users). Sin el permiso, el
+    // editor solo ofrece "Solicitar aprobación" y un trigger de la base
+    // rechaza a quien lo intente por otra vía.
+    canApproveCourses:
+      role === 'superadmin' || (role === 'capacitador' && profile?.can_approve_courses === true),
     // Puede acceder al panel admin (aunque con permisos restringidos)
     isAdminOrCapacitador: role === 'superadmin' || role === 'capacitador',
     displayName: profile?.display_name ?? session?.user?.email ?? '',

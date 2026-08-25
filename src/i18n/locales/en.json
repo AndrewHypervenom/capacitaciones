@@ -260,6 +260,17 @@
       "title_staff": "{{name}} replied on their feedback",
       "title_learner": "The team replied to your feedback",
       "body": "There is a new message in the conversation."
+    },
+    "publish_request": {
+      "title": "{{name}} asks to publish a course",
+      "body": "“{{course}}” is waiting for your approval."
+    },
+    "publish_resolved": {
+      "approved_title": "Your course was approved",
+      "approved_body": "“{{course}}” is now published.",
+      "rejected_title": "Your course was sent back",
+      "rejected_body": "“{{course}}” went back to draft.",
+      "revoked_title": "Your course was taken down"
     }
   },
   "dashboard": {
@@ -1322,7 +1333,8 @@
       "group_ai": "Artificial Intelligence",
       "group_supervision": "Supervision",
       "ai_limits": "AI limits",
-      "site_feedback": "Feedback"
+      "site_feedback": "Feedback",
+      "publish_approvals": "Publishing"
     },
     "entity_types": {
       "campaigns": "Campaign",
@@ -1648,7 +1660,11 @@
       "missions_cta": "View missions",
       "worlds_title": "Worlds",
       "worlds_desc": "Gamified worlds with regions, levels and quizzes per campaign",
-      "worlds_cta": "View worlds"
+      "worlds_cta": "View worlds",
+      "pending_pub_title_one": "1 course is waiting for your approval",
+      "pending_pub_title_other": "{{count}} courses are waiting for your approval",
+      "pending_pub_desc": "Until you approve them, nobody sees them.",
+      "pending_pub_cta": "Review"
     },
     "campaigns": {
       "saved": "Campaigns saved",
@@ -1997,7 +2013,12 @@
       "cert_outdated_generic_one": "They certified against the syllabus of that time. Today the course has {{count}} module they haven't done.",
       "cert_outdated_generic_other": "They certified against the syllabus of that time. Today the course has {{count}} modules they haven't done.",
       "cert_outdated_action": "Their certificate is still valid; to bring it up to date, request the course recertification in Content → Courses → Certification tab.",
-      "can_create_badge_hint": "You enabled them to add learners in their campaigns. They still cannot deactivate anyone."
+      "can_create_badge_hint": "You enabled them to add learners in their campaigns. They still cannot deactivate anyone.",
+      "can_approve_badge": "Approves courses",
+      "can_approve_badge_hint": "The superadmin picked them to authorize which courses go live.",
+      "can_approve_label": "Permission to approve publishing",
+      "can_approve_on_hint": "Can approve which courses go live. Turn it off if they should no longer authorize publishing.",
+      "can_approve_off_hint": "Does not approve publishing: they can only request that their courses go live. Turn it on to let them authorize."
     },
     "hr": {
       "title": "Sync with HR",
@@ -2593,7 +2614,33 @@
       "cond_coming_soon_hint": "Holds the certificate: even if the learner meets everything published today, it is not issued until you turn this off.",
       "cond_coming_soon_note_ph": "E.g.: modules 4 and 5 are coming in September.",
       "cond_coming_soon_note_hint": "This is what the learner reads. Leave it empty to show a generic text.",
-      "cond_coming_soon_note_label": "The learner reads this"
+      "cond_coming_soon_note_label": "The learner reads this",
+      "approval_pending_badge": "Under review",
+      "approval_rejected_badge": "Sent back",
+      "approval_state_draft": "This course has not been submitted for publishing yet",
+      "approval_state_pending": "Waiting for approval",
+      "approval_state_rejected": "The course was sent back to you",
+      "approval_state_approved": "Course approved",
+      "approval_hint_draft": "When it is ready, request publishing: an approver reviews it and puts it live.",
+      "approval_hint_approver": "You can publish it yourself: your approval permission is what authorizes it.",
+      "approval_hint_pending": "The approvers have been notified. You can keep editing meanwhile.",
+      "approval_hint_approved": "It is authorized to be seen. You can hide and show it again without asking twice.",
+      "approval_note_prefix": "Reason: {{note}}",
+      "approval_request": "Request approval",
+      "approval_cancel": "Withdraw request",
+      "approval_approve": "Approve and publish",
+      "approval_return": "Send back",
+      "approval_revoke": "Revoke",
+      "approval_locked": "Needs approval",
+      "approval_locked_hint": "An approver has to authorize this course before it can be seen.",
+      "approval_requested": "Request sent",
+      "approval_requested_body": "The approvers have been notified.",
+      "approval_request_error": "The request could not be sent",
+      "approval_cancelled": "Request withdrawn",
+      "approval_approved": "Course approved and published",
+      "approval_rejected": "Course sent back with the reason",
+      "approval_revoked": "Course taken down and back to draft",
+      "approval_error": "The approval could not be completed"
     },
     "simulations": {
       "save": "Save",
@@ -5080,6 +5127,48 @@
       "banner": "Test mode on: you are also seeing test campaigns. Reports and Excel files include test data.",
       "exit": "Exit",
       "badge_hint": "Test campaign: isolated environment. Its people, courses and progress don't show to real trainers and don't enter KPIs, reports or Excel."
+    },
+    "publish_approvals": {
+      "title": "Publishing approvals",
+      "subtitle": "Which courses are asking for permission to be seen. Approving means publishing.",
+      "error": "The inbox could not be loaded",
+      "sql_pending": "The publishing-approval SQL has not been run yet.",
+      "sql_pending_body": "Meanwhile courses publish as before, without going through this gate.",
+      "kpi_pending": "Waiting",
+      "kpi_rejected": "Sent back",
+      "kpi_approved": "Approved",
+      "kpi_oldest": "Oldest",
+      "tab_pending": "Waiting",
+      "tab_rejected": "Sent back",
+      "tab_approved": "Approved",
+      "tab_draft": "Not requested",
+      "tab_all": "All",
+      "status_pending": "Under review",
+      "status_rejected": "Sent back",
+      "status_approved": "Approved",
+      "status_draft": "Not requested",
+      "search_ph": "Search by course, campaign or requester…",
+      "empty": "Nothing here",
+      "empty_pending": "No courses waiting for approval",
+      "requested_by": "Requested by {{name}} · {{when}}",
+      "modules_hint": "Published modules out of the ones the course has.",
+      "audience_hint": "Campaigns and people the course is assigned to: how many get it the moment it is approved.",
+      "review": "Review",
+      "approve": "Approve",
+      "reject": "Send back",
+      "revoke": "Take down",
+      "approved_ok": "“{{name}}” approved and published",
+      "rejected_ok": "“{{name}}” sent back with the reason",
+      "revoked_ok": "“{{name}}” taken down and back to draft",
+      "reject_title": "Send the course back",
+      "reject_desc": "You are sending “{{name}}” back to its author. They get the reason in their bell and it stays written in the editor.",
+      "revoke_title": "Take the course down",
+      "revoke_desc": "“{{name}}” will stop being visible and go back to draft: publishing it again means going through approval once more.",
+      "reason_label": "What needs fixing",
+      "reason_label_optional": "Reason (optional)",
+      "reason_ph": "Write what is missing or what has to change…",
+      "warn_no_modules": "This course has no modules: publishing it would leave people with an empty page.",
+      "warn_no_audience": "It is not assigned to any campaign or person: even published, nobody would see it."
     }
   },
   "themes": {

@@ -12,6 +12,7 @@ import {
   BookOpen,
   CalendarClock,
   Check,
+  Clock,
   ChevronDown,
   ClipboardCheck,
   Combine,
@@ -34,12 +35,15 @@ import {
   PhoneCall,
   Plus,
   Rocket,
+  ShieldCheck,
+  Send,
   Flag,
   Hammer,
   Scissors,
   Search,
   Share2,
   Sparkles,
+  Undo2,
   Unlink,
   Unlock,
   Users,
@@ -51,6 +55,17 @@ import { useEditingPresence } from '@/hooks/usePresence'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
+import { PublicationDecisionModal, type PublicationDecision } from '@/admin/components/PublicationDecisionModal'
+import {
+  approvalStatusOf,
+  approvalsReady,
+  canPublishNow,
+  requestCoursePublication,
+  cancelCoursePublicationRequest,
+  approveCoursePublication,
+  rejectCoursePublication,
+  revokeCoursePublication,
+} from '@/services/courseApprovals.service'
 import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
@@ -97,6 +112,7 @@ import {
 } from '@/services/certification.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
+import { usePendingPublicationsStore } from '@/stores/pendingPublicationsStore'
 import { DEADLINE_MAX_DAYS, type DeadlineMode } from '@/lib/courseDeadline'
 import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseRecertStatus } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
@@ -237,7 +253,7 @@ export default function CourseEditor() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
-  const { isSuperAdmin, campaignId: authCampaignId, user } = useAuth()
+  const { isSuperAdmin, canApproveCourses, campaignId: authCampaignId, user } = useAuth()
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   const [loading, setLoading] = useState(true)
@@ -285,6 +301,10 @@ export default function CourseEditor() {
   // Estado del mundo del curso: undefined = cargando, null = no existe, objeto = existe (draft/published)
   const [world, setWorld] = useState<WorldRow | null | undefined>(undefined)
   const [publishingWorld, setPublishingWorld] = useState(false)
+  // Puerta de publicación: pedir / aprobar / devolver. `approvalBusy` bloquea
+  // los botones mientras la base responde; `decision` abre el modal del motivo.
+  const [approvalBusy, setApprovalBusy] = useState(false)
+  const [decision, setDecision] = useState<PublicationDecision | null>(null)
   // Mundos sueltos de la campaña, candidatos a enlazar cuando el curso no tiene mundo.
   const [linkableWorlds, setLinkableWorlds] = useState<WorldRow[]>([])
   const [linkingWorld, setLinkingWorld] = useState(false)
@@ -1094,8 +1114,100 @@ export default function CourseEditor() {
     }
   }
 
+  /* ── Puerta de publicación ──────────────────────────────────────
+     Publicar un curso dejó de ser un interruptor: lo autoriza un aprobador
+     (el superadmin, o el capacitador que él designe en /admin/users). Quien
+     escribe el curso pide la publicación; quien aprueba la concede o la
+     devuelve con un motivo. Lo de abajo es solo la cara visible: la base lo
+     respalda con `courses_publication_guard` y los RPC de aprobación. */
+
+  /** Estado efectivo: un curso ya publicado se lee como aprobado. */
+  const approvalStatus = approvalStatusOf(course)
+  /** ¿Está el SQL corrido? Si no, el editor publica como siempre. */
+  const approvalReady = approvalsReady(course)
+  /** ¿Puede este usuario poner el curso en aire sin pedirle permiso a nadie? */
+  const publishAllowed = canPublishNow(course, canApproveCourses)
+
+  /**
+   * Recarga el curso tras una decisión, para que el estado no quede a medias, y
+   * vuelve a contar la cola: aprobar desde aquí tiene que bajar el globo del
+   * menú igual que hacerlo desde la bandeja.
+   */
+  const refreshCourse = async () => {
+    const fresh = await getCourseById(course.id)
+    if (fresh) setCourse(fresh)
+    if (canApproveCourses) void usePendingPublicationsStore.getState().refresh()
+  }
+
+  const handleRequestApproval = async () => {
+    setApprovalBusy(true)
+    try {
+      await requestCoursePublication(course.id)
+      await refreshCourse()
+      toast.success(t('admin.courses.approval_requested'), t('admin.courses.approval_requested_body'))
+    } catch (e) {
+      console.error('[CourseEditor] handleRequestApproval', e)
+      toast.error(t('admin.courses.approval_request_error'), errMsg(e))
+    } finally {
+      setApprovalBusy(false)
+    }
+  }
+
+  const handleCancelApprovalRequest = async () => {
+    setApprovalBusy(true)
+    try {
+      await cancelCoursePublicationRequest(course.id)
+      await refreshCourse()
+      toast.success(t('admin.courses.approval_cancelled'))
+    } catch (e) {
+      console.error('[CourseEditor] handleCancelApprovalRequest', e)
+      toast.error(t('admin.courses.approval_request_error'), errMsg(e))
+    } finally {
+      setApprovalBusy(false)
+    }
+  }
+
+  /** Aprobar es publicar: el sí y la puesta en aire son el mismo acto. */
+  const handleApproveNow = async () => {
+    // El curso sale a producción con sus módulos: los quiz de video en 0:00
+    // nunca se disparan, así que la misma revisión de publicar aplica aquí.
+    if (!(await ensureVideoQuizTimes(course.modules.map((m) => m.id)))) return
+    setApprovalBusy(true)
+    try {
+      await approveCoursePublication(course.id)
+      await refreshCourse()
+      invalidateModulesCache()
+      invalidateLearnerCoursesCache()
+      toast.success(t('admin.courses.approval_approved'))
+    } catch (e) {
+      console.error('[CourseEditor] handleApproveNow', e)
+      toast.error(t('admin.courses.approval_error'), errMsg(e))
+    } finally {
+      setApprovalBusy(false)
+    }
+  }
+
+  /** Devolver (rechazar) o bajar (revocar): las dos piden motivo en el modal. */
+  const handleDecision = async (note: string) => {
+    if (decision === 'reject') await rejectCoursePublication(course.id, note)
+    else await revokeCoursePublication(course.id, note)
+    await refreshCourse()
+    invalidateModulesCache()
+    invalidateLearnerCoursesCache()
+    toast.success(
+      decision === 'reject'
+        ? t('admin.courses.approval_rejected')
+        : t('admin.courses.approval_revoked'),
+    )
+  }
+
   const handleTogglePublished = async () => {
     const next = !course.is_published
+    // La puerta: sin aprobación, el interruptor no publica — pide la revisión.
+    if (next && !publishAllowed) {
+      await handleRequestApproval()
+      return
+    }
     // Al publicar el curso el aprendiz ve sus módulos publicados: no se publica
     // si alguno tiene quiz de video en 0:00 (nunca se disparan).
     if (next && !(await ensureVideoQuizTimes(course.modules.map((m) => m.id)))) return
@@ -1164,6 +1276,21 @@ export default function CourseEditor() {
     // No se publica con quiz de video en 0:00 (nunca se disparan).
     const pending = course.modules.filter((m) => !m.is_published)
     if (!(await ensureVideoQuizTimes(pending.map((m) => m.id)))) return
+    // Sin aprobación el curso no puede subir, pero sus módulos sí: se publica
+    // todo lo que se pueda y el curso queda pedido, que es lo que el
+    // capacitador quiso decir con "ya terminé".
+    if (!publishAllowed) {
+      try {
+        for (const m of pending) await toggleModulePublished(m.id, true)
+        invalidateModulesCache()
+        await reload()
+      } catch {
+        toast.error(t('admin.courses.error_save'))
+        return
+      }
+      await handleRequestApproval()
+      return
+    }
     try {
       if (!course.is_published) {
         await updateCourse(course.id, { is_published: true })
@@ -1801,6 +1928,14 @@ export default function CourseEditor() {
               {course.visibility === 'catalog' && (
                 <NeonBadge color="cyan">{t('admin.courses.catalog_badge')}</NeonBadge>
               )}
+              {/* El estado de la puerta solo se anuncia cuando dice algo que la
+                  insignia de publicado no dice ya: pedido o devuelto. */}
+              {approvalStatus === 'pending' && (
+                <NeonBadge color="amber" dot>{t('admin.courses.approval_pending_badge')}</NeonBadge>
+              )}
+              {approvalStatus === 'rejected' && (
+                <NeonBadge color="amber">{t('admin.courses.approval_rejected_badge')}</NeonBadge>
+              )}
             </div>
           </div>
         </div>
@@ -1893,6 +2028,121 @@ export default function CourseEditor() {
       {/* Recordatorio permanente: lo generado con IA se revisa antes de publicar. */}
       <AiReviewNotice variant="inline" className="mb-4" />
 
+      {/* ── La puerta de publicación ──
+          Una sola franja que dice en qué punto va el curso y ofrece la única
+          acción que toca ahora: pedir, retirar, aprobar, devolver o bajar.
+          No aparece si el SQL de aprobaciones todavía no se ha corrido. */}
+      {approvalReady && (approvalStatus !== 'approved' || canApproveCourses) && (
+        <div
+          className={cn(
+            'rounded-2xl border px-4 py-3 mb-4',
+            approvalStatus === 'pending'
+              ? 'border-amber-500/30 bg-amber-500/[0.06]'
+              : approvalStatus === 'rejected'
+                ? 'border-amber-500/40 bg-amber-500/[0.09]'
+                : 'border-line bg-surface',
+          )}
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <ShieldCheck
+              className={cn(
+                'h-4 w-4 shrink-0',
+                approvalStatus === 'approved' ? 'text-primary' : 'text-amber-500',
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-text">
+                {approvalStatus === 'pending'
+                  ? t('admin.courses.approval_state_pending')
+                  : approvalStatus === 'rejected'
+                    ? t('admin.courses.approval_state_rejected')
+                    : approvalStatus === 'approved'
+                      ? t('admin.courses.approval_state_approved')
+                      : t('admin.courses.approval_state_draft')}
+              </p>
+              <p className="mt-0.5 text-[12px] text-text-muted break-words [overflow-wrap:anywhere]">
+                {approvalStatus === 'rejected' && course.approval_note
+                  ? t('admin.courses.approval_note_prefix', { note: course.approval_note })
+                  : approvalStatus === 'pending'
+                    ? t('admin.courses.approval_hint_pending')
+                    : approvalStatus === 'approved'
+                      ? t('admin.courses.approval_hint_approved')
+                      : publishAllowed
+                        ? t('admin.courses.approval_hint_approver')
+                        : t('admin.courses.approval_hint_draft')}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Quien aprueba, resuelve aquí mismo el curso que está mirando. */}
+              {canApproveCourses && approvalStatus === 'pending' && (
+                <>
+                  <Button
+                    variant="neon"
+                    size="sm"
+                    onClick={handleApproveNow}
+                    disabled={approvalBusy}
+                    className="flex items-center gap-1.5"
+                  >
+                    {approvalBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    {t('admin.courses.approval_approve')}
+                  </Button>
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={() => setDecision('reject')}
+                    disabled={approvalBusy}
+                    className="flex items-center gap-1.5"
+                  >
+                    <Undo2 className="h-3.5 w-3.5" />
+                    {t('admin.courses.approval_return')}
+                  </Button>
+                </>
+              )}
+              {/* Bajar algo que ya está en aire: vuelve a borrador y tendrá que
+                  pasar otra vez por la puerta. */}
+              {canApproveCourses && approvalStatus === 'approved' && course.is_published && (
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={() => setDecision('revoke')}
+                  disabled={approvalBusy}
+                  className="flex items-center gap-1.5"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  {t('admin.courses.approval_revoke')}
+                </Button>
+              )}
+              {/* Quien escribe el curso: pedir o retirar la solicitud. */}
+              {!publishAllowed && approvalStatus !== 'pending' && (
+                <Button
+                  variant="neon"
+                  size="sm"
+                  onClick={handleRequestApproval}
+                  disabled={approvalBusy}
+                  className="flex items-center gap-1.5"
+                >
+                  {approvalBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  {t('admin.courses.approval_request')}
+                </Button>
+              )}
+              {!canApproveCourses && approvalStatus === 'pending' && (
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={handleCancelApprovalRequest}
+                  disabled={approvalBusy}
+                  className="flex items-center gap-1.5"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  {t('admin.courses.approval_cancel')}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barra compacta de publicación: estado del curso + módulos + acción única.
           El mundo (gamificación) se gestiona aparte, en el botón "Ver mundo" del header. */}
       {(() => {
@@ -1925,7 +2175,18 @@ export default function CourseEditor() {
                     {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
                   </span>
                 </Tooltip>
-                <Toggle on={course.is_published} onClick={handleTogglePublished} label={t('admin.courses.publish_course')} />
+                {publishAllowed || course.is_published ? (
+                  <Toggle on={course.is_published} onClick={handleTogglePublished} label={t('admin.courses.publish_course')} />
+                ) : (
+                  // Sin aprobación el interruptor mentiría: en su lugar va el
+                  // candado que explica por qué no se puede mover.
+                  <Tooltip label={t('admin.courses.approval_locked_hint')} maxWidth={250}>
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
+                      <Lock className="h-3 w-3" />
+                      {t('admin.courses.approval_locked')}
+                    </span>
+                  </Tooltip>
+                )}
               </div>
 
               {/* Chip: Módulos */}
@@ -2082,8 +2343,20 @@ export default function CourseEditor() {
                   // hay gente esperando el curso y sigue en borrador. Un pulso
                   // permanente en cada curso a medio armar sería ruido.
                   <PulseHint active={!course.is_published && hasAudience} color="rgb(245 158 11)">
-                    <Button variant="neon" size="sm" onClick={handlePublishAll} className="flex items-center gap-1.5 shrink-0">
-                      <Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all')}
+                    <Button
+                      variant="neon"
+                      size="sm"
+                      onClick={handlePublishAll}
+                      disabled={approvalBusy || (!publishAllowed && approvalStatus === 'pending')}
+                      className="flex items-center gap-1.5 shrink-0 disabled:pointer-events-none"
+                    >
+                      {/* Sin permiso para publicar, el botón grande hace lo que
+                          sí puede: deja los módulos listos y pide la revisión. */}
+                      {publishAllowed
+                        ? <><Eye className="h-3.5 w-3.5" /> {t('admin.courses.publish_all')}</>
+                        : approvalStatus === 'pending'
+                          ? <><Clock className="h-3.5 w-3.5" /> {t('admin.courses.approval_pending_badge')}</>
+                          : <><Send className="h-3.5 w-3.5" /> {t('admin.courses.approval_request')}</>}
                     </Button>
                   </PulseHint>
                 )}
@@ -4165,6 +4438,16 @@ export default function CourseEditor() {
           </div>
           )}
         </div>
+      )}
+
+      {/* Devolver o bajar el curso: el motivo va al autor y queda escrito. */}
+      {decision && (
+        <PublicationDecisionModal
+          kind={decision}
+          courseTitle={course.title_es}
+          onClose={() => setDecision(null)}
+          onConfirm={handleDecision}
+        />
       )}
 
       {/* Único lugar donde se guarda este editor. */}

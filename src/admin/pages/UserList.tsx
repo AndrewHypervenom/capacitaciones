@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -382,11 +382,12 @@ export default function UserList() {
   }
 
   const handleRoleChange = async (userId: string, newRole: Profile['role']) => {
-    // Al dejar de ser capacitador se retira el permiso de altas: si mañana
-    // vuelve a serlo, no debe recuperarlo solo por un permiso viejo colgado.
+    // Al dejar de ser capacitador se retiran los permisos concedidos a mano
+    // (altas y aprobación de cursos): si mañana vuelve a serlo, no debe
+    // recuperarlos solo por un permiso viejo colgado.
     const patch = newRole === 'capacitador'
       ? { role: newRole }
-      : { role: newRole, can_create_learners: false }
+      : { role: newRole, can_create_learners: false, can_approve_courses: false }
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, ...patch } : u))
   }
 
@@ -398,6 +399,17 @@ export default function UserList() {
   const handleToggleCanCreate = (user: ProfileWithEmail) => {
     const next = user.can_create_learners !== true
     setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_create_learners: next } : u)))
+  }
+
+  /**
+   * Concede (o retira) a un capacitador el permiso de aprobar QUÉ CURSOS SE
+   * PUBLICAN. Es la otra mitad de la puerta: sin él, un capacitador solo puede
+   * pedir la publicación de lo suyo. Solo el superadmin lo mueve; la base lo
+   * respalda (courses_publication_guard + los RPC de aprobación).
+   */
+  const handleToggleCanApprove = (user: ProfileWithEmail) => {
+    const next = user.can_approve_courses !== true
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_approve_courses: next } : u)))
   }
 
   /**
@@ -430,7 +442,8 @@ export default function UserList() {
     return (
       before.display_name !== u.display_name ||
       before.role !== u.role ||
-      before.can_create_learners !== u.can_create_learners
+      before.can_create_learners !== u.can_create_learners ||
+      before.can_approve_courses !== u.can_approve_courses
     )
   })
   const dirtyCampaignUsers = users.filter((u) => {
@@ -452,6 +465,7 @@ export default function UserList() {
             display_name: u.display_name,
             role: u.role,
             can_create_learners: u.can_create_learners,
+            can_approve_courses: u.can_approve_courses,
           })
           .eq('id', u.id)
         if (error) throw error
@@ -1067,6 +1081,21 @@ export default function UserList() {
                             </span>
                           </Tooltip>
                         )}
+                        {isSuperAdmin && user.role === 'capacitador' && user.can_approve_courses && (
+                          <Tooltip
+                            label={t('admin.users.can_approve_badge_hint')}
+                            className="shrink-0"
+                            maxWidth={250}
+                          >
+                            <span
+                              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{ background: 'rgba(179,61,158,0.14)', color: '#B33D9E' }}
+                            >
+                              <BadgeCheck className="h-3 w-3" />
+                              {t('admin.users.can_approve_badge')}
+                            </span>
+                          </Tooltip>
+                        )}
                         {user.is_active === false && (
                           <Tooltip
                             label={
@@ -1237,6 +1266,33 @@ export default function UserList() {
                         aria-pressed={user.can_create_learners === true}
                       >
                         <UserRoundPlus className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {/* Permiso de aprobar publicaciones: la otra puerta que el
+                      superadmin abre persona por persona. Solo en capacitadores
+                      (el superadmin ya aprueba y el aprendiz nunca lo hará). */}
+                  {isSuperAdmin && user.role === 'capacitador' && (
+                    <Tooltip
+                      label={
+                        user.can_approve_courses
+                          ? t('admin.users.can_approve_on_hint')
+                          : t('admin.users.can_approve_off_hint')
+                      }
+                      className="shrink-0"
+                      maxWidth={260}
+                    >
+                      <button
+                        onClick={() => handleToggleCanApprove(user)}
+                        className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors ${
+                          user.can_approve_courses
+                            ? 'text-[#B33D9E] hover:bg-[#B33D9E]/10'
+                            : 'text-text-subtle hover:text-text hover:bg-glass/6'
+                        }`}
+                        aria-label={t('admin.users.can_approve_label')}
+                        aria-pressed={user.can_approve_courses === true}
+                      >
+                        <BadgeCheck className="h-4 w-4" />
                       </button>
                     </Tooltip>
                   )}

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy } from 'lucide-react'
+import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns, getTestCampaignIds } from '@/services/campaigns.service'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import { useAuth } from '@/hooks/useAuth'
+import { usePendingPublicationsStore } from '@/stores/pendingPublicationsStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { FadeIn } from '@/components/ui/motion'
 
@@ -20,7 +21,10 @@ interface Stats {
 }
 
 export default function AdminDashboard() {
-  const { isSuperAdmin, campaignId, user } = useAuth()
+  const { isSuperAdmin, campaignId, user, canApproveCourses } = useAuth()
+  // Cursos esperando el permiso para publicarse. El contador lo mantiene al día
+  // AdminRouter (usePendingPublicationsSync); aquí solo se lee.
+  const pendingPublications = usePendingPublicationsStore((s) => s.count)
   const { t } = useTranslation()
   const reduce = useReducedMotion()
   const [stats, setStats] = useState<Stats>({ campaigns: 0, modules: 0, scenarios: 0, users: 0 })
@@ -142,6 +146,38 @@ export default function AdminDashboard() {
       <p className="text-text-muted text-[13px] mb-6 sm:mb-8">
         {isSuperAdmin ? t('admin.dashboard.subtitle') : t('admin.dashboard.subtitle_capacitador')}
       </p>
+
+      {/* Trabajo esperando: cursos que piden permiso para verse. Va sobre los
+          KPIs porque es lo único de este tablero que reclama una decisión —
+          los números de abajo solo informan. Sin gente en cola no aparece. */}
+      {canApproveCourses && pendingPublications > 0 && (
+        <FadeIn
+          className="rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+          y={12}
+          style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.22)' }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <ShieldCheck className="h-5 w-5 shrink-0" style={{ color: '#f59e0b' }} />
+            <div className="min-w-0">
+              <div className="text-[14px] font-medium text-text">
+                {t('admin.dashboard.pending_pub_title', { count: pendingPublications })}
+              </div>
+              <div className="text-[12px] text-text-muted leading-relaxed">
+                {t('admin.dashboard.pending_pub_desc')}
+              </div>
+            </div>
+          </div>
+          <Link
+            to="/admin/publish-approvals"
+            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium transition-colors self-start sm:shrink-0 min-h-[44px]"
+            style={{ color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(245,158,11,0.10)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
+            {t('admin.dashboard.pending_pub_cta')} <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </FadeIn>
+      )}
 
       {/* Stats */}
       {loading ? (
