@@ -45,6 +45,31 @@ const MAX_AVATAR_BYTES = 3 * 1024 * 1024 // 3 MB
 type TabId = 'trayectoria' | 'certificados' | 'cursos' | 'datos'
 
 /**
+ * Reintento corto para las lecturas de esta hoja de vida.
+ *
+ * Por qué existe: la lectura del perfil no distinguía "esta persona no existe"
+ * de "la petición falló". Un 500 del gateway (la firma clásica es el 57014,
+ * `canceling statement due to statement timeout`) o un 401 justo mientras
+ * supabase-js renueva el token dejaba `data` en null y la pantalla pintaba el
+ * vacío de "sin resultados" —el capacitador entraba a su propio perfil, lo veía
+ * en blanco, y al volver a entrar salía completo—. Un fallo así es pasajero:
+ * se reintenta un par de veces y, si insiste, se dice que NO se pudo cargar
+ * (con botón para reintentar), que no es lo mismo que decir que no hay nadie.
+ */
+async function withRetry<T>(fn: () => Promise<T>, tries = 3, waitMs = 400): Promise<T> {
+  let last: unknown
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      last = err
+      if (i < tries - 1) await new Promise((r) => setTimeout(r, waitMs * (i + 1)))
+    }
+  }
+  throw last
+}
+
+/**
  * Hoja de vida de una persona para el panel de gestión: encabezado con sus
  * cifras, trayectoria (XP, racha, insignias), vitrina de certificados —que se
  * pueden ver aquí mismo— cursos con desempeño y datos personales editables.
@@ -68,6 +93,9 @@ export default function UserProfile() {
   const [certs, setCerts] = useState<UserCertificate[]>([])
   const [game, setGame] = useState<GamificationSummary | null>(null)
   const [loading, setLoading] = useState(true)
+  // La lectura falló (red/gateway/token), que no es lo mismo que "no existe".
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [tab, setTab] = useState<TabId>('trayectoria')
 
   // Edición del perfil (solo superadmin). El servicio updateProfile ya recibe el
@@ -145,10 +173,25 @@ export default function UserProfile() {
   useEffect(() => {
     let alive = true
     setLoading(true)
+    setLoadFailed(false)
     ;(async () => {
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle()
+      let prof: Profile | null = null
+      try {
+        prof = await withRetry(async () => {
+          const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle()
+          if (error) throw error
+          return data as Profile | null
+        })
+      } catch {
+        // Ni siquiera con reintentos: se avisa, en vez de fingir que no existe.
+        if (alive) {
+          setLoadFailed(true)
+          setLoading(false)
+        }
+        return
+      }
       if (!alive) return
-      setProfile(prof as Profile | null)
+      setProfile(prof)
 
       if (prof?.campaign_id) {
         supabase.from('campaigns').select('name').eq('id', prof.campaign_id).maybeSingle()
@@ -167,7 +210,7 @@ export default function UserProfile() {
       // Cursos + progreso vía RPC (superadmin). Si el rol no tiene permiso, se
       // degrada con un aviso en vez de romper la página.
       try {
-        const cs = await getUserCoursesAdmin(id)
+        const cs = await withRetry(() => getUserCoursesAdmin(id))
         if (alive) setCourses(cs)
       } catch {
         if (alive) setCoursesDenied(true)
@@ -176,7 +219,7 @@ export default function UserProfile() {
       }
     })()
     return () => { alive = false }
-  }, [id])
+  }, [id, reloadKey])
 
   const fmtDate = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short', year: 'numeric' }) : null
@@ -224,6 +267,27 @@ export default function UserProfile() {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="h-6 w-6 animate-spin text-text-subtle" />
+      </div>
+    )
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="p-8">
+        <button onClick={() => navigate('/admin/users')} className="mb-6 inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text">
+          <ArrowLeft className="h-4 w-4" /> {t('admin.users.title')}
+        </button>
+        <div className="rounded-3xl border border-dashed border-line bg-surface px-6 py-12 text-center">
+          <p className="text-[14px] text-text">
+            {t('admin.users.profile_load_failed', 'No se pudo cargar el perfil.')}
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-[13px] text-text-muted">
+            {t('admin.users.profile_load_failed_hint', 'Fue un problema momentáneo de conexión, no es que la persona no exista.')}
+          </p>
+          <Button variant="secondary" size="sm" className="mt-5" onClick={() => setReloadKey((k) => k + 1)}>
+            {t('admin.users.profile_load_retry', 'Reintentar')}
+          </Button>
+        </div>
       </div>
     )
   }

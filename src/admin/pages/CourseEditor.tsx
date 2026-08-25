@@ -35,6 +35,7 @@ import {
   Plus,
   Rocket,
   Flag,
+  Hammer,
   Scissors,
   Search,
   Share2,
@@ -3370,6 +3371,68 @@ export default function CourseEditor() {
               {t('admin.courses.cert_conditions_title')}
             </h2>
             <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.cert_conditions_hint')}</p>
+
+            {/* Curso en construccion. Va ARRIBA de las condiciones porque las
+                manda a todas: mientras este encendido el certificado no se emite
+                aunque el aprendiz cumpla todo lo publicado hoy. Asi no quedan
+                diplomas de una version a medias que despues haya que recertificar. */}
+            <div
+              className={cn(
+                'mb-4 rounded-xl border px-3.5 py-3 transition-colors',
+                cond.coming_soon ? 'border-amber-500/40 bg-amber-500/5' : 'border-line',
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <Hammer
+                  className={cn('h-4 w-4 shrink-0', cond.coming_soon ? 'text-amber-500' : 'text-text-muted')}
+                />
+                {/* La explicacion larga va en el tooltip, no bajo el titulo: la
+                    tarjeta ya lleva un campo de texto abierto y tres renglones de
+                    letra chica encima la volvian un muro. */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[13px] font-medium text-text">
+                      {t('admin.courses.cond_coming_soon')}
+                    </span>
+                    <Tooltip
+                      label={t('admin.courses.cond_coming_soon_hint')}
+                      anchor="element"
+                      maxWidth={260}
+                      describedBy
+                    >
+                      <Info className="h-3.5 w-3.5 shrink-0 text-text-subtle" />
+                    </Tooltip>
+                  </div>
+                </div>
+                <Toggle
+                  on={cond.coming_soon}
+                  onClick={() => setCond({ ...cond, coming_soon: !cond.coming_soon })}
+                />
+              </div>
+              {cond.coming_soon && (
+                <div className="mt-3">
+                  <textarea
+                    value={cond.coming_soon_note}
+                    onChange={(e) => setCond({ ...cond, coming_soon_note: e.target.value })}
+                    rows={2}
+                    maxLength={240}
+                    placeholder={t('admin.courses.cond_coming_soon_note_ph')}
+                    className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-text placeholder:text-text-subtle"
+                  />
+                  <Tooltip
+                    label={t('admin.courses.cond_coming_soon_note_hint')}
+                    anchor="element"
+                    maxWidth={260}
+                    describedBy
+                  >
+                    <span className="mt-1 inline-flex cursor-help items-center gap-1.5 text-[11px] text-text-subtle">
+                      <Info className="h-3 w-3 shrink-0" />
+                      {t('admin.courses.cond_coming_soon_note_label')}
+                    </span>
+                  </Tooltip>
+                </div>
+              )}
+            </div>
 
             <div className="space-y-3">
               {/* Completar módulos */}

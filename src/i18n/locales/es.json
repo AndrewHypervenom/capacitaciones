@@ -471,7 +471,17 @@
     "req_exam": "Aprobar el examen final con al menos {{score}}%",
     "no_exam_available": "El examen todavía no está publicado.",
     "recert_new_modules_one": "Se agregó {{count}} módulo después de que te certificaste.",
-    "recert_new_modules_other": "Se agregaron {{count}} módulos después de que te certificaste."
+    "recert_new_modules_other": "Se agregaron {{count}} módulos después de que te certificaste.",
+    "soon": "Certificado",
+    "soon_count_one": "· falta {{count}}",
+    "soon_count_other": "· faltan {{count}}",
+    "soon_hint": "Tu certificado se habilita al terminar el curso. Te falta:",
+    "missing_modules": "Completar los módulos ({{done}}/{{total}})",
+    "missing_simulator": "Aprobar el simulador con ≥ {{score}}",
+    "missing_exam": "Aprobar el examen final con al menos {{score}}%",
+    "coming_soon_badge": "Próximamente",
+    "coming_soon_title": "Este curso todavía está en construcción",
+    "coming_soon_hint": "Falta contenido por publicar. Puedes avanzar con lo que ya está; el certificado se habilita cuando el curso esté completo."
   },
   "roles": {
     "superadmin": "Superadmin",
@@ -1778,6 +1788,9 @@
       "campaigns_save_error": "No se pudieron guardar las campañas",
       "empty": "No hay usuarios aún.",
       "no_results": "Ningún usuario coincide con la búsqueda.",
+      "profile_load_failed": "No se pudo cargar el perfil.",
+      "profile_load_failed_hint": "Fue un problema momentáneo de conexión, no es que la persona no exista.",
+      "profile_load_retry": "Reintentar",
       "create_user": "Crear usuario",
       "create_submit": "Crear usuario",
       "created_share": "✓ Usuario creado — entrega estas credenciales",
@@ -2554,7 +2567,12 @@
       "deadline_expiry_warn": "Solo avisarle",
       "deadline_expiry_block": "Cerrarle el curso",
       "deadline_blocks_off_help": "El curso le queda marcado como vencido en rojo, pero sigue abierto: puede entrar y terminarlo tarde. Tú ves quiénes se pasaron en Progreso, columna \"Vencidos\".",
-      "deadline_blocks_on_help": "El curso deja de abrirse: no puede empezar módulos nuevos. Lo que ya completó se conserva y lo puede repasar, y se le dice que te pida una ampliación del plazo."
+      "deadline_blocks_on_help": "El curso deja de abrirse: no puede empezar módulos nuevos. Lo que ya completó se conserva y lo puede repasar, y se le dice que te pida una ampliación del plazo.",
+      "cond_coming_soon": "Curso en construcción",
+      "cond_coming_soon_hint": "Retiene el certificado: aunque el aprendiz cumpla todo lo publicado hoy, no se emite hasta que apagues esto.",
+      "cond_coming_soon_note_ph": "Ej.: faltan los módulos 4 y 5, salen en septiembre.",
+      "cond_coming_soon_note_hint": "Esto es lo que lee el aprendiz. Si lo dejas vacío se muestra un texto genérico.",
+      "cond_coming_soon_note_label": "Lo lee el aprendiz"
     },
     "simulations": {
       "save": "Guardar",

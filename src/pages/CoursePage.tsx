@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Award, CalendarClock, Check, ClipboardCheck, Flame, GraduationCap, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Award, CalendarClock, Check, ClipboardCheck, Flame, GraduationCap, Hammer, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { FadeIn } from '@/components/ui/motion';
@@ -303,6 +303,45 @@ export default function CoursePage() {
   const nextItem = items.find((i) => i.status === 'available');
   const completed = total > 0 && done === total;
 
+  /* ── Estado del certificado, en UN solo lugar ──────────────────────────────
+     Lo leen la fila de acciones (botón "Ver certificado" / "Próximamente") y la
+     sección Acreditar de más abajo. Antes cada una lo calculaba a su manera —
+     arriba bastaba `examState.passed`, abajo se exigía además el puntaje — y el
+     botón podía prometer un certificado que la sección seguía negando. */
+  const requireExam = !!course.cert_conditions?.require_exam;
+  const examMin = course.cert_conditions?.exam_min_score ?? 80;
+  const examOk = !!examState && examState.passed && examState.best_score >= examMin;
+  /* El capacitador marcó el curso como "en construcción": todavía falta contenido
+     por publicar. Retiene el certificado aunque el aprendiz cumpla TODO lo que hay
+     hoy — así no quedan diplomas de una versión a medias. Lo ya EMITIDO no se toca:
+     un certificado entregado no se revoca por publicar más módulos (para eso está
+     la recertificación). Ver [[cert_coming_soon]] y Curso → Certificación. */
+  const comingSoon = !!course.cert_conditions?.coming_soon && !certStatus?.certified;
+  const comingSoonNote = (course.cert_conditions?.coming_soon_note ?? '').trim();
+  /* El servidor no conoce todavía el examen en `all_met`: se exige aquí y, de
+     forma inviolable, en el trigger de `certifications` (ver el SQL). */
+  const certReady =
+    !!certStatus &&
+    (certStatus.all_met || certStatus.certified) &&
+    (!requireExam || examOk) &&
+    !comingSoon;
+  /* Qué le falta, en palabras, para el tooltip del botón "Próximamente". */
+  const certMissing: string[] = [];
+  if (certStatus && !certReady && !comingSoon) {
+    if (certStatus.require_all_modules && !certStatus.modules_ok) {
+      certMissing.push(
+        t('course_cert.missing_modules', {
+          done: certStatus.modules_done,
+          total: certStatus.modules_total,
+        }),
+      );
+    }
+    if (certStatus.require_simulator && !certStatus.simulator_ok) {
+      certMissing.push(t('course_cert.missing_simulator', { score: certStatus.min_score }));
+    }
+    if (requireExam && !examOk) certMissing.push(t('course_cert.missing_exam', { score: examMin }));
+  }
+
   // Qué dice el aviso del plazo. Sin plazo fechado, un curso de catálogo con
   // límite por días anuncia cuánto tendrá desde que se inscriba.
   const daysFromEnroll =
@@ -566,6 +605,22 @@ export default function CoursePage() {
             tiempo, rojo cuando aprieta o ya venció. Si el curso bloquea al
             vencer, también dice qué hacer (pedir ampliación), porque el
             aprendiz no puede resolverlo solo. */}
+        {/* Curso en construccion: se anuncia ANTES que el plazo porque cambia lo
+            que el aprendiz puede esperar del curso entero, no solo la fecha. */}
+        {comingSoon && (
+          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/8 px-4 py-3">
+            <Hammer className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-medium text-text">
+                {t('course_cert.coming_soon_title')}
+              </p>
+              <p className="mt-0.5 text-[12.5px] text-text-muted [overflow-wrap:anywhere]">
+                {comingSoonNote || t('course_cert.coming_soon_hint')}
+              </p>
+            </div>
+          </div>
+        )}
+
         {deadlineBanner && (
           <div
             className={cn(
@@ -648,10 +703,7 @@ export default function CoursePage() {
             </motion.div>
           )}
 
-          {certStatus &&
-            (certStatus.all_met || certStatus.certified) &&
-            // Con examen obligatorio el certificado no se ofrece hasta aprobarlo.
-            (!course.cert_conditions?.require_exam || !!examState?.passed) && (
+          {certStatus && certReady && (
             <Link
               to={`/certificate/${course.id}`}
               className={cn(
@@ -664,6 +716,62 @@ export default function CoursePage() {
               <Award className="h-3.5 w-3.5" />
               {t('course_cert.view')}
             </Link>
+          )}
+
+          {/* Certificado todavia no: el aprendiz ve que EXISTE y que le falta.
+              Antes no habia rastro del certificado hasta cumplirlo todo, y el
+              curso parecia no darlo. No navega a /certificate (el trigger lo
+              negaria): lleva a la seccion Acreditar, donde estan los requisitos. */}
+          {comingSoon && (
+            <Tooltip
+              anchor="element"
+              variant="panel"
+              maxWidth={260}
+              describedBy
+              label={
+                <span className="block text-left [overflow-wrap:anywhere]">
+                  {comingSoonNote || t('course_cert.coming_soon_hint')}
+                </span>
+              }
+            >
+              <span className="inline-flex cursor-default items-center gap-2 rounded-full border border-dashed border-amber-500/40 px-5 py-2.5 text-[13.5px] font-medium text-amber-600 dark:text-amber-400">
+                <Hammer className="h-3.5 w-3.5" />
+                {t('course_cert.coming_soon_badge')}
+              </span>
+            </Tooltip>
+          )}
+
+          {certStatus && !certReady && certMissing.length > 0 && (
+            <Tooltip
+              anchor="element"
+              variant="panel"
+              maxWidth={260}
+              describedBy
+              label={
+                <span className="block text-left">
+                  {t('course_cert.soon_hint')}
+                  {certMissing.map((m) => (
+                    <span key={m} className="mt-0.5 block">&middot; {m}</span>
+                  ))}
+                </span>
+              }
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  document
+                    .getElementById('cert-section')
+                    ?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+                }
+                className="inline-flex items-center gap-2 rounded-full border border-dashed border-line px-5 py-2.5 text-[13.5px] font-medium text-text-subtle transition-colors duration-300 hover:border-primary/40 hover:text-text-muted"
+              >
+                <Award className="h-3.5 w-3.5" />
+                {t('course_cert.soon')}
+                <span className="tabular-nums text-text-subtle">
+                  {t('course_cert.soon_count', { count: certMissing.length })}
+                </span>
+              </button>
+            </Tooltip>
           )}
 
           {certStatus?.require_simulator && !certStatus.simulator_ok && totalScenarios > 0 && (
@@ -1102,12 +1210,8 @@ export default function CoursePage() {
 
       {/* ── Acreditar: certificado del curso ── */}
       {(() => {
-        // El examen final es un requisito más del certificado: sale de
-        // cert_conditions del curso y del estado real del examen del aprendiz.
-        const requireExam = !!course.cert_conditions?.require_exam;
-        const examMin = course.cert_conditions?.exam_min_score ?? 80;
-        const examOk =
-          !!examState && examState.passed && examState.best_score >= examMin;
+        // El examen final es un requisito más del certificado: requireExam /
+        // examMin / examOk se calculan arriba, junto al boton de la cabecera.
         if (!certStatus) return null;
         if (!certStatus.require_all_modules && !certStatus.require_simulator && !requireExam) {
           return null;
@@ -1120,9 +1224,7 @@ export default function CoursePage() {
           (certStatus.require_all_modules && certStatus.modules_ok ? 1 : 0) +
           (certStatus.require_simulator && certStatus.simulator_ok ? 1 : 0) +
           (requireExam && examOk ? 1 : 0);
-        // El servidor no conoce todavia el examen en `all_met`: se exige aqui y,
-        // de forma inviolable, en el trigger de `certifications` (ver el SQL).
-        const ready = (certStatus.all_met || certStatus.certified) && (!requireExam || examOk);
+        const ready = certReady;
         const modulesPct =
           certStatus.modules_total > 0 ? certStatus.modules_done / certStatus.modules_total : 0;
         const simPct =
@@ -1166,6 +1268,23 @@ export default function CoursePage() {
                       })}
                     </span>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Lo que falta no lo puede resolver el aprendiz: falta contenido por
+                publicar. Se dice arriba de los requisitos para que no crea que el
+                candado es suyo. */}
+            {comingSoon && (
+              <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/8 px-4 py-3.5">
+                <Hammer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <div className="min-w-0 text-[13px] text-text-muted">
+                  <span className="mb-0.5 block font-medium text-text">
+                    {t('course_cert.coming_soon_title')}
+                  </span>
+                  <span className="[overflow-wrap:anywhere]">
+                    {comingSoonNote || t('course_cert.coming_soon_hint')}
+                  </span>
                 </div>
               </div>
             )}

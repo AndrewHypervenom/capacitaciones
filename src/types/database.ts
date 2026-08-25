@@ -28,6 +28,14 @@ export interface CertConditions {
   require_exam: boolean
   /** Puntaje mínimo del examen final (0-100) cuando `require_exam` está activo. */
   exam_min_score: number
+  /** El curso todavía está en construcción: falta contenido por publicar. Mientras
+   *  esté en true el certificado NO se emite aunque el aprendiz cumpla todo lo
+   *  publicado hoy, y la ficha del curso lo anuncia como "Próximamente".
+   *  Lo enciende el capacitador en Curso → Certificación. */
+  coming_soon: boolean
+  /** Nota del capacitador, en sus palabras, sobre qué falta y cuándo llega.
+   *  Es lo que lee el aprendiz; vacío = se usa el texto genérico. */
+  coming_soon_note: string
 }
 
 export interface Database {
@@ -2256,6 +2264,8 @@ export const DEFAULT_CERT_CONDITIONS: CertConditions = {
   valid_months: null,
   require_exam: false,
   exam_min_score: 80,
+  coming_soon: false,
+  coming_soon_note: '',
 }
 export type Profile = Database['public']['Tables']['profiles']['Row']
 /** Dispositivo con ingreso biométrico registrado (huella / Face ID / Hello). */

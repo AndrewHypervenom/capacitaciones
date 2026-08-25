@@ -45,7 +45,18 @@ function formatDate(d: Date, lang: string) {
   }
 }
 
-function LockedPreview({ minScore, backTo }: { minScore: number; backTo: string }) {
+function LockedPreview({
+  minScore,
+  backTo,
+  comingSoon,
+  comingSoonNote,
+}: {
+  minScore: number
+  backTo: string
+  /** El curso esta en construccion: el candado NO es del aprendiz. */
+  comingSoon?: boolean
+  comingSoonNote?: string
+}) {
   const { t } = useTranslation();
   const nav = useNavigate();
 
@@ -88,10 +99,12 @@ function LockedPreview({ minScore, backTo }: { minScore: number; backTo: string 
                 <Lock className="h-6 w-6" />
               </div>
               <h1 className="text-[20px] font-semibold tracking-tight mb-2">
-                {t('certificate.locked_title')}
+                {comingSoon ? t('course_cert.coming_soon_title') : t('certificate.locked_title')}
               </h1>
-              <p className="text-text-muted text-[14px] mb-6">
-                {t('certificate.locked_hint', { score: minScore })}
+              <p className="text-text-muted text-[14px] mb-6 [overflow-wrap:anywhere]">
+                {comingSoon
+                  ? comingSoonNote || t('course_cert.coming_soon_hint')
+                  : t('certificate.locked_hint', { score: minScore })}
               </p>
               <Button onClick={() => nav(backTo)} size="md">
                 {t('certificate.back')}
@@ -188,8 +201,11 @@ export default function Certificate() {
         .then((a) => { if (active) setActivity(a); })
         .catch(() => {});
       const st = await getCourseCertStatus(courseId);
-      // Auto-emitir si cumple condiciones pero aún no está certificado.
-      if (st.all_met && !st.certified) {
+      // Auto-emitir si cumple condiciones pero aún no está certificado. Un curso
+      // marcado "en construcción" retiene la emisión: lo que ya cumplió sigue
+      // contando, y el diploma sale solo cuando el capacitador apague el aviso.
+      const held = !!c?.cert_conditions?.coming_soon && !st.certified;
+      if (st.all_met && !st.certified && !held) {
         try {
           await issueCertification(courseId);
           const fresh = await getCourseCertStatus(courseId);
@@ -217,18 +233,26 @@ export default function Certificate() {
     if (trainerMode || !status || !courseId) return;
     const earnedCert = status.certified || status.all_met;
     if (!earnedCert) return;
+    // Curso en construcción: el diploma está retenido, así que tampoco se otorga
+    // el logro de certificación todavía.
+    if (!status.certified && course?.cert_conditions?.coming_soon) return;
     // Registra la certificación + su puntaje; el motor otorga "Certificado",
     // "Cuadro de Honor" (≥95%) y cualquier logro de certificación configurado.
     const requireSim = !!status.require_simulator;
     const score = requireSim ? (status.cert_score ?? status.best_score) : activity.score;
     recordCertification(courseId, score);
-  }, [trainerMode, status, courseId, activity.score, recordCertification]);
+  }, [trainerMode, status, courseId, activity.score, recordCertification, course]);
 
   if (loading) return null;
 
+  // Retención por curso en construcción. No toca lo YA emitido: un certificado
+  // entregado no se revoca porque se publiquen más módulos (para eso está la
+  // recertificación), y la vista del capacitador tampoco se bloquea.
+  const heldComingSoon =
+    !trainerMode && !!course?.cert_conditions?.coming_soon && !status?.certified;
   const earned = trainerMode
     ? !!learner?.certified
-    : !!status && (status.certified || status.all_met);
+    : !!status && (status.certified || status.all_met) && !heldComingSoon;
 
   if (!earned) {
     if (trainerMode) {
@@ -251,7 +275,14 @@ export default function Certificate() {
         </div>
       );
     }
-    return <LockedPreview minScore={status?.min_score ?? 70} backTo={backTo} />;
+    return (
+      <LockedPreview
+        minScore={status?.min_score ?? 70}
+        backTo={backTo}
+        comingSoon={heldComingSoon}
+        comingSoonNote={course?.cert_conditions?.coming_soon_note}
+      />
+    );
   }
 
   const lang = i18n.resolvedLanguage ?? language;

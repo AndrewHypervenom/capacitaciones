@@ -471,7 +471,17 @@
     "req_exam": "Pass the final exam with at least {{score}}%",
     "no_exam_available": "The exam isn't published yet.",
     "recert_new_modules_one": "{{count}} module was added after you certified.",
-    "recert_new_modules_other": "{{count}} modules were added after you certified."
+    "recert_new_modules_other": "{{count}} modules were added after you certified.",
+    "soon": "Certificate",
+    "soon_count_one": "· {{count}} left",
+    "soon_count_other": "· {{count}} left",
+    "soon_hint": "Your certificate unlocks when you finish the course. Still pending:",
+    "missing_modules": "Complete the modules ({{done}}/{{total}})",
+    "missing_simulator": "Pass the simulator with ≥ {{score}}",
+    "missing_exam": "Pass the final exam with at least {{score}}%",
+    "coming_soon_badge": "Coming soon",
+    "coming_soon_title": "This course is still being built",
+    "coming_soon_hint": "More content is on the way. You can work through what is already here; the certificate unlocks once the course is complete."
   },
   "roles": {
     "superadmin": "Superadmin",
@@ -1778,6 +1788,9 @@
       "campaigns_save_error": "Could not save campaigns",
       "empty": "No users yet.",
       "no_results": "No user matches your search.",
+      "profile_load_failed": "Could not load this profile.",
+      "profile_load_failed_hint": "It was a momentary connection problem — it does not mean the person is missing.",
+      "profile_load_retry": "Retry",
       "create_user": "Create user",
       "create_submit": "Create user",
       "created_share": "✓ User created — hand over these credentials",
@@ -2554,7 +2567,12 @@
       "deadline_expiry_warn": "Just warn them",
       "deadline_expiry_block": "Close the course",
       "deadline_blocks_off_help": "The course is flagged as overdue in red but stays open: they can come in and finish it late. You can see who missed it in Progress, \"Overdue\" column.",
-      "deadline_blocks_on_help": "The course stops opening: they cannot start new modules. What they already completed is kept and can be reviewed, and they are told to ask you for an extension."
+      "deadline_blocks_on_help": "The course stops opening: they cannot start new modules. What they already completed is kept and can be reviewed, and they are told to ask you for an extension.",
+      "cond_coming_soon": "Course under construction",
+      "cond_coming_soon_hint": "Holds the certificate: even if the learner meets everything published today, it is not issued until you turn this off.",
+      "cond_coming_soon_note_ph": "E.g.: modules 4 and 5 are coming in September.",
+      "cond_coming_soon_note_hint": "This is what the learner reads. Leave it empty to show a generic text.",
+      "cond_coming_soon_note_label": "The learner reads this"
     },
     "simulations": {
       "save": "Save",

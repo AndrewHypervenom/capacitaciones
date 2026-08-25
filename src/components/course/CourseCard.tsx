@@ -160,15 +160,22 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
   // Una sola etiqueta sobre la portada, y solo cuando dice algo que no se ve en
   // otro lado. El plazo vencido/a punto manda sobre "obligatorio": es lo que de
   // verdad necesita saber ahora.
+  // Curso en construccion: el capacitador todavia va a publicar mas contenido y
+  // el certificado esta retenido. Se dice ANTES de entrar, para que nadie lo
+  // termine creyendo que ya sale el diploma. Ver Curso -> Certificacion.
+  const comingSoon = !!course.cert_conditions?.coming_soon;
+
   const badge = deadline.state === 'overdue'
     ? { text: t('courses.deadline_expired'), tone: 'danger' as const }
     : deadline.state === 'soon'
       ? { text: t('courses.deadline_soon_badge'), tone: 'danger' as const }
-      : course.isMandatory && !completed
-        ? { text: t('courses.mandatory'), tone: 'danger' as const }
-        : completed
-          ? { text: t('courses.status_completed'), tone: 'primary' as const }
-          : null;
+      : comingSoon
+        ? { text: t('course_cert.coming_soon_badge'), tone: 'warn' as const }
+        : course.isMandatory && !completed
+          ? { text: t('courses.mandatory'), tone: 'danger' as const }
+          : completed
+            ? { text: t('courses.status_completed'), tone: 'primary' as const }
+            : null;
 
   const deadlineText =
     deadline.dueMs === null
@@ -248,7 +255,9 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
               'absolute top-3 right-3 z-10 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm',
               badge.tone === 'danger'
                 ? 'bg-danger/15 ring-1 ring-inset ring-danger/50'
-                : 'bg-primary/15 ring-1 ring-inset ring-primary/50',
+                : badge.tone === 'warn'
+                  ? 'bg-amber-500/20 ring-1 ring-inset ring-amber-500/50'
+                  : 'bg-primary/15 ring-1 ring-inset ring-primary/50',
             )}
           >
             {badge.text}
