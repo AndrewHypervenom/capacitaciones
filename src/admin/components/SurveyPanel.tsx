@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
+import { InstructorBadge } from '@/components/course/InstructorBadge'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { Toggle } from '@/components/ui/Toggle'
 import { NumberField } from '@/components/ui/NumberField'
@@ -485,6 +486,11 @@ export function SurveyPanel({
           .slice(0, 5)
       : []
 
+  // La vista previa pinta la misma tarjeta de persona que ve el aprendiz sobre
+  // la P1: misma condición que `showInstructor` en CourseSurvey, para que lo
+  // que se ve aquí no pueda diferir de lo que sale allá.
+  const previewInstructor = cfg.q1_mode === 'instructor' && !!effectiveName
+
   // La P1 pregunta por un instructor que no hay. El servidor se cae solo a la
   // variante de campaña, pero hay que decirlo aquí y ofrecer la salida — o el
   // capacitador creería que está preguntando algo que nadie va a ver.
@@ -754,14 +760,12 @@ export function SurveyPanel({
                     </div>
                   )}
 
+                  {/* Confirmación en una línea. La foto NO se repite aquí: la
+                      tarjeta de la vista previa, ahí abajo, ya la enseña tal
+                      como la verá el aprendiz. */}
                   {effectiveName && (
-                    <p className="mt-2 flex items-center gap-2 text-[11px] text-text-subtle">
-                      {effectiveAvatar !== null || linkedProfile ? (
-                        <Avatar src={effectiveAvatar} name={effectiveName} size={20} />
-                      ) : null}
-                      <span>
-                        {t('admin.courses.survey.instructor_shown', { name: effectiveName })}
-                      </span>
+                    <p className="mt-2 text-[11px] leading-relaxed text-text-subtle">
+                      {t('admin.courses.survey.instructor_shown', { name: effectiveName })}
                     </p>
                   )}
                 </div>
@@ -803,11 +807,28 @@ export function SurveyPanel({
             <div className="mb-2 text-[12px] font-medium text-text">
               {t('admin.courses.survey.preview_title')}
             </div>
-            <ol className="space-y-2">
+            <ol className="space-y-3">
               {QUESTIONS.map((q, i) => (
-                <li key={i} className="flex gap-2 text-[12px] leading-relaxed text-text-muted">
-                  <span className="shrink-0 tabular-nums text-text-subtle">{i + 1}.</span>
-                  <span>{q}</span>
+                <li key={i} className="flex gap-2.5 text-[12px] leading-relaxed text-text-muted">
+                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-[10px] font-semibold tabular-nums text-text-subtle">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span>{q}</span>
+                    {/* Nombre y cara debajo de la P1, en el mismo sitio en que
+                        los verá el aprendiz. La foto solo sale si el nombre
+                        escrito es el de ese perfil: prestarle la cara de otra
+                        persona sería peor que no mostrar ninguna. */}
+                    {i === 0 && previewInstructor && (
+                      <InstructorBadge
+                        name={effectiveName}
+                        avatarUrl={effectiveAvatar}
+                        role={t('survey.instructor_role')}
+                        size="sm"
+                        className="mt-2.5"
+                      />
+                    )}
+                  </div>
                 </li>
               ))}
             </ol>

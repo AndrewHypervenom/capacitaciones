@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertCircle, ArrowRight, Clock, Loader2, MessageSquareHeart, RotateCcw } from 'lucide-react';
 import { FadeIn } from '@/components/ui/motion';
 import { Button } from '@/components/ui/Button';
-import { Avatar } from '@/components/ui/Avatar';
+import { InstructorBadge } from '@/components/course/InstructorBadge';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/stores/toastStore';
 import { cn } from '@/lib/cn';
@@ -324,18 +324,15 @@ export default function CourseSurvey() {
               Calificar "al instructor" en abstracto, en un curso asincrónico,
               es pedir un número al azar. */}
           <section className="surface-card p-5 sm:p-6">
-            {showInstructor && (
-              <div className="mb-4 flex items-center gap-2.5">
-                <Avatar src={gate!.instructor_avatar} name={gate!.instructor_name} size={32} />
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-medium text-text">
-                    {gate!.instructor_name}
-                  </div>
-                  <div className="text-[11px] text-text-subtle">{t('survey.instructor_role')}</div>
-                </div>
-              </div>
-            )}
             <p className="mb-4 text-[14px] font-medium leading-relaxed text-text">{q1Text}</p>
+            {showInstructor && (
+              <InstructorBadge
+                name={gate!.instructor_name!}
+                avatarUrl={gate!.instructor_avatar}
+                role={t('survey.instructor_role')}
+                className="mb-4 mt-4"
+              />
+            )}
             <ScaleField
               name={q1Text}
               value={draft.q1}
