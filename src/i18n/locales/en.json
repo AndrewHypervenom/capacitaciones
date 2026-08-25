@@ -1720,7 +1720,28 @@
       "mark_test_title": "Mark “{{name}}” as a test campaign?",
       "mark_test_desc": "Its content, its people and their progress stop showing to real trainers and don't enter KPIs, reports or Excel. Its courses can only be assigned to test campaigns and test users. Nothing is deleted and you can remove the flag whenever you want. On saving, the panel enters the test environment and refreshes.",
       "mark_test_confirm": "Mark as test",
-      "scope_reload": "Environment changed: refreshing the panel so everything loads correctly…"
+      "scope_reload": "Environment changed: refreshing the panel so everything loads correctly…",
+      "mark_test_detach_one": "Also, {{count}} trainer who sees it today will lose it: afterwards you pick by hand who its test trainer is.",
+      "mark_test_detach_other": "Also, {{count}} trainers who see it today will lose it: afterwards you pick by hand who its test trainer is.",
+      "detached_title_one": "{{count}} trainer left the test campaign",
+      "detached_title_other": "{{count}} trainers left the test campaign",
+      "detached_desc": "Open it and use “Test trainer” to pick who gets in.",
+      "test_trainer": {
+        "card_title": "Test trainer",
+        "card_desc": "Choose who can enter this test campaign",
+        "title": "Test trainer",
+        "subtitle": "Who can enter “{{name}}”",
+        "hint": "No trainer reaches this campaign on their own: only the people you pick here get in. Use an account dedicated to testing — if the person already has real campaigns the system will refuse, because their test work would leak into the real reports.",
+        "search_ph": "Search the test account by name or email...",
+        "assign": "Assign",
+        "assigned": "Assigned",
+        "count_one": "{{count}} test trainer assigned",
+        "count_other": "{{count}} test trainers assigned",
+        "added": "{{name}} can now enter the test campaign",
+        "removed": "{{name}} no longer enters the test campaign",
+        "mixed_title": "That account works on real campaigns",
+        "mixed_desc": "{{name}} already has real-world campaigns, and nobody can live in both: their test progress would end up in the KPIs and the spreadsheets. Use an account dedicated to testing, or remove their real campaigns first in /admin/users."
+      }
     },
     "users": {
       "saved_all": "Changes saved",

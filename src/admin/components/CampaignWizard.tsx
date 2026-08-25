@@ -214,7 +214,11 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     // Si un capacitador o superadmin crea una campaña sin tener ninguna asignada
     // (cuenta creada sin campaña casa), se la asignamos como campaña casa para que
     // no le quede oculta y aparezca de una vez al recargar.
-    if ((isCapacitador || isSuperAdmin) && !campaignId && profile) {
+    // Una campaña de prueba no se hereda ni siquiera así: el superadmin la
+    // designa después (Gestionar → "Capacitador de prueba"). Ponérsela de casa
+    // a quien ya trabaja en campañas reales es justo la mezcla que bloquean los
+    // guardas de la base.
+    if ((isCapacitador || isSuperAdmin) && !campaignId && profile && !isTest) {
       await supabase
         .from('profiles')
         .update({ campaign_id: campaign.id })
@@ -224,7 +228,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
     // El creador queda como colaborador de la campaña para poder gestionarla como
     // propia aunque no sea su campaña casa (permite tener varias campañas propias).
     // No-fatal si la tabla aún no existe.
-    if ((isCapacitador || isSuperAdmin) && profile) {
+    if ((isCapacitador || isSuperAdmin) && profile && !isTest) {
       try {
         await addCollaborator(campaign.id, profile.id, profile.id)
       } catch {
@@ -416,10 +420,15 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                 {createdCampaign && (
                   <div className="mt-2">
                     <p className="text-[13px] text-text-muted mb-4">
-                      {i18n.t('admin.campaigns.wizard.invite_hint')}
+                      {isTest
+                        ? i18n.t('admin.campaigns.test_trainer.hint')
+                        : i18n.t('admin.campaigns.wizard.invite_hint')}
                     </p>
                     <div className="max-h-[46vh] overflow-y-auto -mx-1 px-1">
-                      <CollaboratorPicker campaignId={createdCampaign.id} />
+                      {/* Nace de prueba: aquí no se "invita al equipo", se
+                          designa quién es su capacitador de prueba — el único
+                          camino por el que esta campaña le llega a alguien. */}
+                      <CollaboratorPicker campaignId={createdCampaign.id} isTest={isTest} />
                     </div>
                     <div className="flex items-center justify-end mt-6 pt-5 border-t border-glass-border/8">
                       <Button variant="neon" size="sm" onClick={handleClose}>

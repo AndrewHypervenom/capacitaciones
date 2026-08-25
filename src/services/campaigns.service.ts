@@ -47,6 +47,90 @@ export function invalidateTestCampaigns(): void {
   testIdsCache = null
 }
 
+/**
+ * Desprende a los capacitadores de una campaña que pasa a ser de prueba.
+ *
+ * Una campaña de prueba NO se hereda: quien la tenía por su campaña casa, por
+ * una colaboración vieja o por el flag `all_campaigns` deja de verla, y el
+ * superadmin vuelve a poner a mano quién es el capacitador de prueba (ver
+ * `getTestTrainers`). Sin esto, marcar una campaña que ya existía la dejaba a
+ * la vista de todos los capacitadores reales, que es justo lo contrario de
+ * aislarla.
+ *
+ * Solo se toca al STAFF: los aprendices de la campaña se quedan donde están —
+ * son precisamente la gente de prueba.
+ *
+ * En la base hay un trigger que hace lo mismo (`trg_campaign_test_detach`), por
+ * si la marca se mueve por otra vía. Esto de aquí es lo que hace que funcione
+ * aunque el SQL todavía no se haya corrido, y es idempotente: correr los dos no
+ * cambia el resultado.
+ *
+ * Devuelve cuántos capacitadores perdieron el acceso, para poder contarlo.
+ */
+export async function detachTrainersFromTestCampaign(campaignId: string): Promise<number> {
+  let detached = 0
+  try {
+    // 1) Colaboraciones: en esa tabla solo hay staff.
+    const { data: collabs } = await supabase
+      .from('campaign_collaborators')
+      .select('user_id')
+      .eq('campaign_id', campaignId)
+    const collabIds = ((collabs ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)
+    if (collabIds.length > 0) {
+      const { error } = await supabase
+        .from('campaign_collaborators')
+        .delete()
+        .eq('campaign_id', campaignId)
+      if (!error) detached += collabIds.length
+    }
+
+    // 2) Campaña casa del staff. Queda en null: el panel ya sabe mostrarse
+    //    vacío con el aviso de "sin campañas asignadas" (ver AdminLayout).
+    const { data: homes } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('campaign_id', campaignId)
+      .in('role', ['capacitador', 'superadmin'])
+    const homeIds = ((homes ?? []) as Array<{ id: string }>).map((r) => r.id)
+    if (homeIds.length > 0) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ campaign_id: null })
+        .in('id', homeIds)
+      if (!error) detached += homeIds.filter((id) => !collabIds.includes(id)).length
+    }
+  } catch {
+    // No es fatal: la marca ya está puesta y el trigger de la base cubre el
+    // resto. Peor sería dejar la campaña a medio marcar.
+  }
+  return detached
+}
+
+/**
+ * Cuántos capacitadores perderían el acceso si la campaña se marcara como de
+ * prueba. Se usa para decirlo en el diálogo de confirmación, en vez de que el
+ * superadmin lo descubra después.
+ */
+export async function countTrainersToDetach(campaignId: string): Promise<number> {
+  try {
+    const ids = new Set<string>()
+    const { data: collabs } = await supabase
+      .from('campaign_collaborators')
+      .select('user_id')
+      .eq('campaign_id', campaignId)
+    for (const r of (collabs ?? []) as Array<{ user_id: string }>) ids.add(r.user_id)
+    const { data: homes } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('campaign_id', campaignId)
+      .in('role', ['capacitador', 'superadmin'])
+    for (const r of (homes ?? []) as Array<{ id: string }>) ids.add(r.id)
+    return ids.size
+  } catch {
+    return 0
+  }
+}
+
 /** Marca (o desmarca) una campaña como entorno de pruebas. Solo superadmin. */
 export async function setCampaignTest(campaignId: string, isTest: boolean): Promise<void> {
   const { error } = await supabase
@@ -156,7 +240,17 @@ export async function getAccessibleCampaigns(opts: {
     .in('id', ids)
     .order('created_at')
   if (error) throw error
-  return (data ?? []) as Campaign[]
+  const rows = (data ?? []) as Campaign[]
+
+  /* Un capacitador vive en un solo mundo. Si le quedó alguna campaña de prueba
+     colgando (una colaboración vieja, el flag all_campaigns, una campaña que se
+     marcó después) junto con campañas reales, aquí se le esconden las de
+     prueba: al de prueba se le designa a mano y solo tiene de esas, así que
+     para él esta línea no cambia nada. Es el mismo criterio de
+     `getAssignableCampaigns`, y el cinturón de seguridad del cliente frente a
+     `detachTrainersFromTestCampaign`. */
+  const real = rows.filter((c) => !isTestCampaign(c))
+  return real.length > 0 ? real : rows
 }
 
 /**
@@ -359,16 +453,51 @@ function isCorporateEmail(email: string | null): boolean {
   return !!email && email.trim().toLowerCase().endsWith(CORPORATE_EMAIL_DOMAIN)
 }
 
-/** Agrega un capacitador como colaborador de la campaña. */
+/**
+ * Agrega un capacitador como colaborador de la campaña.
+ *
+ * En una campaña de prueba esto ES la designación de "capacitador de prueba":
+ * la campaña no le llega a nadie por herencia, solo a quien el superadmin ponga
+ * aquí. Por eso antes se comprueba que la persona no tenga ya campañas del otro
+ * mundo — con un pie en cada lado, su trabajo de pruebas acabaría en los
+ * reportes de verdad. El error viaja como `TestScopeError`.
+ */
 export async function addCollaborator(
   campaignId: string,
   userId: string,
   addedBy: string | null,
 ): Promise<void> {
+  await assertSameTestScope([campaignId, ...(await getUserCampaignIds(userId))])
+
   const { error } = await supabase
     .from('campaign_collaborators')
     .upsert({ campaign_id: campaignId, user_id: userId, added_by: addedBy })
-  if (error) throw error
+  if (error) {
+    if (isTestScopeError(error.message)) throw new TestScopeError()
+    throw error
+  }
+}
+
+/** Campañas de una persona: su casa más donde colabora. No-fatal. */
+async function getUserCampaignIds(userId: string): Promise<string[]> {
+  const ids: string[] = []
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('campaign_id')
+      .eq('id', userId)
+      .maybeSingle()
+    const home = (profile as { campaign_id: string | null } | null)?.campaign_id ?? null
+    if (home) ids.push(home)
+    const { data: collabs } = await supabase
+      .from('campaign_collaborators')
+      .select('campaign_id')
+      .eq('user_id', userId)
+    for (const r of (collabs ?? []) as Array<{ campaign_id: string }>) ids.push(r.campaign_id)
+  } catch {
+    /* sin lectura no se puede juzgar: decide el trigger de la base */
+  }
+  return Array.from(new Set(ids))
 }
 
 /** Quita un colaborador de la campaña. */

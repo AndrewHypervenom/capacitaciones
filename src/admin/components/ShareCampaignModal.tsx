@@ -2,12 +2,20 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Users } from 'lucide-react'
+import { X, Users, UserCog } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CollaboratorPicker } from '@/admin/components/CollaboratorPicker'
 
 interface ShareCampaignModalProps {
   campaign: { id: string; name: string }
+  /**
+   * La campaña es un entorno de pruebas. Entonces esto no es "compartir": es
+   * DESIGNAR al capacitador de prueba, que es el único camino por el que una
+   * campaña de prueba llega a un capacitador (no se hereda de la campaña casa
+   * ni del flag all_campaigns). Cambian los textos y el color; la mecánica es
+   * la misma tabla de colaboradores.
+   */
+  isTest?: boolean
   onClose: () => void
 }
 
@@ -16,7 +24,7 @@ interface ShareCampaignModalProps {
  * CollaboratorPicker en un modal. Los colaboradores pueden ver y editar los
  * cursos/módulos de la campaña (RLS is_campaign_member).
  */
-export function ShareCampaignModal({ campaign, onClose }: ShareCampaignModalProps) {
+export function ShareCampaignModal({ campaign, isTest = false, onClose }: ShareCampaignModalProps) {
   const { t } = useTranslation()
   const [count, setCount] = useState<number | null>(null)
 
@@ -49,11 +57,19 @@ export function ShareCampaignModal({ campaign, onClose }: ShareCampaignModalProp
             <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
               <div className="min-w-0">
                 <h3 className="flex items-center gap-2 text-[16px] font-semibold text-text">
-                  <Users className="h-4 w-4 text-text-muted" />
-                  {t('admin.campaigns.share.title')}
+                  {isTest ? (
+                    <UserCog className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  ) : (
+                    <Users className="h-4 w-4 text-text-muted" />
+                  )}
+                  {isTest
+                    ? t('admin.campaigns.test_trainer.title')
+                    : t('admin.campaigns.share.title')}
                 </h3>
                 <p className="text-[12px] text-text-muted mt-0.5 truncate">
-                  {t('admin.campaigns.share.subtitle', { name: campaign.name })}
+                  {isTest
+                    ? t('admin.campaigns.test_trainer.subtitle', { name: campaign.name })
+                    : t('admin.campaigns.share.subtitle', { name: campaign.name })}
                 </p>
               </div>
               <button
@@ -67,13 +83,22 @@ export function ShareCampaignModal({ campaign, onClose }: ShareCampaignModalProp
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              <CollaboratorPicker campaignId={campaign.id} onCountChange={setCount} />
+              {isTest && (
+                <p className="mb-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
+                  {t('admin.campaigns.test_trainer.hint')}
+                </p>
+              )}
+              <CollaboratorPicker campaignId={campaign.id} isTest={isTest} onCountChange={setCount} />
             </div>
 
             {/* Footer */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-line">
               <span className="text-[12px] text-text-muted">
-                {count !== null ? t('admin.campaigns.share.count', { n: count }) : ' '}
+                {count === null
+                  ? ' '
+                  : isTest
+                    ? t('admin.campaigns.test_trainer.count', { count })
+                    : t('admin.campaigns.share.count', { n: count })}
               </span>
             </div>
           </div>

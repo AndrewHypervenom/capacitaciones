@@ -1720,7 +1720,28 @@
       "mark_test_title": "Marcar «{{name}}» como campanha de teste?",
       "mark_test_desc": "O conteúdo, a gente e o progresso dela deixam de aparecer para os capacitadores reais e não entram em KPIs, relatórios ou Excel. Os cursos dela só podem ser atribuídos a campanhas e usuários de teste. Nada é apagado e você pode tirar a marca quando quiser. Ao salvar, o painel entra no ambiente de teste e se atualiza.",
       "mark_test_confirm": "Marcar como teste",
-      "scope_reload": "O ambiente mudou: atualizando o painel para que tudo carregue certo…"
+      "scope_reload": "O ambiente mudou: atualizando o painel para que tudo carregue certo…",
+      "mark_test_detach_one": "Além disso, {{count}} instrutor que a vê hoje deixará de vê-la: depois você escolhe à mão quem é o instrutor de teste.",
+      "mark_test_detach_other": "Além disso, {{count}} instrutores que a veem hoje deixarão de vê-la: depois você escolhe à mão quem é o instrutor de teste.",
+      "detached_title_one": "{{count}} instrutor ficou fora da campanha de teste",
+      "detached_title_other": "{{count}} instrutores ficaram fora da campanha de teste",
+      "detached_desc": "Abra-a e use «Instrutor de teste» para designar quem entra.",
+      "test_trainer": {
+        "card_title": "Instrutor de teste",
+        "card_desc": "Escolha quem pode entrar nesta campanha de teste",
+        "title": "Instrutor de teste",
+        "subtitle": "Quem entra em «{{name}}»",
+        "hint": "Esta campanha não chega a nenhum instrutor sozinha: só entra quem você designar aqui. Use uma conta dedicada a testes — se a pessoa já tiver campanhas reais o sistema não permite, porque o trabalho de teste vazaria para os relatórios de verdade.",
+        "search_ph": "Buscar a conta de testes por nome ou e-mail...",
+        "assign": "Designar",
+        "assigned": "Designado",
+        "count_one": "{{count}} instrutor de teste designado",
+        "count_other": "{{count}} instrutores de teste designados",
+        "added": "{{name}} já pode entrar na campanha de teste",
+        "removed": "{{name}} não entra mais na campanha de teste",
+        "mixed_title": "Essa conta trabalha em campanhas reais",
+        "mixed_desc": "{{name}} já tem campanhas do mundo real, e ninguém pode estar nos dois: o progresso de teste acabaria nos KPIs e nas planilhas. Use uma conta dedicada a testes ou tire antes as campanhas reais em /admin/usuários."
+      }
     },
     "users": {
       "saved_all": "Alterações salvas",

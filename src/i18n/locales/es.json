@@ -1720,7 +1720,28 @@
       "mark_test_title": "¿Marcar «{{name}}» como campaña de prueba?",
       "mark_test_desc": "Su contenido, su gente y su progreso dejan de verse para los capacitadores reales y no entran en KPIs, reportes ni Excel. Sus cursos solo podrán asignarse a campañas y usuarios de prueba. No se borra nada y puedes quitar la marca cuando quieras. Al guardar, el panel entra al entorno de pruebas y se actualiza.",
       "mark_test_confirm": "Marcar como prueba",
-      "scope_reload": "Cambió el entorno: actualizando el panel para que todo cargue bien…"
+      "scope_reload": "Cambió el entorno: actualizando el panel para que todo cargue bien…",
+      "mark_test_detach_one": "Además, {{count}} capacitador que hoy la ve dejará de verla: después eliges a mano quién es su capacitador de prueba.",
+      "mark_test_detach_other": "Además, {{count}} capacitadores que hoy la ven dejarán de verla: después eliges a mano quién es su capacitador de prueba.",
+      "detached_title_one": "{{count}} capacitador quedó fuera de la campaña de prueba",
+      "detached_title_other": "{{count}} capacitadores quedaron fuera de la campaña de prueba",
+      "detached_desc": "Ábrela y usa «Capacitador de prueba» para designar quién entra.",
+      "test_trainer": {
+        "card_title": "Capacitador de prueba",
+        "card_desc": "Elige quién puede entrar a esta campaña de prueba",
+        "title": "Capacitador de prueba",
+        "subtitle": "Quién entra a «{{name}}»",
+        "hint": "Esta campaña no le llega a ningún capacitador por su cuenta: solo entra quien designes aquí. Elige una cuenta dedicada a pruebas — si la persona ya tiene campañas reales, el sistema no la deja, porque su trabajo de pruebas se colaría en los reportes de verdad.",
+        "search_ph": "Buscar la cuenta de pruebas por nombre o correo...",
+        "assign": "Designar",
+        "assigned": "Designado",
+        "count_one": "{{count}} capacitador de prueba designado",
+        "count_other": "{{count}} capacitadores de prueba designados",
+        "added": "{{name}} ya puede entrar a la campaña de prueba",
+        "removed": "{{name}} ya no entra a la campaña de prueba",
+        "mixed_title": "Esa cuenta trabaja en campañas reales",
+        "mixed_desc": "{{name}} ya tiene campañas del mundo real, y nadie puede estar en los dos: su progreso de pruebas terminaría en los KPIs y en los Excel. Usa una cuenta dedicada a pruebas, o quítale antes las campañas reales en /admin/usuarios."
+      }
     },
     "users": {
       "saved_all": "Cambios guardados",

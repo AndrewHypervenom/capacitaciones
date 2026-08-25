@@ -15,6 +15,7 @@ import {
   Loader2,
   Users,
   FlaskConical,
+  UserCog,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
@@ -37,6 +38,8 @@ import {
   getAccessibleCampaigns,
   invalidateTestCampaigns,
   isTestCampaign,
+  countTrainersToDetach,
+  detachTrainersFromTestCampaign,
 } from '@/services/campaigns.service'
 import { TestBadge } from '@/admin/components/TestModeSwitch'
 import { useTestMode } from '@/stores/testModeStore'
@@ -132,9 +135,15 @@ export default function CampaignList() {
   const handleToggleTest = async (c: CampaignWithModules) => {
     const turningOn = !isTestCampaign(c)
     if (turningOn) {
+      // Cuántos capacitadores se quedan sin la campaña al marcarla. Se dice
+      // ANTES: al guardar se les quita de verdad, y enterarse después es lo
+      // que parece un error.
+      const losing = await countTrainersToDetach(c.id)
       const ok = await confirm({
         title: t('admin.campaigns.mark_test_title', { name: c.name }),
-        description: t('admin.campaigns.mark_test_desc'),
+        description:
+          t('admin.campaigns.mark_test_desc') +
+          (losing > 0 ? ' ' + t('admin.campaigns.mark_test_detach', { count: losing }) : ''),
         // Sin esto el botón sale en rojo y diciendo "Eliminar", que es lo que
         // trae el diálogo por defecto. Aquí no se borra nada y se puede
         // deshacer quitando la marca: el botón tiene que decir lo que hace.
@@ -220,6 +229,19 @@ export default function CampaignList() {
           .eq('id', c.id)
         if (error) throw error
       }
+      // Una campaña de prueba no se hereda: los capacitadores que la tenían
+      // (casa, colaboración vieja, all_campaigns) la pierden aquí, y el
+      // superadmin designa después quién es su capacitador de prueba. La base
+      // hace lo mismo con un trigger; esto lo cubre aunque el SQL no se haya
+      // corrido.
+      let detached = 0
+      for (const c of dirtyCampaigns) {
+        const before = savedCampaigns.find((x) => x.id === c.id)
+        if (before && !isTestCampaign(before) && isTestCampaign(c)) {
+          detached += await detachTrainersFromTestCampaign(c.id)
+        }
+      }
+
       // La lista de campañas de prueba está cacheada: acaba de cambiar.
       invalidateTestCampaigns()
       setSavedCampaigns(campaigns)
@@ -231,6 +253,12 @@ export default function CampaignList() {
       // Guardado ya no hay nada que perder, así que se recarga entero.
       if (isSuperAdmin && marksChanged) {
         if (nowHasTest && !testModeOn) setTestMode(true)
+        if (detached > 0) {
+          toast.success(
+            t('admin.campaigns.detached_title', { count: detached }),
+            t('admin.campaigns.detached_desc'),
+          )
+        }
         toast.success(t('admin.campaigns.scope_reload'))
         setTimeout(() => window.location.reload(), 900)
         return true
@@ -572,23 +600,53 @@ export default function CampaignList() {
                             </div>
                           </Link>
 
-                          <button
-                            onClick={() => setSharing(c)}
-                            className={cn(
-                              'flex items-center gap-3 p-4 rounded-xl transition-all duration-200 text-left w-full',
-                              'glass hover:border-neon-green/25 hover:bg-glass/6',
-                            )}
-                          >
-                            <div className="h-9 w-9 rounded-lg bg-neon-green/10 flex items-center justify-center shrink-0 ring-1 ring-neon-green/15">
-                              <Users className="h-4 w-4 text-neon-green" />
-                            </div>
-                            <div>
-                              <div className="text-[14px] font-medium text-text">{t('admin.campaigns.share.card_title')}</div>
-                              <div className="text-[12px] text-text-muted">
-                                {t('admin.campaigns.share.card_desc')}
+                          {/* En una campaña de prueba esto NO es "compartir": la
+                              campaña no le llega a ningún capacitador por
+                              herencia, y aquí el superadmin designa a mano cuál
+                              es su capacitador de prueba. Por eso cambia de
+                              nombre, de color y de dueño (solo superadmin): al
+                              capacitador de prueba no le toca repartir accesos. */}
+                          {isTestCampaign(c) ? (
+                            isSuperAdmin && (
+                              <button
+                                onClick={() => setSharing(c)}
+                                className={cn(
+                                  'flex items-center gap-3 p-4 rounded-xl transition-all duration-200 text-left w-full',
+                                  'glass hover:border-amber-500/30 hover:bg-glass/6',
+                                )}
+                              >
+                                <div className="h-9 w-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0 ring-1 ring-amber-500/20">
+                                  <UserCog className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                </div>
+                                <div>
+                                  <div className="text-[14px] font-medium text-text">
+                                    {t('admin.campaigns.test_trainer.card_title')}
+                                  </div>
+                                  <div className="text-[12px] text-text-muted">
+                                    {t('admin.campaigns.test_trainer.card_desc')}
+                                  </div>
+                                </div>
+                              </button>
+                            )
+                          ) : (
+                            <button
+                              onClick={() => setSharing(c)}
+                              className={cn(
+                                'flex items-center gap-3 p-4 rounded-xl transition-all duration-200 text-left w-full',
+                                'glass hover:border-neon-green/25 hover:bg-glass/6',
+                              )}
+                            >
+                              <div className="h-9 w-9 rounded-lg bg-neon-green/10 flex items-center justify-center shrink-0 ring-1 ring-neon-green/15">
+                                <Users className="h-4 w-4 text-neon-green" />
                               </div>
-                            </div>
-                          </button>
+                              <div>
+                                <div className="text-[14px] font-medium text-text">{t('admin.campaigns.share.card_title')}</div>
+                                <div className="text-[12px] text-text-muted">
+                                  {t('admin.campaigns.share.card_desc')}
+                                </div>
+                              </div>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </motion.div>
@@ -628,6 +686,7 @@ export default function CampaignList() {
       {sharing && (
         <ShareCampaignModal
           campaign={{ id: sharing.id, name: sharing.name }}
+          isTest={isTestCampaign(sharing)}
           onClose={() => setSharing(null)}
         />
       )}

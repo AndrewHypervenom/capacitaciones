@@ -10,10 +10,13 @@ import {
   searchCampaignCandidates,
   addCollaborator,
   removeCollaborator,
+  isTestScopeError,
 } from '@/services/campaigns.service'
 
 interface CollaboratorPickerProps {
   campaignId: string
+  /** La campaña es de prueba: aquí se designa a su capacitador de prueba. */
+  isTest?: boolean
   /** Notifica el número de colaboradores tras cada cambio. */
   onCountChange?: (n: number) => void
 }
@@ -23,7 +26,7 @@ interface CollaboratorPickerProps {
  * campaña, en vivo. Se reutiliza en el modal "Compartir campaña" y en el paso
  * final del asistente de creación de campaña.
  */
-export function CollaboratorPicker({ campaignId, onCountChange }: CollaboratorPickerProps) {
+export function CollaboratorPicker({ campaignId, isTest = false, onCountChange }: CollaboratorPickerProps) {
   const { t } = useTranslation()
   const { user, isSuperAdmin } = useAuth()
   const [search, setSearch] = useState('')
@@ -54,12 +57,21 @@ export function CollaboratorPicker({ campaignId, onCountChange }: CollaboratorPi
   const toggle = async (c: CollaboratorProfile) => {
     setBusyId(c.id)
     try {
+      const name = c.display_name || c.email || ''
       if (c.is_collaborator) {
         await removeCollaborator(campaignId, c.id)
-        toast.success(t('admin.campaigns.share.removed', { name: c.display_name || '' }))
+        toast.success(
+          isTest
+            ? t('admin.campaigns.test_trainer.removed', { name })
+            : t('admin.campaigns.share.removed', { name }),
+        )
       } else {
         await addCollaborator(campaignId, c.id, user?.id ?? null)
-        toast.success(t('admin.campaigns.share.added', { name: c.display_name || '' }))
+        toast.success(
+          isTest
+            ? t('admin.campaigns.test_trainer.added', { name })
+            : t('admin.campaigns.share.added', { name }),
+        )
       }
       setCandidates((prev) => {
         const next = prev.map((x) =>
@@ -68,8 +80,17 @@ export function CollaboratorPicker({ campaignId, onCountChange }: CollaboratorPi
         onCountChange?.(next.filter((x) => x.is_collaborator).length)
         return next
       })
-    } catch {
-      toast.error(t('admin.campaigns.share.save_error'))
+    } catch (err) {
+      // Un pie en cada mundo no: quien ya tiene campañas reales no puede ser
+      // capacitador de prueba (y al revés). Se dice qué hacer, no "error".
+      if (isTestScopeError(err)) {
+        toast.error(
+          t('admin.campaigns.test_trainer.mixed_title'),
+          t('admin.campaigns.test_trainer.mixed_desc', { name: c.display_name || c.email || '' }),
+        )
+      } else {
+        toast.error(t('admin.campaigns.share.save_error'))
+      }
     } finally {
       setBusyId(null)
     }
@@ -82,7 +103,11 @@ export function CollaboratorPicker({ campaignId, onCountChange }: CollaboratorPi
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('admin.campaigns.share.search_ph')}
+          placeholder={
+            isTest
+              ? t('admin.campaigns.test_trainer.search_ph')
+              : t('admin.campaigns.share.search_ph')
+          }
           className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2.5 text-[14px] text-text outline-none focus:border-primary"
         />
       </div>
@@ -123,7 +148,9 @@ export function CollaboratorPicker({ campaignId, onCountChange }: CollaboratorPi
                     className={cn(
                       'shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors border disabled:opacity-50',
                       c.is_collaborator
-                        ? 'border-neon-green/30 bg-neon-green/10 text-neon-green'
+                        ? isTest
+                          ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                          : 'border-neon-green/30 bg-neon-green/10 text-neon-green'
                         : 'border-line text-text-muted hover:text-text hover:border-glass-border/30',
                     )}
                   >
@@ -135,8 +162,12 @@ export function CollaboratorPicker({ campaignId, onCountChange }: CollaboratorPi
                       <UserPlus className="h-3.5 w-3.5" />
                     )}
                     {c.is_collaborator
-                      ? t('admin.campaigns.share.collaborating')
-                      : t('admin.campaigns.share.add')}
+                      ? isTest
+                        ? t('admin.campaigns.test_trainer.assigned')
+                        : t('admin.campaigns.share.collaborating')
+                      : isTest
+                        ? t('admin.campaigns.test_trainer.assign')
+                        : t('admin.campaigns.share.add')}
                   </button>
                 </div>
               </GlassCard>
