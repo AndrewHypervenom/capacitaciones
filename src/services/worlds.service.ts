@@ -494,11 +494,21 @@ export async function ensureCourseWorld(course: CourseLike): Promise<WorldRow> {
     })
     .select('*')
     .single()
-  // Carrera: otro proceso lo creó en paralelo → lo leemos.
+  // 23505 = el índice único worlds_course_id_uidx dice que ese curso YA tiene
+  // mundo. Dos casos:
+  //  a) carrera: otro proceso lo creó en paralelo → lo leemos y seguimos;
+  //  b) el mundo está en la papelera (deleted_at) y la RLS no lo deja ver, así
+  //     que arriba "no existe" pero el índice sí lo cuenta. Ahí no se puede
+  //     hacer nada desde aquí: hay que restaurarlo o eliminarlo del todo.
   if (error?.code === '23505') {
     const { data: race } = await supabase
-      .from('worlds').select('*').eq('course_id', course.id).single()
-    return race as WorldRow
+      .from('worlds').select('*').eq('course_id', course.id).maybeSingle()
+    if (race) return race as WorldRow
+    throw new Error(
+      i18n.t('admin.worlds.error_world_in_trash', {
+        defaultValue: 'Este curso ya tiene un mundo en la papelera. Restáuralo o elimínalo definitivamente antes de crear uno nuevo.',
+      }),
+    )
   }
   if (error) throw error
   return data as WorldRow

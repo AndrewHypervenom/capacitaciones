@@ -3998,7 +3998,8 @@
       "from_modules_picked_one": "{{count}} module selected: one region will be created for it.",
       "from_modules_picked_other": "{{count}} modules selected: one region will be created for each.",
       "wiz_create_generate_one": "Create and generate {{count}} region",
-      "wiz_create_generate_other": "Create and generate {{count}} regions"
+      "wiz_create_generate_other": "Create and generate {{count}} regions",
+      "error_world_in_trash": "This course already has a world in the trash. Restore it or delete it permanently before creating a new one."
     },
     "modules": {
       "new_module": "New module",

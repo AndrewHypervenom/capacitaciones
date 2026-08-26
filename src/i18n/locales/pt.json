@@ -3998,7 +3998,8 @@
       "from_modules_picked_one": "{{count}} módulo escolhido: será criada uma região para ele.",
       "from_modules_picked_other": "{{count}} módulos escolhidos: será criada uma região para cada um.",
       "wiz_create_generate_one": "Criar e gerar {{count}} região",
-      "wiz_create_generate_other": "Criar e gerar {{count}} regiões"
+      "wiz_create_generate_other": "Criar e gerar {{count}} regiões",
+      "error_world_in_trash": "Este curso já tem um mundo na lixeira. Restaure-o ou exclua-o definitivamente antes de criar um novo."
     },
     "modules": {
       "new_module": "Novo módulo",

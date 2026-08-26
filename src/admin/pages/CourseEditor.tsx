@@ -1456,8 +1456,10 @@ export default function CourseEditor() {
         if (created) navigate(`/admin/worlds/${created.id}`)
         else toast.error(t('admin.courses.error_save'))
       }
-    } catch {
-      toast.error(t('admin.courses.error_save'))
+    } catch (e) {
+      // El motivo importa (p. ej. "ya hay un mundo de este curso en la papelera"):
+      // sin él el aviso genérico deja al capacitador sin salida.
+      toast.error(t('admin.courses.error_save'), (e as Error)?.message)
     } finally {
       setOpeningWorld(false)
     }
