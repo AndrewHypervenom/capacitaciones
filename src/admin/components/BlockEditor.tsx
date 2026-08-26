@@ -34,6 +34,8 @@ import { RichTextArea } from '@/components/ui/RichTextArea';
 import { cn } from '@/lib/cn';
 import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import i18n from '@/i18n';
+import { useFileDrop } from '@/hooks/useFileDrop';
+import { toast } from '@/stores/toastStore';
 
 // Helper imperativo para confirmar borrados dentro de los sub-editores de bloques.
 const confirmRemove = (titleKey: string, descKey: string) =>
@@ -263,7 +265,6 @@ function PdfEditor({
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
   const [checking, setChecking] = useState(false);
   // Archivo elegido que resultó estar ya en el curso: espera a que el
   // capacitador decida entre reusarlo y subirlo igual.
@@ -314,6 +315,14 @@ function PdfEditor({
     }
     await doUpload(file, hash);
   };
+
+  // Arrastrar y soltar compartido: sin parpadeo y avisando si no es un PDF.
+  const { dragging, dropProps } = useFileDrop({
+    accept: 'application/pdf,.pdf',
+    disabled: uploading || checking,
+    onFiles: (files) => handleFile(files[0]),
+    onReject: (name) => toast.error(i18n.t('common.drop_invalid', { name })),
+  });
 
   const handleReuse = () => {
     if (!dup) return;
@@ -412,9 +421,7 @@ function PdfEditor({
               dragging ? 'border-brand-green bg-brand-green/5' : 'border-line hover:border-text-muted hover:bg-subtle/50',
               (uploading || checking) && 'pointer-events-none opacity-60',
             )}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            {...dropProps}
             onClick={() => inputRef.current?.click()}
           >
             <Upload className="mx-auto mb-2 h-5 w-5 text-text-muted" />

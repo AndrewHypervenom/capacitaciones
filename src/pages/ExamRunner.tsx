@@ -606,7 +606,9 @@ export default function ExamRunner() {
             initial={reduce ? undefined : { opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease }}
-            className="w-full max-w-lg rounded-t-3xl border border-line bg-surface p-6 shadow-xl sm:rounded-3xl"
+            // Con muchas preguntas la rejilla de navegación crecía sin freno y
+            // el botón de enviar quedaba debajo del borde de la pantalla.
+            className="max-h-[86vh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-3xl border border-line bg-surface p-6 shadow-xl sm:rounded-3xl"
             role="dialog"
             aria-modal="true"
           >

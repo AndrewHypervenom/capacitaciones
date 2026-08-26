@@ -1,9 +1,13 @@
 import { type ReactNode, type ElementType } from 'react';
 import { motion } from 'framer-motion';
-import { Camera, Loader2, Plus } from 'lucide-react';
+import { Camera, ImagePlus, Loader2, Plus } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useFileDrop } from '@/hooks/useFileDrop';
+import { toast } from '@/stores/toastStore';
+import i18n from '@/i18n';
 import { cn } from '@/lib/cn';
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -58,7 +62,11 @@ export interface ProfileHeroProps {
   canEditPhoto?: boolean;
   uploadingPhoto?: boolean;
   onPickPhoto?: () => void;
+  /** Recibe la foto soltada sobre el círculo. Mismo camino que el selector. */
+  onDropPhoto?: (file: File) => void;
   photoLabel?: string;
+  /** Saludo y frase de la visita, para el globo de la foto (ver lib/greeting). */
+  dailyNote?: { greeting: string; note: string } | null;
   /** Acciones a la derecha del nombre (editar perfil, etc.). */
   actions?: ReactNode;
 }
@@ -76,11 +84,23 @@ export function ProfileHero({
   canEditPhoto = false,
   uploadingPhoto = false,
   onPickPhoto,
+  onDropPhoto,
   photoLabel,
+  dailyNote,
   actions,
 }: ProfileHeroProps) {
   const reduce = useReducedMotion();
   const tone = toneMap[roleTone];
+
+  // La foto también se cambia soltando una imagen encima del círculo: es lo que
+  // intenta cualquiera que ya tiene la foto abierta en el escritorio, y hasta
+  // ahora el único camino era acertarle al botón de la cámara.
+  const { dragging, dropProps } = useFileDrop({
+    accept: 'image/*',
+    disabled: !canEditPhoto || uploadingPhoto || !onDropPhoto,
+    onFiles: (files) => onDropPhoto?.(files[0]),
+    onReject: (name) => toast.error(i18n.t('common.drop_invalid', { name })),
+  });
   // En la vista propia los datos vacíos NO se esconden: se muestran como una
   // invitación a completarlos. Escondiéndolos, la única cosa editable a la
   // vista era la foto y nadie encontraba dónde llenar cargo, país o teléfono.
@@ -112,8 +132,45 @@ export function ProfileHero({
 
       <div className="relative p-6 sm:p-8">
         <div className="flex flex-col items-center gap-6 text-center sm:flex-row sm:items-start sm:text-left">
-          {/* Foto con aro vivo */}
-          <div className="relative shrink-0">
+          {/* Foto con aro vivo (y zona de soltar, si se puede editar).
+              El globo lo explica con palabras: el aro punteado insinúa que ahí
+              cae algo, pero nadie apuesta su foto a una insinuación. */}
+          <Tooltip
+            variant="panel"
+            maxWidth={260}
+            anchor="element"
+            disabled={!canEditPhoto && !dailyNote}
+            label={
+              <span className="block space-y-1.5 text-left">
+                {dailyNote && (
+                  <span className="block">
+                    <span className="block text-[12.5px] font-semibold">
+                      {dailyNote.greeting}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] italic leading-snug opacity-80">
+                      {dailyNote.note}
+                    </span>
+                  </span>
+                )}
+                {canEditPhoto && (
+                  <span
+                    className={cn(
+                      'block text-[11.5px] leading-snug opacity-70',
+                      dailyNote && 'border-t border-current/15 pt-1.5',
+                    )}
+                  >
+                    {i18n.t('common.drop_photo_tip')}
+                  </span>
+                )}
+              </span>
+            }
+          >
+          <motion.div
+            className="group relative shrink-0"
+            {...(canEditPhoto ? dropProps : {})}
+            animate={reduce ? undefined : { scale: dragging ? 1.04 : 1 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          >
             {!reduce && (
               <motion.span
                 aria-hidden
@@ -126,9 +183,59 @@ export function ProfileHero({
                 transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
               />
             )}
+
+            {/* Aro punteado que camina: el mismo lenguaje que la zona de subir
+                documentos. En reposo no está; asoma al pasar por encima y se
+                enciende cuando la imagen ya viene en el aire. */}
+            {canEditPhoto && (
+              <svg
+                aria-hidden
+                viewBox="0 0 100 100"
+                className={cn(
+                  'pointer-events-none absolute -inset-2 h-[calc(100%+16px)] w-[calc(100%+16px)] transition-opacity duration-300',
+                  dragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-70',
+                )}
+              >
+                <motion.circle
+                  cx="50" cy="50" r="48"
+                  fill="none"
+                  strokeWidth="1.5"
+                  strokeDasharray="6 5"
+                  className={dragging ? 'stroke-brand-violet' : 'stroke-brand-violet/60'}
+                  animate={reduce ? { strokeDashoffset: 0 } : { strokeDashoffset: [0, -11] }}
+                  transition={reduce
+                    ? { duration: 0.2 }
+                    : { duration: 0.9, repeat: Infinity, ease: 'linear' }}
+                />
+              </svg>
+            )}
+
             <div className="relative rounded-full bg-surface p-1">
               <Avatar src={avatarUrl} name={name} size={104} />
+
+              {/* "Suéltala aquí": tapa la foto solo mientras el archivo está
+                  encima, para que no quede duda de dónde va a caer. */}
+              {dragging && (
+                <motion.span
+                  initial={reduce ? false : { opacity: 0, scale: 0.94 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute inset-1 flex flex-col items-center justify-center gap-1 rounded-full bg-brand-violet/70 text-center text-on-primary backdrop-blur-[2px]"
+                >
+                  <motion.span
+                    animate={reduce ? undefined : { y: [-2, 1.5, -2] }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+                    className="flex"
+                  >
+                    <ImagePlus className="h-5 w-5" />
+                  </motion.span>
+                  <span className="px-2 text-[10px] font-semibold leading-tight">
+                    {i18n.t('common.drop_photo')}
+                  </span>
+                </motion.span>
+              )}
             </div>
+
             {canEditPhoto && (
               <motion.button
                 type="button"
@@ -137,12 +244,14 @@ export function ProfileHero({
                 aria-label={photoLabel}
                 whileHover={reduce ? undefined : { scale: 1.08 }}
                 whileTap={reduce ? undefined : { scale: 0.94 }}
+                animate={reduce ? undefined : { opacity: dragging ? 0 : 1 }}
                 className="absolute -bottom-0.5 -right-0.5 flex h-10 w-10 items-center justify-center rounded-full border-2 border-surface bg-primary text-on-primary shadow-lg disabled:opacity-60"
               >
                 {uploadingPhoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
               </motion.button>
             )}
-          </div>
+          </motion.div>
+          </Tooltip>
 
           {/* Identidad */}
           <div className="min-w-0 flex-1">

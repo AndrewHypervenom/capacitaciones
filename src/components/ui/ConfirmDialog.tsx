@@ -207,7 +207,9 @@ export function ConfirmDialog({
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className="relative w-full max-w-md"
           >
-            <div className="relative overflow-hidden rounded-2xl border border-line bg-surface shadow-glass-lg p-5 sm:p-6">
+            {/* Techo de altura: una descripción larga (una lista de lo que se
+                va a borrar, por ejemplo) dejaba los botones fuera de pantalla. */}
+            <div className="relative max-h-[86vh] overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface shadow-glass-lg p-5 sm:p-6">
               <div className="flex items-start gap-4">
                 <div
                   className={`h-11 w-11 rounded-xl ${accent.bg} ring-1 ${accent.ring} flex items-center justify-center shrink-0`}

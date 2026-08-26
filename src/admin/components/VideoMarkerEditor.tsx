@@ -28,6 +28,8 @@ import { MIN_VIDEO_QUIZ_SECONDS, clampQuizTime } from '@/types/blocks'
 import { moduleAiAssist } from '@/services/ai.service'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import { useFileDrop } from '@/hooks/useFileDrop'
+import { toast } from '@/stores/toastStore'
 import { YouTubePlayer } from '@/components/modules/YouTubePlayer'
 import { VimeoPlayer } from '@/components/modules/VimeoPlayer'
 import { extractYouTubeId, type PlayerLike } from '@/lib/youtube'
@@ -650,6 +652,13 @@ export function VideoMarkerEditor({
     await doUpload(file, hash)
   }
 
+  const { dragging, dropProps } = useFileDrop({
+    accept: 'video/mp4,video/webm,video/ogg',
+    disabled: uploading || checking,
+    onFiles: (files) => void handleFileSelect(files[0]),
+    onReject: (name) => toast.error(t('common.drop_invalid', { name })),
+  })
+
   const handleUseYouTube = () => {
     const ytId = extractYouTubeId(ytInput)
     const vmId = ytId ? null : extractVimeoId(ytInput)
@@ -781,14 +790,16 @@ export function VideoMarkerEditor({
               />
             ) : videoMode === 'video' ? (
               <div
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const file = e.dataTransfer.files[0]
-                  if (file) handleFileSelect(file)
-                }}
+                {...dropProps}
                 onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-3 h-32 rounded-2xl border-2 border-dashed border-glass-border/15 bg-glass/3 hover:border-blue-400/30 hover:bg-blue-400/4 cursor-pointer transition-colors"
+                className={cn(
+                  'flex flex-col items-center justify-center gap-3 h-32 rounded-2xl border-2 border-dashed cursor-pointer transition-colors',
+                  // Antes soltar encima no daba ninguna señal: no se sabía si la
+                  // zona había recibido el archivo.
+                  dragging
+                    ? 'border-blue-400/60 bg-blue-400/10'
+                    : 'border-glass-border/15 bg-glass/3 hover:border-blue-400/30 hover:bg-blue-400/4',
+                )}
               >
                 {uploading || checking ? (
                   <div className="flex items-center gap-2 text-text-muted text-[13px]">

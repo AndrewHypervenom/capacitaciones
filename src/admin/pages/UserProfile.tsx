@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { greetingFor, visitNote } from '@/lib/greeting'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
@@ -80,7 +81,7 @@ export default function UserProfile() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
-  const { isSuperAdmin } = useAuth()
+  const { isSuperAdmin, displayName } = useAuth()
   const reduce = useReducedMotion()
 
   const lang = (i18n.resolvedLanguage ?? 'es') as Lang
@@ -145,10 +146,9 @@ export default function UserProfile() {
     }
   }
 
-  const handleAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file || !profile) return
+  // Un solo camino para la foto, venga del selector o de soltarla encima.
+  const uploadPhoto = async (file: File) => {
+    if (!profile) return
     if (!file.type.startsWith('image/')) {
       toast.error(t('profile.avatar_invalid', 'Elige un archivo de imagen'))
       return
@@ -339,6 +339,10 @@ export default function UserProfile() {
         canEditPhoto={isSuperAdmin}
         uploadingPhoto={uploading}
         onPickPhoto={() => fileRef.current?.click()}
+        onDropPhoto={uploadPhoto}
+        // El saludo del globo es para QUIEN MIRA, no para la ficha que está en
+        // pantalla: por eso aquí va el nombre de quien consulta.
+        dailyNote={{ greeting: greetingFor(displayName), note: visitNote() }}
         photoLabel={t('profile.change_photo', 'Cambiar foto')}
         stats={heroStats}
         meta={[
@@ -359,7 +363,17 @@ export default function UserProfile() {
         ) : undefined}
       />
       {isSuperAdmin && (
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (f) void uploadPhoto(f)
+          }}
+        />
       )}
 
       <div className="my-6">

@@ -6,6 +6,8 @@ import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.servi
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { extractYouTubeId } from '@/lib/youtube'
 import { extractVimeoId, vimeoEmbedUrl } from '@/lib/vimeo'
+import { useFileDrop } from '@/hooks/useFileDrop'
+import { toast } from '@/stores/toastStore'
 
 type MediaType = 'image' | 'youtube' | 'vimeo' | 'video'
 // La pestaña 'youtube' acepta URLs de YouTube y de Vimeo (autodetección).
@@ -63,7 +65,14 @@ function DropZone({
   onFile: (f: File) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [dragging, setDragging] = useState(false)
+  // Un solo comportamiento de arrastre en todo el sitio (sin parpadeo al pasar
+  // por encima de los hijos, y avisa si el archivo no es del tipo pedido).
+  const { dragging, dropProps } = useFileDrop({
+    accept,
+    disabled: disabled || uploading,
+    onFiles: (files) => onFile(files[0]),
+    onReject: (name) => toast.error(i18n.t('common.drop_invalid', { name })),
+  })
 
   if (disabled) {
     return (
@@ -81,14 +90,7 @@ function DropZone({
             ? 'border-brand-green bg-brand-green/5 scale-[1.01]'
             : 'border-line hover:border-text-muted hover:bg-subtle/50'
         } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDragging(false)
-          const f = e.dataTransfer.files[0]
-          if (f) onFile(f)
-        }}
+        {...dropProps}
         onClick={() => inputRef.current?.click()}
       >
         <div className={`mx-auto mb-3 h-10 w-10 rounded-xl flex items-center justify-center transition-colors ${
@@ -106,7 +108,7 @@ function DropZone({
           type="file"
           accept={accept}
           className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f) }}
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f) }}
         />
       </div>
       {uploading && (

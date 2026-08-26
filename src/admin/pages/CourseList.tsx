@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -27,13 +27,15 @@ import {
   type ExtractedDocument, type ExtractStage,
 } from '@/lib/documentExtract'
 import { invalidateModulesCache } from '@/hooks/useModules'
-import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
 import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { cn } from '@/lib/cn'
 import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { FileDropZone } from '@/components/ui/FileDropZone'
+import { Modal } from '@/components/ui/Modal'
+import { OptionToggleRow } from '@/components/ui/OptionToggleRow'
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover'
 import { stripMarkdown } from '@/components/ui/RichText'
 import { RichTextArea } from '@/components/ui/RichTextArea'
@@ -118,7 +120,6 @@ export default function CourseList() {
   const [creating, setCreating] = useState(false)
 
   // Asistente "Crear curso con IA" (documento → 1 módulo → mundo, todo en borrador)
-  const aiFileRef = useRef<HTMLInputElement>(null)
   const aiLastFileRef = useRef<File | null>(null)
   const [showAi, setShowAi] = useState(false)
   const [aiTitle, setAiTitle] = useState('')
@@ -154,10 +155,7 @@ export default function CourseList() {
     }
   }
 
-  const handleAiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (aiFileRef.current) aiFileRef.current.value = ''
-    if (!file) return
+  const handleAiFile = async (file: File) => {
     aiLastFileRef.current = file
     await extractAiFile(file, aiManualMode)
   }
@@ -419,8 +417,6 @@ export default function CourseList() {
     }
   }
 
-  const createBackdrop = useBackdropDismiss(() => setShowCreate(false), !creating)
-  const aiBackdrop = useBackdropDismiss(() => setShowAi(false), !aiExtracting)
 
   return (
     <div className="p-4 sm:p-8">
@@ -815,47 +811,14 @@ export default function CourseList() {
 
       {/* Modal de creación */}
       {showCreate && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
-          {...createBackdrop}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-bg border border-line p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[17px] font-semibold text-text">{t('admin.courses.new_course')}</h2>
-              <button
-                onClick={() => setShowCreate(false)}
-                className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
-                aria-label={t('admin.nav.close_menu')}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <label className="block text-[12px] font-medium text-text-muted mb-1.5">
-              {t('admin.courses.field_title')}
-            </label>
-            <input
-              autoFocus
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              placeholder={t('admin.courses.field_title_ph')}
-              className="w-full mb-4 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none focus:border-primary"
-            />
-            <label className="block text-[12px] font-medium text-text-muted mb-1.5">
-              {t('admin.courses.field_description')}
-            </label>
-            <div className="mb-5">
-              <RichTextArea
-                value={newDescription}
-                onChange={setNewDescription}
-                rows={3}
-                placeholder={t('admin.courses.field_description_ph')}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
+        <Modal
+          onClose={() => setShowCreate(false)}
+          title={t('admin.courses.new_course')}
+          icon={<GraduationCap className="h-4 w-4" />}
+          accent="green"
+          dismissible={!creating}
+          footer={
+            <>
               <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)} disabled={creating}>
                 {t('admin.courses.cancel')}
               </Button>
@@ -867,136 +830,53 @@ export default function CourseList() {
               >
                 {creating ? t('admin.courses.creating') : t('admin.courses.create_and_edit')}
               </Button>
+            </>
+          }
+        >
+          <div className="space-y-3.5">
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
+                {t('admin.courses.field_title')}
+              </label>
+              <input
+                autoFocus
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                placeholder={t('admin.courses.field_title_ph')}
+                className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
+                {t('admin.courses.field_description')}
+              </label>
+              <RichTextArea
+                value={newDescription}
+                onChange={setNewDescription}
+                rows={3}
+                placeholder={t('admin.courses.field_description_ph')}
+              />
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* Asistente: Crear curso con IA desde un documento */}
+      {/* Asistente: Crear curso con IA desde un documento.
+          Cabe en una pantalla de portátil: el aviso de la IA vive en el pie
+          (siempre a la vista, junto al botón que publica el encargo) y la nota de
+          "sigue en segundo plano" ya la da el toast al generar. */}
       {showAi && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
-          {...aiBackdrop}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-bg border border-line p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-[17px] font-semibold text-text flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-brand-violet" />
-                {t('admin.courses.ai_create')}
-              </h2>
-              <button
-                onClick={() => setShowAi(false)}
-                className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
-                aria-label={t('admin.nav.close_menu')}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-[12px] text-text-muted mb-4">{t('admin.courses.ai_create_hint')}</p>
-
-            <AiCreditsNotice className="mb-4" />
-            <AiQuotaNotice className="mb-4" />
-            <AiReviewNotice className="mb-4" />
-
-            {/* Título */}
-            <label className="block text-[12px] font-medium text-text-muted mb-1.5">
-              {t('admin.courses.field_title')}
-            </label>
-            <input
-              value={aiTitle}
-              onChange={(e) => setAiTitle(e.target.value)}
-              placeholder={t('admin.courses.field_title_ph')}
-              className="w-full mb-4 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none focus:border-primary disabled:opacity-60"
-            />
-
-            {/* Documento */}
-            <label className="block text-[12px] font-medium text-text-muted mb-1.5">
-              {t('admin.courses.ai_document')}
-            </label>
-            {aiExtracting ? (
-              <div className="rounded-xl bg-brand-violet/6 border border-brand-violet/15 px-3.5 py-3 mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="relative h-8 w-8 shrink-0 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-brand-violet/70" />
-                    <FileText className="absolute h-3.5 w-3.5 text-brand-violet" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] text-text font-medium truncate">{aiReadingName}</div>
-                    <div className="text-[11px] text-text-muted">{t(`admin.import.stage_${aiProgress.stage}`)}</div>
-                  </div>
-                  <span className="text-[12px] font-semibold text-brand-violet tabular-nums shrink-0">
-                    {Math.round(aiProgress.ratio * 100)}%
-                  </span>
-                </div>
-                <div className="mt-2.5 h-1.5 w-full rounded-full bg-glass/10 overflow-hidden">
-                  <div className="h-full rounded-full bg-brand-violet transition-all" style={{ width: `${Math.max(4, aiProgress.ratio * 100)}%` }} />
-                </div>
-              </div>
-            ) : aiDoc ? (
-              <div className="flex items-center gap-2 mb-4 text-[12px] text-brand-violet px-3.5 py-2.5 rounded-xl bg-brand-violet/6 border border-brand-violet/15">
-                <FileText className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate flex-1">
-                  {aiDoc.fileName} — {aiDoc.text.trim()
-                    ? `${(aiDoc.text.length / 1000).toFixed(1)}k ${t('admin.courses.ai_chars')}`
-                    : t('admin.courses.ai_scanned')}
-                  {aiDoc.images.length > 0 && aiDoc.text.trim() && ` · ${aiDoc.images.length} ${t('admin.courses.ai_figures')}`}
-                  {aiDoc.contextImages.length > 0 && ` · ${aiDoc.contextImages.length} ${aiManualMode && !aiDoc.text.trim() ? t('admin.courses.ai_pages_crop') : t('admin.courses.ai_pages_vision')}`}
-                </span>
-                <button onClick={() => { setAiDoc(null); aiLastFileRef.current = null }} className="text-text-muted hover:text-danger shrink-0">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => aiFileRef.current?.click()}
-                className="w-full flex flex-col items-center justify-center gap-2 px-4 py-6 mb-4 rounded-xl border border-dashed border-glass-border/25 hover:border-brand-violet/40 hover:bg-glass/4 transition-all"
-              >
-                <Upload className="h-5 w-5 text-text-muted" />
-                <span className="text-[12px] text-text font-medium">{t('admin.import.upload')}</span>
-                <span className="text-[11px] text-text-subtle">{t('admin.import.formats')}</span>
-              </button>
-            )}
-            <input ref={aiFileRef} type="file" accept={ACCEPTED_DOC_EXTENSIONS} className="hidden" onChange={handleAiFile} />
-
-            {/* Modo manual paso a paso (fidelidad máxima a un procedimiento con capturas) */}
-            <button
-              type="button"
-              onClick={() => handleToggleAiManual(!aiManualMode)}
-              disabled={aiExtracting}
-              className={cn(
-                'mb-4 w-full flex items-start gap-3 rounded-xl px-3.5 py-3 text-left transition-all border',
-                aiManualMode ? 'bg-brand-violet/8 border-brand-violet/30' : 'bg-glass/4 border-glass-border/10 hover:border-brand-violet/20',
-                aiExtracting && 'opacity-60 cursor-wait',
-              )}
-            >
-              <div className={cn(
-                'mt-0.5 h-7 w-7 shrink-0 flex items-center justify-center rounded-lg transition-colors',
-                aiManualMode ? 'bg-brand-violet/20 text-brand-violet' : 'bg-glass/8 text-text-muted',
-              )}>
-                <ListChecks className="h-3.5 w-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-medium text-text">{t('admin.import.manual_mode')}</span>
-                  <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', aiManualMode ? 'bg-brand-violet' : 'bg-glass/20')}>
-                    <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all', aiManualMode ? 'left-[18px]' : 'left-0.5')} />
-                  </span>
-                </div>
-                <p className="text-[11px] text-text-muted mt-0.5 leading-snug">{t('admin.import.manual_mode_hint')}</p>
-              </div>
-            </button>
-
-            {/* La generación corre en segundo plano: al pulsar "Generar", el modal se
-                cierra y el avance se ve en el indicador global de tareas. */}
-            <p className="flex items-center gap-1.5 text-[11px] text-text-subtle mb-4">
-              <Sparkles className="h-3 w-3 shrink-0" />
-              {t('admin.courses.ai_started_bg')}
-            </p>
-
-            <div className="flex justify-end gap-2">
+        <Modal
+          onClose={() => setShowAi(false)}
+          title={t('admin.courses.ai_create')}
+          subtitle={t('admin.courses.ai_create_hint')}
+          icon={<Sparkles className="h-4 w-4" />}
+          accent="violet"
+          dismissible={!aiExtracting}
+          footerLeft={<AiReviewNotice variant="inline" />}
+          footer={
+            <>
               <Button variant="ghost" size="sm" onClick={() => setShowAi(false)}>
                 {t('admin.courses.cancel')}
               </Button>
@@ -1009,9 +889,83 @@ export default function CourseList() {
               >
                 <Sparkles className="h-3.5 w-3.5" /> {t('admin.courses.ai_generate')}
               </Button>
+            </>
+          }
+        >
+          <div className="space-y-3.5">
+            <AiCreditsNotice />
+            <AiQuotaNotice />
+
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
+                {t('admin.courses.field_title')}
+              </label>
+              <input
+                value={aiTitle}
+                onChange={(e) => setAiTitle(e.target.value)}
+                placeholder={t('admin.courses.field_title_ph')}
+                className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14px] text-text outline-none focus:border-primary disabled:opacity-60"
+              />
             </div>
+
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
+                {t('admin.courses.ai_document')}
+              </label>
+              {aiExtracting ? (
+                <div className="rounded-xl border border-brand-violet/15 bg-brand-violet/6 px-3.5 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-brand-violet/70" />
+                      <FileText className="absolute h-3.5 w-3.5 text-brand-violet" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] font-medium text-text">{aiReadingName}</div>
+                      <div className="text-[11px] text-text-muted">{t(`admin.import.stage_${aiProgress.stage}`)}</div>
+                    </div>
+                    <span className="shrink-0 text-[12px] font-semibold tabular-nums text-brand-violet">
+                      {Math.round(aiProgress.ratio * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-glass/10">
+                    <div className="h-full rounded-full bg-brand-violet transition-all" style={{ width: `${Math.max(4, aiProgress.ratio * 100)}%` }} />
+                  </div>
+                </div>
+              ) : aiDoc ? (
+                <div className="flex items-center gap-2 rounded-xl border border-brand-violet/15 bg-brand-violet/6 px-3.5 py-2.5 text-[12px] text-brand-violet">
+                  <FileText className="h-3.5 w-3.5 shrink-0" />
+                  <span className="flex-1 truncate">
+                    {aiDoc.fileName} — {aiDoc.text.trim()
+                      ? `${(aiDoc.text.length / 1000).toFixed(1)}k ${t('admin.courses.ai_chars')}`
+                      : t('admin.courses.ai_scanned')}
+                    {aiDoc.images.length > 0 && aiDoc.text.trim() && ` · ${aiDoc.images.length} ${t('admin.courses.ai_figures')}`}
+                    {aiDoc.contextImages.length > 0 && ` · ${aiDoc.contextImages.length} ${aiManualMode && !aiDoc.text.trim() ? t('admin.courses.ai_pages_crop') : t('admin.courses.ai_pages_vision')}`}
+                  </span>
+                  <button onClick={() => { setAiDoc(null); aiLastFileRef.current = null }} className="shrink-0 text-text-muted hover:text-danger">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <FileDropZone
+                  size="sm"
+                  accept={ACCEPTED_DOC_EXTENSIONS}
+                  onFile={handleAiFile}
+                  hint={t('admin.import.formats_short')}
+                  hintFull={t('admin.import.formats')}
+                />
+              )}
+            </div>
+
+            <OptionToggleRow
+              on={aiManualMode}
+              onChange={handleToggleAiManual}
+              disabled={aiExtracting}
+              icon={<ListChecks className="h-3.5 w-3.5" />}
+              title={t('admin.import.manual_mode')}
+              description={t('admin.import.manual_mode_hint')}
+            />
           </div>
-        </div>
+        </Modal>
       )}
 
       {previewCourse && (

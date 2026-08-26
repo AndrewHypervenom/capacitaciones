@@ -102,7 +102,7 @@ export function Tooltip({
   const frame = useRef(0)
   const latest = useRef<{ x: number; y: number } | null>(null)
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [pos, setPos] = useState<{ x: number; y: number; placement: Placement } | null>(null)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   // Tamaño real del globo, para centrarlo y recortarlo contra la ventana. Se
   // mide con offsetWidth/Height (no getBoundingClientRect) porque esos NO
   // cambian con la escala de la animación de entrada.
@@ -121,10 +121,10 @@ export function Tooltip({
   }, [])
 
   const place = useCallback((x: number, y: number) => {
-    // Arriba salvo que no quepa: cerca del techo de la ventana el globo se
-    // saldría de la pantalla, y ahí es mejor taparle un poco menos y bajarlo.
-    const above = y > 72
-    setPos({ x, y: above ? y - GAP : y + GAP + 6, placement: above ? 'top' : 'bottom' })
+    // Se guarda el ancla CRUDA; arriba o abajo se decide al pintar, cuando ya se
+    // sabe cuánto mide el globo. Con un umbral fijo, un globo de varias líneas
+    // (el saludo de la foto de perfil) se salía por el techo y quedaba cortado.
+    setPos({ x, y })
   }, [])
 
   /** Centro superior del disparador: el ancla cuando no hay puntero. */
@@ -245,7 +245,11 @@ export function Tooltip({
       ? Math.min(Math.max(pos.x - half, 8), window.innerWidth - size.w - 8)
       : pos.x
     : 0
-  const top = pos ? (pos.placement === 'top' ? pos.y - (size?.h ?? 0) : pos.y) : 0
+  // Arriba salvo que ahí no quepa el globo entero: entonces baja. Mientras no se
+  // ha medido (primer pintado) se asume arriba, como antes.
+  const bubbleH = size?.h ?? 0
+  const placement: Placement = pos && (pos.y - GAP - bubbleH < 8) ? 'bottom' : 'top'
+  const top = pos ? (placement === 'top' ? pos.y - GAP - bubbleH : pos.y + GAP + 6) : 0
   const open = !!pos && !!label && !disabled
 
   return (
@@ -279,11 +283,11 @@ export function Tooltip({
               aria-hidden={!describedBy}
               initial={reduce
                 ? { opacity: 0 }
-                : { opacity: 0, y: pos.placement === 'top' ? 4 : -4, scale: 0.96 }}
+                : { opacity: 0, y: placement === 'top' ? 4 : -4, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={reduce
                 ? { opacity: 0 }
-                : { opacity: 0, y: pos.placement === 'top' ? 4 : -4, scale: 0.96 }}
+                : { opacity: 0, y: placement === 'top' ? 4 : -4, scale: 0.96 }}
               transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
               style={{
                 position: 'fixed',

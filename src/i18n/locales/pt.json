@@ -563,7 +563,24 @@
     "badges_empty": "Ainda não há insígnias por aqui.",
     "journey_unavailable": "Ainda não há atividade registrada para esta pessoa.",
     "password_hint_strong": "Escolha uma senha longa e única: ela deve cumprir todos os requisitos.",
-    "pwd_weak": "A senha não cumpre os requisitos de segurança"
+    "pwd_weak": "A senha não cumpre os requisitos de segurança",
+    "daily": {
+      "greet_morning": "Bom dia",
+      "greet_afternoon": "Boa tarde",
+      "greet_evening": "Boa noite",
+      "note_1": "Aprender algo novo hoje já é ganhar o dia.",
+      "note_2": "O que você ensina hoje, alguém usa amanhã.",
+      "note_3": "Um passo pequeno dado hoje vale por dez planejados.",
+      "note_4": "Ninguém nasce sabendo: é por isso que você está aqui.",
+      "note_5": "Bom dia para deixar algo melhor do que encontrou.",
+      "note_6": "O seu ritmo também conta. Siga em frente.",
+      "note_7": "Boas capacitações aparecem meses depois.",
+      "note_8": "Obrigado pelo trabalho que ninguém vê.",
+      "note_9": "Comece pelo difícil; o resto se ajeita.",
+      "note_10": "Cada curso que você termina abre a porta para mais alguém.",
+      "note_11": "Perguntar a tempo poupa semanas de trabalho.",
+      "note_12": "Hoje também conta, mesmo devagar."
+    }
   },
   "module": {
     "back": "← Voltar ao painel",
@@ -1027,7 +1044,17 @@
     "are_you_sure": "Tem certeza?",
     "option_n_label": "Opção {{n}}",
     "add_option_full": "Adicionar opção",
-    "select_dash": "— Selecionar —"
+    "select_dash": "— Selecionar —",
+    "drop_here": "Solte o arquivo aqui",
+    "drop_hint": "ou clique para escolher",
+    "drop_invalid": "“{{name}}” não tem um formato aceito",
+    "drop_release": "Solte para enviar",
+    "drop_browse": "Escolher",
+    "drop_title": "Arraste seu arquivo aqui",
+    "drop_photo": "Solte a foto",
+    "drop_image": "Solte a imagem aqui",
+    "drop_photo_tip": "Clique ou arraste uma imagem para trocar sua foto",
+    "drop_image_tip": "Clique ou arraste uma imagem aqui"
   },
   "bgtask": {
     "cancel": "Cancelar",
@@ -3174,7 +3201,8 @@
       "manual_step_by_step": "Manual / passo a passo",
       "manual_desc": "Fidelidade máxima a um procedimento: mantém cada passo em ordem e insere a captura de cada passo. Use para manuais com capturas exatas (analisa mais a fundo; demora um pouco mais).",
       "ai_instructions": "Instruções para a IA",
-      "generate_module": "Gerar módulo"
+      "generate_module": "Gerar módulo",
+      "formats_short": "Word · PDF · PPT · Excel · Texto"
     },
     "progress_hub": {
       "badge": "Pessoas · Progresso",

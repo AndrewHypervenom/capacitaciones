@@ -7,6 +7,9 @@ import {
   type FeedbackShot,
 } from '@/services/siteFeedback.service'
 import { cn } from '@/lib/cn'
+import i18n from '@/i18n'
+import { useFileDrop } from '@/hooks/useFileDrop'
+import { toast } from '@/stores/toastStore'
 import { ShotThumb } from './ShotGallery'
 
 /**
@@ -62,7 +65,6 @@ export function ShotUploader({
   const reduce = useReducedMotion()
   const inputRef = useRef<HTMLInputElement>(null)
   const [pending, setPending] = useState<Pending[]>([])
-  const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   /** Solo mientras el componente vive: evita setState tras desmontar. */
   // Lista siempre al día: si sueltan una segunda tanda mientras la primera aún
@@ -136,6 +138,15 @@ export function ShotUploader({
     onChange([...shotsRef.current, ...done])
   }, [folder, onChange, onPersist, room, t])
 
+  // Mismo arrastre que en el resto del sitio: sin parpadeo al pasar sobre los
+  // hijos y descartando lo que no sea una imagen.
+  const { dragging, dropProps } = useFileDrop({
+    accept: 'image/*',
+    multiple: true,
+    onFiles: (files) => void addFiles(files),
+    onReject: (name) => toast.error(i18n.t('common.drop_invalid', { name })),
+  })
+
   async function remove(shot: FeedbackShot) {
     setError(null)
     if (onPersistRemove) {
@@ -173,13 +184,7 @@ export function ShotUploader({
         <motion.button
           type="button"
           onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDragging(false)
-            void addFiles(Array.from(e.dataTransfer.files))
-          }}
+          {...dropProps}
           onPaste={(e) => {
             const files = Array.from(e.clipboardData.files)
             if (files.length) { e.preventDefault(); void addFiles(files) }

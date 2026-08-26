@@ -563,7 +563,24 @@
     "badges_empty": "No badges here yet.",
     "journey_unavailable": "No activity recorded for this person yet.",
     "password_hint_strong": "Pick a long, unique password: it must meet every requirement.",
-    "pwd_weak": "The password does not meet the security requirements"
+    "pwd_weak": "The password does not meet the security requirements",
+    "daily": {
+      "greet_morning": "Good morning",
+      "greet_afternoon": "Good afternoon",
+      "greet_evening": "Good evening",
+      "note_1": "Learning something new today already wins the day.",
+      "note_2": "What you teach today, someone uses tomorrow.",
+      "note_3": "One small step taken today beats ten planned ones.",
+      "note_4": "Nobody is born knowing — that is why you are here.",
+      "note_5": "A good day to leave things better than you found them.",
+      "note_6": "Your pace counts too. Keep going.",
+      "note_7": "Good training shows months later.",
+      "note_8": "Thank you for the work nobody sees.",
+      "note_9": "Start with the hard part; the rest falls into place.",
+      "note_10": "Every course you finish opens a door for someone else.",
+      "note_11": "Asking in time saves weeks of work.",
+      "note_12": "Today counts too, even if you move slowly."
+    }
   },
   "module": {
     "back": "← Back to dashboard",
@@ -1027,7 +1044,17 @@
     "are_you_sure": "Are you sure?",
     "option_n_label": "Option {{n}}",
     "add_option_full": "Add option",
-    "select_dash": "— Select —"
+    "select_dash": "— Select —",
+    "drop_here": "Drop the file here",
+    "drop_hint": "or click to choose it",
+    "drop_invalid": "“{{name}}” is not a supported format",
+    "drop_release": "Release to upload",
+    "drop_browse": "Choose",
+    "drop_title": "Drag your file here",
+    "drop_photo": "Drop the photo",
+    "drop_image": "Drop the image here",
+    "drop_photo_tip": "Click or drag an image to change your photo",
+    "drop_image_tip": "Click or drag an image here"
   },
   "bgtask": {
     "cancel": "Cancel",
@@ -3174,7 +3201,8 @@
       "manual_step_by_step": "Manual / step by step",
       "manual_desc": "Maximum fidelity to a procedure: keeps every step in order and inserts each step's screenshot. Use it for manuals with exact screenshots (analyzes more deeply; takes a bit longer).",
       "ai_instructions": "Instructions for the AI",
-      "generate_module": "Generate module"
+      "generate_module": "Generate module",
+      "formats_short": "Word · PDF · PPT · Excel · Text"
     },
     "progress_hub": {
       "badge": "People · Progress",

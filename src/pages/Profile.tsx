@@ -29,6 +29,7 @@ import { PasskeyManager } from '@/components/profile/PasskeyManager';
 import { PasskeySetupCard } from '@/components/auth/PasskeySetupCard';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { toast } from '@/stores/toastStore';
+import { greetingFor, visitNote } from '@/lib/greeting';
 import type { Lang } from '@/stores/gamificationStore';
 
 const MAX_AVATAR_BYTES = 3 * 1024 * 1024; // 3 MB: sobra para una foto y cuida el storage Free.
@@ -141,10 +142,9 @@ export default function Profile() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const handleAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // permite re-elegir el mismo archivo
-    if (!file || !user) return;
+  // Un solo camino para la foto, venga del selector o de soltarla encima.
+  const uploadPhoto = async (file: File) => {
+    if (!user) return;
     if (!file.type.startsWith('image/')) {
       toast.error(t('profile.avatar_invalid', 'Elige un archivo de imagen'));
       return;
@@ -283,6 +283,9 @@ export default function Profile() {
         canEditPhoto
         uploadingPhoto={uploading}
         onPickPhoto={() => fileRef.current?.click()}
+        onDropPhoto={uploadPhoto}
+        // El saludo es para quien mira, y va dentro del globo de la foto.
+        dailyNote={{ greeting: greetingFor(displayName), note: visitNote() }}
         photoLabel={t('profile.change_photo', 'Cambiar foto')}
         stats={stats}
         actions={
@@ -319,7 +322,17 @@ export default function Profile() {
           { id: 'since', icon: CalendarDays, label: t('admin.users.member_since', 'Miembro desde'), value: fmtDate(profile?.created_at) },
         ]}
       />
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = ''; // permite re-elegir el mismo archivo
+          if (f) void uploadPhoto(f);
+        }}
+      />
 
       {/* Perfil incompleto: se avisa una vez, arriba, con el atajo para llenarlo.
           Los datos de la ficha (cargo, cédula, país) salen en el certificado y

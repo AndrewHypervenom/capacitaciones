@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeftRight, BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Loader2, Monitor, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Loader2, Monitor, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -26,9 +26,9 @@ import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { AiAuthoredBadge, AI_AUTHORED_TINT } from '@/admin/components/AiAuthoredBadge'
 import { Select } from '@/components/ui/Select'
+import { Modal } from '@/components/ui/Modal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
-import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
@@ -214,7 +214,6 @@ export default function ModuleList() {
     }
   }
 
-  const moveBackdrop = useBackdropDismiss(() => setMoveModule(null), !movingModule)
 
   // Agrupar módulos por curso para reflejar la jerarquía Campaña → Curso → Módulo.
   const { courseGroups, orphans } = useMemo(() => {
@@ -486,36 +485,14 @@ export default function ModuleList() {
 
       {/* Mover un módulo suelto a otra campaña */}
       {moveModule && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" {...moveBackdrop}>
-          <div className="w-full max-w-md rounded-2xl bg-bg border border-line p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-[17px] font-semibold text-text flex items-center gap-2">
-                <ArrowLeftRight className="h-4 w-4 text-text-muted" />
-                {t('admin.modules.move_title')}
-              </h2>
-              <button
-                onClick={() => setMoveModule(null)}
-                className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-[12px] text-text-muted mb-4">
-              {t('admin.modules.move_hint', { title: moveModule.title_es })}
-            </p>
-            <Select
-              value={moveTargetId}
-              onChange={setMoveTargetId}
-              disabled={movingModule}
-              placeholder={t('admin.modules.move_placeholder')}
-              options={[
-                { value: '', label: t('admin.modules.move_placeholder') },
-                ...campaigns
-                  .filter((c) => c.id !== selectedCampaignId)
-                  .map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-            <div className="flex justify-end gap-2 mt-5">
+        <Modal
+          onClose={() => setMoveModule(null)}
+          title={t('admin.modules.move_title')}
+          subtitle={t('admin.modules.move_hint', { title: moveModule.title_es })}
+          icon={<ArrowLeftRight className="h-4 w-4" />}
+          dismissible={!movingModule}
+          footer={
+            <>
               <Button variant="ghost" size="sm" onClick={() => setMoveModule(null)} disabled={movingModule}>
                 {t('admin.modules.move_cancel')}
               </Button>
@@ -529,9 +506,22 @@ export default function ModuleList() {
                 {movingModule ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
                 {t('admin.modules.move_action')}
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <Select
+            value={moveTargetId}
+            onChange={setMoveTargetId}
+            disabled={movingModule}
+            placeholder={t('admin.modules.move_placeholder')}
+            options={[
+              { value: '', label: t('admin.modules.move_placeholder') },
+              ...campaigns
+                .filter((c) => c.id !== selectedCampaignId)
+                .map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
+        </Modal>
       )}
     </div>
   )

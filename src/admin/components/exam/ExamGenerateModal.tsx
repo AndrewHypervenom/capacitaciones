@@ -25,6 +25,7 @@ import { Select } from '@/components/ui/Select'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { NumberField } from '@/components/ui/NumberField'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
+import { FileDropZone } from '@/components/ui/FileDropZone'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
@@ -1648,7 +1649,6 @@ function FilePanel({
   const [doc, setDoc] = useState<ExtractedDocument | null>(null)
   const [reading, setReading] = useState<ExtractProgress | null>(null)
   const [fileName, setFileName] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   // Ajustes de la generación desde documento.
@@ -1899,15 +1899,17 @@ function FilePanel({
         )}
       </p>
 
+      {/* El recuadro admite clic Y arrastrar, igual que el resto del sitio. */}
+      <FileDropZone
+        size="sm"
+        accept={ACCEPTED_DOC_EXTENSIONS}
+        disabled={busy || !!reading}
+        onFile={(f) => void handleFile(f)}
+        hint={t('admin.import.formats_short')}
+        hintFull={t('admin.import.formats')}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={busy || !!reading}
-          className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13px] font-medium text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          <Upload className="h-3.5 w-3.5" />
-          {t('admin.exam.file_pick', 'Elegir archivo')}
-        </button>
         <button
           onClick={downloadTemplate}
           className="inline-flex items-center gap-2 rounded-full border border-line px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:text-text"
@@ -1916,17 +1918,6 @@ function FilePanel({
           {t('admin.exam.file_template', 'Descargar plantilla')}
         </button>
         {fileName && <span className="text-[12.5px] text-text-subtle">{fileName}</span>}
-        <input
-          ref={fileRef}
-          type="file"
-          accept={ACCEPTED_DOC_EXTENSIONS}
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void handleFile(f)
-            e.target.value = ''
-          }}
-        />
       </div>
 
       {reading && (

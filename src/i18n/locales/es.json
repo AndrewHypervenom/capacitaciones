@@ -563,7 +563,24 @@
     "badges_empty": "Todavía no hay insignias por aquí.",
     "journey_unavailable": "Todavía no hay actividad registrada para esta persona.",
     "password_hint_strong": "Elige una contraseña larga y única: debe cumplir todos los requisitos.",
-    "pwd_weak": "La contraseña no cumple los requisitos de seguridad"
+    "pwd_weak": "La contraseña no cumple los requisitos de seguridad",
+    "daily": {
+      "greet_morning": "Buenos días",
+      "greet_afternoon": "Buenas tardes",
+      "greet_evening": "Buenas noches",
+      "note_1": "Aprender algo nuevo hoy ya es ganar el día.",
+      "note_2": "Lo que enseñas hoy, alguien lo usa mañana.",
+      "note_3": "Un paso pequeño hecho hoy vale por diez planeados.",
+      "note_4": "Nadie nace sabiendo: por eso estás aquí.",
+      "note_5": "Buen día para dejar algo mejor de como lo encontraste.",
+      "note_6": "Tu ritmo también cuenta. Sigue avanzando.",
+      "note_7": "Las buenas capacitaciones se notan meses después.",
+      "note_8": "Gracias por el trabajo que no se ve.",
+      "note_9": "Empieza por lo difícil; lo demás se acomoda.",
+      "note_10": "Cada curso que terminas le abre la puerta a alguien más.",
+      "note_11": "Preguntar a tiempo ahorra semanas de trabajo.",
+      "note_12": "Hoy también cuenta, aunque avances despacio."
+    }
   },
   "module": {
     "back": "← Volver al panel",
@@ -1027,7 +1044,17 @@
     "are_you_sure": "¿Estás seguro?",
     "option_n_label": "Opción {{n}}",
     "add_option_full": "Agregar opción",
-    "select_dash": "— Seleccionar —"
+    "select_dash": "— Seleccionar —",
+    "drop_here": "Suelta el archivo aquí",
+    "drop_hint": "o haz clic para elegirlo",
+    "drop_invalid": "«{{name}}» no tiene un formato admitido",
+    "drop_release": "Suéltalo para subirlo",
+    "drop_browse": "Elegir",
+    "drop_title": "Arrastra tu archivo aquí",
+    "drop_photo": "Suelta la foto",
+    "drop_image": "Suelta la imagen aquí",
+    "drop_photo_tip": "Haz clic o arrastra una imagen para cambiar tu foto",
+    "drop_image_tip": "Haz clic o arrastra una imagen aquí"
   },
   "bgtask": {
     "cancel": "Cancelar",
@@ -3174,7 +3201,8 @@
       "manual_step_by_step": "Manual / paso a paso",
       "manual_desc": "Fidelidad máxima a un procedimiento: conserva cada paso en orden e inserta la captura de cada paso. Úsalo para manuales con pantallazos exactos (analiza más a fondo; tarda un poco más).",
       "ai_instructions": "Instrucciones para la IA",
-      "generate_module": "Generar módulo"
+      "generate_module": "Generar módulo",
+      "formats_short": "Word · PDF · PPT · Excel · Texto"
     },
     "progress_hub": {
       "badge": "Personas · Progreso",

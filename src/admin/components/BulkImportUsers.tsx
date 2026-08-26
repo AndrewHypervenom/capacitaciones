@@ -7,6 +7,7 @@ import {
   ArrowLeft, ShieldCheck, Copy, Pencil, RefreshCw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFileDrop } from '@/hooks/useFileDrop'
 import * as XLSX from 'xlsx'
 import { Select } from '@/components/ui/Select'
 import { supabase } from '@/lib/supabase'
@@ -103,7 +104,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
 
   const [step, setStep] = useState<Step>('file')
   const [fileName, setFileName] = useState('')
-  const [dragging, setDragging] = useState(false)
   const [reading, setReading] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
 
@@ -248,6 +248,15 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
       setReading(false)
     }
   }, [t, verifyWith])
+
+  // Arrastrar y soltar: comportamiento único del sitio (sin parpadeo al pasar
+  // sobre los hijos y aviso claro si el archivo no es una hoja de cálculo).
+  const { dragging, dropProps } = useFileDrop({
+    accept: '.xlsx,.xls,.csv',
+    disabled: reading,
+    onFiles: (files) => void handleFile(files[0]),
+    onReject: (name) => toast.error(t('common.drop_invalid', { name })),
+  })
 
   /** Al cambiar de hoja se vuelve a deducir todo para esa hoja. */
   const changeSheet = (idx: number) => {
@@ -530,14 +539,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-                    onDragLeave={() => setDragging(false)}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      setDragging(false)
-                      const f = e.dataTransfer.files?.[0]
-                      if (f) handleFile(f)
-                    }}
+                    {...dropProps}
                     className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors"
                     style={{
                       borderColor: dragging ? '#10D451' : 'var(--line, rgba(127,127,127,.28))',

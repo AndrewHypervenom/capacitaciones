@@ -50,6 +50,9 @@ import {
   X,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFileDrop } from '@/hooks/useFileDrop'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { MarchingDashes } from '@/components/ui/MarchingDashes'
 import { useAuth } from '@/hooks/useAuth'
 import { useEditingPresence } from '@/hooks/usePresence'
 import { PresenceStack } from '@/components/presence/PresenceStack'
@@ -169,6 +172,98 @@ const COVER_SLOTS: { slot: CoverSlot; labelKey: string; size: string; range: str
   { slot: 'cover_url_tablet', labelKey: 'admin.courses.cover_slot_tablet', size: '1680×360', range: '640–895px', box: 'aspect-[14/3]' },
   { slot: 'cover_url', labelKey: 'admin.courses.cover_slot_desktop', size: '1664×320', range: '≥896px', box: 'aspect-[26/5]' },
 ]
+
+/**
+ * La caja de vista previa de cada portada es también la zona de subida: se puede
+ * hacer clic O soltarle la imagen encima.
+ *
+ * Antes solo servía el botón de abajo, y arrastrar sobre la miniatura —lo primero
+ * que intenta cualquiera— no hacía nada. El globo de ayuda lo dice con palabras,
+ * porque una caja bonita no basta para que alguien adivine que acepta un archivo.
+ */
+function CoverDropBox({
+  box, background, disabled, onFile, onPick, children,
+}: {
+  box: string
+  background?: string
+  disabled: boolean
+  onFile: (file: File) => void
+  onPick: () => void
+  children: React.ReactNode
+}) {
+  const { t } = useTranslation()
+  const reduce = useReducedMotion()
+  const [hover, setHover] = useState(false)
+  const { dragging, dropProps } = useFileDrop({
+    accept: 'image/*',
+    disabled,
+    onFiles: (files) => onFile(files[0]),
+    onReject: (name) => toast.error(t('common.drop_invalid', { name })),
+  })
+
+  return (
+    // `w-full`: el envoltorio del globo es `inline-flex` y sin ancho propio la
+    // caja de dentro colapsa y la portada desaparece de la pantalla.
+    <Tooltip label={t('common.drop_image_tip')} anchor="element" disabled={disabled} className="w-full">
+      <motion.div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={t('common.drop_image_tip')}
+        onClick={() => { if (!disabled) onPick() }}
+        onKeyDown={(e) => {
+          if (disabled) return
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick() }
+        }}
+        onPointerEnter={() => setHover(true)}
+        onPointerLeave={() => setHover(false)}
+        {...dropProps}
+        animate={reduce ? undefined : { scale: dragging ? 1.02 : 1 }}
+        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        className={cn(
+          'relative w-full min-h-0 cursor-pointer overflow-hidden rounded-lg outline-none transition-colors',
+          'focus-visible:ring-2 focus-visible:ring-brand-violet/40',
+          dragging ? 'bg-brand-violet/10' : 'border border-line',
+          disabled && 'pointer-events-none opacity-60',
+          box,
+        )}
+        style={{ background }}
+      >
+        {children}
+
+        {/* El mismo trazo que camina en la zona de documentos: en reposo no está,
+            asoma al pasar por encima y se enciende con la imagen en el aire. */}
+        <MarchingDashes
+          marching={!disabled && (hover || dragging)}
+          tone={dragging ? 'on' : 'hover'}
+          radius={7}
+          className={cn(
+            'transition-opacity duration-300',
+            dragging ? 'opacity-100' : hover ? 'opacity-100' : 'opacity-0',
+          )}
+        />
+
+        {dragging && (
+          <motion.div
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-brand-violet/25 text-center backdrop-blur-[1px]"
+          >
+            <motion.span
+              animate={reduce ? undefined : { y: [-2, 1.5, -2] }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+              className="flex text-brand-violet"
+            >
+              <ImagePlus className="h-4 w-4" />
+            </motion.span>
+            <span className="px-1 text-[10px] font-semibold leading-tight text-brand-violet">
+              {t('common.drop_image')}
+            </span>
+          </motion.div>
+        )}
+      </motion.div>
+    </Tooltip>
+  )
+}
 
 /**
  * Extrae un mensaje legible de un error de Supabase/PostgREST para mostrarlo en el
@@ -2541,9 +2636,15 @@ export default function CourseEditor() {
                       <span className="text-[11px] font-semibold text-text">{t(labelKey)}</span>
                       <span className="text-[10px] text-text-subtle">{range}</span>
                     </div>
-                    <div
-                      className={cn('relative w-full min-h-0 overflow-hidden rounded-lg border border-line', box)}
-                      style={{ background: url ? undefined : `linear-gradient(120deg, ${form.color}22, ${form.color}0A)` }}
+                    <CoverDropBox
+                      box={box}
+                      background={url ? undefined : `linear-gradient(120deg, ${form.color}22, ${form.color}0A)`}
+                      disabled={busy}
+                      onFile={(f) => handleCoverUpload(f, slot)}
+                      onPick={() => {
+                        coverSlotRef.current = slot
+                        coverInputRef.current?.click()
+                      }}
                     >
                       {url && (
                         <img
@@ -2557,7 +2658,7 @@ export default function CourseEditor() {
                           <Loader2 className="h-4 w-4 animate-spin text-white" />
                         </div>
                       )}
-                    </div>
+                    </CoverDropBox>
                     <p className="text-[10px] text-text-subtle text-center">{size} px</p>
                     <div className="flex gap-1">
                       <Button

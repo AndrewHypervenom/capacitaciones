@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import i18n from '@/i18n'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowLeft, Upload, FileText, FileSpreadsheet, Presentation, Sparkles, Loader2, X,
+  ArrowLeft, FileText, FileSpreadsheet, Presentation, Sparkles, Loader2, X,
   AlertTriangle, ListChecks,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -21,6 +21,8 @@ import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { Button } from '@/components/ui/Button'
+import { FileDropZone } from '@/components/ui/FileDropZone'
+import { OptionToggleRow } from '@/components/ui/OptionToggleRow'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
@@ -37,7 +39,6 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // Se resuelve al cargar las campañas accesibles (URL → panel → primera). NO se
@@ -114,10 +115,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
     }
   }
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (fileInputRef.current) fileInputRef.current.value = ''
-    if (!file) return
+  const handleFile = async (file: File) => {
     lastFileRef.current = file
     await extractFile(file, manualMode)
   }
@@ -271,63 +269,24 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className={cn(
-              'w-full flex flex-col items-center justify-center gap-2 px-4 py-8 rounded-xl border border-dashed transition-all',
-              'border-glass-border/25 hover:border-brand-violet/40 hover:bg-glass/4',
-            )}
-          >
-            <Upload className="h-6 w-6 text-text-muted" />
-            <span className="text-[13px] text-text font-medium">{i18n.t('admin.import.upload')}</span>
-            <span className="text-[11px] text-text-subtle">{i18n.t('admin.import.formats')}</span>
-          </button>
+          <FileDropZone
+            accept={ACCEPTED_DOC_EXTENSIONS}
+            onFile={handleFile}
+            hint={i18n.t('admin.import.formats_short')}
+            hintFull={i18n.t('admin.import.formats')}
+          />
         )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={ACCEPTED_DOC_EXTENSIONS}
-          className="hidden"
-          onChange={handleFile}
-        />
 
         {/* Modo manual paso a paso */}
-        <button
-          type="button"
-          onClick={() => handleToggleManual(!manualMode)}
+        <OptionToggleRow
+          className="mt-4"
+          on={manualMode}
+          onChange={handleToggleManual}
           disabled={extracting}
-          className={cn(
-            'mt-5 w-full flex items-start gap-3 rounded-xl px-4 py-3 text-left transition-all border',
-            manualMode
-              ? 'bg-brand-violet/8 border-brand-violet/30'
-              : 'bg-glass/4 border-glass-border/10 hover:border-brand-violet/20',
-            extracting && 'opacity-60 cursor-wait',
-          )}
-        >
-          <div className={cn(
-            'mt-0.5 h-8 w-8 shrink-0 flex items-center justify-center rounded-lg transition-colors',
-            manualMode ? 'bg-brand-violet/20 text-brand-violet' : 'bg-glass/8 text-text-muted',
-          )}>
-            <ListChecks className="h-4 w-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[13px] font-medium text-text">{i18n.t('admin.import.manual_step_by_step')}</span>
-              <span className={cn(
-                'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-                manualMode ? 'bg-brand-violet' : 'bg-glass/20',
-              )}>
-                <span className={cn(
-                  'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all',
-                  manualMode ? 'left-[18px]' : 'left-0.5',
-                )} />
-              </span>
-            </div>
-            <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
-              {i18n.t('admin.import.manual_desc')}
-            </p>
-          </div>
-        </button>
+          icon={<ListChecks className="h-4 w-4" />}
+          title={i18n.t('admin.import.manual_step_by_step')}
+          description={i18n.t('admin.import.manual_desc')}
+        />
 
         {/* Instrucciones opcionales */}
         <div className="mt-5">

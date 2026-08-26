@@ -20,6 +20,8 @@ import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
+import { useFileDrop } from '@/hooks/useFileDrop'
+import { toast } from '@/stores/toastStore'
 
 function formatMs(ms: number) {
   const s = Math.ceil(ms / 1000)
@@ -196,7 +198,6 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
   const [doc, setDoc] = useState<{ name: string; text: string } | null>(null)
   const [docReading, setDocReading] = useState<string | null>(null)
   const [docError, setDocError] = useState<string | null>(null)
-  const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const reduce = useReducedMotion()
   const canImprove = !!currentContent
@@ -239,13 +240,6 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
     await readDoc(file)
   }
 
-  /** Soltar el archivo sobre la zona: mismo camino que el selector. */
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragging(false)
-    await readDoc(e.dataTransfer.files?.[0])
-  }
-
   const readDoc = async (file: File | undefined) => {
     if (!file) return
     setDocError(null)
@@ -272,6 +266,14 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
       setDocReading(null)
     }
   }
+
+  // Soltar el archivo encima también funciona: es lo primero que intenta
+  // cualquiera con un manual abierto en el escritorio. Comportamiento común.
+  const { dragging, dropProps } = useFileDrop({
+    accept: ACCEPTED_DOC_EXTENSIONS,
+    onFiles: (files) => void readDoc(files[0]),
+    onReject: (name) => toast.error(i18n.t('common.drop_invalid', { name })),
+  })
 
   const runAi = (mode: 'generate' | 'improve' | 'translate') => {
     // Con documento la descripción es opcional: el escenario puede salir del material.
@@ -556,9 +558,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
                   onClick={() => fileRef.current?.click()}
                   // Soltar el archivo encima también funciona: es lo primero que
                   // intenta cualquiera con un manual abierto en el escritorio.
-                  onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-                  onDragLeave={() => setDragging(false)}
-                  onDrop={handleDrop}
+                  {...dropProps}
                   className={cn(
                     'w-full flex items-center justify-center gap-2 rounded-xl border border-dashed px-3 py-4 text-xs transition-colors',
                     dragging

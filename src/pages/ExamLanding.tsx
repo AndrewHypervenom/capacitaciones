@@ -965,7 +965,9 @@ export default function ExamLanding() {
             initial={reduce ? undefined : { opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.3, ease }}
-            className="w-full max-w-md rounded-3xl border border-line bg-surface p-6 shadow-xl"
+            // El techo evita que las reglas empujen los botones fuera de la
+            // pantalla en un portátil: si no caben, se desplaza el diálogo.
+            className="max-h-[86vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-line bg-surface p-6 shadow-xl"
             role="dialog"
             aria-modal="true"
           >

@@ -6,6 +6,7 @@ import {
   ArrowLeft, UserPlus, UserMinus, UserCheck, CheckCircle2, MinusCircle, Copy, ShieldAlert,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFileDrop } from '@/hooks/useFileDrop'
 import * as XLSX from 'xlsx'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { countryLabelWithFlag } from '@/lib/countries'
@@ -61,7 +62,6 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
   const [step, setStep] = useState<Step>('file')
   const [period, setPeriod] = useState(currentPeriod())
   const [fileName, setFileName] = useState('')
-  const [dragging, setDragging] = useState(false)
   const [reading, setReading] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
 
@@ -164,6 +164,15 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
       setReading(false)
     }
   }, [t])
+
+  // Arrastrar y soltar: comportamiento único del sitio (sin parpadeo al pasar
+  // sobre los hijos y aviso claro si el archivo no es una hoja de cálculo).
+  const { dragging, dropProps } = useFileDrop({
+    accept: '.xlsx,.xls,.csv',
+    disabled: reading,
+    onFiles: (files) => void handleFile(files[0]),
+    onReject: (name) => toast.error(t('common.drop_invalid', { name })),
+  })
 
   const changeSheet = (idx: number) => {
     setSheetIdx(idx)
@@ -467,14 +476,7 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-                    onDragLeave={() => setDragging(false)}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      setDragging(false)
-                      const f = e.dataTransfer.files?.[0]
-                      if (f) handleFile(f)
-                    }}
+                    {...dropProps}
                     className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors disabled:opacity-50"
                     style={{
                       borderColor: dragging ? '#10D451' : 'var(--line, rgba(127,127,127,.28))',
