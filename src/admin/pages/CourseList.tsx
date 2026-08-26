@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -49,6 +49,8 @@ import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { recompressSiteImages, type SiteImageProgress } from '@/services/mediaMaintenance'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { toast } from '@/stores/toastStore'
@@ -100,6 +102,8 @@ export default function CourseList() {
   // Se incrementa para forzar recarga de la lista (p. ej. cuando una creación con
   // IA en segundo plano termina mientras seguimos en esta pantalla).
   const [refreshKey, setRefreshKey] = useState(0)
+  const [optimizing, setOptimizing] = useState(false)
+  const [optProgress, setOptProgress] = useState<SiteImageProgress | null>(null)
 
   // Foco que manda la barra de presencia al pulsar a una persona.
   const { focusId, focusCampaignId } = usePresenceFocus('course')
@@ -128,6 +132,43 @@ export default function CourseList() {
   const [aiExtracting, setAiExtracting] = useState(false)
   const [aiManualMode, setAiManualMode] = useState(false)
   const [aiProgress, setAiProgress] = useState<{ stage: ExtractStage; ratio: number }>({ stage: 'reading', ratio: 0 })
+
+  /**
+   * Optimiza las imágenes que YA estaban subidas en todo el sitio: portadas,
+   * medios e imágenes de los bloques de cada módulo, y fotos de perfil. Lo que
+   * se suba de aquí en adelante ya sale optimizado solo, así que esto se corre
+   * una vez y de vez en cuando.
+   */
+  const handleOptimizeImages = async () => {
+    const ok = await confirm({
+      title: t('admin.courses.optimize_images'),
+      description: t('admin.courses.optimize_images_confirm'),
+      confirmLabel: t('admin.courses.optimize_images'),
+      tone: 'default',
+    })
+    if (!ok) return
+    setOptimizing(true)
+    setOptProgress(null)
+    try {
+      const result = await recompressSiteImages(undefined, setOptProgress)
+      setRefreshKey((k) => k + 1)
+      // Las imágenes de los módulos viven en la caché de `useModules`: sin esto
+      // el capacitador seguiría viendo las URLs viejas hasta recargar.
+      invalidateModulesCache()
+      toast.success(
+        t('admin.courses.optimize_images_done', {
+          n: result.optimized,
+          mb: (result.bytesSaved / (1024 * 1024)).toFixed(1),
+        }),
+      )
+      if (result.failed > 0) toast.error(t('admin.courses.optimize_images_failed', { n: result.failed }))
+    } catch (err) {
+      toast.error(t('admin.courses.error_save'), (err as Error).message)
+    } finally {
+      setOptimizing(false)
+      setOptProgress(null)
+    }
+  }
 
   const openAi = () => {
     setAiTitle(''); setAiDoc(null); setAiReadingName(''); setAiManualMode(false)
@@ -441,6 +482,24 @@ export default function CourseList() {
             <p className="text-text-muted text-[13px] mt-1">{t('admin.courses.subtitle')}</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+            {isSuperAdmin && (
+              <Tooltip label={t('admin.courses.optimize_images_hint')} maxWidth={280}>
+                <Button
+                  variant="glass"
+                  className="flex items-center gap-1.5 w-full sm:w-auto"
+                  onClick={handleOptimizeImages}
+                  disabled={optimizing}
+                >
+                  {optimizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+                  {/* Durante el inventario todavía no hay total que mostrar. */}
+                  {!optimizing
+                    ? t('admin.courses.optimize_images')
+                    : optProgress && optProgress.phase !== 'scan'
+                      ? `${optProgress.done}/${optProgress.total}`
+                      : t('admin.courses.optimize_images_scanning')}
+                </Button>
+              </Tooltip>
+            )}
             <Button
               variant="glass"
               className="flex items-center gap-1.5 w-full sm:w-auto"

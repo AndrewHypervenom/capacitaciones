@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { AVATAR_PRESET, optimizeImage } from '@/lib/imageOptimize'
 
 export async function signInWithEmail(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -58,39 +59,21 @@ export async function updateProfile(
 }
 
 // Un avatar se muestra a lo sumo a ~96px; guardar el original (hasta 3 MB) hace
-// que cada carga de la lista de usuarios descargue megas inútiles. Reescalamos a
-// 256px y comprimimos a JPEG antes de subir → normalmente 15–40 KB por foto.
-export const AVATAR_MAX_PX = 256
-const AVATAR_QUALITY = 0.82
+// que cada carga de la lista de usuarios descargue megas inútiles. Se reescala a
+// 256px y se comprime a JPEG antes de subir → normalmente 15–40 KB por foto.
+// La medida vive en `lib/imageOptimize` junto con las del resto del sitio.
+export const AVATAR_MAX_PX = AVATAR_PRESET.maxPx
 
 /**
  * Reescala una imagen (File o Blob) a 256px máx. y la comprime a JPEG. Devuelve el
  * blob optimizado, o el original si no se puede rasterizar o no se reduce el peso.
  * Se reutiliza tanto en la subida normal como en la recompresión masiva.
+ *
+ * Sigue en JPEG a propósito (y no en WebP como el resto): `avatarMaintenance`
+ * escribe rutas `.jpg` fijas y las fotos ya guardadas tienen esa extensión.
  */
 export async function downscaleImage(file: Blob): Promise<Blob> {
-  // GIF/SVG no conviene rasterizarlos (perderían animación/vector): se dejan igual.
-  if (file.type === 'image/gif' || file.type === 'image/svg+xml') return file
-  try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-    const scale = Math.min(1, AVATAR_MAX_PX / Math.max(bitmap.width, bitmap.height))
-    const w = Math.max(1, Math.round(bitmap.width * scale))
-    const h = Math.max(1, Math.round(bitmap.height * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return file
-    ctx.drawImage(bitmap, 0, 0, w, h)
-    bitmap.close?.()
-    const blob = await new Promise<Blob | null>((res) =>
-      canvas.toBlob(res, 'image/jpeg', AVATAR_QUALITY),
-    )
-    // Si el reescalado no reduce el peso, nos quedamos con el original.
-    return blob && blob.size < file.size ? blob : file
-  } catch {
-    return file // navegador sin soporte o formato raro (HEIC, etc.) → original
-  }
+  return (await optimizeImage(file, AVATAR_PRESET)).blob
 }
 
 // Sube la foto de perfil al bucket `avatars` bajo la carpeta del propio usuario

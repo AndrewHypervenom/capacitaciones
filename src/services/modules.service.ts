@@ -5,6 +5,7 @@ import type { GeneratedModule } from '@/services/ai.service'
 import { requestDeletion, type DeletionResult } from '@/services/audit.service'
 import { isMediaUrlSharedInCourse } from '@/services/mediaDuplicates.service'
 import { shortFileHash } from '@/lib/fileHash'
+import { COURSE_MEDIA_PRESET, isOptimizableImage, optimizeImage } from '@/lib/imageOptimize'
 
 // ─── Raw DB types for video markers ──────────────────────────
 // Definidos en @/types/blocks (para poder embeberlos en el bloque de video sin
@@ -1132,14 +1133,31 @@ export async function uploadSectionMedia(
    *  antes de subir); se pasa para no volver a leer el archivo entero. */
   precomputedHash?: string | null,
 ): Promise<string> {
-  const ext = file.name.split('.').pop() ?? 'bin'
   // La huella del contenido viaja en el nombre del objeto: así la URL pública
   // basta para reconocer el mismo archivo subido dos veces al curso, sin tabla
   // ni columna extra. Ver `lib/fileHash` y `mediaDuplicates.service`.
+  //
+  // Se calcula sobre el archivo ORIGINAL, antes de optimizar: dos personas que
+  // suben la misma captura tienen que dar la misma huella aunque el navegador
+  // de cada una comprima distinto.
   const hash = precomputedHash !== undefined ? precomputedHash : await shortFileHash(file)
-  const path = `${campaignId}/${moduleId}/${sectionId}/${Date.now()}${hash ? `-${hash}` : ''}.${ext}`
-  const { error } = await supabase.storage.from('module-media').upload(path, file, {
-    contentType: file.type,
+
+  // Las imágenes se reescalan y recomprimen en el navegador. Es la diferencia
+  // entre guardar la captura de 6 MB que salió de la tecla ImprPant y guardar
+  // los ~180 KB que realmente se ven en el módulo — y esa resta la paga el
+  // aprendiz en datos cada vez que abre la sección. Videos, PDFs y GIFs viajan
+  // tal cual. Ver `lib/imageOptimize`.
+  const payload = isOptimizableImage(file.type)
+    ? await optimizeImage(file, COURSE_MEDIA_PRESET)
+    : { blob: file as Blob, ext: file.name.split('.').pop() ?? 'bin' }
+
+  const path = `${campaignId}/${moduleId}/${sectionId}/${Date.now()}${hash ? `-${hash}` : ''}.${payload.ext}`
+  const { error } = await supabase.storage.from('module-media').upload(path, payload.blob, {
+    contentType: payload.blob.type || file.type,
+    // El nombre lleva timestamp + huella: el objeto nunca cambia de contenido,
+    // así que el navegador puede quedárselo un año en vez de revalidarlo cada
+    // hora (que es el defecto de Supabase Storage).
+    cacheControl: '31536000',
     // @ts-expect-error onUploadProgress es válido en Supabase Storage JS v2
     onUploadProgress: onProgress
       ? (e: { loaded: number; total: number }) =>

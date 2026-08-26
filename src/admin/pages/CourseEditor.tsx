@@ -83,6 +83,7 @@ import {
   setCourseAssignment,
   removeCourseAssignment,
   uploadCourseCover,
+  COVER_MAX_BYTES,
   getCourseStats,
   getLearnerCountsByCampaign,
   type CourseWithModules,
@@ -1519,9 +1520,20 @@ export default function CourseEditor() {
   }
 
   const handleCoverUpload = async (file: File, slot: CoverSlot) => {
+    // Tope sobre el archivo ORIGINAL: `uploadCourseCover` lo reescala y
+    // recomprime, pero rasterizar un archivo enorme en el navegador es lo que
+    // congela la pestaña. Mejor decirlo antes que dejar la pantalla pensando.
+    if (!file.type.startsWith('image/')) {
+      toast.error(t('admin.courses.cover_type_error'))
+      return
+    }
+    if (file.size > COVER_MAX_BYTES) {
+      toast.error(t('admin.courses.cover_size_error'))
+      return
+    }
     setUploadingSlot(slot)
     try {
-      const url = await uploadCourseCover(file, course.id, course.campaign_id)
+      const url = await uploadCourseCover(file, course.id, course.campaign_id, slot)
       await updateCourse(course.id, { [slot]: url })
       setCourse({ ...course, [slot]: url })
       toast.success(t('admin.courses.cover_ok'))

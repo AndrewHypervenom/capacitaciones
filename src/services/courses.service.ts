@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { COVER_MAX_PX, optimizeImage } from '@/lib/imageOptimize'
 import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { requestDeletion, type DeletionResult } from '@/services/audit.service'
@@ -829,21 +830,40 @@ export async function resetUserCourseAdmin(userId: string, courseId: string): Pr
 
 // ─── Portada del curso ───────────────────────────────────────────
 
+/** Peso máximo del archivo que aceptamos leer (antes de optimizar). */
+export const COVER_MAX_BYTES = 15 * 1024 * 1024
+
+/**
+ * Sube la portada de un curso, ya optimizada para el tipo de pantalla al que va.
+ *
+ * La portada es la imagen que más veces se descarga de todo el sitio: el
+ * catálogo pinta una por tarjeta, y hasta ahora se subía el archivo tal cual —un
+ * diseño exportado en PNG son 3–8 MB, y un catálogo de 12 cursos eran ~60 MB
+ * antes de que el aprendiz hiciera clic en nada—. Se reescala al ancho exacto
+ * que ese slot muestra (ver COVER_SLOTS en el editor) y se recomprime a WebP:
+ * la misma portada baja a 80–200 KB.
+ */
 export async function uploadCourseCover(
   file: File,
   courseId: string,
   campaignId: string,
+  slot: keyof typeof COVER_MAX_PX = 'cover_url',
 ): Promise<string> {
-  const ext = file.name.split('.').pop() ?? 'jpg'
+  const optimized = await optimizeImage(file, { maxPx: COVER_MAX_PX[slot], quality: 0.82 })
   // La ruta DEBE empezar con el UUID de la campaña: la política RLS del bucket
   // module-media autoriza la escritura según que el primer segmento de la ruta
   // sea una campaña del usuario (o de la que es miembro). Antes empezaba con el
   // literal "courses/", por eso los capacitadores recibían error al subir la
   // portada mientras que sí podían subir media de sección.
-  const path = `${campaignId}/covers/${courseId}/cover-${Date.now()}.${ext}`
+  const path = `${campaignId}/covers/${courseId}/cover-${Date.now()}.${optimized.ext}`
   const { error } = await supabase.storage
     .from('module-media')
-    .upload(path, file, { contentType: file.type })
+    .upload(path, optimized.blob, {
+      contentType: optimized.blob.type || file.type,
+      // El nombre lleva timestamp: cada portada nueva es un objeto nuevo, así
+      // que la anterior se puede cachear un año sin riesgo de servir una vieja.
+      cacheControl: '31536000',
+    })
   if (error) throw error
   return supabase.storage.from('module-media').getPublicUrl(path).data.publicUrl
 }

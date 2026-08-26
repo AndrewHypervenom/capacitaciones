@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { SCREENSHOT_PRESET, optimizeImage } from '@/lib/imageOptimize'
 import { notifyStaffSiteFeedback } from '@/services/notifications.service'
 
 // La tabla site_feedback aún no está en los tipos generados de la BD; se accede
@@ -152,35 +153,19 @@ export const SHOTS_BUCKET = 'feedback-shots'
 export const MAX_SHOTS = 5
 /** Peso máximo del archivo original que aceptamos leer (antes de comprimir). */
 export const MAX_SHOT_BYTES = 12 * 1024 * 1024
-/** Lado mayor tras comprimir: legible a pantalla completa sin pesar de más. */
-const SHOT_MAX_PX = 1800
-const SHOT_QUALITY = 0.82
-
 export function isAcceptedShot(file: File): boolean {
   return file.type.startsWith('image/') && file.size <= MAX_SHOT_BYTES
 }
 
 /**
- * Reescala a 1800px de lado mayor y recomprime a JPEG. Una captura de un
- * portátil moderno son 3–8 MB en PNG; así viaja en menos de 300 KB sin que se
- * deje de leer el texto de la pantalla, que es justo lo que hay que ver.
- * Devuelve también el tamaño final para poder pintar el hueco sin saltos.
+ * Reescala a 1800px de lado mayor y recomprime (WebP, o JPEG donde no haya).
+ * Una captura de un portátil moderno son 3–8 MB en PNG; así viaja en menos de
+ * 300 KB sin que se deje de leer el texto de la pantalla, que es justo lo que
+ * hay que ver. Devuelve también el tamaño final para pintar el hueco sin saltos.
  */
-async function prepareShot(file: File): Promise<{ blob: Blob; w: number; h: number }> {
-  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-  const scale = Math.min(1, SHOT_MAX_PX / Math.max(bitmap.width, bitmap.height))
-  const w = Math.max(1, Math.round(bitmap.width * scale))
-  const h = Math.max(1, Math.round(bitmap.height * scale))
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d')
-  if (!ctx) { bitmap.close?.(); return { blob: file, w: bitmap.width, h: bitmap.height } }
-  ctx.drawImage(bitmap, 0, 0, w, h)
-  bitmap.close?.()
-  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', SHOT_QUALITY))
-  // Si comprimir no ayuda (capturas diminutas), nos quedamos con el original.
-  return { blob: blob && blob.size < file.size ? blob : file, w, h }
+async function prepareShot(file: File): Promise<{ blob: Blob; w: number; h: number; ext: string }> {
+  const { blob, width, height, ext } = await optimizeImage(file, SCREENSHOT_PRESET)
+  return { blob, w: width, h: height, ext }
 }
 
 /**
@@ -192,8 +177,7 @@ export async function uploadFeedbackShot(folder: string, file: File): Promise<Fe
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('NOT_AUTHENTICATED')
 
-  const { blob, w, h } = await prepareShot(file)
-  const ext = blob.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'png').toLowerCase()
+  const { blob, w, h, ext } = await prepareShot(file)
   const path = `${session.user.id}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
   const { error } = await supabase.storage.from(SHOTS_BUCKET).upload(path, blob, {
