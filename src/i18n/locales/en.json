@@ -37,6 +37,7 @@
     "toggle_on": "Paused — out of credits",
     "toggle_off": "Active — credits available",
     "toggle_detected": "Auto-detected: a generation failed due to insufficient balance.",
+    "toggle_read_failed": "Couldn't read the setting from the database (permissions or network). Meanwhile AI shows as active for everyone; check the read policy on app_settings.",
     "toggle_saved": "Status updated",
     "toggle_error": "Couldn't save the change"
   },

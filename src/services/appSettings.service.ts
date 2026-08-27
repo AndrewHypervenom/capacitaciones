@@ -17,20 +17,35 @@ export const MIN_DEFAULT_PASSWORD_LENGTH = 8
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
+/** Resultado de leer el flag global de créditos. */
+export interface AiCreditsRead {
+  /** `true`/`false` según la base; `null` si el ajuste no existe todavía. */
+  value: boolean | null
+  /** `true` si la lectura falló (RLS, red, tabla ausente): NO sabemos el estado. */
+  failed: boolean
+}
+
 /**
  * Lee si la IA está marcada como "sin créditos" en la base.
- * Devuelve `null` si el ajuste no existe todavía (p. ej. el SQL aún no se corrió),
- * para que el llamador decida el valor por defecto.
+ *
+ * Distingue tres cosas que antes se confundían en un solo `null`:
+ * el ajuste dice algo, el ajuste no existe, o no se pudo leer. Sin esa
+ * distinción un fallo de RLS parecía "no hay créditos" y el aviso se quedaba
+ * pegado para siempre.
  */
-export async function getAiCreditsOut(): Promise<boolean | null> {
+export async function getAiCreditsOut(): Promise<AiCreditsRead> {
   const { data, error } = await db
     .from('app_settings')
     .select('value')
     .eq('key', AI_CREDITS_KEY)
     .maybeSingle()
 
-  if (error || !data) return null
-  return data.value === true
+  if (error) {
+    console.warn('[app_settings] no se pudo leer ai_credits_out:', error.message ?? error)
+    return { value: null, failed: true }
+  }
+  if (!data) return { value: null, failed: false }
+  return { value: data.value === true, failed: false }
 }
 
 /** Prende/apaga el flag global (solo superadmin lo logra pasar la RLS). */

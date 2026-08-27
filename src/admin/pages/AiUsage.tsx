@@ -675,6 +675,7 @@ function AiCreditsToggleCard() {
   const { t } = useTranslation()
   const manualOut = useAiCreditsStore((s) => s.manualOut)
   const detectedOut = useAiCreditsStore((s) => s.detectedOut)
+  const readFailed = useAiCreditsStore((s) => s.readFailed)
   const [saving, setSaving] = useState(false)
 
   // Refresca desde la base al abrir la página (por si otro superadmin lo cambió).
@@ -721,6 +722,14 @@ function AiCreditsToggleCard() {
             <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-amber-500">
               <AlertCircle className="h-3 w-3 shrink-0" />
               {t('ai_credits.toggle_detected')}
+            </p>
+          )}
+          {/* Si el ajuste no se pudo leer, decirlo: antes fallaba callado y el
+              sitio se comportaba como si no hubiera créditos. */}
+          {readFailed && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-amber-500">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              {t('ai_credits.toggle_read_failed')}
             </p>
           )}
         </div>

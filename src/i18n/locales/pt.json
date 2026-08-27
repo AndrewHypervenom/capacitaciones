@@ -37,6 +37,7 @@
     "toggle_on": "Pausada — sem créditos",
     "toggle_off": "Ativa — há créditos",
     "toggle_detected": "Detectado automaticamente: uma geração falhou por saldo insuficiente.",
+    "toggle_read_failed": "Não foi possível ler a configuração no banco (permissões ou rede). Enquanto isso a IA aparece ativa para todos; revise a política de leitura de app_settings.",
     "toggle_saved": "Status atualizado",
     "toggle_error": "Não foi possível salvar a alteração"
   },

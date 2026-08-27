@@ -9,30 +9,47 @@ import { getAiCreditsOut, setAiCreditsOut, reportAiCreditsOut } from '@/services
  * que el superadmin prende/apaga desde /admin/ai-usage. Así el aviso es igual para
  * todos los capacitadores, sin tocar código ni redesplegar.
  *
- * Dos señales se combinan:
- *  1. `manualOut` — el flag global de la base (lo controla el superadmin).
+ * Tres señales se combinan:
+ *  1. `manualOut` — el flag global de la base (lo controla el superadmin). Solo
+ *     cuenta cuando de verdad se leyó (`loaded`): sin dato no se afirma nada.
  *  2. `detectedOut` — se enciende solo si una generación falla porque Anthropic
  *     devuelve "credit balance is too low" (red de seguridad si el flag global
  *     estaba en `false` pero de verdad se acabó el saldo).
+ *  3. `provenOk` — una generación acabó de funcionar: hay saldo, y eso manda
+ *     sobre cualquier flag viejo o mal leído.
  */
 
 /**
- * Valor por defecto mientras NO se haya podido leer la base (p. ej. el SQL de
- * `app_settings` todavía no se corrió). Hoy no hay créditos, así que arranca en
- * `true`: es más seguro avisar de más que dejar generar creyendo que hay saldo.
- * Una vez que exista el ajuste en la base, ese valor manda.
+ * Valor por defecto mientras NO se haya podido leer la base (el ajuste no existe
+ * o la lectura falló). Arranca en `false`: afirmar "no hay créditos" sin dato es
+ * mentirle al capacitador, y el aviso se quedaba pegado aunque la IA funcionara
+ * perfecto. Si de verdad se acaba el saldo, la detección en vivo
+ * (`throwAiError` → `markOut`) lo enciende al primer intento fallido.
  */
-const DEFAULT_AI_CREDITS_OUT = true
+const DEFAULT_AI_CREDITS_OUT = false
 
-/** ¿El mensaje de error corresponde a "sin créditos / saldo insuficiente" de Anthropic? */
+/**
+ * ¿El mensaje de error corresponde a "sin créditos / saldo insuficiente" de Anthropic?
+ *
+ * Tiene que ser ESTRICTO: encender esta señal pausa la IA para todo el mundo
+ * (`markOut` la persiste con `mark_ai_credits_out`), así que un "insufficient
+ * permissions", un límite de peticiones o nuestro propio cupo diario
+ * (`AI_QUOTA_EXCEEDED`, que contiene "quota" y "exceeded") no se pueden colar:
+ * el saldo siempre se nombra con crédito/saldo/balance.
+ */
 export function isAiCreditError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase()
+  // Cupo diario propio del sitio: es un tope nuestro, no falta de saldo.
+  if (msg.includes('ai_quota_exceeded')) return false
+
+  if (!/credit|balance|saldo|cr[ée]dito|fund/.test(msg)) return false
+
   return (
     msg.includes('credit balance') ||
-    msg.includes('credit balance is too low') ||
+    msg.includes('credit_balance') ||
     msg.includes('insufficient') ||
+    msg.includes('too low') ||
     msg.includes('billing') ||
-    (msg.includes('quota') && msg.includes('exceed')) ||
     // Anthropic responde 400 con este texto cuando el saldo llega a cero.
     /error 400[\s\S]*credit/.test(msg)
   )
@@ -43,8 +60,15 @@ interface AiCreditsState {
   manualOut: boolean
   /** Ya se leyó al menos una vez el ajuste desde la base. */
   loaded: boolean
+  /** La última lectura del ajuste falló (RLS/red): no sabemos el estado real. */
+  readFailed: boolean
   /** Se puso `true` al detectar en vivo un error de saldo insuficiente. */
   detectedOut: boolean
+  /**
+   * Una generación acabó de funcionar en esta sesión: hay saldo, diga lo que
+   * diga el flag. Manda sobre `manualOut` para que el aviso no mienta.
+   */
+  provenOk: boolean
   setManualOut: (v: boolean) => void
   markLoaded: (v: boolean) => void
   markOut: () => void
@@ -55,17 +79,22 @@ interface AiCreditsState {
 export const useAiCreditsStore = create<AiCreditsState>((set) => ({
   manualOut: DEFAULT_AI_CREDITS_OUT,
   loaded: false,
+  readFailed: false,
   detectedOut: false,
-  setManualOut: (v) => set({ manualOut: v }),
-  markLoaded: (v) => set({ manualOut: v, loaded: true }),
+  provenOk: false,
+  setManualOut: (v) => set({ manualOut: v, provenOk: false }),
+  markLoaded: (v) => set({ manualOut: v, loaded: true, readFailed: false, provenOk: false }),
   // Detección en vivo: enciende el aviso local Y global (manualOut) al instante,
   // y lo persiste en la base para que TODOS lo vean tras recargar. Apagarlo queda
   // en manos del superadmin (cuando recargue créditos).
   markOut: () => {
-    set({ detectedOut: true, manualOut: true })
+    set({ detectedOut: true, manualOut: true, provenOk: false })
     void reportAiCreditsOut()
   },
-  markOk: () => set({ detectedOut: false }),
+  // La prueba más fuerte de que sí hay saldo: acaba de generar. Baja el aviso
+  // para quien lo vio, aunque el flag global siga prendido (apagarlo para todos
+  // sigue siendo del superadmin, en /admin/ai-usage).
+  markOk: () => set({ detectedOut: false, provenOk: true }),
 }))
 
 /**
@@ -75,14 +104,19 @@ export const useAiCreditsStore = create<AiCreditsState>((set) => ({
  */
 export async function loadAiCreditsSetting(): Promise<void> {
   try {
-    const out = await getAiCreditsOut()
-    if (out === null) {
-      useAiCreditsStore.setState({ loaded: true })
+    const { value, failed } = await getAiCreditsOut()
+    if (failed) {
+      // No se pudo leer (RLS, red): dejamos el aviso apagado y lo anotamos, en
+      // vez de dar por hecho lo peor y pausar la IA a ojos del capacitador.
+      useAiCreditsStore.setState({ loaded: true, readFailed: true, manualOut: DEFAULT_AI_CREDITS_OUT })
+    } else if (value === null) {
+      useAiCreditsStore.setState({ loaded: true, readFailed: false })
     } else {
-      useAiCreditsStore.getState().markLoaded(out)
+      useAiCreditsStore.getState().markLoaded(value)
     }
-  } catch {
-    useAiCreditsStore.setState({ loaded: true })
+  } catch (e) {
+    console.warn('[ai_credits] no se pudo leer el ajuste global:', e)
+    useAiCreditsStore.setState({ loaded: true, readFailed: true, manualOut: DEFAULT_AI_CREDITS_OUT })
   }
 }
 
@@ -104,15 +138,24 @@ export async function updateAiCreditsSetting(out: boolean): Promise<void> {
   }
 }
 
-/** ¿Debemos avisar que no hay créditos? (flag global o detectado en vivo). */
-export function isAiOutOfCredits(): boolean {
-  const s = useAiCreditsStore.getState()
-  return s.manualOut || s.detectedOut
+/**
+ * ¿Debemos avisar que no hay créditos? Solo cuando lo sabemos: el ajuste ya se
+ * leyó y dice que sí, o lo detectamos en vivo. Y nunca si una generación acaba
+ * de funcionar en esta sesión.
+ */
+function outOfCredits(s: AiCreditsState): boolean {
+  if (s.provenOk) return false
+  if (s.detectedOut) return true
+  return s.loaded && s.manualOut
 }
 
-/** Hook reactivo para la UI: se re-renderiza si cambia cualquiera de las dos señales. */
+export function isAiOutOfCredits(): boolean {
+  return outOfCredits(useAiCreditsStore.getState())
+}
+
+/** Hook reactivo para la UI: se re-renderiza si cambia cualquiera de las señales. */
 export function useAiOutOfCredits(): boolean {
-  return useAiCreditsStore((s) => s.manualOut || s.detectedOut)
+  return useAiCreditsStore(outOfCredits)
 }
 
 /** Mensaje amable y localizado para mostrarle al capacitador/superadmin. */
