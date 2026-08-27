@@ -914,6 +914,13 @@ export interface ModuleOutline {
   metadata: GeneratedModuleMeta
   sections: {
     heading_es: string; heading_en: string; heading_pt: string
+    /**
+     * Qué parte del documento cubre esa sección, en una línea. Es planificación interna
+     * (obliga a la IA a PARTIR el documento en trozos disjuntos y evita que dos secciones
+     * cuenten lo mismo con otro título): se le pasa a la generación de cada sección y NO
+     * se guarda ni se le muestra al alumno.
+     */
+    scope?: string
     section_style?: GeneratedSectionStyle
   }[]
 }
@@ -1034,7 +1041,14 @@ export async function generateModule(opts: {
  */
 export async function generateModuleOutline(opts: {
   description: string
-  /** Cantidad de secciones sugerida (proporcional al tamaño del documento). */
+  /**
+   * Cuántas secciones pide el documento: un RANGO que escala con su tamaño (corto → pocas,
+   * largo → más). La IA elige dentro según los subtemas reales. Con `min === max` la
+   * cantidad es exacta (el capacitador la eligió a mano).
+   */
+  minSections?: number
+  maxSections?: number
+  /** Compatibilidad con la versión desplegada de la función: un solo número. */
   targetSections?: number
 } & DocContext, signal?: AbortSignal): Promise<{ data: ModuleOutline; usage: CacheUsage }> {
   const lang = currentAiLang()
@@ -1055,6 +1069,10 @@ export async function generateModuleSection(opts: {
   sectionIndex: number
   totalSections: number
   allHeadings: string[]
+  /** Alcance de esta sección (del esquema): lo que le toca. */
+  sectionScope?: string
+  /** Alcance de todas las secciones, en el orden de allHeadings: lo que NO le toca. */
+  allScopes?: string[]
 } & DocContext, signal?: AbortSignal): Promise<{ data: { blocks: GeneratedBlock[] }; usage: CacheUsage }> {
   const lang = currentAiLang()
   const { data, usage } = await postGenerateModule({ mode: 'section', esOnly: true, language: lang, ...opts }, signal)

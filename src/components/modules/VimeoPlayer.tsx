@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { loadVimeoPlayerAPI } from '@/lib/vimeo'
+import { mapVimeoError, sdkLoadError, type VideoPlayerError } from '@/lib/videoError'
 import type { PlayerLike } from '@/lib/youtube'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -22,6 +23,13 @@ interface VimeoPlayerProps {
   onEnded?: () => void
   /** Se invoca ~4 veces por segundo mientras el reproductor está listo (equivale a `timeupdate`). */
   onTimeUpdate?: () => void
+  /**
+   * El video no se pudo reproducir. Sin esto, el aprendiz se queda con la pantalla
+   * de error de Vimeo: genérica, pintada con el color de acento de la cuenta (por
+   * eso parece nuestra) y con un botón que manda el diagnóstico a Vimeo, no a
+   * nosotros. Quien reciba esto debe tapar el iframe con su propio aviso.
+   */
+  onError?: (err: VideoPlayerError) => void
 }
 
 export function VimeoPlayer({
@@ -34,6 +42,7 @@ export function VimeoPlayer({
   onPause,
   onEnded,
   onTimeUpdate,
+  onError,
 }: VimeoPlayerProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const vmRef = useRef<any>(null)
@@ -41,11 +50,21 @@ export function VimeoPlayer({
   const readySignaledRef = useRef(false)
 
   // Guardamos los callbacks en refs para no recrear el reproductor si cambian de identidad.
-  const cbRef = useRef({ onReady, onPlay, onPause, onEnded, onTimeUpdate })
-  cbRef.current = { onReady, onPlay, onPause, onEnded, onTimeUpdate }
+  const cbRef = useRef({ onReady, onPlay, onPause, onEnded, onTimeUpdate, onError })
+  cbRef.current = { onReady, onPlay, onPause, onEnded, onTimeUpdate, onError }
 
   useEffect(() => {
     let cancelled = false
+    // Un solo aviso por montaje: Vimeo puede emitir `error` y rechazar `ready()`
+    // por la misma causa, y el aprendiz no necesita enterarse dos veces.
+    let errorSignaled = false
+    const fail = (err: VideoPlayerError) => {
+      if (cancelled || errorSignaled) return
+      errorSignaled = true
+      // El sondeo ya no sirve de nada y seguiría pidiendo tiempos a un reproductor roto.
+      clearInterval(pollRef.current)
+      cbRef.current.onError?.(err)
+    }
 
     loadVimeoPlayerAPI().then(() => {
       if (cancelled || !hostRef.current) return
@@ -110,6 +129,13 @@ export function VimeoPlayer({
       player.on('play', () => cbRef.current.onPlay?.())
       player.on('pause', () => cbRef.current.onPause?.())
       player.on('ended', () => cbRef.current.onEnded?.())
+      // Fallo con el reproductor ya en pie (se cayó la red a mitad, el CDN no
+      // respondió, el video cambió de privacidad).
+      player.on('error', (e: any) => fail(mapVimeoError(e)))
+      // Fallo al montar: video borrado, hash de "no listado" que ya no vale, o el
+      // dominio no está autorizado en la privacidad del video. El evento `error`
+      // no cubre este caso porque el reproductor nunca llega a existir.
+      player.ready().catch((e: any) => fail(mapVimeoError(e)))
       player.on('loaded', () => {
         player.getDuration().then((dur: number) => { cache.duration = dur }).catch(() => {})
       })
@@ -127,7 +153,11 @@ export function VimeoPlayer({
           cbRef.current.onReady?.()
         }
       }, 250)
-    }).catch(() => { /* SDK no disponible (offline/CSP): el host queda vacío */ })
+    }).catch(() => {
+      // SDK no disponible (offline, CSP, proxy corporativo o extensión que se come
+      // el script). Antes el host quedaba vacío en silencio y parecía un video negro.
+      fail(sdkLoadError('vimeo'))
+    })
 
     return () => {
       cancelled = true

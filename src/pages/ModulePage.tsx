@@ -36,13 +36,14 @@ import { Reveal } from '@/components/ui/Reveal';
 import { RichText, RichTextInline } from '@/components/ui/RichText';
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
+import { PassiveVideoEmbed } from '@/components/modules/PassiveVideoEmbed';
+import { SimpleVideo } from '@/components/modules/SimpleVideo';
 import { ModuleTOC } from '@/components/modules/ModuleTOC';
 import { VideoCinema } from '@/components/modules/VideoCinema';
 import { isVideoOnlyModule } from '@/lib/videoPlaylist';
 import { SectionLayout } from '@/components/modules/SectionLayout';
 import { cn } from '@/lib/cn';
 import { setQuizSoundTheme } from '@/lib/sound';
-import { vimeoEmbedUrl } from '@/lib/vimeo';
 import type { ContentBlock } from '@/types/blocks';
 import type { LearningModule, ModuleSection, SectionMedia } from '@/data/modules';
 import { getModuleById } from '@/services/modules.service';
@@ -91,18 +92,43 @@ function MediaBlock({ media, language, section }: { media: SectionMedia; languag
     );
   }
 
+  // Video subido por nosotros. Antes no lo pintaba nadie: el `<figure>` de abajo
+  // cubre imagen/YouTube/Vimeo y la rama de arriba solo entra con los embeds, así
+  // que un medio de tipo 'video' salía como una figura vacía. Va por `SimpleVideo`,
+  // el mismo que usa el renderizador de bloques, para que traiga el candado de la
+  // primera pasada, el semáforo de conexión y el aviso de error.
+  if (media.type === 'video') {
+    return (
+      <div className={getMediaClasses(media)}>
+        <SimpleVideo
+          src={media.url}
+          title={media.caption?.[language] ?? undefined}
+          sectionId={section?.id}
+        />
+        {/* Va como <p> y no <figcaption>: fuera de un <figure> ese elemento no es
+            HTML válido. */}
+        {media.caption?.[language] && (
+          <p className="px-1 pt-3 text-[12.5px] text-text-subtle">{media.caption[language]}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <figure className={wrapperCls}>
       {media.type === 'image' && <img src={media.url} alt={media.caption?.[language] ?? ''} loading="lazy" className="w-full object-cover block" />}
-      {media.type === 'youtube' && (
-        <div className="relative w-full bg-black" style={{ paddingTop: '56.25%' }}>
-          <iframe src={`https://www.youtube.com/embed/${media.url}?rel=0&modestbranding=1`} title={media.caption?.[language] ?? 'Video'} loading="lazy" allowFullScreen className="absolute inset-0 w-full h-full border-0" />
-        </div>
-      )}
-      {media.type === 'vimeo' && (
-        <div className="relative w-full bg-black" style={{ paddingTop: '56.25%' }}>
-          <iframe src={vimeoEmbedUrl(media.url)} title={media.caption?.[language] ?? 'Video'} loading="lazy" allowFullScreen className="absolute inset-0 w-full h-full border-0" />
-        </div>
+      {/* Respaldo para cuando no llega la sección (el reproductor interactivo la
+          necesita). Va por el SDK y no por un `<iframe>` crudo: el iframe no avisa
+          cuando el video falla, así que el aprendiz se quedaba con la pantalla de
+          error del proveedor —sin causa, y con un botón de reporte que va a la
+          telemetría de ellos, no a nuestra bandeja. */}
+      {(media.type === 'youtube' || media.type === 'vimeo') && (
+        <PassiveVideoEmbed
+          kind={media.type}
+          videoId={media.url}
+          lang={language}
+          sectionTitle={media.caption?.[language] ?? null}
+        />
       )}
       {media.caption?.[language] && <figcaption className="px-5 py-3 text-[12.5px] text-text-subtle border-t border-line bg-subtle">{media.caption[language]}</figcaption>}
     </figure>

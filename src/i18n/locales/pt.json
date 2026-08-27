@@ -1200,7 +1200,35 @@
     "has_checks_one": "Este vídeo tem {{count}} verificação: ele pausa sozinho para perguntar o que você acabou de ver.",
     "has_checks_other": "Este vídeo tem {{count}} verificações: ele pausa sozinho para perguntar o que você acabou de ver.",
     "why_paused_one": "Pausamos o vídeo em {{time}} para verificar o que você acabou de ver: {{count}} pergunta.",
-    "why_paused_other": "Pausamos o vídeo em {{time}} para verificar o que você acabou de ver: {{count}} perguntas."
+    "why_paused_other": "Pausamos o vídeo em {{time}} para verificar o que você acabou de ver: {{count}} perguntas.",
+    "error": {
+      "unavailable": {
+        "title": "Este vídeo não está mais disponível",
+        "hint": "Foi apagado ou mudou de endereço no provedor. Reporte e nós repomos; não é a sua conexão."
+      },
+      "private": {
+        "title": "Não temos permissão para mostrar este vídeo",
+        "hint": "A privacidade do vídeo não permite vê-lo aqui. Reporte para que possamos corrigir."
+      },
+      "blocked": {
+        "title": "Algo está bloqueando o reprodutor",
+        "hint": "Costuma ser a rede da empresa, um antivírus ou uma extensão do navegador. Tente uma janela anônima ou outra rede."
+      },
+      "network": {
+        "title": "Não conseguimos carregar o vídeo",
+        "hint": "Parece um problema de conexão. Verifique a sua rede e tente de novo."
+      },
+      "unknown": {
+        "title": "O vídeo não pôde ser reproduzido",
+        "hint": "Tente de novo. Se continuar assim, reporte e nós verificamos."
+      },
+      "retry": "Tentar de novo",
+      "report": "Reportar o problema",
+      "reporting": "Enviando…",
+      "reported": "Reportado",
+      "report_retry": "Não enviou, tentar de novo",
+      "reported_hint": "Chegou até nós com o detalhe técnico. Obrigado."
+    }
   },
   "admin": {
     "surgery": {

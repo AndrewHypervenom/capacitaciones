@@ -146,8 +146,10 @@ export function runSectionAiGeneration(input: SectionAiInput): void {
       // encabezado lo tiene que poner la IA leyendo la fuente, no nosotros
       // recortando la instrucción del capacitador.
       bgTask.update(taskId, { detail: i18n.t('admin.section_ai.step_outline') })
+      // Aquí la cantidad NO se estima: el capacitador la eligió en el modal, así que el
+      // rango va cerrado (min = max = count).
       const { data: outline } = await generateModuleOutline(
-        { description, targetSections: count, ...docContext },
+        { description, minSections: count, maxSections: count, targetSections: count, ...docContext },
         signal,
       )
       const planned = outline.sections.slice(0, count)
@@ -161,6 +163,9 @@ export function runSectionAiGeneration(input: SectionAiInput): void {
       // sobre el módulo COMPLETO (las viejas más las nuevas): así la IA sabe en
       // qué punto del recorrido está escribiendo.
       const allHeadings = [...input.existingHeadings, ...planned.map((h) => h.heading_es)]
+      // Las secciones que ya existían no traen alcance (no salieron de este esquema): van
+      // en blanco y solo cuentan como título a no repetir.
+      const allScopes = [...input.existingHeadings.map(() => ''), ...planned.map((h) => h.scope ?? '')]
       const total = allHeadings.length
       let aborted = false
 
@@ -180,6 +185,8 @@ export function runSectionAiGeneration(input: SectionAiInput): void {
           sectionIndex: input.existingHeadings.length + i,
           totalSections: total,
           allHeadings,
+          sectionScope: h.scope,
+          allScopes,
           ...docContext,
         }, signal)
 
@@ -197,11 +204,13 @@ export function runSectionAiGeneration(input: SectionAiInput): void {
         }
 
         // Se guarda ya: cancelar después de esto no borra lo escrito.
+        // `scope` es planificación interna: no se guarda con la sección.
+        const { scope: _scope, ...heading } = h
         try {
           await saveGeneratedSection(
             input.campaignId,
             input.moduleId,
-            { ...h, blocks },
+            { ...heading, blocks },
             input.startOrder + saved,
             images,
           )

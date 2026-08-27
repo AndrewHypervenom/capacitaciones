@@ -1200,7 +1200,35 @@
     "has_checks_one": "This video has {{count}} check: it pauses on its own to ask you about what you just watched.",
     "has_checks_other": "This video has {{count}} checks: it pauses on its own to ask you about what you just watched.",
     "why_paused_one": "We paused the video at {{time}} to check what you just watched: {{count}} question.",
-    "why_paused_other": "We paused the video at {{time}} to check what you just watched: {{count}} questions."
+    "why_paused_other": "We paused the video at {{time}} to check what you just watched: {{count}} questions.",
+    "error": {
+      "unavailable": {
+        "title": "This video is no longer available",
+        "hint": "It was deleted or moved at the provider. Report it and we will restore it — this is not your connection."
+      },
+      "private": {
+        "title": "We are not allowed to show this video",
+        "hint": "The video's privacy settings block it here. Report it so we can fix it."
+      },
+      "blocked": {
+        "title": "Something is blocking the player",
+        "hint": "This is usually the company network, an antivirus or a browser extension. Try an incognito window or another network."
+      },
+      "network": {
+        "title": "We could not load the video",
+        "hint": "This looks like a connection problem. Check your network and try again."
+      },
+      "unknown": {
+        "title": "The video could not be played",
+        "hint": "Try again. If it keeps failing, report it and we will look into it."
+      },
+      "retry": "Try again",
+      "report": "Report the problem",
+      "reporting": "Sending…",
+      "reported": "Reported",
+      "report_retry": "Not sent, try again",
+      "reported_hint": "It reached us with the technical detail. Thank you."
+    }
   },
   "admin": {
     "surgery": {

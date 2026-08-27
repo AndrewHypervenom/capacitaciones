@@ -11,7 +11,7 @@ import { saveGeneratedModule } from '@/services/modules.service'
 import { createCourse, addModuleToCourse } from '@/services/courses.service'
 import { consumeAiOperation, isQuotaExceeded, refundAiOperation } from '@/services/aiQuota.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
-import { cropCaptures, suggestModuleSectionCount, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
+import { cropCaptures, suggestModuleSectionRange, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
 
 /** Evento global emitido al terminar una creación de curso con IA en segundo plano. */
 export const COURSE_AI_CREATED_EVENT = 'course_ai_created'
@@ -72,12 +72,24 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
         manualMode,
       }
 
-      // 1) Esquema del módulo. La cantidad de secciones se dimensiona al documento (un
-      // documento largo se divide en más secciones digeribles → ninguna revienta el techo
-      // de tokens y no se pierde información).
-      const targetSections = suggestModuleSectionCount(doc)
-      const { data: outline } = await generateModuleOutline({ description, targetSections, ...docContext }, signal)
+      // 1) Esquema del módulo. La cantidad de secciones se dimensiona al documento: un
+      // RANGO (corto → pocas secciones; largo → más) dentro del cual decide la IA según los
+      // subtemas reales. Ni infla el temario repitiendo, ni empaca medio documento en una.
+      const sectionRange = suggestModuleSectionRange(doc)
+      const { data: outline } = await generateModuleOutline(
+        {
+          description,
+          minSections: sectionRange.min,
+          maxSections: sectionRange.max,
+          targetSections: sectionRange.max, // compatibilidad con la función aún desplegada
+          ...docContext,
+        },
+        signal,
+      )
       const headings = outline.sections.map((h) => h.heading_es)
+      // El alcance que el esquema le dio a cada sección: se le pasa a TODAS las llamadas
+      // para que cada sección sepa qué le toca y qué ya cubre otra (así no se repiten).
+      const scopes = outline.sections.map((h) => h.scope ?? '')
 
       // 2) Cada sección por separado, con UN reintento ante fallo transitorio (429/500).
       // Si se cancela, cortamos y guardamos lo hecho.
@@ -98,6 +110,8 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
           sectionIndex: s,
           totalSections: outline.sections.length,
           allHeadings: headings,
+          sectionScope: h.scope,
+          allScopes: scopes,
           ...docContext,
         }, signal)
         try {
@@ -108,7 +122,9 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
             if (signal.aborted || (e as Error)?.name === 'AbortError') throw e
             ;({ data } = await genSection()) // reintento único
           }
-          sections.push({ ...h, blocks: data.blocks })
+          // `scope` es planificación interna: no se guarda con la sección.
+          const { scope: _scope, ...heading } = h
+          sections.push({ ...heading, blocks: data.blocks })
         } catch (e) {
           if (signal.aborted || (e as Error)?.name === 'AbortError') { aborted = true; break }
           /* si una sección falla tras el reintento (no por cancelación), se omite y seguimos */

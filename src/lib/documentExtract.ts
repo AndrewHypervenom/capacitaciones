@@ -863,18 +863,33 @@ export async function cropCaptures(
  * legible si el formato no está soportado o no hay contenido aprovechable.
  */
 /**
- * Sugiere cuántas secciones debería tener el módulo, proporcional al tamaño del documento.
- * Un documento largo (p. ej. un manual de ~90 páginas) se divide en MÁS secciones digeribles
- * para no perder información ni empacar demasiado en una sola sección (lo que reventaba el
- * techo de tokens del modelo y hacía que la sección se descartara: por eso antes "solo
- * alcanzaba a crear 2"). El servidor la usa como objetivo aproximado (±2).
+/** Cuántas secciones pide un documento: un rango, no un número fijo. */
+export interface SectionCountRange { min: number; max: number }
+
+// Piso del rango: hasta un documento corto merece un módulo con recorrido (4-6 secciones),
+// no dos bloques largos. El techo duro sigue en 20 (cada sección es una llamada a la IA).
+const SECTIONS_MIN = 4
+const SECTIONS_MIN_TOP = 6
+const SECTIONS_MAX = 20
+
+/**
+ * Cuántas secciones pide el documento, según SU TAMAÑO. Devuelve un RANGO, no un número:
+ * un documento corto da 4-6 secciones; uno de 40 páginas, 8-14; un manual de 90, el techo.
+ * La IA elige dentro del rango según los subtemas reales que encuentre (y puede quedarse
+ * por debajo del mínimo si el documento es tan breve que llegar a él la obligaría a repetir:
+ * el rango orienta, la regla de cero redundancia manda).
  *
- * Señales: caracteres de texto (~1 sección por 11k) y, para PDFs escaneados/manuales sin
- * mucho texto, la página máxima vista (~1 sección por 6 páginas). Se toma la mayor.
+ * El rango (y no un objetivo único) es lo que evita los dos extremos que ya se pagaron:
+ * pedir "aproximadamente N" hacía que la IA rellenara hasta el número partiendo un mismo
+ * tema en dos secciones redundantes; pedir solo un techo la dejaba empacar medio documento
+ * en una sección (que revienta el techo de tokens y se descarta en silencio).
+ *
+ * Señales: caracteres de texto (~1 sección por 9k) y, para PDFs escaneados/manuales sin
+ * mucho texto, la página máxima vista (~1 sección por 5 páginas). Se toma la mayor.
  */
-export function suggestModuleSectionCount(doc: Pick<ExtractedDocument, 'text' | 'images' | 'contextImages'>): number {
-  const MIN = 2
-  const MAX = 20
+export function suggestModuleSectionRange(
+  doc: Pick<ExtractedDocument, 'text' | 'images' | 'contextImages'>,
+): SectionCountRange {
   const chars = (doc.text ?? '').trim().length
   const maxPage = Math.max(
     0,
@@ -882,9 +897,20 @@ export function suggestModuleSectionCount(doc: Pick<ExtractedDocument, 'text' | 
     ...doc.contextImages.map((i) => i.page ?? 0),
     doc.contextImages.length, // fallback: páginas rasterizadas cuando no hay número de página
   )
-  const byChars = Math.round(chars / 11000)
-  const byPages = Math.round(maxPage / 6)
-  return Math.max(MIN, Math.min(MAX, Math.max(byChars, byPages, MIN)))
+  const byChars = Math.round(chars / 9000)
+  const byPages = Math.round(maxPage / 5)
+  const base = Math.max(byChars, byPages, SECTIONS_MIN)
+  const min = Math.max(SECTIONS_MIN, Math.min(SECTIONS_MAX, Math.round(base * 0.75)))
+  // El techo nunca baja de SECTIONS_MIN_TOP: un documento corto da 4-6, no 4-4.
+  // Holgura de al menos 2 secciones: el rango tiene que dejar decidir a la IA.
+  const max = Math.min(SECTIONS_MAX, Math.max(min + 2, SECTIONS_MIN_TOP, Math.round(base * 1.25)))
+  return { min: Math.min(min, max), max }
+}
+
+/** El punto medio del rango: el número que se le PROPONE al capacitador en la interfaz. */
+export function suggestModuleSectionCount(doc: Pick<ExtractedDocument, 'text' | 'images' | 'contextImages'>): number {
+  const { min, max } = suggestModuleSectionRange(doc)
+  return Math.round((min + max) / 2)
 }
 
 export async function extractDocumentText(

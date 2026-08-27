@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { loadYouTubeIframeAPI, type PlayerLike } from '@/lib/youtube'
+import { mapYouTubeError, sdkLoadError, type VideoPlayerError } from '@/lib/videoError'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -21,6 +22,8 @@ interface YouTubePlayerProps {
   onEnded?: () => void
   /** Se invoca ~4 veces por segundo mientras el reproductor está listo (equivale a `timeupdate`). */
   onTimeUpdate?: () => void
+  /** El video no se pudo reproducir (borrado, privado, sin permiso de incrustar, red). */
+  onError?: (err: VideoPlayerError) => void
 }
 
 // Estados de la IFrame API de YouTube.
@@ -38,6 +41,7 @@ export function YouTubePlayer({
   onPause,
   onEnded,
   onTimeUpdate,
+  onError,
 }: YouTubePlayerProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const ytRef = useRef<any>(null)
@@ -45,11 +49,18 @@ export function YouTubePlayer({
   const readySignaledRef = useRef(false)
 
   // Guardamos los callbacks en refs para no recrear el reproductor si cambian de identidad.
-  const cbRef = useRef({ onReady, onPlay, onPause, onEnded, onTimeUpdate })
-  cbRef.current = { onReady, onPlay, onPause, onEnded, onTimeUpdate }
+  const cbRef = useRef({ onReady, onPlay, onPause, onEnded, onTimeUpdate, onError })
+  cbRef.current = { onReady, onPlay, onPause, onEnded, onTimeUpdate, onError }
 
   useEffect(() => {
     let cancelled = false
+    let errorSignaled = false
+    const fail = (err: VideoPlayerError) => {
+      if (cancelled || errorSignaled) return
+      errorSignaled = true
+      clearInterval(pollRef.current)
+      cbRef.current.onError?.(err)
+    }
 
     loadYouTubeIframeAPI().then(() => {
       if (cancelled || !hostRef.current) return
@@ -102,9 +113,15 @@ export function YouTubePlayer({
             else if (e.data === YT_PAUSED) cbRef.current.onPause?.()
             else if (e.data === YT_ENDED) cbRef.current.onEnded?.()
           },
+          // Video borrado, ID inválido o dueño que no permite incrustarlo. Antes se
+          // ignoraba y quedaba el cartel de YouTube dentro del iframe.
+          onError: (e: any) => fail(mapYouTubeError(Number(e?.data))),
         },
       })
       ytRef.current = player
+    }).catch(() => {
+      // La API no cargó (offline, CSP o bloqueador). Antes quedaba en silencio.
+      fail(sdkLoadError('youtube'))
     })
 
     return () => {

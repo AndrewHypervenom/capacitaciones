@@ -39,6 +39,8 @@ import {
   subscribeAutoplayNext,
 } from '@/lib/videoBus'
 import { isVideoQuizPassed } from '@/types/blocks'
+import { mapMediaError, type VideoPlayerError } from '@/lib/videoError'
+import { VideoErrorNotice } from './VideoErrorNotice'
 import type { ModuleSection, VideoMarker, VideoQuizMarker } from '@/data/modules'
 import type { Language } from '@/stores/userStore'
 
@@ -219,6 +221,15 @@ export function InteractiveVideoModule({
   const overlayOpenRef = useRef(false)
 
   const [playing, setPlaying] = useState(false)
+
+  // ── Fallo de reproducción ──
+  // Sin esto el aprendiz se quedaba con la pantalla de error del proveedor: la de
+  // Vimeo es genérica, va pintada con el verde de la cuenta (parece nuestra) y su
+  // botón "enviar registro de errores" manda el diagnóstico a Vimeo, no a nosotros.
+  const [videoError, setVideoError] = useState<VideoPlayerError | null>(null)
+  // Cambiar este número remonta el reproductor: es la única forma de reintentar,
+  // porque el efecto que lo crea solo depende del video y del modo de controles.
+  const [retryNonce, setRetryNonce] = useState(0)
   // "Se pidió reproducir pero el reproductor aún no confirma". Mientras dure, ocultamos
   // el botón grande de play para no tapar la ruedita de carga de YouTube/Vimeo.
   const [pending, setPending] = useState(false)
@@ -298,6 +309,20 @@ export function InteractiveVideoModule({
   const isEmbed = isYouTube || isVimeo
   const sortedMarkers = [...markers].sort((a, b) => a.timeSeconds - b.timeSeconds)
   const quizCount = sortedMarkers.filter((m) => m.type === 'quiz').length
+
+  // ── Manejo del fallo de reproducción ──
+  const handleVideoError = useCallback((err: VideoPlayerError) => {
+    setVideoError(err)
+    // El video no está corriendo: si no lo apagamos, la barra sigue "reproduciendo"
+    // y el cronómetro del módulo le seguiría contando tiempo de estudio.
+    setPlaying(false)
+  }, [])
+
+  const retryVideo = useCallback(() => {
+    setVideoError(null)
+    setRetryNonce((n) => n + 1)
+  }, [])
+
 
   // ── Candado de la primera pasada ──
   // Mientras no se haya terminado el video una vez, no se puede adelantar.
@@ -1199,6 +1224,7 @@ export function InteractiveVideoModule({
       <div ref={videoAreaRef} className={cn('relative bg-black', fullscreen ? 'flex-1 flex flex-col' : 'aspect-video w-full')}>
         {isYouTube && videoUrl ? (
           <YouTubePlayer
+            key={`yt:${videoUrl}:${retryNonce}`}
             videoId={videoUrl}
             playerRef={videoRef}
             className="absolute inset-0 w-full h-full"
@@ -1207,9 +1233,11 @@ export function InteractiveVideoModule({
             onPause={handlePauseEvent}
             onEnded={handleEndedEvent}
             onTimeUpdate={handleTimeUpdate}
+            onError={handleVideoError}
           />
         ) : isVimeo && videoUrl ? (
           <VimeoPlayer
+            key={`vm:${videoUrl}:${retryNonce}`}
             videoId={videoUrl}
             playerRef={videoRef}
             className="absolute inset-0 w-full h-full"
@@ -1218,6 +1246,7 @@ export function InteractiveVideoModule({
             onPause={handlePauseEvent}
             onEnded={handleEndedEvent}
             onTimeUpdate={handleTimeUpdate}
+            onError={handleVideoError}
           />
         ) : (
           <video
@@ -1232,6 +1261,7 @@ export function InteractiveVideoModule({
             onLoadedMetadata={handleLoadedMetadata}
             onSeeking={handleNativeSeeking}
             onEnded={handleEndedEvent}
+            onError={(e) => handleVideoError(mapMediaError(e.currentTarget.error))}
           />
         )}
 
@@ -1239,7 +1269,7 @@ export function InteractiveVideoModule({
             (y el de YouTube lo hace con su propia lógica), así que interceptamos toda el
             área del video y usamos SIEMPRE nuestro play/pausa. Va por debajo de los
             controles (z-20) para no robarles los clics. */}
-        {isEmbed && !showOverlay && (
+        {isEmbed && !showOverlay && !videoError && (
           <button
             type="button"
             aria-label={playing ? 'Pausar' : 'Reproducir'}
@@ -1336,7 +1366,7 @@ export function InteractiveVideoModule({
         {/* Botón grande de play cuando está pausado. Desaparece en cuanto se pide
             reproducir (`pending`) para dejar ver la ruedita de carga del reproductor. */}
         <AnimatePresence>
-          {!playing && !pending && !showOverlay && (
+          {!playing && !pending && !showOverlay && !videoError && (
             <motion.div
               className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
               key="big-play"
@@ -1496,6 +1526,25 @@ export function InteractiveVideoModule({
                 })}
               </div>
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Fallo de reproducción ──
+            Tapa el iframe con NUESTRO aviso; el del proveedor no dice qué pasó y su
+            botón de reporte va a la telemetría de ellos. Va en z-40 para quedar por
+            encima de los controles (z-20) y del cartel de final (z-30): con el video
+            roto no hay nada que controlar. */}
+        <AnimatePresence>
+          {videoError && (
+            <VideoErrorNotice
+              err={videoError}
+              onRetry={retryVideo}
+              sectionId={section.id}
+              sectionTitle={section.heading?.[lang] ?? section.heading?.es ?? null}
+              videoUrl={videoUrl}
+              getAtSeconds={() => videoRef.current?.currentTime ?? null}
+              lang={lang}
+            />
           )}
         </AnimatePresence>
 
