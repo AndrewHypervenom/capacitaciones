@@ -21,9 +21,28 @@ import {
 import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries'
 import type { Campaign } from '@/types/database'
 
+/**
+ * Tope de filas para el capacitador. El superadmin no topa: una nómina completa
+ * puede traer cientos de personas y partir el archivo a mano es pedir errores.
+ */
 const MAX_ROWS = 200
+/**
+ * Filas por llamada a `create-users-bulk`. La función crea las cuentas una por
+ * una, así que un archivo grande se manda en tandas: cada llamada termina
+ * cómodamente dentro de su tiempo límite y, si una falla, lo ya creado no se
+ * pierde ni se repite. También es lo que deja subir 756 personas sin tocar la
+ * función desplegada (que sigue aceptando hasta 200 por llamada).
+ */
+const BATCH_SIZE = 100
 const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
 const NONE = -1
+
+/** Parte una lista en tandas de `size`. */
+function chunk<T>(list: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size))
+  return out
+}
 
 type Step = 'file' | 'review' | 'result'
 type RowStatus = 'new' | 'exists' | 'duplicate' | 'invalid'
@@ -134,6 +153,8 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [checkState, setCheckState] = useState<'idle' | 'checking' | 'done' | 'unavailable'>('idle')
 
   const [processing, setProcessing] = useState(false)
+  /** Avance del alta por tandas: cuántas filas ya contestó el servidor. */
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [results, setResults] = useState<RowResult[] | null>(null)
   // Lo confirma el servidor: es él quien decide si aplicó la predeterminada.
   const [usedDefaultPwd, setUsedDefaultPwd] = useState(false)
@@ -170,25 +191,32 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     setCheckState('checking')
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-users-bulk`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
+      const found = new Set<string>()
+      // Igual que el alta: por tandas, porque la función solo mira 200 correos
+      // por llamada. Antes se cortaba en 200 y el resto salía como "nuevo"
+      // aunque ya tuviera cuenta.
+      for (const batch of chunk(emails, MAX_ROWS)) {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-users-bulk`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session?.access_token}`,
+            },
+            // Sin `rows` a propósito: una versión vieja de la función responde 400
+            // en vez de crear usuarios sin querer.
+            body: JSON.stringify({ preview: true, emails: batch }),
           },
-          // Sin `rows` a propósito: una versión vieja de la función responde 400
-          // en vez de crear usuarios sin querer.
-          body: JSON.stringify({ preview: true, emails: emails.slice(0, MAX_ROWS) }),
-        },
-      )
-      const json = await res.json()
-      if (!res.ok || json?.preview !== true) {
-        setCheckState('unavailable')
-        return
+        )
+        const json = await res.json()
+        if (!res.ok || json?.preview !== true) {
+          setCheckState('unavailable')
+          return
+        }
+        for (const mail of (json.existing ?? []) as string[]) found.add(mail)
       }
-      setExisting(new Set((json.existing ?? []) as string[]))
+      setExisting(found)
       setCheckState('done')
     } catch {
       setCheckState('unavailable')
@@ -342,7 +370,8 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   }, [rows])
 
   const selected = useMemo(() => rows.filter((r) => r.include), [rows])
-  const tooMany = selected.length > MAX_ROWS
+  // El superadmin no tiene tope: el archivo se manda por tandas.
+  const tooMany = !isSuperAdmin && selected.length > MAX_ROWS
   // Filas que se van a crear con un país escrito en el archivo que no se pudo
   // interpretar: se avisa una vez, no fila por fila.
   const unknownCountries = useMemo(
@@ -368,42 +397,72 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const process = async () => {
     if (selected.length === 0 || tooMany) return
     setProcessing(true)
+    setProgress({ done: 0, total: selected.length })
+    const payload = selected.map((r) => ({
+      email: r.email,
+      display_name: r.name,
+      role: r.role,
+      campaign: r.campaignId ?? undefined,
+      country: r.country || undefined,
+    }))
+    // Lo que ya contestó el servidor. Vive fuera del try: si una tanda se cae,
+    // igual mostramos (y se pueden descargar) las credenciales de las que sí
+    // alcanzaron a crearse. En producción eso es la diferencia entre repetir la
+    // carga completa y seguir desde donde iba.
+    const rowResults: RowResult[] = []
+    let usedDefault = false
+    let failure: string | null = null
+
     try {
-      const payload = selected.map((r) => ({
-        email: r.email,
-        display_name: r.name,
-        role: r.role,
-        campaign: r.campaignId ?? undefined,
-        country: r.country || undefined,
-      }))
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-users-bulk`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
+      for (const batch of chunk(payload, BATCH_SIZE)) {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-users-bulk`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session?.access_token}`,
+            },
+            body: JSON.stringify({ rows: batch }),
           },
-          body: JSON.stringify({ rows: payload }),
-        },
-      )
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error')
-      const rowResults = json.results as RowResult[]
-      setResults(rowResults)
-      setUsedDefaultPwd(json.defaultPassword === true)
-      const wantedCountry = selected.filter((r) => r.country).length
-      const appliedCountry = rowResults.filter((r) => r.status === 'created' && r.country).length
-      setCountryIgnored(wantedCountry > 0 && appliedCountry === 0)
-      setStep('result')
-      toast.success(t('admin.users.bulk_done', { created: json.created, total: json.total }))
-      await onImported()
+        )
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'Error')
+        rowResults.push(...((json.results ?? []) as RowResult[]))
+        if (json.defaultPassword === true) usedDefault = true
+        setProgress({ done: rowResults.length, total: payload.length })
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('admin.courses.error_save'))
-    } finally {
-      setProcessing(false)
+      failure = err instanceof Error ? err.message : t('admin.courses.error_save')
     }
+
+    setProcessing(false)
+    setProgress(null)
+
+    if (rowResults.length === 0) {
+      toast.error(failure ?? t('admin.courses.error_save'))
+      return
+    }
+
+    setResults(rowResults)
+    setUsedDefaultPwd(usedDefault)
+    const wantedCountry = selected.filter((r) => r.country).length
+    const appliedCountry = rowResults.filter((r) => r.status === 'created' && r.country).length
+    setCountryIgnored(wantedCountry > 0 && appliedCountry === 0)
+    setStep('result')
+    const created = rowResults.filter((r) => r.status === 'created').length
+    if (failure) {
+      // Se cortó a mitad de camino: decirlo con el número exacto, no un "listo".
+      toast.error(t('admin.users.bulk_partial', {
+        done: rowResults.length,
+        total: payload.length,
+        error: failure,
+      }))
+    } else {
+      toast.success(t('admin.users.bulk_done', { created, total: rowResults.length }))
+    }
+    await onImported()
   }
 
   const downloadCredentials = () => {
@@ -976,7 +1035,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                   >
                     {processing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                     {processing
-                      ? t('admin.users.bulk_processing')
+                      ? progress && progress.total > BATCH_SIZE
+                        ? t('admin.users.bulk_progress', { done: progress.done, total: progress.total })
+                        : t('admin.users.bulk_processing')
                       : t('admin.users.bulk_create_n', { n: selected.length })}
                   </button>
                 </div>

@@ -1883,6 +1883,8 @@
       "bulk_choose_file": "Escolher arquivo",
       "bulk_rows_detected": "{{n}} linhas detectadas",
       "bulk_max_rows": "Máximo de {{n}} linhas por importação.",
+      "bulk_progress": "Criando {{done}} de {{total}}…",
+      "bulk_partial": "A importação parou em {{done}} de {{total}}. O que foi criado está salvo; envie o arquivo novamente com os restantes. ({{error}})",
       "bulk_no_valid": "Nenhum email válido encontrado no arquivo.",
       "bulk_process": "Criar usuários",
       "bulk_processing": "Criando usuários…",
