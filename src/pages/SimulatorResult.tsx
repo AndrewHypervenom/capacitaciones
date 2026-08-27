@@ -10,7 +10,7 @@ import { useProgressStore } from '@/stores/progressStore';
 import { useAuth } from '@/hooks/useAuth';
 import { scoreRun, formatDuration } from '@/lib/scoring';
 import { saveSimulatorAttempt, getCourseCertStatus, type AiFeedback } from '@/services/certification.service';
-import { callFeedback, SimAiError, type SimAiErrorKind } from '@/services/simGroq.service';
+import { callFeedback, SimAiError, type SimAiErrorKind } from '@/services/simAi.service';
 import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import type { CourseCertStatus } from '@/types/database';
 import { useUserStore } from '@/stores/userStore';
@@ -88,7 +88,7 @@ export default function SimulatorResult() {
     nav('/dashboard', { replace: true });
   }, [valid, scenario, notFound, nav]);
 
-  // Retroalimentación personalizada con IA (Groq) sobre la transcripción real.
+  // Retroalimentación personalizada con IA (Claude) sobre la transcripción real.
   useEffect(() => {
     if (!valid || !scenario || !lastResult || !computed || feedbackReqRef.current) return;
     feedbackReqRef.current = true;

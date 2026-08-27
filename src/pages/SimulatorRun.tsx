@@ -10,7 +10,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useSimStore } from '@/stores/simStore';
 import { applyTurn, endSim, startSim, stepSim, type SimState } from '@/lib/simulator';
 import { unloopScenario, deferEndings, collapseEndings } from '@/lib/scenarioFlow';
-import { callTurn } from '@/services/simGroq.service';
+import { callTurn } from '@/services/simAi.service';
 import { CallTimer } from '@/components/simulator/CallTimer';
 import { CustomerPanel } from '@/components/simulator/CustomerPanel';
 import { ChatTranscript } from '@/components/simulator/ChatTranscript';
@@ -143,7 +143,7 @@ export default function SimulatorRun() {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     // El mensaje del agente aparece de inmediato + indicador de "escribiendo…"
-    // mientras la IA (Groq) genera la respuesta del cliente.
+    // mientras la IA (Claude) genera la respuesta del cliente.
     const withAgent: SimState = {
       ...state,
       messages: [...state.messages, { id: `agent-${Date.now()}`, from: 'agent', text, at: Date.now() }],
@@ -181,7 +181,7 @@ export default function SimulatorRun() {
       // Pequeña pausa para que el indicador de escritura se sienta natural.
       typingTimeoutRef.current = setTimeout(() => commit(next), 300);
     } catch {
-      // Respaldo: si Groq falla o falta la key, se usa el motor guionado.
+      // Respaldo: si la IA falla o falta la key, se usa el motor guionado.
       commit(stepSim(state, scenario, text, language));
     }
   };

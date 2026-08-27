@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { Language } from '@/stores/userStore'
 
-/** Un turno de la conversación (para mandar el historial a Groq). */
+/** Un turno de la conversación (para mandar el historial a la IA). */
 export interface SimTurn {
   from: 'agent' | 'customer'
   text: string
@@ -35,6 +35,8 @@ export class SimAiError extends Error {
 
 /** Tope de espera: sin esto, una función colgada dejaba la UI en "analizando" para siempre. */
 const DEFAULT_TIMEOUT_MS = 30_000
+/** La retroalimentación la escribe un modelo más grande y de una sola vez: tarda más que un turno. */
+const FEEDBACK_TIMEOUT_MS = 60_000
 
 async function post<T>(
   body: Record<string, unknown>,
@@ -54,7 +56,7 @@ async function post<T>(
     if (!session) throw new SimAiError('unavailable', 'No autenticado')
 
     response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sim-groq`,
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sim-ai`,
       {
         method: 'POST',
         headers: {
@@ -84,13 +86,13 @@ async function post<T>(
   if (!response.ok || !result || result.error) {
     const msg: string = result?.error ?? `Error ${response.status} en el servicio de IA`
     if (response.status === 404) throw new SimAiError('not_configured', 'El servicio de IA no está desplegado')
-    if (/GROQ_API_KEY/i.test(msg)) throw new SimAiError('not_configured', msg)
+    if (/ANTHROPIC_API_KEY/i.test(msg)) throw new SimAiError('not_configured', msg)
     throw new SimAiError('unknown', msg)
   }
   return result.data as T
 }
 
-/** El cliente (Groq) responde libre al mensaje del agente y evalúa los checks. */
+/** El cliente (Claude) responde libre al mensaje del agente y evalúa los checks. */
 export function callTurn(opts: {
   language: Language
   scenario: {
@@ -117,7 +119,7 @@ export function callFeedback(opts: {
   transcript: SimTurn[]
   metrics: { scorePct: number; checklistPct?: number; empathyPct?: number; resolved?: boolean }
 }, signal?: AbortSignal): Promise<SimFeedback> {
-  return post<SimFeedback>({ mode: 'call-feedback', ...opts }, signal)
+  return post<SimFeedback>({ mode: 'call-feedback', ...opts }, signal, FEEDBACK_TIMEOUT_MS)
 }
 
 /** Retroalimentación personalizada de una simulación de opción múltiple. */
@@ -127,5 +129,5 @@ export function choiceFeedback(opts: {
   transcript: SimTurn[]
   metrics: { scorePct: number }
 }, signal?: AbortSignal): Promise<SimFeedback> {
-  return post<SimFeedback>({ mode: 'choice-feedback', ...opts }, signal)
+  return post<SimFeedback>({ mode: 'choice-feedback', ...opts }, signal, FEEDBACK_TIMEOUT_MS)
 }

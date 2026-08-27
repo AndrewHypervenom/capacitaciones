@@ -136,7 +136,7 @@ export function stepSim(
 }
 
 /**
- * Aplica al estado un turno resuelto por la IA (Groq): agrega el mensaje del
+ * Aplica al estado un turno resuelto por la IA (Claude): agrega el mensaje del
  * agente y la respuesta libre del cliente, fusiona los checks satisfechos
  * (evaluación semántica, no por palabras clave) y actualiza empatía/cierre.
  */

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, Lightbulb, Loader2, RotateCw, Sparkles, ThumbsUp } from 'lucide-react';
 import type { AiFeedback } from '@/services/certification.service';
-import type { SimAiErrorKind } from '@/services/simGroq.service';
+import type { SimAiErrorKind } from '@/services/simAi.service';
 
 interface Props {
   feedback: AiFeedback | null;
@@ -44,7 +44,7 @@ function AnalyzingState() {
 }
 
 /**
- * Tarjeta de retroalimentación personalizada generada por IA (Groq).
+ * Tarjeta de retroalimentación personalizada generada por IA (Claude).
  * Compartida por el resultado de llamada y el de opción múltiple.
  * Estados: analizando (con cronómetro, para saber si vale la pena esperar),
  * error explicado + reintentar, o el feedback ya listo.

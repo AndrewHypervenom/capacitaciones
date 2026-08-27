@@ -6,7 +6,7 @@ import { ArrowLeft, BookOpen, Phone, PhoneOff, Star, Target } from 'lucide-react
 import { type ChoiceNode, type ChoiceOption, type ChoiceScenario, calcMaxPoints, getChoiceScenario } from '@/data/choiceScenarios';
 import { getChoiceScenarioBySlug } from '@/services/choiceScenarios.service';
 import { saveSimulatorAttempt, type AiFeedback } from '@/services/certification.service';
-import { choiceFeedback, SimAiError, type SimAiErrorKind } from '@/services/simGroq.service';
+import { choiceFeedback, SimAiError, type SimAiErrorKind } from '@/services/simAi.service';
 import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import { RichText } from '@/components/ui/RichText';
 import { unloopScenario, deferEndings, collapseEndings } from '@/lib/scenarioFlow';
@@ -272,7 +272,7 @@ export default function ChoiceSimulatorRun() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typing]);
 
-  // Retroalimentación personalizada con IA (Groq) sobre las decisiones tomadas.
+  // Retroalimentación personalizada con IA (Claude) sobre las decisiones tomadas.
   useEffect(() => {
     if (phase !== 'result' || feedbackReqRef.current || !scenario) return;
     feedbackReqRef.current = true;

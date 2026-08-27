@@ -28,7 +28,7 @@ export interface NewSimulatorAttempt {
   empathyPct: number
   resolved: boolean
   durationSec: number
-  /** Retroalimentación personalizada generada por IA (Groq), si se obtuvo. */
+  /** Retroalimentación personalizada generada por IA (Claude), si se obtuvo. */
   aiFeedback?: AiFeedback | null
 }
 

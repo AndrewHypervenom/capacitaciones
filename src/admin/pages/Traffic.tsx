@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import {
   Activity, Users, Clock, Eye, MousePointerClick, Radio, Loader2,
-  TrendingUp, TrendingDown, Minus, Building2, Database, Pencil, Trophy,
+  TrendingUp, TrendingDown, Minus, Building2, Database, Pencil, Trophy, HelpCircle,
 } from 'lucide-react'
 import i18n from '@/i18n'
 import { useAuth } from '@/hooks/useAuth'
@@ -177,6 +177,7 @@ export default function Traffic() {
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[rgb(var(--brand-green))]" />
           </span>
           <h2 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.traffic.live_title')}</h2>
+          <Hint text={t('admin.traffic.live_title_hint')} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -187,6 +188,7 @@ export default function Traffic() {
                 <Radio className="h-4 w-4" />
               </span>
               <span className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.traffic.live_online')}</span>
+              <Hint text={t('admin.traffic.live_online_hint')} />
             </div>
             <div className="mt-3 flex items-end gap-3">
               <span className="text-5xl font-bold tabular-nums text-text leading-none">
@@ -202,16 +204,23 @@ export default function Traffic() {
             </div>
             <div className="mt-4 flex flex-wrap gap-1.5">
               {live.byRole.map((r) => (
-                <span
+                <Tooltip
                   key={r.key}
-                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium tabular-nums"
-                  style={{
-                    background: `${ROLE_COLOR[r.key] ?? '#64748b'}1a`,
-                    color: ROLE_COLOR[r.key] ?? '#64748b',
-                  }}
+                  label={t('admin.traffic.live_role_hint', {
+                    n: r.count,
+                    role: t(`roles.${r.key}`, r.key),
+                  })}
                 >
-                  {t(`roles.${r.key}`, r.key)} · {r.count}
-                </span>
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium tabular-nums"
+                    style={{
+                      background: `${ROLE_COLOR[r.key] ?? '#64748b'}1a`,
+                      color: ROLE_COLOR[r.key] ?? '#64748b',
+                    }}
+                  >
+                    {t(`roles.${r.key}`, r.key)} · {r.count}
+                  </span>
+                </Tooltip>
               ))}
             </div>
             <p className="mt-4 text-[11px] text-text-subtle leading-snug">
@@ -226,6 +235,7 @@ export default function Traffic() {
             rows={live.byView.map((v) => ({ label: t(v.key, t('presence.views.somewhere')), count: v.count }))}
             total={live.total}
             empty={t('admin.traffic.live_empty')}
+            hint={t('admin.traffic.live_by_view_hint')}
           />
 
           {/* Quién está editando: el dato que evita que dos se pisen */}
@@ -233,6 +243,7 @@ export default function Traffic() {
             <div className="flex items-center gap-2 mb-3">
               <Pencil className="h-3.5 w-3.5 text-text-muted" />
               <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.traffic.live_editing')}</h3>
+              <Hint text={t('admin.traffic.live_editing_hint')} />
             </div>
             {live.editing.length === 0 ? (
               <p className="text-[13px] text-text-muted py-6 text-center">{t('admin.traffic.live_editing_none')}</p>
@@ -259,6 +270,7 @@ export default function Traffic() {
       <div className="flex items-center gap-2 mb-3">
         <Activity className="h-3.5 w-3.5 text-text-muted" />
         <h2 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.traffic.history_title')}</h2>
+        <Hint text={t('admin.traffic.history_title_hint')} />
       </div>
 
       {history.notInstalled ? (
@@ -274,7 +286,8 @@ export default function Traffic() {
         <>
           {/* Filtros */}
           <div className="flex flex-col gap-3 mb-5">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Hint text={t('admin.traffic.presets_hint')} />
               {PRESETS.map((p) => (
                 <button
                   key={p.key}
@@ -322,17 +335,17 @@ export default function Traffic() {
             <>
               {/* KPIs */}
               <Stagger as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5" gap={0.06}>
-                <Kpi icon={Users} color="#10D451" label={t('admin.traffic.kpi_users')}
+                <Kpi icon={Users} color="#10D451" label={t('admin.traffic.kpi_users')} hint={t('admin.traffic.kpi_users_hint')}
                   value={<AnimatedNumber value={o.users} format={fmtInt} />}
                   delta={usersDelta}
                   footer={o.newUsers > 0 ? t('admin.traffic.kpi_new', { n: fmtInt(o.newUsers) }) : undefined} />
-                <Kpi icon={MousePointerClick} color="#8b5cf6" label={t('admin.traffic.kpi_sessions')}
+                <Kpi icon={MousePointerClick} color="#8b5cf6" label={t('admin.traffic.kpi_sessions')} hint={t('admin.traffic.kpi_sessions_hint')}
                   value={<AnimatedNumber value={o.sessions} format={fmtInt} />}
                   footer={t('admin.traffic.kpi_views', { n: fmtInt(o.views) })} />
-                <Kpi icon={Clock} color="#06b6d4" label={t('admin.traffic.kpi_time')}
+                <Kpi icon={Clock} color="#06b6d4" label={t('admin.traffic.kpi_time')} hint={t('admin.traffic.kpi_time_hint')}
                   value={fmtDuration(o.activeMs)}
                   footer={t('admin.traffic.kpi_avg_session', { v: fmtDuration(o.avgSessionMs) })} />
-                <Kpi icon={TrendingUp} color="#f59e0b" label={t('admin.traffic.kpi_peak')}
+                <Kpi icon={TrendingUp} color="#f59e0b" label={t('admin.traffic.kpi_peak')} hint={t('admin.traffic.kpi_peak_hint')}
                   value={<AnimatedNumber value={o.peakConcurrent ?? 0} format={fmtInt} />}
                   footer={o.peakAt ? fmtDateTime(o.peakAt) : undefined} />
               </Stagger>
@@ -340,7 +353,10 @@ export default function Traffic() {
               {/* Curva de concurrencia */}
               <FadeIn as="section" className="rounded-2xl border border-line bg-surface p-5 sm:p-6 mb-5" y={12}>
                 <div className="mb-4">
-                  <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.traffic.chart_title')}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.traffic.chart_title')}</h3>
+                    <Hint text={t('admin.traffic.chart_title_hint')} />
+                  </div>
                   <p className="mt-1 text-[12px] text-text-subtle">{t('admin.traffic.chart_hint')}</p>
                 </div>
                 {history.concurrency.length === 0 ? (
@@ -355,6 +371,8 @@ export default function Traffic() {
                 <RankCard
                   title={t('admin.traffic.top_views')} icon={Eye}
                   empty={t('admin.traffic.no_data')}
+                  hint={t('admin.traffic.top_views_hint')}
+                  valueHint={t('admin.traffic.top_views_value_hint')}
                   rows={history.topViews.map((v) => ({
                     key: v.viewKey,
                     label: t(v.viewKey, t('presence.views.somewhere')),
@@ -366,6 +384,8 @@ export default function Traffic() {
                 <RankCard
                   title={t('admin.traffic.by_campaign')} icon={Building2}
                   empty={t('admin.traffic.no_data')}
+                  hint={t('admin.traffic.by_campaign_hint')}
+                  valueHint={t('admin.traffic.by_campaign_value_hint')}
                   rows={history.byCampaign.map((c) => ({
                     key: c.campaignId ?? 'none',
                     label: c.campaignName ?? t('admin.traffic.no_campaign'),
@@ -381,6 +401,7 @@ export default function Traffic() {
                 <div className="flex items-center gap-2 px-5 py-4 border-b border-line">
                   <Trophy className="h-3.5 w-3.5 text-text-muted" />
                   <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{t('admin.traffic.top_users')}</h3>
+                  <Hint text={t('admin.traffic.top_users_hint')} />
                 </div>
                 {history.topUsers.length === 0 ? (
                   <p className="text-[13px] text-text-muted py-10 text-center">{t('admin.traffic.no_data')}</p>
@@ -397,7 +418,9 @@ export default function Traffic() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-[13px] font-semibold tabular-nums text-text">{fmtDuration(u.activeMs)}</div>
+                          <Tooltip label={t('admin.traffic.user_time_hint')}>
+                            <div className="text-[13px] font-semibold tabular-nums text-text">{fmtDuration(u.activeMs)}</div>
+                          </Tooltip>
                           <div className="text-[11px] text-text-subtle tabular-nums">
                             {t('admin.traffic.user_sub', { sessions: fmtInt(u.sessions), views: fmtInt(u.views) })}
                           </div>
@@ -416,13 +439,45 @@ export default function Traffic() {
 }
 
 // ─── Piezas ──────────────────────────────────────────────────────────
-function Kpi({ icon: Icon, label, value, color, delta, footer }: {
+/**
+ * Signo de interrogación con la explicación del rótulo que acompaña.
+ *
+ * Esta pantalla está llena de números que se parecen y miden cosas distintas
+ * ("personas" vs "sesiones" vs "vistas", el pico simultáneo vs quién pasó por
+ * ahí). Sin decir cuál es cuál, el panel se lee mal: por eso CADA rótulo lleva
+ * el suyo. Se usa `ui/Tooltip`, nunca el atributo `title`.
+ */
+function Hint({ text }: { text: string }) {
+  return (
+    <Tooltip label={text} maxWidth={300}>
+      <HelpCircle className="h-3 w-3 shrink-0 text-text-subtle transition-colors hover:text-text-muted" />
+    </Tooltip>
+  )
+}
+
+/** Rótulo de sección con su ayuda al lado. */
+function SectionTitle({ icon: Icon, label, hint }: {
+  icon?: React.ComponentType<{ className?: string }>
+  label: string
+  hint: string
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
+      <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{label}</h3>
+      <Hint text={hint} />
+    </div>
+  )
+}
+
+function Kpi({ icon: Icon, label, value, color, delta, footer, hint }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: React.ReactNode
   color: string
   delta?: number | null
   footer?: string
+  hint: string
 }) {
   return (
     <StaggerItem className="rounded-2xl border border-line bg-surface p-4 sm:p-5 flex flex-col gap-2 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
@@ -431,6 +486,7 @@ function Kpi({ icon: Icon, label, value, color, delta, footer }: {
           <Icon className="h-4 w-4" />
         </span>
         <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-text-muted truncate">{label}</span>
+        <Hint text={hint} />
       </div>
       <span className="text-2xl sm:text-3xl font-bold tabular-nums text-text">{value}</span>
       <div className="flex items-center gap-2 min-h-[16px]">
@@ -458,18 +514,19 @@ function Delta({ pct }: { pct: number }) {
 }
 
 /** Lista en vivo con barra proporcional (sin consultas: todo sale de la presencia). */
-function LiveList({ title, icon: Icon, rows, total, empty }: {
+function LiveList({ title, icon: Icon, rows, total, empty, hint }: {
   title: string
   icon: React.ComponentType<{ className?: string }>
   rows: { label: string; count: number }[]
   total: number
   empty: string
+  hint: string
 }) {
+  const { t } = useTranslation()
   return (
     <div className="rounded-2xl border border-line bg-surface p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon className="h-3.5 w-3.5 text-text-muted" />
-        <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{title}</h3>
+      <div className="mb-3">
+        <SectionTitle icon={Icon} label={title} hint={hint} />
       </div>
       {rows.length === 0 ? (
         <p className="text-[13px] text-text-muted py-6 text-center">{empty}</p>
@@ -479,7 +536,9 @@ function LiveList({ title, icon: Icon, rows, total, empty }: {
             <li key={r.label}>
               <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
                 <span className="text-text truncate">{r.label}</span>
-                <span className="tabular-nums text-text-muted shrink-0">{r.count}</span>
+                <Tooltip label={t('admin.traffic.live_view_count_hint', { n: r.count })}>
+                  <span className="tabular-nums text-text-muted shrink-0">{r.count}</span>
+                </Tooltip>
               </div>
               <div className="mt-1 h-1 rounded-full bg-subtle overflow-hidden">
                 <div
@@ -496,18 +555,20 @@ function LiveList({ title, icon: Icon, rows, total, empty }: {
 }
 
 /** Ranking con barra proporcional al mayor de la lista. */
-function RankCard({ title, icon: Icon, rows, empty }: {
+function RankCard({ title, icon: Icon, rows, empty, hint, valueHint }: {
   title: string
   icon: React.ComponentType<{ className?: string }>
   rows: { key: string; label: string; sub: string; value: string; weight: number }[]
   empty: string
+  hint: string
+  /** Qué mide el número grande de cada fila (en una lista son visitas, en la otra personas). */
+  valueHint: string
 }) {
   const max = Math.max(1, ...rows.map((r) => r.weight))
   return (
     <div className="rounded-2xl border border-line bg-surface p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <Icon className="h-3.5 w-3.5 text-text-muted" />
-        <h3 className="text-[11px] uppercase tracking-wider text-text-muted">{title}</h3>
+      <div className="mb-4">
+        <SectionTitle icon={Icon} label={title} hint={hint} />
       </div>
       {rows.length === 0 ? (
         <p className="text-[13px] text-text-muted py-8 text-center">{empty}</p>
@@ -517,7 +578,9 @@ function RankCard({ title, icon: Icon, rows, empty }: {
             <li key={r.key}>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-[13px] text-text truncate">{r.label}</span>
-                <span className="text-[13px] font-semibold tabular-nums text-text shrink-0">{r.value}</span>
+                <Tooltip label={valueHint}>
+                  <span className="text-[13px] font-semibold tabular-nums text-text shrink-0">{r.value}</span>
+                </Tooltip>
               </div>
               <div className="mt-1.5 h-1.5 rounded-full bg-subtle overflow-hidden">
                 {/* Magenta corporativo directo: no hay token `brand-violet`. */}

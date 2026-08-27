@@ -8,7 +8,7 @@ import type { ChoiceNodeData } from './ChoiceNodeForm'
  * Reproduce el escenario que el capacitador tiene EN PANTALLA (todavía sin
  * guardar), sin llamar a la IA y sin escribir nada: es un ensayo. Por eso el
  * recorrido usa el motor guionado —el mismo emparejamiento por palabras clave
- * que `stepSim` y el mismo avance por opciones del player— y no Groq: la vista
+ * que `stepSim` y el mismo avance por opciones del player— y no la IA: la vista
  * previa tiene que ser instantánea, gratis y determinista para poder revisar el
  * guion, no para calificar a nadie.
  */
