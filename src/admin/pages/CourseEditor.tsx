@@ -1009,6 +1009,9 @@ export default function CourseEditor() {
   const unpublishedLinkedCount =
     courseScenarios.filter((s) => !s.is_published).length +
     courseChoiceScenarios.filter((s) => !s.is_published).length
+  // Lo único que el aprendiz puede jugar: ligado AL curso y publicado. Es el
+  // número que decide si el requisito del simulador es alcanzable o es un muro.
+  const publishedLinkedCount = courseScenarioCount - unpublishedLinkedCount
 
   // ── Punto del recorrido de cada simulación (borrador vs. guardado) ────────
   const savedPlacement = (row: {
@@ -1048,9 +1051,12 @@ export default function CourseEditor() {
     return changed('call', courseScenarios) || changed('choice', courseChoiceScenarios)
   }, [simPlacements, courseScenarios, courseChoiceScenarios])
 
-  // Requiere el simulador para certificar, pero no hay escenarios ligados:
-  // ningún aprendiz podría certificarse. Se resalta como configuración incompleta.
-  const simRequiredButEmpty = cond.require_simulator && courseScenarioCount === 0
+  // Requiere el simulador para certificar, pero el aprendiz no tiene NADA que
+  // jugar: o no hay escenarios ligados, o los que hay siguen en borrador (su
+  // vista filtra por is_published). En ambos casos el certificado es inalcanzable
+  // y en la página del curso solo sale "este curso aún no tiene una simulación
+  // publicada". Se resalta como configuración incompleta.
+  const certUnreachableBySim = cond.require_simulator && publishedLinkedCount === 0
 
   // Auto-expandir la sección del simulador cuando el curso sí lo usa.
   useEffect(() => {
@@ -2260,7 +2266,12 @@ export default function CourseEditor() {
         const modulesAllPublished = total === 0 || pubModules === total
         // El simulador es opcional: solo cuenta si hay escenarios ligados al curso.
         const simAllPublished = unpublishedLinkedCount === 0
-        const everythingPublished = course.is_published && modulesAllPublished && simAllPublished
+        // `certUnreachableBySim` entra aquí a propósito: un curso que exige el
+        // simulador sin nada publicado que jugar NO está listo, por muy en aire
+        // que estén el curso y sus módulos. Decir "todo publicado" ahí es el
+        // origen del reporte "no me deja certificarme, me falta el simulador".
+        const everythingPublished =
+          course.is_published && modulesAllPublished && simAllPublished && !certUnreachableBySim
         // Quién puede ver el curso: campañas asignadas, personas asignadas o
         // catálogo abierto. Espeja el filtro de getLearnerCourses().
         const hasAudience =
@@ -2522,6 +2533,30 @@ export default function CourseEditor() {
                   ? t('admin.courses.sim_unpublished_warn_one')
                   : t('admin.courses.sim_unpublished_warn_many', { n: unpublishedLinkedCount })}
               </p>
+            )}
+
+            {/* El certificado es inalcanzable: el requisito del simulador está
+                encendido y no hay ni un escenario publicado que jugar. Este
+                aviso vivía solo en la pestaña "Evaluación", plegado, y quien
+                publica el curso no pasa por ahí. Sale aquí, con la salida a
+                mano, porque el costo lo paga el aprendiz al final del curso. */}
+            {certUnreachableBySim && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="flex items-start gap-1.5 text-[11px] text-amber-500">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {t('admin.courses.sim_cert_blocked_warn')}
+                </p>
+                <button
+                  onClick={() => {
+                    setTab('evaluation')
+                    setSimOpen(true)
+                  }}
+                  className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-medium transition-colors"
+                  style={{ background: 'rgba(245,158,11,0.12)', color: 'rgb(245 158 11)', border: '1px solid rgba(245,158,11,0.25)' }}
+                >
+                  <PhoneCall className="h-3 w-3" /> {t('admin.courses.sim_cert_blocked_cta')}
+                </button>
+              </div>
             )}
           </div>
         )
@@ -3938,14 +3973,21 @@ export default function CourseEditor() {
               </div>
 
               {/* Config incompleta: requiere simulador pero no hay escenarios */}
-              {simRequiredButEmpty && (
+              {certUnreachableBySim && (
                 <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-3">
                   <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                   <div className="text-[12px] text-text-muted">
                     <span className="block font-semibold text-text mb-0.5">
-                      {t('admin.courses.sim_missing_scenarios_title')}
+                      {courseScenarioCount === 0
+                        ? t('admin.courses.sim_missing_scenarios_title')
+                        : t('admin.courses.sim_draft_scenarios_title')}
                     </span>
-                    {t('admin.courses.sim_missing_scenarios_warn')}
+                    {/* No es lo mismo "no ligaste ninguno" que "los ligaste y
+                        siguen en borrador": la salida es distinta y decir la
+                        primera cuando pasa la segunda manda a buscar donde no es. */}
+                    {courseScenarioCount === 0
+                      ? t('admin.courses.sim_missing_scenarios_warn')
+                      : t('admin.courses.sim_draft_scenarios_warn', { n: unpublishedLinkedCount })}
                   </div>
                 </div>
               )}
@@ -4159,7 +4201,7 @@ export default function CourseEditor() {
 
           {/* 3. Simulador del curso — opcional y poco frecuente: sección plegable */}
           {tab === 'evaluation' && (
-          <div className={cn('rounded-2xl border overflow-hidden', simRequiredButEmpty ? 'border-amber-500/40' : 'border-line')}>
+          <div className={cn('rounded-2xl border overflow-hidden', certUnreachableBySim ? 'border-amber-500/40' : 'border-line')}>
             <button
               type="button"
               onClick={() => setSimOpen((v) => !v)}
@@ -4173,7 +4215,7 @@ export default function CourseEditor() {
                   <span className="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
                     {t('admin.courses.sim_optional_tag')}
                   </span>
-                  {simRequiredButEmpty && (
+                  {certUnreachableBySim && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
                       <AlertTriangle className="h-3 w-3" /> {t('admin.courses.sim_action_needed')}
                     </span>

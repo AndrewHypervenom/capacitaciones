@@ -118,6 +118,8 @@ export default function CoursePage() {
   // Simulador y certificación del curso (capa de evaluación).
   const [scenarios, setScenarios] = useState<CourseScenario[]>([]);
   const [choiceScenarios, setChoiceScenarios] = useState<CourseChoiceScenario[]>([]);
+  /** La lectura de simulaciones falló (≠ el curso no tiene ninguna). */
+  const [simLoadFailed, setSimLoadFailed] = useState(false);
   const [rawCertStatus, setRawCertStatus] = useState<CourseCertStatus | null>(null);
   const [examState, setExamState] = useState<ExamState | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -130,12 +132,16 @@ export default function CoursePage() {
       return;
     }
     let active = true;
+    // Un fallo al leer NO es lo mismo que "este curso no tiene simulaciones".
+    // Sin distinguirlos, cualquier tropiezo de red o de RLS le decía al aprendiz
+    // que le pidiera a su capacitador algo que el capacitador ya había hecho.
+    setSimLoadFailed(false);
     getScenariosForCourse(course.id)
       .then((s) => { if (active) setScenarios(s); })
-      .catch(() => { if (active) setScenarios([]); });
+      .catch(() => { if (active) { setScenarios([]); setSimLoadFailed(true); } });
     getChoiceScenariosForCourse(course.id)
       .then((s) => { if (active) setChoiceScenarios(s); })
-      .catch(() => { if (active) setChoiceScenarios([]); });
+      .catch(() => { if (active) { setChoiceScenarios([]); setSimLoadFailed(true); } });
     getCourseCertStatus(course.id)
       .then((st) => { if (active) setRawCertStatus(st); })
       .catch(() => { if (active) setRawCertStatus(null); });
@@ -1378,7 +1384,9 @@ export default function CoursePage() {
                       )}
                       {!certStatus.simulator_ok && totalScenarios === 0 && (
                         <p className="mt-2 text-[12px] text-text-muted">
-                          {t('course_cert.no_sim_available')}
+                          {simLoadFailed
+                            ? t('course_cert.sim_load_failed')
+                            : t('course_cert.no_sim_available')}
                         </p>
                       )}
                     </div>
