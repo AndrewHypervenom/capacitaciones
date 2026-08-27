@@ -528,12 +528,15 @@ function ConcurrencyChart({ points, preset }: { points: ConcurrencyPoint[]; pres
   const color = '#10D451'
 
   const { coords, line, area, max } = useMemo(() => {
-    const vals = points.map((p) => p.users)
+    // Se pinta el PICO simultáneo, no las personas que pasaron: es la pregunta
+    // que responde esta curva ("cuántos a la vez"). Las personas únicas de la
+    // franja van en la lectura del puntero, siempre >= el pico.
+    const vals = points.map((p) => p.peak)
     const mx = Math.max(1, ...vals)
     const n = points.length
     const xAt = (i: number) => (n <= 1 ? W / 2 : (i / (n - 1)) * W)
     const yAt = (v: number) => H - padBottom - (v / mx) * (H - padTop - padBottom)
-    const cs = points.map((p, i) => ({ x: xAt(i), y: yAt(p.users) }))
+    const cs = points.map((p, i) => ({ x: xAt(i), y: yAt(p.peak) }))
     const ln = smoothLine(cs)
     const first = cs[0], last = cs[cs.length - 1]
     return { coords: cs, line: ln, area: `${ln} L ${last.x.toFixed(1)} ${H} L ${first.x.toFixed(1)} ${H} Z`, max: mx }
@@ -597,9 +600,11 @@ function ConcurrencyChart({ points, preset }: { points: ConcurrencyPoint[]; pres
         >
           <div className="text-[11px] text-text-muted whitespace-nowrap">{fmtBucket(hp.bucket, preset)}</div>
           <div className="text-[13px] font-semibold tabular-nums text-text whitespace-nowrap">
-            {t('admin.traffic.chart_users', { n: fmtInt(hp.users) })}
+            {t('admin.traffic.chart_peak', { n: fmtInt(hp.peak) })}
           </div>
-          <div className="text-[11px] text-text-subtle whitespace-nowrap">{fmtDuration(hp.activeMs)}</div>
+          <div className="text-[11px] text-text-subtle whitespace-nowrap">
+            {t('admin.traffic.chart_unique', { n: fmtInt(hp.users) })} · {fmtDuration(hp.activeMs)}
+          </div>
         </div>
       )}
 

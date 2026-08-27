@@ -196,6 +196,8 @@ export interface Database {
           view_key: string
           active_ms: number
           device: string | null
+          /** Momento en que se abrió la vista; con created_at forma el intervalo. */
+          started_at: string | null
           created_at: string
         }
         Insert: {
@@ -208,6 +210,7 @@ export interface Database {
           view_key: string
           active_ms?: number
           device?: string | null
+          started_at?: string | null
           created_at?: string
         }
         Update: {
@@ -2195,6 +2198,8 @@ export interface Database {
         Args: { p_from: string; p_to?: string; p_bucket?: number; p_campaign?: string | null; p_role?: string | null }
         Returns: {
           bucket: string
+          /** Máximo de personas A LA VEZ dentro de la franja (barrido). */
+          peak: number
           users: number
           sessions: number
           active_ms: number

@@ -158,6 +158,11 @@ async function flush(keepalive = false): Promise<void> {
     view_key: v.viewKey,
     active_ms: Math.round(ms),
     device: detectDevice(),
+    // Sin esto la fila es un INSTANTE (el momento de salir) y la curva de
+    // "cuántos a la vez" no puede existir: quien lleva media hora leyendo no
+    // aparecería en ninguna franja hasta que navegue. Con started_at la fila es
+    // el intervalo en que la persona estuvo presente.
+    started_at: new Date(v.startedAt).toISOString(),
   }
 
   try {

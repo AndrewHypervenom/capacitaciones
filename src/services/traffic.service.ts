@@ -128,6 +128,14 @@ export interface TrafficOverview {
 
 export interface ConcurrencyPoint {
   bucket: string
+  /**
+   * Máximo de personas A LA VEZ dentro de la franja. Sale de un barrido sobre
+   * los intervalos [started_at, created_at] de cada fila, no de contar filas:
+   * quien lleva media hora en la misma pantalla cuenta en todas las franjas que
+   * atraviesa, no solo en aquella donde se fue.
+   */
+  peak: number
+  /** Personas distintas que pasaron por la franja (el pico nunca la supera). */
   users: number
   sessions: number
   activeMs: number
@@ -243,7 +251,13 @@ export async function fetchTrafficHistory(f: TrafficFilters): Promise<TrafficHis
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     concurrency: ((concurrency.data ?? []) as any[]).map((r) => ({
-      bucket: r.bucket, users: Number(r.users), sessions: Number(r.sessions), activeMs: Number(r.active_ms),
+      bucket: r.bucket,
+      // `peak` puede faltar si el delta SQL todavía no se corrió: se cae a
+      // `users`, que es lo que la versión anterior devolvía.
+      peak: Number(r.peak ?? r.users ?? 0),
+      users: Number(r.users),
+      sessions: Number(r.sessions),
+      activeMs: Number(r.active_ms),
     })),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     topViews: ((topViews.data ?? []) as any[]).map((r) => ({
