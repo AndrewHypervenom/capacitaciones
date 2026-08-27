@@ -31,6 +31,19 @@ const SESSION_KEY = 'traffic_sid'
 /** Quieto más de esto = no está usando el sitio (igual que la presencia). */
 const IDLE_AFTER_MS = 3 * 60_000
 /**
+ * Umbral de quietud en las pantallas de ESTUDIO. Leer un módulo largo sin hacer
+ * scroll ni tocar nada durante más de tres minutos es lo normal, no ausencia:
+ * con el umbral corto los tramos salían cortados en 1 o 2 minutos y el tiempo
+ * de lectura se subestimaba sistemáticamente.
+ */
+const IDLE_AFTER_MS_STUDY = 10 * 60_000
+
+/** Cuánto se le concede a esta ruta antes de darla por ausente. */
+function idleLimitFor(route: string | null): number {
+  return route && /^\/modules\//.test(route) ? IDLE_AFTER_MS_STUDY : IDLE_AFTER_MS
+}
+
+/**
  * Cada cuánto se refresca `last_seen_at` de la vista abierta. Más corto da una
  * curva más fina; más largo, menos escrituras. 30 s es holgado para franjas de
  * 5 minutos y son actualizaciones de dos columnas.
@@ -118,7 +131,7 @@ function resume(): void {
 
 function armIdleTimer(): void {
   if (idleTimer) clearTimeout(idleTimer)
-  idleTimer = setTimeout(() => { pause() }, IDLE_AFTER_MS)
+  idleTimer = setTimeout(() => { pause() }, idleLimitFor(visit?.route ?? lastRoute))
 }
 
 function markActive(): void {
@@ -267,11 +280,21 @@ export function startTrafficTracking(opts: {
   userId: string
   role: string | null
   campaignId: string | null
+  /** Ruta en la que está la persona AHORA (la que cargó el navegador). */
+  route: string
 }): void {
   userId = opts.userId
   role = opts.role
   homeCampaignId = opts.campaignId
   ensureSessionId()
+
+  // La primera vista de la sesión se abre AQUÍ y no en `trackRoute`. Al cargar
+  // la página el perfil todavía no ha llegado, así que el efecto de la ruta ya
+  // corrió sin `userId` y se salió; como la ruta no cambia, no vuelve a correr.
+  // Sin esto, quien entra y se queda quieto en la pantalla de destino no deja
+  // ninguna fila: solo se registraba a partir de la SEGUNDA navegación.
+  if (!visit) openVisit(opts.route)
+
   if (listening) return
   listening = true
 

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { presenceChannelsFor, usePresenceStore } from '@/stores/presenceStore';
 import { getAccessibleCampaigns } from '@/services/campaigns.service';
@@ -138,6 +138,12 @@ function AiCreditsInit() {
 function PresenceSync() {
   const profile = useAuthStore((s) => s.profile);
   const location = useLocation();
+  // La ruta actual en una ref, no como dependencia: si el efecto de abajo se
+  // reiniciara en cada navegación tumbaría y reabriría el canal de Realtime en
+  // cada clic. Solo se necesita su valor en el instante del arranque.
+  // Se inicializa con la ruta de carga (que es la buena en el primer arranque) y
+  // se refresca en el efecto de navegación de abajo, nunca durante el render.
+  const pathRef = useRef(location.pathname);
 
   useEffect(() => {
     // La vista previa no es una sesión de verdad: no debe aparecer en "en línea"
@@ -155,6 +161,9 @@ function PresenceSync() {
       userId: profile.id,
       role: profile.role ?? null,
       campaignId: profile.campaign_id ?? null,
+      // La ruta va aquí porque el efecto de abajo ya corrió (con el perfil aún
+      // en null) y no volverá a hacerlo hasta que se navegue.
+      route: pathRef.current,
     });
     let alive = true;
     void (async () => {
@@ -195,6 +204,7 @@ function PresenceSync() {
   ]);
 
   useEffect(() => {
+    pathRef.current = location.pathname;
     usePresenceStore.getState().setRoute(location.pathname);
     // Cierra la vista anterior (con su tiempo activo) y abre la nueva.
     if (!IS_LEARNER_PREVIEW) trackRoute(location.pathname);
