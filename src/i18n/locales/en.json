@@ -1896,6 +1896,7 @@
       "bulk_col_detail": "Detail",
       "bulk_status_created": "Created",
       "bulk_status_error": "Error",
+      "bulk_reason_exists": "This person already had an account, so nothing was created. Nothing of theirs changed: same campaign, role and password.",
       "bulk_help_default_pwd": "Upload an .xlsx or .csv with the emails. It recognizes columns like \"email\" or \"correo\" and lets you review everything before anyone is created. All of them will get the site default password, so you announce it just once.",
       "bulk_creds_hint_default": "Everyone got the default password, so announcing it once is enough. The file still includes the site and each person's email.",
       "bulk_step_file": "File",

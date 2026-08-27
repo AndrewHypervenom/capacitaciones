@@ -1896,6 +1896,7 @@
       "bulk_col_detail": "Detalle",
       "bulk_status_created": "Creado",
       "bulk_status_error": "Error",
+      "bulk_reason_exists": "Ya tenía cuenta en el sitio, así que no se creó de nuevo. No se le cambió nada: conserva su campaña, su rol y su contraseña.",
       "bulk_help_default_pwd": "Sube un .xlsx o .csv con los correos. Reconoce columnas como \"email\", \"correo\" o \"correo electrónico\" y te deja revisar todo antes de crear a nadie. Todos nacerán con la contraseña predeterminada del sitio, así la anuncias una sola vez.",
       "bulk_creds_hint_default": "Todos quedaron con la contraseña predeterminada, así que basta con anunciarla una vez. El archivo trae igual el sitio y el correo de cada uno.",
       "bulk_step_file": "Archivo",

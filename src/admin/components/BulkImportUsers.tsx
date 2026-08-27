@@ -37,6 +37,25 @@ const BATCH_SIZE = 100
 const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
 const NONE = -1
 
+/**
+ * ¿El servidor rechazó la fila porque esa persona YA tenía cuenta?
+ *
+ * Importa distinguirlo: cuando `createUser` falla por correo repetido, la
+ * función corta ahí mismo y NO toca el perfil, así que a esa persona no se le
+ * cambió ni la campaña ni el rol. Es un "ya estaba", no un error que haya que
+ * arreglar.
+ */
+function isAlreadyRegistered(reason?: string): boolean {
+  const m = (reason ?? '').toLowerCase()
+  return (
+    m.includes('already been registered') ||
+    m.includes('already registered') ||
+    m.includes('already exists') ||
+    m.includes('duplicate key value') ||
+    m.includes('email_exists')
+  )
+}
+
 /** Parte una lista en tandas de `size`. */
 function chunk<T>(list: T[], size: number): T[][] {
   const out: T[][] = []
@@ -472,9 +491,22 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
       ['site', 'email', 'password'],
       ...created.map((r) => [SITE_URL, r.email, r.password ?? '']),
     ]
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'credenciales')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'credenciales')
+
+    // Segunda hoja con lo que no se creó y por qué. En una carga de cientos de
+    // personas es lo que permite rehacer solo las que faltan.
+    const failed = results.filter((r) => r.status === 'error')
+    if (failed.length > 0) {
+      const errAoa = [
+        ['email', 'motivo'],
+        ...failed.map((r) => [
+          r.email,
+          isAlreadyRegistered(r.reason) ? t('admin.users.bulk_reason_exists') : (r.reason ?? ''),
+        ]),
+      ]
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(errAoa), 'no creados')
+    }
     XLSX.writeFile(wb, 'credenciales-usuarios.xlsx')
   }
 
@@ -992,20 +1024,37 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                       <span>{t('admin.users.bulk_col_status')}</span>
                     </div>
                     <div className="max-h-[40vh] divide-y divide-line overflow-y-auto">
-                      {results.map((r, i) => (
-                        <div key={i} className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-2 text-[12px]">
-                          <span className="truncate text-text">{r.email}</span>
-                          {r.status === 'created' ? (
-                            <span className="flex items-center gap-1 text-green-500">
-                              <Check className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_created')}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1 text-red-500" title={r.reason}>
-                              <AlertCircle className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_error')}
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                      {results.map((r, i) => {
+                        const existed = r.status === 'error' && isAlreadyRegistered(r.reason)
+                        return (
+                          <div key={i} className="grid grid-cols-[1fr_auto] items-start gap-3 px-3 py-2 text-[12px]">
+                            <div className="min-w-0">
+                              <span className="block truncate text-text">{r.email}</span>
+                              {/* El motivo va a la vista, no escondido en un tooltip:
+                                  con cientos de filas es la única forma de saber
+                                  qué pasó sin ir correo por correo. */}
+                              {r.status === 'error' && (
+                                <span className="block break-words text-[11px] text-text-subtle">
+                                  {existed ? t('admin.users.bulk_reason_exists') : r.reason}
+                                </span>
+                              )}
+                            </div>
+                            {r.status === 'created' ? (
+                              <span className="flex items-center gap-1 text-green-500">
+                                <Check className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_created')}
+                              </span>
+                            ) : existed ? (
+                              <span className="flex items-center gap-1 text-amber-500">
+                                <AlertTriangle className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_exists')}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-red-500">
+                                <AlertCircle className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_error')}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>

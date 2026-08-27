@@ -1896,6 +1896,7 @@
       "bulk_col_detail": "Detalhe",
       "bulk_status_created": "Criado",
       "bulk_status_error": "Erro",
+      "bulk_reason_exists": "Esta pessoa já tinha conta, então nada foi criado. Nada dela mudou: mesma campanha, papel e senha.",
       "bulk_help_default_pwd": "Envie um .xlsx ou .csv com os e-mails. Ele reconhece colunas como \"email\" ou \"e-mail\" e permite revisar tudo antes de criar alguém. Todos nascerão com a senha padrão do site, assim você a anuncia uma só vez.",
       "bulk_creds_hint_default": "Todos ficaram com a senha padrão, então basta anunciá-la uma vez. O arquivo traz igualmente o site e o e-mail de cada pessoa.",
       "bulk_step_file": "Arquivo",
