@@ -185,7 +185,7 @@ function payload(v: Visit, now: number) {
  * usa `sendBeacon` porque no permite mandar la cabecera Authorization, y sin ella
  * la RLS rechaza la escritura.
  */
-async function writeKeepalive(v: Visit, now: number): Promise<void> {
+async function writeKeepalive(v: Visit, now: number, insert: boolean): Promise<void> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
   if (!token) return
@@ -198,7 +198,7 @@ async function writeKeepalive(v: Visit, now: number): Promise<void> {
     Prefer: 'return=minimal',
   }
   const body = payload(v, now)
-  if (v.inserted) {
+  if (!insert) {
     await fetch(`${url}/rest/v1/traffic_events?id=eq.${v.id}`, {
       method: 'PATCH',
       keepalive: true,
@@ -218,11 +218,11 @@ async function writeKeepalive(v: Visit, now: number): Promise<void> {
  * así que hay que mirarlo o daríamos por insertada una fila que no existe (y
  * todos los latidos siguientes actualizarían la nada).
  */
-async function write(v: Visit, now: number, keepalive: boolean): Promise<boolean> {
+async function write(v: Visit, now: number, keepalive: boolean, insert: boolean): Promise<boolean> {
   try {
-    if (keepalive) { await writeKeepalive(v, now); return true }
+    if (keepalive) { await writeKeepalive(v, now, insert); return true }
     const body = payload(v, now)
-    if (v.inserted) {
+    if (!insert) {
       const { error } = await supabase.from('traffic_events')
         .update({ active_ms: body.active_ms, last_seen_at: body.last_seen_at })
         .eq('id', v.id)
@@ -248,11 +248,15 @@ function beat(): void {
   if (!v || !userId || v.since == null) return
   const now = Date.now()
   if (now - v.startedAt < MIN_DWELL_MS) return
-  // Se marca como insertada ANTES de esperar la respuesta para que dos latidos
-  // seguidos no creen dos filas; si falla, se revierte y el próximo reintenta.
-  const first = !v.inserted
+  // `insert` va como ARGUMENTO y no se lee de `v.inserted` dentro de `write`.
+  // La bandera se sube aquí, antes de esperar la respuesta, para que dos latidos
+  // seguidos no creen dos filas — y leerla dentro de `write` significaba que la
+  // primera escritura ya la veía en true y salía como UPDATE de una fila
+  // inexistente. PostgREST contesta 204 a eso (cero filas tocadas, sin error),
+  // así que la fila no se creaba nunca y nadie se enteraba.
+  const insert = !v.inserted
   v.inserted = true
-  void write(v, now, false).then((ok) => { if (!ok && first) v.inserted = false })
+  void write(v, now, false, insert).then((ok) => { if (!ok && insert) v.inserted = false })
 }
 
 /** Cierra la visita en curso y escribe su estado final. */
@@ -266,7 +270,7 @@ function flush(keepalive = false): void {
   // escribirse, no se escribe ahora. Si ya existía la fila hay que cerrarla igual.
   if (now - v.startedAt < MIN_DWELL_MS && !v.inserted) return
 
-  void write(v, now, keepalive)
+  void write(v, now, keepalive, !v.inserted)
 }
 
 function onPageHide(): void {
