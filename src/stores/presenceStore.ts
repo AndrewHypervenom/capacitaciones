@@ -1026,6 +1026,7 @@ const VIEW_PATTERNS: Array<[RegExp, string]> = [
   [/^\/admin\/ai-usage/, 'presence.views.ai_usage'],
   [/^\/admin\/limits/, 'presence.views.ai_limits'],
   [/^\/admin\/chat/, 'presence.views.chat'],
+  [/^\/admin\/traffic/, 'presence.views.traffic'],
   [/^\/admin/, 'presence.views.admin_home'],
   [/^\/dashboard/, 'presence.views.dashboard'],
   [/^\/courses\/[^/]+/, 'presence.views.course_view'],

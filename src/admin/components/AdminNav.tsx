@@ -141,6 +141,7 @@ export function AdminNav() {
       items: [
         ...(isSuperAdmin ? [
           { to: '/admin/activity', label: t('admin.nav.activity', 'Actividad'), end: false },
+          { to: '/admin/traffic', label: t('admin.nav.traffic', 'Tráfico'), end: false },
           { to: '/admin/approvals', label: t('admin.nav.approvals', 'Aprobaciones'), end: false },
         ] : []),
         ...(canApproveCourses ? [

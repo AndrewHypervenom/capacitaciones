@@ -32,6 +32,7 @@ import Worlds from './pages/Worlds'
 import WorldDetail from './pages/WorldDetail'
 import ChatLogs from './pages/ChatLogs'
 import AiUsage from './pages/AiUsage'
+import Traffic from './pages/Traffic'
 import AiLimits from './pages/AiLimits'
 import Gamification from './pages/Gamification'
 import ActivityLog from './pages/ActivityLog'
@@ -141,6 +142,7 @@ export default function AdminRouter() {
           <Route path="gamification" element={isSuperAdmin ? <Gamification /> : <Navigate to="/admin" replace />} />
           {/* Bitácora de actividad del equipo: solo superadmin */}
           <Route path="activity" element={isSuperAdmin ? <ActivityLog /> : <Navigate to="/admin" replace />} />
+          <Route path="traffic" element={isSuperAdmin ? <Traffic /> : <Navigate to="/admin" replace />} />
           {/* Aprobación de eliminaciones (borrado suave de capacitadores): solo superadmin */}
           <Route path="approvals" element={isSuperAdmin ? <DeletionApprovals /> : <Navigate to="/admin" replace />} />
           {/* Aprobación de publicaciones: el superadmin y el capacitador al que

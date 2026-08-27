@@ -180,6 +180,41 @@ export interface Database {
         }
         Relationships: []
       }
+      /**
+       * Histórico de navegación: una fila por vista visitada, con el tiempo
+       * ACTIVO que se pasó en ella (ver lib/trafficTracker.ts). Solo se puede
+       * insertar lo propio; leer es exclusivo de los RPC get_traffic_*.
+       */
+      traffic_events: {
+        Row: {
+          id: string
+          user_id: string
+          session_id: string
+          role: string | null
+          campaign_id: string | null
+          route: string
+          view_key: string
+          active_ms: number
+          device: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          session_id: string
+          role?: string | null
+          campaign_id?: string | null
+          route: string
+          view_key: string
+          active_ms?: number
+          device?: string | null
+          created_at?: string
+        }
+        Update: {
+          active_ms?: number
+        }
+        Relationships: []
+      }
       user_temp_credentials: {
         Row: {
           user_id: string
@@ -2148,6 +2183,69 @@ export interface Database {
           passkeys: number
           last_used_at: string | null
         }[]
+      }
+      // -- Tráfico del sitio (SQL supabase/sql/traffic_events.sql) --
+      // Todas SECURITY DEFINER y con guardia de superadmin adentro: la tabla
+      // `traffic_events` no se puede leer directo, solo por aquí y ya agregada.
+      get_traffic_overview: {
+        Args: { p_from: string; p_to?: string; p_campaign?: string | null; p_role?: string | null }
+        Returns: Json
+      }
+      get_traffic_concurrency: {
+        Args: { p_from: string; p_to?: string; p_bucket?: number; p_campaign?: string | null; p_role?: string | null }
+        Returns: {
+          bucket: string
+          users: number
+          sessions: number
+          active_ms: number
+        }[]
+      }
+      get_traffic_top_views: {
+        Args: { p_from: string; p_to?: string; p_campaign?: string | null; p_role?: string | null; p_limit?: number }
+        Returns: {
+          view_key: string
+          views: number
+          users: number
+          active_ms: number
+          avg_ms: number
+        }[]
+      }
+      get_traffic_by_campaign: {
+        Args: { p_from: string; p_to?: string; p_role?: string | null }
+        Returns: {
+          campaign_id: string | null
+          campaign_name: string | null
+          users: number
+          views: number
+          active_ms: number
+        }[]
+      }
+      get_traffic_by_role: {
+        Args: { p_from: string; p_to?: string; p_campaign?: string | null }
+        Returns: {
+          role: string
+          users: number
+          views: number
+          active_ms: number
+        }[]
+      }
+      get_traffic_top_users: {
+        Args: { p_from: string; p_to?: string; p_campaign?: string | null; p_role?: string | null; p_limit?: number }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          avatar_url: string | null
+          user_role: string | null
+          campaign_name: string | null
+          sessions: number
+          views: number
+          active_ms: number
+          last_seen: string
+        }[]
+      }
+      purge_traffic_events: {
+        Args: { p_days?: number }
+        Returns: number
       }
     }
     Enums: Record<string, never>

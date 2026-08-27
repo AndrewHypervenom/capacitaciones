@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { presenceChannelsFor, usePresenceStore } from '@/stores/presenceStore';
 import { getAccessibleCampaigns } from '@/services/campaigns.service';
+import { startTrafficTracking, stopTrafficTracking, trackRoute } from '@/lib/trafficTracker';
 import { useAuthStore } from '@/stores/authStore';
 import { setGlobalNavigate } from '@/lib/nav';
 import { useTranslation } from 'react-i18next';
@@ -144,8 +145,17 @@ function PresenceSync() {
     if (IS_LEARNER_PREVIEW) return;
     if (!profile) {
       usePresenceStore.getState().disconnect();
+      stopTrafficTracking();
       return;
     }
+    // El histórico de tráfico se mide desde aquí mismo: es el único sitio que
+    // ya sabe quién entró y por dónde va, y así una vista sin presencia
+    // (Realtime caído) igual queda contada. Ver lib/trafficTracker.ts.
+    startTrafficTracking({
+      userId: profile.id,
+      role: profile.role ?? null,
+      campaignId: profile.campaign_id ?? null,
+    });
     let alive = true;
     void (async () => {
       // Si las campañas no se pueden resolver, no conectamos a ciegas: sin
@@ -186,6 +196,8 @@ function PresenceSync() {
 
   useEffect(() => {
     usePresenceStore.getState().setRoute(location.pathname);
+    // Cierra la vista anterior (con su tiempo activo) y abre la nueva.
+    if (!IS_LEARNER_PREVIEW) trackRoute(location.pathname);
   }, [location.pathname]);
 
   return null;
