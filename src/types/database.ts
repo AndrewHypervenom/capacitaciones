@@ -196,8 +196,10 @@ export interface Database {
           view_key: string
           active_ms: number
           device: string | null
-          /** Momento en que se abrió la vista; con created_at forma el intervalo. */
+          /** Momento en que se abrió la vista. */
           started_at: string | null
+          /** Último latido; con started_at forma el intervalo de presencia. */
+          last_seen_at: string | null
           created_at: string
         }
         Insert: {
@@ -211,10 +213,13 @@ export interface Database {
           active_ms?: number
           device?: string | null
           started_at?: string | null
+          last_seen_at?: string | null
           created_at?: string
         }
         Update: {
+          // Lo único que el latido puede tocar (así lo acota el GRANT UPDATE).
           active_ms?: number
+          last_seen_at?: string | null
         }
         Relationships: []
       }

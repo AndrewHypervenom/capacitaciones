@@ -24,15 +24,16 @@ import { FadeIn, Stagger, StaggerItem } from '@/components/ui/motion'
 import { cn } from '@/lib/cn'
 
 // ─── Rangos ──────────────────────────────────────────────────────────
-// El tamaño del cubo va pegado al rango: en un día se quiere ver la hora pico,
-// en 90 días una curva por día. Pedir cubos de 5 min sobre 3 meses serían 26 mil
-// puntos para pintar mil píxeles.
+// El tamaño de la franja va pegado al rango. "Hoy" va en franjas de 5 minutos
+// (288 puntos como mucho), que es el detalle con el que se ve de verdad quién
+// coincidió con quién. Los rangos largos suben de franja a propósito: 5 min
+// sobre 90 días serían 26 mil puntos viajando para pintar mil píxeles.
 type Preset = 'today' | '7d' | '30d' | '90d'
 
 const PRESETS: { key: Preset; labelKey: string; bucket: number }[] = [
-  { key: 'today', labelKey: 'admin.traffic.preset_today', bucket: 30 },
-  { key: '7d',    labelKey: 'admin.traffic.preset_7d',    bucket: 180 },
-  { key: '30d',   labelKey: 'admin.traffic.preset_30d',   bucket: 1440 },
+  { key: 'today', labelKey: 'admin.traffic.preset_today', bucket: 5 },
+  { key: '7d',    labelKey: 'admin.traffic.preset_7d',    bucket: 60 },
+  { key: '30d',   labelKey: 'admin.traffic.preset_30d',   bucket: 360 },
   { key: '90d',   labelKey: 'admin.traffic.preset_90d',   bucket: 1440 },
 ]
 
@@ -63,9 +64,17 @@ function fmtDuration(ms: number): string {
 
 function fmtBucket(iso: string, preset: Preset): string {
   const d = new Date(iso)
-  return preset === 'today'
-    ? d.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString(i18n.language, { day: '2-digit', month: 'short' })
+  if (preset === 'today') {
+    return d.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })
+  }
+  // En 7 días las franjas son de una hora: sin la hora, doce puntos seguidos
+  // dirían todos "27 ago" y la lectura del puntero no serviría de nada.
+  if (preset === '7d') {
+    return d.toLocaleString(i18n.language, {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
+  }
+  return d.toLocaleDateString(i18n.language, { day: '2-digit', month: 'short' })
 }
 
 function fmtDateTime(iso: string): string {
@@ -104,6 +113,16 @@ export default function Traffic() {
   const [history, setHistory] = useState<TrafficHistory>(EMPTY_HISTORY)
   const [loading, setLoading] = useState(true)
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
+  // Contador que fuerza la recarga. En "Hoy" la franja en curso se está
+  // llenando ahora mismo: sin esto el pico del momento queda congelado en
+  // pantalla hasta que alguien toque un filtro.
+  const [tick, setTick] = useState(0)
+
+  useEffect(() => {
+    if (preset !== 'today') return
+    const id = setInterval(() => setTick((n) => n + 1), 60_000)
+    return () => clearInterval(id)
+  }, [preset])
 
   useEffect(() => {
     if (!profile) return
@@ -118,7 +137,9 @@ export default function Traffic() {
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
+    // El refresco automático no debe parpadear la pantalla entera: solo la
+    // primera carga de cada combinación de filtros muestra el spinner.
+    if (tick === 0) setLoading(true)
     const { from, to } = rangeFor(preset)
     const bucket = PRESETS.find((p) => p.key === preset)!.bucket
     fetchTrafficHistory({
@@ -130,7 +151,7 @@ export default function Traffic() {
       .catch((e) => { console.error('[traffic]', e); if (alive) setHistory(EMPTY_HISTORY) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [preset, campaignId, role])
+  }, [preset, campaignId, role, tick])
 
   // La ruta ya lo bloquea; esto es el segundo cerrojo por si alguien llega
   // aquí desde un enlace viejo.
@@ -257,7 +278,7 @@ export default function Traffic() {
               {PRESETS.map((p) => (
                 <button
                   key={p.key}
-                  onClick={() => setPreset(p.key)}
+                  onClick={() => { setPreset(p.key); setTick(0) }}
                   className={cn(
                     'rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
                     preset === p.key
@@ -273,7 +294,7 @@ export default function Traffic() {
               <Select
                 className="sm:w-auto sm:min-w-[220px]"
                 value={campaignId}
-                onChange={setCampaignId}
+                onChange={(v) => { setCampaignId(v); setTick(0) }}
                 options={[
                   { value: 'all', label: t('admin.traffic.filter_all_campaigns') },
                   ...campaigns.map((c) => ({ value: c.id, label: c.name })),
@@ -282,7 +303,7 @@ export default function Traffic() {
               <Select
                 className="sm:w-auto sm:min-w-[180px]"
                 value={role}
-                onChange={setRole}
+                onChange={(v) => { setRole(v); setTick(0) }}
                 options={[
                   { value: 'all', label: t('admin.traffic.filter_all_roles') },
                   { value: 'learner', label: t('roles.learner') },

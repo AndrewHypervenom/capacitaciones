@@ -3,33 +3,47 @@ import { supabase } from '@/lib/supabase'
 import { usePresenceStore, viewKeyForRoute } from '@/stores/presenceStore'
 
 /**
- * Registro de tráfico: una fila por VISTA visitada, con el tiempo ACTIVO que se
- * pasó en ella. Alimenta el histórico de /admin/traffic (tabla traffic_events).
+ * Registro de tráfico: una fila por VISTA visitada, viva mientras la persona
+ * siga ahí. Alimenta el histórico de /admin/traffic (tabla traffic_events).
  *
- * No confundir con la presencia (stores/presenceStore): aquella es efímera y
- * responde "¿quién está ahora mismo?"; esta persiste y responde "¿cuánto se usó
- * y cuándo?". Se escriben aparte a propósito.
+ * ── Por qué late ────────────────────────────────────────────────────────
+ * La primera versión escribía la fila SOLO al salir de la vista. Consecuencia:
+ * quien llevaba veinte minutos leyendo un módulo no existía en la base hasta
+ * que navegara, así que la curva de "cuántas personas a la vez" no veía a nadie
+ * y el pico salía en 1 aunque hubiera cinco personas dentro.
  *
- * Reglas que hacen que el dato sea honesto y barato:
- *  · El reloj se PAUSA con la pestaña oculta y tras 3 min sin tocar nada — el
- *    mismo criterio de ausencia de la presencia. Una pestaña abierta toda la
- *    noche no es una hora de uso.
- *  · Solo se escribe al SALIR de la vista (y al cerrar), nunca en cada latido:
- *    una fila por navegación, no una por minuto.
- *  · Las vistas de menos de MIN_DWELL_MS se descartan: son redirecciones
- *    (/admin/overview → /admin/progress) y ensuciarían el "top de vistas".
- *  · Nada de esto puede romper la navegación: todo error se traga en silencio.
+ * Ahora la fila se INSERTA a los pocos segundos de entrar y se ACTUALIZA cada
+ * BEAT_MS mientras la persona siga activa, moviendo `last_seen_at`. Es el mismo
+ * principio con el que se cuentan los espectadores simultáneos de un directo:
+ * estás dentro mientras sigas latiendo. Una fila por vista, no una por latido,
+ * así que los contadores de "vistas" siguen siendo honestos.
+ *
+ * ── Qué NO cuenta ───────────────────────────────────────────────────────
+ * El latido se detiene con la pestaña oculta y tras 3 min sin tocar nada (mismo
+ * criterio de ausencia que la presencia). `last_seen_at` se congela ahí, así que
+ * una pestaña abandonada toda la noche no suma ni presencia ni tiempo.
+ *
+ * No confundir con `stores/presenceStore`: aquella es efímera y responde "¿quién
+ * está ahora mismo?"; esta persiste y responde "¿cuánto se usó y cuándo?".
  */
 
 const SESSION_KEY = 'traffic_sid'
 /** Quieto más de esto = no está usando el sitio (igual que la presencia). */
 const IDLE_AFTER_MS = 3 * 60_000
+/**
+ * Cada cuánto se refresca `last_seen_at` de la vista abierta. Más corto da una
+ * curva más fina; más largo, menos escrituras. 30 s es holgado para franjas de
+ * 5 minutos y son actualizaciones de dos columnas.
+ */
+const BEAT_MS = 30_000
 /** Por debajo de esto la vista fue un rebote técnico, no una visita. */
 const MIN_DWELL_MS = 1_500
 /** Techo por vista: protege de un reloj corrido o una pestaña rara. */
-const MAX_ACTIVE_MS = 60 * 60_000
+const MAX_ACTIVE_MS = 4 * 60 * 60_000
 
 interface Visit {
+  /** Id generado aquí para poder ACTUALIZAR la fila en cada latido. */
+  id: string
   route: string
   viewKey: string
   /** Milisegundos activos ya acumulados (los tramos cerrados). */
@@ -37,6 +51,8 @@ interface Visit {
   /** Inicio del tramo activo en curso, o null si está en pausa. */
   since: number | null
   startedAt: number
+  /** false = la fila todavía no existe en la base. */
+  inserted: boolean
 }
 
 let userId: string | null = null
@@ -48,6 +64,7 @@ let visit: Visit | null = null
 let lastRoute: string | null = null
 let lastInput = Date.now()
 let idleTimer: ReturnType<typeof setTimeout> | null = null
+let beatTimer: ReturnType<typeof setInterval> | null = null
 let listening = false
 
 /** Móvil / tableta / escritorio a partir del user agent. Suficiente para un KPI. */
@@ -59,10 +76,10 @@ function detectDevice(): string {
 }
 
 /**
- * Id de la visita. Vive en sessionStorage: sobrevive a recargas y a moverse por
- * el sitio, pero cerrar la pestaña empieza una sesión nueva — que es justo lo
- * que "sesión" significa aquí. En navegación privada puede lanzar; si falla, se
- * usa un id en memoria y la sesión dura lo que dure la página cargada.
+ * Id de la visita al SITIO. Vive en sessionStorage: sobrevive a recargas y a
+ * moverse por el sitio, pero cerrar la pestaña empieza una sesión nueva — que es
+ * justo lo que "sesión" significa aquí. En navegación privada puede lanzar; si
+ * falla, se usa un id en memoria y la sesión dura lo que dure la página cargada.
  */
 function ensureSessionId(): string {
   if (sessionId) return sessionId
@@ -117,12 +134,11 @@ function onVisibility(): void {
   if (document.visibilityState === 'hidden') {
     pause()
     // Ocultar la pestaña puede ser el último evento que veamos (móvil que se
-    // bloquea, app que el sistema mata en segundo plano): cerramos la fila ya,
-    // aunque la persona siga en la misma vista.
+    // bloquea, app que el sistema mata en segundo plano): cerramos la fila ya.
     void flush(true)
   } else {
-    // Al volver, `flush` dejó `visit` en null: si no se reabre aquí, el resto
-    // de la estadía en esta misma pantalla no se contaría hasta la siguiente
+    // Al volver, `flush` dejó `visit` en null: si no se reabre aquí, el resto de
+    // la estadía en esta misma pantalla no se contaría hasta la siguiente
     // navegación. Se abre una visita nueva (dos filas para una estadía partida,
     // que es exactamente lo que pasó).
     if (!visit && lastRoute) openVisit(lastRoute)
@@ -131,69 +147,118 @@ function onVisibility(): void {
 }
 
 // ─── Escritura ──────────────────────────────────────────────────────────
-/**
- * Cierra la visita en curso y la escribe.
- *
- * `keepalive` la manda con `fetch(..., { keepalive: true })` contra PostgREST:
- * durante `pagehide` el cliente de Supabase no alcanza a terminar su petición
- * normal y la última vista de cada sesión se perdería siempre. No se usa
- * `sendBeacon` porque no permite mandar la cabecera Authorization, y sin ella la
- * RLS rechaza la fila.
- */
-async function flush(keepalive = false): Promise<void> {
-  const v = visit
-  if (!v || !userId) return
-  visit = null
-
-  const ms = activeMsOf(v)
-  const dwell = Date.now() - v.startedAt
-  if (dwell < MIN_DWELL_MS) return
-
-  const row = {
-    user_id: userId,
+function payload(v: Visit, now: number) {
+  return {
+    id: v.id,
+    user_id: userId!,
     session_id: ensureSessionId(),
     role,
     campaign_id: currentCampaignId(),
     route: v.route,
     view_key: v.viewKey,
-    active_ms: Math.round(ms),
+    active_ms: Math.round(activeMsOf(v, now)),
     device: detectDevice(),
-    // Sin esto la fila es un INSTANTE (el momento de salir) y la curva de
-    // "cuántos a la vez" no puede existir: quien lleva media hora leyendo no
-    // aparecería en ninguna franja hasta que navegue. Con started_at la fila es
-    // el intervalo en que la persona estuvo presente.
+    // El par started_at / last_seen_at ES el intervalo de presencia. Sin él la
+    // fila sería un instante y no habría forma de saber cuántos coincidieron.
     started_at: new Date(v.startedAt).toISOString(),
+    last_seen_at: new Date(now).toISOString(),
   }
+}
 
+/**
+ * Escritura con `fetch(..., { keepalive: true })` contra PostgREST, para los
+ * cierres durante `pagehide`: ahí el cliente de Supabase no alcanza a terminar
+ * su petición normal y la última vista de cada sesión se perdería siempre. No se
+ * usa `sendBeacon` porque no permite mandar la cabecera Authorization, y sin ella
+ * la RLS rechaza la escritura.
+ */
+async function writeKeepalive(v: Visit, now: number): Promise<void> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) return
+  const url = import.meta.env.VITE_SUPABASE_URL as string
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+  const headers = {
+    'Content-Type': 'application/json',
+    apikey: key,
+    Authorization: `Bearer ${token}`,
+    Prefer: 'return=minimal',
+  }
+  const body = payload(v, now)
+  if (v.inserted) {
+    await fetch(`${url}/rest/v1/traffic_events?id=eq.${v.id}`, {
+      method: 'PATCH',
+      keepalive: true,
+      headers,
+      body: JSON.stringify({ active_ms: body.active_ms, last_seen_at: body.last_seen_at }),
+    })
+  } else {
+    await fetch(`${url}/rest/v1/traffic_events`, {
+      method: 'POST', keepalive: true, headers, body: JSON.stringify(body),
+    })
+  }
+}
+
+/**
+ * Crea la fila la primera vez y la refresca en los latidos siguientes.
+ * Devuelve si quedó escrita: el cliente de Supabase NO lanza, devuelve `error`,
+ * así que hay que mirarlo o daríamos por insertada una fila que no existe (y
+ * todos los latidos siguientes actualizarían la nada).
+ */
+async function write(v: Visit, now: number, keepalive: boolean): Promise<boolean> {
   try {
-    if (keepalive) {
-      const { data } = await supabase.auth.getSession()
-      const token = data.session?.access_token
-      if (!token) return
-      const url = import.meta.env.VITE_SUPABASE_URL as string
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-      await fetch(`${url}/rest/v1/traffic_events`, {
-        method: 'POST',
-        keepalive: true,
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: key,
-          Authorization: `Bearer ${token}`,
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify(row),
-      })
-      return
+    if (keepalive) { await writeKeepalive(v, now); return true }
+    const body = payload(v, now)
+    if (v.inserted) {
+      const { error } = await supabase.from('traffic_events')
+        .update({ active_ms: body.active_ms, last_seen_at: body.last_seen_at })
+        .eq('id', v.id)
+      return !error
     }
-    await supabase.from('traffic_events').insert(row)
+    const { error } = await supabase.from('traffic_events').insert(body)
+    return !error
   } catch {
     // Medir el tráfico jamás puede estorbar al que navega.
+    return false
   }
+}
+
+/**
+ * Latido: mantiene viva la fila de la vista abierta.
+ *
+ * No escribe si el reloj está en pausa (pestaña oculta o 3 min sin tocar nada):
+ * ahí `last_seen_at` debe quedarse quieto, que es lo que hace que una pestaña
+ * abandonada deje de contar como persona presente.
+ */
+function beat(): void {
+  const v = visit
+  if (!v || !userId || v.since == null) return
+  const now = Date.now()
+  if (now - v.startedAt < MIN_DWELL_MS) return
+  // Se marca como insertada ANTES de esperar la respuesta para que dos latidos
+  // seguidos no creen dos filas; si falla, se revierte y el próximo reintenta.
+  const first = !v.inserted
+  v.inserted = true
+  void write(v, now, false).then((ok) => { if (!ok && first) v.inserted = false })
+}
+
+/** Cierra la visita en curso y escribe su estado final. */
+function flush(keepalive = false): void {
+  const v = visit
+  if (!v || !userId) return
+  visit = null
+
+  const now = Date.now()
+  // Rebote técnico (/admin/overview → /admin/progress): si nunca llegó a
+  // escribirse, no se escribe ahora. Si ya existía la fila hay que cerrarla igual.
+  if (now - v.startedAt < MIN_DWELL_MS && !v.inserted) return
+
+  void write(v, now, keepalive)
 }
 
 function onPageHide(): void {
   pause()
-  void flush(true)
+  flush(true)
 }
 
 // ─── API pública ────────────────────────────────────────────────────────
@@ -218,14 +283,16 @@ export function startTrafficTracking(opts: {
   }
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pagehide', onPageHide)
+  if (!beatTimer) beatTimer = setInterval(beat, BEAT_MS)
   armIdleTimer()
 }
 
 /** Corta la medición (logout). Escribe lo que quedaba pendiente. */
 export function stopTrafficTracking(): void {
   pause()
-  void flush()
+  flush()
   if (idleTimer) { clearTimeout(idleTimer); idleTimer = null }
+  if (beatTimer) { clearInterval(beatTimer); beatTimer = null }
   if (listening) {
     const opt = { capture: true } as AddEventListenerOptions
     for (const ev of ['pointerdown', 'keydown', 'wheel', 'scroll', 'touchstart']) {
@@ -248,13 +315,20 @@ function openVisit(route: string): void {
   lastInput = Date.now()
   lastRoute = route
   visit = {
+    id: crypto.randomUUID(),
     route,
     viewKey: viewKeyForRoute(route),
     activeMs: 0,
     since: document.visibilityState === 'hidden' ? null : Date.now(),
     startedAt: Date.now(),
+    inserted: false,
   }
   armIdleTimer()
+  // Primer registro pronto, sin esperar el latido completo: así alguien que
+  // acaba de entrar ya aparece en la franja de 5 minutos en curso. La guarda por
+  // id evita que este disparo tardío reviva una visita que ya se cerró.
+  const id = visit.id
+  setTimeout(() => { if (visit?.id === id) beat() }, MIN_DWELL_MS + 500)
 }
 
 /** Declara que se entró a una ruta. Cierra y escribe la anterior. */
@@ -262,6 +336,6 @@ export function trackRoute(route: string): void {
   if (!userId) return
   if (visit?.route === route) return
   pause()
-  void flush()
+  flush()
   openVisit(route)
 }
