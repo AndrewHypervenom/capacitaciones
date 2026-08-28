@@ -3589,6 +3589,8 @@
       "segments_sub": "O mesmo escopo, dividido por campanha, cargo ou país",
       "axis_campaign": "Campanha",
       "reach_campaign": "Toda a campanha",
+      "guests_note_one": "Inclui {{count}} pessoa de outra campanha inscrita nos seus cursos",
+      "guests_note_other": "Inclui {{count}} pessoas de outras campanhas inscritas nos seus cursos",
       "course_hits_one": "{{count}} curso corresponde à busca",
       "course_hits_other": "{{count}} cursos correspondem à busca",
       "reach_none": "Sem atribuição",

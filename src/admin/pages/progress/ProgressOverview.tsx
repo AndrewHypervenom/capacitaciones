@@ -149,17 +149,48 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
 
   /* ── Alcance: campaña + rol + ventana de tiempo ───────────────────────── */
 
+  /**
+   * Los cursos DE la campaña: los suyos y los que se le asignaron entera.
+   * Se calcula antes que la gente porque es lo que define quién cuenta.
+   */
+  const campaignOwnCourseIds = useMemo(() => {
+    if (campaign === 'all') return null;
+    const ids = new Set<string>();
+    for (const c of courses) {
+      if (c.campaignId === campaign || c.campaignsAssigned.includes(campaign)) ids.add(c.id);
+    }
+    return ids;
+  }, [campaign, courses]);
+
+  /**
+   * La gente de la campaña.
+   *
+   * NO es solo "quien tiene esta campaña en su perfil". Filtrar por
+   * `profiles.campaign_id` dejaba fuera a todo el que está INSCRITO en un curso
+   * de la campaña viniendo de otra (que es lo normal con el catálogo
+   * compartido), y por eso la campaña salía vacía aunque tuviera gente
+   * avanzando en sus cursos. Cuentan las dos cosas: los de casa y los inscritos.
+   */
+  const campaignPeopleIds = useMemo(() => {
+    if (campaignOwnCourseIds === null) return null;
+    const ids = new Set(people.filter((p) => p.campaignId === campaign).map((p) => p.id));
+    for (const cell of cells) {
+      if (cell.assigned && campaignOwnCourseIds.has(cell.courseId)) ids.add(cell.userId);
+    }
+    return ids;
+  }, [campaign, people, cells, campaignOwnCourseIds]);
+
   const scopedPeople = useMemo(() => {
     return people.filter((p) => {
       if (onlyLearners && p.role !== 'learner') return false;
-      if (campaign !== 'all' && p.campaignId !== campaign) return false;
+      if (campaignPeopleIds !== null && !campaignPeopleIds.has(p.id)) return false;
       // Cargo y país salen del perfil; "sin dato" es un valor más y se puede
       // filtrar por él (suele ser el primer hallazgo: gente sin cargo).
       if (job !== 'all' && (p.jobTitle ?? NO_VALUE) !== job) return false;
       if (country !== 'all' && (p.country ?? NO_VALUE) !== country) return false;
       return true;
     });
-  }, [people, onlyLearners, campaign, job, country]);
+  }, [people, onlyLearners, campaignPeopleIds, job, country]);
 
   /** Opciones de los cortes, sacadas de la gente que hay (no de un catálogo). */
   const jobOptions = useMemo(() => segmentOptions(people, (p) => p.jobTitle), [people]);
@@ -167,26 +198,26 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
 
   const peopleIds = useMemo(() => new Set(scopedPeople.map((p) => p.id)), [scopedPeople]);
 
+  /** Cuántos de los que se ven vienen de otra campaña (inscritos, no de casa). */
+  const guestCount = useMemo(
+    () => (campaign === 'all' ? 0 : scopedPeople.filter((p) => p.campaignId !== campaign).length),
+    [scopedPeople, campaign],
+  );
+
   /**
-   * Cursos de la campaña elegida.
-   *
-   * NO son "los cursos cuyo dueño es la campaña": con el catálogo compartido, a
-   * la gente de una campaña se le asigna a diario contenido creado en otra, y
-   * mirar solo `campaign_id` dejaba ese progreso fuera del tablero — la campaña
-   * salía en blanco aunque su gente estuviera avanzando. El alcance correcto es
-   * lo que de verdad se les asignó (directo o por campaña), más los cursos
-   * propios todavía sin asignar, que también son parte del plan.
+   * Cursos del alcance: los de la campaña, más los que su gente de casa tenga
+   * asignados de OTRAS campañas — ese progreso también es de esta campaña, y
+   * mirar solo `campaign_id` lo dejaba fuera del tablero.
    */
   const campaignCourseIds = useMemo(() => {
-    if (campaign === 'all') return null;
-    // La gente de la campaña ENTERA, sin los cortes de cargo/país: filtrar por
-    // un cargo no debe cambiar cuáles son los cursos de la campaña.
+    if (campaignOwnCourseIds === null) return null;
+    // La gente de casa, sin los cortes de cargo/país: filtrar por un cargo no
+    // debe cambiar cuáles son los cursos de la campaña.
     const members = new Set(people.filter((p) => p.campaignId === campaign).map((p) => p.id));
-    const ids = new Set<string>();
-    for (const c of courses) if (c.campaignId === campaign) ids.add(c.id);
+    const ids = new Set(campaignOwnCourseIds);
     for (const cell of cells) if (cell.assigned && members.has(cell.userId)) ids.add(cell.courseId);
     return ids;
-  }, [campaign, people, courses, cells]);
+  }, [campaign, people, cells, campaignOwnCourseIds]);
 
   const scopedCourses = useMemo(
     () => (campaignCourseIds === null ? courses : courses.filter((c) => campaignCourseIds.has(c.id))),
@@ -1072,6 +1103,17 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-subtle/60 px-2.5 py-1 text-[11.5px] text-text-muted">
               <CalendarRange className="h-3 w-3" />
               {t('admin.progress_overview.range_note', 'La actividad y los certificados se cuentan dentro del rango')}
+            </span>
+          )}
+          {/* Gente de otras campañas inscrita en cursos de esta. Se dice, para
+              que nadie lea la tabla como "la plantilla de la campaña". */}
+          {guestCount > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-subtle/60 px-2.5 py-1 text-[11.5px] text-text-muted">
+              <Users className="h-3 w-3" />
+              {t('admin.progress_overview.guests_note', {
+                count: guestCount,
+                defaultValue: 'Incluye {{count}} personas de otras campañas inscritas en sus cursos',
+              })}
             </span>
           )}
         </div>

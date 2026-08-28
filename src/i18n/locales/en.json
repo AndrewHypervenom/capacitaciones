@@ -3589,6 +3589,8 @@
       "segments_sub": "The same scope, split by campaign, job title or country",
       "axis_campaign": "Campaign",
       "reach_campaign": "Whole campaign",
+      "guests_note_one": "Includes {{count}} person from another campaign enrolled in its courses",
+      "guests_note_other": "Includes {{count}} people from other campaigns enrolled in its courses",
       "course_hits_one": "{{count}} course matches your search",
       "course_hits_other": "{{count}} courses match your search",
       "reach_none": "Not assigned",
