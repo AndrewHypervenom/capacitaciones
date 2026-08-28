@@ -68,7 +68,7 @@ type RowStatus = 'new' | 'exists' | 'duplicate' | 'invalid'
 
 interface RowResult {
   email: string
-  status: 'created' | 'error'
+  status: 'created' | 'updated' | 'skipped' | 'error'
   password?: string
   reason?: string
   /** País que el servidor dice haber guardado (ausente en despliegues viejos). */
@@ -95,6 +95,11 @@ interface PreviewRow {
   countryUnknown: string
   status: RowStatus
   include: boolean
+  /**
+   * Qué se le va a hacer a esta persona: crearla, o —si ya existe y quedó sin
+   * campaña— solo completarle la campaña. Nunca se le quita la que ya tenga.
+   */
+  action: 'create' | 'assign'
 }
 
 interface BulkImportUsersProps {
@@ -169,6 +174,15 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
 
   // Verificación contra el sitio (no crea nada)
   const [existing, setExisting] = useState<Set<string>>(new Set())
+  // De los que ya existen, los que quedaron SIN campaña: son los únicos a los
+  // que esta carga puede completarles la campaña.
+  const [noCampaign, setNoCampaign] = useState<Set<string>>(new Set())
+  // El servidor contestó la vista previa pero sin la lista de "sin campaña":
+  // función desplegada anterior a este soporte. Se avisa en vez de ofrecer un
+  // botón que no haría nada.
+  const [fillUnsupported, setFillUnsupported] = useState(false)
+  // Completar la campaña de quienes ya existen y no tienen ninguna.
+  const [fillCampaign, setFillCampaign] = useState(false)
   const [checkState, setCheckState] = useState<'idle' | 'checking' | 'done' | 'unavailable'>('idle')
 
   const [processing, setProcessing] = useState(false)
@@ -211,6 +225,8 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const found = new Set<string>()
+      const blank = new Set<string>()
+      let unsupported = false
       // Igual que el alta: por tandas, porque la función solo mira 200 correos
       // por llamada. Antes se cortaba en 200 y el resto salía como "nuevo"
       // aunque ya tuviera cuenta.
@@ -234,8 +250,15 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
           return
         }
         for (const mail of (json.existing ?? []) as string[]) found.add(mail)
+        if (Array.isArray(json.noCampaign)) {
+          for (const mail of json.noCampaign as string[]) blank.add(mail)
+        } else {
+          unsupported = true
+        }
       }
       setExisting(found)
+      setNoCampaign(blank)
+      setFillUnsupported(unsupported)
       setCheckState('done')
     } catch {
       setCheckState('unavailable')
@@ -360,6 +383,11 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         campaignByName.get(r.campaign.trim().toLowerCase()) ?? (campaignDefault || null)
       // El país del archivo manda; el predeterminado solo rellena lo que falta.
       const rowCountry = r.country || countryDefault
+      // Ya existe, quedó sin campaña y hay una campaña que darle: en vez de
+      // saltarla, esta fila le completa la campaña. Al que ya tiene una no se
+      // le toca (ni siquiera aparece como candidato).
+      const canFill =
+        status === 'exists' && fillCampaign && noCampaign.has(r.email) && !!rowCampaign
       return {
         key,
         sourceLine: r.sourceLine,
@@ -374,10 +402,14 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         status,
         // Sin campaña, el servidor rechazaría el alta del capacitador: se marca
         // como no incluible en vez de dejar que falle fila por fila.
-        include: status === 'new' && !excluded[key] && !(campaignRequired && !rowCampaign),
+        include:
+          (status === 'new' || canFill) &&
+          !excluded[key] &&
+          !(campaignRequired && !rowCampaign),
+        action: canFill ? 'assign' : 'create',
       }
     })
-  }, [extracted, existing, nameEdits, excluded, canChooseRole, campaignRequired, roleDefault, campaignDefault, countryDefault, campaignByName])
+  }, [extracted, existing, noCampaign, fillCampaign, nameEdits, excluded, canChooseRole, campaignRequired, roleDefault, campaignDefault, countryDefault, campaignByName])
 
   const counts = useMemo(() => {
     const c = { new: 0, exists: 0, duplicate: 0, invalid: 0, excluded: 0 }
@@ -387,6 +419,15 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     }
     return c
   }, [rows])
+
+  // Cuántos de los que ya existen quedaron sin campaña: es el número que decide
+  // si vale la pena ofrecer el "completar campaña".
+  const fillable = useMemo(
+    () => rows.filter((r) => r.status === 'exists' && noCampaign.has(r.email)).length,
+    [rows, noCampaign],
+  )
+  const toAssign = useMemo(() => rows.filter((r) => r.include && r.action === 'assign').length, [rows])
+  const toCreate = useMemo(() => rows.filter((r) => r.include && r.action === 'create').length, [rows])
 
   const selected = useMemo(() => rows.filter((r) => r.include), [rows])
   // El superadmin no tiene tope: el archivo se manda por tandas.
@@ -417,13 +458,19 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     if (selected.length === 0 || tooMany) return
     setProcessing(true)
     setProgress({ done: 0, total: selected.length })
-    const payload = selected.map((r) => ({
-      email: r.email,
-      display_name: r.name,
-      role: r.role,
-      campaign: r.campaignId ?? undefined,
-      country: r.country || undefined,
-    }))
+    const payload = selected.map((r) =>
+      r.action === 'assign'
+        // Solo el correo y la campaña: la fila de "completar campaña" no debe
+        // poder pisar el nombre, el rol ni el país de alguien que ya existe.
+        ? { email: r.email, campaign: r.campaignId ?? undefined, mode: 'assign_campaign' as const }
+        : {
+            email: r.email,
+            display_name: r.name,
+            role: r.role,
+            campaign: r.campaignId ?? undefined,
+            country: r.country || undefined,
+          },
+    )
     // Lo que ya contestó el servidor. Vive fuera del try: si una tanda se cae,
     // igual mostramos (y se pueden descargar) las credenciales de las que sí
     // alcanzaron a crearse. En producción eso es la diferencia entre repetir la
@@ -466,7 +513,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
 
     setResults(rowResults)
     setUsedDefaultPwd(usedDefault)
-    const wantedCountry = selected.filter((r) => r.country).length
+    const wantedCountry = selected.filter((r) => r.action === 'create' && r.country).length
     const appliedCountry = rowResults.filter((r) => r.status === 'created' && r.country).length
     setCountryIgnored(wantedCountry > 0 && appliedCountry === 0)
     setStep('result')
@@ -479,7 +526,12 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         error: failure,
       }))
     } else {
-      toast.success(t('admin.users.bulk_done', { created, total: rowResults.length }))
+      const filled = rowResults.filter((r) => r.status === 'updated').length
+      toast.success(
+        filled > 0
+          ? `${t('admin.users.bulk_done', { created, total: rowResults.length })} ${t('admin.users.bulk_done_filled', { n: filled })}`
+          : t('admin.users.bulk_done', { created, total: rowResults.length }),
+      )
     }
     await onImported()
   }
@@ -526,10 +578,14 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     setNameEdits({})
     setExcluded({})
     setExisting(new Set())
+    setNoCampaign(new Set())
+    setFillCampaign(false)
+    setFillUnsupported(false)
     setCheckState('idle')
   }
 
   const createdCount = results?.filter((r) => r.status === 'created').length ?? 0
+  const updatedCount = results?.filter((r) => r.status === 'updated').length ?? 0
 
   /* ── Piezas de interfaz ────────────────────────────────────────────────── */
 
@@ -809,6 +865,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                         {counts.excluded > 0 && (
                           <Chip tone="muted" label={t('admin.users.bulk_sum_excluded', { n: counts.excluded })} />
                         )}
+                        {toAssign > 0 && (
+                          <Chip tone="ok" label={t('admin.users.bulk_sum_fill', { n: toAssign })} />
+                        )}
                         <span className="ml-auto flex items-center gap-2 text-[11px] text-text-subtle">
                           {checkState === 'checking' && (
                             <>
@@ -835,6 +894,40 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                         </span>
                       </div>
 
+                      {/* Completar la campaña de los que ya existen. Solo
+                          aparece cuando de verdad hay a quién: gente con cuenta
+                          y sin ninguna campaña. Al que ya tiene una NO se le
+                          toca, y eso se dice aquí, no en una nota al pie. */}
+                      {fillable > 0 && (
+                        <div className="rounded-xl border border-[#10D451]/40 bg-[#10D451]/10 p-3">
+                          <label className="flex cursor-pointer items-start gap-2 text-[13px] text-text">
+                            <input
+                              type="checkbox"
+                              checked={fillCampaign}
+                              onChange={(e) => setFillCampaign(e.target.checked)}
+                              disabled={!campaignDefault}
+                              className="mt-0.5 h-4 w-4 accent-[#10D451]"
+                            />
+                            <span>
+                              {t('admin.users.bulk_fill_campaign', { n: fillable })}
+                              <span className="mt-0.5 block text-[12px] text-text-muted">
+                                {campaignDefault
+                                  ? t('admin.users.bulk_fill_campaign_hint', {
+                                      campaign: campaignNameById.get(campaignDefault) ?? '',
+                                    })
+                                  : t('admin.users.bulk_fill_campaign_pick')}
+                              </span>
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                      {fillUnsupported && counts.exists > 0 && (
+                        <p className="flex items-start gap-2 text-[12px] text-amber-500">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          {t('admin.users.bulk_fill_unsupported')}
+                        </p>
+                      )}
+
                       {/* Tabla de revisión */}
                       <div className="overflow-hidden rounded-xl border border-line">
                         <div className="overflow-x-auto">
@@ -860,14 +953,14 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                               {rows.map((r) => (
                                 <tr
                                   key={r.key}
-                                  className={r.status === 'new' && r.include ? '' : 'opacity-55'}
+                                  className={r.include ? '' : 'opacity-55'}
                                 >
                                   <td className="px-3 py-2">
                                     <input
                                       type="checkbox"
                                       className="h-4 w-4 accent-[#10D451]"
                                       checked={r.include}
-                                      disabled={r.status !== 'new'}
+                                      disabled={r.status !== 'new' && r.action !== 'assign'}
                                       onChange={(e) =>
                                         setExcluded((prev) => ({ ...prev, [r.key]: !e.target.checked }))
                                       }
@@ -937,7 +1030,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                       : t('admin.users.bulk_pwd_temp')}
                                   </td>
                                   <td className="px-3 py-2">
-                                    <StatusBadge status={r.status} include={r.include} />
+                                    <StatusBadge status={r.status} include={r.include} action={r.action} />
                                   </td>
                                 </tr>
                               ))}
@@ -976,6 +1069,11 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-[13px] text-text">
                       {t('admin.users.bulk_done', { created: createdCount, total: results.length })}
+                      {updatedCount > 0 && (
+                        <span className="block text-[12px] text-text-muted">
+                          {t('admin.users.bulk_done_filled', { n: updatedCount })}
+                        </span>
+                      )}
                     </p>
                     {createdCount > 0 && (
                       <div className="flex gap-2">
@@ -1033,7 +1131,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                               {/* El motivo va a la vista, no escondido en un tooltip:
                                   con cientos de filas es la única forma de saber
                                   qué pasó sin ir correo por correo. */}
-                              {r.status === 'error' && (
+                              {(r.status === 'error' || r.status === 'skipped') && (
                                 <span className="block break-words text-[11px] text-text-subtle">
                                   {existed ? t('admin.users.bulk_reason_exists') : r.reason}
                                 </span>
@@ -1042,6 +1140,14 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                             {r.status === 'created' ? (
                               <span className="flex items-center gap-1 text-green-500">
                                 <Check className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_created')}
+                              </span>
+                            ) : r.status === 'updated' ? (
+                              <span className="flex items-center gap-1 text-green-500">
+                                <Check className="h-3.5 w-3.5" /> {t('admin.users.bulk_status_filled')}
+                              </span>
+                            ) : r.status === 'skipped' ? (
+                              <span className="flex items-center gap-1 text-text-subtle">
+                                {t('admin.users.bulk_status_skipped')}
                               </span>
                             ) : existed ? (
                               <span className="flex items-center gap-1 text-amber-500">
@@ -1087,7 +1193,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                       ? progress && progress.total > BATCH_SIZE
                         ? t('admin.users.bulk_progress', { done: progress.done, total: progress.total })
                         : t('admin.users.bulk_processing')
-                      : t('admin.users.bulk_create_n', { n: selected.length })}
+                      : toCreate === 0 && toAssign > 0
+                        ? t('admin.users.bulk_fill_n', { n: toAssign })
+                        : t('admin.users.bulk_create_n', { n: selected.length })}
                   </button>
                 </div>
               </div>
@@ -1148,8 +1256,22 @@ function Chip({ label, tone }: { label: string; tone: 'ok' | 'warn' | 'bad' | 'm
   )
 }
 
-function StatusBadge({ status, include }: { status: RowStatus; include: boolean }) {
+function StatusBadge({
+  status,
+  include,
+  action,
+}: { status: RowStatus; include: boolean; action: 'create' | 'assign' }) {
   const { t } = useTranslation()
+  // Ya tiene cuenta pero está sin campaña y esta carga se la va a poner: es su
+  // propio estado, no un "ya existe" apagado.
+  if (action === 'assign') {
+    return (
+      <span className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: '#10D451' }}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} />
+        {t('admin.users.bulk_status_fill')}
+      </span>
+    )
+  }
   if (status === 'new' && !include) {
     return <span className="text-text-subtle">{t('admin.users.bulk_status_skipped')}</span>
   }

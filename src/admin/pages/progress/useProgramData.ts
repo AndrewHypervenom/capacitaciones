@@ -92,6 +92,14 @@ export interface ProgramCourse {
   mandatory: boolean;
   /** Personas con el curso asignado. */
   assigned: number;
+  /**
+   * Campañas a las que se les asignó el curso ENTERO (`course_campaigns`). Es lo
+   * que separa "esto le toca a todo el mundo" de "esto le toca a tres personas",
+   * y sin ese dato las dos cosas se leen igual en la tabla.
+   */
+  campaignsAssigned: string[];
+  /** De los asignados, cuántos lo tienen por asignación individual. */
+  directAssigned: number;
   started: number;
   completed: number;
   certified: number;
@@ -107,6 +115,8 @@ export interface ProgramCell {
   userId: string;
   courseId: string;
   assigned: boolean;
+  /** Le llegó porque el curso está asignado a su campaña entera, no a ella. */
+  viaCampaign: boolean;
   /** La asignación es obligatoria (formación de cumplimiento), no voluntaria. */
   mandatory: boolean;
   started: boolean;
@@ -497,6 +507,8 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             icon: c.icon,
             modules: modulesPerCourse.get(c.id) ?? 0,
             mandatory: false,
+            campaignsAssigned: [],
+            directAssigned: 0,
             assigned: 0, started: 0, completed: 0, certified: 0,
             avgScore: null, pendingReviews: 0, overdue: 0, lastActivity: null,
           });
@@ -535,7 +547,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           if (!cell) {
             const done = doneByUserCourse.get(`${userId}|${courseId}`)?.size ?? 0;
             cell = {
-              userId, courseId, assigned: false, mandatory: false, started: false, score: null,
+              userId, courseId, assigned: false, viaCampaign: false, mandatory: false, started: false, score: null,
               attempts: 0, pending: 0,
               modulesDone: done,
               modulesTotal: modulesPerCourse.get(courseId) ?? 0,
@@ -566,10 +578,15 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           peopleByCampaign.set(p.campaignId, list);
         }
         for (const ca of campAssignRows) {
-          if (!courseById.has(ca.course_id)) continue;
+          const course = courseById.get(ca.course_id);
+          if (!course) continue;
+          if (!course.campaignsAssigned.includes(ca.campaign_id)) {
+            course.campaignsAssigned.push(ca.campaign_id);
+          }
           for (const uid of peopleByCampaign.get(ca.campaign_id) ?? []) {
             const cell = cellOf(uid, ca.course_id);
             cell.assigned = true;
+            cell.viaCampaign = true;
             if (ca.is_mandatory) cell.mandatory = true;
             cell.assignedAt = earliestDate(cell.assignedAt, ca.assigned_at);
           }
@@ -661,7 +678,11 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           const course = courseById.get(cell.courseId);
           if (!person || !course) continue;
 
-          if (cell.assigned) { person.assigned++; course.assigned++; }
+          if (cell.assigned) {
+            person.assigned++;
+            course.assigned++;
+            if (!cell.viaCampaign) course.directAssigned++;
+          }
           if (rest.overdue) { person.overdue++; course.overdue++; }
           if (cell.mandatory) { person.mandatory++; course.mandatory = true; }
           if (cell.started) { person.started++; course.started++; }

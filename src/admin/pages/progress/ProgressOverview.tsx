@@ -364,10 +364,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   /* ── Cursos recalculados ──────────────────────────────────────────────── */
 
   const courseRows = useMemo(() => {
-    const agg = new Map<string, { assigned: number; started: number; completed: number; certified: number; pending: number; overdue: number; last: number | null; sum: number; n: number }>();
+    const agg = new Map<string, { assigned: number; direct: number; started: number; completed: number; certified: number; pending: number; overdue: number; last: number | null; sum: number; n: number }>();
     for (const cell of scopedCells) {
-      const a = agg.get(cell.courseId) ?? { assigned: 0, started: 0, completed: 0, certified: 0, pending: 0, overdue: 0, last: null, sum: 0, n: 0 };
-      if (cell.assigned) a.assigned++;
+      const a = agg.get(cell.courseId) ?? { assigned: 0, direct: 0, started: 0, completed: 0, certified: 0, pending: 0, overdue: 0, last: null, sum: 0, n: 0 };
+      if (cell.assigned) { a.assigned++; if (!cell.viaCampaign) a.direct++; }
       if (cell.overdue) a.overdue++;
       if (cell.started) a.started++;
       if (cell.certifiedAt) a.certified++;
@@ -387,6 +387,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       return {
         ...c,
         assigned: a?.assigned ?? 0,
+        directAssigned: a?.direct ?? 0,
         started: a?.started ?? 0,
         completed: a?.completed ?? 0,
         certified: a?.certified ?? 0,
@@ -1235,6 +1236,33 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           })}
         </div>
       </Rise>
+
+      {/* Buscar un CURSO desde cualquier pestaña. El buscador dice "persona,
+          correo o curso", pero fuera de la pestaña Cursos el resultado no se
+          veía por ningún lado: aquí se ofrece el salto. */}
+      {query.trim() !== '' && tab !== 'courses' && visibleCourses.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setTab('courses')}
+          className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-line bg-surface/70 p-3 text-left transition-colors hover:border-[rgb(var(--brand-green))]/40"
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl" style={{ background: `color-mix(in srgb, ${MAGENTA} 12%, transparent)`, color: MAGENTA }}>
+            <GraduationCap className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[12.5px] font-semibold text-text">
+              {t('admin.progress_overview.course_hits', {
+                count: visibleCourses.length,
+                defaultValue: '{{count}} cursos coinciden con la búsqueda',
+              })}
+            </span>
+            <span className="block truncate text-[11.5px] text-text-muted">
+              {visibleCourses.slice(0, 3).map((c) => c.title).join(' · ')}
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-text-subtle" />
+        </button>
+      )}
 
       {error && (
         <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/5 p-4">
@@ -2167,12 +2195,42 @@ function CoursesTab({
                             {c.mandatory && (
                               <StatusPill tone="amber">{t('admin.progress_overview.mandatory', 'Obligatorio')}</StatusPill>
                             )}
+                            {/* Cómo le llegó a la gente. "20 asignados" no dice
+                                lo mismo si es un curso que le toca a toda la
+                                campaña o uno que se le dio a tres personas, y
+                                hasta ahora las dos cosas se veían igual. */}
+                            {c.campaignsAssigned.length > 0 ? (
+                              <StatusPill tone="green">
+                                {t('admin.progress_overview.reach_campaign', 'Toda la campaña')}
+                              </StatusPill>
+                            ) : c.directAssigned > 0 ? (
+                              <StatusPill tone="neutral">
+                                {t('admin.progress_overview.reach_people', { count: c.directAssigned, defaultValue: '{{count}} personas' })}
+                              </StatusPill>
+                            ) : (
+                              <StatusPill tone="neutral">
+                                {t('admin.progress_overview.reach_none', 'Sin asignar')}
+                              </StatusPill>
+                            )}
                             {c.campaignName && <span className="min-w-0 truncate text-[10.5px] text-text-subtle">· {c.campaignName}</span>}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums text-text-muted">{c.assigned}</td>
+                    <td className="border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums text-text-muted">
+                      <Tooltip
+                        anchor="element"
+                        delay={120}
+                        maxWidth={280}
+                        label={t('admin.progress_overview.assigned_breakdown', {
+                          campaign: c.assigned - c.directAssigned,
+                          direct: c.directAssigned,
+                          defaultValue: '{{campaign}} por su campaña · {{direct}} una por una',
+                        })}
+                      >
+                        <span>{c.assigned}</span>
+                      </Tooltip>
+                    </td>
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums text-text">{c.started}</td>
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums text-text">{c.completed}</td>
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums" style={{ color: c.certified ? VIOLET : undefined }}>
