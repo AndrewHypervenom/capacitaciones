@@ -86,15 +86,26 @@ function collectTriples(value: any, out: LangTriple[] = []): LangTriple[] {
  */
 const MIN_LEN_FOR_CHECK = 25
 
-/** Fracción del contenido que sí está traducido (0 = nada, 1 = todo). */
+/**
+ * Fracción del contenido que sí está traducido (0 = nada, 1 = todo).
+ *
+ * La regla es "los tres campos tienen texto y hay al menos DOS versiones
+ * distintas", no "en y pt difieren del español". Por qué: la columna base guarda
+ * el idioma en que se escribió, que no siempre es español. En un título escrito
+ * en portugués, `_pt` es idéntico a la base por definición —no hay nada que
+ * traducir de portugués a portugués— y con la regla vieja esa pieza quedaba
+ * marcada como pendiente PARA SIEMPRE: cada corrida de "solo lo pendiente" la
+ * volvía a traducir y a cobrar, sin que el número bajara nunca.
+ */
 export function translatedRatio(content: unknown): number {
   const triples = collectTriples(content).filter((t) => t.es.trim().length >= MIN_LEN_FOR_CHECK)
   if (!triples.length) return 1 // nada que traducir: cuenta como listo
   const done = triples.filter((t) => {
+    const es = t.es.trim()
     const en = t.en.trim()
     const pt = t.pt.trim()
     if (!en || !pt) return false
-    return en !== t.es.trim() && pt !== t.es.trim()
+    return new Set([es, en, pt]).size >= 2
   }).length
   return done / triples.length
 }

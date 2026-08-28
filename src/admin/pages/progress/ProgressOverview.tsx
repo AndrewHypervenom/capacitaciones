@@ -1735,6 +1735,9 @@ function SegmentBreakdown({
     return [...map.entries()]
       .map(([key, g]) => ({
         key,
+        ...g,
+        // Va DESPUÉS del spread a propósito: `g` trae su propio `label` (el
+        // nombre crudo de la campaña) y antes lo pisaba.
         label: key === NO_VALUE
           ? (effAxis === 'campaign'
               ? t('admin.progress_overview.no_campaign', 'Sin campaña')
@@ -1746,7 +1749,6 @@ function SegmentBreakdown({
             : effAxis === 'campaign'
               ? (g.label || key)
               : key,
-        ...g,
         participation: g.total > 0 ? Math.round((g.started / g.total) * 100) : 0,
         progress: g.modulesTotal > 0 ? Math.round((g.modulesDone / g.modulesTotal) * 100) : null,
         avg: g.scored > 0 ? Math.round(g.scoreSum / g.scored) : null,
