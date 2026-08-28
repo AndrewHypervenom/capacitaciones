@@ -38,6 +38,7 @@ import { SaveDock } from '@/admin/components/SaveDock'
 import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
+import { initialContentLang, rowText } from '@/lib/contentLang'
 
 type Lang = 'es' | 'en' | 'pt'
 type Tab = 'meta' | 'nodes' | 'checklist'
@@ -172,7 +173,7 @@ export default function SimulationEditor() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>(defaultChecklist)
   const [selectedNodeId, setSelectedNodeId] = useState<string>('start')
   const [rowId, setRowId] = useState<string | null>(isNew ? null : id ?? null)
-  const [metaLang, setMetaLang] = useState<Lang>('es')
+  const [metaLang, setMetaLang] = useState<Lang>(initialContentLang)
   const [aiBanner, setAiBanner] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false)
@@ -196,7 +197,7 @@ export default function SimulationEditor() {
 
   // Presencia colaborativa: coeditores de este simulador (una vez guardado).
   const coeditors = useEditingPresence(
-    rowId ? { type: 'simulation', id: rowId, title: meta.title_es } : null,
+    rowId ? { type: 'simulation', id: rowId, title: rowText(meta) } : null,
   )
 
   const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
@@ -211,7 +212,7 @@ export default function SimulationEditor() {
   // Escenario actual (para "Mejorar con IA"). null si aún no hay contenido real.
   const currentContent = useMemo<GeneratedScenario | null>(() => {
     const hasText = Object.values(nodes).some((n) => n.customerLine?.es?.trim())
-    if (!hasText && !meta.title_es.trim()) return null
+    if (!hasText && !rowText(meta)) return null
     return {
       metadata: {
         title_es: meta.title_es, title_en: meta.title_en, title_pt: meta.title_pt,
@@ -279,7 +280,7 @@ export default function SimulationEditor() {
   // Cambios sin guardar: alimenta el aviso de "Nueva versión disponible" y el de
   // cerrar la pestaña, para que ninguno de los dos se lleve el trabajo por
   // delante sin decir qué se pierde (ver lib/unsavedWork.ts).
-  const unsaved = useUnsavedWork({ meta, nodes, checklist }, { label: meta.title_es || t('admin.simulations.ai_gen.bg_untitled'), enabled: !loading })
+  const unsaved = useUnsavedWork({ meta, nodes, checklist }, { label: rowText(meta) || t('admin.simulations.ai_gen.bg_untitled'), enabled: !loading })
 
   // Deshacer/rehacer del guion completo (Ctrl+Z / Ctrl+Shift+Z): borrar un
   // nodo o reescribir una opción ya no es un camino de ida.
@@ -341,8 +342,8 @@ export default function SimulationEditor() {
 
   const handleSave = async () => {
     if (!campaignId) return toast.error(t('admin.simulations.toast_no_campaign'))
-    if (!meta.title_es.trim()) return toast.error(t('admin.simulations.toast_title_required'))
-    const finalSlug = meta.slug.trim() || slugify(meta.title_es)
+    if (!rowText(meta)) return toast.error(t('admin.simulations.toast_title_required'))
+    const finalSlug = meta.slug.trim() || slugify(rowText(meta))
     if (!finalSlug) return toast.error(t('admin.simulations.toast_slug_needs_title'))
     if (!meta.start_node_id || !nodes[meta.start_node_id]) return toast.error(t('admin.simulations.toast_start_missing'))
 
@@ -429,7 +430,7 @@ export default function SimulationEditor() {
       max_turns: m.max_turns ?? prev.max_turns,
       empathy_keywords: m.empathy_keywords ?? prev.empathy_keywords,
       start_node_id: g.start_node_id,
-      slug: prev.slug || slugify(m.title_es),
+      slug: prev.slug || slugify(rowText(m)),
     }))
     setNodes(g.nodes as unknown as NodesMap)
     if (Array.isArray(m.checklist_items) && m.checklist_items.length > 0) {
@@ -494,7 +495,7 @@ export default function SimulationEditor() {
         </button>
         <div className="flex-1 min-w-0">
           <GradientHeading as="h1" className="text-lg md:text-xl truncate">
-            {isNew ? t('admin.simulations.new_call_sim') : meta.title_es || t('admin.simulations.call_editor')}
+            {isNew ? t('admin.simulations.new_call_sim') : rowText(meta) || t('admin.simulations.call_editor')}
           </GradientHeading>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
@@ -695,7 +696,7 @@ export default function SimulationEditor() {
                 onChange={(v) => setMeta((m) => ({ ...m, course_id: v || null }))}
                 options={[
                   { value: '', label: t('admin.simulations.course_none') },
-                  ...courses.map((c) => ({ value: c.id, label: c.title_es })),
+                  ...courses.map((c) => ({ value: c.id, label: rowText(c) })),
                 ]}
               />
               <p className="text-[11px] text-text-subtle mt-1">{t('admin.simulations.course_hint')}</p>
@@ -1022,7 +1023,7 @@ export default function SimulationEditor() {
           startNodeId={meta.start_node_id}
           fromNodeId={preview.from}
           meta={{
-            title: meta.title_es,
+            title: rowText(meta),
             clientName: meta.customer_name,
             clientSubtitle: meta.customer_phone || meta.customer_reason_es,
             reason: meta.customer_reason_es,
@@ -1043,7 +1044,7 @@ export default function SimulationEditor() {
 
       {/* Único lugar donde se guarda: aparece solo si hay cambios. */}
       <SaveDock
-        pending={unsaved.dirty ? [{ id: 'sim', label: meta.title_es || t('common.untitled') }] : []}
+        pending={unsaved.dirty ? [{ id: 'sim', label: rowText(meta) || t('common.untitled') }] : []}
         onSave={handleSave}
         saving={saving}
         onUndo={undoHistory.undo}

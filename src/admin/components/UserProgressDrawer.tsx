@@ -22,6 +22,7 @@ import { getUserCoursesAdmin, courseState, isCourseFinished, type AdminUserCours
 import { getUserCourseDetailAdmin, type AdminCourseDetail } from '@/services/notifications.service'
 import { getUserGamification, type GamificationSummary } from '@/services/progress.service'
 import type { Profile } from '@/types/database'
+import { rowText } from '@/lib/contentLang'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = '#10D451'
@@ -203,7 +204,7 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
   const groups = useMemo(() => {
     const list = tab === 'assigned' ? assigned : catalog
     const q = fold(query)
-    const filtered = q ? list.filter((c) => fold(c.title_es).includes(q)) : list
+    const filtered = q ? list.filter((c) => fold(rowText(c)).includes(q)) : list
 
     const isDone = (c: AdminUserCourse) => isCourseFinished(c, modulesDone(c.course_id))
     const isStarted = (c: AdminUserCourse) =>
@@ -212,15 +213,15 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
     const done = filtered.filter(isDone).sort((a, b) => {
       const ta = a.completed_at ? Date.parse(a.completed_at) : 0
       const tb = b.completed_at ? Date.parse(b.completed_at) : 0
-      return tb - ta || a.title_es.localeCompare(b.title_es)
+      return tb - ta || rowText(a).localeCompare(rowText(b))
     })
-    const started = filtered.filter(isStarted).sort((a, b) => a.title_es.localeCompare(b.title_es))
+    const started = filtered.filter(isStarted).sort((a, b) => rowText(a).localeCompare(rowText(b)))
     const idle = filtered
       .filter((c) => !isDone(c) && !isStarted(c))
       .sort((a, b) => {
         // Lo obligatorio primero: es lo que hay que empujar.
         if (!!a.is_mandatory !== !!b.is_mandatory) return a.is_mandatory ? -1 : 1
-        return a.title_es.localeCompare(b.title_es)
+        return rowText(a).localeCompare(rowText(b))
       })
 
     return { done, started, idle, total: filtered.length }
@@ -630,7 +631,7 @@ function CourseCard({
 
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className="truncate text-[13px] font-medium text-text">{c.title_es}</span>
+            <span className="truncate text-[13px] font-medium text-text">{rowText(c)}</span>
             {c.is_mandatory && c.is_assigned && (
               <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
                 style={{ background: 'rgba(179,61,158,0.14)', color: MAGENTA }}
@@ -817,7 +818,7 @@ function CourseDetail({ dt, reduce }: { dt: AdminCourseDetail; reduce: boolean }
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className={cn('block truncate text-[12px]', m.completed ? 'text-text' : 'text-text-muted')}>
-                      {m.title_es}
+                      {rowText(m)}
                     </span>
                     {m.sections.length > 0 && (
                       <span className="mt-0.5 flex items-center gap-1.5">
@@ -862,7 +863,7 @@ function CourseDetail({ dt, reduce }: { dt: AdminCourseDetail; reduce: boolean }
                             style={{ color: s.has_attempt ? GREEN : 'rgb(var(--text-subtle))' }}
                           />
                           <span className={cn('min-w-0 flex-1 truncate text-[11px]', s.has_attempt ? 'text-text-muted' : 'text-text-subtle')}>
-                            {s.heading_es}
+                            {rowText(s, 'heading')}
                           </span>
                           <span className="shrink-0 text-[10px] text-text-subtle">
                             {s.has_attempt ? t('admin.users.progress_solved') : t('admin.users.status_pending')}

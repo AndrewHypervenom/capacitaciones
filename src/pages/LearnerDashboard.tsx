@@ -29,11 +29,11 @@ import {
   getXPLevel,
   getXPProgress,
   badgeLabel,
-  badgeDescription,
   xpLevelLabel,
   type Lang,
 } from '@/stores/gamificationStore';
 import { XPBoostCard, XPBoostPill } from '@/components/gamification/XPBoostBanner';
+import { BadgeTooltip } from '@/components/gamification/BadgeTooltip';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
 import { useHasWorld } from '@/hooks/useHasWorld';
 import { useAuth } from '@/hooks/useAuth';
@@ -743,7 +743,6 @@ export default function LearnerDashboard() {
                 return (
                   <StaggerItem
                     key={badge.id}
-                    title={badgeDescription(badge, language)}
                     whileHover={reduce || !earned ? undefined : { y: -3 }}
                     transition={{ type: 'spring', stiffness: 320, damping: 20 }}
                     className={cn(
@@ -751,30 +750,39 @@ export default function LearnerDashboard() {
                       !earned && 'opacity-35',
                     )}
                   >
-                    <div
-                      className={cn(
-                        'relative flex aspect-square w-full items-center justify-center rounded-2xl border text-[22px] transition-colors duration-500',
-                        earned
-                          ? badge.rare
-                            ? 'border-amber-400/40 bg-amber-400/[0.07]'
-                            : 'border-line bg-subtle/60'
-                          : 'border-dashed border-line text-text-subtle',
-                      )}
+                    {/* El globo explica la insignia entera: cara, nombre, que
+                        pide y si ya esta. Antes era un `title` nativo que salia
+                        tarde y no decia lo unico que se quiere saber aqui. */}
+                    <BadgeTooltip
+                      badge={badge}
+                      earned={earned}
+                      lang={language as Lang}
+                      className="w-full flex-col items-center gap-2"
                     >
-                      {earned ? badge.emoji : <Lock className="h-4 w-4" />}
-                      {/* Marca de logro poco comun */}
-                      {badge.rare && (
-                        <span
-                          className={cn('absolute -right-0.5 -top-0.5 text-[9px]', !earned && 'opacity-50')}
-                          title="Logro poco común"
-                        >
-                          ⭐
-                        </span>
-                      )}
-                    </div>
-                    <p className="w-full truncate text-center text-[10px] text-text-subtle">
-                      {badgeLabel(badge, language)}
-                    </p>
+                      <div
+                        className={cn(
+                          'relative flex aspect-square w-full items-center justify-center rounded-2xl border text-[22px] transition-colors duration-500',
+                          earned
+                            ? badge.rare
+                              ? 'border-amber-400/40 bg-amber-400/[0.07]'
+                              : 'border-line bg-subtle/60'
+                            : 'border-dashed border-line text-text-subtle',
+                        )}
+                      >
+                        {earned ? badge.emoji : <Lock className="h-4 w-4" />}
+                        {/* Marca de logro poco comun */}
+                        {badge.rare && (
+                          <span
+                            className={cn('absolute -right-0.5 -top-0.5 text-[9px]', !earned && 'opacity-50')}
+                          >
+                            ⭐
+                          </span>
+                        )}
+                      </div>
+                      <p className="w-full truncate text-center text-[10px] text-text-subtle">
+                        {badgeLabel(badge, language)}
+                      </p>
+                    </BadgeTooltip>
                   </StaggerItem>
                 );
               })}

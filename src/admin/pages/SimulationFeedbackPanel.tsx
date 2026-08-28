@@ -11,6 +11,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
 import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
+import { pickLang } from '@/lib/contentLang'
 
 const SIM_ACCENT = 'rgb(var(--brand-cyan, 6 182 212))'
 
@@ -198,7 +199,7 @@ export default function SimulationFeedbackPanel() {
       const lang = i18n.resolvedLanguage ?? 'es'
       const titles = new Map<string, string>()
       for (const s of (callRes.data ?? []) as Array<{ slug: string; title_es: string; title_en: string | null; title_pt: string | null }>) {
-        titles.set(s.slug, (lang === 'en' ? s.title_en : lang === 'pt' ? s.title_pt : s.title_es) || s.title_es || s.slug)
+        titles.set(s.slug, pickLang(s.title_es, s.title_en, s.title_pt, lang) || s.slug)
       }
       for (const s of (choiceRes.data ?? []) as Array<{ slug: string; title_es: string }>) {
         if (!titles.has(s.slug)) titles.set(s.slug, s.title_es || s.slug)

@@ -142,6 +142,7 @@ import { useUnsavedFlag } from '@/hooks/useUnsavedFlag'
 import { useUndoHistory, type PanelUndo, type RegisterUndo } from '@/hooks/useUndoHistory'
 import { SaveDock, DirtyDot } from '@/admin/components/SaveDock'
 import { fingerprint } from '@/lib/fingerprint'
+import { rowText, initialContentLang } from '@/lib/contentLang'
 
 type Tab = 'info' | 'modules' | 'assign' | 'evaluation' | 'exam' | 'cert' | 'survey'
 
@@ -325,7 +326,7 @@ function SimPlacementPicker({
             { value: 'start', label: t('admin.courses.sim_placement_start') },
             ...modules.map((m, i) => ({
               value: `m:${m.id}`,
-              label: t('admin.courses.sim_placement_after', { n: i + 1, title: m.title_es }),
+              label: t('admin.courses.sim_placement_after', { n: i + 1, title: rowText(m) }),
             })),
             { value: 'end', label: t('admin.courses.sim_placement_end') },
           ]}
@@ -379,13 +380,13 @@ export default function CourseEditor() {
       ? {
           type: 'course',
           id: courseId,
-          title: course?.title_es ?? '',
+          title: rowText(course),
           detail: t('presence.detail_tab', { name: t(TAB_LABEL_KEY[tab]) }),
           campaignId: course?.campaign_id ?? undefined,
         }
       : null,
   )
-  const [lang, setLang] = useState<Lang>('es')
+  const [lang, setLang] = useState<Lang>(initialContentLang)
   const [saving, setSaving] = useState(false)
   const [openingWorld, setOpeningWorld] = useState(false)
   // Vista previa del curso en modal (la página real del aprendiz en un iframe).
@@ -616,7 +617,7 @@ export default function CourseEditor() {
   // disponible" y el de cerrar la pestaña (ver lib/unsavedWork.ts).
   const unsaved = useUnsavedWork(
     { form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, simPlacements },
-    { label: form.title_es || t('common.untitled'), enabled: !loading },
+    { label: rowText(form) || t('common.untitled'), enabled: !loading },
   )
 
   // Guardia de versión de la ficha del curso. Se ignoran `modules` y los
@@ -820,7 +821,7 @@ export default function CourseEditor() {
     const byId = new Map(campaignModules.map((m) => [m.id, m]))
     const out: Record<string, string> = {}
     for (const m of campaignModules) {
-      if (m.copied_from) out[m.id] = byId.get(m.copied_from)?.title_es ?? ''
+      if (m.copied_from) out[m.id] = rowText(byId.get(m.copied_from))
     }
     return out
   }, [campaignModules])
@@ -2034,7 +2035,7 @@ export default function CourseEditor() {
           </div>
           <div className="min-w-0">
             <GradientHeading as="h1" variant="white" size="title">
-              {course.title_es}
+              {rowText(course)}
             </GradientHeading>
             <div className="flex items-center gap-2 mt-1">
               <NeonBadge color={course.is_published ? 'green' : 'neutral'} dot={course.is_published}>
@@ -3201,7 +3202,7 @@ export default function CourseEditor() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-[14px] font-medium text-text truncate">
-                            {mod.title_es}
+                            {rowText(mod)}
                           </span>
                           {!mod.is_published && (
                             <NeonBadge color="neutral">{t('admin.courses.draft')}</NeonBadge>
@@ -3294,7 +3295,7 @@ export default function CourseEditor() {
                           maxWidth={220}
                         >
                           <button
-                            onClick={() => handleDuplicateModule(mod.id, mod.title_es)}
+                            onClick={() => handleDuplicateModule(mod.id, rowText(mod))}
                             disabled={duplicatingId !== null}
                             aria-label={t('admin.courses.library.duplicate')}
                             className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 disabled:pointer-events-none transition-colors"
@@ -3414,7 +3415,7 @@ export default function CourseEditor() {
         <TranslationModal
           scope="course"
           id={course.id}
-          title={course.title_es}
+          title={rowText(course)}
           campaignId={course.campaign_id}
           onClose={() => setTranslateOpen(false)}
           onDone={refreshTranslationState}
@@ -3424,7 +3425,7 @@ export default function CourseEditor() {
       {previewOpen && (
         <LearnerPreviewModal
           path={`/courses/${course.slug}`}
-          context={course.title_es}
+          context={rowText(course)}
           onClose={() => setPreviewOpen(false)}
         />
       )}
@@ -3482,7 +3483,7 @@ export default function CourseEditor() {
         <ModuleLibraryModal
           campaignId={course.campaign_id}
           courseId={course.id}
-          courseTitle={course.title_es}
+          courseTitle={rowText(course)}
           modules={campaignModules}
           campaignNames={Object.fromEntries(accessibleCampaigns.map((c) => [c.id, c.name]))}
           canMoveAny={isSuperAdmin}
@@ -3757,7 +3758,7 @@ export default function CourseEditor() {
         <ExamBuilder
           courseId={course.id}
           campaignId={course.campaign_id}
-          courseTitle={course.title_es}
+          courseTitle={rowText(course)}
           modules={course.modules.filter((m) => !m.deleted_at)}
           onDirtyChange={setExamDirty}
           registerSave={registerExamSave}
@@ -4018,8 +4019,8 @@ export default function CourseEditor() {
           {tab === 'cert' && course && (
             <CertificatePensumPanel
               courseId={course.id}
-              courseTitle={course.title_es}
-              courseDescription={course.description_es}
+              courseTitle={rowText(course)}
+              courseDescription={rowText(course, 'description')}
               onDirtyChange={setPensumDirty}
               registerSave={registerPensumSave}
               registerUndo={registerPensumUndo}
@@ -4158,7 +4159,7 @@ export default function CourseEditor() {
                               placeholder={t('admin.courses.world_gate_pick_module')}
                               options={[
                                 { value: '', label: t('admin.courses.world_gate_pick_module') },
-                                ...course.modules.map((m) => ({ value: m.id, label: m.title_es })),
+                                ...course.modules.map((m) => ({ value: m.id, label: rowText(m) })),
                               ]}
                             />
                           </div>
@@ -4187,7 +4188,7 @@ export default function CourseEditor() {
                   {worldRule === 'after_module' && (
                     worldUnlockModuleId
                       ? t('admin.courses.world_gate_preview_after_module', {
-                          title: course.modules.find((m) => m.id === worldUnlockModuleId)?.title_es ?? '',
+                          title: rowText(course.modules.find((m) => m.id === worldUnlockModuleId)),
                         })
                       : t('admin.courses.world_gate_preview_after_module_generic')
                   )}
@@ -4317,7 +4318,7 @@ export default function CourseEditor() {
                           <div className="flex items-center gap-3">
                           <PhoneCall className="h-4 w-4 text-primary shrink-0" />
                           <span className="flex-1 min-w-0 text-[13px] text-text truncate">
-                            {s.title_es}
+                            {rowText(s)}
                             {!s.is_published && (
                               <Tooltip label={t('admin.courses.sim_unpublished_hint')} maxWidth={250}>
                                 <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
@@ -4375,7 +4376,7 @@ export default function CourseEditor() {
                           <div className="flex items-center gap-3">
                           <ListChecks className="h-4 w-4 text-primary shrink-0" />
                           <span className="flex-1 min-w-0 text-[13px] text-text truncate">
-                            {s.title_es}
+                            {rowText(s)}
                             <span className="ml-2 rounded-full bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-text-muted">
                               {t('admin.courses.sim_type_choice')}
                             </span>
@@ -4438,7 +4439,7 @@ export default function CourseEditor() {
                         <div key={s.id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
                           <PhoneCall className="h-4 w-4 text-text-subtle shrink-0" />
                           <span className="flex-1 min-w-0 text-[13px] text-text truncate">
-                            {s.title_es}
+                            {rowText(s)}
                             {s.course_id && <span className="ml-2 text-[10px] text-text-subtle">{t('admin.courses.sim_in_other_course')}</span>}
                           </span>
                           <Button variant="glass" size="sm" onClick={() => handleToggleScenarioCourse(s, true)} className="flex items-center gap-1 shrink-0">
@@ -4450,7 +4451,7 @@ export default function CourseEditor() {
                         <div key={s.id} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
                           <ListChecks className="h-4 w-4 text-text-subtle shrink-0" />
                           <span className="flex-1 min-w-0 text-[13px] text-text truncate">
-                            {s.title_es}
+                            {rowText(s)}
                             <span className="ml-2 rounded-full bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-text-muted">
                               {t('admin.courses.sim_type_choice')}
                             </span>
@@ -4601,7 +4602,7 @@ export default function CourseEditor() {
       {decision && (
         <PublicationDecisionModal
           kind={decision}
-          courseTitle={course.title_es}
+          courseTitle={rowText(course)}
           onClose={() => setDecision(null)}
           onConfirm={handleDecision}
         />

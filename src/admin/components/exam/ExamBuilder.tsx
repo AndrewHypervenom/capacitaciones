@@ -75,6 +75,7 @@ import { ExamQuestionModal, type QuestionDraft } from './ExamQuestionModal'
 import { ExamGenerateModal, type ExamFillPlan } from './ExamGenerateModal'
 import { ExamLevelPicker, LevelPill } from './ExamLevelBits'
 import { cn } from '@/lib/cn'
+import { rowText } from '@/lib/contentLang'
 
 const ease = [0.16, 1, 0.3, 1] as const
 
@@ -812,10 +813,10 @@ export function ExamBuilder({
     drafts: { name_es: string; description_es: string; weight_pct: number }[],
   ): Promise<Map<string, string>> => {
     if (!exam) return new Map()
-    const map = new Map(domains.map((d) => [d.name_es.toLowerCase().trim(), d.id]))
+    const map = new Map(domains.map((d) => [rowText(d, 'name').toLowerCase().trim(), d.id]))
     const nuevos: ExamDomain[] = []
     for (const [i, d] of drafts.entries()) {
-      const key = d.name_es.toLowerCase().trim()
+      const key = rowText(d, 'name').toLowerCase().trim()
       if (map.has(key)) continue
       const draft = newDraftDomain(exam.id, domains.length + nuevos.length + i, {
         name_es: d.name_es,
@@ -837,7 +838,7 @@ export function ExamBuilder({
   const weightPlans = useMemo(() => {
     if (domains.length === 0) return []
     const preview = (ws: number[]) =>
-      domains.map((d, i) => `${d.name_es}: ${ws[i]}%`).join(' · ')
+      domains.map((d, i) => `${rowText(d, 'name')}: ${ws[i]}%`).join(' · ')
 
     const plans: {
       id: string
@@ -1656,7 +1657,7 @@ export function ExamBuilder({
                             placeholder={t('admin.exam.unlock_pick', 'Elige el módulo')}
                             options={[
                               { value: '', label: t('admin.exam.unlock_pick', 'Elige el módulo') },
-                              ...modules.map((m) => ({ value: m.id, label: m.title_es })),
+                              ...modules.map((m) => ({ value: m.id, label: rowText(m) })),
                             ]}
                           />
                         </div>
@@ -1954,7 +1955,7 @@ export function ExamBuilder({
                   compact
                   options={[
                     { value: '', label: t('admin.exam.bank_all_domains_v2', 'Todos los temas') },
-                    ...domains.map((d) => ({ value: d.id, label: d.name_es, color: d.color })),
+                    ...domains.map((d) => ({ value: d.id, label: rowText(d, 'name'), color: d.color })),
                   ]}
                 />
               </div>
@@ -1994,7 +1995,7 @@ export function ExamBuilder({
                       {domain ? (
                         <Tooltip
                           label={t('admin.exam.tip_q_domain', {
-                            name: domain.name_es,
+                            name: rowText(domain, 'name'),
                             defaultValue:
                               'Tema "{{name}}". Cuenta para las preguntas que le tocan a este tema y para la nota por tema que ve la persona.',
                           })}
@@ -2005,7 +2006,7 @@ export function ExamBuilder({
                               className="h-2 w-2 rounded-full"
                               style={{ background: domain.color }}
                             />
-                            {domain.name_es}
+                            {rowText(domain, 'name')}
                           </span>
                         </Tooltip>
                       ) : (
@@ -2147,7 +2148,7 @@ export function ExamBuilder({
                         <>
                           {' · '}
                           {t('admin.exam.results_weak', {
-                            list: r.weak_domains.map((d) => d.name_es).join(', '),
+                            list: r.weak_domains.map((d) => rowText(d, 'name')).join(', '),
                             defaultValue: 'flojo en {{list}}',
                           })}
                         </>
@@ -2520,7 +2521,7 @@ function DomainRow({
             onChange={(v) => void onChange({ module_ids: v })}
             compact
             placeholder={t('admin.exam.domain_pick_modules', 'Elige los módulos')}
-            options={modules.map((m) => ({ value: m.id, label: m.title_es }))}
+            options={modules.map((m) => ({ value: m.id, label: rowText(m) }))}
             aria-label={t('admin.exam.domain_reinforce_v2', 'Módulos que se repasan')}
           />
         </div>

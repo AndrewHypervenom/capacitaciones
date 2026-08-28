@@ -11,6 +11,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
+import { rowText } from '@/lib/contentLang'
 import {
   getUserCoursesAdmin,
   resetUserCourseAdmin,
@@ -113,7 +114,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
       title: t('admin.users.reset_title'),
       description: t('admin.users.reset_desc', {
         name: user.display_name || user.id.slice(0, 8),
-        course: course.title_es,
+        course: rowText(course),
       }),
       confirmLabel: t('admin.users.reset_course'),
     })
@@ -241,7 +242,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 min-w-0">
                               <span className="text-[13px] font-medium text-text truncate">
-                                {c.title_es}
+                                {rowText(c)}
                               </span>
                               {c.is_assigned && (
                                 <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[rgba(34,197,94,0.15)] text-[#16a34a]">
@@ -314,7 +315,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                                             `world:${c.course_id}`,
                                             c.course_id,
                                             () => resetUserWorldAdmin(user.id, c.course_id),
-                                            t('admin.users.reset_world_confirm', { course: c.title_es }),
+                                            t('admin.users.reset_world_confirm', { course: rowText(c) }),
                                           )
                                         }
                                       />
@@ -330,7 +331,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                                             `sim:${c.course_id}`,
                                             c.course_id,
                                             () => resetUserSimulatorAdmin(user.id, c.course_id),
-                                            t('admin.users.reset_simulator_confirm', { course: c.title_es }),
+                                            t('admin.users.reset_simulator_confirm', { course: rowText(c) }),
                                           )
                                         }
                                       />
@@ -357,7 +358,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                                             </button>
                                             <BookOpen className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                                             <span className="flex-1 min-w-0 truncate text-[12px] text-text">
-                                              {m.title_es}
+                                              {rowText(m)}
                                               {m.completed && (
                                                 <span className="ml-1.5 text-[10px] text-green-500">✓</span>
                                               )}
@@ -373,7 +374,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                                                   `module:${m.id}`,
                                                   c.course_id,
                                                   () => resetUserModuleAdmin(user.id, m.id),
-                                                  t('admin.users.reset_module_confirm', { module: m.title_es }),
+                                                  t('admin.users.reset_module_confirm', { module: rowText(m) }),
                                                 )
                                               }
                                             />
@@ -387,7 +388,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                                                   <div key={sec.id} className="flex items-center gap-2 pl-1">
                                                     <ListChecks className="h-3 w-3 shrink-0 text-text-subtle" />
                                                     <span className="flex-1 min-w-0 truncate text-[11px] text-text-muted">
-                                                      {sec.heading_es}
+                                                      {rowText(sec, 'heading')}
                                                       {sec.has_attempt && (
                                                         <span className="ml-1.5 text-[10px] text-amber-500">●</span>
                                                       )}
@@ -403,7 +404,7 @@ export function UserCourseResetModal({ user, onClose }: UserCourseResetModalProp
                                                           `section:${sec.id}`,
                                                           c.course_id,
                                                           () => resetUserSectionAdmin(user.id, sec.id),
-                                                          t('admin.users.reset_activity_confirm', { section: sec.heading_es }),
+                                                          t('admin.users.reset_activity_confirm', { section: rowText(sec, 'heading') }),
                                                         )
                                                       }
                                                     />

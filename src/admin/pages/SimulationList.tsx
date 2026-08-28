@@ -36,6 +36,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
+import { rowText } from '@/lib/contentLang'
 
 type Tab = 'dialogue' | 'choice'
 /** 'mine' = simulaciones de la campaña; 'shared' = catálogo de otras campañas. */
@@ -161,9 +162,9 @@ export default function SimulationList() {
     const match = (text: string) => !q || text.toLowerCase().includes(q)
     return {
       dialogue: sharedDialogue.filter((r) =>
-        match(`${r.title_es} ${r.summary_es ?? ''} ${r.campaign_name ?? ''}`)),
+        match(`${rowText(r)} ${rowText(r, 'summary')} ${r.campaign_name ?? ''}`)),
       choice: sharedChoice.filter((r) =>
-        match(`${r.title_es} ${r.description ?? ''} ${r.campaign_name ?? ''}`)),
+        match(`${rowText(r)} ${r.description ?? ''} ${r.campaign_name ?? ''}`)),
     }
   }, [sharedDialogue, sharedChoice, sharedSearch])
 
@@ -180,7 +181,7 @@ export default function SimulationList() {
   const deleteConfirmOptions = (row: ScenarioRow | ChoiceScenarioRow) => {
     const author = authors.get(row.id)
     return ownedDeleteConfirm({
-      title: row.title_es,
+      title: rowText(row),
       ownerName: author?.name ?? null,
       ownerId: author?.id ?? null,
       actorId: user?.id ?? null,
@@ -229,7 +230,7 @@ export default function SimulationList() {
         title: t('admin.simulations.list.confirm_share_title'),
         description: (
           <span className="block space-y-2">
-            <span className="block">{t('admin.simulations.list.confirm_share_desc', { title: row.title_es })}</span>
+            <span className="block">{t('admin.simulations.list.confirm_share_desc', { title: rowText(row) })}</span>
             <span className="block rounded-lg bg-subtle px-3 py-2 text-[12px]">
               {t('admin.simulations.list.confirm_share_note')}
             </span>
@@ -268,8 +269,8 @@ export default function SimulationList() {
       description: copiedSourceIds.has(row.id)
         // Ya existe una copia de este origen: avisamos para no llenar la campaña
         // de duplicados sin querer.
-        ? t('admin.simulations.list.confirm_copy_again_desc', { title: row.title_es })
-        : t('admin.simulations.list.confirm_copy_desc', { title: row.title_es }),
+        ? t('admin.simulations.list.confirm_copy_again_desc', { title: rowText(row) })
+        : t('admin.simulations.list.confirm_copy_desc', { title: rowText(row) }),
       confirmLabel: t('admin.simulations.list.confirm_copy_cta'),
       tone: 'default',
     })
@@ -433,7 +434,7 @@ export default function SimulationList() {
                 <GlassCard key={row.id} className="p-4 flex items-center gap-4 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-sm text-text truncate">{row.title_es}</span>
+                      <span className="font-medium text-sm text-text truncate">{rowText(row)}</span>
                       <NeonBadge color={row.is_published ? 'green' : 'neutral'} className="text-[9px] shrink-0">
                         {row.is_published ? 'Publicado' : 'Borrador'}
                       </NeonBadge>
@@ -493,7 +494,7 @@ export default function SimulationList() {
                 <GlassCard key={row.id} className="p-4 flex items-center gap-4 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-sm text-text truncate">{row.title_es}</span>
+                      <span className="font-medium text-sm text-text truncate">{rowText(row)}</span>
                       <NeonBadge color={row.is_published ? 'green' : 'neutral'} className="text-[9px] shrink-0">
                         {row.is_published ? 'Publicado' : 'Borrador'}
                       </NeonBadge>
@@ -666,8 +667,8 @@ function SharedCatalog({
   }> = tab === 'dialogue'
     ? dialogue.map((r) => ({
       id: r.id,
-      title: r.title_es,
-      subtitle: r.summary_es,
+      title: rowText(r),
+      subtitle: rowText(r, 'summary'),
       campaign_name: r.campaign_name,
       meta: (
         <>
@@ -688,7 +689,7 @@ function SharedCatalog({
     }))
     : choice.map((r) => ({
       id: r.id,
-      title: r.title_es,
+      title: rowText(r),
       subtitle: r.description,
       campaign_name: r.campaign_name,
       meta: (

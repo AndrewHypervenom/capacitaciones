@@ -33,6 +33,7 @@ import { StaleNotice } from '@/components/ui/StaleNotice'
 import { useUnsavedWork } from '@/hooks/useUnsavedWork'
 import { SaveDock } from '@/admin/components/SaveDock'
 import { useUndoHistory } from '@/hooks/useUndoHistory'
+import { rowText } from '@/lib/contentLang'
 
 type Tab = 'meta' | 'nodes'
 
@@ -143,7 +144,7 @@ export default function ChoiceSimEditor() {
 
   // Presencia colaborativa: coeditores de este escenario (una vez guardado).
   const coeditors = useEditingPresence(
-    rowId ? { type: 'choice', id: rowId, title: meta.title_es } : null,
+    rowId ? { type: 'choice', id: rowId, title: rowText(meta) } : null,
   )
 
   const stepLabel = (nid: string) => t('admin.simulations.step_n', { n: nodeIds.indexOf(nid) + 1 })
@@ -164,7 +165,7 @@ export default function ChoiceSimEditor() {
     const hasText = Object.values(nodes).some(
       (n) => n.message?.es?.trim() || (n.options ?? []).some((o) => o.text?.es?.trim()),
     )
-    if (!hasText && !meta.title_es.trim()) return null
+    if (!hasText && !rowText(meta)) return null
     return {
       metadata: {
         title_es: meta.title_es, title_en: meta.title_en, title_pt: meta.title_pt,
@@ -211,7 +212,7 @@ export default function ChoiceSimEditor() {
   // Cambios sin guardar: alimenta el aviso de "Nueva versión disponible" y el de
   // cerrar la pestaña, para que ninguno de los dos se lleve el trabajo por
   // delante sin decir qué se pierde (ver lib/unsavedWork.ts).
-  const unsaved = useUnsavedWork({ meta, nodes }, { label: meta.title_es || t('admin.simulations.ai_gen.bg_untitled'), enabled: !loading })
+  const unsaved = useUnsavedWork({ meta, nodes }, { label: rowText(meta) || t('admin.simulations.ai_gen.bg_untitled'), enabled: !loading })
 
   // Deshacer/rehacer del guion completo (Ctrl+Z / Ctrl+Shift+Z): borrar un
   // nodo o reescribir una opción ya no es un camino de ida.
@@ -270,8 +271,8 @@ export default function ChoiceSimEditor() {
 
   const handleSave = async () => {
     if (!campaignId) return toast.error(t('admin.simulations.toast_no_campaign'))
-    if (!meta.title_es.trim()) return toast.error(t('admin.simulations.toast_title_required'))
-    const finalSlug = meta.slug.trim() || slugify(meta.title_es)
+    if (!rowText(meta)) return toast.error(t('admin.simulations.toast_title_required'))
+    const finalSlug = meta.slug.trim() || slugify(rowText(meta))
     if (!finalSlug) return toast.error(t('admin.simulations.toast_slug_needs_title'))
     if (!nodes[meta.start_node_id]) return toast.error(t('admin.simulations.toast_start_missing'))
 
@@ -335,7 +336,7 @@ export default function ChoiceSimEditor() {
       objective: m.objective ?? '',
       level: m.level ?? prev.level,
       start_node_id: g.start_node_id,
-      slug: prev.slug || slugify(m.title_es),
+      slug: prev.slug || slugify(rowText(m)),
     }))
     setNodes(withClientStart(g.nodes as unknown as NodesMap, g.start_node_id))
     setSelectedNodeId(g.start_node_id)
@@ -382,7 +383,7 @@ export default function ChoiceSimEditor() {
         </button>
         <div className="flex-1 min-w-0">
           <GradientHeading as="h1" className="text-lg md:text-xl truncate">
-            {isNew ? t('admin.simulations.new_choice_sim') : meta.title_es || t('admin.simulations.choice_editor')}
+            {isNew ? t('admin.simulations.new_choice_sim') : rowText(meta) || t('admin.simulations.choice_editor')}
           </GradientHeading>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
@@ -686,7 +687,7 @@ export default function ChoiceSimEditor() {
           startNodeId={meta.start_node_id}
           fromNodeId={preview.from}
           meta={{
-            title: meta.title_es,
+            title: rowText(meta),
             clientName: meta.client_name,
             clientSubtitle: meta.client_company || meta.objective,
             description: meta.description,
@@ -702,7 +703,7 @@ export default function ChoiceSimEditor() {
 
       {/* Único lugar donde se guarda: aparece solo si hay cambios. */}
       <SaveDock
-        pending={unsaved.dirty ? [{ id: 'sim', label: meta.title_es || t('common.untitled') }] : []}
+        pending={unsaved.dirty ? [{ id: 'sim', label: rowText(meta) || t('common.untitled') }] : []}
         onSave={handleSave}
         saving={saving}
         onUndo={undoHistory.undo}

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/cn'
+import { initialContentLang } from '@/lib/contentLang'
 
 type Lang = 'es' | 'en' | 'pt'
 
@@ -63,7 +64,7 @@ const END_TYPE_ACTIVE_CLASSES: Record<string, string> = {
 export function ChoiceNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChange }: Props) {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const [lang, setLang] = useState<Lang>('es')
+  const [lang, setLang] = useState<Lang>(initialContentLang)
 
   const update = (patch: Partial<ChoiceNodeData>) => onChange(nodeId, { ...data, ...patch })
 

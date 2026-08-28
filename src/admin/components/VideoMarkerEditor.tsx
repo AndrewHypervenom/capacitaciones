@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Plus,
   Trash2,
@@ -79,8 +79,34 @@ function newQuestionId() {
   return `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 }
 
+const LANGS: Lang[] = ['es', 'en', 'pt']
+
+/**
+ * Primer idioma con texto de verdad. El contenido se escribe (y la IA lo genera)
+ * en el idioma de la interfaz, así que `_es` puede estar vacío y aun así el
+ * marcador estar completo: mirar solo el español daba "no hay nada que traducir".
+ */
+function firstFilled(o: unknown, field: string): string {
+  const r = o as Record<string, unknown>
+  for (const l of LANGS) {
+    const v = (r[`${field}_${l}`] as string | undefined)?.trim()
+    if (v) return v
+  }
+  return ''
+}
+
+/** Primeras opciones con algo escrito, en cualquiera de los tres idiomas. */
+function firstFilledOptions(q: unknown): string[] {
+  const r = q as Record<string, unknown>
+  for (const l of LANGS) {
+    const a = r[`options_${l}`] as string[] | undefined
+    if ((a ?? []).some((o) => (o ?? '').trim())) return a as string[]
+  }
+  return []
+}
+
 function markerTitle(m: VideoMarkerRaw, l: Lang): string {
-  return (m as unknown as Record<string, string>)[`title_${l}`] || m.title_es || ''
+  return (m as unknown as Record<string, string>)[`title_${l}`] || firstFilled(m, 'title')
 }
 
 function emptyQuestion(): VideoQuestionRaw {
@@ -222,6 +248,7 @@ function MarkerEditForm({
   videoDuration,
   getCurrentTime,
   onSave,
+  onCommit,
   onCancel,
 }: {
   marker: VideoMarkerRaw
@@ -229,6 +256,8 @@ function MarkerEditForm({
   videoDuration: number
   getCurrentTime: () => number
   onSave: (m: VideoMarkerRaw) => void
+  /** Conserva lo escrito SIN cerrar el formulario (al desmontar). */
+  onCommit: (m: VideoMarkerRaw) => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -237,17 +266,22 @@ function MarkerEditForm({
   const [translating, setTranslating] = useState(false)
   const [translateError, setTranslateError] = useState<string | null>(null)
 
+  // Hay algo que traducir si el marcador tiene título en CUALQUIER idioma.
+  const sourceTitle = firstFilled(draft, 'title')
+
   const handleAutoTranslate = async () => {
-    if (!draft.title_es) return
+    if (!sourceTitle) return
     setTranslating(true)
     setTranslateError(null)
     try {
-      const fields: Record<string, string> = { title: draft.title_es }
+      const fields: Record<string, string> = { title: sourceTitle }
       if (draft.type === 'quiz' && draft.questions) {
         draft.questions.forEach((q, i) => {
-          fields[`q${i}`] = q.question_es
-          ;(q.options_es ?? []).forEach((opt, j) => { fields[`q${i}o${j}`] = opt })
-          if (q.explanation_es) fields[`q${i}exp`] = q.explanation_es
+          const qText = firstFilled(q, 'question')
+          if (qText) fields[`q${i}`] = qText
+          firstFilledOptions(q).forEach((opt, j) => { if (opt) fields[`q${i}o${j}`] = opt })
+          const exp = firstFilled(q, 'explanation')
+          if (exp) fields[`q${i}exp`] = exp
         })
       }
       // El marcador pudo escribirse en cualquier idioma (el contenido se genera en
@@ -269,8 +303,9 @@ function MarkerEditForm({
               const d = data[l]
               if (!d) continue
               if (d[`q${i}`]) next[`question_${l}`] = d[`q${i}`]
-              const opts = (q as unknown as Record<string, string[] | undefined>)[`options_${l}`] ?? ['', '', '', '']
-              next[`options_${l}`] = opts.map((o, j) => d[`q${i}o${j}`] || o || '')
+              const own = (q as unknown as Record<string, string[] | undefined>)[`options_${l}`] ?? []
+              const base = own.some((o) => (o ?? '').trim()) ? own : firstFilledOptions(q)
+              next[`options_${l}`] = base.map((o, j) => d[`q${i}o${j}`] || o || '')
               if (d[`q${i}exp`]) next[`explanation_${l}`] = d[`q${i}exp`]
             }
             return next as unknown as typeof q
@@ -317,6 +352,27 @@ function MarkerEditForm({
     setDraft((p) => ({ ...p, timeSeconds: secs }))
     setTimeInput(formatTime(secs))
   }
+
+  // El formulario se cierra de tres maneras: "Guardar", "Cancelar" y volver a
+  // pulsar el lápiz. La tercera se llevaba por delante todo lo escrito sin decir
+  // nada —preguntas, opciones, respuesta correcta—, y parecía que el editor "no
+  // guardaba". Al desmontar se conserva el borrador, salvo que se haya cancelado
+  // expresamente.
+  //
+  // OJO: al desmontar se usa `onCommit`, que NO cierra el formulario. Con
+  // `onSave` (que apaga `editingId`) el formulario se cerraba solo en cuanto
+  // React desmontaba y volvía a montar —StrictMode lo hace en cada montaje—, y
+  // el marcador recién creado se abría y se cerraba en el mismo parpadeo.
+  // Además solo se conserva si de verdad cambió algo.
+  const cancelled = useRef(false)
+  const commit = useRef<() => void>(() => {})
+  useEffect(() => {
+    commit.current = () => {
+      const next = { ...draft, timeSeconds: timeFromInput() }
+      if (JSON.stringify(next) !== JSON.stringify(marker)) onCommit(next)
+    }
+  })
+  useEffect(() => () => { if (!cancelled.current) commit.current() }, [])
 
   const addQuestion = () => {
     setDraft((p) => ({ ...p, questions: [...(p.questions ?? []), emptyQuestion()] }))
@@ -412,7 +468,7 @@ function MarkerEditForm({
           <button
             type="button"
             onClick={handleAutoTranslate}
-            disabled={translating || !draft.title_es}
+            disabled={translating || !sourceTitle}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-400/8 border border-blue-400/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {translating
@@ -484,14 +540,14 @@ function MarkerEditForm({
       <div className="flex gap-2 justify-end pt-1">
         <button
           type="button"
-          onClick={onCancel}
+          onClick={() => { cancelled.current = true; onCancel() }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text glass border border-glass-border/10 transition-colors"
         >
           <X className="h-3.5 w-3.5" /> {t('common.cancel')}
         </button>
         <button
           type="button"
-          onClick={() => onSave({ ...draft, timeSeconds: timeFromInput() })}
+          onClick={() => { cancelled.current = true; onSave({ ...draft, timeSeconds: timeFromInput() }) }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-neon-green bg-neon-green/8 border border-neon-green/20 hover:bg-neon-green/12 transition-colors"
         >
           <Check className="h-3.5 w-3.5" /> {t('common.save')}
@@ -537,19 +593,21 @@ export function VideoMarkerEditor({
   const [translateAllError, setTranslateAllError] = useState<string | null>(null)
 
   const handleTranslateAllMarkers = async () => {
-    const withEs = markers.filter(m => m.title_es?.trim())
-    if (!withEs.length) return
+    const withText = markers.filter(m => firstFilled(m, 'title'))
+    if (!withText.length) return
     setTranslatingAll(true)
     setTranslateAllError(null)
     try {
       const fields: Record<string, string> = {}
-      withEs.forEach((m, i) => {
-        fields[`m${i}_title`] = m.title_es
+      withText.forEach((m, i) => {
+        fields[`m${i}_title`] = firstFilled(m, 'title')
         if (m.type === 'quiz' && m.questions) {
           m.questions.forEach((q, qi) => {
-            if (q.question_es) fields[`m${i}q${qi}`] = q.question_es
-            ;(q.options_es ?? []).forEach((opt, oi) => { if (opt) fields[`m${i}q${qi}o${oi}`] = opt })
-            if (q.explanation_es) fields[`m${i}q${qi}exp`] = q.explanation_es
+            const qText = firstFilled(q, 'question')
+            if (qText) fields[`m${i}q${qi}`] = qText
+            firstFilledOptions(q).forEach((opt, oi) => { if (opt) fields[`m${i}q${qi}o${oi}`] = opt })
+            const exp = firstFilled(q, 'explanation')
+            if (exp) fields[`m${i}q${qi}exp`] = exp
           })
         }
       })
@@ -560,7 +618,7 @@ export function VideoMarkerEditor({
       const res = await moduleAiAssist({ action: 'translate', contentType: 'meta', sourceLang: from, targetLangs: [...targets], fields })
       const data = res.data as Record<string, Record<string, string>>
       const updated = markers.map(m => {
-        const idx = withEs.findIndex(x => x.id === m.id)
+        const idx = withText.findIndex(x => x.id === m.id)
         if (idx === -1) return m
         const next = { ...m } as unknown as Record<string, unknown>
         for (const l of targets) {
@@ -573,8 +631,9 @@ export function VideoMarkerEditor({
               const d = data[l]
               if (!d) continue
               if (d[`m${idx}q${qi}`]) nq[`question_${l}`] = d[`m${idx}q${qi}`]
-              const opts = (q as unknown as Record<string, string[] | undefined>)[`options_${l}`] ?? ['', '', '', '']
-              nq[`options_${l}`] = opts.map((o, oi) => d[`m${idx}q${qi}o${oi}`] || o || '')
+              const own = (q as unknown as Record<string, string[] | undefined>)[`options_${l}`] ?? []
+              const base = own.some((o) => (o ?? '').trim()) ? own : firstFilledOptions(q)
+              nq[`options_${l}`] = base.map((o, oi) => d[`m${idx}q${qi}o${oi}`] || o || '')
               if (d[`m${idx}q${qi}exp`]) nq[`explanation_${l}`] = d[`m${idx}q${qi}exp`]
             }
             return nq as unknown as typeof q
@@ -675,9 +734,13 @@ export function VideoMarkerEditor({
   const getCurrentTime = () => videoRef.current?.currentTime ?? 0
 
   const handleAddMarker = (type: 'chapter' | 'quiz') => {
+    // Si el video no se ha reproducido, el tiempo actual es 0. Un capítulo ahí
+    // está bien; un quiz en 0:00 no se dispara nunca, así que nace ya corrido al
+    // mínimo en vez de guardarse roto y avisar después.
+    const at = Math.round(getCurrentTime())
     const newMarker: VideoMarkerRaw = {
       id: newMarkerId(),
-      timeSeconds: Math.round(getCurrentTime()),
+      timeSeconds: type === 'quiz' ? clampQuizTime(at, videoDuration) : at,
       type,
       title_es: '',
       title_en: '',
@@ -690,8 +753,13 @@ export function VideoMarkerEditor({
   }
 
   const handleSaveMarker = (updated: VideoMarkerRaw) => {
-    onMarkersChange(markers.map((m) => (m.id === updated.id ? updated : m)))
+    handleCommitMarker(updated)
     setEditingId(null)
+  }
+
+  /** Guarda el marcador en el borrador de la sección SIN cerrar su formulario. */
+  const handleCommitMarker = (updated: VideoMarkerRaw) => {
+    onMarkersChange(markers.map((m) => (m.id === updated.id ? updated : m)))
   }
 
   const handleDeleteMarker = async (id: string) => {
@@ -962,7 +1030,7 @@ export function VideoMarkerEditor({
             <button
               type="button"
               onClick={handleTranslateAllMarkers}
-              disabled={translatingAll || !markers.some(m => m.title_es?.trim())}
+              disabled={translatingAll || !markers.some(m => firstFilled(m, 'title'))}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-400/8 border border-blue-400/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {translatingAll
@@ -1050,6 +1118,7 @@ export function VideoMarkerEditor({
                       videoDuration={videoDuration}
                       getCurrentTime={getCurrentTime}
                       onSave={handleSaveMarker}
+                      onCommit={handleCommitMarker}
                       onCancel={() => setEditingId(null)}
                     />
                   </div>

@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { IS_LEARNER_PREVIEW } from "../lib/previewMode";
 import { useProgressStore, selectModuleDone } from "../stores/progressStore";
 import type { Database } from "../types/database";
+import { rowText } from '@/lib/contentLang'
 
 /**
  * ¿Este intento es un REPASO? Lo es cuando el módulo ya estaba completado antes
@@ -330,7 +331,7 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
           campaign_id: campaignId,
           campaign_name: campaignName,
           course_id: courseId,
-          course_title: courseData?.title_es || null,
+          course_title: rowText(courseData) || null,
           course_slug: courseData?.slug || null,
           // UUID real del módulo (module.dbId); lo usa el panel para leer el
           // tiempo activo del aprendiz en ese módulo desde module_time.

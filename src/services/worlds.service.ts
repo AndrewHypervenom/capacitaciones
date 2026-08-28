@@ -6,6 +6,7 @@ import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
 import { bgTask } from '@/stores/bgTaskStore'
 import i18n from '@/i18n'
 import { currentAiLang } from '@/lib/aiLang'
+import { rowText } from '@/lib/contentLang'
 
 /**
  * Puntaje mínimo (%) por defecto para niveles/quizzes generados con IA. Sin un
@@ -328,8 +329,8 @@ export async function generateModuleRegionLevels(
     .single()
   const moduleText = await getModuleContextText(moduleId).catch(() => '')
   await generateRegionLevelsFlexible(world, regionId, {
-    title: (mod as { title_es?: string })?.title_es ?? 'Módulo',
-    subtitle: (mod as { subtitle_es?: string | null })?.subtitle_es ?? '',
+    title: rowText(mod) || 'Módulo',
+    subtitle: rowText(mod, 'subtitle'),
     moduleText,
   }, opts, signal)
 }
@@ -421,14 +422,14 @@ export function generateBulkModuleRegions(
         throwIfAborted(signal)
         const m = modules[i]
         bgTask.update(taskId, {
-          detail: i18n.t('worldgen.region_progress', { i: i + 1, n: modules.length, title: m.title_es }),
+          detail: i18n.t('worldgen.region_progress', { i: i + 1, n: modules.length, title: rowText(m) }),
         })
         const { data: region, error } = await supabase
           .from('world_regions')
           .insert({
             world_id: world.id,
             module_id: m.id,
-            name: m.title_es,
+            name: rowText(m),
             description: null,
             icon: (m.icon && m.icon.length <= 2) ? m.icon : '📍',
             order_index: baseOrderIndex + i,
@@ -485,8 +486,8 @@ export async function ensureCourseWorld(course: CourseLike): Promise<WorldRow> {
     .insert({
       campaign_id: course.campaign_id,
       course_id: course.id,
-      name: course.title_es,
-      description: course.description_es,
+      name: rowText(course),
+      description: rowText(course, 'description'),
       color: course.color || '#10D451',
       icon: '🌍',
       bg_type: 'corporate',
@@ -637,15 +638,15 @@ export async function syncCourseWorldById(
     const region = regionByModule.get(m.id)
 
     if (region) {
-      if (region.order_index !== orderIndex || region.name !== m.title_es) {
+      if (region.order_index !== orderIndex || region.name !== rowText(m)) {
         // Si el nombre cambió, sus traducciones quedaron hablando de otra cosa:
         // se borran para que la app vuelva a mostrar el español y "Traducir"
         // detecte la región como pendiente.
-        const renamed = region.name !== m.title_es
+        const renamed = region.name !== rowText(m)
         await supabase.from('world_regions')
           .update({
             order_index: orderIndex,
-            name: m.title_es,
+            name: rowText(m),
             ...(renamed ? { name_en: null, name_pt: null } : {}),
           })
           .eq('id', region.id)
@@ -653,7 +654,7 @@ export async function syncCourseWorldById(
       // Región existente con niveles → se conserva tal cual; no se regenera.
       // Si quedó vacía (un sync anterior no generó sus niveles), va a pendientes.
       if (!regionsWithLevels.has(region.id)) {
-        pendingRegions.push({ regionId: region.id, moduleId: m.id, moduleTitle: m.title_es })
+        pendingRegions.push({ regionId: region.id, moduleId: m.id, moduleTitle: rowText(m) })
       }
     } else {
       const { data: newRegion, error } = await supabase
@@ -661,7 +662,7 @@ export async function syncCourseWorldById(
         .insert({
           world_id: world.id,
           module_id: m.id,
-          name: m.title_es,
+          name: rowText(m),
           description: null,
           icon: (m.icon && m.icon.length <= 2) ? m.icon : '📍',
           order_index: orderIndex,
@@ -672,7 +673,7 @@ export async function syncCourseWorldById(
       pendingRegions.push({
         regionId: (newRegion as { id: string }).id,
         moduleId: m.id,
-        moduleTitle: m.title_es,
+        moduleTitle: rowText(m),
       })
     }
   }

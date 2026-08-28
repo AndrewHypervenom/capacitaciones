@@ -5,6 +5,7 @@ import { Check, Clock, ListChecks, Target } from 'lucide-react';
 import type { PublicCertificateModule } from '@/types/database';
 import { EntityIcon } from '@/components/ui/EntityIcon';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { pickLang, pickLangList } from '@/lib/contentLang';
 
 /* ────────────────────────────────────────────────────────────────────────
    Las secciones del pénsum del certificado: qué sabe hacer la persona y el
@@ -21,20 +22,19 @@ import { useReducedMotion } from '@/hooks/useReducedMotion';
 /** Curva corporativa (la misma `ease-apple` del kit de animación). */
 export const EASE = [0.16, 1, 0.3, 1] as const;
 
+// Se conservan los nombres (los usan medio sitio) pero por dentro caen a
+// CUALQUIER idioma con contenido, no solo al español: ver `lib/contentLang`.
 export function pickText(
   es: string, en: string | null, pt: string | null, lang: string,
 ): string {
-  if (lang === 'en') return en || es;
-  if (lang === 'pt') return pt || es;
-  return es;
+  return pickLang(es, en, pt, lang);
 }
 
 /** Igual que `pickText` pero para las listas del pénsum (objetivos, temas…). */
 export function pickList(
   es: string[] | null, en: string[] | null, pt: string[] | null, lang: string,
 ): string[] {
-  const chosen = lang === 'en' ? en : lang === 'pt' ? pt : es;
-  return (chosen?.length ? chosen : es ?? []).filter((s) => !!s?.trim());
+  return pickLangList(es, en, pt, lang).filter((s) => !!s?.trim());
 }
 
 /** Minutos → texto de intensidad horaria (mismo criterio que el diploma). */

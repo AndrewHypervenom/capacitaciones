@@ -17,6 +17,7 @@ import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import type { WorldGenOptions } from '@/services/worlds.service'
+import { rowText } from '@/lib/contentLang'
 
 /** Módulo elegido; la forma que consume `generateBulkModuleRegions`. */
 export interface PickedModule {
@@ -150,7 +151,7 @@ export function WorldModulePickerModal({
     const byCourse = new Map<string, ModuleRow[]>()
     for (const m of modules) {
       if (excluded.has(m.id)) continue
-      if (q && !m.title_es.toLowerCase().includes(q)) continue
+      if (q && !rowText(m).toLowerCase().includes(q)) continue
       const key = m.course_id ?? '__none__'
       const list = byCourse.get(key)
       if (list) list.push(m)
@@ -159,7 +160,7 @@ export function WorldModulePickerModal({
     const out: { key: string; title: string; campaignId: string | null; mods: ModuleRow[] }[] = []
     for (const c of courses) {
       const mods = byCourse.get(c.id)
-      if (mods?.length) out.push({ key: c.id, title: c.title_es, campaignId: c.campaign_id, mods })
+      if (mods?.length) out.push({ key: c.id, title: rowText(c), campaignId: c.campaign_id, mods })
     }
     const loose = byCourse.get('__none__')
     if (loose?.length) {
@@ -366,7 +367,7 @@ export function WorldModulePickerModal({
                                     </span>
                                     <EntityIcon value={m.icon} size={15} className="text-text-muted" />
                                     <span className="min-w-0 flex-1">
-                                      <span className="block truncate text-[13.5px] text-text">{m.title_es}</span>
+                                      <span className="block truncate text-[13.5px] text-text">{rowText(m)}</span>
                                       <span className="block text-[11px] text-text-subtle">
                                         {empty
                                           ? i18n.t('admin.worlds.picker_no_content', { defaultValue: 'Sin contenido' })
@@ -400,7 +401,7 @@ export function WorldModulePickerModal({
                       className="flex items-center gap-1 rounded-lg border border-brand-green/30 bg-brand-green/10 py-1 pl-2 pr-1 text-[11.5px] text-text"
                     >
                       <span className="font-bold text-brand-green">{i + 1}</span>
-                      <span className="max-w-[16ch] truncate">{m.title_es}</span>
+                      <span className="max-w-[16ch] truncate">{rowText(m)}</span>
                       <button
                         onClick={() => move(i, -1)}
                         disabled={i === 0}

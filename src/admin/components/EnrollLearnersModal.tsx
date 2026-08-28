@@ -19,6 +19,7 @@ import {
 } from '@/services/courses.service'
 import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses'
 import { invalidateModulesCache } from '@/hooks/useModules'
+import { rowText } from '@/lib/contentLang'
 
 interface Learner {
   id: string
@@ -168,7 +169,7 @@ export function EnrollLearnersModal({ course, campaignId, onClose, onSaved }: En
                   <Users className="h-4 w-4 text-text-muted" />
                   {t('admin.courses.enroll_learners')}
                 </h3>
-                <p className="text-[12px] text-text-muted mt-0.5 truncate">{course.title_es}</p>
+                <p className="text-[12px] text-text-muted mt-0.5 truncate">{rowText(course)}</p>
               </div>
               <button
                 onClick={onClose}

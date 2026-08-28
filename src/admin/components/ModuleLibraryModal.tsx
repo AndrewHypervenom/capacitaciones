@@ -19,6 +19,7 @@ import { toast } from '@/stores/toastStore'
 import { attachModuleToCourse, cloneModuleToCourse, type DbModuleRow } from '@/services/modules.service'
 import { getCourseTitlesByIds } from '@/services/courses.service'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { rowText } from '@/lib/contentLang'
 
 type Filter = 'all' | 'free' | 'used'
 
@@ -101,13 +102,13 @@ export function ModuleLibraryModal({
         if (m.course_id === courseId) return false
         if (filter === 'free' && m.course_id) return false
         if (filter === 'used' && !m.course_id) return false
-        if (q && !(m.title_es ?? '').toLowerCase().includes(q)) return false
+        if (q && !rowText(m).toLowerCase().includes(q)) return false
         return true
       })
       .sort((a, b) => {
         // Los libres primero: son los que no obligan a duplicar contenido.
         if (!a.course_id !== !b.course_id) return a.course_id ? 1 : -1
-        return (a.title_es ?? '').localeCompare(b.title_es ?? '')
+        return rowText(a).localeCompare(rowText(b))
       })
   }, [modules, courseId, filter, search])
 
@@ -121,7 +122,7 @@ export function ModuleLibraryModal({
     setBusyId(mod.id)
     try {
       await attachModuleToCourse(mod.id, courseId)
-      toast.success(t('admin.courses.library.moved', { title: mod.title_es }))
+      toast.success(t('admin.courses.library.moved', { title: rowText(mod) }))
       await finish(mod.id)
     } catch (e) {
       console.error('[ModuleLibrary] move', e)
@@ -138,7 +139,7 @@ export function ModuleLibraryModal({
     setProgress(null)
     try {
       await cloneModuleToCourse(mod.id, courseId)
-      toast.success(t('admin.courses.library.copied', { title: mod.title_es }))
+      toast.success(t('admin.courses.library.copied', { title: rowText(mod) }))
       await finish(mod.id)
     } catch (e) {
       console.error('[ModuleLibrary] copy', e)
@@ -313,7 +314,7 @@ export function ModuleLibraryModal({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-[14px] font-medium text-text">
-                                  {mod.title_es}
+                                  {rowText(mod)}
                                 </span>
                                 {!mod.is_published && (
                                   <NeonBadge color="neutral">{t('admin.courses.draft')}</NeonBadge>

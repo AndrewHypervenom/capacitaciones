@@ -23,6 +23,7 @@ import {
   bestPoints, checklistHits, exitsOf, isEndNode, matchBranch, nodeText, reviewScenario,
   type Lang, type PreviewIssue, type PreviewNodes, type PreviewType,
 } from './simulationPreview'
+import { initialContentLang } from '@/lib/contentLang'
 
 /**
  * VISTA PREVIA de la simulación que se está escribiendo.
@@ -112,7 +113,7 @@ export function SimulationPreviewModal({
 }: Props) {
   const { t } = useTranslation()
   const reduce = useReducedMotion()
-  const [lang, setLang] = useState<Lang>('es')
+  const [lang, setLang] = useState<Lang>(initialContentLang)
   const [tab, setTab] = useState<'play' | 'review' | 'path'>('play')
   // El aprendiz primero ve de qué se trata y recién entonces entra: la vista
   // previa arranca igual, en esa pantalla de entrada.

@@ -22,6 +22,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
+import { rowText, rowList } from '@/lib/contentLang'
 import {
   getModuleWithSectionsRaw,
   getSurgeryImpact,
@@ -173,8 +174,8 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
         setMod(data)
         setSections(ordered)
         setCutIndex(Math.max(1, Math.round(ordered.length / 2)))
-        setTitleA(data.title_es)
-        setTitleB(`${data.title_es} (2)`)
+        setTitleA(rowText(data))
+        setTitleB(`${rowText(data)} (2)`)
         setPhase('editing')
         const imp = await getSurgeryImpact([moduleId])
         if (alive) setImpact(imp[moduleId] ?? null)
@@ -249,7 +250,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
 
   /* ── Cifras en vivo ──────────────────────────────────────────────────────── */
   const stats = useMemo(() => {
-    const weight = (s: DbSectionRow) => Math.max(1, (s.body_es ?? []).join(' ').length)
+    const weight = (s: DbSectionRow) => Math.max(1, rowList(s, 'body').join(' ').length)
     const total = sections.reduce((sum, s) => sum + weight(s), 0) || 1
     const first = sections.slice(0, cutIndex).reduce((sum, s) => sum + weight(s), 0)
     const totalMin = mod?.duration_min || 1
@@ -269,8 +270,8 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
   const preview = useMemo<PreviewModule[]>(() => {
     const toSection = (s: DbSectionRow): PreviewSection => ({
       id: s.id,
-      heading: s.heading_es || t('admin.surgery.untitled_section'),
-      body: s.body_es ?? [],
+      heading: rowText(s, 'heading') || t('admin.surgery.untitled_section'),
+      body: rowList(s, 'body'),
       hasQuiz: (s.section_quizzes ?? []).length > 0,
       hasMedia: !!s.media_url,
     })
@@ -287,8 +288,8 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
       {
         tone: 'green',
         eyebrow: t('admin.surgery.part_one'),
-        title: titleA.trim() || (mod?.title_es ?? ''),
-        subtitle: draft?.a.subtitle_es.trim() || (mod?.subtitle_es ?? undefined),
+        title: titleA.trim() || rowText(mod),
+        subtitle: draft?.a.subtitle_es.trim() || rowText(mod, 'subtitle') || undefined,
         minutes: minA ?? stats.a.min,
         objectives: cleanList(draft?.a.objectives_es ?? []) ?? objectives.slice(0, half),
         takeaways: cleanList(draft?.a.key_takeaways_es ?? []) ?? (mod?.key_takeaways_es ?? []),
@@ -302,8 +303,8 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
       {
         tone: 'magenta',
         eyebrow: t('admin.surgery.part_two'),
-        title: titleB.trim() || `${mod?.title_es ?? ''} (2)`,
-        subtitle: draft?.b.subtitle_es.trim() || (mod?.subtitle_es ?? undefined),
+        title: titleB.trim() || `${rowText(mod)} (2)`,
+        subtitle: draft?.b.subtitle_es.trim() || rowText(mod, 'subtitle') || undefined,
         minutes: minB ?? stats.b.min,
         objectives: cleanList(draft?.b.objectives_es ?? []) ?? objectives.slice(half),
         // La parte 2 nace sin puntos clave salvo que se le escriban.
@@ -409,8 +410,8 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
     setAiNote('')
     setAppliedWant([])
     if (mod) {
-      setTitleA(mod.title_es)
-      setTitleB(`${mod.title_es} (2)`)
+      setTitleA(rowText(mod))
+      setTitleB(`${rowText(mod)} (2)`)
     }
     toast.success(t('admin.surgery.ai_discarded'))
   }
@@ -512,7 +513,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                   {t('admin.surgery.split_title')}
                 </h3>
                 <p className="mt-0.5 truncate text-[12px] text-text-muted">
-                  {mod ? mod.title_es : '…'}
+                  {mod ? rowText(mod) : '…'}
                 </p>
               </div>
               <button
@@ -600,7 +601,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                               {isPartB ? i - cutIndex + 1 : i + 1}
                             </span>
                             <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                              {s.heading_es || t('admin.surgery.untitled_section')}
+                              {rowText(s, 'heading') || t('admin.surgery.untitled_section')}
                             </span>
                             <span className="flex shrink-0 items-center gap-2 text-text-subtle">
                               {s.media_url && <ImageIcon className="h-3.5 w-3.5" />}
@@ -638,7 +639,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                           <AnimatePresence initial={false}>
                             {peek === s.id && (
                               <SectionBody
-                                lines={s.body_es ?? []}
+                                lines={rowList(s, 'body')}
                                 empty={t('admin.surgery.section_empty')}
                               />
                             )}

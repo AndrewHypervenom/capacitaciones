@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { rowText, rowList } from '@/lib/contentLang'
 
 /**
  * Contexto de auditoría: convierte un `entity_id` suelto de la bitácora en algo
@@ -195,9 +196,9 @@ export async function getEntityContexts(
     ...rowsOf<{ id: string; name: string }>(extraCampaigns).map((c) => [c.id, c.name] as const),
   ])
   const courseInfo = new Map<string, { title: string; campaign_id?: string }>([
-    ...courses.map((c) => [c.id, { title: c.title_es, campaign_id: c.campaign_id }] as const),
+    ...courses.map((c) => [c.id, { title: rowText(c), campaign_id: c.campaign_id }] as const),
     ...rowsOf<{ id: string; title_es: string; campaign_id: string }>(extraCourses).map(
-      (c) => [c.id, { title: c.title_es, campaign_id: c.campaign_id }] as const,
+      (c) => [c.id, { title: rowText(c), campaign_id: c.campaign_id }] as const,
     ),
   ])
   const worldName = new Map(rowsOf<{ id: string; name: string }>(worldsOfArenas).map((w) => [w.id, w.name]))
@@ -224,12 +225,12 @@ export async function getEntityContexts(
   }
 
   for (const c of campaigns) put('campaigns', c.id, c.name)
-  for (const c of courses) put('courses', c.id, c.title_es, { campaignId: c.campaign_id })
-  for (const m of modules) put('modules', m.id, m.title_es, { campaignId: m.campaign_id, courseId: m.course_id })
+  for (const c of courses) put('courses', c.id, rowText(c), { campaignId: c.campaign_id })
+  for (const m of modules) put('modules', m.id, rowText(m), { campaignId: m.campaign_id, courseId: m.course_id })
   for (const w of worlds) put('worlds', w.id, w.name, { campaignId: w.campaign_id, courseId: w.course_id })
   for (const a of arenas) put('arena_quizzes', a.id, a.title, { campaignId: a.campaign_id, worldId: a.world_id, summary: `${arr(a.steps).length}` })
-  for (const s of scenarios) put('scenarios', s.id, s.title_es, { campaignId: s.campaign_id, courseId: s.course_id })
-  for (const s of choices) put('choice_scenarios', s.id, s.title_es, { campaignId: s.campaign_id, courseId: s.course_id })
+  for (const s of scenarios) put('scenarios', s.id, rowText(s), { campaignId: s.campaign_id, courseId: s.course_id })
+  for (const s of choices) put('choice_scenarios', s.id, rowText(s), { campaignId: s.campaign_id, courseId: s.course_id })
   for (const q of quizzes) put('live_quizzes', q.id, q.title, { campaignId: q.campaign_id })
   for (const m of missions) put('guided_missions', m.id, m.title, { campaignId: m.campaign_id })
   for (const p of profiles) put('profiles', p.id, p.display_name ?? null, { campaignId: p.campaign_id })
@@ -425,7 +426,7 @@ async function moduleDetail(id: string, base: ContentDetail): Promise<ContentDet
     if (s.section_style?.startsWith('game-')) games += 1
     if (s.media_url || s.media_type) media += 1
     markers += arr((s.video_markers as { markers?: unknown } | null)?.markers ?? s.video_markers).length
-    for (const p of s.body_es ?? []) words += String(p).trim().split(/\s+/).filter(Boolean).length
+    for (const p of rowList(s, 'body')) words += String(p).trim().split(/\s+/).filter(Boolean).length
   }
 
   const timeRows = await count('module_time', 'module_id', id)
@@ -434,7 +435,7 @@ async function moduleDetail(id: string, base: ContentDetail): Promise<ContentDet
   return {
     ...base,
     exists: true,
-    title: mod.title_es,
+    title: rowText(mod),
     path: await pathFor(mod.campaign_id, mod.course_id),
     stats: [
       { labelKey: 'admin.audit.stat_sections', value: secs.length },
@@ -451,7 +452,7 @@ async function moduleDetail(id: string, base: ContentDetail): Promise<ContentDet
     childrenLabelKey: 'admin.audit.children_sections',
     children: secs.map((s, i) => ({
       id: s.id,
-      label: `${i + 1}. ${s.heading_es || '—'}`,
+      label: `${i + 1}. ${rowText(s, 'heading') || '—'}`,
       meta: sectionMeta(s),
       chips: [
         ...(quizBySection.get(s.id) ? [`${quizBySection.get(s.id)} quiz`] : []),
@@ -495,7 +496,7 @@ async function courseDetail(id: string, base: ContentDetail): Promise<ContentDet
   return {
     ...base,
     exists: true,
-    title: course.title_es,
+    title: rowText(course),
     path: await pathFor(course.campaign_id, null),
     stats: [
       { labelKey: 'admin.audit.stat_modules', value: modules.length },
@@ -510,7 +511,7 @@ async function courseDetail(id: string, base: ContentDetail): Promise<ContentDet
     childrenLabelKey: 'admin.audit.children_modules',
     children: modules.map((m, i) => ({
       id: m.id,
-      label: `${i + 1}. ${m.title_es}`,
+      label: `${i + 1}. ${rowText(m)}`,
       meta: m.is_published ? 'publicado' : 'borrador',
       chips: [`${m.duration_min} min`],
     })),
@@ -551,7 +552,7 @@ async function campaignDetail(id: string, base: ContentDetail): Promise<ContentD
       { labelKey: 'admin.audit.stat_active', value: camp.is_active ? 'yes' : 'no' },
     ],
     childrenLabelKey: 'admin.audit.children_courses',
-    children: list.map((c) => ({ id: c.id, label: c.title_es, meta: c.is_published ? 'publicado' : 'borrador' })),
+    children: list.map((c) => ({ id: c.id, label: rowText(c), meta: c.is_published ? 'publicado' : 'borrador' })),
     impact: [
       { labelKey: 'admin.audit.stat_courses', value: list.length },
       { labelKey: 'admin.audit.stat_modules', value: mods },
@@ -629,7 +630,7 @@ async function arenaDetail(id: string, base: ContentDetail): Promise<ContentDeta
     childrenLabelKey: 'admin.audit.children_questions',
     children: steps.slice(0, 60).map((s, i) => ({
       id: String(i),
-      label: `${i + 1}. ${s.question_es ?? s.question ?? '—'}`,
+      label: `${i + 1}. ${rowText(s, 'question') || s.question || '—'}`,
       chips: Array.isArray(s.options) ? [`${s.options.length} opciones`] : [],
     })),
     impact: [{ labelKey: 'admin.audit.stat_questions', value: steps.length }],
@@ -660,7 +661,7 @@ async function scenarioDetail(
   return {
     ...base,
     exists: true,
-    title: row.title_es,
+    title: rowText(row),
     href: entityHref(table, id),
     path: await pathFor(row.campaign_id, row.course_id),
     stats: [

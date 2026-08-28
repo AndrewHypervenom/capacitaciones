@@ -22,6 +22,7 @@ import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
 import { useFileDrop } from '@/hooks/useFileDrop'
 import { toast } from '@/stores/toastStore'
+import { rowText } from '@/lib/contentLang'
 
 function formatMs(ms: number) {
   const s = Math.ceil(ms / 1000)
@@ -603,7 +604,7 @@ export function AIGeneratorPanel({ type, onApply, defaultOpen = false, campaignI
                 onChange={setSelectedModuleId}
                 options={[
                   { value: '', label: i18n.t('admin.simulations.ai_gen.no_module_option') },
-                  ...modules.map((m) => ({ value: m.id, label: m.title_es })),
+                  ...modules.map((m) => ({ value: m.id, label: rowText(m) })),
                 ]}
               />
             </StaggerItem>

@@ -708,7 +708,7 @@ export default function ExamLanding() {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[14px] font-medium text-text">
                         {pickExamText(
-                          module.title_es,
+                          pickExamText(module.title_es, module.title_en, module.title_pt, language),
                           module.title_en,
                           module.title_pt,
                           language,

@@ -24,6 +24,7 @@ import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import type { Campaign } from '@/types/database'
+import { rowText, initialContentLang } from '@/lib/contentLang'
 
 // ─── Constants ────────────────────────────────────────────────
 
@@ -127,9 +128,9 @@ export default function NewModulePage() {
   // Modo inicial: ?mode=ai abre directo en "Generar con IA" (p. ej. desde el curso).
   const [mode, setMode] = useState<Mode>(searchParams.get('mode') === 'ai' ? 'ai' : 'manual')
   const [icon, setIcon] = useState('📚')
-  const [titleLang, setTitleLang] = useState<Lang>('es')
+  const [titleLang, setTitleLang] = useState<Lang>(initialContentLang)
   const [title, setTitle] = useState<Record<Lang, string>>({ es: '', en: '', pt: '' })
-  const [subtitleLang, setSubtitleLang] = useState<Lang>('es')
+  const [subtitleLang, setSubtitleLang] = useState<Lang>(initialContentLang)
   const [subtitle, setSubtitle] = useState<Record<Lang, string>>({ es: '', en: '', pt: '' })
   const [duration, setDuration] = useState(30)
   // Se resuelve al cargar las campañas accesibles (URL → panel → primera). NO se
@@ -444,7 +445,7 @@ export default function NewModulePage() {
                   onChange={setCourseId}
                   options={[
                     { value: '', label: '— Sin curso (Plan general) —' },
-                    ...courses.map((c) => ({ value: c.id, label: c.title_es })),
+                    ...courses.map((c) => ({ value: c.id, label: rowText(c) })),
                   ]}
                 />
                 <p className="text-[11px] text-text-subtle mt-1.5">

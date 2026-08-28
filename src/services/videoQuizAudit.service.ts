@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { MIN_VIDEO_QUIZ_SECONDS } from '@/types/blocks'
+import { rowText } from '@/lib/contentLang'
 
 /**
  * Auditoría de quizzes DENTRO de videos que quedaron demasiado al principio.
@@ -103,7 +104,7 @@ export async function findEarlyVideoQuizzes(moduleIds: string[]): Promise<EarlyV
         moduleId: row.module_id,
         moduleTitle: titles.get(row.module_id) ?? '',
         sectionId: row.id,
-        sectionHeading: row.heading_es ?? '',
+        sectionHeading: rowText(row, 'heading'),
         sectionNumber: n,
         timeSeconds,
       })

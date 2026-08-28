@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Language } from '@/stores/userStore'
+import { pickLang } from '@/lib/contentLang'
 
 /**
  * Simulaciones que se abren al terminar UN módulo.
@@ -31,11 +32,8 @@ export function simulationPath(sim: Pick<UnlockedSimulation, 'kind' | 'slug'>): 
   return sim.kind === 'call' ? `/simulator/run/${sim.slug}` : `/simulator/choice/${sim.slug}`
 }
 
-const pick = (es: string | null, en: string | null, pt: string | null, lang: Language): string => {
-  if (lang === 'en') return en || es || ''
-  if (lang === 'pt') return pt || es || ''
-  return es || ''
-}
+const pick = (es: string | null, en: string | null, pt: string | null, lang: Language): string =>
+  pickLang(es, en, pt, lang)
 
 /**
  * ¿Es "esa columna no existe"? Mientras `2026-08-12_sim_after_module.sql` no se

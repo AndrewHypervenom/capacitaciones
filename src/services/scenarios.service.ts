@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { Scenario } from '@/data/scenarios'
 import type { Json } from '@/types/database'
+import { pickLang } from '@/lib/contentLang'
 
 function dbRowToScenario(row: {
   id: string
@@ -30,14 +31,14 @@ function dbRowToScenario(row: {
     country: row.country,
     difficulty: row.difficulty as 1 | 2 | 3,
     title: {
-      es: row.title_es,
-      en: row.title_en ?? row.title_es,
-      pt: row.title_pt ?? row.title_es,
+      es: pickLang(row.title_es, row.title_en, row.title_pt, 'es'),
+      en: pickLang(row.title_es, row.title_en, row.title_pt, 'en'),
+      pt: pickLang(row.title_es, row.title_en, row.title_pt, 'pt'),
     },
     summary: {
-      es: row.summary_es ?? '',
-      en: row.summary_en ?? row.summary_es ?? '',
-      pt: row.summary_pt ?? row.summary_es ?? '',
+      es: pickLang(row.summary_es, row.summary_en, row.summary_pt, 'es'),
+      en: pickLang(row.summary_es, row.summary_en, row.summary_pt, 'en'),
+      pt: pickLang(row.summary_es, row.summary_en, row.summary_pt, 'pt'),
     },
     customer: {
       name: row.customer_name ?? '',

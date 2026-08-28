@@ -444,6 +444,12 @@ export function InteractiveVideoModule({
     setPlaying(false)
     setActiveMarker(m)
     setShowOverlay(true)
+    // El quiz se pinta DENTRO del recuadro del video, no sobre la ventana: si el
+    // aprendiz iba leyendo más abajo, el video se le trae a la vista para que no
+    // quede parado sin razón aparente.
+    if (!document.fullscreenElement) {
+      containerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
     return true
   }, [findPendingQuiz, completedQuizzes])
 

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { pickLang } from '@/lib/contentLang'
 import type {
   ExamAttemptSession,
   ExamBlockReason,
@@ -179,9 +180,7 @@ export function pickExamText(
   pt: string | null | undefined,
   lang: string,
 ): string {
-  if (lang === 'en') return en || es || ''
-  if (lang === 'pt') return pt || es || ''
-  return es || ''
+  return pickLang(es, en, pt, lang)
 }
 
 /** Segundos restantes de un intento con tiempo límite (0 si ya venció). */

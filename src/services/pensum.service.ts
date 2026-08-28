@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { moduleAiAssist } from '@/services/ai.service'
+import { rowList } from '@/lib/contentLang'
 
 /* ────────────────────────────────────────────────────────────────────────────
    Pénsum del certificado — lo que se publica en /verify/:certId
@@ -88,7 +89,7 @@ export async function loadCoursePensum(courseId: string): Promise<PensumDraft[]>
       objectives_es: ((m.objectives_es as string[] | null) ?? []).filter((s) => !!s?.trim()),
       takeaways_es: ((m.key_takeaways_es as string[] | null) ?? []).filter((s) => !!s?.trim()),
       topics_es: sections.map((s) => s.heading_es ?? '').filter((s) => !!s.trim()),
-      excerpts: sections.map((s) => excerpt(s.body_es)),
+      excerpts: sections.map((s) => excerpt(rowList(s, 'body'))),
     }
   })
 }

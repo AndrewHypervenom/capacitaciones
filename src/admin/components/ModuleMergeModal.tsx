@@ -22,6 +22,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
+import { rowText, rowList } from '@/lib/contentLang'
 import {
   getModuleWithSectionsRaw,
   getSurgeryImpact,
@@ -140,7 +141,7 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
         const map: Record<string, DbModuleWithSections> = {}
         for (const m of loaded) map[m.id] = m
         setMods(map)
-        setTitle(map[moduleIds[0]]?.title_es ?? '')
+        setTitle(rowText(map[moduleIds[0]]))
         setPhase('editing')
         const imp = await getSurgeryImpact(moduleIds)
         if (alive) setImpact(imp)
@@ -173,7 +174,7 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
     if (to < 0 || to >= next.length) return
     ;[next[idx], next[to]] = [next[to], next[idx]]
     setOrder(next)
-    if (!draft && !titleTouched) setTitle(mods[next[0]]?.title_es ?? '')
+    if (!draft && !titleTouched) setTitle(rowText(mods[next[0]]))
   }
 
   /* ── Cifras y línea de tiempo del resultado ──────────────────────────────── */
@@ -196,8 +197,8 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
         if ((s.section_quizzes ?? []).length > 0) quizzes += 1
         timeline.push({
           id: s.id,
-          heading: s.heading_es || t('admin.surgery.untitled_section'),
-          body: s.body_es ?? [],
+          heading: rowText(s, 'heading') || t('admin.surgery.untitled_section'),
+          body: rowList(s, 'body'),
           quiz: (s.section_quizzes ?? []).length > 0,
           from: mi,
           seam: mi > 0 && si === 0,
@@ -250,8 +251,8 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
       {
         tone: 'green',
         eyebrow: t('admin.surgery.merged_result'),
-        title: title.trim() || (list[0]?.title_es ?? ''),
-        subtitle: draft?.subtitle_es.trim() || (list[0]?.subtitle_es ?? undefined),
+        title: title.trim() || rowText(list[0]),
+        subtitle: draft?.subtitle_es.trim() || rowText(list[0], 'subtitle') || undefined,
         minutes: minutes ?? merged.minutes,
         objectives: cleanList(draft?.objectives_es ?? []) ?? uniq(list.map((m) => m.objectives_es)),
         takeaways: cleanList(draft?.key_takeaways_es ?? []) ?? uniq(list.map((m) => m.key_takeaways_es)),
@@ -323,7 +324,7 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
     setDraft(null)
     setAiNote('')
     setAppliedWant([])
-    setTitle(mods[order[0]]?.title_es ?? '')
+    setTitle(rowText(mods[order[0]]))
     setTitleTouched(false)
     toast.success(t('admin.surgery.ai_discarded'))
   }
@@ -356,7 +357,7 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
       const pending = await mergeManyModules({
         moduleIds: order,
         meta: {
-          title_es: title.trim() || mods[order[0]]?.title_es || '',
+          title_es: title.trim() || rowText(mods[order[0]]),
           duration_min: minutes ?? undefined,
           subtitle_es: draft?.subtitle_es.trim() || undefined,
           objectives_es: draft ? cleanList(draft.objectives_es) : undefined,
@@ -478,7 +479,7 @@ export function ModuleMergeModal({ moduleIds, campaignId, onClose, onApplied }: 
                             {idx + 1}
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-[13px] text-text">{m.title_es}</p>
+                            <p className="truncate text-[13px] text-text">{rowText(m)}</p>
                             <p className="text-[11px] text-text-subtle">
                               {t('admin.surgery.module_meta', {
                                 sections: m.module_sections.length,

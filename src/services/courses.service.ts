@@ -6,6 +6,7 @@ import { requestDeletion, type DeletionResult } from '@/services/audit.service'
 import { onlyActive } from '@/lib/activeUsers'
 import { getTestCampaignIds, TestScopeError } from '@/services/campaigns.service'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
+import { rowText } from '@/lib/contentLang'
 
 // ─── Tipos ───────────────────────────────────────────────────────
 
@@ -420,7 +421,7 @@ export async function createCourse(
   campaignId: string,
   data: { title_es: string; description_es?: string | null; icon?: string; color?: string },
 ): Promise<Course> {
-  const baseSlug = slugify(data.title_es) || `curso-${Date.now().toString(36)}`
+  const baseSlug = slugify(rowText(data)) || `curso-${Date.now().toString(36)}`
   // `created_by` no se estaba escribiendo nunca, así que TODOS los cursos de la
   // base quedaron sin dueño. Eso deja sin efecto cualquier regla que dependa de
   // quién creó el curso (permisos del capacitador, instructor por defecto de la

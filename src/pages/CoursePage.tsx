@@ -38,6 +38,7 @@ import { toast } from '@/stores/toastStore';
 import { RichText, stripMarkdown } from '@/components/ui/RichText';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { cn } from '@/lib/cn';
+import { pickLang } from '@/lib/contentLang';
 
 /** Curva corporativa, la misma del catálogo y del kit de motion. */
 const ease = [0.16, 1, 0.3, 1] as const;
@@ -69,9 +70,7 @@ function SectionHead({
 type ModuleStatus = 'completed' | 'available' | 'locked';
 
 function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
-  if (lang === 'en') return en || es || '';
-  if (lang === 'pt') return pt || es || '';
-  return es || '';
+  return pickLang(es, en, pt, lang);
 }
 
 export default function CoursePage() {
@@ -496,7 +495,7 @@ export default function CoursePage() {
     worldRule === 'after_module' && worldUnlockModule
       ? t('course_practice.locked_after_module', {
           title: pickText(
-            worldUnlockModule.title_es,
+            pickText(worldUnlockModule.title_es, worldUnlockModule.title_en, worldUnlockModule.title_pt, language),
             worldUnlockModule.title_en,
             worldUnlockModule.title_pt,
             language,
@@ -515,7 +514,7 @@ export default function CoursePage() {
   const simLockedReason = firstLockedAnchor
     ? t('course_practice.locked_after_module', {
         title: pickText(
-          firstLockedAnchor.title_es,
+          pickText(firstLockedAnchor.title_es, firstLockedAnchor.title_en, firstLockedAnchor.title_pt, language),
           firstLockedAnchor.title_en,
           firstLockedAnchor.title_pt,
           language,

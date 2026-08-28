@@ -8,6 +8,7 @@ import type { ExamResultRow } from '@/types/exam';
 import { useAuth } from '@/hooks/useAuth';
 import { shouldHideTestData } from '@/stores/testModeStore';
 import { courseDueMs, type CourseDeadline } from '@/lib/courseDeadline';
+import { rowText, pickLang } from '@/lib/contentLang';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Datos del Panorama de Progreso.
@@ -233,9 +234,7 @@ function pickTitle(
   row: { title_es: string; title_en: string | null; title_pt: string | null },
   lang: Lang,
 ): string {
-  if (lang === 'en') return row.title_en || row.title_es;
-  if (lang === 'pt') return row.title_pt || row.title_es;
-  return row.title_es;
+  return pickLang(row.title_es, row.title_en, row.title_pt, lang);
 }
 
 /** Trae una tabla entera en páginas de 1000 (Supabase nunca devuelve más de eso). */
@@ -592,8 +591,8 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             userName: person.name,
             courseId: a.course_id ?? null,
             courseTitle: a.course_title ?? null,
-            moduleTitle: a.module?.title_es ?? null,
-            sectionTitle: a.section?.heading_es ?? null,
+            moduleTitle: rowText(a.module) || null,
+            sectionTitle: rowText(a.section, 'heading') || null,
             gameType: a.game_type,
             score: a.score,
             at: when ?? 0,

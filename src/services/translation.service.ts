@@ -3,6 +3,15 @@ import type { Json } from '@/types/database'
 import { blankTranslations, deepFillTranslations, translateGenerated } from '@/services/ai.service'
 import { detectBaseLang } from '@/lib/detectLang'
 import { getModuleWithSectionsRaw, type DbModuleWithSections } from '@/services/modules.service'
+import { rowText } from '@/lib/contentLang'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Las tablas del examen (`course_exams`, `exam_domains`, `exam_questions`) no
+ * están en los tipos generados a propósito — ver la nota en
+ * `exams.admin.service.ts`—, así que se consultan con el cliente sin tipar.
+ */
+const examDb = supabase as unknown as SupabaseClient
 
 /**
  * Traducción DIFERIDA (en/pt) de todo lo que cuelga de un curso.
@@ -127,6 +136,15 @@ export interface WorldTranslationState {
   steps: number
 }
 
+export interface ExamTranslationState {
+  examId: string
+  title: string
+  ratio: number
+  translated: boolean
+  /** Pasos en la barra: ficha + temas + un lote por cada N preguntas. */
+  steps: number
+}
+
 export interface CourseTranslationState {
   courseId: string
   /** La ficha del curso (título + descripción). */
@@ -136,6 +154,8 @@ export interface CourseTranslationState {
   simulations: SimulationTranslationState[]
   /** Mundos del curso, con sus regiones, niveles y arenas. */
   worlds: WorldTranslationState[]
+  /** Examen final del curso: su ficha, sus temas y su banco de preguntas. */
+  exams: ExamTranslationState[]
   pendingCount: number
   /** Todo el curso, ficha incluida, ya está en los tres idiomas. */
   allTranslated: boolean
@@ -178,7 +198,7 @@ async function getCourseSimulationStates(courseId: string): Promise<SimulationTr
         return {
           kind,
           simId: r.id,
-          title: r.title_es ?? '',
+          title: rowText(r),
           ratio,
           translated: ratio >= 0.5,
           steps: simSteps(r.nodes),
@@ -329,7 +349,56 @@ async function getCourseWorldStates(courseId: string): Promise<WorldTranslationS
   return out
 }
 
-/** Revisa curso + módulos + simulaciones + mundos y dice qué falta. Sin IA. */
+/** Preguntas por llamada: cada una trae enunciado, 4 opciones y explicación. */
+const EXAM_Q_BATCH = 4
+
+/**
+ * Exámenes del curso con su estado de traducción. Sin llamadas a la IA.
+ *
+ * El examen no entraba en "traducir el curso": el aprendiz llegaba al final del
+ * recorrido —todo traducido— y se encontraba la prueba en otro idioma.
+ */
+async function getCourseExamStates(courseId: string): Promise<ExamTranslationState[]> {
+  const { data: exams } = await examDb
+    .from('course_exams')
+    .select('id, title_es, title_en, title_pt, description_es, description_en, description_pt')
+    .eq('course_id', courseId)
+    .is('deleted_at', null)
+  const rows = (exams ?? []) as unknown as Array<Record<string, unknown> & { id: string }>
+  if (!rows.length) return []
+
+  const ids = rows.map((e) => e.id)
+  const [{ data: domains }, { data: questions }] = await Promise.all([
+    examDb.from('exam_domains').select('id, exam_id, name_es, name_en, name_pt, description_es, description_en, description_pt').in('exam_id', ids),
+    examDb.from('exam_questions').select('id, exam_id, text_es, text_en, text_pt, options, explanation_es, explanation_en, explanation_pt').in('exam_id', ids),
+  ])
+  const doms = (domains ?? []) as unknown as Array<Record<string, unknown> & { exam_id: string }>
+  const qs = (questions ?? []) as unknown as Array<Record<string, unknown> & { exam_id: string }>
+
+  return rows.map((e) => {
+    const myDoms = doms.filter((d) => d.exam_id === e.id)
+    const myQs = qs.filter((q) => q.exam_id === e.id)
+    // `translatedRatio` ya entiende los tríos `campo_es/_en/_pt`, que es como
+    // guardan el texto las tres tablas del examen (incluidas las opciones, que
+    // viven dentro del jsonb `options`).
+    const parts: Array<{ weight: number; ratio: number }> = [
+      { weight: 1, ratio: translatedRatio(e) },
+      { weight: myDoms.length, ratio: myDoms.length ? translatedRatio(myDoms) : 1 },
+      { weight: myQs.length, ratio: myQs.length ? translatedRatio(myQs) : 1 },
+    ]
+    const weight = parts.reduce((n, x) => n + x.weight, 0)
+    const ratio = weight === 0 ? 1 : parts.reduce((n, x) => n + x.weight * x.ratio, 0) / weight
+    return {
+      examId: e.id,
+      title: rowText(e),
+      ratio,
+      translated: ratio >= 0.5,
+      steps: 1 + (myDoms.length ? 1 : 0) + Math.ceil(myQs.length / EXAM_Q_BATCH),
+    }
+  })
+}
+
+/** Revisa curso + módulos + simulaciones + mundos + examen y dice qué falta. Sin IA. */
 export async function getCourseTranslationState(courseId: string): Promise<CourseTranslationState> {
   const { data: course, error } = await supabase
     .from('courses')
@@ -354,15 +423,16 @@ export async function getCourseTranslationState(courseId: string): Promise<Cours
     const ratio = translatedRatio(m)
     return {
       moduleId: m.id,
-      title: m.title_es ?? '',
+      title: rowText(m),
       ratio,
       translated: ratio >= 0.5,
     }
   })
 
-  const [simulations, worlds] = await Promise.all([
+  const [simulations, worlds, exams] = await Promise.all([
     getCourseSimulationStates(courseId),
     getCourseWorldStates(courseId),
+    getCourseExamStates(courseId),
   ])
 
   // La ficha del curso suele ser texto corto; si no hay nada largo, cuenta como lista.
@@ -370,6 +440,7 @@ export async function getCourseTranslationState(courseId: string): Promise<Cours
   const pendingCount = modules.filter((m) => !m.translated).length
     + simulations.filter((s) => !s.translated).length
     + worlds.filter((w) => !w.translated).length
+    + exams.filter((e) => !e.translated).length
     + (courseTranslated ? 0 : 1)
 
   return {
@@ -378,6 +449,7 @@ export async function getCourseTranslationState(courseId: string): Promise<Cours
     modules,
     simulations,
     worlds,
+    exams,
     pendingCount,
     allTranslated: pendingCount === 0,
   }
@@ -387,7 +459,7 @@ export async function getCourseTranslationState(courseId: string): Promise<Cours
 export async function getModuleTranslationState(moduleId: string): Promise<ModuleTranslationState> {
   const mod = await getModuleWithSectionsRaw(moduleId)
   const ratio = translatedRatio(mod)
-  return { moduleId, title: mod.title_es, ratio, translated: ratio >= 0.5 }
+  return { moduleId, title: rowText(mod), ratio, translated: ratio >= 0.5 }
 }
 
 // ── Traducir de verdad ─────────────────────────────────────────────────────
@@ -410,8 +482,23 @@ type OnProgress = (p: TranslateProgress) => void
  * portugués o inglés. Traducir "desde el español" un texto en portugués dejaba el
  * español mal para siempre (ver [[detectLang]]).
  */
+/**
+ * Idioma que traía la columna base de la última pieza traducida.
+ *
+ * Hace falta al guardar: si la base NO estaba en español, la traducción al
+ * español es contenido nuevo que debe escribirse en la columna `_es`. Sin esto,
+ * un curso escrito en portugués nunca conseguía su español —las sentencias solo
+ * escribían `_en` y `_pt`—, quedaba marcado como pendiente para siempre y se
+ * volvía a pagar su traducción en cada corrida.
+ */
+let lastBaseLang: 'es' | 'en' | 'pt' = 'es'
+
+/** ¿La última pieza venía escrita en otro idioma? Entonces `_es` sí se escribe. */
+const baseWasForeign = () => lastBaseLang !== 'es'
+
 async function translatePiece<T>(piece: T, signal?: AbortSignal): Promise<T> {
   const from = detectBaseLang(piece)
+  lastBaseLang = from
   const blank = blankTranslations(piece, from) as T
   try {
     const out = await translateGenerated<T>(blank, signal, from)
@@ -433,11 +520,11 @@ async function translatePiece<T>(piece: T, signal?: AbortSignal): Promise<T> {
  * simulador queda roto sin que nadie lo note hasta que alguien lo juega.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mergeTranslatedOnly(original: any, translated: any): any {
+function mergeTranslatedOnly(original: any, translated: any, allowEs = false): any {
   if (Array.isArray(original)) {
     if (!Array.isArray(translated)) return original
     // Se emparejan por posición: la traducción nunca debe cambiar el orden ni el largo.
-    return original.map((v, i) => mergeTranslatedOnly(v, translated[i]))
+    return original.map((v, i) => mergeTranslatedOnly(v, translated[i], allowEs))
   }
   if (!original || typeof original !== 'object') return original
   if (!translated || typeof translated !== 'object' || Array.isArray(translated)) return original
@@ -445,14 +532,17 @@ function mergeTranslatedOnly(original: any, translated: any): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const out: any = { ...original }
   for (const k of Object.keys(original)) {
+    // `es`/`_es` solo entra cuando la base NO estaba en español: ahí el español
+    // es traducción nueva, no el original que hay que preservar.
     const isLangField = k === 'en' || k === 'pt' || k.endsWith('_en') || k.endsWith('_pt')
+      || (allowEs && (k === 'es' || k.endsWith('_es')))
     if (isLangField) {
       const v = translated[k]
       // Solo se acepta si la IA devolvió algo del mismo tipo y no vacío.
       if (typeof v === 'string' && v.trim()) out[k] = v
       else if (Array.isArray(v) && v.length) out[k] = v
     } else if (original[k] && typeof original[k] === 'object') {
-      out[k] = mergeTranslatedOnly(original[k], translated[k])
+      out[k] = mergeTranslatedOnly(original[k], translated[k], allowEs)
     }
   }
   return out
@@ -477,7 +567,7 @@ export async function translateModule(
   const tick = (detail: string) => opts.onProgress?.({ done: Math.min(++step, total), total, detail })
 
   // 1) Ficha del módulo.
-  tick(mod.title_es)
+  tick(rowText(mod))
   const meta = await translatePiece({
     title_es: mod.title_es, title_en: mod.title_en, title_pt: mod.title_pt,
     subtitle_es: mod.subtitle_es, subtitle_en: mod.subtitle_en, subtitle_pt: mod.subtitle_pt,
@@ -490,13 +580,18 @@ export async function translateModule(
     subtitle_en: meta.subtitle_en, subtitle_pt: meta.subtitle_pt,
     objectives_en: meta.objectives_en, objectives_pt: meta.objectives_pt,
     key_takeaways_en: meta.key_takeaways_en, key_takeaways_pt: meta.key_takeaways_pt,
+    // Base en otro idioma: el español es traducción nueva y va a su columna.
+    ...(baseWasForeign() ? {
+      title_es: meta.title_es, subtitle_es: meta.subtitle_es,
+      objectives_es: meta.objectives_es, key_takeaways_es: meta.key_takeaways_es,
+    } : {}),
   }).eq('id', moduleId)
   if (metaError) throw metaError
 
   // 2) Cada sección con sus bloques, y los quizzes aparte (van en otra tabla).
   for (const s of sections) {
     if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    tick(s.heading_es || mod.title_es)
+    tick(rowText(s, 'heading') || rowText(mod))
 
     const sec = await translatePiece({
       heading_es: s.heading_es, heading_en: s.heading_en, heading_pt: s.heading_pt,
@@ -511,6 +606,10 @@ export async function translateModule(
       body_en: sec.body_en, body_pt: sec.body_pt,
       callout_en: sec.callout_en, callout_pt: sec.callout_pt,
       media_caption_en: sec.media_caption_en, media_caption_pt: sec.media_caption_pt,
+      ...(baseWasForeign() ? {
+        heading_es: sec.heading_es, body_es: sec.body_es,
+        callout_es: sec.callout_es, media_caption_es: sec.media_caption_es,
+      } : {}),
       // `blocks_data` es jsonb: los tipos generados lo esperan como Json.
       ...(s.blocks_data ? { blocks_data: sec.blocks as unknown as Json } : {}),
     }).eq('id', s.id)
@@ -526,6 +625,9 @@ export async function translateModule(
           question_en: q.question_en, question_pt: q.question_pt,
           options_en: q.options_en, options_pt: q.options_pt,
           explanation_en: q.explanation_en, explanation_pt: q.explanation_pt,
+          ...(baseWasForeign() ? {
+            question_es: q.question_es, options_es: q.options_es, explanation_es: q.explanation_es,
+          } : {}),
         }).eq('id', quizzes[i].id)
       }
     }
@@ -562,7 +664,7 @@ export async function translateSimulation(
 
   // 1) Ficha. En las de llamada incluye el checklist, que también es texto visible.
   // Los nodos salen del lote: van aparte, o la llamada se pasaría de largo.
-  tick(row.title_es)
+  tick(rowText(row))
   const { nodes: _nodes, id: _id, ...metaPiece } = data as unknown as Record<string, unknown>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawMeta = await translatePiece(metaPiece as any, opts.signal)
@@ -588,12 +690,12 @@ export async function translateSimulation(
     if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     const n = Math.floor(i / SIM_NODE_BATCH) + 1
     const batches = Math.ceil(entries.length / SIM_NODE_BATCH)
-    tick(`${row.title_es} (${n}/${batches})`)
+    tick(`${rowText(row)} (${n}/${batches})`)
 
     const batch = Object.fromEntries(entries.slice(i, i + SIM_NODE_BATCH))
     const out = await translatePiece(batch, opts.signal)
     // El grafo (`nextId`, `points`, `terminal`) se conserva tal cual: solo entra el texto.
-    Object.assign(nodes, mergeTranslatedOnly(batch, out ?? batch))
+    Object.assign(nodes, mergeTranslatedOnly(batch, out ?? batch, baseWasForeign()))
   }
 
   const { error: nodesError } = await supabase
@@ -623,7 +725,8 @@ function toEsShape(row: Record<string, unknown>, fields: string[]): Record<strin
 }
 
 /**
- * Del resultado se toman solo en/pt: el español nunca se reescribe.
+ * Del resultado se toman en/pt — y también la columna BASE cuando lo que había
+ * escrito no era español (ahí el español es traducción nueva, no el original).
  *
  * Sale como `any` a propósito: las claves se arman en runtime a partir de
  * `fields`, y los tipos generados de Supabase exigen literales conocidos.
@@ -631,10 +734,15 @@ function toEsShape(row: Record<string, unknown>, fields: string[]): Record<strin
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromEsShape(translated: Record<string, unknown>, fields: string[]): any {
   const out: Record<string, unknown> = {}
+  const foreign = baseWasForeign()
   for (const f of fields) {
     for (const lang of ['en', 'pt']) {
       const v = translated[`${f}_${lang}`]
       out[`${f}_${lang}`] = typeof v === 'string' && v.trim() ? v : null
+    }
+    if (foreign) {
+      const es = translated[`${f}_es`]
+      if (typeof es === 'string' && es.trim()) out[f] = es
     }
   }
   return out
@@ -782,6 +890,99 @@ export async function translateWorld(
   }
 }
 
+/**
+ * Traduce un examen entero: su ficha, sus temas y su banco de preguntas (con las
+ * opciones, que viven dentro del jsonb `options`).
+ *
+ * Las preguntas van por lotes chicos: cada una lleva enunciado, cuatro opciones y
+ * explicación, y un JSON grande se le corta a Haiku a media respuesta.
+ */
+export async function translateExam(
+  examId: string,
+  opts: { onProgress?: OnProgress; signal?: AbortSignal; startStep?: number; totalSteps?: number } = {},
+): Promise<void> {
+  const { data: examRow, error } = await examDb
+    .from('course_exams')
+    .select('id, title_es, title_en, title_pt, description_es, description_en, description_pt')
+    .eq('id', examId)
+    .single()
+  if (error) throw error
+  const exam = examRow as unknown as Record<string, unknown>
+
+  const [{ data: domainRows }, { data: questionRows }] = await Promise.all([
+    examDb.from('exam_domains')
+      .select('id, name_es, name_en, name_pt, description_es, description_en, description_pt')
+      .eq('exam_id', examId).order('sort_order'),
+    examDb.from('exam_questions')
+      .select('id, text_es, text_en, text_pt, options, explanation_es, explanation_en, explanation_pt')
+      .eq('exam_id', examId).order('sort_order'),
+  ])
+  const domains = (domainRows ?? []) as unknown as Array<Record<string, unknown> & { id: string }>
+  const questions = (questionRows ?? []) as unknown as Array<Record<string, unknown> & { id: string }>
+
+  const localTotal = 1 + (domains.length ? 1 : 0) + Math.ceil(questions.length / EXAM_Q_BATCH)
+  const total = opts.totalSteps ?? localTotal
+  let step = opts.startStep ?? 0
+  const tick = (detail: string) => opts.onProgress?.({ done: Math.min(++step, total), total, detail })
+
+  // 1) Ficha del examen.
+  tick(rowText(exam))
+  const meta = await translatePiece({
+    title_es: exam.title_es, title_en: exam.title_en, title_pt: exam.title_pt,
+    description_es: exam.description_es, description_en: exam.description_en, description_pt: exam.description_pt,
+  }, opts.signal)
+  const { error: metaError } = await examDb.from('course_exams').update({
+    title_en: meta.title_en as string, title_pt: meta.title_pt as string,
+    description_en: meta.description_en as string, description_pt: meta.description_pt as string,
+    ...(baseWasForeign() ? {
+      title_es: meta.title_es as string, description_es: meta.description_es as string,
+    } : {}),
+  }).eq('id', examId)
+  if (metaError) throw metaError
+
+  // 2) Los temas, todos de una: son nombres y una línea de descripción.
+  if (domains.length) {
+    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    tick(rowText(exam))
+    const out = await translatePiece({ domains }, opts.signal)
+    const foreign = baseWasForeign()
+    const list = (out.domains ?? []) as Array<Record<string, unknown>>
+    for (let i = 0; i < domains.length; i++) {
+      const d = list[i]
+      if (!d) continue
+      await examDb.from('exam_domains').update({
+        name_en: d.name_en as string, name_pt: d.name_pt as string,
+        description_en: d.description_en as string, description_pt: d.description_pt as string,
+        ...(foreign ? { name_es: d.name_es as string, description_es: d.description_es as string } : {}),
+      }).eq('id', domains[i].id)
+    }
+  }
+
+  // 3) El banco, por lotes. `mergeTranslatedOnly` protege `id` y `correct` de las
+  //    opciones: si la IA los "mejora", la respuesta correcta deja de casar.
+  const batches = Math.ceil(questions.length / EXAM_Q_BATCH)
+  for (let i = 0; i < questions.length; i += EXAM_Q_BATCH) {
+    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    const n = Math.floor(i / EXAM_Q_BATCH) + 1
+    tick(`${rowText(exam)} (${n}/${batches})`)
+    const slice = questions.slice(i, i + EXAM_Q_BATCH)
+    const out = await translatePiece({ questions: slice }, opts.signal)
+    const qForeign = baseWasForeign()
+    const list = (out.questions ?? []) as Array<Record<string, unknown>>
+    for (let j = 0; j < slice.length; j++) {
+      const q = list[j]
+      if (!q) continue
+      const merged = mergeTranslatedOnly(slice[j], q, qForeign) as Record<string, unknown>
+      await examDb.from('exam_questions').update({
+        text_en: merged.text_en as string, text_pt: merged.text_pt as string,
+        explanation_en: merged.explanation_en as string, explanation_pt: merged.explanation_pt as string,
+        options: merged.options as Json,
+        ...(qForeign ? { text_es: merged.text_es as string, explanation_es: merged.explanation_es as string } : {}),
+      }).eq('id', slice[j].id)
+    }
+  }
+}
+
 /** Traduce la ficha del curso (título + descripción). */
 export async function translateCourseMeta(courseId: string, signal?: AbortSignal): Promise<void> {
   const { data, error } = await supabase
@@ -795,26 +996,28 @@ export async function translateCourseMeta(courseId: string, signal?: AbortSignal
   const { error: upError } = await supabase.from('courses').update({
     title_en: out.title_en, title_pt: out.title_pt,
     description_en: out.description_en, description_pt: out.description_pt,
+    ...(baseWasForeign() ? { title_es: out.title_es, description_es: out.description_es } : {}),
   }).eq('id', courseId)
   if (upError) throw upError
 }
 
 /**
  * Traduce el curso ENTERO: su ficha, todos sus módulos, todas las simulaciones
- * ligadas a él y sus mundos (con regiones, niveles y arenas). Es el atajo para
- * no ir pieza por pieza.
+ * ligadas a él, sus mundos (con regiones, niveles y arenas) y su examen final
+ * (ficha, temas y banco de preguntas). Es el atajo para no ir pieza por pieza.
  *
  * `onlyPending` (por defecto) evita volver a pagar por lo ya traducido.
  */
 export async function translateCourse(
   courseId: string,
   opts: { onProgress?: OnProgress; signal?: AbortSignal; onlyPending?: boolean } = {},
-): Promise<{ modules: number; simulations: number; worlds: number }> {
+): Promise<{ modules: number; simulations: number; worlds: number; exams: number }> {
   const state = await getCourseTranslationState(courseId)
   const onlyPending = opts.onlyPending ?? true
   const targets = onlyPending ? state.modules.filter((m) => !m.translated) : state.modules
   const simTargets = onlyPending ? state.simulations.filter((s) => !s.translated) : state.simulations
   const worldTargets = onlyPending ? state.worlds.filter((w) => !w.translated) : state.worlds
+  const examTargets = onlyPending ? state.exams.filter((e) => !e.translated) : state.exams
 
   // Pasos: ficha del curso + una pasada por módulo + los lotes de cada simulación
   // y de cada mundo. Los pasos finos (sección a sección, lote a lote) los reportan
@@ -824,6 +1027,7 @@ export async function translateCourse(
     + targets.reduce((n, m) => n + 1 + (sectionCounts[m.moduleId] ?? 0), 0)
     + simTargets.reduce((n, s) => n + s.steps, 0)
     + worldTargets.reduce((n, w) => n + w.steps, 0)
+    + examTargets.reduce((n, e) => n + e.steps, 0)
 
   let step = 0
   const bump = (detail: string) => {
@@ -863,8 +1067,185 @@ export async function translateCourse(
     })
   }
 
+  for (const e of examTargets) {
+    await translateExam(e.examId, {
+      signal: opts.signal,
+      startStep: step,
+      totalSteps: total,
+      onProgress: (p) => { step = p.done; opts.onProgress?.({ ...p, total }) },
+    })
+  }
+
   bump('Listo')
-  return { modules: targets.length, simulations: simTargets.length, worlds: worldTargets.length }
+  return {
+    modules: targets.length,
+    simulations: simTargets.length,
+    worlds: worldTargets.length,
+    exams: examTargets.length,
+  }
+}
+
+// ── Todo el sitio ──────────────────────────────────────────────────────────
+
+export interface SitePiece {
+  kind: 'course' | 'module'
+  id: string
+  title: string
+  /** Campaña a la que pertenece, para el registro de cupo. */
+  campaignId: string | null
+  translated: boolean
+}
+
+export interface SiteTranslationState {
+  pieces: SitePiece[]
+  pendingCount: number
+}
+
+/**
+ * Qué falta por traducir en TODO el sitio (o en una campaña).
+ *
+ * Es un barrido barato: unas pocas consultas para todo, en vez de pedir el estado
+ * completo de cada curso —que serían cuatro consultas por curso—. Un curso cuenta
+ * como pendiente si su ficha, alguno de sus módulos o su examen no está en los
+ * tres idiomas; el detalle fino lo calcula `translateCourse` cuando le toca.
+ *
+ * Los módulos SUELTOS (sin curso) van aparte: nadie los alcanzaba, porque el
+ * único botón de "traducir todo" vivía dentro de un curso.
+ */
+export async function getSiteTranslationState(campaignId?: string | null): Promise<SiteTranslationState> {
+  let courseQ = supabase
+    .from('courses')
+    .select('id, campaign_id, title_es, title_en, title_pt, description_es, description_en, description_pt')
+    .is('deleted_at', null)
+  if (campaignId) courseQ = courseQ.eq('campaign_id', campaignId)
+
+  let modQ = supabase
+    .from('modules')
+    .select('id, course_id, campaign_id, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt,'
+      + ' objectives_es, objectives_en, objectives_pt,'
+      + ' module_sections(heading_es, heading_en, heading_pt, body_es, body_en, body_pt)')
+    .is('deleted_at', null)
+  if (campaignId) modQ = modQ.eq('campaign_id', campaignId)
+
+  const [{ data: courseRows, error: cErr }, { data: modRows, error: mErr }] = await Promise.all([courseQ, modQ])
+  if (cErr) throw cErr
+  if (mErr) throw mErr
+
+  const courses = (courseRows ?? []) as unknown as Array<Record<string, unknown> & { id: string; campaign_id: string | null }>
+  const mods = (modRows ?? []) as unknown as Array<Record<string, unknown> & { id: string; course_id: string | null; campaign_id: string | null }>
+
+  // Exámenes: tres consultas para todo el sitio, no tres por curso.
+  const courseIds = courses.map((c) => c.id)
+  let examsPending = new Set<string>()
+  if (courseIds.length) {
+    const { data: examRows } = await examDb
+      .from('course_exams')
+      .select('id, course_id, title_es, title_en, title_pt, description_es, description_en, description_pt')
+      .in('course_id', courseIds)
+      .is('deleted_at', null)
+    const exams = (examRows ?? []) as Array<Record<string, unknown> & { id: string; course_id: string }>
+    if (exams.length) {
+      const examIds = exams.map((e) => e.id)
+      const [{ data: qRows }, { data: dRows }] = await Promise.all([
+        examDb.from('exam_questions').select('exam_id, text_es, text_en, text_pt, options, explanation_es, explanation_en, explanation_pt').in('exam_id', examIds),
+        examDb.from('exam_domains').select('exam_id, name_es, name_en, name_pt, description_es, description_en, description_pt').in('exam_id', examIds),
+      ])
+      const qs = (qRows ?? []) as Array<Record<string, unknown> & { exam_id: string }>
+      const ds = (dRows ?? []) as Array<Record<string, unknown> & { exam_id: string }>
+      examsPending = new Set(
+        exams
+          .filter((e) => {
+            const mine = [e, ...qs.filter((q) => q.exam_id === e.id), ...ds.filter((d) => d.exam_id === e.id)]
+            return translatedRatio(mine) < 0.5
+          })
+          .map((e) => e.course_id),
+      )
+    }
+  }
+
+  const modsByCourse = new Map<string, typeof mods>()
+  const loose: typeof mods = []
+  for (const m of mods) {
+    if (!m.course_id) { loose.push(m); continue }
+    const arr = modsByCourse.get(m.course_id) ?? []
+    arr.push(m)
+    modsByCourse.set(m.course_id, arr)
+  }
+
+  const pieces: SitePiece[] = [
+    ...courses.map((c) => {
+      const own = modsByCourse.get(c.id) ?? []
+      const translated = translatedRatio(c) >= 0.5
+        && own.every((m) => translatedRatio(m) >= 0.5)
+        && !examsPending.has(c.id)
+      return { kind: 'course' as const, id: c.id, title: rowText(c), campaignId: c.campaign_id, translated }
+    }),
+    ...loose.map((m) => ({
+      kind: 'module' as const,
+      id: m.id,
+      title: rowText(m),
+      campaignId: m.campaign_id,
+      translated: translatedRatio(m) >= 0.5,
+    })),
+  ]
+
+  return { pieces, pendingCount: pieces.filter((p) => !p.translated).length }
+}
+
+/**
+ * Traduce el sitio entero (o una campaña): cada curso con todo lo que le cuelga
+ * —módulos, simulaciones, mundos y examen— y además los módulos sueltos.
+ *
+ * La barra cuenta PIEZAS (cursos y módulos sueltos); el detalle va diciendo en
+ * qué va cada una. Si una pieza falla, se anota y se sigue con la siguiente: un
+ * curso roto no puede tumbar una corrida de cuarenta.
+ */
+export async function translateSite(
+  opts: {
+    campaignId?: string | null
+    onProgress?: OnProgress
+    signal?: AbortSignal
+    onlyPending?: boolean
+  } = {},
+): Promise<{ courses: number; modules: number; failed: Array<{ title: string; error: string }> }> {
+  const state = await getSiteTranslationState(opts.campaignId)
+  const onlyPending = opts.onlyPending ?? true
+  const targets = onlyPending ? state.pieces.filter((p) => !p.translated) : state.pieces
+
+  const total = Math.max(1, targets.length)
+  const failed: Array<{ title: string; error: string }> = []
+  let done = 0
+
+  for (const piece of targets) {
+    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    const label = `${piece.title} (${done + 1}/${targets.length})`
+    opts.onProgress?.({ done, total, detail: label })
+    try {
+      if (piece.kind === 'course') {
+        await translateCourse(piece.id, {
+          signal: opts.signal,
+          onlyPending,
+          onProgress: (p) => opts.onProgress?.({ done, total, detail: `${label} · ${p.detail}` }),
+        })
+      } else {
+        await translateModule(piece.id, {
+          signal: opts.signal,
+          onProgress: (p) => opts.onProgress?.({ done, total, detail: `${label} · ${p.detail}` }),
+        })
+      }
+    } catch (e) {
+      if (opts.signal?.aborted || (e as Error)?.name === 'AbortError') throw e
+      failed.push({ title: piece.title, error: e instanceof Error ? e.message : String(e) })
+    }
+    done += 1
+    opts.onProgress?.({ done, total, detail: label })
+  }
+
+  return {
+    courses: targets.filter((p) => p.kind === 'course').length,
+    modules: targets.filter((p) => p.kind === 'module').length,
+    failed,
+  }
 }
 
 /** Cuántas secciones tiene cada módulo (para dimensionar la barra de avance). */

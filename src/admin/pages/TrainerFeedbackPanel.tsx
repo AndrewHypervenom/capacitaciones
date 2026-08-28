@@ -26,6 +26,7 @@ import {
   scoreHex, scoreTextTone, initials, tint,
 } from './progress/ModulesChrome';
 import { AttemptAnswers } from './progress/AttemptAnswers';
+import { rowText } from '@/lib/contentLang'
 
 const MIN_FEEDBACK_CHARS = 8;
 
@@ -368,8 +369,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
       // Avisamos al aprendiz (campana in-app). No bloqueamos el flujo si falla.
       notifyLearnerFeedback({
         userId: selectedAttempt.user_id,
-        moduleTitle: selectedAttempt.module?.title_es ?? null,
-        sectionHeading: selectedAttempt.section?.heading_es ?? null,
+        moduleTitle: rowText(selectedAttempt.module) || null,
+        sectionHeading: rowText(selectedAttempt.section, 'heading') || null,
       }).catch((err) => console.error('No se pudo notificar la retroalimentación:', err));
 
       // Auto-avance: pasamos a la SIGUIENTE entrega pendiente visible para no perder
@@ -441,7 +442,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
       let name: string;
       if (level === 'campaign') { key = a.campaign_id ?? NONE_KEY; name = a.campaign_name || t('admin.trainer_panel.no_campaign'); }
       else if (level === 'course') { key = a.course_id ?? NONE_KEY; name = a.course_title || t('admin.trainer_panel.no_course'); }
-      else if (level === 'module') { key = a.module_id ?? NONE_KEY; name = a.module?.title_es || t('admin.trainer_panel.module_fallback'); }
+      else if (level === 'module') { key = a.module_id ?? NONE_KEY; name = rowText(a.module) || t('admin.trainer_panel.module_fallback'); }
       else { key = a.user_id; name = a.student?.name || t('admin.trainer_panel.student_fallback'); }
       let node = map.get(key);
       if (!node) {
@@ -480,8 +481,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
       if (!s) return true;
       return (
         fold(formatGameType(a.game_type)).includes(s) ||
-        fold(a.section?.heading_es || '').includes(s) ||
-        fold(a.module?.title_es || '').includes(s) ||
+        fold(rowText(a.section, 'heading')).includes(s) ||
+        fold(rowText(a.module)).includes(s) ||
         fold(a.course_title || '').includes(s)
       );
     });
@@ -490,7 +491,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
       switch (sortKey) {
         case 'score_desc': return b.score - a.score;
         case 'score_asc': return a.score - b.score;
-        case 'name': return (a.section?.heading_es || '').localeCompare(b.section?.heading_es || '');
+        case 'name': return rowText(a.section, 'heading').localeCompare(rowText(b.section, 'heading'));
         case 'recent':
         default: return new Date(b.started_at).getTime() - new Date(a.started_at).getTime();
       }
@@ -605,7 +606,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
       const mKey = a.module_id ?? NONE_KEY;
       let mod = course.modules.get(mKey);
       if (!mod) {
-        mod = newMod(mKey, a.module?.title_es || t('admin.trainer_panel.module_fallback'), a.module_id);
+        mod = newMod(mKey, rowText(a.module) || t('admin.trainer_panel.module_fallback'), a.module_id);
         course.modules.set(mKey, mod);
       }
       mod.attempts++; course.attempts++;
@@ -621,10 +622,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
       for (const dm of dt.modules) {
         let mod = course.modules.get(dm.id);
         if (!mod) {
-          mod = newMod(dm.id, dm.title_es, dm.id);
+          mod = newMod(dm.id, rowText(dm), dm.id);
           course.modules.set(dm.id, mod);
         }
-        mod.title = dm.title_es || mod.title;
+        mod.title = rowText(dm) || mod.title;
         mod.completed = mod.completed || dm.completed;
         mod.actTotal = dm.sections.length;
         mod.actDone = dm.sections.filter((s) => s.has_attempt).length;
@@ -1265,7 +1266,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[13px] font-semibold text-text truncate">
-                          {attempt.section?.heading_es || studentName}
+                          {rowText(attempt.section, 'heading') || studentName}
                         </span>
                         {attempt.is_evaluated ? (
                           <CheckCircle2 className="w-4 h-4 shrink-0 text-green-500" />
@@ -1278,7 +1279,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                       <p className="text-[11px] text-text-muted truncate mt-0.5">
                         {/* Al mirar a una persona, el módulo importa más que el tipo de juego */}
                         {personFocus
-                          ? attempt.module?.title_es || t('admin.trainer_panel.module_fallback')
+                          ? rowText(attempt.module) || t('admin.trainer_panel.module_fallback')
                           : formatGameType(attempt.game_type)}
                       </p>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -1376,9 +1377,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
                         )}
                         <div className="flex items-center gap-1.5 text-xs text-text-muted mt-1 min-w-0">
                           <GraduationCap className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{selectedAttempt.module?.title_es || t('admin.trainer_panel.module_fallback')}</span>
+                          <span className="truncate">{rowText(selectedAttempt.module) || t('admin.trainer_panel.module_fallback')}</span>
                           <ChevronRight className="w-3 h-3 shrink-0 opacity-50" />
-                          <span className="truncate">{selectedAttempt.section?.heading_es || t('admin.trainer_panel.challenge_fallback')}</span>
+                          <span className="truncate">{rowText(selectedAttempt.section, 'heading') || t('admin.trainer_panel.challenge_fallback')}</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[11px] text-text-muted/70 mt-1.5">
                           <Clock className="w-3 h-3" />

@@ -31,6 +31,7 @@ import {
 } from './OverviewChrome';
 import { scoreHex, useSearchHotkey, Highlight } from './ModulesChrome';
 import { CourseProgressDrawer } from './CourseProgressDrawer';
+import { pickLang } from '@/lib/contentLang';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Panorama de Progreso.
@@ -166,9 +167,30 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
 
   const peopleIds = useMemo(() => new Set(scopedPeople.map((p) => p.id)), [scopedPeople]);
 
+  /**
+   * Cursos de la campaña elegida.
+   *
+   * NO son "los cursos cuyo dueño es la campaña": con el catálogo compartido, a
+   * la gente de una campaña se le asigna a diario contenido creado en otra, y
+   * mirar solo `campaign_id` dejaba ese progreso fuera del tablero — la campaña
+   * salía en blanco aunque su gente estuviera avanzando. El alcance correcto es
+   * lo que de verdad se les asignó (directo o por campaña), más los cursos
+   * propios todavía sin asignar, que también son parte del plan.
+   */
+  const campaignCourseIds = useMemo(() => {
+    if (campaign === 'all') return null;
+    // La gente de la campaña ENTERA, sin los cortes de cargo/país: filtrar por
+    // un cargo no debe cambiar cuáles son los cursos de la campaña.
+    const members = new Set(people.filter((p) => p.campaignId === campaign).map((p) => p.id));
+    const ids = new Set<string>();
+    for (const c of courses) if (c.campaignId === campaign) ids.add(c.id);
+    for (const cell of cells) if (cell.assigned && members.has(cell.userId)) ids.add(cell.courseId);
+    return ids;
+  }, [campaign, people, courses, cells]);
+
   const scopedCourses = useMemo(
-    () => (campaign === 'all' ? courses : courses.filter((c) => c.campaignId === campaign)),
-    [courses, campaign],
+    () => (campaignCourseIds === null ? courses : courses.filter((c) => campaignCourseIds.has(c.id))),
+    [courses, campaignCourseIds],
   );
   const courseIds = useMemo(() => new Set(scopedCourses.map((c) => c.id)), [scopedCourses]);
 
@@ -509,7 +531,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       for (const r of presented) {
         for (const d of r.weak_domains ?? []) {
           const key = d.domain_id;
-          const name = (lang === 'en' ? d.name_en : lang === 'pt' ? d.name_pt : d.name_es) || d.name_es;
+          const name = pickLang(d.name_es, d.name_en, d.name_pt, lang);
           const cur = weak.get(key) ?? { name, hits: 0, sum: 0 };
           cur.hits++;
           cur.sum += d.pct ?? 0;
@@ -1236,7 +1258,11 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           study={study}
           onFocus={toggleFocus}
           onSegment={(axis, value) => {
-            if (axis === 'job') setJob(value); else setCountry(value);
+            // "Sin campaña" no es un valor que el selector de arriba sepa
+            // representar: se salta el filtro y solo se pasa a la lista.
+            if (axis === 'campaign') { if (value !== NO_VALUE) setCampaign(value); }
+            else if (axis === 'job') setJob(value);
+            else setCountry(value);
             setTab('people');
           }}
           onOpenInbox={onOpenInbox}
@@ -1351,7 +1377,7 @@ function SummaryTab({
   people: ProgramPerson[];
   study: { loading: boolean; loaded: boolean; partial: boolean; totalMs: number };
   onFocus: (f: 'started' | 'idle' | 'certified' | 'pending' | 'risk') => void;
-  onSegment: (axis: 'job' | 'country', value: string) => void;
+  onSegment: (axis: SegmentAxis, value: string) => void;
   onOpenInbox?: () => void;
   onPerson: (id: string) => void;
   lang: string;
@@ -1666,57 +1692,84 @@ function SummaryTab({
    promedio esconde: "68% de participación" puede ser 95% en un cargo y 30% en
    otro, y son dos problemas distintos. */
 
+type SegmentAxis = 'campaign' | 'job' | 'country';
+
 function SegmentBreakdown({
   people, onPick,
 }: {
   people: ProgramPerson[];
-  onPick: (axis: 'job' | 'country', value: string) => void;
+  onPick: (axis: SegmentAxis, value: string) => void;
 }) {
   const { t } = useTranslation();
-  const [axis, setAxis] = useState<'job' | 'country'>('job');
+  // ¿Hay más de una campaña en el alcance? Con una sola, partir por campaña no
+  // compara nada: el eje se esconde y se arranca por cargo, como antes.
+  const multiCampaign = useMemo(
+    () => new Set(people.map((p) => p.campaignId ?? NO_VALUE)).size > 1,
+    [people],
+  );
+  const [axis, setAxis] = useState<SegmentAxis>('campaign');
+  const effAxis: SegmentAxis = axis === 'campaign' && !multiCampaign ? 'job' : axis;
 
   const groups = useMemo(() => {
-    const map = new Map<string, { total: number; started: number; completed: number; certified: number; scoreSum: number; scored: number }>();
+    const map = new Map<string, { label: string; total: number; started: number; completed: number; certified: number; scoreSum: number; scored: number; modulesDone: number; modulesTotal: number; assigned: number }>();
     for (const p of people) {
-      const key = (axis === 'job' ? p.jobTitle : p.country) ?? NO_VALUE;
-      const g = map.get(key) ?? { total: 0, started: 0, completed: 0, certified: 0, scoreSum: 0, scored: 0 };
+      const key = (effAxis === 'campaign' ? p.campaignId : effAxis === 'job' ? p.jobTitle : p.country) ?? NO_VALUE;
+      const g = map.get(key) ?? {
+        label: effAxis === 'campaign' ? (p.campaignName ?? '') : '',
+        total: 0, started: 0, completed: 0, certified: 0, scoreSum: 0, scored: 0,
+        modulesDone: 0, modulesTotal: 0, assigned: 0,
+      };
       g.total++;
       if (p.started > 0) g.started++;
       if (p.completed > 0) g.completed++;
       if (p.certified > 0) g.certified++;
       if (p.avgScore !== null) { g.scoreSum += p.avgScore; g.scored++; }
+      // Avance REAL del grupo: módulos hechos sobre los módulos que se le
+      // asignaron a su gente. Es la cifra que se pide de una campaña, y no la
+      // puede dar el conteo de personas.
+      g.modulesDone += p.modulesDone;
+      g.modulesTotal += p.modulesTotal;
+      g.assigned += p.assigned;
       map.set(key, g);
     }
     return [...map.entries()]
       .map(([key, g]) => ({
         key,
         label: key === NO_VALUE
-          ? (axis === 'job'
-              ? t('admin.progress_overview.no_job', 'Sin cargo')
-              : t('admin.progress_overview.no_country', 'Sin país'))
-          : axis === 'country'
+          ? (effAxis === 'campaign'
+              ? t('admin.progress_overview.no_campaign', 'Sin campaña')
+              : effAxis === 'job'
+                ? t('admin.progress_overview.no_job', 'Sin cargo')
+                : t('admin.progress_overview.no_country', 'Sin país'))
+          : effAxis === 'country'
             ? (countryLabel(key) ?? key)
-            : key,
+            : effAxis === 'campaign'
+              ? (g.label || key)
+              : key,
         ...g,
         participation: g.total > 0 ? Math.round((g.started / g.total) * 100) : 0,
+        progress: g.modulesTotal > 0 ? Math.round((g.modulesDone / g.modulesTotal) * 100) : null,
         avg: g.scored > 0 ? Math.round(g.scoreSum / g.scored) : null,
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
-  }, [people, axis, t]);
+  }, [people, effAxis, t]);
 
   const maxTotal = Math.max(1, ...groups.map((g) => g.total));
 
   return (
     <SectionCard
       title={t('admin.progress_overview.segments_title', 'Cómo va cada grupo')}
-      subtitle={t('admin.progress_overview.segments_sub', 'El mismo alcance, partido por cargo o por país')}
+      subtitle={t('admin.progress_overview.segments_sub', 'El mismo alcance, partido por campaña, cargo o país')}
       icon={<Users className="h-4 w-4" />}
       accent={VIOLET}
       className="h-full"
       action={
         <div className="flex items-center gap-1 rounded-xl border border-line bg-subtle/50 p-1">
           {([
+            ...(multiCampaign
+              ? [{ key: 'campaign' as const, label: t('admin.progress_overview.axis_campaign', 'Campaña') }]
+              : []),
             { key: 'job' as const, label: t('admin.progress_overview.axis_job', 'Cargo') },
             { key: 'country' as const, label: t('admin.progress_overview.axis_country', 'País') },
           ]).map((o) => (
@@ -1726,7 +1779,7 @@ function SegmentBreakdown({
               onClick={() => setAxis(o.key)}
               className={cn(
                 'rounded-lg px-2.5 py-1 text-[11.5px] font-semibold transition-colors',
-                axis === o.key ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text',
+                effAxis === o.key ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text',
               )}
             >
               {o.label}
@@ -1746,7 +1799,7 @@ function SegmentBreakdown({
             <li key={g.key}>
               <button
                 type="button"
-                onClick={() => onPick(axis, g.key)}
+                onClick={() => onPick(effAxis, g.key)}
                 className="w-full rounded-xl p-1.5 text-left transition-colors hover:bg-subtle"
               >
                 <div className="mb-1.5 flex items-baseline justify-between gap-3">
@@ -1754,15 +1807,32 @@ function SegmentBreakdown({
                     <span className="truncate text-[12.5px] font-medium text-text">{g.label}</span>
                   </Tooltip>
                   <span className="shrink-0 text-[11.5px] tabular-nums text-text-muted">
-                    {t('admin.progress_overview.segment_line', {
-                      count: g.total, participation: g.participation, certified: g.certified,
-                      defaultValue: '{{count}} personas · {{participation}}% participación · {{certified}} certificados',
-                    })}
+                    {effAxis === 'campaign'
+                      ? t('admin.progress_overview.campaign_line', {
+                          count: g.total,
+                          progress: g.progress ?? 0,
+                          certified: g.certified,
+                          defaultValue: '{{count}} personas · {{progress}}% del temario · {{certified}} certificados',
+                        })
+                      : t('admin.progress_overview.segment_line', {
+                          count: g.total, participation: g.participation, certified: g.certified,
+                          defaultValue: '{{count}} personas · {{participation}}% participación · {{certified}} certificados',
+                        })}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="flex-1"><RankBar value={g.total} max={maxTotal} accent={VIOLET} delay={0.04 * i} /></span>
-                  {g.avg !== null && (
+                  {/* Por campaña la barra mide el AVANCE del temario (0–100), no
+                      cuánta gente hay: la pregunta es cómo va, no cuántos son. */}
+                  <span className="flex-1">
+                    {effAxis === 'campaign'
+                      ? <RankBar value={g.progress ?? 0} max={100} accent={VIOLET} delay={0.04 * i} />
+                      : <RankBar value={g.total} max={maxTotal} accent={VIOLET} delay={0.04 * i} />}
+                  </span>
+                  {effAxis === 'campaign' ? (
+                    <span className="w-9 shrink-0 text-right text-[11px] font-bold tabular-nums text-text">
+                      {g.progress === null ? '—' : `${g.progress}%`}
+                    </span>
+                  ) : g.avg !== null && (
                     <span className="w-8 shrink-0 text-right text-[11px] font-bold tabular-nums" style={{ color: scoreHex(g.avg) }}>
                       {g.avg}
                     </span>

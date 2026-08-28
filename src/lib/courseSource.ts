@@ -15,6 +15,7 @@
    ──────────────────────────────────────────────────────────────────────────── */
 
 import { supabase } from '@/lib/supabase'
+import { rowText, rowList } from '@/lib/contentLang'
 
 /** Tope de lo que se manda al modelo. Por encima, el costo se dispara. */
 export const SOURCE_CHAR_LIMIT = 60_000
@@ -86,44 +87,36 @@ export interface ModuleSource {
 export async function getModuleSource(moduleId: string): Promise<ModuleSource> {
   const { data: mod, error } = await supabase
     .from('modules')
-    .select('title_es, subtitle_es, objectives_es, key_takeaways_es')
+    .select('title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt, objectives_es, objectives_en, objectives_pt, key_takeaways_es, key_takeaways_en, key_takeaways_pt')
     .eq('id', moduleId)
     .maybeSingle()
   if (error) throw error
 
-  const m = (mod ?? null) as {
-    title_es?: string
-    subtitle_es?: string | null
-    objectives_es?: string[] | null
-    key_takeaways_es?: string[] | null
-  } | null
+  const m = (mod ?? null) as Record<string, unknown> | null
   if (!m) return { text: '', headings: [], chars: 0, truncated: false }
 
   const { data: sectionRows } = await supabase
     .from('module_sections')
-    .select('heading_es, body_es, callout_es, blocks_data, sort_order')
+    .select('heading_es, heading_en, heading_pt, body_es, body_en, body_pt, callout_es, callout_en, callout_pt, blocks_data, sort_order')
     .eq('module_id', moduleId)
     .order('sort_order')
 
-  type Sec = {
-    heading_es: string
-    body_es: string[] | null
-    callout_es: string | null
-    blocks_data: unknown
-  }
+  type Sec = Record<string, unknown> & { blocks_data: unknown }
   const secs = (sectionRows ?? []) as Sec[]
 
-  const lines: string[] = [`═══ MÓDULO: ${m.title_es ?? ''} ═══`]
-  if (m.subtitle_es) lines.push(m.subtitle_es)
-  if (m.objectives_es?.length) lines.push(`Objetivos: ${m.objectives_es.join(' · ')}`)
-  if (m.key_takeaways_es?.length) lines.push(`Puntos clave: ${m.key_takeaways_es.join(' · ')}`)
+  // Todo se lee del idioma en que esté escrito: un curso en portugués llegaba
+  // como fuente VACÍA y el examen se lo inventaba.
+  const lines: string[] = [`═══ MÓDULO: ${rowText(m)} ═══`]
+  if (rowText(m, 'subtitle')) lines.push(rowText(m, 'subtitle'))
+  if (rowList(m, 'objectives').length) lines.push(`Objetivos: ${rowList(m, 'objectives').join(' · ')}`)
+  if (rowList(m, 'key_takeaways').length) lines.push(`Puntos clave: ${rowList(m, 'key_takeaways').join(' · ')}`)
 
   for (const s of secs) {
     const parts: string[] = []
-    if (s.body_es?.length) parts.push(...s.body_es.filter(Boolean))
-    if (s.callout_es) parts.push(`Nota importante: ${s.callout_es}`)
+    parts.push(...rowList(s, 'body').filter(Boolean))
+    if (rowText(s, 'callout')) parts.push(`Nota importante: ${rowText(s, 'callout')}`)
     parts.push(...blockText(s.blocks_data))
-    lines.push(`\n── ${s.heading_es} ──`)
+    lines.push(`\n── ${rowText(s, 'heading')} ──`)
     lines.push(parts.length ? parts.join('\n') : '(sección sin texto)')
   }
 
@@ -135,7 +128,7 @@ export async function getModuleSource(moduleId: string): Promise<ModuleSource> {
 
   return {
     text,
-    headings: secs.map((s) => s.heading_es).filter(Boolean),
+    headings: secs.map((s) => rowText(s, 'heading')).filter(Boolean),
     chars: text.length,
     truncated,
   }
@@ -148,19 +141,13 @@ export async function getModuleSource(moduleId: string): Promise<ModuleSource> {
 export async function getCourseSource(courseId: string): Promise<CourseSource> {
   const { data: modules, error } = await supabase
     .from('modules')
-    .select('id, title_es, subtitle_es, objectives_es, key_takeaways_es, course_sort_order')
+    .select('id, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt, objectives_es, objectives_en, objectives_pt, key_takeaways_es, key_takeaways_en, key_takeaways_pt, course_sort_order')
     .eq('course_id', courseId)
     .is('deleted_at', null)
     .order('course_sort_order')
   if (error) throw error
 
-  type Mod = {
-    id: string
-    title_es: string
-    subtitle_es: string | null
-    objectives_es: string[] | null
-    key_takeaways_es: string[] | null
-  }
+  type Mod = Record<string, unknown> & { id: string }
   const mods = (modules ?? []) as Mod[]
   const empty: CourseSource = {
     text: '', chars: 0, modules: 0, sections: 0, truncated: false, emptyModules: [],
@@ -169,17 +156,11 @@ export async function getCourseSource(courseId: string): Promise<CourseSource> {
 
   const { data: sectionRows } = await supabase
     .from('module_sections')
-    .select('module_id, heading_es, body_es, callout_es, blocks_data, sort_order')
+    .select('module_id, heading_es, heading_en, heading_pt, body_es, body_en, body_pt, callout_es, callout_en, callout_pt, blocks_data, sort_order')
     .in('module_id', mods.map((m) => m.id))
     .order('sort_order')
 
-  type Sec = {
-    module_id: string
-    heading_es: string
-    body_es: string[] | null
-    callout_es: string | null
-    blocks_data: unknown
-  }
+  type Sec = Record<string, unknown> & { module_id: string; blocks_data: unknown }
   const byModule = new Map<string, Sec[]>()
   for (const s of (sectionRows ?? []) as Sec[]) {
     const arr = byModule.get(s.module_id) ?? []
@@ -192,22 +173,22 @@ export async function getCourseSource(courseId: string): Promise<CourseSource> {
   const chunks: string[] = []
 
   mods.forEach((m, i) => {
-    const lines: string[] = [`\n═══ MÓDULO ${i + 1}: ${m.title_es} ═══`]
-    if (m.subtitle_es) lines.push(m.subtitle_es)
-    if (m.objectives_es?.length) lines.push(`Objetivos: ${m.objectives_es.join(' · ')}`)
-    if (m.key_takeaways_es?.length)
-      lines.push(`Puntos clave: ${m.key_takeaways_es.join(' · ')}`)
+    const lines: string[] = [`\n═══ MÓDULO ${i + 1}: ${rowText(m)} ═══`]
+    if (rowText(m, 'subtitle')) lines.push(rowText(m, 'subtitle'))
+    if (rowList(m, 'objectives').length) lines.push(`Objetivos: ${rowList(m, 'objectives').join(' · ')}`)
+    if (rowList(m, 'key_takeaways').length)
+      lines.push(`Puntos clave: ${rowList(m, 'key_takeaways').join(' · ')}`)
 
     let moduleBody = 0
     for (const s of byModule.get(m.id) ?? []) {
       sections += 1
       const parts: string[] = []
-      if (s.body_es?.length) parts.push(...s.body_es.filter(Boolean))
-      if (s.callout_es) parts.push(`Nota importante: ${s.callout_es}`)
+      parts.push(...rowList(s, 'body').filter(Boolean))
+      if (rowText(s, 'callout')) parts.push(`Nota importante: ${rowText(s, 'callout')}`)
       const fromBlocks = blockText(s.blocks_data)
       if (fromBlocks.length) parts.push(...fromBlocks)
 
-      lines.push(`\n── ${s.heading_es} ──`)
+      lines.push(`\n── ${rowText(s, 'heading')} ──`)
       if (parts.length) {
         lines.push(parts.join('\n'))
         moduleBody += parts.join('\n').length
@@ -218,7 +199,7 @@ export async function getCourseSource(courseId: string): Promise<CourseSource> {
 
     // Un módulo de puro video o pura imagen no aporta nada que se pueda
     // preguntar: se avisa en vez de dejar que la IA lo rellene de su cabeza.
-    if (moduleBody < 200) emptyModules.push(m.title_es)
+    if (moduleBody < 200) emptyModules.push(rowText(m))
     chunks.push(lines.join('\n'))
   })
 

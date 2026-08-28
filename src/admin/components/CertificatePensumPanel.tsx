@@ -17,6 +17,7 @@ import {
 import { writeCertSharePreview } from '@/lib/certSharePreview'
 import { useUserStore } from '@/stores/userStore'
 import { useUndoHistory, type RegisterUndo } from '@/hooks/useUndoHistory'
+import { rowText } from '@/lib/contentLang'
 
 /** Una línea = un ítem. Es la forma más rápida de escribir listas a mano. */
 function parseLines(s: string): string[] {
@@ -472,7 +473,7 @@ export function CertificatePensumPanel({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-medium text-text">
-                          {i + 1}. {r.title_es}
+                          {i + 1}. {rowText(r)}
                         </span>
                         {/* Plegado, la fila enseña lo primero que dirá el
                             certificado. Un contador solo no dice si está bien. */}

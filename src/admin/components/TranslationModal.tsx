@@ -9,10 +9,14 @@ import { toast } from '@/stores/toastStore'
 import {
   getCourseTranslationState,
   getModuleTranslationState,
+  getSiteTranslationState,
   translateCourse,
   translateModule,
+  translateSite,
+  type ExamTranslationState,
   type ModuleTranslationState,
   type SimulationTranslationState,
+  type SitePiece,
   type TranslateProgress,
   type WorldTranslationState,
 } from '@/services/translation.service'
@@ -22,8 +26,12 @@ import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 type Phase = 'review' | 'running' | 'done' | 'error'
 
 interface TranslationModalProps {
-  /** Curso completo (todos sus módulos) o un módulo suelto. */
-  scope: 'course' | 'module'
+  /**
+   * Curso completo (todos sus módulos), un módulo suelto, o TODO el sitio
+   * (todos los cursos de la campaña —o de todas— más los módulos sin curso).
+   */
+  scope: 'course' | 'module' | 'site'
+  /** Id del curso o del módulo. En 'site', la campaña o '' para todas. */
   id: string
   title: string
   campaignId?: string | null
@@ -47,6 +55,8 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
   const [modules, setModules] = useState<ModuleTranslationState[]>([])
   const [simulations, setSimulations] = useState<SimulationTranslationState[]>([])
   const [worlds, setWorlds] = useState<WorldTranslationState[]>([])
+  const [exams, setExams] = useState<ExamTranslationState[]>([])
+  const [pieces, setPieces] = useState<SitePiece[]>([])
   const [courseTranslated, setCourseTranslated] = useState(true)
   const [onlyPending, setOnlyPending] = useState(true)
   const [progress, setProgress] = useState<TranslateProgress | null>(null)
@@ -66,15 +76,23 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
           setModules(s.modules)
           setSimulations(s.simulations)
           setWorlds(s.worlds)
+          setExams(s.exams)
           setCourseTranslated(s.courseTranslated)
         })
-      : getModuleTranslationState(id).then((s) => {
-          if (!alive) return
-          setModules([s])
-          setSimulations([])
-          setWorlds([])
-          setCourseTranslated(true)
-        })
+      : scope === 'site'
+        ? getSiteTranslationState(id || null).then((s) => {
+            if (!alive) return
+            setPieces(s.pieces)
+            setCourseTranslated(true)
+          })
+        : getModuleTranslationState(id).then((s) => {
+            if (!alive) return
+            setModules([s])
+            setSimulations([])
+            setWorlds([])
+            setExams([])
+            setCourseTranslated(true)
+          })
 
     load
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)))
@@ -93,11 +111,17 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
   const pending = useMemo(() => modules.filter((m) => !m.translated), [modules])
   const pendingSims = useMemo(() => simulations.filter((s) => !s.translated), [simulations])
   const pendingWorlds = useMemo(() => worlds.filter((w) => !w.translated), [worlds])
+  const pendingExams = useMemo(() => exams.filter((e) => !e.translated), [exams])
+  const pendingPieces = useMemo(() => pieces.filter((p) => !p.translated), [pieces])
   const targets = onlyPending ? pending : modules
   const simTargets = onlyPending ? pendingSims : simulations
   const worldTargets = onlyPending ? pendingWorlds : worlds
+  const examTargets = onlyPending ? pendingExams : exams
+  const siteTargets = onlyPending ? pendingPieces : pieces
   // Lo que se va a traducir, para el contador del botón y el resumen final.
-  const pieceCount = targets.length + simTargets.length + worldTargets.length
+  const pieceCount = scope === 'site'
+    ? siteTargets.length
+    : targets.length + simTargets.length + worldTargets.length + examTargets.length
   // La ficha del curso también es trabajo: puede faltar aunque lo demás esté listo.
   const canRun = pieceCount > 0 || (scope === 'course' && (!courseTranslated || !onlyPending))
   const noQuota = !!quota && !quota.unlimited && (quota.remaining ?? 0) <= 0
@@ -115,13 +139,29 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
       // El cupo se descuenta ANTES de gastar tokens: si no queda, no se llama a la IA.
       await consumeAiOperation(
         'translation',
-        scope === 'course' ? `Traducción de curso: ${title}` : `Traducción de módulo: ${title}`,
+        scope === 'course' ? `Traducción de curso: ${title}`
+          : scope === 'site' ? `Traducción de todo el sitio: ${title}`
+            : `Traducción de módulo: ${title}`,
         campaignId ?? null,
       )
       consumed = true
 
       if (scope === 'course') {
         await translateCourse(id, { onProgress: setProgress, signal: controller.signal, onlyPending })
+      } else if (scope === 'site') {
+        const res = await translateSite({
+          campaignId: id || null,
+          onProgress: setProgress,
+          signal: controller.signal,
+          onlyPending,
+        })
+        // Una pieza que falla no tumba la corrida, pero tampoco se calla.
+        if (res.failed.length) {
+          setError(t('admin.translate.site_failed', {
+            n: res.failed.length,
+            list: res.failed.slice(0, 3).map((f) => f.title).join(', '),
+          }))
+        }
       } else {
         await translateModule(id, { onProgress: setProgress, signal: controller.signal })
       }
@@ -165,7 +205,7 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
         exit={{ opacity: 0 }}
         role="dialog"
         aria-modal="true"
-        aria-label={t('admin.translate.title')}
+        aria-label={scope === 'site' ? t('admin.translate.site_title') : t('admin.translate.title')}
       >
         <div
           className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -188,7 +228,7 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
               <div className="min-w-0">
                 <h3 className="flex items-center gap-2 text-[16px] font-semibold text-text">
                   <Languages className="h-4 w-4 text-text-muted" />
-                  {t('admin.translate.title')}
+                  {scope === 'site' ? t('admin.translate.site_title') : t('admin.translate.title')}
                 </h3>
                 <p className="mt-0.5 truncate text-[12px] text-text-muted">{title}</p>
               </div>
@@ -208,7 +248,7 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
                 <div className="mb-4 flex gap-3 rounded-xl border border-line bg-glass/4 p-3.5">
                   <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand-green" />
                   <p className="text-[12.5px] leading-relaxed text-text-muted">
-                    {t('admin.translate.why')}
+                    {scope === 'site' ? t('admin.translate.site_hint') : t('admin.translate.why')}
                   </p>
                 </div>
               )}
@@ -261,17 +301,38 @@ export function TranslationModal({ scope, id, title, campaignId, onClose, onDone
                     {worlds.map((w) => (
                       <StatusRow key={w.worldId} label={w.name} translated={w.translated} t={t} />
                     ))}
+
+                    {/* El examen final: su ficha, sus temas y su banco de preguntas. */}
+                    {exams.length > 0 && (
+                      <li className="px-1 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+                        {t('admin.translate.exams')}
+                      </li>
+                    )}
+                    {exams.map((e) => (
+                      <StatusRow key={e.examId} label={e.title} translated={e.translated} t={t} />
+                    ))}
+
+                    {/* Todo el sitio: un renglón por curso y por módulo suelto. */}
+                    {pieces.map((p) => (
+                      <StatusRow key={`${p.kind}:${p.id}`} label={p.title} translated={p.translated} t={t} />
+                    ))}
+                    {scope === 'site' && pieces.length === 0 && (
+                      <li className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-text-subtle">
+                        {t('admin.translate.no_modules')}
+                      </li>
+                    )}
                   </ul>
 
-                  {/* Mundos y arenas guardan un solo idioma: no hay dónde traducirlas. */}
-                  {scope === 'course' && (
+                  {/* Qué arrastra cada pieza, para que nadie tenga que adivinarlo. */}
+                  {(scope === 'course' || scope === 'site') && (
                     <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-text-subtle">
-                      {t('admin.translate.scope_note')}
+                      {scope === 'site' ? t('admin.translate.scope_note_site') : t('admin.translate.scope_note')}
                     </p>
                   )}
 
                   {/* ── Alcance ── */}
-                  {scope === 'course' && modules.length + simulations.length + worlds.length > 0 && (
+                  {((scope === 'course' && modules.length + simulations.length + worlds.length + exams.length > 0)
+                    || (scope === 'site' && pieces.length > 0)) && (
                     <div className="mt-4 flex gap-1.5 rounded-xl border border-line bg-bg p-1">
                       {([true, false] as const).map((v) => (
                         <button
@@ -411,7 +472,7 @@ function RunningPanel({
   )
 }
 
-function DonePanel({ count, scope, t }: { count: number; scope: 'course' | 'module'; t: TFn }) {
+function DonePanel({ count, scope, t }: { count: number; scope: 'course' | 'module' | 'site'; t: TFn }) {
   return (
     <div className="flex flex-col items-center py-8 text-center">
       <motion.div
@@ -426,7 +487,9 @@ function DonePanel({ count, scope, t }: { count: number; scope: 'course' | 'modu
       <p className="mt-1 max-w-xs text-[12.5px] leading-relaxed text-text-muted">
         {scope === 'course'
           ? t('admin.translate.done_course', { count })
-          : t('admin.translate.done_module')}
+          : scope === 'site'
+            ? t('admin.translate.done_site', { count })
+            : t('admin.translate.done_module')}
       </p>
     </div>
   )

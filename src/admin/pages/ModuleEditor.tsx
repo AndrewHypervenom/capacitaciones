@@ -99,6 +99,7 @@ import { fingerprint } from '@/lib/fingerprint'
 import type { GameClassifyBlock } from '@/types/blocks' // Importamos el tipo del bloque nuevo
 import type { BlockWithId, ContentBlock, GameSortBlock } from '@/types/blocks'
 import { toast } from '@/stores/toastStore'
+import { initialContentLang, rowText } from '@/lib/contentLang'
 
 // ─── Tipos ────────────────────────────────────────────────────
 
@@ -393,7 +394,7 @@ function SectionEditorPanel({
     { value: 'game-sort' as SectionStyleOption,    label: t('admin.modules.style_game_sort'),    Icon: ArrowDownUp }, 
     { value: 'game-classify' as SectionStyleOption, label: 'Clasificar Casos', Icon: Layers },  
   ], [t])
-  const [lang, setLang] = useState<Lang>('es')
+  const [lang, setLang] = useState<Lang>(initialContentLang)
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1227,7 +1228,7 @@ interface MetaEditorPanelProps {
 
 function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo }: MetaEditorPanelProps) {
   const { t } = useTranslation()
-  const [lang, setLang] = useState<Lang>('es')
+  const [lang, setLang] = useState<Lang>(initialContentLang)
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1388,7 +1389,7 @@ function MetaEditorPanel({ mod, onSaved, onDirty, onRegisterSave, onRegisterUndo
           key_takeaways: keyTakeaways,
         }}
         activeLang={lang}
-        moduleTitle={mod.title_es}
+        moduleTitle={rowText(mod)}
         onApplyTranslation={(l, fields) => {
           if (fields.title !== undefined) setTitle(p => ({ ...p, [l]: fields.title }))
           if (fields.subtitle !== undefined) setSubtitle(p => ({ ...p, [l]: fields.subtitle }))
@@ -1585,7 +1586,7 @@ export default function ModuleEditor() {
       .then(({ data }) => {
         if (!active) return
         const row = data as { title_es?: string; is_published?: boolean } | null
-        setCourse(row ? { title: row.title_es ?? '', published: !!row.is_published } : null)
+        setCourse(row ? { title: rowText(row), published: !!row.is_published } : null)
       })
     return () => { active = false }
   }, [mod?.course_id])
@@ -1600,7 +1601,7 @@ export default function ModuleEditor() {
     const section = sections.find((s) => s.id === selectedSectionId)
     if (!section) return undefined
     return t('presence.detail_section', {
-      name: section.heading_es || t('common.untitled'),
+      name: rowText(section, 'heading') || t('common.untitled'),
     })
   }, [selectedSectionId, sections, t])
 
@@ -1609,7 +1610,7 @@ export default function ModuleEditor() {
       ? {
           type: 'module',
           id: moduleId,
-          title: mod?.title_es ?? '',
+          title: rowText(mod),
           detail: presenceDetail,
           campaignId: mod?.campaign_id ?? undefined,
         }
@@ -1623,7 +1624,7 @@ export default function ModuleEditor() {
   // El mismo `isDirty` alimenta el registro global: así el aviso de "Nueva
   // versión disponible" y el de cerrar la pestaña saben que aquí hay un módulo a
   // medio escribir, y lo nombran en vez de advertir en genérico.
-  useUnsavedFlag(isDirty, mod?.title_es || t('common.untitled'))
+  useUnsavedFlag(isDirty, rowText(mod) || t('common.untitled'))
 
   // Los paneles copian su fila a estado local al montarse: sin remontarlos, una
   // recarga cambia `sections` pero lo que se ve en el formulario sigue siendo lo
@@ -1982,7 +1983,7 @@ export default function ModuleEditor() {
     if (idx < 0) return t('admin.preview.module_context')
     return t('admin.preview.section_context', {
       n: idx + 1,
-      name: sections[idx].heading_es || t('common.untitled'),
+      name: rowText(sections[idx], 'heading') || t('common.untitled'),
     })
   })()
 
@@ -2106,7 +2107,7 @@ export default function ModuleEditor() {
                         'flex-1 min-w-0 text-[12px] font-medium leading-snug line-clamp-2 break-words',
                         selectedSectionId === section.id ? 'text-text' : '',
                       )}>
-                        {section.heading_es || t('common.untitled')}
+                        {rowText(section, 'heading') || t('common.untitled')}
                       </span>
                       <div className="flex items-center gap-1 shrink-0 opacity-100 md:opacity-50 md:group-hover:opacity-100 transition-opacity">
                         {section.ai_generated && <AiAuthoredBadge variant="dot" scope="section" />}
@@ -2176,7 +2177,7 @@ export default function ModuleEditor() {
               </button>
             </Tooltip>
             <span className="text-text-subtle/40 hidden lg:inline">/</span>
-            <span className="text-[13px] md:text-[14px] font-medium text-text truncate">{mod.title_es}</span>
+            <span className="text-[13px] md:text-[14px] font-medium text-text truncate">{rowText(mod)}</span>
             {isDirty && (
               <span
                 className="h-2 w-2 rounded-full bg-amber-400 shrink-0 animate-glow-pulse"
@@ -2277,7 +2278,7 @@ export default function ModuleEditor() {
                 key={`${selectedSectionId}:${reloadNonce}`}
                 section={sections.find((s) => s.id === selectedSectionId)!}
                 campaignId={mod.campaign_id}
-                moduleTitle={mod.title_es}
+                moduleTitle={rowText(mod)}
                 onSaved={handleSectionSaved}
                 onDirty={registerDirty}
                 onRegisterSave={(fn) => { saveFnRef.current = fn }}
@@ -2323,10 +2324,10 @@ export default function ModuleEditor() {
         onClose={() => setAiSectionOpen(false)}
         moduleId={mod.id}
         campaignId={mod.campaign_id}
-        moduleTitle={mod.title_es}
-        moduleSubtitle={mod.subtitle_es}
+        moduleTitle={rowText(mod)}
+        moduleSubtitle={rowText(mod, 'subtitle')}
         objectives={mod.objectives_es}
-        existingHeadings={sections.map((s) => s.heading_es).filter(Boolean)}
+        existingHeadings={sections.map((s) => rowText(s, 'heading')).filter(Boolean)}
         // Van al final: `sections.length` no sirve porque los módulos generados
         // numeran desde 1 y chocarían con la última sección.
         startOrder={Math.max(-1, ...sections.map((s) => s.sort_order)) + 1}
@@ -2336,7 +2337,7 @@ export default function ModuleEditor() {
         <TranslationModal
           scope="module"
           id={mod.id}
-          title={mod.title_es}
+          title={rowText(mod)}
           campaignId={mod.campaign_id}
           onClose={() => setTranslateOpen(false)}
           onDone={async () => {

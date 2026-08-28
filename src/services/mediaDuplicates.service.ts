@@ -21,6 +21,7 @@
 import { supabase } from '@/lib/supabase'
 import type { ContentBlock } from '@/types/blocks'
 import { hashFromMediaUrl } from '@/lib/fileHash'
+import { rowText } from '@/lib/contentLang'
 
 export type MediaKind = 'pdf' | 'video'
 
@@ -132,7 +133,7 @@ export async function collectCourseMedia(moduleId: string): Promise<MediaUse[]> 
   }
   if (!modules.length) return []
 
-  const titleById = new Map(modules.map((m) => [m.id, m.title_es ?? '']))
+  const titleById = new Map(modules.map((m) => [m.id, rowText(m)]))
   const { data: sections, error: secErr } = await supabase
     .from('module_sections')
     .select('id, module_id, heading_es, media_type, media_url, blocks_data')
@@ -145,7 +146,7 @@ export async function collectCourseMedia(moduleId: string): Promise<MediaUse[]> 
       moduleId: s.module_id,
       moduleTitle: titleById.get(s.module_id) ?? '',
       sectionId: s.id,
-      sectionHeading: s.heading_es ?? '',
+      sectionHeading: rowText(s, 'heading'),
     }
     // Video a nivel de sección (estilo video-interactivo), fuera de los bloques.
     if (s.media_type === 'video' && isHttp(s.media_url)) {

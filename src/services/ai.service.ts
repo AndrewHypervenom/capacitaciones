@@ -3,6 +3,7 @@ import { type AiLang, currentAiLang, otherLangs } from '@/lib/aiLang'
 import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import { unloopScenario, deferEndings, collapseEndings, minTurnsFor, isEndNode } from '@/lib/scenarioFlow'
 import type { ContentBlock } from '@/types/blocks'
+import { rowText, rowList } from '@/lib/contentLang'
 
 export interface CacheUsage {
   cache_creation_input_tokens: number
@@ -1202,8 +1203,8 @@ export async function getModuleContextText(moduleId: string): Promise<string> {
 
   return (data ?? [])
     .map((s) => {
-      const lines = [`## ${s.heading_es}`]
-      if (Array.isArray(s.body_es)) lines.push(...(s.body_es as string[]))
+      const lines = [`## ${rowText(s, 'heading')}`]
+      lines.push(...rowList(s, 'body'))
       return lines.join('\n')
     })
     .join('\n\n')

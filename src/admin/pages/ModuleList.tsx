@@ -34,6 +34,7 @@ import { usePresenceFocus } from '@/hooks/usePresenceFocus'
 import { usePresenceStore } from '@/stores/presenceStore'
 import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
+import { rowText } from '@/lib/contentLang'
 
 // Marca de que el staff ya usó la vista previa (apaga el pulso de la fila).
 const PREVIEW_HINT_KEY = 'module-preview-hint-seen'
@@ -182,7 +183,7 @@ export default function ModuleList() {
   const handleDelete = async (mod: DbModuleRow) => {
     const ok = await confirm({
       title: t('confirm.delete_module_title'),
-      description: t('confirm.delete_module_desc', { title: mod.title_es }),
+      description: t('confirm.delete_module_desc', { title: rowText(mod) }),
     })
     if (!ok) return
     try {
@@ -232,7 +233,7 @@ export default function ModuleList() {
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((c) => ({
         id: c.id,
-        title: c.title_es,
+        title: rowText(c),
         color: c.color,
         modules: (byCourse.get(c.id) ?? []).sort(
           (a, b) => (a.course_sort_order ?? 0) - (b.course_sort_order ?? 0),
@@ -268,7 +269,7 @@ export default function ModuleList() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[15px] font-semibold text-text truncate">
-                {mod.title_es}
+                {rowText(mod)}
               </span>
               <NeonBadge color={mod.is_published ? 'green' : 'neutral'} dot={mod.is_published}>
                 {mod.is_published ? t('admin.modules.published') : t('admin.modules.draft')}
@@ -478,7 +479,7 @@ export default function ModuleList() {
       {previewModule && (
         <LearnerPreviewModal
           path={`/modules/${previewModule.slug}`}
-          context={previewModule.title_es}
+          context={rowText(previewModule)}
           onClose={() => setPreviewModule(null)}
         />
       )}
@@ -488,7 +489,7 @@ export default function ModuleList() {
         <Modal
           onClose={() => setMoveModule(null)}
           title={t('admin.modules.move_title')}
-          subtitle={t('admin.modules.move_hint', { title: moveModule.title_es })}
+          subtitle={t('admin.modules.move_hint', { title: rowText(moveModule) })}
           icon={<ArrowLeftRight className="h-4 w-4" />}
           dismissible={!movingModule}
           footer={

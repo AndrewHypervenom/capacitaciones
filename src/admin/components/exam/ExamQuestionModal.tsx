@@ -18,6 +18,7 @@ import type {
 } from '@/types/exam'
 import { DIFFICULTIES, difficultyLabel, isLevelLocked, levelFits } from '@/lib/examLevel'
 import { cn } from '@/lib/cn'
+import { rowText } from '@/lib/contentLang'
 
 const ease = [0.16, 1, 0.3, 1] as const
 
@@ -239,7 +240,7 @@ export function ExamQuestionModal({
                 placeholder={t('admin.exam.q_no_domain_v2', 'Sin tema')}
                 options={[
                   { value: '', label: t('admin.exam.q_no_domain_v2', 'Sin tema') },
-                  ...domains.map((d) => ({ value: d.id, label: d.name_es, color: d.color })),
+                  ...domains.map((d) => ({ value: d.id, label: rowText(d, 'name'), color: d.color })),
                 ]}
               />
             </div>

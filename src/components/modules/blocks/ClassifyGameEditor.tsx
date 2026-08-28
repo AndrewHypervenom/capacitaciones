@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/Select'
 import type { DbSectionRow } from '@/services/modules.service'
 import type { GameClassifyBlock, ClassifyCategory, ClassifyCase } from '@/types/blocks'
 import { cn } from '@/lib/cn'
+import { rowText } from '@/lib/contentLang'
 
 interface Props {
   section: DbSectionRow
@@ -30,7 +31,7 @@ export function ClassifyGameEditor({ section, language, onBlockChange }: Props) 
     return {
       id: crypto.randomUUID(),
       type: 'game-classify',
-      title: { es: section.heading_es || 'Juego de Clasificación', en: '', pt: '' },
+      title: { es: rowText(section, 'heading') || 'Juego de Clasificación', en: '', pt: '' },
       instructions: { es: 'Arrastra cada caso a su categoría correspondiente.', en: '', pt: '' },
       categories: [
         { id: crypto.randomUUID(), name: { es: 'Categoría 1', en: '', pt: '' }, color: 'purple' },

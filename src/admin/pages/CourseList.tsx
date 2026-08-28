@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -55,6 +55,8 @@ import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { toast } from '@/stores/toastStore'
 import { deletionToast } from '@/lib/deletionToast'
+import { rowText } from '@/lib/contentLang'
+import { TranslationModal } from '@/admin/components/TranslationModal'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
@@ -85,6 +87,9 @@ export default function CourseList() {
   // El superadmin arranca viendo TODOS los cursos (no una campaña suelta como
   // filtro). El resto arranca vacío y cae en su campaña al cargarlas: partir de
   // la campaña "casa" la dejaba fija aunque ya no fuera accesible.
+  // Traducir TODO: cursos (con sus módulos, simuladores, mundos y examen) y los
+  // módulos sueltos. Solo superadmin: es la operación de IA más cara del sitio.
+  const [showTranslateAll, setShowTranslateAll] = useState(false)
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(
     isSuperAdmin ? ALL_CAMPAIGNS : '',
   )
@@ -362,7 +367,7 @@ export default function CourseList() {
     return <T extends { title_es: string }>(list: T[]): T[] => {
       if (sort === 'default') return list
       const cmp = (a: T, b: T) =>
-        a.title_es.localeCompare(b.title_es, 'es', { sensitivity: 'base', numeric: true })
+        rowText(a).localeCompare(rowText(b), 'es', { sensitivity: 'base', numeric: true })
       return [...list].sort(sort === 'az' ? cmp : (a, b) => cmp(b, a))
     }
   }, [sort])
@@ -374,7 +379,7 @@ export default function CourseList() {
     const list = sharedCourses.filter((c) => {
       if (sharedCampaignFilter && c.campaign_name !== sharedCampaignFilter) return false
       if (!q) return true
-      return `${c.title_es} ${c.description_es ?? ''} ${c.category ?? ''}`.toLowerCase().includes(q)
+      return `${rowText(c)} ${rowText(c, 'description')} ${c.category ?? ''}`.toLowerCase().includes(q)
     })
     return sortByTitle(list)
   }, [sharedCourses, sharedSearch, sharedCampaignFilter, sortByTitle])
@@ -445,7 +450,7 @@ export default function CourseList() {
   const handleDelete = async (course: CourseWithModules) => {
     const ok = await confirm({
       title: t('admin.courses.confirm_delete_title'),
-      description: t('admin.courses.confirm_delete_desc', { title: course.title_es }),
+      description: t('admin.courses.confirm_delete_desc', { title: rowText(course) }),
     })
     if (!ok) return
     try {
@@ -482,6 +487,21 @@ export default function CourseList() {
             <p className="text-text-muted text-[13px] mt-1">{t('admin.courses.subtitle')}</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+            {isSuperAdmin && (
+              <Tooltip label={t('admin.translate.site_hint')} maxWidth={300}>
+                <Button
+                  variant="glass"
+                  className="flex items-center gap-1.5 w-full sm:w-auto"
+                  onClick={() => setShowTranslateAll(true)}
+                >
+                  <span className="relative flex items-center">
+                    <Languages className="h-3.5 w-3.5" />
+                    <AiCreditsDot className="absolute -top-1.5 -right-1.5" />
+                  </span>
+                  {t('admin.translate.site_button')}
+                </Button>
+              </Tooltip>
+            )}
             {isSuperAdmin && (
               <Tooltip label={t('admin.courses.optimize_images_hint')} maxWidth={280}>
                 <Button
@@ -646,9 +666,9 @@ export default function CourseList() {
                     </div>
                   </div>
                   <div className="flex-1 px-4 pt-7 pb-3">
-                    <div className="text-[15px] font-semibold text-text truncate mb-1">{course.title_es}</div>
-                    {course.description_es && (
-                      <p className="text-[12px] text-text-muted line-clamp-2 mb-2">{stripMarkdown(course.description_es)}</p>
+                    <div className="text-[15px] font-semibold text-text truncate mb-1">{rowText(course)}</div>
+                    {rowText(course, 'description') && (
+                      <p className="text-[12px] text-text-muted line-clamp-2 mb-2">{stripMarkdown(rowText(course, 'description'))}</p>
                     )}
                     <div className="flex items-center gap-1.5 text-[12px] text-text-subtle">
                       <BookOpen className="h-3.5 w-3.5" />
@@ -773,11 +793,11 @@ export default function CourseList() {
 
               <div className="flex-1 px-4 pt-8 pb-4">
                 <h3 className="text-[15px] font-semibold text-text leading-snug line-clamp-1 mb-1">
-                  {course.title_es}
+                  {rowText(course)}
                 </h3>
-                {course.description_es && (
+                {rowText(course, 'description') && (
                   <p className="text-[12px] leading-relaxed text-text-muted line-clamp-2 mb-3">
-                    {stripMarkdown(course.description_es)}
+                    {stripMarkdown(rowText(course, 'description'))}
                   </p>
                 )}
                 {/* Datos del curso como pastillas: cada dato se lee solo, sin
@@ -1030,8 +1050,23 @@ export default function CourseList() {
       {previewCourse && (
         <LearnerPreviewModal
           path={`/courses/${previewCourse.slug}`}
-          context={previewCourse.title_es}
+          context={rowText(previewCourse)}
           onClose={() => setPreviewCourse(null)}
+        />
+      )}
+
+      {/* Traducir TODO: la campaña seleccionada, o el sitio entero si se está
+          mirando "todas". El modal enseña qué falta antes de gastar nada. */}
+      {showTranslateAll && (
+        <TranslationModal
+          scope="site"
+          id={selectedCampaignId === ALL_CAMPAIGNS ? '' : selectedCampaignId}
+          title={selectedCampaignId === ALL_CAMPAIGNS
+            ? t('admin.translate.site_all_campaigns')
+            : (campaigns.find((c) => c.id === selectedCampaignId)?.name ?? t('admin.translate.site_all_campaigns'))}
+          campaignId={selectedCampaignId === ALL_CAMPAIGNS ? null : selectedCampaignId}
+          onClose={() => setShowTranslateAll(false)}
+          onDone={() => setRefreshKey((k) => k + 1)}
         />
       )}
     </div>

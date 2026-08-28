@@ -89,6 +89,22 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
 
   const questions = marker.questions
 
+  // Dentro del recuadro del video hay mucho menos alto que en pantalla completa:
+  // por debajo de este umbral se aprieta todo (títulos, opciones, botones) y el
+  // contenido puede desplazarse, en vez de desbordarse fuera del reproductor.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [compact, setCompact] = useState(true)
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const measure = () => setCompact(el.clientHeight < 520)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // ── Orden aleatorio (solo de presentación) ──
   // `questionOrder[posición] = índice original` y lo mismo para las opciones de
   // cada pregunta. Todo lo demás —respuestas, puntaje, intento guardado— sigue
@@ -189,7 +205,11 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
 
   return (
     <motion.div
-      className="fixed inset-0 z-[9999] flex flex-col bg-zinc-950"
+      ref={rootRef}
+      // `absolute`, NO `fixed`: el quiz pertenece al recuadro del video. Con
+      // `fixed` se estiraba a la ventana entera —y por eso solo se veía bien en
+      // pantalla completa—: tapaba la página y quedaba fuera del reproductor.
+      className="absolute inset-0 z-50 flex flex-col bg-zinc-950 overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -205,7 +225,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
              el botón de reintentar de la lista de capítulos. */
           <motion.div
             key="intro"
-            className="flex-1 flex flex-col items-center justify-center px-8"
+            className={cn('flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center', compact ? 'px-4 py-4' : 'px-8')}
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
@@ -213,21 +233,22 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
           >
             <div className="w-full max-w-md text-center">
               <div className={cn(
-                'h-20 w-20 rounded-3xl flex items-center justify-center mb-6 mx-auto ring-1',
+                'rounded-3xl flex items-center justify-center mx-auto ring-1',
+                compact ? 'h-12 w-12 mb-3' : 'h-20 w-20 mb-6',
                 previousPassed
                   ? 'bg-neon-green/10 ring-neon-green/30 text-neon-green'
                   : 'bg-amber-400/10 ring-amber-400/20 text-amber-400',
               )}>
-                <RotateCcw className="h-8 w-8" />
+                <RotateCcw className={compact ? 'h-5 w-5' : 'h-8 w-8'} />
               </div>
 
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+              <p className={cn('text-[11px] font-semibold uppercase tracking-wider text-zinc-500', compact ? 'mb-1.5' : 'mb-3')}>
                 {marker.title[lang] || marker.title.es || t('video.quiz_tag')}
               </p>
-              <p className="text-[19px] font-semibold text-white leading-snug mb-2">
+              <p className={cn('font-semibold text-white leading-snug mb-2', compact ? 'text-[15px]' : 'text-[19px]')}>
                 {t('video.already_answered')}
               </p>
-              <p className="text-[14px] text-zinc-500 mb-8">
+              <p className={cn('text-zinc-500', compact ? 'text-[12.5px] mb-4' : 'text-[14px] mb-8')}>
                 {t('video.previous_score', {
                   score: previousResult?.score ?? 0,
                   total: previousResult?.total ?? questions.length,
@@ -236,18 +257,18 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                 {previousPassed ? t('video.previous_passed') : t('video.previous_failed')}
               </p>
 
-              <div className="space-y-2.5">
+              <div className={compact ? 'space-y-2' : 'space-y-2.5'}>
                 <button
                   type="button"
                   onClick={() => setPhase('question')}
-                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-amber-400 hover:bg-amber-300 transition-colors"
+                  className={cn('w-full flex items-center justify-center gap-2 rounded-2xl font-semibold text-black bg-amber-400 hover:bg-amber-300 transition-colors', compact ? 'py-2.5 text-[13px]' : 'py-4 text-[14px]')}
                 >
                   <RotateCcw className="h-4 w-4" /> {t('video.try_again')}
                 </button>
                 <button
                   type="button"
                   onClick={() => onComplete(previousResult?.score ?? 0, previousResult?.total ?? questions.length)}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[13.5px] font-medium text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors"
+                  className={cn('w-full flex items-center justify-center gap-2 rounded-2xl font-medium text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors', compact ? 'py-2.5 text-[12.5px]' : 'py-3.5 text-[13.5px]')}
                 >
                   <PlayCircle className="h-4 w-4" /> {t('video.keep_watching')}
                 </button>
@@ -264,14 +285,14 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
             transition={{ duration: 0.18 }}
           >
             {/* Barra superior */}
-            <div className="flex items-center justify-between px-8 py-5 border-b border-zinc-800/60 shrink-0">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-400">
+            <div className={cn('flex items-center justify-between border-b border-zinc-800/60 shrink-0', compact ? 'px-4 py-2.5' : 'px-8 py-5')}>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-400 shrink-0">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
                   {t('video.quiz_tag')}
                 </span>
                 <span className="text-zinc-700">·</span>
-                <span className="text-[13px] text-zinc-400 truncate max-w-[240px]">
+                <span className="text-[13px] text-zinc-400 truncate">
                   {marker.title[lang] || marker.title.es}
                 </span>
               </div>
@@ -307,21 +328,24 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
             </div>
 
             {/* Contenido — ocupa el espacio restante, centrado */}
-            <div className="flex-1 flex flex-col justify-center px-8 py-6 max-w-2xl mx-auto w-full min-h-0">
+            <div className={cn(
+              'flex-1 min-h-0 overflow-y-auto flex flex-col max-w-2xl mx-auto w-full',
+              compact ? 'justify-start px-4 py-3' : 'justify-center px-8 py-6',
+            )}>
               {/* Por qué se detuvo el video. Va solo en la primera pregunta: en las
                   siguientes ya se entendió y estorbaría. */}
               {currentIdx === 0 && !isAnswered && (
-                <p className="mb-5 rounded-xl border-l-2 border-amber-400/60 bg-amber-400/[0.06] px-4 py-2.5 text-[12.5px] leading-relaxed text-zinc-400">
+                <p className={cn('rounded-xl border-l-2 border-amber-400/60 bg-amber-400/[0.06] leading-relaxed text-zinc-400', compact ? 'mb-3 px-3 py-2 text-[11.5px]' : 'mb-5 px-4 py-2.5 text-[12.5px]')}>
                   {t('video.why_paused', { time: formatMarkerTime(marker.timeSeconds), count: questions.length })}
                   {' '}
                   {t('video.retry_hint', { pct: Math.round(VIDEO_QUIZ_PASS_RATIO * 100) })}
                 </p>
               )}
-              <p className="text-[22px] font-semibold text-white leading-snug mb-7">
+              <p className={cn('font-semibold text-white leading-snug break-words', compact ? 'text-[15px] mb-3' : 'text-[22px] mb-7')}>
                 {questionText}
               </p>
 
-              <div className="space-y-2.5">
+              <div className={compact ? 'space-y-1.5' : 'space-y-2.5'}>
                 {/* Se recorre el ORDEN barajado: `i` es el índice original de la
                     opción y `position` solo decide la letra que le toca. */}
                 {optionOrder.map((i, position) => {
@@ -330,7 +354,8 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                   const isCorrectOpt = i === q.correct
 
                   const cls = cn(
-                    'w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border text-left transition-all duration-200 text-[14px] font-medium',
+                    'w-full flex items-center gap-3 rounded-2xl border text-left transition-all duration-200 font-medium',
+                    compact ? 'px-3 py-2 text-[12.5px]' : 'px-4 py-3.5 text-[14px]',
                     !isAnswered
                       ? 'border-zinc-800 bg-zinc-900 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800 cursor-pointer'
                       : isSelectedOpt && isCorrect
@@ -345,7 +370,8 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                   return (
                     <button key={i} type="button" onClick={() => handleSelect(i)} disabled={isAnswered} className={cls}>
                       <span className={cn(
-                        'h-7 w-7 rounded-xl flex items-center justify-center text-[12px] font-bold shrink-0 transition-all duration-200',
+                        'rounded-xl flex items-center justify-center text-[12px] font-bold shrink-0 transition-all duration-200',
+                        compact ? 'h-6 w-6' : 'h-7 w-7',
                         !isAnswered
                           ? 'bg-zinc-800 text-zinc-400'
                           : isSelectedOpt && isCorrect
@@ -358,7 +384,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                       )}>
                         {LETTERS[position]}
                       </span>
-                      <span className="flex-1">{opt}</span>
+                      <span className="flex-1 break-words">{opt}</span>
                       {isAnswered && isSelectedOpt && isCorrect && <CheckCircle2 className="h-5 w-5 text-neon-green shrink-0" />}
                       {isAnswered && isSelectedOpt && !isCorrect && <XCircle className="h-5 w-5 text-red-400 shrink-0" />}
                       {isAnswered && !isSelectedOpt && isCorrectOpt && <CheckCircle2 className="h-5 w-5 text-neon-green/40 shrink-0" />}
@@ -373,7 +399,8 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={cn(
-                      'mt-4 rounded-xl px-4 py-3 text-[13px] leading-relaxed border-l-2',
+                      'rounded-xl leading-relaxed border-l-2',
+                      compact ? 'mt-2.5 px-3 py-2 text-[11.5px]' : 'mt-4 px-4 py-3 text-[13px]',
                       isCorrect
                         ? 'bg-neon-green/5 border-neon-green text-zinc-400'
                         : 'bg-zinc-900 border-amber-400 text-zinc-400',
@@ -392,7 +419,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
             <AnimatePresence>
               {isAnswered && (
                 <motion.div
-                  className="px-8 pb-8 max-w-2xl mx-auto w-full shrink-0"
+                  className={cn('max-w-2xl mx-auto w-full shrink-0', compact ? 'px-4 pb-3 pt-1' : 'px-8 pb-8')}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2 }}
@@ -401,7 +428,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                     <button
                       type="button"
                       onClick={handleNext}
-                      className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-white bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                      className={cn('w-full flex items-center justify-center gap-2 rounded-2xl font-semibold text-white bg-zinc-800 hover:bg-zinc-700 transition-colors', compact ? 'py-2.5 text-[13px]' : 'py-4 text-[14px]')}
                     >
                       {t('video.next_question')} <ChevronRight className="h-4 w-4" />
                     </button>
@@ -409,7 +436,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                     <button
                       type="button"
                       onClick={handleFinish}
-                      className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-amber-400 hover:bg-amber-300 transition-colors"
+                      className={cn('w-full flex items-center justify-center gap-2 rounded-2xl font-semibold text-black bg-amber-400 hover:bg-amber-300 transition-colors', compact ? 'py-2.5 text-[13px]' : 'py-4 text-[14px]')}
                     >
                       <Trophy className="h-4 w-4" /> {t('video.see_result')}
                     </button>
@@ -421,7 +448,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
         ) : (
           <motion.div
             key="summary"
-            className="flex-1 flex flex-col items-center justify-center px-8 relative"
+            className={cn('flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center relative', compact ? 'px-4 py-4' : 'px-8')}
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
@@ -442,22 +469,23 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
 
             <div className="w-full max-w-md text-center">
               <div className={cn(
-                'h-20 w-20 rounded-3xl flex items-center justify-center mb-6 mx-auto ring-1',
+                'rounded-3xl flex items-center justify-center mx-auto ring-1',
+                compact ? 'h-12 w-12 mb-3' : 'h-20 w-20 mb-6',
                 score / questions.length >= VIDEO_QUIZ_PASS_RATIO
                   ? 'bg-neon-green/10 ring-neon-green/30 text-neon-green'
                   : 'bg-amber-400/10 ring-amber-400/20 text-amber-400',
               )}>
-                <Trophy className="h-9 w-9" />
+                <Trophy className={compact ? 'h-6 w-6' : 'h-9 w-9'} />
               </div>
 
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+              <p className={cn('text-[11px] font-semibold uppercase tracking-wider text-zinc-500', compact ? 'mb-1.5' : 'mb-3')}>
                 {t('video.quiz_complete')}
               </p>
-              <p className="text-[52px] font-bold text-white leading-none mb-1 tabular-nums">
+              <p className={cn('font-bold text-white leading-none mb-1 tabular-nums', compact ? 'text-[34px]' : 'text-[52px]')}>
                 {score}
-                <span className="text-[28px] text-zinc-600 font-medium"> / {questions.length}</span>
+                <span className={cn('text-zinc-600 font-medium', compact ? 'text-[20px]' : 'text-[28px]')}> / {questions.length}</span>
               </p>
-              <p className="text-[14px] text-zinc-500 mb-6">
+              <p className={cn('text-zinc-500', compact ? 'text-[12.5px] mb-3' : 'text-[14px] mb-6')}>
                 {score === questions.length
                   ? t('video.all_correct')
                   : score / questions.length >= VIDEO_QUIZ_PASS_RATIO
@@ -465,7 +493,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                     : t('video.review_material')}
               </p>
 
-              <div className="h-1 w-full rounded-full bg-zinc-800 mb-8 overflow-hidden">
+              <div className={cn('h-1 w-full rounded-full bg-zinc-800 overflow-hidden', compact ? 'mb-4' : 'mb-8')}>
                 <motion.div
                   className={cn('h-full rounded-full', score / questions.length >= VIDEO_QUIZ_PASS_RATIO ? 'bg-neon-green' : 'bg-amber-400')}
                   initial={{ width: 0 }}
@@ -474,7 +502,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                 />
               </div>
 
-              <div className="space-y-2 mb-8 text-left">
+              <div className={cn('space-y-2 text-left', compact ? 'mb-4' : 'mb-8')}>
                 {/* En el mismo orden en que las respondió, no en el del editor. */}
                 {questionOrder.map((i) => {
                   const correct = answered[i] === questions[i].correct
@@ -483,7 +511,8 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                     <div
                       key={i}
                       className={cn(
-                        'flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[13px]',
+                        'flex items-center gap-2.5 rounded-xl',
+                        compact ? 'px-3 py-1.5 text-[11.5px]' : 'px-4 py-2.5 text-[13px]',
                         correct
                           ? 'bg-neon-green/10 text-zinc-300'
                           : 'bg-red-500/10 text-zinc-400',
@@ -498,11 +527,11 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                 })}
               </div>
 
-              <div className="space-y-2.5">
+              <div className={compact ? 'space-y-2' : 'space-y-2.5'}>
                 <button
                   type="button"
                   onClick={() => onComplete(score, questions.length)}
-                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-[14px] font-semibold text-black bg-neon-green hover:bg-neon-green/90 transition-colors"
+                  className={cn('w-full flex items-center justify-center gap-2 rounded-2xl font-semibold text-black bg-neon-green hover:bg-neon-green/90 transition-colors', compact ? 'py-2.5 text-[13px]' : 'py-4 text-[14px]')}
                 >
                   <PlayCircle className="h-4 w-4" />
                   {t('video.continue_video')}
@@ -512,12 +541,12 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                 <button
                   type="button"
                   onClick={handleRestart}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[13.5px] font-medium text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors"
+                  className={cn('w-full flex items-center justify-center gap-2 rounded-2xl font-medium text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors', compact ? 'py-2.5 text-[12.5px]' : 'py-3.5 text-[13.5px]')}
                 >
                   <RotateCcw className="h-4 w-4" />
                   {t('video.try_again')}
                 </button>
-                <p className="pt-1 text-[11.5px] leading-relaxed text-zinc-600">
+                <p className={cn('pt-1 leading-relaxed text-zinc-600', compact ? 'text-[10.5px]' : 'text-[11.5px]')}>
                   {score / questions.length >= VIDEO_QUIZ_PASS_RATIO
                     ? t('video.result_passed_hint')
                     : t('video.result_failed_hint', { pct: Math.round(VIDEO_QUIZ_PASS_RATIO * 100) })}

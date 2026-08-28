@@ -60,6 +60,7 @@ import { DIFFICULTIES, difficultyLabel, isLevelLocked, levelFits } from '@/lib/e
 import { AiLevelField, LevelGuard, LevelPill } from './ExamLevelBits'
 import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
+import { rowText } from '@/lib/contentLang'
 
 const ease = [0.16, 1, 0.3, 1] as const
 
@@ -568,7 +569,7 @@ function AiPanel({
         courseTitle: context.courseTitle,
         outline: src?.text ?? '',
         count,
-        domains: useOwnDomains ? domains.map((d) => d.name_es) : undefined,
+        domains: useOwnDomains ? domains.map((d) => rowText(d, 'name')) : undefined,
         difficulty,
         // El encargo del semáforo viaja por delante de lo que escriba el
         // capacitador: es el reparto exacto que le falta al examen.
@@ -578,7 +579,7 @@ function AiPanel({
 
       // Los dominios existentes mandan; los nuevos solo se crean si la IA los
       // propuso porque no había ninguno.
-      let byName = new Map(domains.map((d) => [d.name_es.toLowerCase().trim(), d.id]))
+      let byName = new Map(domains.map((d) => [rowText(d, 'name').toLowerCase().trim(), d.id]))
       if (!useOwnDomains && data.domains.length > 0) {
         byName = await onCreateDomains(data.domains)
       }
@@ -737,7 +738,7 @@ function AiPanel({
               {t('admin.exam.ai_domains_fixed', 'Se reparten entre tus temas')}
             </span>
             <span className="block text-[12px] text-text-muted">
-              {domains.map((d) => d.name_es).join(' · ')}
+              {domains.map((d) => rowText(d, 'name')).join(' · ')}
             </span>
           </span>
         </div>
@@ -1263,7 +1264,7 @@ function ReusePanel({
               placeholder={t('admin.exam.q_no_domain_v2', 'Sin tema')}
               options={[
                 { value: '', label: t('admin.exam.q_no_domain_v2', 'Sin tema') },
-                ...domains.map((d) => ({ value: d.id, label: d.name_es, color: d.color })),
+                ...domains.map((d) => ({ value: d.id, label: rowText(d, 'name'), color: d.color })),
               ]}
             />
           </div>
@@ -1448,7 +1449,7 @@ function ReusePanel({
                         },
                         ...domains.map((d) => ({
                           value: d.id,
-                          label: d.name_es,
+                          label: rowText(d, 'name'),
                           color: d.color,
                         })),
                       ]}
@@ -1751,7 +1752,7 @@ function FilePanel({
     try {
       // Los dominios nombrados en el archivo que aún no existen se crean, para
       // que la importación no pierda la clasificación por área.
-      const byName = new Map(domains.map((d) => [d.name_es.toLowerCase().trim(), d.id]))
+      const byName = new Map(domains.map((d) => [rowText(d, 'name').toLowerCase().trim(), d.id]))
       const missing = [
         ...new Set(
           ok
@@ -1812,7 +1813,7 @@ function FilePanel({
         documentText: doc.text,
         images,
         count,
-        domains: domains.length > 0 ? domains.map((d) => d.name_es) : undefined,
+        domains: domains.length > 0 ? domains.map((d) => rowText(d, 'name')) : undefined,
         difficulty,
         instruction: instruction.trim() || undefined,
         signal: abortRef.current.signal,
@@ -1856,7 +1857,7 @@ function FilePanel({
     try {
       // Los dominios del capacitador mandan; los que propuso la IA (porque no
       // había ninguno) se crean con el peso que ella repartió.
-      let byName = new Map(domains.map((d) => [d.name_es.toLowerCase().trim(), d.id]))
+      let byName = new Map(domains.map((d) => [rowText(d, 'name').toLowerCase().trim(), d.id]))
       if (domains.length === 0 && draft.domains.length > 0) {
         byName = await onCreateDomains(draft.domains)
       }
@@ -1998,7 +1999,7 @@ function FilePanel({
                 {t('admin.exam.ai_domains_fixed', 'Se reparten entre tus temas')}
               </span>
               {': '}
-              {domains.map((d) => d.name_es).join(' · ')}
+              {domains.map((d) => rowText(d, 'name')).join(' · ')}
             </p>
           )}
 

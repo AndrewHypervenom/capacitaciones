@@ -27,6 +27,7 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import type { Campaign } from '@/types/database'
+import { rowText } from '@/lib/contentLang'
 
 // El documento completo se convierte en UN solo módulo (no se divide en varios).
 // La generación con IA corre en SEGUNDO PLANO (indicador global, cancelable): esta
@@ -157,7 +158,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
             <ArrowLeft className="h-3.5 w-3.5" /> {course ? i18n.t('admin.import.back_to_course') : i18n.t('admin.import.back_to_campaigns')}
           </Link>
           <p className="text-[11px] text-text-subtle uppercase tracking-wider mb-2">
-            {course ? i18n.t('admin.import.crumb_course', { title: course.title_es }) : i18n.t('admin.import.crumb_campaigns')} / {i18n.t('admin.import.title_generate')}
+            {course ? i18n.t('admin.import.crumb_course', { title: rowText(course) }) : i18n.t('admin.import.crumb_campaigns')} / {i18n.t('admin.import.title_generate')}
           </p>
           <GradientHeading as="h1" variant="white" size="headline">
             {i18n.t('admin.import.title_generate')}

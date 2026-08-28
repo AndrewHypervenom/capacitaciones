@@ -10,6 +10,7 @@ import {
 import { moduleAiAssist } from '@/services/ai.service'
 import { logActivity } from '@/services/audit.service'
 import type { Json } from '@/types/database'
+import { pickLang, pickLangList } from '@/lib/contentLang'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CIRUGÍA DE MÓDULOS — separar uno largo en dos, unir dos en uno.
@@ -86,9 +87,13 @@ export interface SplitBridge {
 
 const sortSections = (rows: DbSectionRow[]) => [...rows].sort((a, b) => a.sort_order - b.sort_order)
 
+/** Cuerpo de la sección en el idioma que se haya escrito (no siempre el español). */
+const sectionBody = (s: DbSectionRow): string[] =>
+  pickLangList(s.body_es, s.body_en, s.body_pt, 'es')
+
 /** Primeras palabras del cuerpo de una sección, para que la IA sepa de qué va. */
 function excerpt(section: DbSectionRow, max = 220): string {
-  const text = (section.body_es ?? []).join(' ').replace(/\s+/g, ' ').trim()
+  const text = sectionBody(section).join(' ').replace(/\s+/g, ' ').trim()
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
@@ -108,7 +113,7 @@ function toSurgeryModule(mod: DbModuleWithSections) {
 
 /** Reparte los minutos según cuánto texto se lleva cada parte (mínimo 1). */
 function splitDuration(total: number, sections: DbSectionRow[], cutIndex: number): [number, number] {
-  const weight = (s: DbSectionRow) => Math.max(1, (s.body_es ?? []).join(' ').length)
+  const weight = (s: DbSectionRow) => Math.max(1, sectionBody(s).join(' ').length)
   const all = sections.reduce((sum, s) => sum + weight(s), 0)
   const first = sections.slice(0, cutIndex).reduce((sum, s) => sum + weight(s), 0)
   const a = Math.max(1, Math.round((total * first) / (all || 1)))
@@ -217,7 +222,7 @@ export async function planSplitWithAi(opts: {
     contentType: 'meta',
     sourceLang: 'es',
     fields: {},
-    moduleTitle: mod.title_es,
+    moduleTitle: pickLang(mod.title_es, mod.title_en, mod.title_pt, 'es'),
     surgery: {
       want: opts.want,
       cutIndex: opts.cutIndex,
@@ -240,7 +245,7 @@ export async function planMergeWithAi(opts: {
     contentType: 'meta',
     sourceLang: 'es',
     fields: {},
-    moduleTitle: mods[0]?.title_es,
+    moduleTitle: mods[0] ? pickLang(mods[0].title_es, mods[0].title_en, mods[0].title_pt, 'es') : undefined,
     surgery: {
       want: opts.want,
       instruction: opts.instruction?.trim() || undefined,
@@ -400,7 +405,7 @@ export async function splitModule(opts: SplitOptions): Promise<SplitOutcome> {
     action: 'edit_content',
     entityType: 'modules',
     entityId: src.id,
-    entityLabel: src.title_es,
+    entityLabel: pickLang(src.title_es, src.title_en, src.title_pt, 'es'),
     campaignId: src.campaign_id,
     detail: { operacion: 'separar', corte: cut, modulo_nuevo: newModuleId, secciones_movidas: tail.length },
   }).catch(() => {})
@@ -527,12 +532,12 @@ export async function mergeModules(opts: MergeOptions): Promise<PendingSurgery> 
     action: 'edit_content',
     entityType: 'modules',
     entityId: keep.id,
-    entityLabel: keep.title_es,
+    entityLabel: pickLang(keep.title_es, keep.title_en, keep.title_pt, 'es'),
     campaignId: keep.campaign_id,
     detail: {
       operacion: 'unir',
       absorbido: absorbed.id,
-      absorbido_titulo: absorbed.title_es,
+      absorbido_titulo: pickLang(absorbed.title_es, absorbed.title_en, absorbed.title_pt, 'es'),
       secciones_movidas: movedSections.length,
     },
   }).catch(() => {})

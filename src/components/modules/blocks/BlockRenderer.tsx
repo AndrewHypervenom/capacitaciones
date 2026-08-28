@@ -22,6 +22,23 @@ import { StatBlockRenderer } from './StatBlock';
 import { HotspotImageBlockRenderer } from './HotspotImageBlock';
 import { PdfBlockRenderer } from './PdfBlock';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
+
+/**
+ * Texto en el idioma pedido, cayendo a CUALQUIER idioma con contenido.
+ *
+ * Un quiz escrito en inglés o portugués deja los campos `es` vacíos, y el
+ * aprendiz en español se encontraba la pregunta —o peor, las opciones— en
+ * blanco. Traducir es decisión aparte; mientras no se traduzca, se muestra lo
+ * que hay antes que nada.
+ */
+function pickML(v: { es: string; en: string; pt: string } | undefined, lang: 'es' | 'en' | 'pt'): string {
+  if (!v) return '';
+  return v[lang]?.trim() || v.es?.trim() || v.en?.trim() || v.pt?.trim() || '';
+}
+
+function fillML(v: { es: string; en: string; pt: string }): { es: string; en: string; pt: string } {
+  return { es: pickML(v, 'es'), en: pickML(v, 'en'), pt: pickML(v, 'pt') };
+}
 import { SimpleVideo } from '@/components/modules/SimpleVideo';
 import { inlineVideoSection } from '@/lib/videoPlaylist';
 import { cn } from '@/lib/cn';
@@ -201,14 +218,14 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           userId={userId}
           campaignId={campaignId}
           quiz={{
-            question: block.question,
+            question: fillML(block.question),
             options: {
-              es: block.options.map((o) => o.text.es),
-              en: block.options.map((o) => o.text.en),
-              pt: block.options.map((o) => o.text.pt),
+              es: block.options.map((o) => pickML(o.text, 'es')),
+              en: block.options.map((o) => pickML(o.text, 'en')),
+              pt: block.options.map((o) => pickML(o.text, 'pt')),
             },
             correct: block.correct,
-            explanation: block.explanation,
+            explanation: fillML(block.explanation),
           }}
           language={language}
         />

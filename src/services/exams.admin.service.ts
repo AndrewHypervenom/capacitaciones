@@ -15,6 +15,7 @@ import {
   type ExamResultRow,
 } from '@/types/exam'
 import type { ContentBlock, QuizBlock, VideoMarkerRaw } from '@/types/blocks'
+import { pickLang } from '@/lib/contentLang'
 
 /* ────────────────────────────────────────────────────────────────────────────
    Examen final — lado del capacitador / superadmin.
@@ -96,7 +97,7 @@ export async function createCourseExam(
     action: 'insert',
     entityType: 'course_exams',
     entityId: (data as CourseExam).id,
-    entityLabel: (data as CourseExam).title_es,
+    entityLabel: pickLang((data as CourseExam).title_es, (data as CourseExam).title_en, (data as CourseExam).title_pt, 'es'),
     campaignId,
   }).catch(() => {})
 
@@ -430,6 +431,14 @@ export interface ReusableScan {
  * opción `i` antes de quitar los huecos. Quien sepa cuál era la correcta la
  * traduce con `mapCorrect`.
  */
+/** Título/enunciado en el primer idioma con texto (el examen no puede quedar mudo). */
+const modTitle = (m: { title_es: string; title_en?: string | null; title_pt?: string | null }) =>
+  pickLang(m.title_es, m.title_en, m.title_pt, 'es')
+const secHeading = (s: { heading_es: string; heading_en?: string | null; heading_pt?: string | null }) =>
+  pickLang(s.heading_es, s.heading_en, s.heading_pt, 'es')
+const qText = (q: { question_es: string; question_en?: string | null; question_pt?: string | null }) =>
+  pickLang(q.question_es, q.question_en, q.question_pt, 'es')
+
 function toExamOptions(
   es: string[],
   en: (string | null)[] | null | undefined,
@@ -437,11 +446,18 @@ function toExamOptions(
 ): { options: ExamOption[]; origin: number[] } {
   const options: ExamOption[] = []
   const origin: number[] = []
-  ;(es ?? []).forEach((text, i) => {
+  // Qué lista manda: la primera que tenga opciones escritas. Recorriendo siempre
+  // el español, un quiz escrito en inglés o portugués daba CERO opciones y la
+  // pregunta se descartaba con "pocas opciones" sin que nadie entendiera por qué.
+  const filled = (a: (string | null)[] | null | undefined) => (a ?? []).filter((t) => (t ?? '').trim()).length
+  const ref: (string | null)[] = filled(es) ? es : filled(en) ? (en as (string | null)[]) : filled(pt) ? (pt as (string | null)[]) : (es ?? [])
+  ref.forEach((text, i) => {
     if ((text ?? '').trim() === '') return
     options.push({
       id: OPTION_IDS[options.length] ?? `o${options.length}`,
-      text_es: text,
+      // El examen siempre tiene que poder pintar algo: si falta el español se
+      // usa el texto del idioma de referencia (traducir es decisión aparte).
+      text_es: (es?.[i] ?? '').trim() || (text as string),
       text_en: en?.[i] ?? null,
       text_pt: pt?.[i] ?? null,
     })
@@ -600,21 +616,21 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableSc
     if (!sec || !mod) continue
     const { options, origin } = toExamOptions(q.options_es, q.options_en, q.options_pt)
     if (options.length < 2) {
-      skip(mod, sec.heading_es, q.question_es, 'few_options')
+      skip(mod, secHeading(sec), qText(q), 'few_options')
       continue
     }
     const correctId = mapCorrect(origin, q.correct_index)
     if (!correctId) {
-      skip(mod, sec.heading_es, q.question_es, 'blank_answer')
+      skip(mod, secHeading(sec), qText(q), 'blank_answer')
       continue
     }
     out.push({
       key: q.id,
       locator: { kind: 'quiz', quizId: q.id },
       moduleId: mod.id,
-      moduleTitle: mod.title_es,
-      sectionHeading: sec.heading_es,
-      text_es: q.question_es,
+      moduleTitle: modTitle(mod),
+      sectionHeading: secHeading(sec),
+      text_es: qText(q),
       text_en: q.question_en,
       text_pt: q.question_pt,
       options,
@@ -646,24 +662,24 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableSc
       )
       const enunciado = (b.question?.es ?? '').trim()
       if (!enunciado) {
-        skip(mod, sec.heading_es, '', 'no_text')
+        skip(mod, secHeading(sec), '', 'no_text')
         return
       }
       if (options.length < 2) {
-        skip(mod, sec.heading_es, enunciado, 'few_options')
+        skip(mod, secHeading(sec), enunciado, 'few_options')
         return
       }
       const correctId = mapCorrect(origin, b.correct)
       if (!correctId) {
-        skip(mod, sec.heading_es, enunciado, 'blank_answer')
+        skip(mod, secHeading(sec), enunciado, 'blank_answer')
         return
       }
       out.push({
         key: `block:${sec.id}:${i}`,
         locator: { kind: 'block', sectionId: sec.id, index: i },
         moduleId: mod.id,
-        moduleTitle: mod.title_es,
-        sectionHeading: sec.heading_es,
+        moduleTitle: modTitle(mod),
+        sectionHeading: secHeading(sec),
         text_es: b.question.es,
         text_en: b.question.en || null,
         text_pt: b.question.pt || null,
@@ -687,27 +703,27 @@ export async function getReusableQuestions(courseId: string): Promise<ReusableSc
       if (m?.type !== 'quiz') continue
       ;(m.questions ?? []).forEach((q, i) => {
         const { options, origin } = toExamOptions(q.options_es, q.options_en, q.options_pt)
-        const enunciado = (q.question_es ?? '').trim()
+        const enunciado = qText(q)
         if (!enunciado) {
-          skip(mod, sec.heading_es, '', 'no_text')
+          skip(mod, secHeading(sec), '', 'no_text')
           return
         }
         if (options.length < 2) {
-          skip(mod, sec.heading_es, enunciado, 'few_options')
+          skip(mod, secHeading(sec), enunciado, 'few_options')
           return
         }
         const correctId = mapCorrect(origin, q.correct)
         if (!correctId) {
-          skip(mod, sec.heading_es, enunciado, 'blank_answer')
+          skip(mod, secHeading(sec), enunciado, 'blank_answer')
           return
         }
         out.push({
           key: `video:${sec.id}:${m.id}:${i}`,
           locator: { kind: 'video', sectionId: sec.id, markerId: m.id, index: i },
           moduleId: mod.id,
-          moduleTitle: mod.title_es,
-          sectionHeading: sec.heading_es,
-          text_es: q.question_es,
+          moduleTitle: modTitle(mod),
+          sectionHeading: secHeading(sec),
+          text_es: qText(q),
           text_en: q.question_en || null,
           text_pt: q.question_pt || null,
           options,
@@ -1344,7 +1360,7 @@ export function checkExamHealth(
   const quotas = questionQuotas(effective, weights)
   const domainQuotas = domains.map((d, i) => ({
     id: d.id,
-    name: d.name_es,
+    name: pickLang(d.name_es, d.name_en, d.name_pt, 'es'),
     have: counts[i],
     need: quotas[i] ?? 0,
   }))
@@ -1369,7 +1385,7 @@ export function checkExamHealth(
   const fillPlan = domains
     .map((d, i) => ({
       id: d.id,
-      name: d.name_es,
+      name: pickLang(d.name_es, d.name_en, d.name_pt, 'es'),
       missing: Math.max(0, (wanted[i] ?? 0) - counts[i]),
     }))
     .filter((d) => d.missing > 0)

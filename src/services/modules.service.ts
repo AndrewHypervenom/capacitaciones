@@ -13,31 +13,111 @@ import { COURSE_MEDIA_PRESET, isOptimizableImage, optimizeImage } from '@/lib/im
 export type { VideoMarkerRaw, VideoQuestionRaw } from '@/types/blocks'
 import { clampQuizTime, type VideoMarkerRaw } from '@/types/blocks'
 
+/** Idiomas en los que puede venir escrito un marcador. */
+const MARKER_LANGS = ['es', 'en', 'pt'] as const
+
+/** ¿Cuántas opciones de verdad (no vacías) trae esta lista? */
+function realOptionCount(opts?: string[] | null): number {
+  return (opts ?? []).filter((o) => (o ?? '').trim().length > 0).length
+}
+
+/**
+ * Texto de la pregunta/explicación en el idioma pedido, cayendo a CUALQUIER
+ * idioma que sí tenga contenido.
+ *
+ * El contenido ya no se escribe siempre en español (se genera y se edita en el
+ * idioma de la interfaz), así que caer solo al campo `_es` dejaba la pregunta en
+ * blanco para todos los demás.
+ */
+function pickText(q: Record<string, unknown>, field: string, lang: string): string {
+  const own = (q[`${field}_${lang}`] as string | undefined)?.trim()
+  if (own) return own
+  for (const l of MARKER_LANGS) {
+    const v = (q[`${field}_${l}`] as string | undefined)?.trim()
+    if (v) return v
+  }
+  return ''
+}
+
+/** Párrafos en el idioma pedido, cayendo al primer idioma que tenga alguno. */
+function pickList(r: Record<string, unknown>, field: string, lang: string): string[] {
+  const own = r[`${field}_${lang}`] as string[] | undefined
+  if ((own ?? []).some((p) => (p ?? '').trim())) return own as string[]
+  for (const l of MARKER_LANGS) {
+    const v = r[`${field}_${l}`] as string[] | undefined
+    if ((v ?? []).some((p) => (p ?? '').trim())) return v as string[]
+  }
+  return own ?? []
+}
+
+/**
+ * Opciones en el idioma pedido, cayendo al primer idioma que tenga al menos dos
+ * opciones escritas. El índice de la correcta es el MISMO en los tres idiomas,
+ * así que caer de idioma no descuadra la respuesta.
+ */
+function pickOptions(q: Record<string, unknown>, lang: string): string[] {
+  const own = q[`options_${lang}`] as string[] | undefined
+  if (realOptionCount(own) >= 2) return own as string[]
+  for (const l of MARKER_LANGS) {
+    const v = q[`options_${l}`] as string[] | undefined
+    if (realOptionCount(v) >= 2) return v as string[]
+  }
+  // Ninguno llega a dos: se devuelve lo que haya (quien filtra vuelve a contar).
+  for (const l of MARKER_LANGS) {
+    const v = q[`options_${l}`] as string[] | undefined
+    if (realOptionCount(v) > 0) return v as string[]
+  }
+  return own ?? []
+}
+
 export function mapVideoMarkersFromDb(raw: unknown): VideoMarker[] {
   if (!raw || !Array.isArray(raw)) return []
   return (raw as VideoMarkerRaw[]).map((m) => {
+    const mr = m as unknown as Record<string, unknown>
     const base = {
       id: m.id,
       timeSeconds: m.timeSeconds ?? 0,
-      title: { es: m.title_es || '', en: m.title_en || m.title_es || '', pt: m.title_pt || m.title_es || '' },
+      title: {
+        es: pickText(mr, 'title', 'es'),
+        en: pickText(mr, 'title', 'en'),
+        pt: pickText(mr, 'title', 'pt'),
+      },
     }
     if (m.type === 'quiz') {
       // Solo cuentan las preguntas realmente jugables: con enunciado y al menos
       // dos opciones. Una pregunta a medias (IA interrumpida, edición sin guardar)
       // reventaba el overlay al abrirlo y el video se quedaba trancado.
+      // OJO: se mira en los TRES idiomas. Mirando solo `_es` —que en una pregunta
+      // nueva viene con cuatro cadenas vacías—, un quiz escrito en inglés o en
+      // portugués se daba por vacío y se degradaba a capítulo: el capacitador veía
+      // "no me guarda las preguntas" cuando en realidad sí estaban guardadas.
       const questions = (m.questions ?? [])
-        .filter((q) => {
-          const text = (q.question_es || q.question_en || q.question_pt || '').trim()
-          const opts = (q.options_es?.length ? q.options_es : q.options_en?.length ? q.options_en : q.options_pt) ?? []
-          return text.length > 0 && opts.filter((o) => (o ?? '').trim().length > 0).length >= 2
+        .map((q) => q as unknown as Record<string, unknown>)
+        .filter((q) => pickText(q, 'question', 'es').length > 0 && realOptionCount(pickOptions(q, 'es')) >= 2)
+        .map((q) => {
+          const correct = (q.correct as number) ?? 0
+          const opts = { es: pickOptions(q, 'es'), en: pickOptions(q, 'en'), pt: pickOptions(q, 'pt') }
+          // Las opciones se guardan siempre de a cuatro. Si el capacitador solo
+          // escribió dos, las otras dos salían como botones en blanco: se recortan
+          // las vacías del final (igual en los tres idiomas, para no mover el
+          // índice de la correcta).
+          const cut = Math.max(
+            correct + 1,
+            ...MARKER_LANGS.map((l) => {
+              const a = opts[l]
+              let last = 0
+              a.forEach((o, i) => { if ((o ?? '').trim()) last = i + 1 })
+              return last
+            }),
+          )
+          return {
+            id: q.id as string,
+            question: { es: pickText(q, 'question', 'es'), en: pickText(q, 'question', 'en'), pt: pickText(q, 'question', 'pt') },
+            options: { es: opts.es.slice(0, cut), en: opts.en.slice(0, cut), pt: opts.pt.slice(0, cut) },
+            correct,
+            explanation: { es: pickText(q, 'explanation', 'es'), en: pickText(q, 'explanation', 'en'), pt: pickText(q, 'explanation', 'pt') },
+          }
         })
-        .map((q) => ({
-          id: q.id,
-          question: { es: q.question_es || '', en: q.question_en || q.question_es || '', pt: q.question_pt || q.question_es || '' },
-          options: { es: q.options_es || [], en: q.options_en || q.options_es || [], pt: q.options_pt || q.options_es || [] },
-          correct: q.correct ?? 0,
-          explanation: { es: q.explanation_es || '', en: q.explanation_en || q.explanation_es || '', pt: q.explanation_pt || q.explanation_es || '' },
-        }))
 
       // Un "quiz" sin ninguna pregunta usable no es un quiz: se degrada a capítulo
       // para que no bloquee el avance del video con una compuerta que nunca se
@@ -224,25 +304,31 @@ function dbRowToLearningModule(
       type QuizItem = NonNullable<typeof s.section_quizzes>[number]
       const quizArr: QuizItem[] = !rawQ ? [] : Array.isArray(rawQ) ? (rawQ as QuizItem[]) : [rawQ as QuizItem]
       const quiz = quizArr[0]
+      // Todo cae al primer idioma con contenido, no al español: una sección
+      // escrita en portugués (el idioma del sitio de quien la escribió) dejaba
+      // `_es` vacío y se veía en blanco para todos los demás.
+      const sr = s as unknown as Record<string, unknown>
       const section: ModuleSection = {
         heading: {
-          es: s.heading_es,
-          en: s.heading_en ?? s.heading_es,
-          pt: s.heading_pt ?? s.heading_es,
+          es: pickText(sr, 'heading', 'es'),
+          en: pickText(sr, 'heading', 'en'),
+          pt: pickText(sr, 'heading', 'pt'),
         },
         body: {
-          es: s.body_es ?? [],
-          en: s.body_en ?? s.body_es ?? [],
-          pt: s.body_pt ?? s.body_es ?? [],
+          es: pickList(sr, 'body', 'es'),
+          en: pickList(sr, 'body', 'en'),
+          pt: pickList(sr, 'body', 'pt'),
         },
       }
-      if (s.callout_kind && s.callout_es) {
+      // El aviso se muestra si tiene texto en CUALQUIER idioma (antes exigía el
+      // español y uno escrito en otro idioma desaparecía de la vista).
+      if (s.callout_kind && pickText(sr, 'callout', 'es')) {
         section.callout = {
           kind: s.callout_kind,
           text: {
-            es: s.callout_es,
-            en: s.callout_en ?? s.callout_es,
-            pt: s.callout_pt ?? s.callout_es,
+            es: pickText(sr, 'callout', 'es'),
+            en: pickText(sr, 'callout', 'en'),
+            pt: pickText(sr, 'callout', 'pt'),
           },
         }
       }
@@ -260,32 +346,37 @@ function dbRowToLearningModule(
           size: s.media_size ?? 'full',
           align: s.media_align ?? 'center',
           shadow: s.media_shadow ?? false,
-          ...(s.media_caption_es && {
+          ...(pickText(sr, 'media_caption', 'es') && {
             caption: {
-              es: s.media_caption_es,
-              en: s.media_caption_en ?? s.media_caption_es,
-              pt: s.media_caption_pt ?? s.media_caption_es,
+              es: pickText(sr, 'media_caption', 'es'),
+              en: pickText(sr, 'media_caption', 'en'),
+              pt: pickText(sr, 'media_caption', 'pt'),
             },
           }),
         }
       }
       if (quiz) {
+        // Igual que en los marcadores de video: el quiz pudo escribirse en
+        // inglés o portugués (se genera en el idioma de la interfaz). Cayendo
+        // solo a `_es` —vacío en ese caso— el aprendiz se encontraba la pregunta
+        // o las opciones en blanco.
+        const qr = quiz as unknown as Record<string, unknown>
         const sq: SectionQuiz = {
           question: {
-            es: quiz.question_es,
-            en: quiz.question_en ?? quiz.question_es,
-            pt: quiz.question_pt ?? quiz.question_es,
+            es: pickText(qr, 'question', 'es'),
+            en: pickText(qr, 'question', 'en'),
+            pt: pickText(qr, 'question', 'pt'),
           },
           options: {
-            es: quiz.options_es ?? [],
-            en: quiz.options_en ?? quiz.options_es ?? [],
-            pt: quiz.options_pt ?? quiz.options_es ?? [],
+            es: pickOptions(qr, 'es'),
+            en: pickOptions(qr, 'en'),
+            pt: pickOptions(qr, 'pt'),
           },
           correct: quiz.correct_index,
           explanation: {
-            es: quiz.explanation_es ?? '',
-            en: quiz.explanation_en ?? quiz.explanation_es ?? '',
-            pt: quiz.explanation_pt ?? quiz.explanation_es ?? '',
+            es: pickText(qr, 'explanation', 'es'),
+            en: pickText(qr, 'explanation', 'en'),
+            pt: pickText(qr, 'explanation', 'pt'),
           },
         }
         section.quiz = sq
@@ -296,6 +387,7 @@ function dbRowToLearningModule(
       return section
     })
 
+  const rr = row as unknown as Record<string, unknown>
   return {
     id: row.slug,
     dbId: row.id,
@@ -304,25 +396,27 @@ function dbRowToLearningModule(
     courseSortOrder: row.course_sort_order ?? 0,
     icon: row.icon,
     duration: row.duration_min,
+    // Mismo criterio que en las secciones: el módulo pudo escribirse en
+    // cualquier idioma, así que cada campo cae al primero que tenga contenido.
     title: {
-      es: row.title_es,
-      en: row.title_en ?? row.title_es,
-      pt: row.title_pt ?? row.title_es,
+      es: pickText(rr, 'title', 'es'),
+      en: pickText(rr, 'title', 'en'),
+      pt: pickText(rr, 'title', 'pt'),
     },
     subtitle: {
-      es: row.subtitle_es ?? '',
-      en: row.subtitle_en ?? row.subtitle_es ?? '',
-      pt: row.subtitle_pt ?? row.subtitle_es ?? '',
+      es: pickText(rr, 'subtitle', 'es'),
+      en: pickText(rr, 'subtitle', 'en'),
+      pt: pickText(rr, 'subtitle', 'pt'),
     },
     objectives: {
-      es: row.objectives_es ?? [],
-      en: row.objectives_en ?? row.objectives_es ?? [],
-      pt: row.objectives_pt ?? row.objectives_es ?? [],
+      es: pickList(rr, 'objectives', 'es'),
+      en: pickList(rr, 'objectives', 'en'),
+      pt: pickList(rr, 'objectives', 'pt'),
     },
     keyTakeaways: {
-      es: row.key_takeaways_es ?? [],
-      en: row.key_takeaways_en ?? row.key_takeaways_es ?? [],
-      pt: row.key_takeaways_pt ?? row.key_takeaways_es ?? [],
+      es: pickList(rr, 'key_takeaways', 'es'),
+      en: pickList(rr, 'key_takeaways', 'en'),
+      pt: pickList(rr, 'key_takeaways', 'pt'),
     },
     soundTheme: row.sound_theme ?? 'chime',
     sections,

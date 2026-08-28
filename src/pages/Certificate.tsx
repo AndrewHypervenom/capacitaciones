@@ -18,11 +18,10 @@ import { Reveal } from '@/components/ui/Reveal';
 import { useProgressStore } from '@/stores/progressStore';
 import { CertificateSheet } from '@/components/certificate/CertificateSheet';
 import { CertificateFrame, downloadCertificatePdf } from '@/components/certificate/CertificateFrame';
+import { pickLang } from '@/lib/contentLang';
 
 function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
-  if (lang === 'en') return en || es || '';
-  if (lang === 'pt') return pt || es || '';
-  return es || '';
+  return pickLang(es, en, pt, lang);
 }
 
 // ── Corporate palette (usada por LockedPreview) ──────────

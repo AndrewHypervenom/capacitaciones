@@ -14,6 +14,7 @@ import {
   type Lang,
 } from '@/stores/gamificationStore';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { BadgeTooltip } from '@/components/gamification/BadgeTooltip';
 import { cn } from '@/lib/cn';
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -256,34 +257,35 @@ function BadgeTile({
 }: { badge: BadgeDef; earned: boolean; lang: Lang; index: number; onSelect: () => void }) {
   const reduce = useReducedMotion();
   return (
-    <motion.button
-      type="button"
-      onClick={onSelect}
-      title={badgeDescription(badge, lang)}
-      initial={reduce ? undefined : { opacity: 0, scale: 0.85 }}
-      animate={reduce ? undefined : { opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4, delay: index * 0.035, ease: [0.16, 1, 0.3, 1] }}
-      whileHover={reduce ? undefined : { y: -4, scale: 1.05 }}
-      whileTap={reduce ? undefined : { scale: 0.96 }}
-      className={cn('flex flex-col items-center gap-2', !earned && 'opacity-45')}
-    >
-      <div className={cn(
-        'relative flex aspect-square w-full items-center justify-center rounded-2xl border text-2xl',
-        earned
-          ? badge.rare
-            ? 'border-amber-400/40 bg-amber-400/10 ring-1 ring-amber-400/30'
-            : 'border-primary/25 bg-primary/10'
-          : 'border-line bg-subtle text-text-subtle',
-      )}>
-        {earned ? badge.emoji : <Lock className="h-5 w-5" />}
-        {badge.rare && (
-          <span className={cn('absolute -right-1 -top-1 text-[10px]', !earned && 'opacity-60')}>⭐</span>
-        )}
-      </div>
-      <p className="w-full truncate text-center text-[10px] font-medium text-text-muted">
-        {badgeLabel(badge, lang)}
-      </p>
-    </motion.button>
+    <BadgeTooltip badge={badge} earned={earned} lang={lang} className="w-full">
+      <motion.button
+        type="button"
+        onClick={onSelect}
+        initial={reduce ? undefined : { opacity: 0, scale: 0.85 }}
+        animate={reduce ? undefined : { opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4, delay: index * 0.035, ease: [0.16, 1, 0.3, 1] }}
+        whileHover={reduce ? undefined : { y: -4, scale: 1.05 }}
+        whileTap={reduce ? undefined : { scale: 0.96 }}
+        className={cn('flex w-full flex-col items-center gap-2', !earned && 'opacity-45')}
+      >
+        <div className={cn(
+          'relative flex aspect-square w-full items-center justify-center rounded-2xl border text-2xl',
+          earned
+            ? badge.rare
+              ? 'border-amber-400/40 bg-amber-400/10 ring-1 ring-amber-400/30'
+              : 'border-primary/25 bg-primary/10'
+            : 'border-line bg-subtle text-text-subtle',
+        )}>
+          {earned ? badge.emoji : <Lock className="h-5 w-5" />}
+          {badge.rare && (
+            <span className={cn('absolute -right-1 -top-1 text-[10px]', !earned && 'opacity-60')}>⭐</span>
+          )}
+        </div>
+        <p className="w-full truncate text-center text-[10px] font-medium text-text-muted">
+          {badgeLabel(badge, lang)}
+        </p>
+      </motion.button>
+    </BadgeTooltip>
   );
 }
 

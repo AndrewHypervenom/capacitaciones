@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { EntityIcon } from '@/components/ui/EntityIcon';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { backdropDismiss } from '@/lib/backdropDismiss';
+import { pickLang } from '@/lib/contentLang';
 
 /* ────────────────────────────────────────────────────────────────────────
    Vitrina de certificados: los certificados se tratan como logros, no como
@@ -27,9 +28,7 @@ import { backdropDismiss } from '@/lib/backdropDismiss';
  * rota — es preferible el rótulo genérico.
  */
 function pickTitle(c: UserCertificate, lang: string, fallback: string): string {
-  if (lang === 'en') return c.titleEn || c.titleEs || fallback;
-  if (lang === 'pt') return c.titlePt || c.titleEs || fallback;
-  return c.titleEs || fallback;
+  return pickLang(c.titleEs, c.titleEn, c.titlePt, lang) || fallback;
 }
 
 function fmtDate(iso: string, lang: string) {

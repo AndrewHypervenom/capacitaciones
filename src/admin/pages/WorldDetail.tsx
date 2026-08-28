@@ -27,6 +27,7 @@ import { LevelTransition } from '@/components/worlds/LevelTransition'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/cn'
+import { rowText } from '@/lib/contentLang'
 
 interface World {
   id: string; name: string; description: string | null
@@ -455,7 +456,7 @@ export default function WorldDetail() {
     const m = courseModules.find(x => x.id === moduleId)
     if (m) setRegionForm(f => ({
       ...f,
-      name: f.name.trim() ? f.name : m.title_es,
+      name: f.name.trim() ? f.name : rowText(m),
       icon: (m.icon && m.icon.length <= 2) ? m.icon : f.icon,
     }))
   }
@@ -757,7 +758,7 @@ export default function WorldDetail() {
                   className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors"
                   style={{ background:'rgba(99,102,241,0.12)', color:'#6366F1', border:'1px solid rgba(99,102,241,0.25)' }}
                   title={i18n.t('admin.worlds.go_to_course')}>
-                  <BookOpen className="h-3 w-3" /> {i18n.t('admin.worlds.linked_course')}: {linkedCourse.title_es}
+                  <BookOpen className="h-3 w-3" /> {i18n.t('admin.worlds.linked_course')}: {rowText(linkedCourse)}
                 </button>
               ) : (
                 <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium"
@@ -861,7 +862,7 @@ export default function WorldDetail() {
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-semibold text-text">
                   {modulesWithoutRegion.length === courseModules.length
-                    ? i18n.t('admin.worlds.bulk_cta_title', { name: linkedCourse.title_es, count: modulesWithoutRegion.length, defaultValue: `Arma este mundo desde “${linkedCourse.title_es}”` })
+                    ? i18n.t('admin.worlds.bulk_cta_title', { name: rowText(linkedCourse), count: modulesWithoutRegion.length, defaultValue: `Arma este mundo desde “${rowText(linkedCourse)}”` })
                     : i18n.t('admin.worlds.bulk_cta_more', { count: modulesWithoutRegion.length, defaultValue: `${modulesWithoutRegion.length} módulo(s) del curso todavía sin región` })}
                 </div>
                 <div className="text-[12px] text-text-muted mt-0.5">
@@ -1142,7 +1143,7 @@ export default function WorldDetail() {
                       { value: '', label: i18n.t('admin.worlds.region_custom') },
                       ...courseModules
                         .filter(m => m.id === regionModuleId || !regions.some(r => r.module_id === m.id))
-                        .map(m => ({ value: m.id, label: m.title_es })),
+                        .map(m => ({ value: m.id, label: rowText(m) })),
                     ]} />
                   <p className="text-[11px] text-text-muted mt-1">
                     {regionModuleId ? i18n.t('admin.worlds.region_module_hint') : i18n.t('admin.worlds.region_custom_hint')}

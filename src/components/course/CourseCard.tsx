@@ -15,6 +15,7 @@ import { stripMarkdown } from '@/components/ui/RichText';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { cn } from '@/lib/cn';
 import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
+import { pickLang } from '@/lib/contentLang';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Tarjeta de curso ÚNICA del sitio. La usan el catálogo (/courses) y el panel
@@ -35,15 +36,15 @@ export const ease = [0.16, 1, 0.3, 1] as const;
 // componente nuevo en cada pasada y React remonta la tarjeta (parpadeo eterno).
 const MotionLink = motion(Link);
 
+// Cae a CUALQUIER idioma con contenido (antes solo al español), así un curso
+// escrito en portugués no sale en blanco para el resto: ver `lib/contentLang`.
 export function pickCourseText(
   es: string | null,
   en: string | null,
   pt: string | null,
   lang: string,
 ): string {
-  if (lang === 'en') return en || es || '';
-  if (lang === 'pt') return pt || es || '';
-  return es || '';
+  return pickLang(es, en, pt, lang);
 }
 
 export function courseProgress(

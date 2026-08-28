@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/cn'
+import { initialContentLang } from '@/lib/contentLang'
 
 type Lang = 'es' | 'en' | 'pt'
 
@@ -55,7 +56,7 @@ function inputClass() {
 export function DialogueNodeForm({ nodeId, data, nodeOptions, onCreateNode, onChange }: Props) {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const [lang, setLang] = useState<Lang>('es')
+  const [lang, setLang] = useState<Lang>(initialContentLang)
   const [showNudge, setShowNudge] = useState(Boolean(data.nudge))
 
   const update = (patch: Partial<DialogueNodeData>) => onChange(nodeId, { ...data, ...patch })

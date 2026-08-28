@@ -390,7 +390,7 @@ export default function ExamResult() {
                   {course
                     ? t('exam.next_certificate_sub', {
                         course: pickExamText(
-                          course.title_es,
+                          pickExamText(course.title_es, course.title_en, course.title_pt, language),
                           course.title_en,
                           course.title_pt,
                           language,

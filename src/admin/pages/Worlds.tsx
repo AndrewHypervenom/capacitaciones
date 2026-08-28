@@ -23,6 +23,7 @@ import { stripMarkdown } from '@/components/ui/RichText'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/cn'
+import { rowText } from '@/lib/contentLang'
 
 type WorldStatus = 'draft' | 'published'
 type BgType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -454,7 +455,7 @@ export default function Worlds() {
           <Stagger className="grid md:grid-cols-2 gap-4">
             {filtered.map(w => {
               const campaignName = campaigns.find(c => c.id === w.campaign_id)?.name
-              const courseName = courses.find(c => c.id === w.course_id)?.title_es
+              const courseName = rowText(courses.find(c => c.id === w.course_id))
               const isPublished = w.status === 'published'
               const nRegions = regionCounts[w.id] ?? 0
               return (
@@ -678,7 +679,7 @@ export default function Worlds() {
                           // … y que no estén ya tomados por OTRO mundo.
                           !worlds.some(w => w.course_id === c.id && w.id !== editingId),
                         )
-                        .map(c => ({ value: c.id, label: c.title_es })),
+                        .map(c => ({ value: c.id, label: rowText(c) })),
                     ]}
                   />
                   <p className="text-[11px] text-text-muted mt-1">
@@ -709,7 +710,7 @@ export default function Worlds() {
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {pickedModules.map((m, i) => (
                               <span key={m.id} className="rounded-lg border border-line bg-glass/[0.06] px-2 py-1 text-[11px] text-text-muted">
-                                <span className="font-bold text-[#8B5CF6]">{i + 1}</span> {m.title_es}
+                                <span className="font-bold text-[#8B5CF6]">{i + 1}</span> {rowText(m)}
                               </span>
                             ))}
                           </div>

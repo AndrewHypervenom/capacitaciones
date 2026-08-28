@@ -31,6 +31,7 @@ import type { Lang } from '@/stores/gamificationStore'
 import { cn } from '@/lib/cn'
 
 import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries'
+import { rowText } from '@/lib/contentLang'
 
 interface EditForm {
   display_name: string
@@ -249,7 +250,7 @@ export default function UserProfile() {
         certId: '',
         courseId: c.course_id,
         slug: c.slug,
-        titleEs: c.title_es,
+        titleEs: rowText(c),
         titleEn: null,
         titlePt: null,
         icon: c.icon,
@@ -445,7 +446,7 @@ export default function UserProfile() {
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[13px] font-medium text-text truncate">{c.title_es}</span>
+                          <span className="text-[13px] font-medium text-text truncate">{rowText(c)}</span>
                           <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[rgba(34,197,94,0.15)] text-[#16a34a]">
                             {c.is_mandatory ? t('admin.users.mandatory_badge') : t('admin.users.assigned_badge')}
                           </span>
