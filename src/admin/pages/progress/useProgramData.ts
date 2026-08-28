@@ -323,17 +323,39 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           profilesRes, campaignsRes, coursesRes, assignRes, campAssignRes, certsRes, credsRes,
           modulesRes, progressRes, attemptsRes, deadlineRes,
         ] = await Promise.allSettled([
-            supabase.from('profiles').select('id, display_name, role, campaign_id, avatar_url, created_at, job_title, country'),
+            // TODO lo que puede pasar de 1000 filas va por `fetchAll`: PostgREST
+            // corta ahí en silencio, sin error y sin aviso. Leer `profiles` de un
+            // tirón hacía que, pasadas las mil personas, campañas ENTERAS
+            // desaparecieran del tablero (salían con 0 gente aunque tuvieran
+            // decenas de aprendices activos), y lo mismo con las asignaciones,
+            // los certificados y el temario.
+            fetchAll<{
+              id: string; display_name: string | null; role: string;
+              campaign_id: string | null; avatar_url: string | null; created_at: string | null;
+              job_title: string | null; country: string | null;
+            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country'),
             supabase.from('campaigns').select('id, name, deleted_at, is_test').order('name'),
-            supabase.from('courses').select('id, title_es, title_en, title_pt, campaign_id, is_published, icon, deleted_at'),
-            supabase.from('course_assignments').select('course_id, user_id, is_mandatory, assigned_at'),
-            supabase.from('course_campaigns').select('course_id, campaign_id, is_mandatory, assigned_at'),
-            supabase.from('certifications').select('user_id, course_id, cert_id, score, issued_at'),
+            fetchAll<{
+              id: string; title_es: string; title_en: string | null; title_pt: string | null;
+              campaign_id: string | null; is_published: boolean; icon: string | null; deleted_at: string | null;
+            }>('courses', 'id, title_es, title_en, title_pt, campaign_id, is_published, icon, deleted_at'),
+            fetchAll<{ course_id: string; user_id: string; is_mandatory: boolean; assigned_at: string | null }>(
+              'course_assignments', 'course_id, user_id, is_mandatory, assigned_at',
+            ),
+            fetchAll<{ course_id: string; campaign_id: string; is_mandatory: boolean; assigned_at: string | null }>(
+              'course_campaigns', 'course_id, campaign_id, is_mandatory, assigned_at',
+            ),
+            fetchAll<{ user_id: string; course_id: string; cert_id: string; score: number; issued_at: string }>(
+              'certifications', 'user_id, course_id, cert_id, score, issued_at',
+            ),
             supabase.from('user_temp_credentials').select('user_id, email'),
             // El temario: qué módulos vivos tiene cada curso. Es el denominador
             // de la finalización, así que sin esto no se puede dar por
             // terminado ningún curso (ver `isCourseCompleted`).
-            supabase.from('modules').select('id, slug, title_es, title_en, title_pt, sort_order, course_id, deleted_at'),
+            fetchAll<{
+              id: string; slug: string; title_es: string; title_en: string | null; title_pt: string | null;
+              sort_order: number | null; course_id: string | null; deleted_at: string | null;
+            }>('modules', 'id, slug, title_es, title_en, title_pt, sort_order, course_id, deleted_at'),
             // Lo que cada persona lleva completado, leído de la MISMA fuente que
             // ve el aprendiz en su panel (`user_progress.completed_modules`).
             fetchAll<{ user_id: string; completed_modules: string[] | null }>(
@@ -352,11 +374,20 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         const ok = <T,>(r: PromiseSettledResult<{ data: T[] | null; error: unknown }>): T[] =>
           r.status === 'fulfilled' && !r.value.error ? (r.value.data ?? []) : [];
 
-        const profileRows = ok<{
-          id: string; display_name: string | null; role: string;
-          campaign_id: string | null; avatar_url: string | null; created_at: string | null;
-          job_title: string | null; country: string | null;
-        }>(profilesRes as never);
+        /** Resultado de `fetchAll`: no trae `{data,error}`, y si falló hay que
+            saberlo — un catálogo vacío por error se lee igual que uno vacío de
+            verdad, y así es como el tablero "perdía" una campaña sin decir nada. */
+        const rowsOf = <T,>(r: PromiseSettledResult<{ rows: T[]; partial: boolean }>): T[] =>
+          r.status === 'fulfilled' ? r.value.rows : [];
+
+        // Sin gente no hay tablero: si la lectura de perfiles se cayó, se avisa
+        // en vez de pintar ceros que parecen un dato.
+        if (profilesRes.status === 'rejected') {
+          throw profilesRes.reason instanceof Error
+            ? profilesRes.reason
+            : new Error(String(profilesRes.reason));
+        }
+        const profileRows = rowsOf(profilesRes);
         // Las campañas también se borran en suave: una eliminada no puede seguir
         // ofreciéndose como filtro ni ponerle nombre a una columna del Excel.
         const campaignRaw = ok<{ id: string; name: string; deleted_at: string | null; is_test?: boolean | null }>(campaignsRes as never)
@@ -369,23 +400,15 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         const campaignRows = campaignRaw
           .filter((c) => !hiddenCampaignIds.has(c.id))
           .map(({ id, name }) => ({ id, name }));
-        const courseRows = ok<{
-          id: string; title_es: string; title_en: string | null; title_pt: string | null;
-          campaign_id: string | null; is_published: boolean; icon: string | null; deleted_at: string | null;
-        }>(coursesRes as never)
+        const courseRows = rowsOf(coursesRes)
           .filter((c) => !c.campaign_id || !hiddenCampaignIds.has(c.campaign_id));
-        const assignRows = ok<{ course_id: string; user_id: string; is_mandatory: boolean; assigned_at: string | null }>(assignRes as never);
-        const campAssignRows = ok<{ course_id: string; campaign_id: string; is_mandatory: boolean; assigned_at: string | null }>(campAssignRes as never);
-        const moduleRows = ok<{
-          id: string; slug: string; title_es: string; title_en: string | null; title_pt: string | null;
-          sort_order: number | null; course_id: string | null; deleted_at: string | null;
-        }>(modulesRes as never);
+        const assignRows = rowsOf(assignRes);
+        const campAssignRows = rowsOf(campAssignRes);
+        const moduleRows = rowsOf(modulesRes);
         // `fetchAll` no devuelve `{data,error}`: se lee aparte.
         const progressRows =
           progressRes.status === 'fulfilled' ? progressRes.value.rows : [];
-        const certRows = ok<{
-          user_id: string; course_id: string; cert_id: string; score: number; issued_at: string;
-        }>(certsRes as never);
+        const certRows = rowsOf(certsRes);
         const credRows = ok<{ user_id: string; email: string }>(credsRes as never);
         // Plazo por curso. Si la consulta falló (columnas aún sin crear) el mapa
         // queda vacío y `courseDueMs` devuelve null para todos: sin vencidos.
@@ -400,9 +423,10 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
 
         // Si NINGUNA de las dos tablas de asignación respondió, no se puede
         // hablar de "asignados": el tablero lo dice en vez de inventar un 0.
+        // Ya no hay `{data,error}` que mirar: `fetchAll` lanza, así que un
+        // rechazo es la única forma de "no pude leer".
         const noAssignData =
-          (assignRes.status !== 'fulfilled' || !!assignRes.value.error) &&
-          (campAssignRes.status !== 'fulfilled' || !!campAssignRes.value.error);
+          assignRes.status !== 'fulfilled' && campAssignRes.status !== 'fulfilled';
         setAssignmentsKnown(!noAssignData);
 
         const campaignName = new Map(campaignRows.map((c) => [c.id, c.name]));
