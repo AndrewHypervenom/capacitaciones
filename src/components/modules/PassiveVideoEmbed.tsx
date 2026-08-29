@@ -72,9 +72,6 @@ export function PassiveVideoEmbed({
               videoUrl={videoId}
               getAtSeconds={() => playerRef.current?.currentTime ?? null}
               lang={lang}
-              // Es un embed suelto dentro del texto y suele ser pequeño: con el
-              // texto largo y el código crudo no cabría el aviso.
-              compact
             />
           )}
         </AnimatePresence>

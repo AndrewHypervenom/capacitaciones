@@ -1229,7 +1229,20 @@
       "reporting": "Enviando…",
       "reported": "Reportado",
       "report_retry": "No se envió, reintentar",
-      "reported_hint": "Nos llegó con el detalle técnico. Gracias."
+      "reported_hint": "Nos llegó con el detalle técnico. Gracias.",
+      "copy": "Copiar los datos",
+      "copied": "Datos copiados",
+      "details_title": "Datos para el reporte",
+      "screenshot_hint": "Tómale un pantallazo a esta pantalla y envíaselo a tu capacitador: con estos datos sabemos qué pasó.",
+      "d_ref": "Referencia",
+      "d_code": "Código",
+      "d_video": "Video",
+      "d_at": "Segundo",
+      "d_section": "Sección",
+      "d_page": "Página",
+      "d_when": "Fecha y hora",
+      "d_browser": "Navegador",
+      "d_detail": "Detalle"
     }
   },
   "admin": {

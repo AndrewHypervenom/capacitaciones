@@ -14,6 +14,12 @@ import type { VideoPlayerError } from '@/lib/videoError'
  */
 export interface VideoIssueContext {
   err: VideoPlayerError
+  /**
+   * Referencia corta que el aviso muestra en pantalla. Va en el reporte para poder
+   * casar el pantallazo que manda el aprendiz con la fila que llega a la bandeja:
+   * casi siempre llegan las dos cosas por caminos distintos.
+   */
+  ref?: string
   /** Título de la sección donde estaba el video: es lo que el staff reconoce. */
   sectionTitle?: string | null
   /** Identidad de la sección, para dar con el bloque exacto. */
@@ -38,6 +44,7 @@ export async function reportVideoIssue(ctx: VideoIssueContext): Promise<void> {
     // Estructurado además del mensaje: la bandeja los muestra como filas y se
     // pueden leer sin tener que parsear el texto.
     answers: {
+      ...(ctx.ref ? { video_ref_code: ctx.ref } : {}),
       video_error_kind: err.kind,
       video_source: err.source,
       video_code: err.code,
@@ -49,6 +56,7 @@ export async function reportVideoIssue(ctx: VideoIssueContext): Promise<void> {
     },
     message:
       `[Video] Fallo de reproducción (${err.source}/${err.kind}, ${err.code})` +
+      (ctx.ref ? ` · ref ${ctx.ref}` : '') +
       (ctx.sectionTitle ? ` en «${ctx.sectionTitle}»` : '') +
       (ctx.videoUrl ? `\nVideo: ${ctx.videoUrl}` : '') +
       (ctx.atSeconds != null ? `\nSegundo: ${Math.round(ctx.atSeconds)}` : '') +

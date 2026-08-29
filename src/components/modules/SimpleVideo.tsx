@@ -124,7 +124,6 @@ export function SimpleVideo({
               videoUrl={src}
               getAtSeconds={() => el?.currentTime ?? null}
               lang={i18n.language}
-              compact
             />
           )}
         </AnimatePresence>

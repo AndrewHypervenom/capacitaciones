@@ -1229,7 +1229,20 @@
       "reporting": "Sending…",
       "reported": "Reported",
       "report_retry": "Not sent, try again",
-      "reported_hint": "It reached us with the technical detail. Thank you."
+      "reported_hint": "It reached us with the technical detail. Thank you.",
+      "copy": "Copy the details",
+      "copied": "Details copied",
+      "details_title": "Details for the report",
+      "screenshot_hint": "Take a screenshot of this screen and send it to your trainer: these details tell us what happened.",
+      "d_ref": "Reference",
+      "d_code": "Code",
+      "d_video": "Video",
+      "d_at": "Second",
+      "d_section": "Section",
+      "d_page": "Page",
+      "d_when": "Date and time",
+      "d_browser": "Browser",
+      "d_detail": "Detail"
     }
   },
   "admin": {

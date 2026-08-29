@@ -1229,7 +1229,20 @@
       "reporting": "Enviando…",
       "reported": "Reportado",
       "report_retry": "Não enviou, tentar de novo",
-      "reported_hint": "Chegou até nós com o detalhe técnico. Obrigado."
+      "reported_hint": "Chegou até nós com o detalhe técnico. Obrigado.",
+      "copy": "Copiar os dados",
+      "copied": "Dados copiados",
+      "details_title": "Dados para o relato",
+      "screenshot_hint": "Tire um print desta tela e envie ao seu instrutor: com esses dados sabemos o que aconteceu.",
+      "d_ref": "Referência",
+      "d_code": "Código",
+      "d_video": "Vídeo",
+      "d_at": "Segundo",
+      "d_section": "Seção",
+      "d_page": "Página",
+      "d_when": "Data e hora",
+      "d_browser": "Navegador",
+      "d_detail": "Detalhe"
     }
   },
   "admin": {

@@ -1211,6 +1211,24 @@ export function InteractiveVideoModule({
     </motion.div>
   )
 
+  /* El aviso de error, definido una sola vez y colgado en dos sitios distintos: en
+     el área de video cuando la ventana es normal, y contra el contenedor entero
+     cuando estamos en pantalla completa. Sin lo segundo, el aviso ocupaba solo el
+     `flex-1` del video y la barra de controles seguía viéndose alrededor: el
+     pantallazo salía con media pantalla de reproductor de un video que no existe.
+     El aviso se mide a sí mismo, así que en pantalla completa crece solo. */
+  const errorNotice = videoError ? (
+    <VideoErrorNotice
+      err={videoError}
+      onRetry={retryVideo}
+      sectionId={section.id}
+      sectionTitle={section.heading?.[lang] ?? section.heading?.es ?? null}
+      videoUrl={videoUrl}
+      getAtSeconds={() => videoRef.current?.currentTime ?? null}
+      lang={lang}
+    />
+  ) : null
+
   return (
     <div
       ref={containerRef}
@@ -1535,24 +1553,13 @@ export function InteractiveVideoModule({
           )}
         </AnimatePresence>
 
-        {/* ── Fallo de reproducción ──
+        {/* ── Fallo de reproducción (sin pantalla completa) ──
             Tapa el iframe con NUESTRO aviso; el del proveedor no dice qué pasó y su
             botón de reporte va a la telemetría de ellos. Va en z-40 para quedar por
             encima de los controles (z-20) y del cartel de final (z-30): con el video
-            roto no hay nada que controlar. */}
-        <AnimatePresence>
-          {videoError && (
-            <VideoErrorNotice
-              err={videoError}
-              onRetry={retryVideo}
-              sectionId={section.id}
-              sectionTitle={section.heading?.[lang] ?? section.heading?.es ?? null}
-              videoUrl={videoUrl}
-              getAtSeconds={() => videoRef.current?.currentTime ?? null}
-              lang={lang}
-            />
-          )}
-        </AnimatePresence>
+            roto no hay nada que controlar.
+            En pantalla completa se pinta más abajo, contra el contenedor entero. */}
+        <AnimatePresence>{!fullscreen && errorNotice}</AnimatePresence>
 
         {/* Final del video: "a continuación" con cuenta regresiva cancelable, o
             simplemente volver a verlo si no hay siguiente. Nada arranca sin que
@@ -1949,6 +1956,10 @@ export function InteractiveVideoModule({
           {chapterList}
         </div>
       )}
+
+      {/* En pantalla completa el aviso tapa TODO —video, controles y capítulos—
+          para que el pantallazo sea solo el error y sus datos. */}
+      <AnimatePresence>{fullscreen && errorNotice}</AnimatePresence>
     </div>
   )
 }
