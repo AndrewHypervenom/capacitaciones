@@ -8,6 +8,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
+import { fold } from '@/lib/normalize'
 import {
   getCampaignLearners,
   getCourseAssignments,
@@ -24,6 +25,7 @@ import { rowText } from '@/lib/contentLang'
 interface Learner {
   id: string
   display_name: string | null
+  email: string | null
   campaign_id: string | null
 }
 
@@ -85,10 +87,14 @@ export function EnrollLearnersModal({ course, campaignId, onClose, onSaved }: En
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // `fold` y no `toLowerCase`: nadie escribe "Rocío" con tilde al buscar. Y se
+  // mira también el correo, que es como se distingue a los homónimos.
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = fold(search)
     if (!q) return learners
-    return learners.filter((l) => (l.display_name ?? '').toLowerCase().includes(q))
+    return learners.filter(
+      (l) => fold(l.display_name ?? '').includes(q) || fold(l.email ?? '').includes(q),
+    )
   }, [learners, search])
 
   const dirty = useMemo(() => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { fold } from '@/lib/normalize'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -81,15 +82,15 @@ export default function AiLimits() {
   }, [rows])
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = fold(search)
     return rows
       .filter((r) => {
         if (filter === 'capped' && !isCapped(r)) return false
         if (filter === 'exceptions' && !hasException(r)) return false
         if (!q) return true
-        return (r.display_name ?? '').toLowerCase().includes(q)
-          || (r.email ?? '').toLowerCase().includes(q)
-          || (r.campaign_name ?? '').toLowerCase().includes(q)
+        return fold(r.display_name ?? '').includes(q)
+          || fold(r.email ?? '').includes(q)
+          || fold(r.campaign_name ?? '').includes(q)
       })
       // Los superadmin van de últimos: no topan nunca, así que arriba solo
       // estorban a quien de verdad hay que gestionar (los capacitadores).

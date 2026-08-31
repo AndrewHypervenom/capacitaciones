@@ -232,7 +232,14 @@ export async function enrollUsers(
  */
 export async function getCampaignLearners(
   campaignId: string,
-): Promise<Array<{ id: string; display_name: string | null; campaign_id: string | null }>> {
+): Promise<
+  Array<{
+    id: string
+    display_name: string | null
+    email: string | null
+    campaign_id: string | null
+  }>
+> {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
