@@ -52,6 +52,18 @@ export function mapVimeoError(e: unknown): VideoPlayerError {
   const name = o.name ?? 'Error'
   const raw = o.message?.slice(0, 300)
 
+  // "There was an error fetching the embed code from Vimeo": el SDK lo lanza como
+  // un `Error` pelado, sin nombre que lo distinga, cuando la petición de
+  // /video/<id>/config le responde 403/401. Casi siempre es la privacidad de
+  // INCRUSTACIÓN del video —"dónde se puede incrustar" no incluye nuestro dominio—,
+  // no la red: el video se ve perfecto en vimeo.com y su oEmbed responde 200.
+  // Caía en 'network', así que al aprendiz se le decía "revisa tu conexión" y se le
+  // ofrecía reintentar sobre algo que nunca iba a funcionar, y a la bandeja llegaba
+  // como un fallo de red. Con el navegador sin conexión sí es red, y ahí manda eso.
+  const embedFetchFail =
+    /fetching the embed code/i.test(raw ?? '') &&
+    !(typeof navigator !== 'undefined' && navigator.onLine === false)
+
   // Nombres del SDK de Vimeo (player.js).
   const kind: VideoErrorKind =
     name === 'NotFoundError' ? 'unavailable'
@@ -60,9 +72,12 @@ export function mapVimeoError(e: unknown): VideoPlayerError {
     // el mensaje es lo único que los separa.
     : name === 'TypeError' && /domain|private|permission/i.test(raw ?? '') ? 'private'
     : name === 'TypeError' || name === 'InvalidParameterError' ? 'unavailable'
+    : embedFetchFail ? 'private'
     : 'network'
 
-  return { kind, source: 'vimeo', code: name, raw }
+  // El código es lo primero que mira quien va a arreglarlo: 'Error' no dice nada,
+  // 'EMBED_BLOCKED' apunta derecho a la privacidad del video en Vimeo.
+  return { kind, source: 'vimeo', code: embedFetchFail ? 'EMBED_BLOCKED' : name, raw }
 }
 
 /** Fallo al descargar el SDK del proveedor: o no hay red, o algo lo está bloqueando. */
