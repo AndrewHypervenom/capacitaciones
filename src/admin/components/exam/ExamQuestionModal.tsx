@@ -118,6 +118,14 @@ export function ExamQuestionModal({
     if (!multi && draft.correct.length > 1) {
       list.push(t('admin.exam.q_err_single', 'Una sola respuesta permitida en este tipo'))
     }
+    /* Una de "varias respuestas" con una sola correcta es una trampa: al
+       aprendiz se le dice "elige 2" y no hay 2 que elegir. O tiene dos o es de
+       una sola respuesta. */
+    if (multi && draft.correct.length === 1) {
+      list.push(
+        t('admin.exam.q_err_multi_one', 'Marca al menos 2 correctas, o cámbiala a una sola respuesta'),
+      )
+    }
     if (draft.correct.some((id) => !filled.find((o) => o.id === id))) {
       list.push(t('admin.exam.q_err_correct_empty', 'La respuesta marcada está en blanco'))
     }
@@ -171,6 +179,11 @@ export function ExamQuestionModal({
 
   const handleSave = async () => {
     if (problems.length > 0) return
+    /* Un segundo disparo mientras el primero viaja crea la MISMA pregunta dos
+       veces en el banco. El botón se deshabilita al guardar, pero eso solo
+       frena al ratón: un evento que llegue por otra vía (teclado repetido, un
+       clic sintético) entra igual. La guardia va aquí, que es donde escribe. */
+    if (saving) return
     setSaving(true)
     try {
       await onSave({
@@ -324,7 +337,10 @@ export function ExamQuestionModal({
               </label>
               <span className="text-[11.5px] text-text-subtle">
                 {multi
-                  ? t('admin.exam.q_mark_multi', 'Marca todas las correctas')
+                  ? t('admin.exam.q_mark_multi_n', {
+                      n: draft.correct.length,
+                      defaultValue: 'Marca todas las correctas (van {{n}}; mínimo 2)',
+                    })
                   : t('admin.exam.q_mark_single', 'Marca la correcta')}
               </span>
             </div>

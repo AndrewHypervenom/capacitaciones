@@ -5309,7 +5309,11 @@
       "skip_no_text": "sin enunciado",
       "skip_untitled": "(pregunta sin texto)",
       "study_line": "{{title}}: {{min}} min · leyó hasta el {{depth}}% ({{pct}}%)",
-      "results_study": "repaso: {{done}}/{{total}} módulos · {{min}} min"
+      "results_study": "repaso: {{done}}/{{total}} módulos · {{min}} min",
+      "q_err_multi_one": "Marca al menos 2 correctas, o cámbiala a una sola respuesta",
+      "q_mark_multi_n": "Marca todas las correctas (van {{n}}; mínimo 2)",
+      "publish_broken_multi": "No se puede publicar: {{n}} pregunta(s) de varias respuestas tienen una sola correcta.",
+      "warn_broken_multi": "Bloquea la publicación: {{n}} pregunta(s) de varias respuestas tienen una sola correcta. Al aprendiz se le pide \"elige 2\" y no hay 2 que elegir."
     },
     "test_mode": {
       "label": "Modo pruebas",
@@ -6581,7 +6585,16 @@
     "reinforcement_left": "repasado {{pct}}% · te faltan unos {{n}} min",
     "reinforcement_not_started": "ábrelo y recórrelo entero (unos {{n}} min)",
     "reinforcement_studied": "repasado, ya puedes marcarlo",
-    "reinforcement_rejected": "Todavía no está repasado: ábrelo y recórrelo entero para poder marcarlo."
+    "reinforcement_rejected": "Todavía no está repasado: ábrelo y recórrelo entero para poder marcarlo.",
+    "multi_tag_n": "Elige {{n}}",
+    "multi_pick_n": "Elige {{n}} respuestas.",
+    "multi_left_n": "Te falta marcar {{n}} de las {{total}} que pide esta pregunta.",
+    "multi_done_n": "Marcaste las {{n}} que pide. Se califica completa: acertar solo una no suma.",
+    "multi_cap": "Esta pregunta pide {{n}} respuestas. Quita una para elegir otra.",
+    "legend_partial": "A medias",
+    "jump_pending": "Pendientes",
+    "jump_first_pending": "Ir a la primera pendiente (#{{n}})",
+    "review_partial": "Hay {{n}} pregunta(s) a medias: pedían varias respuestas y les falta alguna. Se califican completas — media respuesta cuenta como incorrecta."
   },
   "survey": {
     "badge": "Último paso",

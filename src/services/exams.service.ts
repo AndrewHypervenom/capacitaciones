@@ -199,3 +199,28 @@ export function formatClock(sec: number): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return h > 0 ? `${h}:${pad(m)}:${pad(r)}` : `${pad(m)}:${pad(r)}`
 }
+
+/**
+ * Cuántas respuestas correctas tiene cada pregunta del intento.
+ *
+ * Es lo que convierte una pregunta de varias respuestas en una pregunta
+ * contestable: como en las certificaciones de la industria, el enunciado dice
+ * "elige dos" y la pantalla no deja marcar una tercera. El número de correctas
+ * NO es la clave — no dice cuáles son — así que enseñarlo no filtra nada.
+ *
+ * Si la RPC todavía no está corrida (42883) devuelve `null` y la pantalla
+ * degrada al aviso genérico de siempre: el examen nunca se cae por esto.
+ */
+export async function getExamAnswerCounts(
+  attemptId: string,
+): Promise<Record<string, number> | null> {
+  const { data, error } = await supabase.rpc('get_exam_answer_counts', {
+    p_attempt_id: attemptId,
+  })
+  if (error) {
+    if (error.code === '42883') return null
+    console.warn('[exam] no se pudo leer el nº de correctas:', error.message)
+    return null
+  }
+  return (data as Record<string, number> | null) ?? null
+}

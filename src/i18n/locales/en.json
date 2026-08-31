@@ -5309,7 +5309,11 @@
       "skip_no_text": "no question text",
       "skip_untitled": "(question with no text)",
       "study_line": "{{title}}: {{min}} min · read up to {{depth}}% ({{pct}}%)",
-      "results_study": "review: {{done}}/{{total}} modules · {{min}} min"
+      "results_study": "review: {{done}}/{{total}} modules · {{min}} min",
+      "q_err_multi_one": "Mark at least 2 correct answers, or switch it to a single answer",
+      "q_mark_multi_n": "Mark every correct one ({{n}} so far; 2 minimum)",
+      "publish_broken_multi": "Cannot publish: {{n}} multiple-answer question(s) have only one correct answer.",
+      "warn_broken_multi": "Blocks publishing: {{n}} multiple-answer question(s) have only one correct answer. The learner is told to \"choose 2\" and there are not 2 to choose."
     },
     "test_mode": {
       "label": "Test mode",
@@ -6581,7 +6585,16 @@
     "reinforcement_left": "{{pct}}% reviewed · about {{n}} min left",
     "reinforcement_not_started": "open it and go through all of it (about {{n}} min)",
     "reinforcement_studied": "reviewed, you can mark it now",
-    "reinforcement_rejected": "It isn't reviewed yet: open it and go through all of it before you can mark it."
+    "reinforcement_rejected": "It isn't reviewed yet: open it and go through all of it before you can mark it.",
+    "multi_tag_n": "Choose {{n}}",
+    "multi_pick_n": "Choose {{n}} answers.",
+    "multi_left_n": "You still need {{n}} of the {{total}} this question asks for.",
+    "multi_done_n": "You picked all {{n}}. It is graded as a whole: getting only one right scores nothing.",
+    "multi_cap": "This question asks for {{n}} answers. Unpick one to choose another.",
+    "legend_partial": "Half done",
+    "jump_pending": "Pending",
+    "jump_first_pending": "Go to the first pending one (#{{n}})",
+    "review_partial": "{{n}} question(s) are half done: they ask for several answers and one is missing. They are graded as a whole — a half answer counts as wrong."
   },
   "survey": {
     "badge": "Last step",

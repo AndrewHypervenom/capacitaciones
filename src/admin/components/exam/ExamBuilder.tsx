@@ -549,6 +549,7 @@ export function ExamBuilder({
      vista sale la cápsula que lleva de vuelta con un destello. */
   const alertCount =
     (health?.offLevel.length ? 1 : 0) +
+    (health?.brokenMulti.length ? 1 : 0) +
     (health?.bank === 0 ? 1 : 0) +
     (health?.bankShortfall ? 1 : 0) +
     (health?.mismatchDomains.length ? 1 : 0) +
@@ -699,6 +700,18 @@ export function ExamBuilder({
           level: difficultyLabel(t, (form ?? exam).target_level),
           defaultValue:
             'No se puede publicar: {{n}} preguntas del banco no son de nivel {{level}}.',
+        }),
+      )
+      return
+    }
+    /* Varias respuestas con una sola correcta: al aprendiz se le dice "elige 2"
+       y no hay 2. Es un error de la pregunta, no una preferencia: bloquea. */
+    if (next && health && health.brokenMulti.length > 0) {
+      toast.error(
+        t('admin.exam.publish_broken_multi', {
+          n: health.brokenMulti.length,
+          defaultValue:
+            'No se puede publicar: {{n}} pregunta(s) de varias respuestas tienen una sola correcta.',
         }),
       )
       return
@@ -1190,7 +1203,7 @@ export function ExamBuilder({
         </div>
 
         {/* Semáforo: todo lo que falta, junto */}
-        {health && (health.bank === 0 || health.offLevel.length > 0 || health.bankShortfall > 0 || health.thinDomains.length > 0 || health.mismatchDomains.length > 0 || (domains.length > 0 && health.weightSum !== 100)) && (
+        {health && (health.bank === 0 || health.offLevel.length > 0 || health.brokenMulti.length > 0 || health.bankShortfall > 0 || health.thinDomains.length > 0 || health.mismatchDomains.length > 0 || (domains.length > 0 && health.weightSum !== 100)) && (
           <ul className="mt-4 space-y-1.5 border-t border-line pt-4">
             {health.offLevel.length > 0 && (
               <li className="flex flex-wrap items-start gap-2 text-[12.5px] text-text-muted">
@@ -1221,6 +1234,30 @@ export function ExamBuilder({
                   className="rounded-full border border-brand-magenta/40 px-3 py-0.5 text-[11.5px] font-medium text-neon-magenta transition-colors hover:bg-brand-magenta/10"
                 >
                   {t('admin.exam.level_fix_all', 'Ajustar todas al nivel')}
+                </button>
+              </li>
+            )}
+            {health.brokenMulti.length > 0 && (
+              <li className="flex flex-wrap items-start gap-2 text-[12.5px] text-text-muted">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-magenta" />
+                <span className="min-w-[200px] flex-1">
+                  {t('admin.exam.warn_broken_multi', {
+                    n: health.brokenMulti.length,
+                    defaultValue:
+                      'Bloquea la publicación: {{n}} pregunta(s) de varias respuestas tienen una sola correcta. Al aprendiz se le pide "elige 2" y no hay 2 que elegir.',
+                  })}
+                </span>
+                <button
+                  onClick={() => {
+                    setSearch(health.brokenMulti[0].text.slice(0, 40))
+                    setFilterDomain('')
+                    document
+                      .getElementById('exam-bank')
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}
+                  className="rounded-full border border-line px-3 py-0.5 text-[11.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"
+                >
+                  {t('admin.exam.level_see_off', 'Ver cuáles')}
                 </button>
               </li>
             )}

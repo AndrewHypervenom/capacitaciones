@@ -988,7 +988,11 @@ export function parseExamSheet(rows: Record<string, unknown>[]): ParsedImportRow
       out.error = 'sin_respuesta_correcta'
       return out
     }
+    /* El tipo lo manda el nº de correctas, no la columna "tipo": una fila que
+       dice "multi" con una sola correcta produce una pregunta que le pide al
+       aprendiz "elige 2" sin haber 2. Se normaliza en ambos sentidos. */
     if (kind === 'single' && correct.length > 1) kind = 'multi'
+    if (kind === 'multi' && correct.length < 2) kind = 'single'
 
     const rawDiff = norm(pick(row, 'dificultad', 'difficulty'))
     const difficulty: ExamDifficulty =
@@ -1207,7 +1211,8 @@ export function aiDraftToQuestions(
 
     return [{
       domain_id: q.domain ? domainIdByName.get(key(q.domain)) ?? null : null,
-      kind: correct.length > 1 ? 'multi' : q.kind,
+      // Misma normalización que al importar: sin 2 correctas no hay "elige 2".
+      kind: correct.length > 1 ? 'multi' : q.kind === 'multi' ? 'single' : q.kind,
       text_es: q.text_es,
       text_en: forLang(q.text_es, 'en'),
       text_pt: forLang(q.text_es, 'pt'),
@@ -1296,6 +1301,12 @@ export interface ExamHealth {
   mismatchDomains: { id: string; name: string; have: number; need: number }[]
   /** Preguntas que hay que escribir para que el reparto cuadre. 0 = cuadra. */
   missingTotal: number
+  /**
+   * Preguntas de "varias respuestas" con menos de 2 correctas. Al aprendiz se
+   * le dice "elige 2" y no hay 2 que elegir: es una pregunta que nadie puede
+   * acertar. Bloquea publicar, igual que las de nivel equivocado.
+   */
+  brokenMulti: { id: string; text: string }[]
   /**
    * Qué falta escribir, tema por tema, para llegar al examen que se pidió.
    * Es la lista que se le pasa a la IA para que rellene el hueco exacto en vez
@@ -1404,6 +1415,11 @@ export function checkExamHealth(
     }
   }
 
+  /* Varias respuestas con una sola correcta: imposible de acertar. */
+  const brokenMulti = active
+    .filter((q) => q.kind === 'multi' && (q.correct?.length ?? 0) < 2)
+    .map((q) => ({ id: q.id, text: q.text_es }))
+
   const target = exam.target_level ?? 'mixta'
   const offLevel =
     target === 'mixta'
@@ -1422,12 +1438,13 @@ export function checkExamHealth(
     thinDomains,
     mismatchDomains,
     missingTotal,
+    brokenMulti,
     fillPlan,
     fillTotal,
     fitCount,
     weightSum,
     orphanQuestions: active.filter((q) => !q.domain_id).length,
     offLevel,
-    canPublish: active.length > 0 && offLevel.length === 0,
+    canPublish: active.length > 0 && offLevel.length === 0 && brokenMulti.length === 0,
   }
 }

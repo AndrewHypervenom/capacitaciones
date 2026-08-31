@@ -167,7 +167,14 @@ export function SaveDock({
           exit={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.97, filter: 'blur(4px)' }}
           transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 }}
           style={{ bottom: 20 + bottomOffset }}
-          className="fixed inset-x-0 z-[9985] flex justify-center px-3 pointer-events-none print:hidden"
+          /* z-[45]: por DEBAJO de cualquier modal (los del sitio van de 50
+             a 140) y por encima del contenido de la página. Con el z-[9985]
+             de antes el muelle flotaba sobre los modales y tapaba su pie: en
+             el editor de examen, con cambios sin guardar detrás, el botón
+             Guardar de la pregunta quedaba justo debajo de la barra y el clic
+             no llegaba. Mientras hay un modal abierto no se guarda la página
+             de atrás, así que taparlo es además lo correcto. */
+          className="fixed inset-x-0 z-[45] flex justify-center px-3 pointer-events-none print:hidden"
         >
           <div
             role="status"

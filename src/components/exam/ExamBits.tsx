@@ -265,7 +265,8 @@ export function ExamTimer({
    Rejilla con el estado de cada pregunta. Es lo que convierte el examen en
    algo navegable en vez de un cuestionario lineal: se puede saltar, marcar
    para revisar y ver de un vistazo qué falta. */
-export type QuestionMark = 'answered' | 'flagged' | 'empty';
+/** `partial` = empezada pero incompleta (una de "elige dos" con una sola marca). */
+export type QuestionMark = 'answered' | 'flagged' | 'partial' | 'empty';
 
 export function QuestionNav({
   marks,
@@ -300,6 +301,7 @@ export function QuestionNav({
               active && 'ring-2 ring-primary ring-offset-2 ring-offset-bg',
               m === 'answered' && 'bg-primary/12 text-primary',
               m === 'flagged' && 'bg-amber-500/15 text-amber-600',
+              m === 'partial' && 'bg-rose-500/12 text-rose-600 ring-1 ring-inset ring-rose-500/30',
               m === 'empty' && 'bg-subtle text-text-subtle hover:text-text',
             )}
           >

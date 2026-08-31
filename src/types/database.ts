@@ -1060,6 +1060,9 @@ export interface Database {
         Row: {
           id: string
           display_name: string | null
+          /** Copia de `auth.users.email`, mantenida por el trigger
+           *  `sync_profile_email`. La app solo la lee: nunca la escribe. */
+          email: string | null
           country: string | null
           language: string | null
           role: 'superadmin' | 'capacitador' | 'learner'
@@ -1091,6 +1094,7 @@ export interface Database {
         Insert: {
           id: string
           display_name?: string | null
+          email?: string | null
           country?: string | null
           language?: string | null
           role?: 'superadmin' | 'capacitador' | 'learner'
@@ -1891,6 +1895,12 @@ export interface Database {
         Returns: Json
       }
       get_exam_attempt_report: {
+        Args: { p_attempt_id: string }
+        Returns: Json
+      }
+      // Nº de correctas por pregunta del intento ("elige dos").
+      // SQL 2026-08-31_exam_answer_counts.sql
+      get_exam_answer_counts: {
         Args: { p_attempt_id: string }
         Returns: Json
       }

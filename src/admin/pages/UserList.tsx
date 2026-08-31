@@ -41,7 +41,9 @@ import type { Profile, Campaign } from '@/types/database'
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
 const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
 
-type ProfileWithEmail = Profile & { email?: string }
+/** `profiles.email` ya existe en el tipo; el alias se conserva por claridad y
+ *  porque la columna puede venir vacía si el SQL del correo no se ha corrido. */
+type ProfileWithEmail = Profile
 
 /** Lo que la Edge Function averiguó sobre un correo que ya tiene cuenta. */
 interface ExistingAccount {
@@ -196,11 +198,10 @@ export default function UserList() {
     // Búsqueda insensible a tildes: nadie escribe "Rocío" con tilde.
     const q = fold(search)
     return users.filter((u) => {
-      // El correo NO está en `profiles` (vive en auth.users), así que `u.email`
-      // solo llega si algún día se sincroniza esa columna. Mientras tanto se
-      // busca también en la credencial temporal, que sí guarda el correo — pero
-      // el trigger la borra al onboardear, así que a quien ya entró no se le
-      // puede buscar por correo desde aquí. Ver `describeTakenEmail`.
+      // El correo vive en `auth.users`, pero `profiles.email` lo copia (trigger
+      // `sync_profile_email`). Si ese SQL aún no se corrió, `u.email` viene
+      // vacío y queda el respaldo de la credencial temporal — que el trigger
+      // borra al onboardear, así que solo sirve para pendientes.
       const matchesQuery =
         !q ||
         fold(u.display_name ?? '').includes(q) ||
@@ -1258,7 +1259,10 @@ export default function UserList() {
                       </div>
                     )}
                     <div className="text-[11px] text-text-subtle truncate">
-                      {tempCreds[user.id]?.email ?? `${user.id.slice(0, 8)}…`}
+                      {/* `profiles.email` primero; la credencial temporal solo
+                          cubre a quien no ha entrado nunca, y el id es el
+                          último recurso si el SQL del correo no se ha corrido. */}
+                      {user.email ?? tempCreds[user.id]?.email ?? `${user.id.slice(0, 8)}…`}
                     </div>
                     {(user.job_title || user.national_id || user.phone) && (
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-text-muted">

@@ -27,6 +27,7 @@ import {
   type QuestionMark,
 } from '@/components/exam/ExamBits';
 import {
+  getExamAnswerCounts,
   pickExamText,
   saveExamProgress,
   startExamAttempt,
@@ -75,6 +76,10 @@ export default function ExamRunner() {
   // en un examen cronometrado, no saber si tus respuestas están a salvo es la
   // principal fuente de ansiedad.
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  /* Cuántas correctas tiene cada pregunta ("elige dos"). `null` = el servidor
+     todavía no lo sabe decir (RPC sin correr): la pantalla degrada al aviso
+     genérico y no pone tope, nunca se cae por esto. */
+  const [need, setNeed] = useState<Record<string, number> | null>(null);
   const submittedRef = useRef(false);
 
   const backdrop = useBackdropDismiss(() => setReviewOpen(false), !submitting);
@@ -100,15 +105,61 @@ export default function ExamRunner() {
     };
   }, [session, courseId, navigate]);
 
+  /* Cuántas respuestas pide cada pregunta. Se pide una sola vez por intento y
+     es best-effort: si no llega, la pantalla se comporta como antes. */
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    getExamAnswerCounts(session.attempt_id)
+      .then((c) => active && setNeed(c))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
   // Estable entre renders: si fuera `session?.questions ?? []` el arreglo vacío
   // sería nuevo en cada render y los useMemo de abajo se recalcularían siempre.
   const questions = useMemo(() => session?.questions ?? [], [session]);
   const total = questions.length;
   const current = questions[idx];
 
+  /**
+   * Cuántas respuestas pide esta pregunta. `null` en una de varias respuestas
+   * cuyo conteo no llegó: ahí no se pone tope ni se exige nada, como antes.
+   */
+  const needOf = useCallback(
+    (q: { id: string; kind: string }): number | null =>
+      q.kind === 'multi' ? (need?.[q.id] ?? null) : 1,
+    [need],
+  );
+
+  /**
+   * Una pregunta está COMPLETA cuando tiene exactamente las respuestas que
+   * pide. Antes bastaba con una marca: en una de "elige dos" con una sola
+   * marcada, el mapa se pintaba de verde, el contador decía "respondida" y el
+   * salto a la siguiente pendiente la ignoraba — el aprendiz enviaba media
+   * respuesta creyendo que estaba lista. Media respuesta vale cero.
+   */
+  const isComplete = useCallback(
+    (q: { id: string; kind: string }): boolean => {
+      const n = answers[q.id]?.length ?? 0;
+      if (n === 0) return false;
+      const want = needOf(q);
+      return want === null ? true : n === want;
+    },
+    [answers, needOf],
+  );
+
   const answeredCount = useMemo(
-    () => questions.filter((q) => (answers[q.id]?.length ?? 0) > 0).length,
-    [questions, answers],
+    () => questions.filter((q) => isComplete(q)).length,
+    [questions, isComplete],
+  );
+
+  /** Empezadas pero a medias (solo pueden ser de varias respuestas). */
+  const partialCount = useMemo(
+    () => questions.filter((q) => (answers[q.id]?.length ?? 0) > 0 && !isComplete(q)).length,
+    [questions, answers, isComplete],
   );
 
   const marks: QuestionMark[] = useMemo(
@@ -116,11 +167,13 @@ export default function ExamRunner() {
       questions.map((q) =>
         flagged.includes(q.id)
           ? 'flagged'
-          : (answers[q.id]?.length ?? 0) > 0
+          : isComplete(q)
             ? 'answered'
-            : 'empty',
+            : (answers[q.id]?.length ?? 0) > 0
+              ? 'partial'
+              : 'empty',
       ),
-    [questions, answers, flagged],
+    [questions, answers, flagged, isComplete],
   );
 
   /* ── Autoguardado con rebote ──
@@ -163,12 +216,24 @@ export default function ExamRunner() {
     setAnswers((prev) => {
       const cur = prev[questionId] ?? [];
       if (multi) {
-        return {
-          ...prev,
-          [questionId]: cur.includes(optionId)
-            ? cur.filter((o) => o !== optionId)
-            : [...cur, optionId],
-        };
+        if (cur.includes(optionId)) {
+          return { ...prev, [questionId]: cur.filter((o) => o !== optionId) };
+        }
+        /* Tope: una pregunta de "elige dos" no admite una tercera marca. Sin
+           esto se podían marcar TODAS las opciones, que es la forma más barata
+           de acertar sin saber. Se avisa en vez de ignorar el clic en silencio. */
+        const want = need?.[questionId] ?? null;
+        if (want !== null && cur.length >= want) {
+          toast.info(
+            t('exam.multi_cap', {
+              n: want,
+              defaultValue:
+                'Esta pregunta pide {{n}} respuestas. Quita una para elegir otra.',
+            }),
+          );
+          return prev;
+        }
+        return { ...prev, [questionId]: [...cur, optionId] };
       }
       // Volver a tocar la misma opción la deselecciona: cambiar de opinión no
       // debe obligar a dejar una respuesta que ya no se cree correcta.
@@ -227,9 +292,11 @@ export default function ExamRunner() {
 
   /* Ir a la primera sin responder: en un examen largo, buscarla a mano por el
      navegador es justo el trabajo que la máquina debería hacer. */
+  /* "La primera pendiente" incluye las que están a medias: una de elige-dos con
+     una sola marca es justo la que hay que volver a mirar antes de enviar. */
   const firstUnanswered = useMemo(
-    () => questions.findIndex((q) => (answers[q.id]?.length ?? 0) === 0),
-    [questions, answers],
+    () => questions.findIndex((q) => !isComplete(q)),
+    [questions, isComplete],
   );
 
   const goToFirstUnanswered = useCallback(() => {
@@ -269,6 +336,8 @@ export default function ExamRunner() {
   const multi = current.kind === 'multi';
   const selected = answers[current.id] ?? [];
   const isFlagged = flagged.includes(current.id);
+  /** Cuántas pide la pregunta en pantalla (null = no se sabe). */
+  const currentNeed = multi ? (need?.[current.id] ?? null) : 1;
   const unanswered = total - answeredCount;
 
   return (
@@ -393,7 +462,12 @@ export default function ExamRunner() {
               </span>
               {multi && (
                 <span className="ml-2.5 rounded-full bg-subtle px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-text-muted">
-                  {t('exam.multi_tag', 'Varias respuestas')}
+                  {currentNeed !== null
+                    ? t('exam.multi_tag_n', {
+                        n: currentNeed,
+                        defaultValue: 'Elige {{n}}',
+                      })
+                    : t('exam.multi_tag', 'Varias respuestas')}
                 </span>
               )}
             </div>
@@ -447,9 +521,36 @@ export default function ExamRunner() {
             ))}
           </div>
 
-          <p className="mt-3.5 text-[12.5px] text-text-subtle">
+          {/* El pie de la pregunta. En las de varias respuestas dice cuántas
+              faltan: es el dato que convierte la pregunta en contestable. */}
+          <p
+            className={cn(
+              'mt-3.5 text-[12.5px]',
+              multi && currentNeed !== null && selected.length > 0 && selected.length < currentNeed
+                ? 'text-amber-600'
+                : 'text-text-subtle',
+            )}
+          >
             {multi
-              ? t('exam.multi_hint', 'Esta pregunta tiene más de una respuesta correcta.')
+              ? currentNeed === null
+                ? t('exam.multi_hint', 'Esta pregunta tiene más de una respuesta correcta.')
+                : selected.length === 0
+                  ? t('exam.multi_pick_n', {
+                      n: currentNeed,
+                      defaultValue: 'Elige {{n}} respuestas.',
+                    })
+                  : selected.length < currentNeed
+                    ? t('exam.multi_left_n', {
+                        n: currentNeed - selected.length,
+                        total: currentNeed,
+                        defaultValue:
+                          'Te falta marcar {{n}} de las {{total}} que pide esta pregunta.',
+                      })
+                    : t('exam.multi_done_n', {
+                        n: currentNeed,
+                        defaultValue:
+                          'Marcaste las {{n}} que pide. Se califica completa: acertar solo una no suma.',
+                      })
               : selected.length > 0
                 ? t('exam.deselect_hint', 'Toca de nuevo tu respuesta para dejarla en blanco.')
                 : t('exam.single_hint', 'Elige una sola respuesta.')}
@@ -483,7 +584,9 @@ export default function ExamRunner() {
                   ? t('exam.legend_answered', 'Respondida')
                   : m === 'flagged'
                     ? t('exam.legend_flagged', 'Marcada')
-                    : t('exam.legend_empty', 'Sin responder')
+                    : m === 'partial'
+                      ? t('exam.legend_partial', 'A medias')
+                      : t('exam.legend_empty', 'Sin responder')
               }`
             }
             onPick={setIdx}
@@ -495,7 +598,7 @@ export default function ExamRunner() {
               className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[11.5px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
             >
               <SkipForward className="h-3 w-3" />
-              {t('exam.jump_unanswered', 'Sin responder')}
+              {t('exam.jump_pending', 'Pendientes')}
             </button>
           )}
 
@@ -558,7 +661,7 @@ export default function ExamRunner() {
                 className="hidden items-center gap-1.5 rounded-full px-3 py-2.5 text-[13px] font-medium text-text-subtle transition-colors duration-300 hover:text-text sm:inline-flex"
               >
                 <SkipForward className="h-3.5 w-3.5" />
-                {t('exam.jump_unanswered', 'Sin responder')}
+                {t('exam.jump_pending', 'Pendientes')}
               </button>
             </Tooltip>
           )}
@@ -616,13 +719,20 @@ export default function ExamRunner() {
               {t('exam.review_title', 'Revisa antes de enviar')}
             </h2>
             <p className="mb-5 text-[13.5px] text-text-muted">
-              {unanswered > 0
-                ? t('exam.review_pending', {
-                    n: unanswered,
+              {partialCount > 0
+                ? t('exam.review_partial', {
+                    n: partialCount,
+                    rest: unanswered - partialCount,
                     defaultValue:
-                      'Te faltan {{n}} preguntas por responder. Las vacías cuentan como incorrectas.',
+                      'Hay {{n}} pregunta(s) a medias: pedían varias respuestas y les falta alguna. Se califican completas — media respuesta cuenta como incorrecta.',
                   })
-                : t('exam.review_complete', 'Respondiste todas. Puedes enviar cuando quieras.')}
+                : unanswered > 0
+                  ? t('exam.review_pending', {
+                      n: unanswered,
+                      defaultValue:
+                        'Te faltan {{n}} preguntas por responder. Las vacías cuentan como incorrectas.',
+                    })
+                  : t('exam.review_complete', 'Respondiste todas. Puedes enviar cuando quieras.')}
             </p>
 
             <QuestionNav
@@ -635,7 +745,9 @@ export default function ExamRunner() {
                     ? t('exam.legend_answered', 'Respondida')
                     : m === 'flagged'
                       ? t('exam.legend_flagged', 'Marcada')
-                      : t('exam.legend_empty', 'Sin responder')
+                      : m === 'partial'
+                        ? t('exam.legend_partial', 'A medias')
+                        : t('exam.legend_empty', 'Sin responder')
                 }`
               }
               onPick={(i) => {
@@ -651,9 +763,9 @@ export default function ExamRunner() {
                 className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-[12.5px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
               >
                 <SkipForward className="h-3.5 w-3.5" />
-                {t('exam.jump_first_unanswered', {
+                {t('exam.jump_first_pending', {
                   n: firstUnanswered + 1,
-                  defaultValue: 'Ir a la primera sin responder (#{{n}})',
+                  defaultValue: 'Ir a la primera pendiente (#{{n}})',
                 })}
               </button>
             )}
@@ -683,6 +795,10 @@ export default function ExamRunner() {
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-[3px] bg-amber-500/35" />
                 {t('exam.legend_flagged', 'Marcada')}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-[3px] bg-rose-500/30" />
+                {t('exam.legend_partial', 'A medias')}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-[3px] bg-subtle" />

@@ -5309,7 +5309,11 @@
       "skip_no_text": "sem enunciado",
       "skip_untitled": "(pergunta sem texto)",
       "study_line": "{{title}}: {{min}} min · leu até {{depth}}% ({{pct}}%)",
-      "results_study": "revisão: {{done}}/{{total}} módulos · {{min}} min"
+      "results_study": "revisão: {{done}}/{{total}} módulos · {{min}} min",
+      "q_err_multi_one": "Marque pelo menos 2 corretas, ou mude para uma só resposta",
+      "q_mark_multi_n": "Marque todas as corretas ({{n}} até agora; mínimo 2)",
+      "publish_broken_multi": "Não é possível publicar: {{n}} pergunta(s) de várias respostas têm só uma correta.",
+      "warn_broken_multi": "Bloqueia a publicação: {{n}} pergunta(s) de várias respostas têm só uma correta. Ao aprendiz pede-se \"escolha 2\" e não há 2 para escolher."
     },
     "test_mode": {
       "label": "Modo de testes",
@@ -6581,7 +6585,16 @@
     "reinforcement_left": "{{pct}}% revisado · faltam uns {{n}} min",
     "reinforcement_not_started": "abra e percorra o módulo inteiro (uns {{n}} min)",
     "reinforcement_studied": "revisado, já pode marcar",
-    "reinforcement_rejected": "Ainda não está revisado: abra e percorra o módulo inteiro para poder marcar."
+    "reinforcement_rejected": "Ainda não está revisado: abra e percorra o módulo inteiro para poder marcar.",
+    "multi_tag_n": "Escolha {{n}}",
+    "multi_pick_n": "Escolha {{n}} respostas.",
+    "multi_left_n": "Falta marcar {{n}} das {{total}} que esta pergunta pede.",
+    "multi_done_n": "Marcou as {{n}} que pede. É corrigida por inteiro: acertar só uma não pontua.",
+    "multi_cap": "Esta pergunta pede {{n}} respostas. Tire uma para escolher outra.",
+    "legend_partial": "Pela metade",
+    "jump_pending": "Pendentes",
+    "jump_first_pending": "Ir à primeira pendente (#{{n}})",
+    "review_partial": "Há {{n}} pergunta(s) pela metade: pediam várias respostas e falta alguma. São corrigidas por inteiro — meia resposta conta como errada."
   },
   "survey": {
     "badge": "Último passo",

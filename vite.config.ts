@@ -41,5 +41,10 @@ export default defineConfig({
     port: 5173,
     host: true,
     allowedHosts: true,
+    /* Los bots de QA escriben trazas y capturas dentro del proyecto mientras
+       la prueba corre. Vite las veía como codigo tocado y recargaba la pagina
+       ENTERA en mitad del examen: la pantalla se quedaba en blanco y el bot
+       reportaba fallos del sitio que solo eran su propia basura. */
+    watch: { ignored: ['**/qa/.results/**', '**/qa/reports/**', '**/qa/.auth/**'] },
   },
 });

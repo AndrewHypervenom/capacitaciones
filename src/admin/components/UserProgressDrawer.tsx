@@ -29,7 +29,7 @@ const GREEN = '#10D451'
 const MAGENTA = '#B33D9E'
 
 interface UserProgressDrawerProps {
-  user: Profile & { email?: string }
+  user: Profile
   /** Nombre de la campaña casa, para el encabezado (opcional). */
   campaignName?: string | null
   onClose: () => void
