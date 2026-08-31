@@ -849,6 +849,8 @@ export default function CourseEditor() {
 
   // Con varias campañas la lista de personas se mezcla, así que el buscador
   // también mira el nombre de la campaña: escribir "Piloto" deja solo su gente.
+  // Y el correo, que es como se identifica a la gente cuando el nombre está
+  // repetido o escrito distinto (`profiles.email`, ver sync_profile_email).
   const filteredProfiles = useMemo(() => {
     const q = fold(userSearch.trim())
     if (!q) return profiles
@@ -856,6 +858,7 @@ export default function CourseEditor() {
     return profiles.filter(
       (p) =>
         fold(p.display_name ?? '').includes(q) ||
+        fold(p.email ?? '').includes(q) ||
         fold(campaignById.get(p.campaign_id ?? '') ?? '').includes(q),
     )
   }, [profiles, userSearch, campaigns])
