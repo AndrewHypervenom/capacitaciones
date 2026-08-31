@@ -394,13 +394,15 @@ export async function getCampaignCollaborators(campaignId: string): Promise<Coll
 
   const { data: profiles, error: pErr } = await supabase
     .from('profiles')
-    .select('id, display_name, job_title, avatar_url')
+    // `email` lo copia el trigger sync_profile_email desde auth.users; si ese
+    // SQL no se ha corrido llega vacío y la tarjeta muestra solo el nombre.
+    .select('id, display_name, email, job_title, avatar_url')
     .in('id', ids)
   if (pErr) throw pErr
   return (profiles ?? []).map((p) => ({
     id: (p as { id: string }).id,
     display_name: (p as { display_name: string | null }).display_name,
-    email: null,
+    email: (p as { email: string | null }).email ?? null,
     job_title: (p as { job_title: string | null }).job_title,
     avatar_url: (p as { avatar_url: string | null }).avatar_url,
     is_collaborator: true,
@@ -414,8 +416,6 @@ export async function getCampaignCollaborators(campaignId: string): Promise<Coll
 export async function searchCampaignCandidates(
   campaignId: string,
   query: string,
-  /** superadmin ve todos los usuarios; capacitador solo los corporativos. */
-  includeAll = false,
 ): Promise<CollaboratorProfile[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.rpc as any)('search_campaign_candidates', {
@@ -431,11 +431,14 @@ export async function searchCampaignCandidates(
     avatar_url: string | null
     is_collaborator: boolean
   }>)
-    // Para el capacitador solo se muestran usuarios corporativos
-    // (@positivosmais.com), así los usuarios de prueba no aparecen al compartir
-    // campañas. El superadmin (includeAll) ve a todos. Se mantienen los que ya
-    // son colaboradores aunque no tengan el dominio, para poder quitarlos.
-    .filter((r) => includeAll || r.is_collaborator || isCorporateEmail(r.email))
+    // Aquí NO se vuelve a filtrar. Antes, a quien no era superadmin solo se le
+    // mostraban correos @positivosmais.com para esconder las cuentas de prueba,
+    // y eso escondía a 16 de los 24 capacitadores reales (los de dominio de
+    // cliente): la lista salía corta sin explicar por qué. Quien decide el
+    // alcance es el RPC `search_campaign_candidates` (SECURITY DEFINER), que ya
+    // exige ser miembro de la campaña y limita a capacitadores/superadmins.
+    // Lo de prueba lo ataja `addCollaborator`, que rechaza mezclar mundos con
+    // un TestScopeError explicando qué pasa.
     .map((r) => ({
       id: r.id,
       display_name: r.display_name,
@@ -444,13 +447,6 @@ export async function searchCampaignCandidates(
       avatar_url: r.avatar_url,
       is_collaborator: r.is_collaborator,
     }))
-}
-
-/** Dominio corporativo. Solo estos usuarios pueden ser colaboradores de campañas. */
-const CORPORATE_EMAIL_DOMAIN = '@positivosmais.com'
-
-function isCorporateEmail(email: string | null): boolean {
-  return !!email && email.trim().toLowerCase().endsWith(CORPORATE_EMAIL_DOMAIN)
 }
 
 /**

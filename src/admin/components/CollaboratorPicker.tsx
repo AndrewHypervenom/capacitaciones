@@ -28,7 +28,7 @@ interface CollaboratorPickerProps {
  */
 export function CollaboratorPicker({ campaignId, isTest = false, onCountChange }: CollaboratorPickerProps) {
   const { t } = useTranslation()
-  const { user, isSuperAdmin } = useAuth()
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [candidates, setCandidates] = useState<CollaboratorProfile[]>([])
@@ -37,7 +37,7 @@ export function CollaboratorPicker({ campaignId, isTest = false, onCountChange }
 
   const load = (q: string) => {
     setLoading(true)
-    searchCampaignCandidates(campaignId, q, isSuperAdmin)
+    searchCampaignCandidates(campaignId, q)
       .then((list) => {
         setCandidates(list)
         onCountChange?.(list.filter((c) => c.is_collaborator).length)
