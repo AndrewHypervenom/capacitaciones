@@ -489,6 +489,10 @@ export default function CourseEditor() {
   const registerSurveySave = useCallback((fn: (() => Promise<boolean>) | null) => {
     surveySaveRef.current = fn
   }, [])
+  const [surveyUndo, setSurveyUndo] = useState<PanelUndo>(null)
+  const registerSurveyUndo = useCallback<RegisterUndo>((fn, canUndo) => {
+    setSurveyUndo(fn ? { undo: fn, canUndo } : null)
+  }, [])
   // Pénsum del certificado (lo que se publica al compartirlo): mismo esquema.
   const [pensumDirty, setPensumDirty] = useState(false)
   const pensumSaveRef = useRef<(() => Promise<boolean>) | null>(null)
@@ -1902,7 +1906,8 @@ export default function CourseEditor() {
    * había algo sin guardar. Si el panel no tiene nada que deshacer, se cae al
    * historial de la página (la ficha, las condiciones, las asignaciones).
    */
-  const panelUndo: PanelUndo = tab === 'exam' ? examUndo : tab === 'cert' ? pensumUndo : null
+  const panelUndo: PanelUndo =
+    tab === 'exam' ? examUndo : tab === 'cert' ? pensumUndo : tab === 'survey' ? surveyUndo : null
   const activeUndo: { undo: () => void; canUndo: boolean } = panelUndo?.canUndo
     ? panelUndo
     : { undo: undoHistory.undo, canUndo: undoHistory.canUndo }
@@ -3776,6 +3781,7 @@ export default function CourseEditor() {
           courseId={course.id}
           onDirtyChange={setSurveyDirty}
           registerSave={registerSurveySave}
+          registerUndo={registerSurveyUndo}
         />
       )}
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { X, ChevronRight, Plus, Trash2, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import { Select } from '@/components/ui/Select'
@@ -172,6 +173,12 @@ export function ArenaEditorModal({
   // Tamaño de sección efectivo (nunca 0 para no dividir por cero al agrupar).
   const sectionSize = Math.max(MIN_SECTION_SIZE, form.section_size || DEFAULT_SECTION_SIZE)
 
+  // Deshacer dentro del quiz (Ctrl+Z): borrar una pregunta o una opción por
+  // error ya no obliga a reescribirla. El primer vuelco del formulario (abajo)
+  // NO es una edición: se adopta como punto de partida, o el primer Ctrl+Z
+  // dejaría el quiz en blanco.
+  const { adopt: adoptUndo } = useUndoHistory({ state: form, apply: setForm })
+
   useEffect(() => {
     if (editing) {
       const steps = editing.steps.length > 0 ? editing.steps : [newStep()]
@@ -194,7 +201,8 @@ export function ArenaEditorModal({
       // Quiz nuevo: la única pregunta arranca abierta.
       setOpenSteps(fresh.steps.length > 0 ? { [fresh.steps[0].id]: true } : {})
     }
-  }, [editing, defaultCampaignId])
+    adoptUndo()
+  }, [editing, defaultCampaignId, adoptUndo])
 
   const toggleStep = (stepId: string) =>
     setOpenSteps(o => ({ ...o, [stepId]: !o[stepId] }))

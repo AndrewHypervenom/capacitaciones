@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
 import {
   Plus,
   Trash2,
@@ -265,6 +266,14 @@ function MarkerEditForm({
   const [draft, setDraft] = useState<VideoMarkerRaw>(() => JSON.parse(JSON.stringify(marker)))
   const [translating, setTranslating] = useState(false)
   const [translateError, setTranslateError] = useState<string | null>(null)
+
+  // Deshacer DENTRO del marcador (Ctrl+Z): borrar una pregunta, cambiar la
+  // respuesta correcta o vaciar una opción sin querer ya tiene vuelta atrás.
+  // El formulario abre con todo cargado (el borrador sale del marcador que se
+  // está editando), así que lo que cambia aquí siempre lo cambió una persona:
+  // por eso `trustChanges`, que además cubre la traducción automática, que
+  // tarda segundos y llega mucho después del clic.
+  useUndoHistory({ state: draft, apply: setDraft, trustChanges: true })
 
   // Hay algo que traducir si el marcador tiene título en CUALQUIER idioma.
   const sourceTitle = firstFilled(draft, 'title')

@@ -436,14 +436,29 @@ export default function WorldDetail() {
     toast.success(next === 'published' ? i18n.t('admin.worlds.publish_ok') : i18n.t('admin.worlds.unpublish_ok'))
   }
 
+  /**
+   * Deshacer DENTRO de los dos formularios en modal (región y nivel).
+   *
+   * El historial de la pantalla cubre el borrador del mundo, pero estos dos
+   * formularios viven en su propio estado y no entran ahí: dentro del modal,
+   * Ctrl+Z no tenía a quién preguntar. Solo están vivos mientras su modal está
+   * abierto —si no, se quedarían con pasos de la vez anterior y le robarían el
+   * atajo a la pantalla de detrás— y se olvidan al abrirlos (`reset`), porque
+   * rellenar el formulario al abrir no es una edición de nadie.
+   */
+  const regionUndo = useUndoHistory({ state: regionForm, apply: setRegionForm, enabled: regionModal, trustChanges: true })
+  const levelUndo = useUndoHistory({ state: levelForm, apply: setLevelForm, enabled: levelModal, trustChanges: true })
+
   /* ── Region CRUD ── */
   const openNewRegion = () => {
+    regionUndo.reset()
     setEditingRegion(null)
     setRegionForm({ name:'', description:'', icon:'📍', order_index: regions.length })
     setRegionModuleId('')
     setRegionModal(true)
   }
   const openEditRegion = (r: Region) => {
+    regionUndo.reset()
     setEditingRegion(r)
     setRegionForm({ name:r.name, description:r.description, icon:r.icon, order_index:r.order_index })
     setRegionModuleId(r.module_id ?? '')
@@ -505,12 +520,14 @@ export default function WorldDetail() {
 
   /* ── Level CRUD ── */
   const openNewLevel = (regionId: string) => {
+    levelUndo.reset()
     setEditingLevel(null)
     setActiveRegionId(regionId)
     setLevelForm({ name:'', description:'', icon:'⭐', order_index: levels.length, quiz_id:'', min_score_pct: null })
     setLevelModal(true)
   }
   const openEditLevel = (l: Level) => {
+    levelUndo.reset()
     setEditingLevel(l)
     setActiveRegionId(l.region_id)
     setLevelForm({ name:l.name, description:l.description, icon:l.icon, order_index:l.order_index, quiz_id:l.quiz_id||'', min_score_pct: l.min_score_pct ?? null })

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Select } from '@/components/ui/Select'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
+import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { newOptionId, trueFalseOptions } from '@/services/exams.admin.service'
 import type {
@@ -79,6 +80,12 @@ export function ExamQuestionModal({
     // ahorra el aviso de "esta no es del nivel" antes de escribir nada.
     difficulty: question?.difficulty ?? (isLevelLocked(targetLevel) ? targetLevel : 'medio'),
   }))
+
+  // Deshacer dentro de la pregunta (Ctrl+Z): reordenar opciones, vaciar una o
+  // cambiar la respuesta correcta sin querer ya se puede desandar sin cerrar el
+  // modal y perderlo todo. Abre con el borrador completo, así que nada cambia
+  // aquí salvo por mano de una persona.
+  useUndoHistory({ state: draft, apply: setDraft, trustChanges: true })
 
   // Cambiar a Verdadero/Falso reemplaza las opciones; volver a opción múltiple
   // devuelve cuatro casillas en blanco. Mezclarlas dejaba estados imposibles.

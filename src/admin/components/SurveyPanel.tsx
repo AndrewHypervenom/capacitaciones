@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useUndoHistory, type RegisterUndo } from '@/hooks/useUndoHistory'
 import { useTranslation } from 'react-i18next'
 import {
   AlertCircle,
@@ -338,10 +339,17 @@ export function SurveyPanel({
   courseId,
   onDirtyChange,
   registerSave,
+  registerUndo,
 }: {
   courseId: string
   onDirtyChange: (dirty: boolean) => void
   registerSave: (fn: (() => Promise<boolean>) | null) => void
+  /**
+   * Publica el deshacer de esta pestaña a la barra de guardado. Sin esto la
+   * barra decía "Encuesta · sin guardar" con el botón Deshacer apagado: lo que
+   * está sin guardar vive aquí dentro y la página no sabía nada de ello.
+   */
+  registerUndo?: RegisterUndo
 }) {
   const { t } = useTranslation()
   const [cfg, setCfg] = useState<SurveyConfig>(DEFAULT_SURVEY_CONFIG)
@@ -413,6 +421,19 @@ export function SurveyPanel({
   useEffect(() => {
     onDirtyChange(dirty)
   }, [dirty, onDirtyChange])
+
+  // Deshacer de la encuesta: preguntas, modos y el instructor. Se enciende
+  // cuando la configuración ya llegó (antes de eso, el vuelco inicial no es una
+  // edición de nadie).
+  const { undo, canUndo } = useUndoHistory({
+    state: cfg,
+    apply: setCfg,
+    enabled: !loading,
+  })
+  useEffect(() => {
+    registerUndo?.(undo, canUndo)
+    return () => registerUndo?.(null, false)
+  }, [registerUndo, undo, canUndo])
 
   // El guardado real vive en la barra única del pie, igual que las demás
   // pestañas: un solo sitio donde se guarda en todo el editor.

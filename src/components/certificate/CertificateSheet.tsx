@@ -18,6 +18,9 @@ const SANS =
 const LOGO_SRC = '/positivos-logo.png';
 const LOGO_RATIO = 1446 / 226;
 
+/** Logo del sello inferior derecho (1264×197). Reemplaza al monograma escrito. */
+const SEAL_LOGO_SRC = '/positivos-logo-sello.png';
+
 export interface CertificateSheetData {
   viewName: string;
   /** Documento de identidad de quien recibe el certificado (cédula, CURP…). */
@@ -68,7 +71,7 @@ function formatDuration(min: number, t: TFunction): string {
  * Sello oficial PositivoS+ — es la marca de que Positivo certifica el
  * documento; reemplaza a las firmas manuscritas del certificado impreso.
  * Estampa circular con doble anillo, texto curvo (textPath), anillo de estrellas
- * y monograma central.
+ * y el logo corporativo al centro.
  */
 function PositivoSeal({ label, sub, size = 118 }: { label: string; sub: string; size?: number }) {
   const R_TEXT = 82;
@@ -128,19 +131,22 @@ function PositivoSeal({ label, sub, size = 118 }: { label: string; sub: string; 
           </textPath>
         </text>
 
-        {/* Monograma central */}
-        <g textAnchor="middle" fontFamily={SANS}>
-          <text x="100" y="104" fontSize="26" fontWeight={900} fill={INK} letterSpacing="-0.5">
-            Positivo<tspan fill={GREEN}>S</tspan><tspan fill={MAGENTA}>+</tspan>
-          </text>
-        </g>
-        {/* Check de autenticidad */}
-        <g transform="translate(100 134)">
-          <circle cx="0" cy="0" r="9" fill={GREEN} />
-          <path d="M -4 0 L -1 3 L 4.5 -3.5" fill="none" stroke={WHITE} strokeWidth="2.2"
-            strokeLinecap="round" strokeLinejoin="round" />
-        </g>
       </svg>
+      {/* Logo corporativo en el centro del sello. Va como <img> HTML encima del
+          SVG (no como <image> dentro de él): html2canvas serializa el SVG y
+          perdería la imagen externa al exportar el PDF. Va derecho a propósito:
+          la estampa gira -7°, el logo no. */}
+      <img
+        src={SEAL_LOGO_SRC}
+        alt="Positivo S+"
+        style={{
+          position: 'absolute',
+          left: '50%', top: '50%',
+          width: '58%',
+          transform: 'translate(-50%, -50%)',
+          objectFit: 'contain',
+        }}
+      />
       {/* Brillo sutil para efecto relieve */}
       <div aria-hidden style={{
         position: 'absolute', inset: 0, borderRadius: '50%', pointerEvents: 'none',

@@ -14,8 +14,12 @@ import { fingerprint } from '@/lib/fingerprint'
  * distingue "qué" cambió, pero nunca se queda a medias ni deja el editor en un
  * estado que no existió.
  *
- * Dentro de un campo de texto NO se intercepta el atajo: ahí el Ctrl+Z del
- * navegador deshace letra por letra, que es lo que se espera al escribir.
+ * El atajo lo atiende el sitio TAMBIÉN dentro de los campos de texto. Cederlo
+ * ahí al navegador parecía lo cortés —deshace letra por letra— pero su historial
+ * es por elemento: no cruzaba de un campo al anterior y, con las pestañas
+ * ES/EN/PT compartiendo el mismo <input>, deshacer en inglés escupía el texto
+ * que habías escrito en español. Si aquí no hay nada que deshacer, el atajo se
+ * deja pasar y el navegador hace lo suyo. Ver el registro al final del archivo.
  *
  * ── Lo que hacía que "Deshacer" fuera un botón que no deshacía nada ─────────
  *
@@ -147,6 +151,10 @@ export function useUndoHistory<T>(opts: {
 
   /** Cuándo tocó algo una persona por última vez. */
   const lastInputRef = useRef(0)
+  /** Cuándo se tecleó por última vez DENTRO de un campo de texto. */
+  const lastTypeRef = useRef(0)
+  /** Cuándo cambió por última vez el estado que este historial vigila. */
+  const lastChangeRef = useRef(0)
   /** Se acaba de volver a una foto: lo que cambie por rebote no es un paso. */
   const justAppliedRef = useRef(false)
   /**
@@ -161,8 +169,9 @@ export function useUndoHistory<T>(opts: {
   const pendingSinceRef = useRef(0)
 
   useEffect(() => {
-    const mark = () => {
+    const mark = (e: Event) => {
       lastInputRef.current = Date.now()
+      if (e.type === 'input' && isTextEntry(e.target)) lastTypeRef.current = Date.now()
       justAppliedRef.current = false
       adoptNextRef.current = false
     }
@@ -238,6 +247,7 @@ export function useUndoHistory<T>(opts: {
       setPendingEdit(false)
       return
     }
+    lastChangeRef.current = Date.now()
 
     if (isUserEdit()) setPendingEdit(true)
 
@@ -335,8 +345,9 @@ export function useUndoHistory<T>(opts: {
     setPendingEdit(false)
   }, [clearPending])
 
-  // Atajos. El oyente se instala una sola vez y lee por ref: reinstalarlo en
-  // cada cambio de estado haría perder pulsaciones a mitad de render.
+  // Atajos. El oyente es UNO para toda la página (ver el registro de abajo) y
+  // lee por ref: reinstalarlo en cada cambio de estado haría perder pulsaciones
+  // a mitad de render.
   const undoRef = useRef(undo)
   const redoRef = useRef(redo)
   useEffect(() => {
@@ -346,28 +357,24 @@ export function useUndoHistory<T>(opts: {
 
   useEffect(() => {
     if (!enabled) return
-    const onKey = (e: KeyboardEvent) => {
-      // Otro editor más adentro ya atendió el atajo (un panel dentro de una
-      // pestaña, por ejemplo). Sin esto, Ctrl+Z deshacía DOS pasos de golpe.
-      if (e.defaultPrevented) return
-      if (!(e.ctrlKey || e.metaKey)) return
-      const key = e.key.toLowerCase()
-      if (key !== 'z' && key !== 'y') return
-      // En un campo de texto manda el deshacer del navegador.
-      if (isTextEntry(e.target)) return
-      // Si aquí no hay nada que deshacer, no se reclama el atajo: que lo
-      // atienda el editor de más afuera.
-      const wantsRedo = key === 'y' || e.shiftKey
-      const has = wantsRedo
-        ? futureRef.current.length > 0
-        : pastRef.current.length > 0 || pendingEditRef.current
-      if (!has) return
-      e.preventDefault()
-      if (wantsRedo) redoRef.current()
-      else undoRef.current()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return registerHistory({
+      // A qué altura vive este editor: 0 = la página, 1 = dentro de un modal…
+      // Así un modal abierto no deshace la página de detrás (ver `registerHistory`).
+      depth: modalDepth(),
+      canUndo: () => pastRef.current.length > 0 || pendingEditRef.current,
+      /**
+       * Dentro de un campo de texto solo se reclama el atajo si lo último que
+       * se tecleó movió ESTE estado. Escribir en un buscador o en un filtro no
+       * lo mueve: ahí el Ctrl+Z tiene que deshacer lo que acabas de escribir,
+       * no revertir a tus espaldas un cambio del editor que hay debajo.
+       * (300 ms de margen: el estado de React se asienta un render después.)
+       */
+      claimsInTextEntry: () =>
+        lastTypeRef.current === 0 || lastTypeRef.current <= lastChangeRef.current + 300,
+      canRedo: () => futureRef.current.length > 0,
+      undo: () => undoRef.current(),
+      redo: () => redoRef.current(),
+    })
   }, [enabled])
 
   useEffect(() => () => clearPending(), [clearPending])
@@ -382,7 +389,81 @@ export function useUndoHistory<T>(opts: {
   }
 }
 
-/** ¿El foco está donde el navegador ya sabe deshacer? */
+/* ── Un solo atajo para toda la página ──────────────────────────────────────
+ *
+ * Antes cada editor instalaba su propio oyente y se repartían el Ctrl+Z por
+ * orden de llegada, con dos agujeros que dejaban el botón como adorno:
+ *
+ *  · DENTRO DE UN CAMPO DE TEXTO el atajo se le cedía al navegador. Suena
+ *    razonable —el navegador deshace letra a letra— pero su historial es POR
+ *    ELEMENTO y no sabe nada del editor: escribías en el título, luego en el
+ *    subtítulo, y el segundo Ctrl+Z ya no encontraba nada que deshacer; el
+ *    cambio del título se quedaba. Peor con los idiomas: las pestañas ES/EN/PT
+ *    comparten el MISMO <input>, así que al deshacer en inglés el navegador
+ *    metía ahí el texto que habías escrito en español. Por eso ahora manda
+ *    siempre el historial del sitio… salvo que no tenga nada que deshacer, y
+ *    entonces sí se deja pasar (en un buscador o en un campo suelto el Ctrl+Z
+ *    del navegador sigue siendo lo correcto).
+ *
+ *  · QUIÉN ATIENDE cuando hay varios editores vivos se decidía con
+ *    `defaultPrevented`, que depende del orden en que se instalaron los
+ *    oyentes: la página se registra ANTES que el modal que abre encima, así
+ *    que el de fuera contestaba primero. Ahora hay un solo oyente y contesta
+ *    el más INTERNO que tenga algo que deshacer.
+ */
+
+type Registered = {
+  depth: number
+  canUndo: () => boolean
+  claimsInTextEntry: () => boolean
+  canRedo: () => boolean
+  undo: () => void
+  redo: () => void
+}
+
+/** Historiales vivos, en orden de montaje (el último es el más interno). */
+const registry: Registered[] = []
+
+/** Cuántas capas de modal hay abiertas ahora mismo. */
+function modalDepth(): number {
+  if (typeof document === 'undefined') return 0
+  return document.querySelectorAll('[role="dialog"], [aria-modal="true"]').length
+}
+
+function onShortcut(e: KeyboardEvent) {
+  if (e.defaultPrevented) return
+  if (!(e.ctrlKey || e.metaKey)) return
+  const key = e.key.toLowerCase()
+  if (key !== 'z' && key !== 'y') return
+  const wantsRedo = key === 'y' || e.shiftKey
+  // Con un modal abierto solo contestan los historiales que viven DENTRO de él:
+  // si el modal no tiene el suyo, el atajo se deja pasar en vez de deshacer a
+  // ciegas la página que hay detrás.
+  const depth = modalDepth()
+  const inText = isTextEntry(e.target)
+  for (let i = registry.length - 1; i >= 0; i--) {
+    const entry = registry[i]
+    if (entry.depth < depth) continue
+    if (inText && !entry.claimsInTextEntry()) continue
+    if (!(wantsRedo ? entry.canRedo() : entry.canUndo())) continue
+    e.preventDefault()
+    if (wantsRedo) entry.redo()
+    else entry.undo()
+    return
+  }
+}
+
+function registerHistory(entry: Registered): () => void {
+  registry.push(entry)
+  if (registry.length === 1) document.addEventListener('keydown', onShortcut)
+  return () => {
+    const i = registry.indexOf(entry)
+    if (i >= 0) registry.splice(i, 1)
+    if (registry.length === 0) document.removeEventListener('keydown', onShortcut)
+  }
+}
+
+/** ¿El foco está en un campo donde el navegador lleva su propio deshacer? */
 function isTextEntry(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
@@ -390,7 +471,6 @@ function isTextEntry(target: EventTarget | null): boolean {
   if (tag === 'TEXTAREA') return true
   if (tag !== 'INPUT') return false
   const type = (target as HTMLInputElement).type
-  // Los de valor discreto (casillas, color, rango) no tienen deshacer propio:
-  // ahí el atajo sí es nuestro.
+  // Los de valor discreto (casillas, color, rango) no tienen deshacer propio.
   return !['checkbox', 'radio', 'range', 'color', 'file', 'button', 'submit'].includes(type)
 }
