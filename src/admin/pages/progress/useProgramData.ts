@@ -330,7 +330,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         // Todo en paralelo y con `allSettled`: una dimensión sin permiso no
         // puede tumbar el tablero entero.
         const [
-          profilesRes, campaignsRes, coursesRes, assignRes, campAssignRes, certsRes, credsRes,
+          profilesRes, campaignsRes, coursesRes, assignRes, campAssignRes, certsRes,
           modulesRes, progressRes, attemptsRes, deadlineRes,
         ] = await Promise.allSettled([
             // TODO lo que puede pasar de 1000 filas va por `fetchAll`: PostgREST
@@ -342,8 +342,8 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             fetchAll<{
               id: string; display_name: string | null; role: string;
               campaign_id: string | null; avatar_url: string | null; created_at: string | null;
-              job_title: string | null; country: string | null;
-            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country'),
+              job_title: string | null; country: string | null; email: string | null;
+            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country, email'),
             supabase.from('campaigns').select('id, name, deleted_at, is_test').order('name'),
             fetchAll<{
               id: string; title_es: string; title_en: string | null; title_pt: string | null;
@@ -358,7 +358,6 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             fetchAll<{ user_id: string; course_id: string; cert_id: string; score: number; issued_at: string }>(
               'certifications', 'user_id, course_id, cert_id, score, issued_at',
             ),
-            supabase.from('user_temp_credentials').select('user_id, email'),
             // El temario: qué módulos vivos tiene cada curso. Es el denominador
             // de la finalización, así que sin esto no se puede dar por
             // terminado ningún curso (ver `isCourseCompleted`).
@@ -419,7 +418,6 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         const progressRows =
           progressRes.status === 'fulfilled' ? progressRes.value.rows : [];
         const certRows = rowsOf(certsRes);
-        const credRows = ok<{ user_id: string; email: string }>(credsRes as never);
         // Plazo por curso. Si la consulta falló (columnas aún sin crear) el mapa
         // queda vacío y `courseDueMs` devuelve null para todos: sin vencidos.
         const deadlineOf = new Map<string, CourseDeadline>(
@@ -440,7 +438,12 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         setAssignmentsKnown(!noAssignData);
 
         const campaignName = new Map(campaignRows.map((c) => [c.id, c.name]));
-        const emailOf = new Map(credRows.map((c) => [c.user_id, c.email]));
+        // El correo sale de `profiles.email` (2026-08-31_profiles_email.sql). Antes
+        // se leía de `user_temp_credentials`, que solo tiene fila mientras la
+        // persona no haya entrado: quien ya usaba la plataforma salía sin correo.
+        const emailOf = new Map(
+          profileRows.flatMap((p) => (p.email ? [[p.id, p.email] as const] : [])),
+        );
 
         // ── Temario: módulos vivos por curso, y el índice para leer el
         //    progreso (que guarda UUID y slug indistintamente) ─────────────

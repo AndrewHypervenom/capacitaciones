@@ -198,9 +198,11 @@ export default function UserProfile() {
         supabase.from('campaigns').select('name').eq('id', prof.campaign_id).maybeSingle()
           .then(({ data }) => alive && setCampaignName(data?.name ?? null))
       }
-      // El correo no vive en profiles; lo mostramos si hay credencial temporal
-      // pendiente (solo el superadmin recibe esas filas por RLS).
-      supabase.from('user_temp_credentials').select('email').eq('user_id', id).maybeSingle()
+      // El correo sale de `profiles.email`, que un trigger mantiene al día con
+      // auth.users. Antes se leía de `user_temp_credentials`, que solo existe
+      // mientras la persona no haya entrado: a quien ya usaba la plataforma se le
+      // veía el UUID en lugar del correo.
+      supabase.from('profiles').select('email').eq('id', id).maybeSingle()
         .then(({ data }) => alive && setEmail(data?.email ?? null))
 
       // Certificados y gamificación: ambos degradan solos si la RLS no autoriza

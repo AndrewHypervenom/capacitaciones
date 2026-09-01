@@ -229,18 +229,23 @@ export interface Database {
           email: string
           temp_password: string
           created_at: string
+          /** La fila se purga en esta fecha aunque la persona nunca entre.
+           *  Ver supabase/sql/2026-08-31_temp_credentials_hardening.sql. */
+          expires_at: string
         }
         Insert: {
           user_id: string
           email: string
           temp_password: string
           created_at?: string
+          expires_at?: string
         }
         Update: {
           user_id?: string
           email?: string
           temp_password?: string
           created_at?: string
+          expires_at?: string
         }
         Relationships: []
       }

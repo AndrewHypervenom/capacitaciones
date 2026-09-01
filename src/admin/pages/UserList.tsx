@@ -34,6 +34,7 @@ import { HrRosterSyncModal } from '@/admin/components/HrRosterSyncModal'
 import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
 import { getDefaultPassword } from '@/services/appSettings.service'
 import { setUsersActive } from '@/services/hrSync.service'
+import { logActivity } from '@/services/audit.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { COUNTRY_OPTIONS } from '@/lib/countries'
 import type { Profile, Campaign } from '@/types/database'
@@ -87,6 +88,8 @@ function describeTakenEmail(
 interface TempCred {
   email: string
   temp_password: string
+  /** Pasada esta fecha la fila se purga sola: la contraseña deja de entregarse. */
+  expires_at: string | null
 }
 
 // Bloque de texto listo para pegar en un correo/mensaje al usuario.
@@ -94,10 +97,25 @@ function buildCredsText(email: string, password: string): string {
   return `${i18n.t('admin.users.creds_site')}: ${SITE_URL}\n${i18n.t('admin.users.creds_email')}: ${email}\n${i18n.t('admin.users.creds_password')}: ${password}`
 }
 
-function mapCreds(rows: { user_id: string; email: string; temp_password: string }[] | null): Record<string, TempCred> {
+function mapCreds(
+  rows: { user_id: string; email: string; temp_password: string; expires_at: string | null }[] | null,
+): Record<string, TempCred> {
   const m: Record<string, TempCred> = {}
-  for (const r of rows ?? []) m[r.user_id] = { email: r.email, temp_password: r.temp_password }
+  const ahora = Date.now()
+  for (const r of rows ?? []) {
+    // La RLS ya esconde las vencidas, pero un panel abierto desde ayer todavía
+    // tiene las de ayer en memoria: no se ofrece una contraseña que ya no sirve.
+    if (r.expires_at && new Date(r.expires_at).getTime() <= ahora) continue
+    m[r.user_id] = { email: r.email, temp_password: r.temp_password, expires_at: r.expires_at }
+  }
   return m
+}
+
+/** Días que le quedan a una credencial, para avisarlo antes de que caduque. */
+function diasRestantes(expiresAt: string | null): number | null {
+  if (!expiresAt) return null
+  const ms = new Date(expiresAt).getTime() - Date.now()
+  return ms <= 0 ? 0 : Math.ceil(ms / 86_400_000)
 }
 
 export default function UserList() {
@@ -271,7 +289,7 @@ export default function UserList() {
         profilesQuery,
         // La RLS decide qué filas llegan: el superadmin las ve todas y el
         // capacitador solo las de la gente de sus campañas.
-        supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
+        supabase.from('user_temp_credentials').select('user_id, email, temp_password, expires_at'),
       ])
       // La gente del entorno de pruebas no aparece mientras el Modo pruebas
       // esté apagado (el superadmin lee TODOS los perfiles, sin acotar).
@@ -312,7 +330,7 @@ export default function UserList() {
     }
     const [{ data: updated }, { data: creds }] = await Promise.all([
       profilesQuery,
-      supabase.from('user_temp_credentials').select('user_id, email, temp_password'),
+      supabase.from('user_temp_credentials').select('user_id, email, temp_password, expires_at'),
     ])
     const rows = await withoutTestPeople(updated ?? [], isSuperAdmin)
     setUsers(rows)
@@ -351,10 +369,25 @@ export default function UserList() {
     }
   }
 
+  /**
+   * Copiar la credencial es SACAR una contraseña en claro de la base, así que
+   * queda registrado quién la entregó y de quién era. Es no-fatal a propósito:
+   * si la bitácora falla, la persona igual recibe su acceso.
+   */
   const copyCreds = (userId: string, email: string, password: string) => {
     navigator.clipboard.writeText(buildCredsText(email, password))
     setCopiedId(userId)
     setTimeout(() => setCopiedId((k) => (k === userId ? null : k)), 2000)
+    if (userId === '__new__') return // el alta ya se registró en la Edge Function
+    const target = users.find((u) => u.id === userId)
+    logActivity({
+      action: 'view_credentials',
+      entityType: 'profiles',
+      entityId: userId,
+      entityLabel: target?.display_name ?? email,
+      campaignId: target?.campaign_id ?? null,
+      detail: { email },
+    }).catch(() => {})
   }
 
   /**
@@ -1342,7 +1375,18 @@ export default function UserList() {
                     </button>
                   </Tooltip>
                   {tempCreds[user.id] && (
-                    <Tooltip label={t('admin.users.copy_creds_hint')} className="min-w-0" maxWidth={240}>
+                    <Tooltip
+                      label={
+                        (() => {
+                          const d = diasRestantes(tempCreds[user.id].expires_at)
+                          return d == null
+                            ? t('admin.users.copy_creds_hint')
+                            : `${t('admin.users.copy_creds_hint')} ${t('admin.users.creds_expire_in', { count: d })}`
+                        })()
+                      }
+                      className="min-w-0"
+                      maxWidth={280}
+                    >
                       <button
                         onClick={() => copyCreds(user.id, tempCreds[user.id].email, tempCreds[user.id].temp_password)}
                         className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors min-w-0"

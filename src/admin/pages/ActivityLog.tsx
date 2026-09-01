@@ -6,7 +6,7 @@ import {
   Loader2, Activity, ChevronDown, ChevronRight, Search, X, Download, RefreshCw as Refresh,
   Plus, Pencil, EyeOff, RotateCcw, Trash2, ShieldCheck, Share2, ExternalLink, Copy, Check,
   UserMinus, UserPlus, UserX, UserCog, ArrowRightLeft, Send, Undo2, Layers, History, Braces,
-  Award, RefreshCw, MessageSquare, FileEdit, Sparkles, Users, PenLine, Trash, SlidersHorizontal,
+  Award, RefreshCw, MessageSquare, FileEdit, Sparkles, Users, PenLine, Trash, SlidersHorizontal, KeyRound,
 } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/motion'
@@ -35,7 +35,7 @@ const ACTIONS: ActivityAction[] = [
   'insert', 'update', 'edit_content', 'soft_delete', 'restore', 'delete', 'approve_delete',
   'share', 'unshare', 'role_change', 'campaign_change', 'assign', 'unassign',
   'publish', 'unpublish', 'certify', 'recertify', 'reset', 'feedback',
-  'create_user', 'delete_user',
+  'create_user', 'delete_user', 'view_credentials',
 ]
 
 const ACTION_META: Record<ActivityAction, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
@@ -60,6 +60,7 @@ const ACTION_META: Record<ActivityAction, { icon: React.ComponentType<{ classNam
   feedback:        { icon: MessageSquare, color: '#06b6d4' },
   create_user:     { icon: UserPlus,      color: '#22c55e' },
   delete_user:     { icon: UserX,         color: '#ef4444' },
+  view_credentials: { icon: KeyRound,    color: '#f59e0b' },
 }
 
 // ─── Rango de fechas ─────────────────────────────────────────────────

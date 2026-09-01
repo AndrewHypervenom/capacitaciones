@@ -48,6 +48,8 @@ export type ActivityAction =
   | 'feedback'
   | 'create_user'
   | 'delete_user'
+  /** Alguien copió del panel la contraseña inicial de otra persona. */
+  | 'view_credentials'
 
 export interface ActivityLogRow {
   id: string
