@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { loadVimeoPlayerAPI } from '@/lib/vimeo'
+import { loadVimeoPlayerAPI, vimeoEmbedUrl } from '@/lib/vimeo'
 import { mapVimeoError, sdkLoadError, type VideoPlayerError } from '@/lib/videoError'
 import type { PlayerLike } from '@/lib/youtube'
 
@@ -69,23 +69,42 @@ export function VimeoPlayer({
     loadVimeoPlayerAPI().then(() => {
       if (cancelled || !hostRef.current) return
       const w = window as any
-      const [id, hash] = videoId.split('/')
 
-      const player = new w.Vimeo.Player(hostRef.current, {
-        id: Number(id),
-        ...(hash ? { h: hash } : {}),
-        responsive: false,
-        width: '100%',
-        // Nota: ocultar controles requiere que el dueño del video tenga plan Vimeo de
-        // pago; en cuentas gratuitas el parámetro se ignora y quedan los nativos.
-        controls,
-        dnt: true,
-        pip: false,
-        playsinline: true,
-        title: false,
-        byline: false,
-        portrait: false,
-      })
+      // Montamos el <iframe> nosotros y le entregamos el elemento ya hecho al SDK.
+      //
+      // Es deliberado: si al Player se le pasa `{ id }`, el SDK primero hace un fetch
+      // a vimeo.com/api/oembed.json para PEDIR el html del embed, y solo después crea
+      // el iframe. Ese fetch va a `vimeo.com`, un dominio distinto de los que necesita
+      // la reproducción (`player.vimeo.com` y `*.vimeocdn.com`), y es lo primero que
+      // cae en un filtro corporativo: el SDK carga, el video no, y el aprendiz recibe
+      // "There was an error fetching the embed code from Vimeo" sobre un video que
+      // está perfectamente bien. Con el iframe ya montado el SDK se salta esa
+      // petición y el reproductor deja de depender de un dominio que no reproduce nada.
+      //
+      // Las opciones viajan como parámetros de la URL porque el objeto de opciones
+      // solo lo lee el SDK cuando es él quien construye el iframe.
+      // Nota: ocultar controles requiere que el dueño del video tenga plan Vimeo de
+      // pago; en cuentas gratuitas el parámetro se ignora y quedan los nativos.
+      const params = [
+        `controls=${controls ? 1 : 0}`,
+        'pip=0',
+        'playsinline=1',
+        'title=0',
+        'byline=0',
+        'portrait=0',
+      ].join('&')
+
+      const iframe = document.createElement('iframe')
+      // vimeoEmbedUrl añade el hash del video no listado y dnt=1.
+      iframe.src = vimeoEmbedUrl(videoId, params)
+      iframe.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media'
+      iframe.allowFullscreen = true
+      iframe.setAttribute('frameborder', '0')
+      iframe.title = 'Vimeo'
+      iframe.className = 'w-full h-full'
+      hostRef.current.replaceChildren(iframe)
+
+      const player = new w.Vimeo.Player(iframe)
       vmRef.current = player
 
       // El SDK de Vimeo es asíncrono (todo devuelve promesas); cacheamos los valores
