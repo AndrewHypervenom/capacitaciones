@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
 import { fold } from '@/lib/normalize'
+import { getMyPeopleIds } from '@/services/org.service'
 import { cn } from '@/lib/cn'
 import { SaveDock } from '@/admin/components/SaveDock'
 import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { TransferContentModal } from '@/admin/components/TransferContentModal'
 import { toast } from '@/stores/toastStore'
 import { recompressAllAvatars, type RecompressProgress } from '@/services/avatarMaintenance'
 import { passkeyCounts } from '@/services/passkeys.service'
@@ -183,7 +185,7 @@ export default function UserList() {
   // Edición inline del nombre de un usuario existente
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
-  const [inviteRole, setInviteRole] = useState<'learner' | 'capacitador' | 'superadmin'>('learner')
+  const [inviteRole, setInviteRole] = useState<Profile['role']>('learner')
   const [inviteCampaign, setInviteCampaign] = useState('')
   // País opcional: si se deja vacío, la persona lo elige en su onboarding.
   const [inviteCountry, setInviteCountry] = useState('')
@@ -280,9 +282,17 @@ export default function UserList() {
 
       let profilesQuery = supabase.from('profiles').select('*').order('created_at')
       if (!isSuperAdmin) {
+        // "Mi gente" ya no es "los de mi campaña": son los aprendices alcanzados
+        // por mis cursos más el staff de mis campañas. Lo resuelve la base, que
+        // es la misma respuesta que usa la RLS — dos definiciones distintas
+        // producirían filas visibles que luego no se pueden abrir.
+        const people = await getMyPeopleIds()
         const ids = camps.map((c) => c.id)
-        profilesQuery = profilesQuery
-          .in('campaign_id', ids.length ? ids : [''])
+        profilesQuery = (people
+          ? profilesQuery.in('id', people.length ? people : [''])
+          // Sin el RPC (SQL sin correr) se cae al filtro de siempre: es más
+          // estrecho, nunca más ancho.
+          : profilesQuery.in('campaign_id', ids.length ? ids : ['']))
           .neq('role', 'superadmin')
       }
       const [profiles, creds] = await Promise.all([
@@ -323,9 +333,11 @@ export default function UserList() {
     // ensancharía sola con lo que la RLS deje pasar).
     let profilesQuery = supabase.from('profiles').select('*').order('created_at')
     if (!isSuperAdmin) {
+      const people = await getMyPeopleIds()
       const ids = campaigns.map((c) => c.id)
-      profilesQuery = profilesQuery
-        .in('campaign_id', ids.length ? ids : [''])
+      profilesQuery = (people
+        ? profilesQuery.in('id', people.length ? people : [''])
+        : profilesQuery.in('campaign_id', ids.length ? ids : ['']))
         .neq('role', 'superadmin')
     }
     const [{ data: updated }, { data: creds }] = await Promise.all([
@@ -727,6 +739,12 @@ export default function UserList() {
     }
   }
 
+  /**
+   * A quién le estamos pasando el contenido. Solo superadmin, y solo sobre
+   * staff: un aprendiz no crea contenido que haya que heredar.
+   */
+  const [transferFor, setTransferFor] = useState<ProfileWithEmail | null>(null)
+
   const handleDelete = async (user: ProfileWithEmail) => {
     const ok = await confirm({
       title: t('confirm.delete_user_title'),
@@ -763,19 +781,24 @@ export default function UserList() {
   const roleColors: Record<Profile['role'], string> = {
     superadmin: 'rgba(245,158,11,0.15)',
     capacitador: 'rgba(34,197,94,0.15)',
+    // Violeta para RH: administra gente, no contenido. Se distingue de un
+    // vistazo del verde del capacitador, que es justo la confusión a evitar.
+    rh: 'rgba(139,92,246,0.15)',
     learner: 'rgba(100,116,139,0.12)',
   }
   const roleText: Record<Profile['role'], string> = {
     superadmin: '#d97706',
     capacitador: '#16a34a',
+    rh: '#7c3aed',
     learner: '#64748b',
   }
   const roleLabel: Record<Profile['role'], string> = {
     superadmin: t('roles.superadmin'),
     capacitador: t('roles.capacitador'),
+    rh: t('roles.rh', 'Recursos Humanos'),
     learner: t('roles.learner'),
   }
-  const roleOptions = (['learner', 'capacitador', 'superadmin'] as const).map((r) => ({
+  const roleOptions = (['learner', 'capacitador', 'rh', 'superadmin'] as const).map((r) => ({
     value: r,
     label: roleLabel[r],
     color: roleText[r],
@@ -1509,6 +1532,17 @@ export default function UserList() {
                     </Tooltip>
                   )}
                 </div>
+                {isSuperAdmin && (user.role === 'capacitador' || user.role === 'superadmin') && (
+                  <Tooltip label={t('admin.transfer.hint', 'Pasa sus cursos y contenido a otra persona. Hazlo ANTES de borrar la cuenta.')} maxWidth={260}>
+                    <button
+                      onClick={() => setTransferFor(user)}
+                      className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                      aria-label={t('admin.transfer.title', 'Cambiar de dueño el contenido')}
+                    >
+                      <Replace className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
+                )}
                 {isSuperAdmin && (
                   <Tooltip label={t('admin.users.delete_user_hint')} maxWidth={240}>
                     <button
@@ -1566,6 +1600,15 @@ export default function UserList() {
 
       {pwdOpen && (
         <DefaultPasswordModal onClose={() => setPwdOpen(false)} onSaved={setDefaultPwdOn} />
+      )}
+
+      {transferFor && (
+        <TransferContentModal
+          user={transferFor}
+          candidates={users.filter((u) => u.role === 'capacitador' || u.role === 'superadmin')}
+          onClose={() => setTransferFor(null)}
+          onDone={() => { /* el contenido cambió de dueño; la lista de gente no. */ }}
+        />
       )}
 
       {/* Una sola barra para toda la pantalla, como en los editores. */}

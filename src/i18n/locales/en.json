@@ -5392,6 +5392,38 @@
       "reason_ph": "Write what is missing or what has to change…",
       "warn_no_modules": "This course has no modules: publishing it would leave people with an empty page.",
       "warn_no_audience": "It is not assigned to any campaign or person: even published, nobody would see it."
+    },
+    "transfer": {
+      "title": "Change content owner",
+      "subtitle": "What {{name}} created moves to someone else",
+      "hint": "Move their courses and content to someone else. Do this BEFORE deleting the account.",
+      "loading": "Checking what they created…",
+      "what": "What will move",
+      "nothing": "They are not listed as the author of anything. You can delete without transferring.",
+      "modules_note": "Modules follow their course: they have no owner of their own, whoever manages the course and campaign manages them.",
+      "to": "New owner",
+      "pick": "Pick a trainer or superadmin",
+      "confirm": "Transfer",
+      "unnamed": "this person",
+      "blocking_title": "This would stop the account from being deleted",
+      "blocking_body": "Some references to this person are not removed automatically. Transferring may clear some; review whatever remains before deleting.",
+      "done_title": "Content transferred",
+      "done_body": "{{count}} items changed owner.",
+      "error": "Couldn't transfer",
+      "kind": {
+        "courses": "Courses",
+        "courses_deleted": "Courses in the trash",
+        "courses_approved": "Courses they approved",
+        "exams": "Exams",
+        "exam_questions": "Exam questions",
+        "scenarios": "Simulations",
+        "choice_scenarios": "Multiple-choice simulations",
+        "worlds": "Worlds",
+        "arena_quizzes": "Arenas",
+        "guided_missions": "Guided missions",
+        "live_quizzes": "Live quizzes",
+        "ai_scenario_drafts": "AI drafts"
+      }
     }
   },
   "themes": {

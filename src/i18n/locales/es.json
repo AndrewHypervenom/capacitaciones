@@ -5392,6 +5392,38 @@
       "reason_ph": "Escribe qué falta o qué hay que cambiar…",
       "warn_no_modules": "Este curso no tiene módulos: publicarlo dejaría a la gente con una página vacía.",
       "warn_no_audience": "No está asignado a ninguna campaña ni persona: aunque se publique, no le aparecerá a nadie."
+    },
+    "transfer": {
+      "title": "Cambiar de dueño el contenido",
+      "subtitle": "Lo que creó {{name}} pasa a otra persona",
+      "hint": "Pasa sus cursos y contenido a otra persona. Hazlo ANTES de borrar la cuenta.",
+      "loading": "Revisando qué creó…",
+      "what": "Qué se va a mover",
+      "nothing": "No figura como autor de nada. Se puede borrar sin transferir.",
+      "modules_note": "Los módulos van con su curso: no tienen dueño propio, los administra quien administra el curso y la campaña.",
+      "to": "Nuevo dueño",
+      "pick": "Elige un capacitador o superadmin",
+      "confirm": "Transferir",
+      "unnamed": "esta persona",
+      "blocking_title": "Esto impediría borrar la cuenta",
+      "blocking_body": "Quedan referencias a esta persona que la base no borra sola. Transferir el contenido puede resolver algunas; las que sigan hay que revisarlas antes de dar la baja.",
+      "done_title": "Contenido transferido",
+      "done_body": "{{count}} elementos cambiaron de dueño.",
+      "error": "No se pudo transferir",
+      "kind": {
+        "courses": "Cursos",
+        "courses_deleted": "Cursos en la papelera",
+        "courses_approved": "Cursos que aprobó",
+        "exams": "Exámenes",
+        "exam_questions": "Preguntas de examen",
+        "scenarios": "Simulaciones",
+        "choice_scenarios": "Simulaciones de opción múltiple",
+        "worlds": "Mundos",
+        "arena_quizzes": "Arenas",
+        "guided_missions": "Misiones guiadas",
+        "live_quizzes": "Quizzes en vivo",
+        "ai_scenario_drafts": "Borradores de IA"
+      }
     }
   },
   "themes": {
