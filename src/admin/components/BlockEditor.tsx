@@ -22,6 +22,8 @@ import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
 import { DuplicateMediaNotice } from './DuplicateMediaNotice';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { LinkMenu } from '@/components/ui/RichTextArea';
+import { applyLink, removeLink, marksAtSelection, type LinkMark } from '@/lib/inlineMarkdown';
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service';
 import { findDuplicateMedia, type DuplicateMatch } from '@/services/mediaDuplicates.service';
 import { shortFileHash } from '@/lib/fileHash';
@@ -117,6 +119,93 @@ function HeadingEditor({ block, onChange, lang }: { block: ContentBlock & { type
   );
 }
 
+/* ── Un ítem de lista: texto + enlace ─────────────────────────────
+ * Los ítems son de un renglón, así que llevan un `<input>` y no el editor con
+ * barra: seis barras de formato apiladas taparían el bloque entero. Pero el
+ * enlace sí hacía falta, y usa el MISMO diálogo que el resto del sitio en vez de
+ * uno propio que se desincronice. Negrita y cursiva se siguen escribiendo a
+ * mano con `**`, y se renderizan igual. */
+function ListItemRow({
+  bullet, value, placeholder, onChange, onRemove,
+}: {
+  bullet: string
+  value: string
+  placeholder: string
+  onChange: (v: string) => void
+  onRemove: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [linkOpen, setLinkOpen] = useState(false)
+  // Enlace bajo el cursor, para que el botón se encienda y el diálogo llegue
+  // con los campos puestos cuando se está editando uno que ya existe.
+  const [link, setLink] = useState<LinkMark | undefined>(undefined)
+
+  const syncSel = () => {
+    const el = inputRef.current
+    if (!el) return
+    setLink(marksAtSelection(value, el.selectionStart ?? 0, el.selectionEnd ?? 0).link)
+  }
+
+  const restore = (from: number, to: number) => {
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(from, to)
+    })
+  }
+
+  const btnCls =
+    'flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-glass/10 hover:text-text transition-colors'
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-text-subtle text-[12px] w-4 text-right shrink-0">{bullet}</span>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onSelect={syncSel}
+        onFocus={syncSel}
+        onKeyDown={(e) => {
+          // El tooltip del botón anuncia Ctrl K: aquí también tiene que abrirlo.
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault()
+            setLinkOpen(true)
+          }
+        }}
+        placeholder={placeholder}
+        className="flex-1 bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none"
+      />
+      <LinkMenu
+        open={linkOpen}
+        setOpen={setLinkOpen}
+        current={link}
+        selectionRef={inputRef}
+        onApply={(l, sel) => {
+          const next = applyLink(value, sel.start, sel.end, l, i18n.t('common.rich.sample_link', 'enlace'))
+          onChange(next.value)
+          restore(next.start, next.end)
+        }}
+        onRemove={(sel) => {
+          const next = removeLink(value, sel.start, sel.end)
+          onChange(next.value)
+          restore(next.start, next.end)
+        }}
+        btnCls={btnCls}
+        activeCls="bg-primary/12 text-primary hover:bg-primary/15 hover:text-primary"
+      />
+      <button
+        onClick={onRemove}
+        className="text-text-subtle hover:text-red-400 transition-colors"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
 function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'list' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   const items = block.items;
   return (
@@ -161,25 +250,14 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
         </div>
       </div>
       {items.map((item, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="text-text-subtle text-[12px] w-4 text-right shrink-0">{block.ordered ? `${i + 1}.` : '•'}</span>
-          <input
-            type="text"
-            value={item[lang]}
-            onChange={(e) => {
-              const next = items.map((it, j) => j === i ? { ...it, [lang]: e.target.value } : it);
-              onChange({ ...block, items: next });
-            }}
-            placeholder={i18n.t('admin.modules.be.ph_item_lang', { n: i + 1, lang })}
-            className="flex-1 bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none"
-          />
-          <button
-            onClick={async () => { if (await confirmRemove('confirm.delete_option_title', 'confirm.delete_option_desc')) onChange({ ...block, items: items.filter((_, j) => j !== i) }) }}
-            className="text-text-subtle hover:text-red-400 transition-colors"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
+        <ListItemRow
+          key={i}
+          bullet={block.ordered ? `${i + 1}.` : '•'}
+          value={item[lang]}
+          placeholder={i18n.t('admin.modules.be.ph_item_lang', { n: i + 1, lang })}
+          onChange={(v) => onChange({ ...block, items: items.map((it, j) => j === i ? { ...it, [lang]: v } : it) })}
+          onRemove={async () => { if (await confirmRemove('confirm.delete_option_title', 'confirm.delete_option_desc')) onChange({ ...block, items: items.filter((_, j) => j !== i) }) }}
+        />
       ))}
       <button
         onClick={() => onChange({ ...block, items: [...items, { es: '', en: '', pt: '' }] })}

@@ -355,13 +355,19 @@ export function RichTextArea({
  * La selección del textarea se congela al abrir: en cuanto se escribe en el
  * primer campo el foco ya no está en el texto, y aplicar el enlace "donde esté
  * el cursor" lo pondría en el sitio equivocado. */
-function LinkMenu({
+export function LinkMenu({
   open, setOpen, current, selectionRef, onApply, onRemove, btnCls, activeCls,
 }: {
   open: boolean
   setOpen: (v: boolean) => void
   current?: LinkMark
-  selectionRef: RefObject<HTMLTextAreaElement | null>
+  /**
+   * El campo del que se lee la selección. Sirve igual un `<input>` de una línea:
+   * así los ítems del bloque de lista —que se editan con inputs planos, sin
+   * barra de formato— pueden enlazar con este mismo diálogo en vez de tener uno
+   * propio que se desincronice.
+   */
+  selectionRef: RefObject<HTMLTextAreaElement | HTMLInputElement | null>
   onApply: (link: LinkMark, sel: { start: number; end: number }) => void
   onRemove: (sel: { start: number; end: number }) => void
   btnCls: string
@@ -373,8 +379,8 @@ function LinkMenu({
   const sel = useRef({ start: 0, end: 0 })
   const [href, setHref] = useState('')
   const [title, setTitle] = useState('')
-  // El enlace que había al abrir: `current` se apaga en cuanto el textarea
-  // pierde el foco, y el diálogo tiene que seguir sabiendo si edita o crea.
+  // El enlace que había al abrir: `current` se apaga en cuanto el campo pierde
+  // el foco, y el diálogo tiene que seguir sabiendo si edita o crea.
   const [editing, setEditing] = useState(false)
 
   // La preparación vive en el efecto y no en el `onClick` para que Ctrl K y el
