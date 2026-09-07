@@ -11,8 +11,10 @@
  *                     seleccionado ya está en negrita, se la quita; si no, se
  *                     la pone. Y solo a lo seleccionado, ni una letra más.
  *
- * Los asteriscos que no cierran se descartan (tolerante a fallos), igual que
- * antes: es preferible a mostrarlos crudos al aprendiz.
+ * Los asteriscos que no cierran formato se muestran TAL CUAL: una contrasena
+ * como `Positivosmais2026*` o un `3 * 4` deben verse completos. Solo son
+ * marcadores los que abren y cierran de verdad; para forzar uno literal dentro
+ * de texto con formato se usa `\*`.
  */
 
 export type InlineNode =
@@ -34,16 +36,22 @@ function runLength(s: string, i: number): number {
 /**
  * Busca el cierre: la siguiente racha de EXACTAMENTE `n` asteriscos. Exigir
  * longitud exacta es lo que permite que `*a **b** c*` cierre la cursiva al
- * final y no en medio de la negrita.
+ * final y no en medio de la negrita. Los asteriscos escapados (`\*`) no cuentan.
  */
 function findCloser(s: string, from: number, n: number): number {
   for (let j = from; j < s.length; j++) {
+    if (s[j] === '\\') { j++; continue }
     if (s[j] !== '*') continue
     const r = runLength(s, j)
     if (r === n && j > from) return j
     j += r - 1
   }
   return -1
+}
+
+/** Escapa lo que dentro de un tramo con formato podria leerse como marcador. */
+function escapeInline(s: string): string {
+  return s.replace(/([\\*])/g, '\\$1')
 }
 
 function wrapNodes(children: InlineNode[], n: number): InlineNode {
@@ -65,6 +73,15 @@ export function parseInline(src: string, offset = 0): InlineNode[] {
   }
 
   while (i < src.length) {
+    // `\*` (o `\\`) → el caracter siguiente es literal. Se emite como nodo
+    // aparte para que cada nodo de texto siga siendo contiguo en el crudo y el
+    // mapeo de selecciones del editor no se descuadre.
+    if (src[i] === '\\' && (src[i + 1] === '*' || src[i + 1] === '\\')) {
+      flush()
+      out.push({ type: 'text', value: src[i + 1], start: offset + i })
+      i += 2
+      continue
+    }
     if (src[i] !== '*') {
       if (!buf) bufStart = offset + i
       buf += src[i]
@@ -75,7 +92,13 @@ export function parseInline(src: string, offset = 0): InlineNode[] {
     const n = Math.min(run, 3)
     const contentStart = i + run
     const close = findCloser(src, contentStart, n)
-    if (close === -1) { i += run; continue } // asterisco suelto → se descarta
+    if (close === -1) {
+      // No cierra: no es formato, es texto. Se muestra tal cual.
+      if (!buf) bufStart = offset + i
+      buf += src.slice(i, i + run)
+      i += run
+      continue
+    }
     flush()
     out.push(wrapNodes(parseInline(src.slice(contentStart, close), offset + contentStart), n))
     i = close + n
@@ -117,7 +140,9 @@ export function flattenInline(raw: string): { text: string; marks: Marks[]; rawI
  * Vuelve a escribir el markdown desde el texto y sus marcas.
  * Dos cuidados que evitan formato "roto" invisible para el capacitador:
  *  - los marcadores se pegan al texto (los espacios de los bordes quedan fuera),
- *  - nunca cruzan un salto de línea: se reabren en cada renglón.
+ *  - nunca cruzan un salto de línea: se reabren en cada renglón,
+ *  - dentro de un tramo con formato, un asterisco literal se escapa (`\*`) para
+ *    que no se confunda con el marcador de cierre.
  */
 export function serializeInline(text: string, marks: Marks[]): string {
   let out = ''
@@ -131,7 +156,7 @@ export function serializeInline(text: string, marks: Marks[]): string {
 
     if (!m.b && !m.i) { out += chunk; continue }
     const d = m.b && m.i ? '***' : m.b ? '**' : '*'
-    out += chunk
+    out += escapeInline(chunk)
       .split('\n')
       .map((seg) => {
         const lead = seg.match(/^\s*/)![0]
