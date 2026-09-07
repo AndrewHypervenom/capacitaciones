@@ -48,6 +48,12 @@ export interface ListBlock {
   type: 'list';
   ordered: boolean;
   items: ML[];
+  /**
+   * Alineación de TODA la lista. `undefined` = hereda de la sección, que es lo
+   * que había hasta ahora — y el motivo de que una lista quedara centrada sin
+   * forma de arreglarla en secciones que centran su contenido.
+   */
+  align?: 'left' | 'center' | 'right';
 }
 
 export interface ImageBlock {

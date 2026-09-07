@@ -104,13 +104,26 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
     case 'list': {
       const items = block.items.map((item) => item[language] || item.es).filter(Boolean);
       const Tag = block.ordered ? 'ol' : 'ul';
+      // Cada `li` es flex, así que el `text-align` de la lista NO mueve la
+      // viñeta: hay que colocar la fila con `justify-*` y alinear el texto
+      // dentro. Sin alineación elegida se hereda de la sección, como siempre.
+      const rowAlign = block.align === 'center'
+        ? 'justify-center text-center'
+        : block.align === 'right'
+          ? 'justify-end text-right'
+          : block.align === 'left'
+            ? 'justify-start text-left'
+            : null;
       return (
         <Tag className={cn(
           'space-y-2 text-[15.5px] text-text-muted leading-relaxed',
           block.ordered ? 'list-decimal list-inside' : 'list-none',
         )}>
           {items.map((item, i) => (
-            <li key={i} className="group/li flex items-start gap-2.5 transition-transform duration-200 hover:translate-x-0.5">
+            <li key={i} className={cn(
+              'group/li flex items-start gap-2.5 transition-transform duration-200 hover:translate-x-0.5',
+              rowAlign,
+            )}>
               {!block.ordered && (
                 <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-neon-green shrink-0 transition-transform duration-200 group-hover/li:scale-150" />
               )}

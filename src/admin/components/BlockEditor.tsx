@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   GripVertical, Plus, Trash2, ChevronUp, ChevronDown, Copy,
-  Type, AlignLeft, List, Image as ImageIcon, Video, Lightbulb,
+  Type, AlignLeft, AlignCenter, AlignRight, WrapText, List, Image as ImageIcon, Video, Lightbulb,
   HelpCircle, CreditCard, ChevronDown as AccIcon, Layers, Code,
   Quote, Minus, Columns, Clock, Table, LayoutGrid, BarChart3, MapPin,
   FileText, Upload, Loader2,
@@ -21,6 +21,7 @@ import {
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
 import { DuplicateMediaNotice } from './DuplicateMediaNotice';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service';
 import { findDuplicateMedia, type DuplicateMatch } from '@/services/mediaDuplicates.service';
 import { shortFileHash } from '@/lib/fileHash';
@@ -128,6 +129,36 @@ function ListEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
           options={[{ value: 'bullet', label: 'Bullet' }, { value: 'ordered', label: i18n.t('admin.modules.be.list_numbered') }]}
           compact
         />
+
+        {/* Alineación de TODA la lista: por ítem sería una barra de formato en
+            cada renglón, y lo que se quiere alinear es el conjunto. */}
+        <span className="ml-1 h-4 w-px bg-line shrink-0" aria-hidden />
+        <label className="text-[12px] text-text-muted">{i18n.t('admin.modules.be.align')}</label>
+        <div className="flex items-center gap-0.5">
+          {([
+            { id: undefined, Icon: WrapText, label: i18n.t('common.rich.align_auto', 'Automático'), hint: i18n.t('common.rich.align_auto_hint', 'Como lo ponga la sección') },
+            { id: 'left' as const, Icon: AlignLeft, label: i18n.t('common.rich.align_left', 'Izquierda') },
+            { id: 'center' as const, Icon: AlignCenter, label: i18n.t('common.rich.align_center', 'Centro') },
+            { id: 'right' as const, Icon: AlignRight, label: i18n.t('common.rich.align_right', 'Derecha') },
+          ]).map(({ id, Icon, label, hint }) => (
+            <Tooltip key={id ?? 'auto'} label={hint ? `${label} · ${hint}` : label}>
+              <button
+                type="button"
+                aria-label={label}
+                aria-pressed={block.align === id}
+                onClick={() => onChange({ ...block, align: id })}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-lg transition-colors',
+                  block.align === id
+                    ? 'bg-primary/12 text-primary'
+                    : 'text-text-muted hover:bg-glass/10 hover:text-text',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          ))}
+        </div>
       </div>
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-2">
