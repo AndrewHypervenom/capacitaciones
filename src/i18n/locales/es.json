@@ -958,6 +958,9 @@
       "italic": "Cursiva",
       "italic_hint": "Da énfasis sutil",
       "italic_off_hint": "Clic de nuevo para quitarla",
+      "copyable": "Dato copiable",
+      "copyable_hint": "Correo, teléfono o código: sale con botón de copiar",
+      "copyable_off_hint": "Clic de nuevo para quitarlo",
       "heading": "Título",
       "heading_hint": "Separa secciones del texto",
       "list": "Lista",
@@ -1074,7 +1077,10 @@
     "drop_photo": "Suelta la foto",
     "drop_image": "Suelta la imagen aquí",
     "drop_photo_tip": "Haz clic o arrastra una imagen para cambiar tu foto",
-    "drop_image_tip": "Haz clic o arrastra una imagen aquí"
+    "drop_image_tip": "Haz clic o arrastra una imagen aquí",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copy_failed": "No se pudo copiar"
   },
   "bgtask": {
     "cancel": "Cancelar",

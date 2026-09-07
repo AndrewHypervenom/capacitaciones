@@ -958,6 +958,9 @@
       "italic": "Italic",
       "italic_hint": "Add subtle emphasis",
       "italic_off_hint": "Click again to remove it",
+      "copyable": "Copyable value",
+      "copyable_hint": "Email, phone or code: shown with a copy button",
+      "copyable_off_hint": "Click again to remove it",
       "heading": "Heading",
       "heading_hint": "Break the text into sections",
       "list": "List",
@@ -1074,7 +1077,10 @@
     "drop_photo": "Drop the photo",
     "drop_image": "Drop the image here",
     "drop_photo_tip": "Click or drag an image to change your photo",
-    "drop_image_tip": "Click or drag an image here"
+    "drop_image_tip": "Click or drag an image here",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copy_failed": "Couldn't copy"
   },
   "bgtask": {
     "cancel": "Cancel",

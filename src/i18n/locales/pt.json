@@ -958,6 +958,9 @@
       "italic": "Itálico",
       "italic_hint": "Dê ênfase sutil",
       "italic_off_hint": "Clique de novo para remover",
+      "copyable": "Dado copiável",
+      "copyable_hint": "E-mail, telefone ou código: sai com botão de copiar",
+      "copyable_off_hint": "Clique de novo para tirar",
       "heading": "Título",
       "heading_hint": "Separe seções do texto",
       "list": "Lista",
@@ -1074,7 +1077,10 @@
     "drop_photo": "Solte a foto",
     "drop_image": "Solte a imagem aqui",
     "drop_photo_tip": "Clique ou arraste uma imagem para trocar sua foto",
-    "drop_image_tip": "Clique ou arraste uma imagem aqui"
+    "drop_image_tip": "Clique ou arraste uma imagem aqui",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copy_failed": "Não foi possível copiar"
   },
   "bgtask": {
     "cancel": "Cancelar",

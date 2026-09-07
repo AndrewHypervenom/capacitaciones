@@ -1,8 +1,10 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useInRouterContext } from 'react-router-dom'
-import { ExternalLink } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Check as CheckIcon, Copy, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { parseInline, plainInline, sanitizeHref, type InlineNode } from '@/lib/inlineMarkdown'
+import { toast } from '@/stores/toastStore'
 import { Tooltip } from './Tooltip'
 
 /**
@@ -298,9 +300,10 @@ function parseBlocks(text: string): Block[] {
 }
 
 /**
- * Formato en línea: **negrita**, *cursiva*, ***ambas*** y enlaces
- * `[texto](destino "pista")`, anidables entre sí. El parser vive en
- * lib/inlineMarkdown para que el editor y esta vista entiendan lo mismo.
+ * Formato en línea: **negrita**, *cursiva*, ***ambas***, enlaces
+ * `[texto](destino "pista")` y datos copiables `` `dato` ``, anidables entre sí.
+ * El parser vive en lib/inlineMarkdown para que el editor y esta vista
+ * entiendan lo mismo.
  */
 function renderInline(text: string, inertLinks = false): ReactNode[] {
   const toNodes = (nodes: InlineNode[]): ReactNode[] =>
@@ -308,9 +311,16 @@ function renderInline(text: string, inertLinks = false): ReactNode[] {
       if (n.type === 'text') return <Fragment key={i}>{n.value}</Fragment>
       if (n.type === 'strong') return <strong key={i} className="font-bold text-text">{toNodes(n.children)}</strong>
       if (n.type === 'em') return <em key={i} className="italic">{toNodes(n.children)}</em>
+      if (n.type === 'copy') return <CopyableText key={i} value={plainInline(nodeText(n))} inert={inertLinks}>{toNodes(n.children)}</CopyableText>
       return <InlineLink key={i} href={n.href} title={n.title} inert={inertLinks}>{toNodes(n.children)}</InlineLink>
     })
   return toNodes(parseInline(text))
+}
+
+/** El texto crudo de un nodo, para saber QUÉ se copia (sin marcadores). */
+function nodeText(node: InlineNode): string {
+  if (node.type === 'text') return node.value
+  return node.children.map(nodeText).join('')
 }
 
 /**
@@ -326,6 +336,103 @@ function renderInline(text: string, inertLinks = false): ReactNode[] {
  * - La "pista" va en ui/Tooltip, nunca en `title`: el globo del navegador tarda
  *   un segundo, no se puede ver en táctil y no respeta el tema del sitio.
  */
+/**
+ * Dato copiable: un correo, un teléfono, un código de acceso.
+ *
+ * El sitio del aprendiz bloquea copiar a propósito (ver ContentProtection), y
+ * eso está bien para el CONTENIDO del curso — pero deja tirado a quien solo
+ * necesita el correo de contacto y acaba transcribiéndolo a mano. Este botón es
+ * el permiso explícito: copia SOLO el dato que el capacitador marcó como
+ * copiable, nada del texto de alrededor.
+ *
+ * Funciona sin abrir ningún agujero: `navigator.clipboard.writeText` no dispara
+ * el evento `copy`, así que la protección ni se toca — no hay que apagarla ni
+ * añadirle excepciones que luego se olviden.
+ */
+function CopyableText({ value, children, inert = false }: { value: string; children: ReactNode; inert?: boolean }) {
+  const { t } = useTranslation()
+  const [done, setDone] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+
+  const copy = async (e: MouseEvent) => {
+    // Muchos contenedores son clicables (un flashcard voltea al hacer clic):
+    // copiar no puede disparar de paso la acción de alrededor.
+    e.stopPropagation()
+    const ok = await copyText(value)
+    if (!ok) {
+      toast.error(t('common.copy_failed', 'No se pudo copiar'), value)
+      return
+    }
+    setDone(true)
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => setDone(false), 1600)
+  }
+
+  // Dentro de algo clicable (una opción de respuesta es un `<button>`) no puede
+  // ir otro botón: sería HTML inválido y el clic pelearía con el de fuera. Ahí
+  // el dato se ve igual, pero sin el botón de copiar.
+  if (inert) {
+    return (
+      <span className="inline-flex max-w-full items-center rounded-lg border border-line bg-subtle/60 px-2 py-0.5 align-middle">
+        <span className="break-all font-medium text-text">{children}</span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-subtle/60 px-2 py-0.5 align-middle">
+      {/* `select-text` gana al `user-select: none` de la protección: el dato ya
+          es copiable con el botón, así que impedir seleccionarlo solo estorba. */}
+      <span className="select-text break-all font-medium text-text">{children}</span>
+      <Tooltip label={done ? t('common.copied', 'Copiado') : t('common.copy', 'Copiar')}>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={t('common.copy', 'Copiar')}
+          className="shrink-0 rounded-md p-1 text-text-muted transition-colors hover:bg-glass/10 hover:text-text"
+        >
+          {done
+            ? <CheckIcon className="h-3.5 w-3.5 text-primary" aria-hidden />
+            : <Copy className="h-3.5 w-3.5" aria-hidden />}
+        </button>
+      </Tooltip>
+    </span>
+  )
+}
+
+/**
+ * Copia al portapapeles. `navigator.clipboard` no existe fuera de HTTPS ni en
+ * algunos navegadores corporativos, así que hay respaldo con un campo temporal
+ * —y ese sí necesita `execCommand`, que la protección deja pasar porque el
+ * evento nace de un `<textarea>`.
+ */
+async function copyText(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value)
+      return true
+    }
+  } catch {
+    // Sin permiso o sin foco: se intenta el respaldo.
+  }
+  try {
+    const el = document.createElement('textarea')
+    el.value = value
+    el.setAttribute('readonly', '')
+    el.style.position = 'fixed'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(el)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 function InlineLink({ href, title, children, inert = false }: { href: string; title?: string; children: ReactNode; inert?: boolean }) {
   const safe = sanitizeHref(href)
   const inRouter = useInRouterContext()

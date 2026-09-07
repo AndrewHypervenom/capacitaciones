@@ -29,10 +29,11 @@ export type InlineNode =
   | { type: 'strong'; children: InlineNode[] }
   | { type: 'em'; children: InlineNode[] }
   | { type: 'link'; href: string; title?: string; children: InlineNode[] }
+  | { type: 'copy'; children: InlineNode[] }
 
 /** Marcas activas sobre una letra. */
-export type Marks = { b: boolean; i: boolean; link?: LinkMark }
-export type MarkName = 'b' | 'i'
+export type Marks = { b: boolean; i: boolean; copy?: boolean; link?: LinkMark }
+export type MarkName = 'b' | 'i' | 'copy'
 
 /* ── Destinos permitidos ─────────────────────────────────────────────────
  * El texto lo escribe un capacitador, pero lo lee todo el mundo: un
@@ -67,7 +68,7 @@ export function normalizeHref(href: string): string {
 }
 
 /** Caracteres que `\` vuelve literales. */
-const ESCAPABLE = new Set(['*', '\\', '[', ']'])
+const ESCAPABLE = new Set(['*', '\\', '[', ']', '`'])
 
 /** Nº de asteriscos seguidos a partir de `i`. */
 function runLength(s: string, i: number): number {
@@ -78,7 +79,7 @@ function runLength(s: string, i: number): number {
 
 /** Escapa lo que dentro de un tramo con formato podria leerse como marcador. */
 function escapeInline(s: string): string {
-  return s.replace(/([\\*[\]])/g, '\\$1')
+  return s.replace(/([\\*[\]`])/g, '\\$1')
 }
 
 /**
@@ -140,6 +141,15 @@ function matchLink(s: string, i: number): { text: string; textStart: number; hre
   }
 }
 
+/** Siguiente `ch` sin escapar a partir de `from`. -1 si no lo hay. */
+function findPlain(s: string, from: number, ch: string): number {
+  for (let j = from; j < s.length; j++) {
+    if (s[j] === '\\') { j++; continue }
+    if (s[j] === ch) return j
+  }
+  return -1
+}
+
 function wrapNodes(children: InlineNode[], n: number): InlineNode {
   if (n === 1) return { type: 'em', children }
   if (n === 2) return { type: 'strong', children }
@@ -170,6 +180,20 @@ export function parseInline(src: string, offset = 0): InlineNode[] {
       flush()
       out.push({ type: 'text', value: src[i + 1], start: offset + i })
       i += 2
+      continue
+    }
+
+    // `` `dato` `` → dato copiable: se pinta aparte y con botón de copiar.
+    if (src[i] === '`') {
+      const close = findPlain(src, i + 1, '`')
+      if (close !== -1 && close > i + 1) {
+        flush()
+        out.push({ type: 'copy', children: parseInline(src.slice(i + 1, close), offset + i + 1) })
+        i = close + 1
+        continue
+      }
+      literal('`', offset + i)
+      i++
       continue
     }
 
@@ -236,6 +260,8 @@ export function flattenInline(raw: string): { text: string; marks: Marks[]; rawI
         walk(n.children, { ...m, b: true })
       } else if (n.type === 'em') {
         walk(n.children, { ...m, i: true })
+      } else if (n.type === 'copy') {
+        walk(n.children, { ...m, copy: true })
       } else {
         walk(n.children, { ...m, link: { href: n.href, title: n.title } })
       }
@@ -264,8 +290,29 @@ function wrapEdges(seg: string, wrap: (core: string, at: number) => string): str
   return lead + wrap(core, lead.length) + seg.slice(lead.length + core.length)
 }
 
-/** Negrita/cursiva de un tramo que ya comparte enlace (o que no tiene ninguno). */
+/**
+ * Negrita/cursiva y "dato copiable" de un tramo que ya comparte enlace. El
+ * copiable envuelve por fuera de la negrita (`` `**EMAIL**` ``): así el botón
+ * de copiar abarca el dato entero aunque por dentro tenga formato.
+ */
 function serializeMarks(text: string, marks: Marks[]): string {
+  let out = ''
+  let i = 0
+  while (i < text.length) {
+    const c = marks[i]?.copy ?? false
+    let k = i
+    while (k < text.length && (marks[k]?.copy ?? false) === c) k++
+    const seg = text.slice(i, k)
+    const segMarks = marks.slice(i, k)
+    i = k
+    out += c ? wrapEdges(seg, (core, lead) => '`' + styleMarks(core, segMarks.slice(lead, lead + core.length)) + '`')
+             : styleMarks(seg, segMarks)
+  }
+  return out
+}
+
+/** Solo negrita/cursiva. */
+function styleMarks(text: string, marks: Marks[]): string {
   let out = ''
   let i = 0
   while (i < text.length) {
@@ -388,7 +435,9 @@ export function toggleInlineMark(
 
   const at = (i: number): Marks => marks[i] ?? { b: false, i: false }
   const withMark = (m: Marks, on: boolean): Marks =>
-    mark === 'b' ? { ...m, b: on } : { ...m, i: on }
+    mark === 'b' ? { ...m, b: on }
+    : mark === 'copy' ? { ...m, copy: on }
+    : { ...m, i: on }
 
   // Sin nada seleccionado: insertar ejemplo ya formateado.
   if (from >= to) {
@@ -405,6 +454,7 @@ export function toggleInlineMark(
 
   let allSet = true
   for (let k = from; k < to; k++) if (!at(k)[mark]) { allSet = false; break }
+
 
   const nextMarks = marks.map((m, k) => (k >= from && k < to ? withMark(m, !allSet) : m))
   return locate(serializeInline(text, nextMarks), from, to)
@@ -484,13 +534,15 @@ export function marksAtSelection(raw: string, selStart: number, selEnd: number):
 
   let b = true
   let i = true
+  let copy = true
   let link: LinkMark | undefined = marks[from].link
   for (let k = from; k < to; k++) {
     if (!marks[k].b) b = false
     if (!marks[k].i) i = false
+    if (!marks[k].copy) copy = false
     if (!sameLink(marks[k].link, link)) link = undefined
   }
-  return { b, i, link }
+  return { b, i, copy, link }
 }
 
 /** Traduce un rango de letras visibles a posiciones del markdown resultante. */

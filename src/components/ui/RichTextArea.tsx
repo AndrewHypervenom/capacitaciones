@@ -5,7 +5,7 @@ import {
   Bold, Italic, Heading, List, Eye, Pencil, Check,
   AlignVerticalSpaceAround, ArrowUpToLine, ArrowDownToLine, MoveVertical,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, WrapText, Maximize2,
-  Link2, Link2Off,
+  Link2, Link2Off, Copy,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
@@ -234,6 +234,20 @@ export function RichTextArea({
           tip={<Tip title={t('common.rich.italic', { defaultValue: 'Cursiva' })} hint={active.i ? t('common.rich.italic_off_hint', { defaultValue: 'Clic de nuevo para quitarla' }) : t('common.rich.italic_hint', { defaultValue: 'Da énfasis sutil' })} keys="Ctrl I" />}
         >
           <Italic className="h-4 w-4" />
+        </ToolBtn>
+        <ToolBtn
+          className={cn(btnCls, active.copy && activeCls)}
+          pressed={active.copy}
+          label={t('common.rich.copyable', { defaultValue: 'Dato copiable' })}
+          onClick={() => toggle('copy')}
+          tip={<Tip
+            title={t('common.rich.copyable', { defaultValue: 'Dato copiable' })}
+            hint={active.copy
+              ? t('common.rich.copyable_off_hint', { defaultValue: 'Clic de nuevo para quitarlo' })
+              : t('common.rich.copyable_hint', { defaultValue: 'Correo, teléfono o código: sale con botón de copiar' })}
+          />}
+        >
+          <Copy className="h-4 w-4" />
         </ToolBtn>
         <LinkMenu
           open={linkOpen}
