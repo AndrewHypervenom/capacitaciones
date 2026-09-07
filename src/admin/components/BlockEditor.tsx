@@ -769,7 +769,14 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
   );
 }
 
-function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'tabs' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
+function TabsEditor({
+  block, onChange, lang, mediaContext,
+}: {
+  block: ContentBlock & { type: 'tabs' };
+  onChange: (b: ContentBlock) => void;
+  lang: Lang;
+  mediaContext?: MediaContext;
+}) {
   const emptyML = () => ({ es: '', en: '', pt: '' });
   return (
     <div className="space-y-3">
@@ -803,6 +810,38 @@ function TabsEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
             rows={3}
             placeholder={i18n.t('admin.modules.be.ph_content', { lang })}
           />
+
+          {/* Multimedia de la pestaña: el logo de la iniciativa, una captura o
+              un video. Es el MISMO uploader que los bloques de imagen y video,
+              así que hereda la optimización al subir, el aviso de documento
+              duplicado y el tope de tamaño. El medio NO se traduce: vale para
+              los tres idiomas, por eso no depende de `lang`. */}
+          {mediaContext && (
+            <div className="pt-1">
+              <p className="mb-1.5 text-[11px] text-text-subtle">
+                {i18n.t('admin.modules.be.tab_media', 'Imagen o video (opcional)')}
+              </p>
+              <MediaUploader
+                moduleId={mediaContext.moduleId}
+                sectionId={mediaContext.sectionId}
+                campaignId={mediaContext.campaignId}
+                currentType={tab.media?.type ?? null}
+                currentUrl={tab.media?.url ?? null}
+                onSaved={(type, url) => onChange({
+                  ...block,
+                  tabs: block.tabs.map((t, j) => j === i ? { ...t, media: { type, url } } : t),
+                })}
+                onCleared={() => onChange({
+                  ...block,
+                  tabs: block.tabs.map((t, j) => {
+                    if (j !== i) return t;
+                    const { media: _drop, ...rest } = t;
+                    return rest;
+                  }),
+                })}
+              />
+            </div>
+          )}
         </div>
       ))}
       <button
@@ -1672,7 +1711,7 @@ function BlockRow({
       case 'quiz':        return <QuizEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'flashcard':   return <FlashcardEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'accordion':   return <AccordionEditor block={b} onChange={onUpdate} lang={lang} />;
-      case 'tabs':        return <TabsEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'tabs':        return <TabsEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'timeline':    return <TimelineEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'comparison':  return <ComparisonEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'cards':       return <CardsEditor block={b} onChange={onUpdate} lang={lang} />;

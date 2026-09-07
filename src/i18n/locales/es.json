@@ -4285,6 +4285,7 @@
         "ph_answer": "Respuesta ({{lang}})...",
         "tab_n": "Pestaña {{n}}",
         "ph_tab_name": "Nombre de pestaña ({{lang}})...",
+        "tab_media": "Imagen o video (opcional)",
         "ph_content": "Contenido ({{lang}})...",
         "event_n": "Evento {{n}}",
         "ph_description": "Descripción ({{lang}})...",

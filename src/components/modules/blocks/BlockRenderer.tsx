@@ -252,7 +252,34 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
       return <AccordionBlockRenderer block={block} language={language} />;
 
     case 'tabs':
-      return <TabsBlockRenderer block={block} language={language} />;
+      return (
+        <TabsBlockRenderer
+          block={block}
+          language={language}
+          // El medio de la pestaña se pinta con el MISMO motor que los bloques
+          // de imagen y video: se arma el sub-bloque y se vuelve a entrar aquí.
+          // La identidad del candado del video la da su URL (buildVideoWatchId),
+          // así que dos pestañas con videos distintos no se pisan.
+          renderMedia={(media) => (
+            <BlockContent
+              block={
+                media.type === 'image'
+                  ? { type: 'image', url: media.url, size: 'full' }
+                  // `video` en el uploader = archivo subido, que el bloque de
+                  // video llama `upload`.
+                  : { type: 'video', kind: media.type === 'video' ? 'upload' : media.type, url: media.url }
+              }
+              language={language}
+              moduleId={moduleId}
+              sectionId={sectionId}
+              blockIndex={blockIndex}
+              userId={userId}
+              campaignId={campaignId}
+              savedAttempts={savedAttempts}
+            />
+          )}
+        />
+      );
 
     case 'code':
       return <CodeBlockRenderer block={block} />;

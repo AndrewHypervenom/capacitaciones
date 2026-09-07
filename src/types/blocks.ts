@@ -182,9 +182,20 @@ export interface AccordionBlock {
   items: AccordionItem[];
 }
 
+/** Imagen o video que acompaña a una pestaña. Mismos tipos que MediaUploader. */
+export interface TabMedia {
+  type: 'image' | 'video' | 'youtube' | 'vimeo';
+  url: string;
+}
+
 export interface TabItem {
   label: ML;
   content: ML;
+  /**
+   * Multimedia de la pestaña: el logo de la iniciativa, una captura, un video.
+   * Opcional — una pestaña solo de texto sigue viéndose igual que siempre.
+   */
+  media?: TabMedia;
 }
 
 export interface TabsBlock {

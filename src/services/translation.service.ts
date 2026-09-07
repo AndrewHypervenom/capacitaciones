@@ -513,7 +513,11 @@ async function translatePiece<T>(piece: T, signal?: AbortSignal): Promise<T> {
   const blank = blankTranslations(piece, from) as T
   try {
     const out = await translateGenerated<T>(blank, signal, from)
-    return deepFillTranslations(out ?? piece, from) as T
+    // `mergeTranslatedOnly`: de la respuesta se toman SOLO los campos de idioma.
+    // Todo lo demás se conserva del original — la url de una imagen, el medio de
+    // una pestaña, cuál es la opción correcta de un quiz. Si la IA devuelve el
+    // bloque sin esos campos, o "mejorados", no se pierden ni se corrompen.
+    return deepFillTranslations(mergeTranslatedOnly(piece, out ?? piece, from !== 'es'), from) as T
   } catch (e) {
     if (signal?.aborted || (e as Error)?.name === 'AbortError') throw e
     // Red de seguridad: mejor dejar el idioma original que romper el módulo.

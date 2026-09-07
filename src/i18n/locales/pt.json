@@ -4285,6 +4285,7 @@
         "ph_answer": "Resposta ({{lang}})...",
         "tab_n": "Aba {{n}}",
         "ph_tab_name": "Nome da aba ({{lang}})...",
+        "tab_media": "Imagem ou vídeo (opcional)",
         "ph_content": "Conteúdo ({{lang}})...",
         "event_n": "Evento {{n}}",
         "ph_description": "Descrição ({{lang}})...",
