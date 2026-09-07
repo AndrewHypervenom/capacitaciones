@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { AlertTriangle, Check, Clock, Flag, Minus } from 'lucide-react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { RichTextInline } from '@/components/ui/RichText';
 import { formatClock, secondsLeft } from '@/services/exams.service';
 import { cn } from '@/lib/cn';
 import type { ExamDomainScore } from '@/types/exam';
@@ -397,7 +398,7 @@ export function AnswerChoice({
         )}
       </span>
       <span className="min-w-0 flex-1 text-[14.5px] leading-relaxed text-text">
-        {text}
+        <RichTextInline text={text} inertLinks />
         {tag && (
           <span
             className={cn(

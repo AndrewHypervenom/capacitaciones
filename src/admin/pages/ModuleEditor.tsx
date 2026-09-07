@@ -1085,8 +1085,10 @@ function SectionEditorPanel({
           <>
             <div>
               <FieldLabel>{t('admin.modules.quiz_question')} ({lang.toUpperCase()})</FieldLabel>
-              <GlassTextarea
+              <RichTextArea
                 rows={3}
+                inlineOnly
+                showSpacing={false}
                 value={question[lang]}
                 onChange={(v) => setQuestion((prev) => ({ ...prev, [lang]: v }))}
               />
@@ -1122,8 +1124,10 @@ function SectionEditorPanel({
             </div>
             <div>
               <FieldLabel>{t('admin.modules.quiz_explanation')} ({lang.toUpperCase()})</FieldLabel>
-              <GlassTextarea
+              <RichTextArea
                 rows={2}
+                inlineOnly
+                showSpacing={false}
                 value={explanation[lang]}
                 onChange={(v) => setExplanation((prev) => ({ ...prev, [lang]: v }))}
               />

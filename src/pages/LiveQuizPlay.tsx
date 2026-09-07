@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { toUtcMs } from '@/lib/datetime'
 import { useAuth } from '@/hooks/useAuth'
+import { RichTextInline } from '@/components/ui/RichText'
 import type { LiveQuiz, LiveQuizAnswer, QuizQuestion, QuizLeaderboardEntry } from '@/types/database'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -731,7 +732,7 @@ export default function LiveQuizPlay() {
                 className="rounded-2xl px-4 py-4 bg-subtle border border-line"
               >
                 <p className="text-[18px] md:text-[22px] font-bold text-text text-center leading-snug">
-                  {currentQ.text}
+                  <RichTextInline text={currentQ.text} />
                 </p>
               </motion.div>
             )}
@@ -786,7 +787,7 @@ export default function LiveQuizPlay() {
                 </div>
                 {/* Texto de opción */}
                 <span className="text-[14px] md:text-[16px] font-semibold text-white leading-snug">
-                  {opt}
+                  <RichTextInline text={opt} inertLinks />
                 </span>
                 {/* Ícono de estado arriba a la derecha */}
                 {inAnswered && isSelected && (

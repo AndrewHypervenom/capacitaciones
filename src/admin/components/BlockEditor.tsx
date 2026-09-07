@@ -538,12 +538,13 @@ function VideoEditor({
 function QuizEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'quiz' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
   return (
     <div className="space-y-3">
-      <input
-        type="text"
+      <RichTextArea
         value={block.question[lang]}
-        onChange={(e) => onChange({ ...block, question: { ...block.question, [lang]: e.target.value } })}
+        onChange={(v) => onChange({ ...block, question: { ...block.question, [lang]: v } })}
         placeholder={i18n.t('admin.modules.be.ph_question', { lang })}
-        className="w-full bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none font-medium"
+        rows={2}
+        inlineOnly
+        showSpacing={false}
       />
       <div className="space-y-2">
         {block.options.map((opt, i) => (
@@ -565,12 +566,13 @@ function QuizEditor({ block, onChange, lang }: { block: ContentBlock & { type: '
           </div>
         ))}
       </div>
-      <input
-        type="text"
+      <RichTextArea
         value={block.explanation[lang]}
-        onChange={(e) => onChange({ ...block, explanation: { ...block.explanation, [lang]: e.target.value } })}
+        onChange={(v) => onChange({ ...block, explanation: { ...block.explanation, [lang]: v } })}
         placeholder={i18n.t('admin.modules.be.ph_explanation', { lang })}
-        className="w-full bg-transparent text-[12.5px] text-text-subtle placeholder:text-text-subtle outline-none italic"
+        rows={2}
+        inlineOnly
+        showSpacing={false}
       />
     </div>
   );

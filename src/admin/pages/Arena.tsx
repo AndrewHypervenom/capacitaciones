@@ -687,12 +687,13 @@ export default function Arena() {
                         </div>
 
                         {/* Question */}
-                        <textarea
+                        <RichTextArea
                           value={step.question}
-                          onChange={e => updateStep(step.id, { question: e.target.value })}
+                          onChange={v => updateStep(step.id, { question: v })}
                           placeholder={i18n.t('admin.arena.ph_question')}
                           rows={2}
-                          className="w-full px-3 py-2 rounded-lg text-[13px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/40 transition-colors resize-none"
+                          inlineOnly
+                          showSpacing={false}
                         />
 
                         {/* Context */}

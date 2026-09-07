@@ -36,6 +36,7 @@ import {
 import type { ExamAttemptSession } from '@/types/exam';
 import { toast } from '@/stores/toastStore';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { RichTextInline } from '@/components/ui/RichText';
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss';
 import { cn } from '@/lib/cn';
 
@@ -503,7 +504,7 @@ export default function ExamRunner() {
           </div>
 
           <h1 className="mb-7 text-[21px] font-medium leading-snug tracking-tight text-text sm:text-[24px]">
-            {pickExamText(current.text_es, current.text_en, current.text_pt, language)}
+            <RichTextInline text={pickExamText(current.text_es, current.text_en, current.text_pt, language)} />
           </h1>
 
           <div className="space-y-2.5">

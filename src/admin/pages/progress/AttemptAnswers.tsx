@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, MinusCircle, ArrowRight, Info, MessageSquare, Li
 import { cn } from '@/lib/cn'
 import { ScoreDistribution } from './ModulesChrome'
 import { getSectionContent, type SectionContent } from '@/services/attemptContent.service'
+import { RichTextInline } from '@/components/ui/RichText'
 
 /* ────────────────────────────────────────────────────────────────────────
    Visor de "qué respondió el aprendiz". Cada tipo de actividad guarda su
@@ -93,7 +94,7 @@ function QuestionCard({ q, index, delay }: { q: QuizDetail; index: number; delay
         <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-zinc-200/70 dark:bg-zinc-800 text-[10px] font-bold text-text-muted">
           {index + 1}
         </span>
-        <p className="flex-1 text-[13.5px] font-medium leading-snug text-text">{q.pregunta}</p>
+        <p className="flex-1 text-[13.5px] font-medium leading-snug text-text"><RichTextInline text={q.pregunta} /></p>
         <Verdict state={state} />
       </div>
 
@@ -689,7 +690,7 @@ function RebuiltVideoQuiz({ marker, ok, total, lang }: { marker: any; ok: number
                     )}
                   >
                     {j === q.correct && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
-                    {opt}
+                    <RichTextInline text={opt} inertLinks />
                   </div>
                 ))}
                 <NotRecorded text={t('admin.trainer_panel.choice_not_recorded_quiz', 'De esta entrega no quedó registrada la opción que eligió; solo el total de aciertos.')} />

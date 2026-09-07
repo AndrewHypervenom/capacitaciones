@@ -8,6 +8,7 @@ import StarDisplay from '@/components/StarDisplay'
 import { useUserStore, type Language } from '@/stores/userStore'
 import { localizeSteps, pickLang } from '@/lib/lang'
 import { shuffleArray } from '@/lib/quizShuffle'
+import { RichTextInline } from '@/components/ui/RichText'
 
 /* ── Types ── */
 interface QuizOption { id: string; text: string; correct: boolean; explanation: string }
@@ -609,13 +610,13 @@ export default function ArenaPlayer() {
                     {/* Context */}
                     {s.context && (
                       <div style={{fontSize:'.78rem',color:'rgb(var(--text-muted))',background:`${tc}08`,border:`1px solid ${tc}18`,borderLeft:`3px solid ${tc}60`,borderRadius:'0 0.5rem 0.5rem 0',padding:'10px 14px',marginBottom:16,lineHeight:1.6}}>
-                        📖 {s.context}
+                        📖 <RichTextInline text={s.context} />
                       </div>
                     )}
 
                     {/* Question */}
                     <p style={{fontSize:'.95rem',fontWeight:500,color:'rgb(var(--text))',lineHeight:1.6,marginBottom:18,borderLeft:`3px solid ${tc}`,paddingLeft:14}}>
-                      {s.question}
+                      <RichTextInline text={s.question} />
                     </p>
 
                     {/* Options */}
@@ -637,7 +638,7 @@ export default function ArenaPlayer() {
                             disabled={sAnswered || isLocked}
                           >
                             <span className="ap-key">{OPT_LABELS[oi]}</span>
-                            <span style={{flex:1}}>{opt.text}</span>
+                            <span style={{flex:1}}><RichTextInline text={opt.text} inertLinks /></span>
                             {sAnswered && isOptCorrect && <span style={{fontSize:'.85rem'}}>✓</span>}
                             {sAnswered && isSelected && !isOptCorrect && <span style={{fontSize:'.85rem'}}>✗</span>}
                           </button>
@@ -655,7 +656,7 @@ export default function ArenaPlayer() {
                         color:sCorrect?'#10D451':'#ef4444',
                         animation:'fadeUp .3s ease both',
                       }}>
-                        {sCorrect?'✅':'❌'} {sSelOpt.explanation}
+                        {sCorrect?'✅':'❌'} <RichTextInline text={sSelOpt.explanation} />
                       </div>
                     )}
 

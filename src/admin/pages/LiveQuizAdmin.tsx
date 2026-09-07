@@ -19,6 +19,8 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import type { LiveQuiz, QuizQuestion, Campaign, QuizLeaderboardEntry, LiveQuizAnswer } from '@/types/database'
 import { FadeIn } from '@/components/ui/motion'
+import { RichTextArea } from '@/components/ui/RichTextArea'
+import { RichTextInline } from '@/components/ui/RichText'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D']
@@ -875,13 +877,16 @@ export default function LiveQuizAdmin() {
                 </button>
               )}
             </div>
-            <input
-              type="text"
-              placeholder={i18n.t('admin.livequiz.ph_question')}
-              value={q.text}
-              onChange={(e) => updateQuestion(qi, { text: e.target.value })}
-              className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-surface border border-line outline-none focus:border-[#10D451] transition-colors mb-3"
-            />
+            <div className="mb-3">
+              <RichTextArea
+                placeholder={i18n.t('admin.livequiz.ph_question')}
+                value={q.text}
+                onChange={(v) => updateQuestion(qi, { text: v })}
+                rows={2}
+                inlineOnly
+                showSpacing={false}
+              />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
               {q.options.map((opt, oi) => (
                 <div key={oi} className="flex items-center gap-2">
@@ -1122,7 +1127,7 @@ export default function LiveQuizAdmin() {
             </span>
             <span className="text-[12px] text-text-subtle">{i18n.t('livequiz.answers_count', { count: totalAnswers })}</span>
           </div>
-          <p className="text-[16px] text-text font-medium mb-5">{q.text}</p>
+          <p className="text-[16px] text-text font-medium mb-5"><RichTextInline text={q.text} /></p>
 
           <div className="space-y-2.5">
             {q.options.map((opt, oi) => {
@@ -1144,7 +1149,7 @@ export default function LiveQuizAdmin() {
                     >
                       {OPTION_LABELS[oi]}
                     </span>
-                    <span className="text-[12px] text-text-muted flex-1 min-w-0 truncate">{opt}</span>
+                    <span className="text-[12px] text-text-muted flex-1 min-w-0 truncate"><RichTextInline text={opt} inertLinks /></span>
                     {isCorrect && (
                       <motion.span
                         initial={{ scale: 0 }} animate={{ scale: 1 }}

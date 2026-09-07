@@ -35,6 +35,7 @@ import { YouTubePlayer } from '@/components/modules/YouTubePlayer'
 import { VimeoPlayer } from '@/components/modules/VimeoPlayer'
 import { extractYouTubeId, type PlayerLike } from '@/lib/youtube'
 import { extractVimeoId } from '@/lib/vimeo'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 
 type Lang = 'es' | 'en' | 'pt'
 type VideoSource = 'video' | 'youtube' | 'vimeo'
@@ -178,11 +179,12 @@ function QuestionEditor({
             <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
               {t('admin.modules.vme.question_label', { lang: lang.toUpperCase() })}
             </label>
-            <textarea
+            <RichTextArea
               value={q[qField] as string}
-              onChange={(e) => onChange({ ...q, [qField]: e.target.value })}
+              onChange={(v) => onChange({ ...q, [qField]: v })}
               rows={2}
-              className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none resize-none placeholder:text-text-subtle"
+              inlineOnly
+              showSpacing={false}
               placeholder={t('admin.modules.vme.ph_correct_answer')}
             />
           </div>
@@ -227,11 +229,12 @@ function QuestionEditor({
             <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wider mb-1">
               {t('admin.modules.vme.explanation_label', { lang: lang.toUpperCase() })}
             </label>
-            <textarea
+            <RichTextArea
               value={q[expField] as string}
-              onChange={(e) => onChange({ ...q, [expField]: e.target.value })}
+              onChange={(v) => onChange({ ...q, [expField]: v })}
               rows={2}
-              className="w-full rounded-lg px-3 py-2 text-[13px] text-text bg-glass/5 border border-glass-border/10 focus:border-neon-green/30 outline-none resize-none placeholder:text-text-subtle"
+              inlineOnly
+              showSpacing={false}
               placeholder={t('admin.modules.vme.ph_why_correct')}
             />
           </div>

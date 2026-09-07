@@ -542,19 +542,22 @@ export function ArenaEditorModal({
 
                     {isOpen && (
                     <div className="px-3 sm:px-4 pb-4 space-y-3 border-t border-line/50 pt-3">
-                    <textarea
+                    <RichTextArea
                       value={step.question}
-                      onChange={e => updateStep(step.id, { question: e.target.value })}
+                      onChange={v => updateStep(step.id, { question: v })}
                       placeholder={i18n.t('admin.arena.ph_question')}
                       rows={2}
-                      className="w-full px-3 py-2 rounded-lg text-[13px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/40 transition-colors resize-none"
+                      inlineOnly
+                      showSpacing={false}
                     />
 
-                    <input
+                    <RichTextArea
                       value={step.context}
-                      onChange={e => updateStep(step.id, { context: e.target.value })}
+                      onChange={v => updateStep(step.id, { context: v })}
                       placeholder={i18n.t('admin.arena.ph_hint')}
-                      className="w-full px-3 py-2 rounded-lg text-[12px] bg-surface border border-line text-text placeholder-text-subtle focus:outline-none focus:border-[#10D451]/40 transition-colors"
+                      rows={2}
+                      inlineOnly
+                      showSpacing={false}
                     />
 
                     <div>

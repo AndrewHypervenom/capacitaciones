@@ -20,6 +20,7 @@ import type {
 import { DIFFICULTIES, difficultyLabel, isLevelLocked, levelFits } from '@/lib/examLevel'
 import { cn } from '@/lib/cn'
 import { rowText } from '@/lib/contentLang'
+import { RichTextArea } from '@/components/ui/RichTextArea'
 
 const ease = [0.16, 1, 0.3, 1] as const
 
@@ -310,16 +311,16 @@ export function ExamQuestionModal({
             <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
               {t('admin.exam.q_text', 'Enunciado')}
             </label>
-            <textarea
+            <RichTextArea
               value={draft.text_es}
-              onChange={(e) => setDraft((d) => ({ ...d, text_es: e.target.value }))}
+              onChange={(v) => setDraft((d) => ({ ...d, text_es: v }))}
               rows={3}
-              autoFocus
+              inlineOnly
+              showSpacing={false}
               placeholder={t(
                 'admin.exam.q_text_ph',
                 'Un cliente llama molesto porque le cobraron dos veces. ¿Qué haces primero?',
               )}
-              className={cn(inputCls, 'resize-y leading-relaxed')}
             />
             <p className="mt-1.5 text-[11.5px] text-text-subtle">
               {t(
@@ -419,15 +420,16 @@ export function ExamQuestionModal({
             <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
               {t('admin.exam.q_explanation', 'Por qué (se muestra en el informe)')}
             </label>
-            <textarea
+            <RichTextArea
               value={draft.explanation_es}
-              onChange={(e) => setDraft((d) => ({ ...d, explanation_es: e.target.value }))}
+              onChange={(v) => setDraft((d) => ({ ...d, explanation_es: v }))}
               rows={2}
+              inlineOnly
+              showSpacing={false}
               placeholder={t(
                 'admin.exam.q_explanation_ph',
                 'Explica en una o dos frases por qué esa es la respuesta.',
               )}
-              className={cn(inputCls, 'resize-y leading-relaxed')}
             />
           </div>
 

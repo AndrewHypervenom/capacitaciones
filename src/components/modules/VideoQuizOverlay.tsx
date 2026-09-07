@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, XCircle, PlayCircle, ChevronRight, Trophy, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { RichTextInline } from '@/components/ui/RichText'
 import { playQuizSound } from '@/lib/sound'
 import { isVideoQuizPassed, VIDEO_QUIZ_PASS_RATIO } from '@/types/blocks'
 import { shuffledIndicesMoved } from '@/lib/quizShuffle'
@@ -342,7 +343,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                 </p>
               )}
               <p className={cn('font-semibold text-white leading-snug break-words', compact ? 'text-[15px] mb-3' : 'text-[22px] mb-7')}>
-                {questionText}
+                <RichTextInline text={questionText} />
               </p>
 
               <div className={compact ? 'space-y-1.5' : 'space-y-2.5'}>
@@ -384,7 +385,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                       )}>
                         {LETTERS[position]}
                       </span>
-                      <span className="flex-1 break-words">{opt}</span>
+                      <span className="flex-1 break-words"><RichTextInline text={opt} inertLinks /></span>
                       {isAnswered && isSelectedOpt && isCorrect && <CheckCircle2 className="h-5 w-5 text-neon-green shrink-0" />}
                       {isAnswered && isSelectedOpt && !isCorrect && <XCircle className="h-5 w-5 text-red-400 shrink-0" />}
                       {isAnswered && !isSelectedOpt && isCorrectOpt && <CheckCircle2 className="h-5 w-5 text-neon-green/40 shrink-0" />}
@@ -409,7 +410,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                     <span className="font-semibold text-white mr-1.5">
                       {isCorrect ? t('video.correct') : t('video.correct_answer')}
                     </span>
-                    {explanation}
+                    <RichTextInline text={explanation} />
                   </motion.div>
                 )}
               </AnimatePresence>

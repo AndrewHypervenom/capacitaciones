@@ -33,6 +33,7 @@ import {
 } from '@/services/exams.service';
 import type { ExamReport } from '@/types/exam';
 import { cn } from '@/lib/cn';
+import { RichTextInline } from '@/components/ui/RichText';
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -318,7 +319,7 @@ export default function ExamResult() {
                         {qi + 1}
                       </span>
                       <h3 className="text-[15px] font-medium leading-snug text-text">
-                        {pickExamText(d.text_es, d.text_en, d.text_pt, language)}
+                        <RichTextInline text={pickExamText(d.text_es, d.text_en, d.text_pt, language)} />
                       </h3>
                     </div>
 
@@ -359,12 +360,14 @@ export default function ExamResult() {
                           {t('exam.report_why', 'Por qué')}
                         </p>
                         <p className="text-[13.5px] leading-relaxed text-text-muted">
-                          {pickExamText(
-                            d.explanation_es,
-                            d.explanation_en,
-                            d.explanation_pt,
-                            language,
-                          )}
+                          <RichTextInline
+                            text={pickExamText(
+                              d.explanation_es,
+                              d.explanation_en,
+                              d.explanation_pt,
+                              language,
+                            )}
+                          />
                         </p>
                       </div>
                     )}

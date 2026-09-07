@@ -76,6 +76,8 @@ import { ExamGenerateModal, type ExamFillPlan } from './ExamGenerateModal'
 import { ExamLevelPicker, LevelPill } from './ExamLevelBits'
 import { cn } from '@/lib/cn'
 import { rowText } from '@/lib/contentLang'
+import { RichTextInline, stripMarkdown } from '@/components/ui/RichText'
+import { fold } from '@/lib/normalize'
 
 const ease = [0.16, 1, 0.3, 1] as const
 
@@ -1029,7 +1031,9 @@ export function ExamBuilder({
     if (onlyOffLevel && !offLevelIds.has(q.id)) return false
     if (filterDomain && q.domain_id !== filterDomain) return false
     if (!search.trim()) return true
-    return q.text_es.toLowerCase().includes(search.toLowerCase().trim())
+    // Sobre el texto SIN marcadores: quien busca "el catalogo" no tiene por que
+    // saber que en el enunciado esa palabra quedó dentro de un enlace.
+    return fold(stripMarkdown(q.text_es)).includes(fold(search.trim()))
   })
 
   const inputCls =
@@ -2027,7 +2031,7 @@ export function ExamBuilder({
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13.5px] leading-snug text-text">{q.text_es}</p>
+                    <p className="text-[13.5px] leading-snug text-text"><RichTextInline text={q.text_es} /></p>
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-text-subtle">
                       {domain ? (
                         <Tooltip

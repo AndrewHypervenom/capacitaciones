@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 import { playQuizSound } from '@/lib/sound';
 import { shuffledIndicesMoved } from '@/lib/quizShuffle';
 import { saveActivityAttempt } from '@/services/activity.service';
+import { RichTextInline } from '@/components/ui/RichText';
 
 interface Props {
   moduleId: string;
@@ -285,7 +286,7 @@ export function KnowledgeCheck({
       <div className="px-6 py-6">
         {/* Pregunta */}
         <p className="text-[16.5px] font-semibold leading-snug mb-6 tracking-tight">
-          {quiz.question[language]}
+          <RichTextInline text={quiz.question[language]} />
         </p>
 
         {/* Opciones */}
@@ -361,7 +362,7 @@ export function KnowledgeCheck({
                   )}
                 </span>
 
-                <span className="text-[14.5px] leading-snug flex-1">{opt}</span>
+                <span className="text-[14.5px] leading-snug flex-1"><RichTextInline text={opt} inertLinks /></span>
               </motion.button>
             );
           })}
@@ -401,7 +402,7 @@ export function KnowledgeCheck({
                   </span>
                 </div>
                 <p className="text-[14px] leading-relaxed text-text/90">
-                  {quiz.explanation[language]}
+                  <RichTextInline text={quiz.explanation[language]} />
                 </p>
 
                 {/* Siempre permitir volver a responder: si falló, para corregir; si
