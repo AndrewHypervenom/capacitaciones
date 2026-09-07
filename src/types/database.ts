@@ -156,6 +156,10 @@ export interface Database {
           is_active: boolean
           /** Entorno de pruebas: se oculta a capacitadores reales y no cuenta en reportes. */
           is_test: boolean
+          /** Organización dueña. En el lado del CONTENIDO esta tabla se lee como
+           *  PROGRAMA (Avanza +, Sé y comparto, S+ Lidera); en `profiles.campaign_id`
+           *  todavía significa audiencia heredada. Ver la reestructura de campañas. */
+          org_id: string | null
           created_at: string
         }
         Insert: {
@@ -166,6 +170,7 @@ export interface Database {
           logo_url?: string | null
           is_active?: boolean
           is_test?: boolean
+          org_id?: string | null
           created_at?: string
         }
         Update: {
@@ -176,7 +181,85 @@ export interface Database {
           logo_url?: string | null
           is_active?: boolean
           is_test?: boolean
+          org_id?: string | null
           created_at?: string
+        }
+        Relationships: []
+      }
+      /**
+       * Empresa dueña de su formación. Aísla gente, contenido y reportes: nada
+       * cruza entre organizaciones. Positivos+ es la primera; LearningAI las
+       * administra todas desde adentro.
+       */
+      organizations: {
+        Row: {
+          id: string
+          slug: string
+          name: string
+          logo_url: string | null
+          is_active: boolean
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+        }
+        Insert: {
+          id?: string
+          slug: string
+          name: string
+          logo_url?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          slug?: string
+          name?: string
+          logo_url?: string | null
+          is_active?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+        }
+        Relationships: []
+      }
+      /**
+       * Catálogo CERRADO de operaciones y áreas de una organización. Solo el
+       * superadmin escribe aquí (RLS); el capacitador elige de la lista. Es la
+       * pieza que impide que cada quien invente su propia unidad, que es como
+       * se desordenaron las campañas.
+       *
+       * El PAÍS no vive aquí: está en `profiles.country` y su lista la da
+       * `lib/countries.ts`.
+       */
+      org_units: {
+        Row: {
+          id: string
+          org_id: string
+          /** 'operation' = operación o unidad · 'area' = área o departamento. */
+          kind: 'operation' | 'area'
+          slug: string
+          name: string
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          kind: 'operation' | 'area'
+          slug: string
+          name: string
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          slug?: string
+          name?: string
+          is_active?: boolean
+          sort_order?: number
+          deleted_at?: string | null
+          deleted_by?: string | null
         }
         Relationships: []
       }
@@ -415,6 +498,52 @@ export interface Database {
         }
         Update: {
           is_mandatory?: boolean
+        }
+        Relationships: []
+      }
+      /**
+       * A quién le llega un curso, como REGLA sobre los atributos de la persona
+       * en vez de una lista de nombres.
+       *
+       * Semántica: dentro de un eje se SUMA (Colombia o México), entre ejes se
+       * CRUZA (Colombia y Talento Humano), un eje vacío no restringe, y todo
+       * vacío sin `everyone` no le llega a NADIE — el estado de borrador falla
+       * cerrado a propósito.
+       *
+       * Convive con `course_campaigns` y `course_assignments`: no los reemplaza
+       * todavía, se suma.
+       */
+      course_audiences: {
+        Row: {
+          course_id: string
+          /** Toda la organización: el caso de las categorías de la casa. */
+          everyone: boolean
+          /** Códigos ISO. Vacío = no restringe por país. */
+          countries: string[]
+          operation_ids: string[]
+          area_ids: string[]
+          is_mandatory: boolean
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          course_id: string
+          everyone?: boolean
+          countries?: string[]
+          operation_ids?: string[]
+          area_ids?: string[]
+          is_mandatory?: boolean
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          everyone?: boolean
+          countries?: string[]
+          operation_ids?: string[]
+          area_ids?: string[]
+          is_mandatory?: boolean
+          updated_by?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1070,8 +1199,18 @@ export interface Database {
           email: string | null
           country: string | null
           language: string | null
-          role: 'superadmin' | 'capacitador' | 'learner'
+          role: 'superadmin' | 'capacitador' | 'rh' | 'learner'
+          /** Audiencia HEREDADA, no el programa. NO se le cambia a nadie durante la
+           *  transición: `user_progress` se lee filtrando por esta columna y moverla
+           *  deja el avance en 0% a la vista. */
           campaign_id: string | null
+          /** Organización a la que pertenece la persona. */
+          org_id: string | null
+          /** Operación o unidad (`org_units.kind='operation'`). La mantiene Talento
+           *  Humano: la nómina sobrescribe, no se edita a mano en el sitio. */
+          operation_id: string | null
+          /** Área o departamento (`org_units.kind='area'`). Igual que operation_id. */
+          area_id: string | null
           onboarded: boolean
           avatar_url: string | null
           phone: string | null
@@ -1102,8 +1241,11 @@ export interface Database {
           email?: string | null
           country?: string | null
           language?: string | null
-          role?: 'superadmin' | 'capacitador' | 'learner'
+          role?: 'superadmin' | 'capacitador' | 'rh' | 'learner'
           campaign_id?: string | null
+          org_id?: string | null
+          operation_id?: string | null
+          area_id?: string | null
           onboarded?: boolean
           avatar_url?: string | null
           phone?: string | null
@@ -1124,8 +1266,11 @@ export interface Database {
           display_name?: string | null
           country?: string | null
           language?: string | null
-          role?: 'superadmin' | 'capacitador' | 'learner'
+          role?: 'superadmin' | 'capacitador' | 'rh' | 'learner'
           campaign_id?: string | null
+          org_id?: string | null
+          operation_id?: string | null
+          area_id?: string | null
           onboarded?: boolean
           avatar_url?: string | null
           phone?: string | null
@@ -2082,6 +2227,29 @@ export interface Database {
       }
       // Recertificación (2026-07-19_cert_snapshot_recert.sql). Un certificado
       // emitido es inmutable; el contenido nuevo NO lo invalida solo.
+      /**
+       * Los cursos que le tocan a QUIEN LLAMA por regla de audiencia.
+       * Va por RPC y no por lectura directa a `course_audiences` a propósito:
+       * a quién le llega cada curso es información de gestión, y el aprendiz
+       * no debe poder leer las reglas de todos los cursos para saber las suyas.
+       */
+      /**
+       * Las personas que ve QUIEN LLAMA. Para el capacitador son los aprendices
+       * alcanzados por sus cursos (por regla, por campaña o asignados a mano)
+       * más el staff de sus campañas; superadmin y RH ven a toda la
+       * organización. Sustituye al viejo `campaign_id IN (mis campañas)`.
+       */
+      get_my_people_ids: {
+        Args: Record<string, never>
+        Returns: string[]
+      }
+      get_my_audience_courses: {
+        Args: Record<string, never>
+        Returns: {
+          course_id: string
+          is_mandatory: boolean
+        }[]
+      }
       get_course_recert_status: {
         Args: { p_course_id: string }
         Returns: {
@@ -2281,6 +2449,11 @@ export interface Database {
 export type Campaign = Database['public']['Tables']['campaigns']['Row']
 export type Course = Database['public']['Tables']['courses']['Row']
 export type CourseCampaign = Database['public']['Tables']['course_campaigns']['Row']
+export type CourseAudience = Database['public']['Tables']['course_audiences']['Row']
+export type Organization = Database['public']['Tables']['organizations']['Row']
+export type OrgUnit = Database['public']['Tables']['org_units']['Row']
+/** Los dos ejes de clasificación que viven en `org_units`. El país va aparte. */
+export type OrgUnitKind = OrgUnit['kind']
 export type CourseAssignment = Database['public']['Tables']['course_assignments']['Row']
 export type Module = Database['public']['Tables']['modules']['Row']
 export type ModuleSection = Database['public']['Tables']['module_sections']['Row']
