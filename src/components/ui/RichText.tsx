@@ -109,13 +109,30 @@ export function RichTextInline({
   if (!text) return null
   // Defensivo: si algún marcador de presentación se coló, no debe verse.
   const { body } = parseAttrs(text)
-  const { align, text: line } = parseLineAlign(body)
-  // Sin alineación propia no se envuelve en nada: el texto sigue fluyendo
-  // dentro del `<p>` de quien llama, exactamente como antes. Con alineación
-  // hace falta un contenedor de bloque, porque `text-align` no lo puede aplicar
-  // un tramo suelto de texto.
-  if (!align) return <>{renderInline(line, inertLinks)}</>
-  return <span className={cn('block', ALIGN_CLASS[align])}>{renderInline(line, inertLinks)}</span>
+  // La alineación se busca en CADA renglón, no solo en el primero: un texto de
+  // varias líneas puede traerla en la segunda o la tercera, y ahí el marcador
+  // se vería crudo si solo se mirara el arranque.
+  const lines = body.split('\n').map((l) => parseLineAlign(l))
+
+  // Sin ninguna alineación no se envuelve en nada: el texto sigue fluyendo
+  // dentro del `<p>` de quien llama (con sus saltos y su `whitespace-pre-line`),
+  // exactamente como antes.
+  if (!lines.some((l) => l.align)) return <>{renderInline(body, inertLinks)}</>
+
+  // Con alineación hace falta un contenedor de bloque por renglón, porque
+  // `text-align` no lo puede aplicar un tramo suelto de texto. Los saltos ya los
+  // da el propio bloque, así que no se vuelven a emitir.
+  return (
+    <>
+      {lines.map((l, i) => (
+        <span key={i} className={cn('block', l.align && ALIGN_CLASS[l.align])}>
+          {/* Un renglón vacío separaba visualmente; sin nada dentro, un bloque
+              mide cero y ese aire se perdería. */}
+          {l.text.trim() ? renderInline(l.text, inertLinks) : ' '}
+        </span>
+      ))}
+    </>
+  )
 }
 
 /* ── Presentación por campo ──────────────────────────────────────────────
