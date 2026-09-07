@@ -1531,18 +1531,18 @@ export default function UserList() {
                       </button>
                     </Tooltip>
                   )}
+                  {isSuperAdmin && (user.role === 'capacitador' || user.role === 'superadmin') && (
+                    <Tooltip label={t('admin.transfer.hint')} className="shrink-0" maxWidth={260}>
+                      <button
+                        onClick={() => setTransferFor(user)}
+                        className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                        aria-label={t('admin.transfer.title')}
+                      >
+                        <Replace className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
+                  )}
                 </div>
-                {isSuperAdmin && (user.role === 'capacitador' || user.role === 'superadmin') && (
-                  <Tooltip label={t('admin.transfer.hint', 'Pasa sus cursos y contenido a otra persona. Hazlo ANTES de borrar la cuenta.')} maxWidth={260}>
-                    <button
-                      onClick={() => setTransferFor(user)}
-                      className="h-10 w-10 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
-                      aria-label={t('admin.transfer.title', 'Cambiar de dueño el contenido')}
-                    >
-                      <Replace className="h-4 w-4" />
-                    </button>
-                  </Tooltip>
-                )}
                 {isSuperAdmin && (
                   <Tooltip label={t('admin.users.delete_user_hint')} maxWidth={240}>
                     <button
