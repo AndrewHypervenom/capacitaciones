@@ -1239,6 +1239,11 @@ export interface Database {
           /** Solo para capacitadores: el superadmin lo designó para aprobar la
            *  publicación de cursos. El superadmin aprueba siempre. */
           can_approve_courses: boolean
+          /** Autor temporal: crea contenido en su programa pero NO asigna
+           *  formación a nadie ni publica. Un capacitador de planta recoge su
+           *  trabajo y lo publica. Es una marca sobre el capacitador, no un rol
+           *  aparte: añadir un quinto rol obligaría a revisar cada política. */
+          is_guest_author: boolean
           /** Última nómina de Talento Humano en la que apareció la persona. */
           hr_last_seen_at: string | null
           created_at: string
@@ -1267,6 +1272,7 @@ export interface Database {
           deactivation_reason?: string | null
           can_create_learners?: boolean
           can_approve_courses?: boolean
+          is_guest_author?: boolean
           hr_last_seen_at?: string | null
           created_at?: string
           updated_at?: string
@@ -1292,6 +1298,7 @@ export interface Database {
           deactivation_reason?: string | null
           can_create_learners?: boolean
           can_approve_courses?: boolean
+          is_guest_author?: boolean
           hr_last_seen_at?: string | null
           updated_at?: string
         }

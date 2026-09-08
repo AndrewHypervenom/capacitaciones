@@ -20,6 +20,11 @@ export function useAuth() {
     campaignId: profile?.campaign_id ?? null,
     isSuperAdmin: role === 'superadmin',
     isCapacitador: role === 'capacitador',
+    // Recursos Humanos: administra GENTE, no contenido. No tiene campaña ni la
+    // necesita — su alcance es toda la organización. Da de alta y de baja por
+    // nómina, lee progreso y analítica, y decide quién recibe qué formación;
+    // no crea ni edita cursos, módulos, mundos ni simulaciones.
+    isRh: role === 'rh',
     // Dar de alta aprendices NO viene con el rol de capacitador: el superadmin
     // lo concede persona por persona. Sin el permiso, el panel no ofrece los
     // botones de alta (y las Edge Functions rechazan igual a quien insista).
@@ -32,8 +37,19 @@ export function useAuth() {
     // rechaza a quien lo intente por otra vía.
     canApproveCourses:
       role === 'superadmin' || (role === 'capacitador' && profile?.can_approve_courses === true),
-    // Puede acceder al panel admin (aunque con permisos restringidos)
+    // Autor temporal: capacitador que solo PREPARA contenido. No reparte
+    // formación ni publica — eso lo hace un capacitador de planta cuando
+    // recoge su trabajo. La base lo impide igual (políticas restrictivas y un
+    // trigger); esto solo evita ofrecerle botones que van a fallar.
+    isGuestAuthor: role === 'capacitador' && profile?.is_guest_author === true,
+    // Puede acceder al panel admin (aunque con permisos restringidos).
+    // NO incluye a RH a propósito: esta bandera gobierna cosas de CONTENIDO
+    // (el ViewSwitcher, los borradores de módulo). Para "¿entra al panel?" usa
+    // `canAccessAdminPanel`, que sí lo incluye.
     isAdminOrCapacitador: role === 'superadmin' || role === 'capacitador',
+    /** ¿Tiene sitio en el panel de gestión? Es la llave de la puerta, nada más. */
+    canAccessAdminPanel:
+      role === 'superadmin' || role === 'capacitador' || role === 'rh',
     displayName: profile?.display_name ?? session?.user?.email ?? '',
     avatarUrl: profile?.avatar_url ?? null,
     country: profile?.country ?? 'CO',
