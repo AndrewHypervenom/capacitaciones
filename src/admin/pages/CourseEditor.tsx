@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   UserCog,
+  TriangleAlert,
   ArrowUp,
   BookOpen,
   CalendarClock,
@@ -462,6 +463,10 @@ export default function CourseEditor() {
   // puede administrar el curso, así que es una orden, no una preferencia.
   const [ownerTargetId, setOwnerTargetId] = useState('')
   const [savingOwner, setSavingOwner] = useState(false)
+  /* Campañas del candidato a dueño. Cambiar `created_by` NO da acceso: quién
+     puede abrir el curso lo decide la campaña. Sin esto se puede dejar un curso
+     a nombre de alguien que no lo ve —ya pasó— y nadie se entera. */
+  const [ownerCampaigns, setOwnerCampaigns] = useState<Campaign[] | null>(null)
   const [courseCampaigns, setCourseCampaigns] = useState<CourseCampaignRow[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
@@ -1107,6 +1112,23 @@ export default function CourseEditor() {
     if (courseScenarioCount > 0 || cond.require_simulator) setSimOpen(true)
   }, [courseScenarioCount, cond.require_simulator])
 
+  /* A qué campañas llega quien va a heredar el curso. Va aquí arriba, con los
+     demás hooks, porque la tarjeta que lo usa vive después del early return. */
+  useEffect(() => {
+    if (!ownerTargetId) { setOwnerCampaigns(null); return }
+    const p = profiles.find((x) => x.id === ownerTargetId)
+    if (!p) { setOwnerCampaigns(null); return }
+    let alive = true
+    getAccessibleCampaigns({
+      isSuperAdmin: p.role === 'superadmin',
+      homeCampaignId: p.campaign_id ?? null,
+      userId: p.id,
+    })
+      .then((cs) => { if (alive) setOwnerCampaigns(cs) })
+      .catch(() => { if (alive) setOwnerCampaigns([]) })
+    return () => { alive = false }
+  }, [ownerTargetId, profiles])
+
   // Aprendices ya certificados a los que les falta ver contenido publicado
   // después de su certificado. Informativo: no invalida nada por sí solo.
   // OJO: van ANTES del early return de carga. Estaban después, así que el
@@ -1267,6 +1289,8 @@ export default function CourseEditor() {
      un coste que justifique moverlo arriba. */
   const ownerCandidates = profiles.filter((p) => p.role === 'capacitador' || p.role === 'superadmin')
   const ownerName = profiles.find((p) => p.id === course?.created_by)?.display_name ?? ''
+  const courseCampaignName = campaigns.find((c) => c.id === course?.campaign_id)?.name ?? ''
+  const ownerCampaignNames = (ownerCampaigns ?? []).map((c) => c.name).join(', ')
 
   const handleSetOwner = async () => {
     if (!ownerTargetId || ownerTargetId === course.created_by) return
@@ -3231,6 +3255,34 @@ export default function CourseEditor() {
                   {t('admin.courses.owner_action', 'Cambiar dueño')}
                 </Button>
               </div>
+
+              {/* Lo que faltaba: decir a qué campañas llega esa persona. Ser
+                  dueño no da acceso —eso lo decide la campaña—, así que sin
+                  este aviso se puede dejar un curso a nombre de quien no lo ve. */}
+              {ownerTargetId && ownerCampaigns && (
+                ownerCampaigns.some((c) => c.id === course.campaign_id) ? (
+                  <p className="text-[11.5px] leading-relaxed text-text-subtle">
+                    {t('admin.courses.owner_campaign_ok', {
+                      name: ownerCampaignNames,
+                      campaign: courseCampaignName,
+                      defaultValue: 'Lo verá en {{campaign}}. Sus campañas: {{name}}.',
+                    })}
+                  </p>
+                ) : (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5">
+                    <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-amber-600">
+                      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        {t('admin.courses.owner_campaign_warn', {
+                          campaign: courseCampaignName,
+                          list: ownerCampaignNames || t('admin.courses.owner_no_campaigns', 'ninguna'),
+                          defaultValue: 'No verá el curso: está en {{campaign}} y esa persona solo llega a {{list}}. Cámbialo igual y muévelo abajo, o dale acceso a esa campaña en Usuarios.',
+                        })}
+                      </span>
+                    </p>
+                  </div>
+                )
+              )}
             </GlassCard>
           )}
 

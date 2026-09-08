@@ -2842,7 +2842,10 @@
       "owner_action": "Change owner",
       "owner_confirm": "{{name}} will manage this course. Whoever had it will lose editing rights unless it is their campaign.",
       "owner_ok": "The course now belongs to {{name}}.",
-      "owner_error": "Couldn't change the owner"
+      "owner_error": "Couldn't change the owner",
+      "owner_campaign_ok": "They will see it in {{campaign}}. Their campaigns: {{name}}.",
+      "owner_campaign_warn": "They won't see this course: it lives in {{campaign}} and they only reach {{list}}. Change it anyway and move it below, or give them access to that campaign in Users.",
+      "owner_no_campaigns": "none"
     },
     "simulations": {
       "save": "Save",

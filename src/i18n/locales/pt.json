@@ -2842,7 +2842,10 @@
       "owner_action": "Mudar dono",
       "owner_confirm": "{{name}} passará a administrar este curso. Quem o tinha deixará de poder editá-lo se não for a sua campanha.",
       "owner_ok": "Agora o curso é de {{name}}.",
-      "owner_error": "Não foi possível mudar o dono"
+      "owner_error": "Não foi possível mudar o dono",
+      "owner_campaign_ok": "Verá em {{campaign}}. Campanhas: {{name}}.",
+      "owner_campaign_warn": "Não verá o curso: está em {{campaign}} e essa pessoa só alcança {{list}}. Mude assim mesmo e mova abaixo, ou dê acesso a essa campanha em Usuários.",
+      "owner_no_campaigns": "nenhuma"
     },
     "simulations": {
       "save": "Salvar",
