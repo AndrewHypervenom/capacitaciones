@@ -2834,7 +2834,15 @@
       "approval_approved": "Course approved and published",
       "approval_rejected": "Course sent back with the reason",
       "approval_revoked": "Course taken down and back to draft",
-      "approval_error": "The approval could not be completed"
+      "approval_error": "The approval could not be completed",
+      "owner_title": "Course owner",
+      "owner_hint": "Who manages it. Change it before deleting whoever created it.",
+      "owner_current": "Today: {{name}}",
+      "owner_placeholder": "Pick a trainer or superadmin",
+      "owner_action": "Change owner",
+      "owner_confirm": "{{name}} will manage this course. Whoever had it will lose editing rights unless it is their campaign.",
+      "owner_ok": "The course now belongs to {{name}}.",
+      "owner_error": "Couldn't change the owner"
     },
     "simulations": {
       "save": "Save",

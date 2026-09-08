@@ -8,6 +8,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowLeftRight,
+  UserCog,
   ArrowUp,
   BookOpen,
   CalendarClock,
@@ -91,7 +92,13 @@ import {
   type CourseAssignmentRow,
   type CourseStats,
 } from '@/services/courses.service'
+import {
+  EMPTY_RULE, getAudience, saveAudience,
+  type AudienceRule,
+} from '@/services/audiences.service'
+import { AudienceRulePicker, normalizeRule } from '@/admin/components/AudienceRulePicker'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import { setCourseOwner } from '@/services/ownership.service'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
 import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
 import { ModuleSplitModal } from '@/admin/components/ModuleSplitModal'
@@ -451,6 +458,10 @@ export default function CourseEditor() {
   const [accessibleCampaigns, setAccessibleCampaigns] = useState<Campaign[]>([])
   const [moveTargetId, setMoveTargetId] = useState('')
   const [movingCampaign, setMovingCampaign] = useState(false)
+  // Dueño del curso: solo el superadmin lo cambia. De `created_by` depende quién
+  // puede administrar el curso, así que es una orden, no una preferencia.
+  const [ownerTargetId, setOwnerTargetId] = useState('')
+  const [savingOwner, setSavingOwner] = useState(false)
   const [courseCampaigns, setCourseCampaigns] = useState<CourseCampaignRow[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
@@ -464,6 +475,11 @@ export default function CourseEditor() {
   // "sin nadie asignado": significan "todavía no sé". Sin esta marca, cualquier
   // diff contra la BD interpretaba ese vacío como "quítalo todo".
   const [assignLoaded, setAssignLoaded] = useState(false)
+  /* La regla de audiencia (país/operación/área). Va con el mismo borrador que
+     campañas y personas: se edita, se acumula en el pie y se guarda de una vez.
+     `savedAudience` es la línea base para saber si cambió. */
+  const [savedAudience, setSavedAudience] = useState<AudienceRule>(EMPTY_RULE)
+  const [draftAudience, setDraftAudience] = useState<AudienceRule>(EMPTY_RULE)
   const [savingAssign, setSavingAssign] = useState(false)
   // Aprendices por campaña: lo que la lista de personas NO muestra. Sin esto,
   // "N personas con el curso asignado" parecía contradecir a "Matriculados".
@@ -713,13 +729,21 @@ export default function CourseEditor() {
     if (!courseId || !course) return
     let active = true
     setAssignLoaded(false)
-    Promise.all([getCourseCampaigns(courseId), getCourseAssignments(courseId)])
-      .then(([cc, aa]) => {
+    Promise.all([
+      getCourseCampaigns(courseId),
+      getCourseAssignments(courseId),
+      // La regla puede no existir (curso viejo) o la tabla no estar creada
+      // todavía: en los dos casos vale EMPTY_RULE y el resto sigue igual.
+      getAudience(courseId).catch(() => null),
+    ])
+      .then(([cc, aa, rule]) => {
         if (!active) return
         setCourseCampaigns(cc)
         setDraftCampaigns(Object.fromEntries(cc.map((r) => [r.campaign_id, r.is_mandatory])))
         setAssignments(aa)
         setDraftUsers(Object.fromEntries(aa.map((r) => [r.user_id, r.is_mandatory])))
+        setSavedAudience(rule ?? EMPTY_RULE)
+        setDraftAudience(rule ?? EMPTY_RULE)
         setAssignLoaded(true)
       })
       .catch(() => {
@@ -754,6 +778,15 @@ export default function CourseEditor() {
       .select('*')
       .order('display_name')
     if (!isSuperAdmin) {
+      // AQUÍ NO va "mi gente" (get_my_people_ids), y no es un olvido: sería
+      // circular. Mi gente son los alcanzados por mis cursos, así que usarla
+      // para elegir A QUIÉN ASIGNAR significaría que solo puedo asignarle a
+      // quien YA tiene un curso mío — nunca podría llegar a alguien nuevo.
+      //
+      // Ver a mi gente y poder asignarle un curso son dos preguntas distintas.
+      // La asignación individual sigue acotada a la campaña, igual que la RLS
+      // (`course_assignments_capacitador_write`), y es la excepción: lo normal
+      // pasa a ser la regla de audiencia de arriba.
       profilesQuery = profilesQuery.eq('role', 'learner').in('campaign_id', ids)
     }
     profilesQuery.then(({ data }) => { if (active) setProfiles((data ?? []) as Profile[]) })
@@ -880,8 +913,10 @@ export default function CourseEditor() {
       assignments.map((a) => ({ id: a.user_id, is_mandatory: a.is_mandatory })),
       draftUsers,
     )
-    return !campSame || !userSame
-  }, [courseCampaigns, assignments, draftCampaigns, draftUsers])
+    const audSame =
+      JSON.stringify(normalizeRule(savedAudience)) === JSON.stringify(normalizeRule(draftAudience))
+    return !campSame || !userSame || !audSame
+  }, [courseCampaigns, assignments, draftCampaigns, draftUsers, savedAudience, draftAudience])
 
   // Deshacer/rehacer de TODO el editor: la ficha, las condiciones y también las
   // asignaciones (destildar media campaña sin querer no tenía vuelta atrás).
@@ -899,7 +934,7 @@ export default function CourseEditor() {
   const undoHistory = useUndoHistory({
     state: {
       form, cond, simRule, simUnlockModuleId, worldRule, worldUnlockModuleId, simPlacements,
-      assign: assignLoaded ? { campaigns: draftCampaigns, users: draftUsers } : null,
+      assign: assignLoaded ? { campaigns: draftCampaigns, users: draftUsers, audience: draftAudience } : null,
     },
     apply: (s) => {
       setForm(s.form)
@@ -912,6 +947,7 @@ export default function CourseEditor() {
       if (s.assign) {
         setDraftCampaigns(s.assign.campaigns)
         setDraftUsers(s.assign.users)
+        setDraftAudience(s.assign.audience)
       }
     },
     enabled: !loading,
@@ -1221,6 +1257,41 @@ export default function CourseEditor() {
       toast.error(t('admin.courses.move_campaign_error'), errMsg(e))
     } finally {
       setMovingCampaign(false)
+    }
+  }
+
+  /* Candidatos a dueño: staff. `profiles` ya trae a todo el sitio cuando quien
+     mira es superadmin, que es el único que ve esta tarjeta.
+     Sin `useMemo` a propósito: esto vive después de un return temprano, donde un
+     hook rompería el orden de llamadas, y filtrar una lista de perfiles no es
+     un coste que justifique moverlo arriba. */
+  const ownerCandidates = profiles.filter((p) => p.role === 'capacitador' || p.role === 'superadmin')
+  const ownerName = profiles.find((p) => p.id === course?.created_by)?.display_name ?? ''
+
+  const handleSetOwner = async () => {
+    if (!ownerTargetId || ownerTargetId === course.created_by) return
+    const name = profiles.find((p) => p.id === ownerTargetId)?.display_name ?? ''
+    const ok = await confirm({
+      title: t('admin.courses.owner_title', 'Dueño del curso'),
+      description: t('admin.courses.owner_confirm', {
+        name,
+        defaultValue: '{{name}} pasará a administrar este curso. Quien lo tenía dejará de poder editarlo si no es su campaña.',
+      }),
+      confirmLabel: t('admin.courses.owner_action', 'Cambiar dueño'),
+      tone: 'default',
+    })
+    if (!ok) return
+    setSavingOwner(true)
+    try {
+      await setCourseOwner(course.id, ownerTargetId)
+      toast.success(t('admin.courses.owner_ok', { name, defaultValue: 'Ahora el curso es de {{name}}.' }))
+      setOwnerTargetId('')
+      await reload()
+    } catch (e) {
+      console.error('[CourseEditor] handleSetOwner', e)
+      toast.error(t('admin.courses.owner_error', 'No se pudo cambiar el dueño'), errMsg(e))
+    } finally {
+      setSavingOwner(false)
     }
   }
 
@@ -1755,6 +1826,17 @@ export default function CourseEditor() {
       setDraftCampaigns(Object.fromEntries(cc.map((r) => [r.campaign_id, r.is_mandatory])))
       setAssignments(aa)
       setDraftUsers(Object.fromEntries(aa.map((r) => [r.user_id, r.is_mandatory])))
+      // La regla de audiencia es UNA fila y se sobrescribe entera: no hay
+      // borrados parciales que proteger como en campañas y personas, así que no
+      // necesita la relectura defensiva de arriba. Si la tabla todavía no
+      // existe, el fallo se avisa y no arrastra al resto del guardado.
+      try {
+        await saveAudience(course.id, draftAudience)
+        setSavedAudience(draftAudience)
+      } catch (e) {
+        console.error('[CourseEditor] audiencia', e)
+        toast.error(t('admin.courses.audience_rule_save_error', 'No se pudo guardar a quién le llega el curso.'))
+      }
       invalidateModulesCache()
       // La lista de cursos del aprendiz vive en una caché en memoria con la
       // clave `usuario:campaña`. Asignarse el curso a UNO MISMO no cambia esa
@@ -3102,6 +3184,56 @@ export default function CourseEditor() {
 
           </GlassCard>
 
+          {/* Dueño del curso. Solo el superadmin: de `created_by` depende quién
+              puede administrar el curso, así que dejarlo abierto sería que un
+              capacitador se quitara de encima —o se apropiara— contenido ajeno. */}
+          {isSuperAdmin && (
+            <GlassCard intensity="subtle" rounded="2xl" className="p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-glass/8 text-text-muted">
+                  <UserCog className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-[13px] font-semibold text-text">
+                    {t('admin.courses.owner_title', 'Dueño del curso')}
+                  </h2>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {t('admin.courses.owner_hint', 'Quien lo administra. Cámbialo antes de dar de baja a quien lo creó.')}
+                  </p>
+                  {ownerName && (
+                    <p className="text-[11px] text-text-subtle mt-1">
+                      {t('admin.courses.owner_current', { name: ownerName, defaultValue: 'Hoy: {{name}}' })}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <Select
+                    value={ownerTargetId}
+                    onChange={setOwnerTargetId}
+                    disabled={savingOwner}
+                    placeholder={t('admin.courses.owner_placeholder', 'Elige un capacitador o superadmin')}
+                    options={[
+                      { value: '', label: t('admin.courses.owner_placeholder', 'Elige un capacitador o superadmin') },
+                      ...ownerCandidates.map((p) => ({ value: p.id, label: p.display_name || p.id })),
+                    ]}
+                  />
+                </div>
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={handleSetOwner}
+                  disabled={savingOwner || !ownerTargetId || ownerTargetId === course.created_by}
+                  className="flex items-center gap-1.5 shrink-0"
+                >
+                  {savingOwner ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
+                  {t('admin.courses.owner_action', 'Cambiar dueño')}
+                </Button>
+              </div>
+            </GlassCard>
+          )}
+
           {/* Mover el curso a otra campaña. Solo aparece si el usuario tiene más de
               una campaña a la que moverlo (capacitador multi-campaña o superadmin). */}
           {accessibleCampaigns.length > 1 && (
@@ -3525,6 +3657,21 @@ export default function CourseEditor() {
               </PulseHint>
             </div>
           )}
+
+          {/* ¿A quién le llega? — la regla sobre país, operación y área.
+              Va ANTES del alcance y de las campañas a propósito: es la forma
+              nueva de asignar, y lo de abajo es lo que va quedando atrás.
+              Convive con ello mientras haya cursos asignados a la vieja usanza. */}
+          <div>
+            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
+              <Users className="h-4 w-4 text-text-muted" />
+              {t('admin.courses.aud_rule_title', '¿A quién le llega?')}
+            </h2>
+            <p className="text-[12px] text-text-muted mb-3">
+              {t('admin.courses.aud_rule_hint', 'Una regla sobre el país, la operación y el área de cada persona. Quien entre después a ese grupo lo recibe solo; quien salga deja de verlo.')}
+            </p>
+            <AudienceRulePicker value={draftAudience} onChange={setDraftAudience} />
+          </div>
 
           {/* ¿Quién puede ver este curso? (alcance) */}
           <div>

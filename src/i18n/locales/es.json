@@ -2834,7 +2834,15 @@
       "approval_approved": "Curso aprobado y publicado",
       "approval_rejected": "Curso devuelto con el motivo",
       "approval_revoked": "Curso bajado y devuelto a borrador",
-      "approval_error": "No se pudo completar la aprobación"
+      "approval_error": "No se pudo completar la aprobación",
+      "owner_title": "Dueño del curso",
+      "owner_hint": "Quien lo administra. Cámbialo antes de dar de baja a quien lo creó.",
+      "owner_current": "Hoy: {{name}}",
+      "owner_placeholder": "Elige un capacitador o superadmin",
+      "owner_action": "Cambiar dueño",
+      "owner_confirm": "{{name}} pasará a administrar este curso. Quien lo tenía dejará de poder editarlo si no es su campaña.",
+      "owner_ok": "Ahora el curso es de {{name}}.",
+      "owner_error": "No se pudo cambiar el dueño"
     },
     "simulations": {
       "save": "Guardar",

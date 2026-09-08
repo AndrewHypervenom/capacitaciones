@@ -82,3 +82,19 @@ export function totalAuthored(a: AuthoredCounts): number {
     .filter(([k]) => k !== 'modules_no_course')
     .reduce((sum, [, n]) => sum + (Number(n) || 0), 0)
 }
+
+/**
+ * Cambia el dueño de UN curso. Es la vía directa para cuando no se trata de
+ * vaciar una cuenta entera sino de poner un curso concreto a nombre de quien
+ * corresponde — p. ej. crear un curso "contenedor" y dejárselo a alguien.
+ *
+ * De `courses.created_by` depende quién puede administrarlo, así que esto NO es
+ * un dato informativo: cambia quién manda sobre el curso.
+ */
+export async function setCourseOwner(courseId: string, ownerId: string): Promise<void> {
+  const { error } = await db.rpc('admin_set_course_owner', {
+    p_course_id: courseId,
+    p_owner: ownerId,
+  })
+  if (error) throw error
+}
