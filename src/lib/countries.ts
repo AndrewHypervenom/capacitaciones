@@ -110,3 +110,18 @@ export function normalizeCountryCode(value?: string | null): string | null {
 export function isKnownCountry(code?: string | null): boolean {
   return !!code && BY_CODE.has(code)
 }
+
+/**
+ * Los países donde HAY operación hoy.
+ *
+ * La lista larga de arriba existe para la ficha de la persona: quien vive en
+ * Portugal tiene que poder decirlo. Pero al segmentar un curso esa misma lista
+ * son 23 banderas para elegir entre tres, y las veinte que sobran no le llegan
+ * a nadie porque no hay un solo perfil con ese país. Aquí van solo las que
+ * segmentan de verdad; se amplía cuando abra un mercado nuevo.
+ */
+export const OPERATION_COUNTRY_CODES = ['CO', 'MX', 'AR']
+
+export const OPERATION_COUNTRIES: Country[] = OPERATION_COUNTRY_CODES
+  .map((code) => BY_CODE.get(code))
+  .filter((c): c is Country => !!c)

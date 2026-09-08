@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Globe, Loader2, MapPin, Users, Building2, Layers } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { COUNTRIES } from '@/lib/countries'
+import { COUNTRIES, OPERATION_COUNTRIES } from '@/lib/countries'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { getOrganizations, getOrgUnits } from '@/services/org.service'
 import { countAudience, ruleIsEmpty, type AudienceRule } from '@/services/audiences.service'
@@ -25,6 +25,10 @@ import type { OrgUnit } from '@/types/database'
  * Área: Talento Humano"— y dice a cuánta gente real le llega. Un número
  * concreto antes de guardar es lo único que evita publicar creyendo que va a
  * un área y descubrir que fue a toda la compañía.
+ *
+ * El eje de país enseña solo donde hay operación (CO/MX/AR). La lista larga es
+ * para la ficha de la persona; aquí veintitrés banderas para elegir entre tres
+ * solo estorban.
  *
  * Degradación: sin unidades en el catálogo, los ejes de operación y área no se
  * pintan. Un selector vacío no ayuda; parece que la función está rota.
@@ -84,6 +88,16 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
 
   const operations = useMemo(() => units.filter((u) => u.kind === 'operation'), [units])
   const areas = useMemo(() => units.filter((u) => u.kind === 'area'), [units])
+
+  // Solo los países donde hay operación. Si una regla vieja trae otro país, se
+  // pinta igual: esconderlo haría desaparecer de la vista una condición que
+  // sigue vigente, y nadie entendería por qué el curso no le llega a alguien.
+  const paises = useMemo(() => {
+    const extra = value.countries
+      .filter((c) => !OPERATION_COUNTRIES.some((x) => x.code === c))
+      .map((c) => COUNTRIES.find((x) => x.code === c) ?? { code: c, name: c, flag: '' })
+    return [...OPERATION_COUNTRIES, ...extra]
+  }, [value.countries])
 
   const toggle = (key: 'countries' | 'operationIds' | 'areaIds', id: string) => {
     if (disabled) return
@@ -145,7 +159,7 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
           </span>
         </div>
         <p className="text-[12px] text-text-muted leading-relaxed">
-          {t('admin.courses.aud_everyone_desc', 'Como Avanza +, Sé y comparto o S+ Lidera: le llega a todo el mundo, sin condiciones.')}
+          {t('admin.courses.aud_everyone_desc', 'Se le asigna a todos los aprendices, sin condiciones. Es el caso de Avanza +, Sé y comparto o S+ Lidera.')}
         </p>
       </button>
 
@@ -155,7 +169,7 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
             icon={MapPin}
             titulo={t('admin.courses.aud_country', 'País')}
             ayuda={t('admin.courses.aud_country_help', 'Sin ninguno marcado, no restringe por país.')}
-            opciones={COUNTRIES.map((c) => ({ id: c.code, label: `${c.flag} ${c.name}` }))}
+            opciones={paises.map((c) => ({ id: c.code, label: `${c.flag} ${c.name}`.trim() }))}
             seleccion={value.countries}
             onToggle={(id) => toggle('countries', id)}
             disabled={disabled}

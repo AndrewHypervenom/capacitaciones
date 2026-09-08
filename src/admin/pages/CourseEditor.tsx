@@ -98,6 +98,8 @@ import {
   type AudienceRule,
 } from '@/services/audiences.service'
 import { AudienceRulePicker, normalizeRule } from '@/admin/components/AudienceRulePicker'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import type { OrgUnit } from '@/types/database'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { setCourseOwner } from '@/services/ownership.service'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
@@ -358,7 +360,7 @@ export default function CourseEditor() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
-  const { isSuperAdmin, canApproveCourses, campaignId: authCampaignId, user } = useAuth()
+  const { isSuperAdmin, canApproveCourses, isGuestAuthor, campaignId: authCampaignId, user } = useAuth()
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   const [loading, setLoading] = useState(true)
@@ -422,6 +424,7 @@ export default function CourseEditor() {
     level: 'basico' as 'basico' | 'medio' | 'avanzado',
     category: '',
     visibility: 'assigned' as 'assigned' | 'catalog',
+    category_id: null as string | null,
     is_shareable: false,
     cover_fit: 'cover' as 'cover' | 'contain',
     // Límite de tiempo para terminarlo (ver src/lib/courseDeadline.ts).
@@ -483,6 +486,8 @@ export default function CourseEditor() {
   /* La regla de audiencia (país/operación/área). Va con el mismo borrador que
      campañas y personas: se edita, se acumula en el pie y se guarda de una vez.
      `savedAudience` es la línea base para saber si cambió. */
+  /** Catálogo cerrado de categorías. Vacío mientras el SQL no se haya corrido. */
+  const [categories, setCategories] = useState<OrgUnit[]>([])
   const [savedAudience, setSavedAudience] = useState<AudienceRule>(EMPTY_RULE)
   const [draftAudience, setDraftAudience] = useState<AudienceRule>(EMPTY_RULE)
   const [savingAssign, setSavingAssign] = useState(false)
@@ -595,6 +600,7 @@ export default function CourseEditor() {
       level: c.level,
       category: c.category ?? '',
       visibility: c.visibility,
+      category_id: c.category_id ?? null,
       is_shareable: c.is_shareable ?? false,
       cover_fit: c.cover_fit ?? 'cover',
       // Si el SQL del plazo todavía no se corrió, las columnas llegan
@@ -730,6 +736,17 @@ export default function CourseEditor() {
   // Datos de asignación. Campañas y personas se piden JUNTAS y `assignLoaded`
   // solo se enciende si las dos llegaron: con una sola a medias, el borrador
   // quedaría incompleto y guardar borraría lo que no alcanzó a cargarse.
+  // Catálogo de categorías. Si el SQL no se ha corrido llega vacío y el
+  // selector lo dice, en vez de aparecer roto.
+  useEffect(() => {
+    let alive = true
+    getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id, 'category') : []))
+      .then((list) => { if (alive) setCategories(list) })
+      .catch(() => { if (alive) setCategories([]) })
+    return () => { alive = false }
+  }, [])
+
   useEffect(() => {
     if (!courseId || !course) return
     let active = true
@@ -1216,6 +1233,7 @@ export default function CourseEditor() {
         level: form.level,
         category: form.category.trim() || null,
         visibility: form.visibility,
+        category_id: form.category_id,
         is_shareable: form.is_shareable,
         cover_fit: form.cover_fit,
         // El plazo se guarda coherente: las columnas del modo que NO está
@@ -1299,7 +1317,7 @@ export default function CourseEditor() {
       title: t('admin.courses.owner_title', 'Dueño del curso'),
       description: t('admin.courses.owner_confirm', {
         name,
-        defaultValue: '{{name}} pasará a administrar este curso. Quien lo tenía dejará de poder editarlo si no es su campaña.',
+        defaultValue: '{{name}} pasará a administrar este curso. Quien lo tenía dejará de poder editarlo si no es su programa.',
       }),
       confirmLabel: t('admin.courses.owner_action', 'Cambiar dueño'),
       tone: 'default',
@@ -1331,7 +1349,12 @@ export default function CourseEditor() {
   /** ¿Está el SQL corrido? Si no, el editor publica como siempre. */
   const approvalReady = approvalsReady(course)
   /** ¿Puede este usuario poner el curso en aire sin pedirle permiso a nadie? */
-  const publishAllowed = canPublishNow(course, canApproveCourses)
+  // El autor temporal PREPARA, no publica: eso lo hace un capacitador de planta
+  // cuando recoge su trabajo. Se apoya en el candado que ya existía para la
+  // aprobación en vez de inventar otro — mismo dibujo, mismo sitio, un motivo
+  // más. La base lo impide igual con un trigger; esto es para no ofrecer un
+  // interruptor que va a fallar.
+  const publishAllowed = canPublishNow(course, canApproveCourses) && !isGuestAuthor
 
   /**
    * Recarga el curso tras una decisión, para que el estado no quede a medias, y
@@ -1888,7 +1911,7 @@ export default function CourseEditor() {
           t('test_mode.mix_course_title', { defaultValue: 'Entornos separados' }),
           t('test_mode.mix_course', {
             defaultValue:
-              'Un curso de una campaña de prueba solo se asigna a campañas y personas de prueba (y al revés).',
+              'Un curso de un programa de prueba solo se asigna a programas y personas de prueba (y al revés).',
           }),
         )
         return false
@@ -2116,7 +2139,9 @@ export default function CourseEditor() {
   const tabs: Array<{ id: Tab; label: string; icon: typeof Info }> = [
     { id: 'info', label: t(TAB_LABEL_KEY.info), icon: Info },
     { id: 'modules', label: t(TAB_LABEL_KEY.modules), icon: BookOpen },
-    { id: 'assign', label: t(TAB_LABEL_KEY.assign), icon: Users },
+    // Asignar no le corresponde al autor temporal: no reparte formación. Se
+    // esconde la pestaña entera en vez de dejarla y que todo dentro falle.
+    ...(isGuestAuthor ? [] : [{ id: 'assign' as const, label: t(TAB_LABEL_KEY.assign), icon: Users }]),
     { id: 'evaluation', label: t(TAB_LABEL_KEY.evaluation), icon: Rocket },
     { id: 'exam', label: t(TAB_LABEL_KEY.exam), icon: ClipboardCheck },
     // La encuesta va entre el examen y la certificación porque ese es el orden
@@ -2926,6 +2951,7 @@ export default function CourseEditor() {
               </p>
             </div>
 
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[12px] font-medium text-text-muted mb-1.5">
@@ -2948,16 +2974,37 @@ export default function CourseEditor() {
                   ))}
                 </div>
               </div>
+              {/* CATEGORÍA — de qué trata el curso: lo que el aprendiz ve y por
+                  lo que filtra. ANTES era texto libre y por eso convivían tres
+                  formas de escribir lo mismo; ahora sale de una lista cerrada
+                  que solo abre el superadmin.
+                  No confundir con la campaña, que dice quién lo administra. */}
               <div>
                 <label className="block text-[12px] font-medium text-text-muted mb-1.5">
                   {t('admin.courses.field_category')}
                 </label>
-                <input
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  placeholder={t('admin.courses.field_category_ph')}
-                  className={inputCls}
+                <Select
+                  value={form.category_id ?? ''}
+                  onChange={(v) => setForm({ ...form, category_id: v || null })}
+                  options={[
+                    { value: '', label: t('admin.courses.category_none', 'Sin categoría') },
+                    ...categories.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
                 />
+                <p className="mt-1.5 text-[11px] text-text-subtle">
+                  {categories.length === 0
+                    ? t('admin.courses.category_empty_catalog', 'Todavía no hay categorías. Las crea el superadmin en Operaciones y áreas.')
+                    : !form.category_id
+                      ? t('admin.courses.category_missing', 'Sin categoría el curso no aparece en los filtros del aprendiz.')
+                      : t('admin.courses.category_hint', 'De qué trata el curso. Es distinto de quién lo administra.')}
+                </p>
+                {/* La categoría vieja en texto, mientras quede alguna sin migrar:
+                    se enseña para no perder de vista lo que decía antes. */}
+                {form.category && !form.category_id && (
+                  <p className="mt-1 text-[11px] text-amber-500">
+                    {t('admin.courses.category_legacy', 'Antes decía "{{v}}". Elige la categoría del catálogo que le corresponde.', { v: form.category })}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -3265,7 +3312,7 @@ export default function CourseEditor() {
                     {t('admin.courses.owner_campaign_ok', {
                       name: ownerCampaignNames,
                       campaign: courseCampaignName,
-                      defaultValue: 'Lo verá en {{campaign}}. Sus campañas: {{name}}.',
+                      defaultValue: 'Lo verá en {{campaign}}. Sus programas: {{name}}.',
                     })}
                   </p>
                 ) : (
@@ -3276,7 +3323,7 @@ export default function CourseEditor() {
                         {t('admin.courses.owner_campaign_warn', {
                           campaign: courseCampaignName,
                           list: ownerCampaignNames || t('admin.courses.owner_no_campaigns', 'ninguna'),
-                          defaultValue: 'No verá el curso: está en {{campaign}} y esa persona solo llega a {{list}}. Cámbialo igual y muévelo abajo, o dale acceso a esa campaña en Usuarios.',
+                          defaultValue: 'No verá el curso: está en {{campaign}} y esa persona solo llega a {{list}}. Cámbialo igual y muévelo abajo, o dale acceso a ese programa en Usuarios.',
                         })}
                       </span>
                     </p>
@@ -3725,41 +3772,33 @@ export default function CourseEditor() {
             <AudienceRulePicker value={draftAudience} onChange={setDraftAudience} />
           </div>
 
-          {/* ¿Quién puede ver este curso? (alcance) */}
-          <div>
-            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
-              <Eye className="h-4 w-4 text-text-muted" />
-              {t('admin.courses.audience_title')}
-            </h2>
-            <p className="text-[12px] text-text-muted mb-3">{t('admin.courses.audience_hint')}</p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {([
-                { v: 'catalog' as const, icon: Globe, title: t('admin.courses.audience_public'), desc: t('admin.courses.audience_public_desc') },
-                { v: 'assigned' as const, icon: Lock, title: t('admin.courses.audience_restricted'), desc: t('admin.courses.audience_restricted_desc') },
-              ]).map(({ v, icon: Icon, title, desc }) => {
-                const active = form.visibility === v
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => handleSetVisibility(v)}
-                    className={cn(
-                      'text-left rounded-2xl border p-4 transition-colors',
-                      active
-                        ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/30'
-                        : 'border-line hover:border-primary/30',
-                    )}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <Icon className={cn('h-4 w-4', active ? 'text-primary' : 'text-text-muted')} />
-                      <span className="text-[13px] font-semibold text-text">{title}</span>
-                      {active && <Check className="h-4 w-4 text-primary ml-auto" />}
-                    </div>
-                    <p className="text-[12px] text-text-muted leading-relaxed">{desc}</p>
-                  </button>
-                )
-              })}
+          {/* El catálogo abierto, como añadido a la regla y no como pregunta
+              rival. Antes eran dos tarjetas —"Toda la organización" arriba,
+              "Todo el mundo" aquí— que sonaban igual y no lo eran: una dice a
+              quién SE LE ASIGNA, esta otra si alguien más lo puede BUSCAR. Un
+              solo interruptor debajo de la regla lo deja en su sitio. */}
+          <div className="flex items-start gap-3 rounded-2xl border border-line p-4">
+            <span className={cn(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+              form.visibility === 'catalog' ? 'bg-primary/12 text-primary' : 'bg-subtle text-text-muted',
+            )}>
+              {form.visibility === 'catalog' ? <Globe className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-text">
+                {t('admin.courses.catalog_open_title', 'Además, abierto en el catálogo')}
+              </p>
+              <p className="text-[12px] text-text-muted leading-relaxed mt-0.5">
+                {form.visibility === 'catalog'
+                  ? t('admin.courses.catalog_open_on', 'Cualquier aprendiz lo encuentra en el catálogo y se matricula por su cuenta, aunque la regla de arriba no lo incluya.')
+                  : t('admin.courses.catalog_open_off', 'Solo llega a quien cumpla la regla de arriba y a los programas y personas que asignes abajo.')}
+              </p>
             </div>
+            <Toggle
+              on={form.visibility === 'catalog'}
+              onClick={() => handleSetVisibility(form.visibility === 'catalog' ? 'assigned' : 'catalog')}
+              label={t('admin.courses.catalog_open_title', 'Además, abierto en el catálogo')}
+            />
           </div>
 
           {/* Campañas */}
