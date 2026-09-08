@@ -120,7 +120,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
 
   const data = useProgramData(lang, !isSuperAdmin);
   const {
-    loading, error, people, courses, cells, campaigns, activity, certificates,
+    loading, error, people, courses, cells, campaigns, activity, certificates, certificatesKnown,
     assignmentsKnown, modulesByCourse, doneModules, study, loadStudyTime, surveys, loadSurveys,
     exams, loadExams, reload,
   } = data;
@@ -609,7 +609,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const L = {
     person: t('admin.progress_overview.col_person', 'Persona'),
     email: t('admin.progress_overview.col_email', 'Correo'),
-    campaignCol: t('admin.progress_overview.col_campaign', 'Campaña'),
+    campaignCol: t('admin.progress_overview.col_campaign', 'Programa'),
     role: t('admin.progress_overview.col_role', 'Rol'),
     assigned: t('admin.progress_overview.col_assigned', 'Asignados'),
     started: t('admin.progress_overview.col_started', 'Iniciados'),
@@ -1015,7 +1015,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
               value={campaign}
               onChange={setCampaign}
               options={[
-                { value: 'all', label: t('admin.progress_overview.all_campaigns', 'Todas las campañas') },
+                { value: 'all', label: t('admin.progress_overview.all_campaigns', 'Todos los programas') },
                 ...campaigns.map((c) => ({ value: c.id, label: c.name })),
               ]}
             />
@@ -1106,13 +1106,13 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             </span>
           )}
           {/* Gente de otras campañas inscrita en cursos de esta. Se dice, para
-              que nadie lea la tabla como "la plantilla de la campaña". */}
+              que nadie lea la tabla como "la plantilla del programa". */}
           {guestCount > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-subtle/60 px-2.5 py-1 text-[11.5px] text-text-muted">
               <Users className="h-3 w-3" />
               {t('admin.progress_overview.guests_note', {
                 count: guestCount,
-                defaultValue: 'Incluye {{count}} personas de otras campañas inscritas en sus cursos',
+                defaultValue: 'Incluye {{count}} personas de otros programas inscritas en sus cursos',
               })}
             </span>
           )}
@@ -1177,7 +1177,9 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           active={focus === 'certified'}
           onClick={() => toggleFocus('certified')}
           delta={trend ? { value: trend.certificates, label: trendLabel } : null}
-          hint={t('admin.progress_overview.kpi_certificates_hint', { count: kpi.certified, defaultValue: '{{count}} personas con al menos uno' })}
+          hint={certificatesKnown
+            ? t('admin.progress_overview.kpi_certificates_hint', { count: kpi.certified, defaultValue: '{{count}} personas con al menos uno' })
+            : t('admin.progress_overview.kpi_certificates_unknown', 'No se pudieron leer los certificados')}
         />
         {/* Cumplimiento: la finalización de lo OBLIGATORIO, que es la cifra que
             se audita. Se pinta "—" si no hay nada marcado como obligatorio. */}
@@ -1704,7 +1706,7 @@ function SummaryTab({
             <EmptyState
               icon={<Hourglass className="h-6 w-6" />}
               title={t('admin.progress_overview.no_activity', 'Sin actividad en este rango')}
-              description={t('admin.progress_overview.no_activity_desc', 'Amplía el rango de fechas o cambia de campaña.')}
+              description={t('admin.progress_overview.no_activity_desc', 'Amplía el rango de fechas o cambia de programa.')}
             />
           ) : (
             <ul className="divide-y divide-line/70">
@@ -1810,7 +1812,7 @@ function SegmentBreakdown({
         // nombre crudo de la campaña) y antes lo pisaba.
         label: key === NO_VALUE
           ? (effAxis === 'campaign'
-              ? t('admin.progress_overview.no_campaign', 'Sin campaña')
+              ? t('admin.progress_overview.no_campaign', 'Sin programa')
               : effAxis === 'job'
                 ? t('admin.progress_overview.no_job', 'Sin cargo')
                 : t('admin.progress_overview.no_country', 'Sin país'))
@@ -1832,7 +1834,7 @@ function SegmentBreakdown({
   return (
     <SectionCard
       title={t('admin.progress_overview.segments_title', 'Cómo va cada grupo')}
-      subtitle={t('admin.progress_overview.segments_sub', 'El mismo alcance, partido por campaña, cargo o país')}
+      subtitle={t('admin.progress_overview.segments_sub', 'El mismo alcance, partido por programa, cargo o país')}
       icon={<Users className="h-4 w-4" />}
       accent={VIOLET}
       className="h-full"
@@ -1840,7 +1842,7 @@ function SegmentBreakdown({
         <div className="flex items-center gap-1 rounded-xl border border-line bg-subtle/50 p-1">
           {([
             ...(multiCampaign
-              ? [{ key: 'campaign' as const, label: t('admin.progress_overview.axis_campaign', 'Campaña') }]
+              ? [{ key: 'campaign' as const, label: t('admin.progress_overview.axis_campaign', 'Programa') }]
               : []),
             { key: 'job' as const, label: t('admin.progress_overview.axis_job', 'Cargo') },
             { key: 'country' as const, label: t('admin.progress_overview.axis_country', 'País') },
@@ -2003,7 +2005,7 @@ function PeopleTab({
         <EmptyState
           icon={<Users className="h-6 w-6" />}
           title={t('admin.progress_overview.no_people', 'Nadie coincide con este filtro')}
-          description={t('admin.progress_overview.no_people_desc', 'Prueba con otra campaña, amplía el rango o limpia la búsqueda.')}
+          description={t('admin.progress_overview.no_people_desc', 'Prueba con otro programa, amplía el rango o limpia la búsqueda.')}
         />
       ) : (
         <>
@@ -2012,8 +2014,8 @@ function PeopleTab({
               <thead>
                 <tr>
                   {th('name', t('admin.progress_overview.col_person', 'Persona'), 'left', undefined, 'w-[215px]')}
-                  {th('campaign', t('admin.progress_overview.col_campaign', 'Campaña'), 'left', undefined, 'w-[150px]')}
-                  {th('assigned', t('admin.progress_overview.col_assigned', 'Asignados'), 'right', t('admin.progress_overview.help_assigned', 'Cursos que le tocan, por asignación directa o por su campaña.'))}
+                  {th('campaign', t('admin.progress_overview.col_campaign', 'Programa'), 'left', undefined, 'w-[150px]')}
+                  {th('assigned', t('admin.progress_overview.col_assigned', 'Asignados'), 'right', t('admin.progress_overview.help_assigned', 'Cursos que le tocan, por asignación directa o por su programa.'))}
                   {th('mandatory', t('admin.progress_overview.col_mandatory', 'Obligatorios'), 'right', t('admin.progress_overview.help_mandatory', 'Cursos obligatorios terminados sobre los que le tocan. Es la cifra de cumplimiento que se audita.'))}
                   {th('syllabus', t('admin.progress_overview.col_syllabus', 'Temario'), 'right', t('admin.progress_overview.help_syllabus', 'Módulos completados sobre los módulos de sus cursos asignados.'))}
                   {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos certificados, o con todas sus entregas aprobadas y ninguna pendiente de evaluar.'))}
@@ -2243,7 +2245,7 @@ function CoursesTab({
                                 hasta ahora las dos cosas se veían igual. */}
                             {c.campaignsAssigned.length > 0 ? (
                               <StatusPill tone="green">
-                                {t('admin.progress_overview.reach_campaign', 'Toda la campaña')}
+                                {t('admin.progress_overview.reach_campaign', 'Todo el programa')}
                               </StatusPill>
                             ) : c.directAssigned > 0 ? (
                               <StatusPill tone="neutral">
@@ -2267,7 +2269,7 @@ function CoursesTab({
                         label={t('admin.progress_overview.assigned_breakdown', {
                           campaign: c.assigned - c.directAssigned,
                           direct: c.directAssigned,
-                          defaultValue: '{{campaign}} por su campaña · {{direct}} una por una',
+                          defaultValue: '{{campaign}} por su programa · {{direct}} una por una',
                         })}
                       >
                         <span>{c.assigned}</span>

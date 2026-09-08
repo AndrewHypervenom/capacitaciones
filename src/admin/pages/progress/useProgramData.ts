@@ -25,7 +25,8 @@ import { rowText, pickLang } from '@/lib/contentLang';
      · course_campaigns      → cursos asignados a una campaña entera
      · courses (plazo)       → columnas deadline_* aparte, para que un curso sin
                                el SQL corrido no tumbe el resto del tablero
-     · certifications        → certificados emitidos, con fecha y código
+     · get_program_certificates() → certificados emitidos, con fecha y código
+                               (la tabla `certifications` solo como respaldo)
      · getPendingAttempts()  → actividad real: entregas, notas y qué falta evaluar
      · module_time           → tiempo activo (DIFERIDO: se pide aparte, es pesado)
      · get_course_survey_results → NPS y comentarios (DIFERIDO, por curso)
@@ -205,6 +206,8 @@ export interface ProgramData {
   certificates: CertificateRow[];
   /** ¿Se pudo leer la asignación (course_assignments/course_campaigns)? */
   assignmentsKnown: boolean;
+  /** ¿Se pudieron leer los certificados? (false ⇒ "no sé", no "no hay") */
+  certificatesKnown: boolean;
   /** Temario de cada curso, en orden (para el detalle por módulo). */
   modulesByCourse: Record<string, ProgramModule[]>;
   /** Módulos completados, indexado por `${userId}|${courseId}`. */
@@ -267,6 +270,45 @@ async function fetchAll<T>(
   return { rows: out, partial: true };
 }
 
+/** Una fila de `certifications`, tal como la necesita el tablero. */
+type RawCertificate = {
+  user_id: string;
+  course_id: string;
+  cert_id: string;
+  score: number;
+  issued_at: string;
+};
+
+/**
+ * Certificados emitidos, con el alcance del rol resuelto EN LA BASE.
+ *
+ * Leer `certifications` directo deja el resultado en manos de la RLS de esa
+ * tabla, que sigue razonando por `campaign_id`: al staff se le caían filas de
+ * gente que el resto del tablero sí le muestra. Y una fila que no llega se lee
+ * igual que un certificado que no existe, así que la persona salía con su nota
+ * y la casilla "Certificado" en blanco aunque el diploma estuviera emitido.
+ *
+ * `get_program_certificates()` (SECURITY DEFINER) devuelve los certificados de
+ * "mi gente" —la misma definición de alcance que usa el resto del panel, ver
+ * get_my_people_ids—. Si ese SQL todavía no se ha corrido se cae a la tabla:
+ * peor alcance, pero nunca menos de lo que había antes. `ok` en false significa
+ * "no pude leerlos", que NO es lo mismo que "no hay": el panel lo dice en vez
+ * de pintar un cero que parece un dato.
+ */
+async function fetchCertificates(): Promise<{ rows: RawCertificate[]; ok: boolean }> {
+  const { data, error } = await supabase.rpc('get_program_certificates');
+  if (!error) return { rows: (data ?? []) as unknown as RawCertificate[], ok: true };
+  try {
+    const { rows } = await fetchAll<RawCertificate>(
+      'certifications',
+      'user_id, course_id, cert_id, score, issued_at',
+    );
+    return { rows, ok: true };
+  } catch {
+    return { rows: [], ok: false };
+  }
+}
+
 export function useProgramData(lang: Lang, excludeSuperadmins: boolean): ProgramData {
   // Entorno de pruebas: con el Modo pruebas apagado, las campañas marcadas
   // `is_test` no existen para este tablero — ni su gente, ni sus cursos, ni su
@@ -286,6 +328,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
   const [activity, setActivity] = useState<ActivityRow[]>([]);
   const [certificates, setCertificates] = useState<CertificateRow[]>([]);
   const [assignmentsKnown, setAssignmentsKnown] = useState(true);
+  const [certificatesKnown, setCertificatesKnown] = useState(true);
   const [modulesByCourse, setModulesByCourse] = useState<Record<string, ProgramModule[]>>({});
   const [doneModules, setDoneModules] = useState<Record<string, string[]>>({});
 
@@ -355,9 +398,10 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             fetchAll<{ course_id: string; campaign_id: string; is_mandatory: boolean; assigned_at: string | null }>(
               'course_campaigns', 'course_id, campaign_id, is_mandatory, assigned_at',
             ),
-            fetchAll<{ user_id: string; course_id: string; cert_id: string; score: number; issued_at: string }>(
-              'certifications', 'user_id, course_id, cert_id, score, issued_at',
-            ),
+            // Por RPC, no contra la tabla: el alcance lo decide la base (ver
+            // fetchCertificates). Es lo que devolvió al tablero los diplomas de
+            // gente que sí se ve en todas las demás columnas.
+            fetchCertificates(),
             // El temario: qué módulos vivos tiene cada curso. Es el denominador
             // de la finalización, así que sin esto no se puede dar por
             // terminado ningún curso (ver `isCourseCompleted`).
@@ -417,7 +461,12 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         // `fetchAll` no devuelve `{data,error}`: se lee aparte.
         const progressRows =
           progressRes.status === 'fulfilled' ? progressRes.value.rows : [];
-        const certRows = rowsOf(certsRes);
+        // Certificados: `ok` distingue "no hay ninguno" de "no pude leerlos".
+        const certResult = certsRes.status === 'fulfilled'
+          ? certsRes.value
+          : { rows: [] as RawCertificate[], ok: false };
+        const certRows = certResult.rows;
+        setCertificatesKnown(certResult.ok);
         // Plazo por curso. Si la consulta falló (columnas aún sin crear) el mapa
         // queda vacío y `courseDueMs` devuelve null para todos: sin vencidos.
         const deadlineOf = new Map<string, CourseDeadline>(
@@ -871,6 +920,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
     activity,
     certificates,
     assignmentsKnown,
+    certificatesKnown,
     modulesByCourse,
     doneModules,
     study: { ...study, totalMs: studyTotalMs },

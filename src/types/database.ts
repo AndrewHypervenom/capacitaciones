@@ -233,8 +233,11 @@ export interface Database {
         Row: {
           id: string
           org_id: string
-          /** 'operation' = operación o unidad · 'area' = área o departamento. */
-          kind: 'operation' | 'area'
+          /** Qué clasifica esta unidad:
+           *  'operation' y 'area' → PERSONAS · 'category' → CURSOS.
+           *  Los tres comparten tabla porque son el mismo concepto: una lista
+           *  cerrada de la organización que solo abre el superadmin. */
+          kind: 'operation' | 'area' | 'category'
           slug: string
           name: string
           is_active: boolean
@@ -246,7 +249,7 @@ export interface Database {
         Insert: {
           id?: string
           org_id: string
-          kind: 'operation' | 'area'
+          kind: 'operation' | 'area' | 'category'
           slug: string
           name: string
           is_active?: boolean
@@ -336,6 +339,11 @@ export interface Database {
         Row: {
           id: string
           campaign_id: string
+          /** De qué trata el curso (`org_units.kind = 'category'`). NO es el
+           *  dueño: eso sigue siendo `campaign_id`. Separarlos permite que un
+           *  autor temporal cree en su propio espacio y aun así categorice su
+           *  curso donde corresponde. */
+          category_id: string | null
           slug: string
           title_es: string
           title_en: string | null
@@ -424,6 +432,7 @@ export interface Database {
         }
         Update: {
           campaign_id?: string
+          category_id?: string | null
           slug?: string
           title_es?: string
           title_en?: string | null
@@ -2242,6 +2251,23 @@ export interface Database {
       get_my_people_ids: {
         Args: Record<string, never>
         Returns: string[]
+      }
+      /**
+       * Los certificados emitidos de "mi gente" (mismo alcance que
+       * get_my_people_ids). El Panorama de progreso los lee por aquí y no de
+       * `certifications`: la RLS de esa tabla razona por `campaign_id` y le
+       * escondía al staff diplomas de personas que sí ve en el resto del
+       * tablero — salían con nota y sin certificado.
+       */
+      get_program_certificates: {
+        Args: Record<string, never>
+        Returns: {
+          user_id: string
+          course_id: string
+          cert_id: string
+          score: number
+          issued_at: string
+        }[]
       }
       get_my_audience_courses: {
         Args: Record<string, never>
