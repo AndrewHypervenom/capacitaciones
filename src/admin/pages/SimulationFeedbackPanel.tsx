@@ -346,20 +346,23 @@ export default function SimulationFeedbackPanel() {
   /**
    * Quién se ve.
    *
-   * Con solo el filtro de campaña: su gente de casa MÁS quien haya practicado
-   * su contenido viniendo de otra campaña (el catálogo es compartido). Al
-   * afinar por curso o escenario ya no tiene sentido listar a quien no tiene
-   * nada ahí: se muestra solo a quien practicó.
+   * Su gente de casa MÁS quien haya practicado su contenido viniendo de otra
+   * campaña (el catálogo es compartido).
+   *
+   * Antes, al afinar por curso o escenario, la lista se recortaba a quien ya
+   * había practicado: justo la gente que falta —la que no ha entrado nunca al
+   * simulador— desaparecía de la vista, y el panel parecía decir que todo el
+   * mundo iba bien. Se quedan, con estado "Sin intentos": el chip de estado y
+   * los KPIs siguen ahí para mirar solo a quien practicó cuando eso es lo que
+   * se busca.
    */
   const scoped = useMemo(() => {
     const practiced = new Set(scopedAttempts.map((a) => a.user_id))
-    const narrowed = activeCourse !== 'all' || filterScenario !== 'all'
     return rows.filter((r) => {
       if (practiced.has(r.userId)) return true
-      if (narrowed) return false
       return filterCampaign === 'all' || r.campaignId === filterCampaign
     })
-  }, [rows, scopedAttempts, activeCourse, filterScenario, filterCampaign])
+  }, [rows, scopedAttempts, filterCampaign])
 
   const stats = useMemo(() => {
     const learners = scoped.length
@@ -540,6 +543,9 @@ export default function SimulationFeedbackPanel() {
               icon={<Sparkles className="h-4 w-4" />}
               label={t('admin.sim_panel.kpi_learners', 'Aprendices alcanzados')}
               value={String(stats.learners)}
+              sub={stats.statusCounts.not_started > 0
+                ? t('admin.sim_panel.kpi_learners_idle', { count: stats.statusCounts.not_started, defaultValue: '{{count}} sin empezar' })
+                : undefined}
               hint={t('admin.sim_panel.kpi_learners_hint', 'Personas con simuladores disponibles en este alcance.')}
               frame={t('admin.progress_std.iso_coverage', 'ISO 30414 · Cobertura')}
             />

@@ -9,6 +9,7 @@ import { useUserStore, type Language } from '@/stores/userStore'
 import { localizeSteps, pickLang } from '@/lib/lang'
 import { shuffleArray } from '@/lib/quizShuffle'
 import { RichTextInline } from '@/components/ui/RichText'
+import { invalidateCourseJourneysCache } from '@/hooks/useCourseJourneys'
 
 /* ── Types ── */
 interface QuizOption { id: string; text: string; correct: boolean; explanation: string }
@@ -274,6 +275,10 @@ export default function ArenaPlayer() {
             if (wpError) {
               console.error('world_progress upsert error:', wpError, { worldId: state.worldId, levelId: state.levelId, userId: user.id })
               showPopup('⚠️', t('arena.save_error_title'), t('arena.save_error_text'))
+            } else {
+              // El mundo es un paso del recorrido del curso: terminar un nivel
+              // puede completarlo, y el catálogo cachea eso en bloque.
+              invalidateCourseJourneysCache()
             }
           }
         }

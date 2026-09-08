@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { shouldHideTestData } from '@/stores/testModeStore';
 import { courseDueMs, type CourseDeadline } from '@/lib/courseDeadline';
 import { rowText, pickLang } from '@/lib/contentLang';
+import { buildCourseJourney, countPracticeDone, worldStage, type CourseJourney } from '@/lib/courseJourney';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Datos del Panorama de Progreso.
@@ -128,6 +129,18 @@ export interface ProgramCell {
   modulesDone: number;
   /** Módulos vivos que tiene el curso (0 si el curso no tiene módulos). */
   modulesTotal: number;
+  /* ── Las otras etapas del curso, para ESTA persona ──────────────────────
+     Un curso no es solo su temario: puede traer simuladores, un mundo y un
+     examen final, y hasta que esos no están el aprendiz no se certifica. Se
+     miden con la misma regla que ve él en su pantalla (src/lib/courseJourney).
+     Si la lectura falló, llegan en 0 y el curso se mide solo por módulos, que
+     es como se medía antes. */
+  practiceTotal: number;
+  practiceDone: number;
+  worldTotal: number;
+  worldDone: number;
+  examTotal: number;
+  examDone: number;
   lastAt: number | null;
   certifiedAt: string | null;
   certId: string | null;
@@ -152,13 +165,32 @@ export interface ProgramCell {
  */
 export function isCourseCompleted(cell: ProgramCell): boolean {
   if (cell.certifiedAt) return true;
-  return cell.modulesTotal > 0 && cell.modulesDone >= cell.modulesTotal;
+  if (cell.modulesTotal <= 0) return false;
+  const j = cellJourney(cell);
+  return j.complete;
 }
 
-/** Avance del temario, 0-100 (null si no se conoce el temario del curso). */
+/**
+ * Avance del curso, 0-100 (null si no se conoce ni el temario).
+ *
+ * Cuenta lo mismo que la pantalla del aprendiz: módulos, simuladores, mundo y
+ * examen. Antes solo miraba módulos y el tablero daba por cerrada gente a la
+ * que todavía le faltaba la mitad de lo que el certificado exige.
+ */
 export function coursePct(cell: ProgramCell): number | null {
-  if (cell.modulesTotal <= 0) return null;
-  return Math.min(100, Math.round((cell.modulesDone / cell.modulesTotal) * 100));
+  const j = cellJourney(cell);
+  if (j.total <= 0) return null;
+  return Math.min(100, Math.round(j.pct * 100));
+}
+
+/** El recorrido de una celda, con la MISMA función que usa el aprendiz. */
+export function cellJourney(cell: ProgramCell): CourseJourney {
+  return buildCourseJourney({
+    modules: { total: cell.modulesTotal, done: cell.modulesDone },
+    practice: { total: cell.practiceTotal, done: cell.practiceDone },
+    world: { total: cell.worldTotal, done: cell.worldDone },
+    exam: { total: cell.examTotal, done: cell.examDone },
+  });
 }
 
 /** Un módulo del temario de un curso. */
@@ -208,6 +240,13 @@ export interface ProgramData {
   assignmentsKnown: boolean;
   /** ¿Se pudieron leer los certificados? (false ⇒ "no sé", no "no hay") */
   certificatesKnown: boolean;
+  /**
+   * ¿Se pudieron leer las etapas que no son módulos (simuladores, mundo,
+   * examen)? Con `false` la finalización se mide solo por temario y puede salir
+   * MÁS ALTA de lo que es: no es un dato que se pueda reportar hacia afuera sin
+   * decirlo.
+   */
+  journeyKnown: boolean;
   /** Temario de cada curso, en orden (para el detalle por módulo). */
   modulesByCourse: Record<string, ProgramModule[]>;
   /** Módulos completados, indexado por `${userId}|${courseId}`. */
@@ -329,6 +368,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
   const [certificates, setCertificates] = useState<CertificateRow[]>([]);
   const [assignmentsKnown, setAssignmentsKnown] = useState(true);
   const [certificatesKnown, setCertificatesKnown] = useState(true);
+  const [journeyKnown, setJourneyKnown] = useState(true);
   const [modulesByCourse, setModulesByCourse] = useState<Record<string, ProgramModule[]>>({});
   const [doneModules, setDoneModules] = useState<Record<string, string[]>>({});
 
@@ -375,6 +415,9 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
         const [
           profilesRes, campaignsRes, coursesRes, assignRes, campAssignRes, certsRes,
           modulesRes, progressRes, attemptsRes, deadlineRes,
+          callScnRes, choiceScnRes, simAttemptRes,
+          worldRes, worldLevelRes, worldProgressRes,
+          examRes, examAttemptRes,
         ] = await Promise.allSettled([
             // TODO lo que puede pasar de 1000 filas va por `fetchAll`: PostgREST
             // corta ahí en silencio, sin error y sin aviso. Leer `profiles` de un
@@ -421,6 +464,26 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             // delante el tablero entero; aquí solo se queda vacía la columna
             // "Vencidos" y todo lo demás sigue igual.
             supabase.from('courses').select('id, deadline_mode, deadline_days, deadline_date, deadline_blocks'),
+            // ── Las etapas del curso que NO son módulos ────────────────────
+            // Simuladores, mundo y examen final: sin esto el tablero daba por
+            // terminado a quien solo había hecho el temario, mientras su propia
+            // pantalla le decía que le faltaba la mitad para certificarse.
+            // Cada una va suelta y con `allSettled`: si a alguna le falta la
+            // tabla o el permiso, el curso se mide por módulos como antes.
+            supabase.from('scenarios').select('slug, course_id, pass_score').eq('is_published', true).is('deleted_at', null),
+            supabase.from('choice_scenarios').select('slug, course_id, pass_score').eq('is_published', true).is('deleted_at', null),
+            fetchAll<{ user_id: string; scenario_slug: string | null; score: number | null }>(
+              'simulator_attempts', 'user_id, scenario_slug, score',
+            ),
+            supabase.from('worlds').select('id, course_id').eq('status', 'published'),
+            fetchAll<{ id: string; world_id: string }>('world_levels', 'id, world_id'),
+            fetchAll<{ user_id: string; world_id: string; level_id: string; completed: boolean }>(
+              'world_progress', 'user_id, world_id, level_id, completed',
+            ),
+            supabase.from('course_exams').select('course_id, pass_score').eq('is_published', true),
+            fetchAll<{ user_id: string; course_id: string; passed: boolean | null; score_pct: number | null; status: string }>(
+              'exam_attempts', 'user_id, course_id, passed, score_pct, status',
+            ),
           ]);
         if (cancelled) return;
 
@@ -603,6 +666,12 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
               attempts: 0, pending: 0,
               modulesDone: done,
               modulesTotal: modulesPerCourse.get(courseId) ?? 0,
+              // Las otras etapas se rellenan más abajo, cuando ya existen todas
+              // las celdas: dependen de escenarios, mundos y exámenes que se
+              // leyeron en la misma tanda.
+              practiceTotal: 0, practiceDone: 0,
+              worldTotal: 0, worldDone: 0,
+              examTotal: 0, examDone: 0,
               lastAt: null, certifiedAt: null, certId: null,
               dueAt: null, overdue: false,
               scoreSum: 0,
@@ -700,6 +769,97 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
           cell.scoreSum += a.score;
           if (!a.is_evaluated) cell.pending++;
           if (when && (!cell.lastAt || when > cell.lastAt)) cell.lastAt = when;
+        }
+
+        /* ── Las otras etapas del curso, celda a celda ─────────────────────
+           Mismo criterio que ve el aprendiz: una práctica está hecha cuando su
+           mejor puntaje llega al umbral del escenario, el mundo cuando están
+           todos sus niveles, el examen cuando está aprobado. Todo se resuelve
+           con las funciones de src/lib/courseJourney para que el tablero y la
+           pantalla del curso no puedan discrepar.
+
+           `journeyKnown` distingue "este curso no tiene más etapas" de "no pude
+           leerlas": sin esa diferencia, un fallo de permisos subiría las tasas
+           de finalización sin que nadie se enterara. */
+        const scnRows = [
+          ...ok<{ slug: string; course_id: string | null; pass_score: number | null }>(callScnRes as never),
+          ...ok<{ slug: string; course_id: string | null; pass_score: number | null }>(choiceScnRes as never),
+        ];
+        const journeyKnown =
+          callScnRes.status === 'fulfilled' && choiceScnRes.status === 'fulfilled' &&
+          simAttemptRes.status === 'fulfilled' && worldRes.status === 'fulfilled' &&
+          worldLevelRes.status === 'fulfilled' && worldProgressRes.status === 'fulfilled' &&
+          examRes.status === 'fulfilled' && examAttemptRes.status === 'fulfilled';
+        setJourneyKnown(journeyKnown);
+
+        const scenariosByCourse = new Map<string, Array<{ slug: string; passScore: number }>>();
+        for (const r of scnRows) {
+          if (!r.course_id || !courseById.has(r.course_id)) continue;
+          const arr = scenariosByCourse.get(r.course_id) ?? [];
+          arr.push({ slug: r.slug, passScore: r.pass_score ?? 70 });
+          scenariosByCourse.set(r.course_id, arr);
+        }
+        // Mejor puntaje por persona y escenario.
+        const simBest = new Map<string, Record<string, number>>();
+        for (const a of rowsOf(simAttemptRes)) {
+          if (!a.scenario_slug) continue;
+          const byUser = simBest.get(a.user_id) ?? {};
+          byUser[a.scenario_slug] = Math.max(byUser[a.scenario_slug] ?? 0, a.score ?? 0);
+          simBest.set(a.user_id, byUser);
+        }
+
+        const worldOfCourse = new Map<string, string>();
+        for (const w of ok<{ id: string; course_id: string | null }>(worldRes as never)) {
+          if (w.course_id) worldOfCourse.set(w.course_id, w.id);
+        }
+        const levelsPerWorld = new Map<string, number>();
+        for (const l of rowsOf(worldLevelRes)) {
+          levelsPerWorld.set(l.world_id, (levelsPerWorld.get(l.world_id) ?? 0) + 1);
+        }
+        // Niveles ÚNICOS terminados por persona y mundo (una fila repetida no
+        // puede contar dos veces).
+        const worldDoneBy = new Map<string, Set<string>>();
+        for (const p2 of rowsOf(worldProgressRes)) {
+          if (!p2.completed) continue;
+          const key = `${p2.user_id}|${p2.world_id}`;
+          const set = worldDoneBy.get(key) ?? new Set<string>();
+          set.add(p2.level_id);
+          worldDoneBy.set(key, set);
+        }
+
+        const examMinOf = new Map<string, number>();
+        for (const e of ok<{ course_id: string; pass_score: number | null }>(examRes as never)) {
+          examMinOf.set(e.course_id, e.pass_score ?? 80);
+        }
+        const examBestOf = new Map<string, number>();
+        for (const a of rowsOf(examAttemptRes)) {
+          if (a.status !== 'submitted') continue;
+          const key = `${a.user_id}|${a.course_id}`;
+          const score = a.passed ? 100 : (a.score_pct ?? 0);
+          examBestOf.set(key, Math.max(examBestOf.get(key) ?? 0, score));
+        }
+
+        for (const cell of cellMap.values()) {
+          const scns = scenariosByCourse.get(cell.courseId) ?? [];
+          cell.practiceTotal = scns.length;
+          cell.practiceDone = countPracticeDone(scns, simBest.get(cell.userId) ?? {});
+
+          const worldId = worldOfCourse.get(cell.courseId);
+          const w = worldId
+            ? worldStage(
+                levelsPerWorld.get(worldId) ?? 0,
+                worldDoneBy.get(`${cell.userId}|${worldId}`)?.size ?? 0,
+              )
+            : { total: 0, done: 0 };
+          cell.worldTotal = w.total;
+          cell.worldDone = w.done;
+
+          const examMin = examMinOf.get(cell.courseId);
+          cell.examTotal = examMin === undefined ? 0 : 1;
+          cell.examDone =
+            examMin !== undefined && (examBestOf.get(`${cell.userId}|${cell.courseId}`) ?? 0) >= examMin
+              ? 1
+              : 0;
         }
 
         // ── Cierre de cuentas por celda, persona y curso ──────────────────
@@ -921,6 +1081,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
     certificates,
     assignmentsKnown,
     certificatesKnown,
+    journeyKnown,
     modulesByCourse,
     doneModules,
     study: { ...study, totalMs: studyTotalMs },

@@ -23,6 +23,7 @@ import { Select } from '@/components/ui/Select';
 // La tarjeta y la rejilla son las MISMAS que usa el panel del aprendiz: un curso
 // no puede verse de dos formas según por dónde llegues.
 import { CourseGrid, courseProgress, ease, pickCourseText as pickText } from '@/components/course/CourseCard';
+import { useCourseJourneys } from '@/hooks/useCourseJourneys';
 import { cn } from '@/lib/cn';
 
 export { courseProgress };
@@ -78,6 +79,10 @@ export default function Courses() {
   const language = useUserStore((s) => s.language);
   const isModuleDone = useModuleDone();
   const { courses, loading, reload } = useLearnerCourses();
+  // Recorrido completo (módulos + prácticas + mundo + examen) de todos los
+  // cursos de una vez: sin esto la tarjeta diría 100% donde la página del curso
+  // dice 90%. Ver src/hooks/useCourseJourneys.ts.
+  const { journeys } = useCourseJourneys(courses);
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -114,7 +119,7 @@ export default function Courses() {
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    courses.forEach((c) => c.category && set.add(c.category));
+    courses.forEach((c) => c.category_name && set.add(c.category_name));
     return [...set].sort((a, b) => a.localeCompare(b, language, { sensitivity: 'base' }));
   }, [courses, language]);
 
@@ -145,28 +150,31 @@ export default function Courses() {
       }
       if (campaignSel !== ANY && c.campaign_name !== campaignSel) return false;
       if (levelSel !== ANY && c.level !== levelSel) return false;
-      if (categorySel !== ANY && c.category !== categorySel) return false;
+      if (categorySel !== ANY && c.category_name !== categorySel) return false;
       return true;
     });
   }, [courses, query, campaignSel, levelSel, categorySel]);
 
   const matchesFilter = useCallback(
     (c: LearnerCourse, f: Filter) => {
-      const { total, done } = courseProgress(c, isModuleDone);
+      // "Completado" y "en curso" miden el CURSO, no el temario: un curso con
+      // el simulador o el examen pendientes ya no cae en el filtro de
+      // completados aunque tenga todos los módulos hechos.
+      const { done, completed } = courseProgress(c, isModuleDone, journeys[c.id]);
       switch (f) {
         case 'mandatory':
           return c.isMandatory;
         case 'optional':
           return !c.isMandatory;
         case 'in_progress':
-          return done > 0 && done < total;
+          return done > 0 && !completed;
         case 'completed':
-          return total > 0 && done === total;
+          return completed;
         default:
           return true;
       }
     },
-    [isModuleDone],
+    [isModuleDone, journeys],
   );
 
   const filtered = useMemo(
@@ -192,8 +200,8 @@ export default function Courses() {
   // empezó, luego lo que no ha tocado y de último lo ya completado. El sort es
   // estable, así que dentro de cada grupo se mantiene obligatorio + alfabético.
   const statusRank = (c: LearnerCourse) => {
-    const { total, done } = courseProgress(c, isModuleDone);
-    if (total > 0 && done === total) return 2;
+    const { done, completed } = courseProgress(c, isModuleDone, journeys[c.id]);
+    if (completed) return 2;
     if (done > 0) return 0;
     return 1;
   };
@@ -239,9 +247,9 @@ export default function Courses() {
     let completed = 0;
     let mandatoryPending = 0;
     assigned.forEach((c) => {
-      const { total, done } = courseProgress(c, isModuleDone);
-      if (total > 0 && done === total) completed += 1;
-      if (c.isMandatory && (total === 0 || done < total)) mandatoryPending += 1;
+      const p = courseProgress(c, isModuleDone, journeys[c.id]);
+      if (p.completed) completed += 1;
+      if (c.isMandatory && !p.completed) mandatoryPending += 1;
     });
     return {
       assigned: assigned.length,
@@ -249,7 +257,7 @@ export default function Courses() {
       mandatoryPending,
       pct: assigned.length > 0 ? completed / assigned.length : 0,
     };
-  }, [courses, isModuleDone]);
+  }, [courses, isModuleDone, journeys]);
 
   const filters: Array<{ id: Filter; label: string }> = [
     { id: 'all', label: t('courses.filter_all') },
@@ -596,7 +604,7 @@ export default function Courses() {
                   subtitle={t('courses.my_courses_subtitle')}
                   count={myCourses.length}
                 />
-                <CourseGrid courses={myCourses} reduce={reduce} />
+                <CourseGrid courses={myCourses} reduce={reduce} journeys={journeys} />
               </motion.section>
             )}
           </AnimatePresence>
@@ -650,7 +658,7 @@ export default function Courses() {
                                 className="overflow-hidden"
                               >
                                 <div className="pt-1">
-                                  <CourseGrid courses={list} onEnrolled={reload} reduce={reduce} />
+                                  <CourseGrid courses={list} onEnrolled={reload} reduce={reduce} journeys={journeys} />
                                 </div>
                               </motion.div>
                             )}
@@ -660,7 +668,7 @@ export default function Courses() {
                     })}
                   </div>
                 ) : (
-                  <CourseGrid courses={exploreCourses} onEnrolled={reload} reduce={reduce} />
+                  <CourseGrid courses={exploreCourses} onEnrolled={reload} reduce={reduce} journeys={journeys} />
                 )}
               </motion.section>
             )}

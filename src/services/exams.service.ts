@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { pickLang } from '@/lib/contentLang'
+import { invalidateCourseJourneysCache } from '@/hooks/useCourseJourneys'
 import type {
   ExamAttemptSession,
   ExamBlockReason,
@@ -118,6 +119,9 @@ export async function submitExamAttempt(
     p_answers: answers,
   })
   if (error) throw toExamError(error.message)
+  // El recorrido del curso cuenta el examen como un paso: al aprobarlo, la
+  // tarjeta del catálogo tiene que enterarse sin esperar a un F5.
+  invalidateCourseJourneysCache()
   return data as unknown as ExamReport
 }
 

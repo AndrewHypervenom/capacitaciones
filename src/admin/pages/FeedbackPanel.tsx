@@ -574,6 +574,9 @@ export default function FeedbackPanel() {
               icon={<Globe2 className="h-4 w-4" />}
               label={i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices alcanzados')}
               value={String(stats.learners)}
+              sub={stats.statusCounts.not_started > 0
+                ? i18n.t('admin.feedback_panel.kpi_learners_idle', { count: stats.statusCounts.not_started, defaultValue: '{{count}} sin empezar' })
+                : undefined}
               hint={i18n.t('admin.feedback_panel.kpi_learners_hint', 'Personas con mundos disponibles en este alcance.')}
               frame={i18n.t('admin.progress_std.iso_coverage', 'ISO 30414 · Cobertura')}
             />

@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/services/audit.service'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
+import { invalidateCourseJourneysCache } from '@/hooks/useCourseJourneys'
 import type {
   CourseCertStatus,
   Certification,
@@ -51,6 +52,10 @@ export async function saveSimulatorAttempt(userId: string, a: NewSimulatorAttemp
     ai_feedback: a.aiFeedback ?? null,
   })
   if (error) throw error
+  // El catálogo cachea el recorrido de todos los cursos en bloque: sin esto,
+  // el aprendiz vuelve de practicar y su tarjeta sigue mostrando el porcentaje
+  // de antes hasta recargar.
+  invalidateCourseJourneysCache()
 }
 
 /** Intentos del usuario actual para un curso (para "mejor puntaje", nº de intentos). */

@@ -121,7 +121,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const data = useProgramData(lang, !isSuperAdmin);
   const {
     loading, error, people, courses, cells, campaigns, activity, certificates, certificatesKnown,
-    assignmentsKnown, modulesByCourse, doneModules, study, loadStudyTime, surveys, loadSurveys,
+    assignmentsKnown, journeyKnown, modulesByCourse, doneModules, study, loadStudyTime, surveys, loadSurveys,
     exams, loadExams, reload,
   } = data;
 
@@ -1251,9 +1251,11 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           loading={loading}
           active={focus === 'mandatory'}
           onClick={kpi.mandatoryTotal > 0 ? () => toggleFocus('mandatory') : undefined}
-          hint={kpi.mandatoryTotal > 0
-            ? t('admin.progress_overview.kpi_compliance_hint', { done: kpi.mandatoryDone, total: kpi.mandatoryTotal, defaultValue: '{{done}} de {{total}} asignaciones obligatorias terminadas' })
-            : t('admin.progress_overview.kpi_compliance_none', 'Ningún curso está marcado como obligatorio todavía')}
+          hint={!journeyKnown
+            ? t('admin.progress_overview.kpi_journey_unknown', 'Solo se pudo medir el temario: sin simuladores, mundo ni examen, esta cifra puede salir alta')
+            : kpi.mandatoryTotal > 0
+              ? t('admin.progress_overview.kpi_compliance_hint', { done: kpi.mandatoryDone, total: kpi.mandatoryTotal, defaultValue: '{{done}} de {{total}} asignaciones obligatorias terminadas' })
+              : t('admin.progress_overview.kpi_compliance_none', 'Ningún curso está marcado como obligatorio todavía')}
         />
         {/* Avance de temario: el "cuánto llevan" real, módulo a módulo. */}
         <KpiCard
@@ -2075,7 +2077,7 @@ function PeopleTab({
                   {th('assigned', t('admin.progress_overview.col_assigned', 'Asignados'), 'right', t('admin.progress_overview.help_assigned', 'Cursos que le tocan, por asignación directa o por su programa.'))}
                   {th('mandatory', t('admin.progress_overview.col_mandatory', 'Obligatorios'), 'right', t('admin.progress_overview.help_mandatory', 'Cursos obligatorios terminados sobre los que le tocan. Es la cifra de cumplimiento que se audita.'))}
                   {th('syllabus', t('admin.progress_overview.col_syllabus', 'Temario'), 'right', t('admin.progress_overview.help_syllabus', 'Módulos completados sobre los de TODOS sus cursos asignados. Por eso alguien puede estar certificado en un curso y tener el temario al 30%: filtra por curso para verlo aislado.'))}
-                  {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos certificados, o con todas sus entregas aprobadas y ninguna pendiente de evaluar.'))}
+                  {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos con certificado, o con TODO el recorrido hecho: módulos, simuladores, mundo y examen final.'))}
                   {th('certified', t('admin.progress_overview.col_certified', 'Certificados'), 'right', t('admin.progress_overview.help_certified', 'Certificados emitidos a esta persona.'))}
                   {th('score', t('admin.progress_overview.col_score_short', 'Nota'), 'right', t('admin.progress_overview.help_score', 'Promedio de todas sus entregas dentro del alcance elegido.'))}
                   {th('time', t('admin.progress_overview.col_time', 'Tiempo'), 'right', t('admin.progress_overview.help_time', 'Tiempo activo dentro de los módulos: no cuenta la pestaña abierta de fondo.'))}
@@ -2255,7 +2257,7 @@ function CoursesTab({
                 {th('title', t('admin.progress_overview.col_course', 'Curso'), 'left')}
                 {th('assigned', t('admin.progress_overview.col_assigned', 'Asignados'), 'right', t('admin.progress_overview.help_course_assigned', 'Personas a las que les toca este curso.'))}
                 {th('started', t('admin.progress_overview.col_started', 'Iniciados'), 'right', t('admin.progress_overview.help_course_started', 'Personas que ya resolvieron algo en este curso.'))}
-                {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos certificados, o con todas sus entregas aprobadas y ninguna pendiente de evaluar.'))}
+                {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos con certificado, o con TODO el recorrido hecho: módulos, simuladores, mundo y examen final.'))}
                 {th('certified', t('admin.progress_overview.col_certified', 'Certificados'), 'right', t('admin.progress_overview.help_course_certified', 'Certificados emitidos de este curso.'))}
                 {th('overdue', t('admin.progress_overview.col_overdue', 'Vencidos'), 'right', t('admin.progress_overview.help_course_overdue', 'Personas a las que se les pasó el plazo de este curso sin terminarlo. Solo cuenta si el curso tiene límite de tiempo.'))}
                 {th('score', t('admin.progress_overview.col_score_short', 'Nota'), 'right', t('admin.progress_overview.help_course_score', 'Promedio de las entregas de este curso.'))}

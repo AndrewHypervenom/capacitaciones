@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getMyAudienceCourses } from '@/services/audiences.service'
 import { COVER_MAX_PX, optimizeImage } from '@/lib/imageOptimize'
 import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
@@ -52,8 +53,11 @@ export interface LearnerCourse extends CourseWithModules {
   isMandatory: boolean
   /** Se auto-inscribió él mismo (puede salir del curso). */
   selfEnrolled: boolean
-  /** Nombre de la campaña dueña del curso (para mostrarlo sutilmente). */
+  /** Nombre de la campaña dueña. Es información de GESTIÓN: solo la ve el
+   *  staff. El aprendiz ve la categoría. */
   campaign_name: string | null
+  /** De qué trata el curso. Es lo que el aprendiz ve y por lo que filtra. */
+  category_name: string | null
   /**
    * Desde cuándo lo tiene: la marca de asignación MÁS ANTIGUA que le aplica
    * (la suya directa o la de su campaña). Es el punto de partida del límite de
@@ -65,6 +69,22 @@ export interface LearnerCourse extends CourseWithModules {
 // Desambiguamos la relación courses<->modules nombrando la FK modules.course_id.
 // Si no, un segundo vínculo courses->modules (p. ej. sim_unlock_module_id) vuelve
 // ambiguo el embed y PostgREST responde 400 ("more than one relationship").
+/**
+ * Nombres de las categorías por id. Devuelve un mapa vacío si el catálogo
+ * todavía no existe: el curso se queda sin categoría y nada se rompe.
+ */
+async function fetchCategoryNames(): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const { data, error } = await supabase
+    .from('org_units')
+    .select('id, name')
+    .eq('kind', 'category')
+    .is('deleted_at', null)
+  if (error) return out
+  for (const r of (data ?? []) as Array<{ id: string; name: string }>) out.set(r.id, r.name)
+  return out
+}
+
 const COURSE_MODULES_SELECT =
   'modules!modules_course_id_fkey(id, slug, icon, duration_min, course_sort_order, is_published, title_es, title_en, title_pt, subtitle_es, subtitle_en, subtitle_pt, deleted_at)'
 
@@ -135,7 +155,7 @@ export async function getLearnerCourses(
     .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
     .order('sort_order')
 
-  const [coursesRes, ccRes, caRes, testIds] = await Promise.all([
+  const [coursesRes, ccRes, caRes, testIds, byRule] = await Promise.all([
     preview ? coursesQuery : coursesQuery.eq('is_published', true),
     campaignId
       ? supabase
@@ -148,6 +168,11 @@ export async function getLearnerCourses(
       .select('course_id, user_id, is_mandatory, assigned_by, assigned_at')
       .eq('user_id', userId),
     getTestCampaignIds(),
+    // Cursos que le tocan por REGLA (país/operación/área). Es la forma nueva de
+    // asignar; convive con campañas y asignaciones directas mientras queden
+    // cursos repartidos a la vieja usanza. Si el SQL de la fase 4 no se ha
+    // corrido, devuelve vacío y todo se comporta igual que antes.
+    getMyAudienceCourses().catch(() => new Map<string, boolean>()),
   ])
 
   if (coursesRes.error) throw coursesRes.error
@@ -178,13 +203,18 @@ export async function getLearnerCourses(
     // "Inscribirme" la base le responde TEST_SCOPE_MISMATCH. Mejor no
     // ofrecérselo que enseñarle un error. Sus cursos asignados no se tocan.
     .filter((c) => {
-      if (preview || byCampaign.has(c.id) || byUser.has(c.id)) return true
+      if (preview || byCampaign.has(c.id) || byUser.has(c.id) || byRule.has(c.id)) return true
       return c.visibility === 'catalog' && !viewerIsTest
     })
 
   // Completamos los nombres que la RLS no dejó traer en el embed.
   const missing = [...new Set(rows.filter((c) => !c.campaigns?.name).map((c) => c.campaign_id))]
   const names = await fetchCampaignNames(missing)
+  // Las categorías van por consulta aparte y NO por embed: si el SQL de las
+  // categorías todavía no se ha corrido, un embed contra una FK inexistente
+  // tumbaría la lista entera de cursos del aprendiz. Así, como mucho, se queda
+  // sin categoría.
+  const categories = await fetchCategoryNames()
 
   return rows.map((c) => {
     const cc = byCampaign.get(c.id)
@@ -192,14 +222,22 @@ export async function getLearnerCourses(
     return {
       ...c,
       modules: preview ? c.modules : c.modules.filter((m) => m.is_published),
-      isAssigned: !!cc || !!ca,
-      isMandatory: (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false),
+      isAssigned: !!cc || !!ca || byRule.has(c.id),
+      isMandatory:
+        (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false) || (byRule.get(c.id) ?? false),
       // Auto-inscrito: existe asignación directa creada por él mismo.
       selfEnrolled: !!ca && ca.assigned_by === userId,
       // Manda la más antigua: el plazo se cuenta desde que de verdad lo tuvo,
       // no desde la última vez que alguien volvió a asignárselo.
       assignedAt: earliest(ca?.assigned_at, cc?.assigned_at),
       campaign_name: c.campaigns?.name ?? names.get(c.campaign_id) ?? null,
+      // La del catálogo manda; si el curso todavía no se ha migrado, vale la
+      // categoría vieja en texto. Así el filtro del aprendiz no pierde nada
+      // durante la transición.
+      category_name:
+        categories.get((c as { category_id?: string | null }).category_id ?? '') ??
+        c.category ??
+        null,
     }
   })
 }

@@ -16,6 +16,7 @@ import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/Cour
 import { cn } from '@/lib/cn';
 import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
 import { pickLang } from '@/lib/contentLang';
+import type { CourseJourney } from '@/lib/courseJourney';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Tarjeta de curso ÚNICA del sitio. La usan el catálogo (/courses) y el panel
@@ -47,13 +48,26 @@ export function pickCourseText(
   return pickLang(es, en, pt, lang);
 }
 
+/**
+ * Avance del curso para la tarjeta y para los filtros del catálogo.
+ *
+ * `modules` es siempre el temario (es lo que dice el texto "X de Y módulos").
+ * `pct` y `completed`, en cambio, miden el CURSO entero cuando el padre pasa su
+ * recorrido —prácticas, mundo y examen incluidos—: si no, la tarjeta diría 100%
+ * y la página del curso 90% del mismo curso. Sin `journey` se comporta como
+ * siempre y solo cuenta módulos.
+ */
 export function courseProgress(
   course: LearnerCourse,
   isModuleDone: (key: ModuleKey) => boolean,
+  journey?: CourseJourney,
 ) {
   const total = course.modules.length;
   const done = course.modules.filter((m) => isModuleDone(keyOfCourseModule(m))).length;
-  return { total, done, pct: total > 0 ? done / total : 0 };
+  if (journey && journey.total > 0) {
+    return { total, done, pct: journey.pct, completed: journey.complete, journey };
+  }
+  return { total, done, pct: total > 0 ? done / total : 0, completed: total > 0 && done === total, journey };
 }
 
 /* ── Anillo de progreso alrededor del emblema ───────────────────────────────
@@ -100,9 +114,11 @@ export interface CourseCardProps {
   onEnrolled?: () => void;
   /** `prefers-reduced-motion` ya resuelto por el padre. */
   reduce: boolean;
+  /** Recorrido completo del curso (useCourseJourneys). Sin él, solo módulos. */
+  journey?: CourseJourney;
 }
 
-export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCardProps) {
+export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: CourseCardProps) {
   const { t } = useTranslation();
   const language = useUserStore((s) => s.language);
   // Rol REAL (no el de useAuth, que en la vista previa finge ser aprendiz): al
@@ -111,9 +127,8 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
   const realRole = useAuthStore((s) => s.profile?.role);
   const isStaff = realRole === 'superadmin' || realRole === 'capacitador';
   const isModuleDone = useModuleDone();
-  const { total, done, pct } = courseProgress(course, isModuleDone);
+  const { total, done, pct, completed } = courseProgress(course, isModuleDone, journey);
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
-  const completed = total > 0 && done === total;
   const [enrolling, setEnrolling] = useState(false);
 
   // Reflejo que sigue al cursor, por debajo del contenido: da profundidad sin
@@ -286,17 +301,26 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
                 {m}
               </span>
             ))}
-            {/* La campaña dueña: en el catálogo la ve todo el mundo y el staff la
-                ve también en "Mis cursos". El Tooltip vive en un portal, así que
-                el nombre completo no lo recorta nada. */}
-            {course.campaign_name && (!course.isAssigned || isStaff) && (
-              <Tooltip label={course.campaign_name}>
-                <span className="ml-auto inline-flex max-w-[9rem] items-center gap-1 text-text-subtle">
-                  <Building2 className="h-3 w-3 shrink-0" aria-hidden />
-                  <span className="truncate">{course.campaign_name}</span>
-                </span>
-              </Tooltip>
-            )}
+            {/* Al APRENDIZ le mostramos la CATEGORÍA —de qué trata el curso—, que
+                es lo que le sirve para orientarse y filtrar. La campaña dueña es
+                información de gestión y desapareció de su vista: no le decía
+                nada y le hacía preguntarse a qué "programa" pertenecía.
+                Al staff sí se le sigue mostrando la campaña, porque para él es
+                el dato operativo (quién administra el curso).
+                El Tooltip vive en un portal: el nombre completo no se recorta. */}
+            {(() => {
+              const etiqueta = isStaff ? course.campaign_name : course.category_name
+              if (!etiqueta) return null
+              if (isStaff && course.isAssigned) return null
+              return (
+                <Tooltip label={etiqueta}>
+                  <span className="ml-auto inline-flex max-w-[9rem] items-center gap-1 text-text-subtle">
+                    <Building2 className="h-3 w-3 shrink-0" aria-hidden />
+                    <span className="truncate">{etiqueta}</span>
+                  </span>
+                </Tooltip>
+              )
+            })()}
           </div>
 
           {deadlineText && (
@@ -334,7 +358,12 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce }: CourseCard
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] tabular-nums text-text-subtle">
-              {t('courses.progress', { done, count: total })}
+              {/* Con más de una etapa el texto habla de PASOS, no de módulos: si
+                  no, el número de al lado (que ya cuenta el curso entero) y esta
+                  frase contarían cosas distintas. */}
+              {journey && journey.present.length > 1
+                ? t('courses.journey_steps', { done: journey.done, count: journey.total })
+                : t('courses.progress', { done, count: total })}
             </span>
             {course.isAssigned ? (
               <span
@@ -374,12 +403,15 @@ export function CourseGrid({
   onEnrolled,
   reduce,
   trailing,
+  journeys,
 }: {
   courses: LearnerCourse[];
   onEnrolled?: () => void;
   reduce: boolean;
   /** Celda extra al final de la rejilla (p. ej. "Explorar catálogo"). */
   trailing?: ReactNode;
+  /** Recorridos por id de curso (useCourseJourneys). */
+  journeys?: Record<string, CourseJourney>;
 }) {
   return (
     <motion.div
@@ -388,7 +420,14 @@ export function CourseGrid({
     >
       <AnimatePresence initial={false}>
         {courses.map((c, i) => (
-          <CourseCard key={c.id} course={c} index={i} onEnrolled={onEnrolled} reduce={reduce} />
+          <CourseCard
+            key={c.id}
+            course={c}
+            index={i}
+            onEnrolled={onEnrolled}
+            reduce={reduce}
+            journey={journeys?.[c.id]}
+          />
         ))}
       </AnimatePresence>
       {trailing}

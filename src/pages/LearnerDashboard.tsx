@@ -46,6 +46,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { CourseGrid, courseProgress, pickCourseText } from '@/components/course/CourseCard';
+import { useCourseJourneys } from '@/hooks/useCourseJourneys';
 import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
@@ -82,6 +83,9 @@ export default function LearnerDashboard() {
   // (`COURSE_MODULES_SELECT`: id, slug, icono, duración, títulos y nada más), así
   // que se derivan de ahí y no se pide nada extra.
   const { courses, loading: coursesLoading } = useLearnerCourses();
+  // Mismo recorrido que el catálogo y la página del curso: módulos, prácticas,
+  // mundo y examen. Ver src/hooks/useCourseJourneys.ts.
+  const { journeys } = useCourseJourneys(courses);
   const { user, avatarUrl } = useAuth();
 
   // Universo de módulos que cuenta para certificación, simulador e insignias:
@@ -219,13 +223,14 @@ export default function LearnerDashboard() {
   // que los que no ha tocado: ese es el orden en que conviene retomarlos.
   const courseStatus = useMemo(() => {
     const withPct = sortedDashboardCourses.map((c) => {
-      const p = courseProgress(c, isModuleDone);
+      const p = courseProgress(c, isModuleDone, journeys[c.id]);
       return {
         id: c.id,
         slug: c.slug,
         title: pickCourseText(c.title_es, c.title_en, c.title_pt, language),
-        // Un curso sin módulos no está completo: no hay nada que dar por hecho.
-        complete: p.total > 0 && p.done === p.total,
+        // Un curso sin nada asignado no está completo: no hay nada que dar por
+        // hecho. Y con simulador o examen pendientes, tampoco lo está.
+        complete: p.completed,
         pct: Math.round(p.pct * 100),
         done: p.done,
         total: p.total,
@@ -237,7 +242,7 @@ export default function LearnerDashboard() {
         .filter((c) => !c.complete)
         .sort((a, b) => b.pct - a.pct),
     };
-  }, [sortedDashboardCourses, isModuleDone, language]);
+  }, [sortedDashboardCourses, isModuleDone, language, journeys]);
 
   const coursesTotal = sortedDashboardCourses.length;
   const coursesDone = courseStatus.finished.length;
@@ -602,6 +607,7 @@ export default function LearnerDashboard() {
             <CourseGrid
               courses={sortedDashboardCourses}
               reduce={reduce}
+              journeys={journeys}
               trailing={
                 <MotionLink
                   to="/courses"

@@ -26,7 +26,7 @@ import { getScenariosForCourse } from '@/services/scenarios.service';
 import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
 import type { CourseChoiceScenario } from '@/services/choiceScenarios.service';
-import { getCourseCertStatus } from '@/services/certification.service';
+import { getCourseAttempts, getCourseCertStatus } from '@/services/certification.service';
 import { getExamState } from '@/services/exams.service';
 import type { ExamState } from '@/types/exam';
 import type { CourseCertStatus } from '@/types/database';
@@ -39,6 +39,7 @@ import { RichText, stripMarkdown } from '@/components/ui/RichText';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { cn } from '@/lib/cn';
 import { pickLang } from '@/lib/contentLang';
+import { buildCourseJourney, type JourneyStageKey } from '@/lib/courseJourney';
 
 /** Curva corporativa, la misma del catálogo y del kit de motion. */
 const ease = [0.16, 1, 0.3, 1] as const;
@@ -67,6 +68,46 @@ function SectionHead({
   );
 }
 
+/* Una etapa del recorrido: nombre, cuánto va y en qué estado está. Es la
+   respuesta visual a "¿por qué no estoy en 100%?" — verde lo cumplido, gris lo
+   que falta, candado lo que todavía no se abre. */
+function JourneyChip({
+  stage,
+  label,
+  color,
+}: {
+  stage: { key: JourneyStageKey; total: number; done: number; unlocked: boolean };
+  label: string;
+  color: string;
+}) {
+  const done = stage.done >= stage.total;
+  const locked = !done && !stage.unlocked;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 text-[12px] tabular-nums',
+        done ? 'text-text' : locked ? 'text-text-subtle' : 'text-text-muted',
+      )}
+    >
+      {done ? (
+        <Check className="h-3 w-3 shrink-0" strokeWidth={3} style={{ color }} />
+      ) : locked ? (
+        <Lock className="h-3 w-3 shrink-0" />
+      ) : (
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+      )}
+      <span>{label}</span>
+      {/* Una etapa de un solo paso (mundo, examen) no necesita "0/1": el icono
+          ya dice si está o no. El contador es para lo que se cuenta. */}
+      {stage.total > 1 && (
+        <span className="text-text-subtle">
+          {stage.done}/{stage.total}
+        </span>
+      )}
+    </span>
+  );
+}
+
 type ModuleStatus = 'completed' | 'available' | 'locked';
 
 function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
@@ -85,7 +126,7 @@ export default function CoursePage() {
   const backLabel = fromCourses ? t('courses.back_to_courses') : t('courses.back_to_home');
   const language = useUserStore((s) => s.language);
   // El mundo es solo para staff (preview del CMS); el aprendiz ya no lo ve.
-  const { isAdminOrCapacitador } = useAuth();
+  const { isAdminOrCapacitador, user } = useAuth();
   const isModuleDone = useModuleDone();
   const reduce = useReducedMotion();
 
@@ -185,23 +226,75 @@ export default function CoursePage() {
     };
   }, [rawCertStatus, course, isModuleDone]);
 
-  // Mundo (juego) publicado de este curso, si existe, para el botón "Jugar el mundo".
+  // Mundo (juego) publicado de este curso, si existe, para el botón "Jugar el
+  // mundo" y para el paso "Mundo" del recorrido. Además de saber que EXISTE hay
+  // que saber si ya se terminó: sin eso el porcentaje del curso no puede
+  // contarlo y el aprendiz vería 100% con el mundo sin tocar.
   const [worldId, setWorldId] = useState<string | null>(null);
+  const [worldLevels, setWorldLevels] = useState(0);
+  const [worldLevelsDone, setWorldLevelsDone] = useState(0);
   useEffect(() => {
-    if (!course?.id) { setWorldId(null); return; }
+    if (!course?.id) { setWorldId(null); setWorldLevels(0); setWorldLevelsDone(0); return; }
     let active = true;
-    supabase
-      .from('worlds')
-      .select('id, status, campaign_id')
-      .eq('course_id', course.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        // Diagnóstico: si RLS bloquea la lectura, data llega null aunque el mundo exista.
-        console.log('[CoursePage] world lookup', { courseId: course.id, data, error });
-        if (active) setWorldId(data?.status === 'published' ? data.id : null);
-      });
+    (async () => {
+      const { data } = await supabase
+        .from('worlds')
+        .select('id, status, campaign_id')
+        .eq('course_id', course.id)
+        .maybeSingle();
+      const id = data?.status === 'published' ? (data.id as string) : null;
+      if (!active) return;
+      setWorldId(id);
+      if (!id) { setWorldLevels(0); setWorldLevelsDone(0); return; }
+      // Niveles del mundo y cuáles ya completó ESTA persona. Un fallo de lectura
+      // deja el mundo en 0 niveles, y entonces no aporta pasos: preferimos no
+      // contarlo a inventar un pendiente que el aprendiz no puede resolver.
+      const [levelsRes, progressRes] = await Promise.all([
+        supabase.from('world_levels').select('id', { count: 'exact', head: true }).eq('world_id', id),
+        user?.id
+          ? supabase
+              .from('world_progress')
+              .select('level_id')
+              .eq('world_id', id)
+              .eq('user_id', user.id)
+              .eq('completed', true)
+          : Promise.resolve({ data: [] as Array<{ level_id: string }> }),
+      ]);
+      if (!active) return;
+      setWorldLevels(levelsRes.count ?? 0);
+      const doneIds = new Set(
+        ((progressRes.data ?? []) as Array<{ level_id: string }>).map((r) => r.level_id),
+      );
+      setWorldLevelsDone(doneIds.size);
+    })();
     return () => { active = false; };
-  }, [course?.id]);
+  }, [course?.id, user?.id, isModuleDone]);
+
+  // Simulaciones YA APROBADAS por esta persona en este curso, por escenario.
+  // `certStatus.best_score` es un único mejor puntaje del curso entero: sirve
+  // para el requisito del certificado, pero no dice CUÁNTAS de las prácticas
+  // asignadas están hechas, que es lo que el recorrido necesita contar.
+  const [simBestBySlug, setSimBestBySlug] = useState<Record<string, number>>({});
+  /** La lectura por escenario no se pudo hacer (RLS, red): NO es "no practicó". */
+  const [simBestFailed, setSimBestFailed] = useState(false);
+  useEffect(() => {
+    if (!course?.id || !user?.id) { setSimBestBySlug({}); setSimBestFailed(false); return; }
+    let active = true;
+    getCourseAttempts(course.id, user.id)
+      .then((rows) => {
+        if (!active) return;
+        const best: Record<string, number> = {};
+        for (const r of rows) {
+          const slug = r.scenario_slug;
+          if (!slug) continue;
+          best[slug] = Math.max(best[slug] ?? 0, r.score ?? 0);
+        }
+        setSimBestBySlug(best);
+        setSimBestFailed(false);
+      })
+      .catch(() => { if (active) { setSimBestBySlug({}); setSimBestFailed(true); } });
+    return () => { active = false; };
+  }, [course?.id, user?.id]);
 
   const handleEnroll = async () => {
     if (!course) return;
@@ -522,6 +615,46 @@ export default function CoursePage() {
       })
     : t('course_practice.locked_after_modules');
 
+  /* ── El recorrido del curso ────────────────────────────────────────────────
+     El % del curso ya no es "módulos hechos": son PASOS hechos. Si el curso
+     trae simulaciones, mundo o examen final, cada uno cuenta, y terminar solo
+     el temario ya no dice 100%. Ver src/lib/courseJourney.ts. */
+  const simDone = (sc: { id: string; passScore: number }) =>
+    (simBestBySlug[sc.id] ?? 0) >= sc.passScore;
+  /* Si la lectura por escenario no se pudo hacer, el requisito del certificado
+     manda: es lo que el servidor ya sabe del simulador. Sin este respaldo, un
+     tropiezo de RLS dejaría el curso atascado por debajo del 100% para siempre,
+     que es peor que contar de más. */
+  const practiceDone = simBestFailed
+    ? (certStatus?.simulator_ok ? totalScenarios : 0)
+    : scenarios.filter(simDone).length + choiceScenarios.filter(simDone).length;
+  /* El mundo cuenta como UN paso, no como un paso por nivel: si no, un mundo de
+     veinte niveles se comería el porcentaje del curso entero. Solo lo aporta si
+     el aprendiz lo tiene (el staff lo ve en modo vista previa, y esa preview no
+     es parte de su recorrido). */
+  const worldInJourney = !!worldId && course.isAssigned && worldLevels > 0;
+  const worldDone = worldInJourney && worldLevelsDone >= worldLevels;
+  const journey = buildCourseJourney({
+    modules: { total, done },
+    practice: { total: totalScenarios, done: practiceDone, unlocked: playableTotal > 0 },
+    world: { total: worldInJourney ? 1 : 0, done: worldDone ? 1 : 0, unlocked: worldUnlocked },
+    exam: {
+      total: examState ? 1 : 0,
+      done: examOk ? 1 : 0,
+      unlocked: !!examState?.unlocked,
+    },
+  });
+  /* Lo que sigue, en una frase. Solo aparece cuando el temario ya está hecho y
+     el curso todavía no: es justo el momento en que antes el aprendiz se
+     quedaba sin instrucciones frente a un 100% que no certificaba. */
+  const journeyNextStage = journey.present.find((st) => st.key === journey.next);
+  const journeyNextHint =
+    journey.next && journey.next !== 'modules'
+      ? journey.next === 'exam' && !journeyNextStage?.unlocked
+        ? t('courses.journey_next_exam_locked')
+        : t(`courses.journey_next_${journey.next}`)
+      : null;
+
   return (
     <>
     <div className="mx-auto max-w-4xl px-4 pb-24 pt-10 sm:px-8 sm:pt-14">
@@ -596,7 +729,7 @@ export default function CoursePage() {
         />
 
         <div className="mt-3 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-text-subtle">
-          <span>{t('courses.modules_count', { n: total })}</span>
+          <span>{t('courses.modules_count', { count: total })}</span>
           {totalMin > 0 && (
             <>
               <span className="text-text-subtle/50">.</span>
@@ -667,29 +800,54 @@ export default function CoursePage() {
         )}
 
         {/* Avance: el numero se lee solo, alineado con el hilo de 3px. Antes iba
-            apretado dentro de un anillo de 34px, que a 100% no respiraba. */}
-        {total > 0 && (
+            apretado dentro de un anillo de 34px, que a 100% no respiraba.
+
+            Y ahora mide el CURSO, no el temario: si hay simuladores, mundo o
+            examen final, cuentan. Debajo va el desglose por etapa, para que el
+            porcentaje no sea una cifra que hay que creer sino una que se puede
+            comprobar de un vistazo. */}
+        {journey.total > 0 && (
           <div className="mt-5 w-full max-w-md">
             <div className="mb-2 flex items-baseline gap-2">
               <span
                 className="text-[15px] font-semibold tabular-nums leading-none tracking-[-0.02em]"
                 style={{ color: course.color }}
               >
-                {Math.round(pct * 100)}%
+                {Math.round(journey.pct * 100)}%
               </span>
               <span className="text-[12.5px] tabular-nums text-text-subtle">
-                {t('courses.progress', { done, count: total })}
+                {journey.present.length > 1
+                  ? t('courses.journey_steps', { done: journey.done, count: journey.total })
+                  : t('courses.progress', { done, count: total })}
               </span>
             </div>
             <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
               <motion.div
                 className="h-full rounded-full"
                 style={{ background: course.color }}
-                initial={{ width: reduce ? `${Math.round(pct * 100)}%` : 0 }}
-                animate={{ width: `${Math.round(pct * 100)}%` }}
+                initial={{ width: reduce ? `${Math.round(journey.pct * 100)}%` : 0 }}
+                animate={{ width: `${Math.round(journey.pct * 100)}%` }}
                 transition={{ duration: reduce ? 0 : 1.1, ease, delay: reduce ? 0 : 0.2 }}
               />
             </div>
+
+            {/* Desglose por etapa. Con una sola etapa sobra: la barra ya lo dijo. */}
+            {journey.present.length > 1 && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                {journey.present.map((stage) => (
+                  <JourneyChip
+                    key={stage.key}
+                    stage={stage}
+                    label={t(`courses.journey_${stage.key}`)}
+                    color={course.color}
+                  />
+                ))}
+              </div>
+            )}
+
+            {journeyNextHint && (
+              <p className="mt-2.5 text-[12.5px] text-text-muted">{journeyNextHint}</p>
+            )}
           </div>
         )}
 
@@ -852,12 +1010,27 @@ export default function CoursePage() {
           )}
         </div>
 
+        {/* "Curso completado" solo cuando el curso ENTERO está: con el temario
+            hecho pero el simulador, el mundo o el examen pendientes, el banner
+            nombra lo que falta en vez de felicitar de más. */}
         {completed && (
-          <p className="mt-5 inline-flex items-center gap-2 text-[13px] font-medium text-primary">
-            <Check className="h-3.5 w-3.5" strokeWidth={3} />
-            {certStatus?.require_simulator && !certStatus.simulator_ok
-              ? t('courses.modules_done_banner')
-              : t('courses.completed_banner')}
+          <p
+            className={cn(
+              'mt-5 inline-flex items-center gap-2 text-[13px] font-medium',
+              journey.complete ? 'text-primary' : 'text-text-muted',
+            )}
+          >
+            <Check
+              className={cn('h-3.5 w-3.5', journey.complete ? '' : 'text-primary')}
+              strokeWidth={3}
+            />
+            {journey.complete
+              ? t('courses.completed_banner')
+              : t('courses.modules_done_banner_journey', {
+                  what: journey.pending
+                    .map((k) => t(`courses.journey_${k}`).toLowerCase())
+                    .join(' · '),
+                })}
           </p>
         )}
       </FadeIn>
