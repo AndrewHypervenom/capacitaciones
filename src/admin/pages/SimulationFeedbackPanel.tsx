@@ -5,6 +5,7 @@ import {
   HeartHandshake, Clock, CheckCircle2, XCircle, Sparkles, PhoneCall, AlertTriangle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { getMyPeopleIds } from '@/services/org.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
@@ -49,6 +50,9 @@ const STATUS_META: Record<LearnerStatus, { color: string; labelKey: string; fall
   not_started: { color: '#94a3b8', labelKey: 'admin.sim_panel.status_not_started', fallback: 'Sin intentos' },
 }
 const STATUS_ORDER: LearnerStatus[] = ['at_risk', 'not_started', 'in_progress', 'completed']
+
+/** Valor del filtro para los intentos que no cuelgan de ningún curso. */
+const NO_COURSE = '__no_course__'
 
 /** Datos base del aprendiz (sin agregación), guardados tras la carga. */
 interface LearnerBase {
@@ -129,11 +133,20 @@ export default function SimulationFeedbackPanel() {
   const [scenarioTitles, setScenarioTitles] = useState<Map<string, string>>(new Map())
   const [filterCampaign, setFilterCampaign] = useState('all')
   const [filterScenario, setFilterScenario] = useState('all')
+  const [filterCourse, setFilterCourse] = useState('all')
+  /** curso → título, para el filtro (solo los cursos que tienen intentos). */
+  const [courseTitles, setCourseTitles] = useState<Map<string, string>>(new Map())
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<LearnerStatus | 'all'>('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'intentos', dir: 'desc' })
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+
+  /** Campaña del PERFIL de cada aprendiz (respaldo del intento sin etiquetar). */
+  const learnerCampaign = useMemo(
+    () => new Map(learners.map((l) => [l.userId, l.campaignId])),
+    [learners],
+  )
 
   const statusLabel = useCallback(
     (s: LearnerStatus) => t(STATUS_META[s].labelKey, STATUS_META[s].fallback),
@@ -161,12 +174,18 @@ export default function SimulationFeedbackPanel() {
       }
       const scope = ids.length ? ids : ['']
 
+      const myPeople = scopedToCampaign ? await getMyPeopleIds().catch(() => null) : null
+
       const [profileRes, attemptRes, callRes, choiceRes] = await Promise.all([
         (() => {
           // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
           // baja se filtran en memoria para no depender de la columna).
           let q = supabase.from('profiles').select('*').eq('role', 'learner')
-          if (scopedToCampaign) q = q.in('campaign_id', scope)
+          if (scopedToCampaign) {
+            q = myPeople
+              ? q.in('id', myPeople.length ? myPeople : [''])
+              : q.in('campaign_id', scope)
+          }
           return q
         })(),
         (() => {
@@ -204,7 +223,22 @@ export default function SimulationFeedbackPanel() {
       for (const s of (choiceRes.data ?? []) as Array<{ slug: string; title_es: string }>) {
         if (!titles.has(s.slug)) titles.set(s.slug, s.title_es || s.slug)
       }
+      // Títulos de los cursos que los intentos mencionan: es lo único que hace
+      // falta para el filtro por curso, y así no se trae el catálogo entero.
+      const courseIds = [...new Set(attempts.map((a) => a.course_id).filter(Boolean))] as string[]
+      const courseMap = new Map<string, string>()
+      if (courseIds.length > 0) {
+        const { data: courseRows } = await supabase
+          .from('courses')
+          .select('id,title_es,title_en,title_pt')
+          .in('id', courseIds)
+        for (const c of (courseRows ?? []) as Array<{ id: string; title_es: string; title_en: string | null; title_pt: string | null }>) {
+          courseMap.set(c.id, pickLang(c.title_es, c.title_en, c.title_pt, i18n.resolvedLanguage ?? 'es') || c.title_es)
+        }
+      }
+
       if (cancelled) return
+      setCourseTitles(courseMap)
       const campMap = new Map(camps.map((c) => [c.id, c.name]))
       setScenarioTitles(titles)
       setCampaigns(camps)
@@ -226,37 +260,106 @@ export default function SimulationFeedbackPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, scopedToCampaign, campaignId, user?.id, i18n.resolvedLanguage])
 
-  // Intentos por aprendiz, respetando el filtro de escenario (recalcula las
-  // estadísticas: al elegir un escenario, todo se recomputa solo con sus intentos).
+  /**
+   * La campaña a la que pertenece un INTENTO. Es la del intento —dónde se
+   * practicó—, y solo si el intento no la trae se cae a la de su perfil.
+   *
+   * Esto era el bug: el panel filtraba por `r.campaignId`, la campaña del
+   * PERFIL de la persona. Pero `campaign_id` significa dos cosas distintas
+   * (programa en el contenido, audiencia en el perfil), así que quien practicaba
+   * un simulador de Bradescard estando en Piloto desaparecía del filtro: se
+   * veía "Todavía no hay simulaciones registradas" con los intentos guardados
+   * y bien etiquetados en la base.
+   */
+  const campaignOfAttempt = useCallback(
+    (a: SimAttempt): string | null => a.campaign_id ?? learnerCampaign.get(a.user_id) ?? null,
+    [learnerCampaign],
+  )
+
+  /** Intentos de la campaña elegida (base de los dos filtros que siguen). */
+  const campaignAttempts = useMemo(
+    () => (filterCampaign === 'all'
+      ? allAttempts
+      : allAttempts.filter((a) => campaignOfAttempt(a) === filterCampaign)),
+    [allAttempts, filterCampaign, campaignOfAttempt],
+  )
+
+  /** Cursos con intentos en la campaña elegida (más "sin curso", si los hay). */
+  const courseOptions = useMemo(() => {
+    const ids = new Set<string>();
+    let loose = false
+    for (const a of campaignAttempts) {
+      if (a.course_id) ids.add(a.course_id); else loose = true
+    }
+    const list = [...ids]
+      .map((id) => ({ value: id, label: courseTitles.get(id) ?? id }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+    // Los intentos sueltos (practicados fuera de un curso) tienen que poder
+    // mirarse: si no, son horas de práctica que ningún filtro alcanza.
+    if (loose && list.length > 0) {
+      list.push({ value: NO_COURSE, label: t('admin.sim_panel.no_course', 'Sin curso asociado') })
+    }
+    return list
+  }, [campaignAttempts, courseTitles, t])
+
+  /** Curso elegido, validado: cambiar de campaña no puede dejar uno que no está. */
+  const activeCourse = useMemo(
+    () => (filterCourse !== 'all' && !courseOptions.some((c) => c.value === filterCourse) ? 'all' : filterCourse),
+    [filterCourse, courseOptions],
+  )
+
+  const courseAttempts = useMemo(
+    () => (activeCourse === 'all'
+      ? campaignAttempts
+      : campaignAttempts.filter((a) => (activeCourse === NO_COURSE ? !a.course_id : a.course_id === activeCourse))),
+    [campaignAttempts, activeCourse],
+  )
+
+  // Opciones del filtro de escenario: los escenarios con intentos dentro de la
+  // campaña y el curso elegidos, ordenados por título.
+  const scenarioOptions = useMemo(() => {
+    const slugs = new Set(courseAttempts.map((a) => a.scenario_slug))
+    return [...slugs]
+      .map((slug) => ({ value: slug, label: scenarioTitles.get(slug) ?? slug }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [courseAttempts, scenarioTitles])
+
+  /** Los intentos que quedan tras los tres filtros. */
+  const scopedAttempts = useMemo(
+    () => (filterScenario === 'all'
+      ? courseAttempts
+      : courseAttempts.filter((a) => a.scenario_slug === filterScenario)),
+    [courseAttempts, filterScenario],
+  )
+
+  // Intentos por aprendiz: todo se recomputa solo con los intentos del alcance.
   const rows = useMemo<LearnerRow[]>(() => {
     const byUser = new Map<string, SimAttempt[]>()
-    for (const a of allAttempts) {
-      if (filterScenario !== 'all' && a.scenario_slug !== filterScenario) continue
+    for (const a of scopedAttempts) {
       const arr = byUser.get(a.user_id) ?? []
       arr.push(a)
       byUser.set(a.user_id, arr)
     }
     return learners.map((base) => aggregate(base, byUser.get(base.userId) ?? []))
-  }, [learners, allAttempts, filterScenario])
+  }, [learners, scopedAttempts])
 
-  // Opciones del filtro de escenario: los escenarios con intentos en el ámbito de
-  // campaña actual, ordenados por título.
-  const scenarioOptions = useMemo(() => {
-    const slugs = new Set<string>()
-    for (const a of allAttempts) {
-      if (filterCampaign !== 'all' && a.campaign_id !== filterCampaign) continue
-      slugs.add(a.scenario_slug)
-    }
-    return [...slugs]
-      .map((slug) => ({ value: slug, label: scenarioTitles.get(slug) ?? slug }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [allAttempts, filterCampaign, scenarioTitles])
-
-  // Ámbito por filtro de campaña (superadmin / multi-campaña).
-  const scoped = useMemo(
-    () => rows.filter((r) => filterCampaign === 'all' || r.campaignId === filterCampaign),
-    [rows, filterCampaign],
-  )
+  /**
+   * Quién se ve.
+   *
+   * Con solo el filtro de campaña: su gente de casa MÁS quien haya practicado
+   * su contenido viniendo de otra campaña (el catálogo es compartido). Al
+   * afinar por curso o escenario ya no tiene sentido listar a quien no tiene
+   * nada ahí: se muestra solo a quien practicó.
+   */
+  const scoped = useMemo(() => {
+    const practiced = new Set(scopedAttempts.map((a) => a.user_id))
+    const narrowed = activeCourse !== 'all' || filterScenario !== 'all'
+    return rows.filter((r) => {
+      if (practiced.has(r.userId)) return true
+      if (narrowed) return false
+      return filterCampaign === 'all' || r.campaignId === filterCampaign
+    })
+  }, [rows, scopedAttempts, activeCourse, filterScenario, filterCampaign])
 
   const stats = useMemo(() => {
     const learners = scoped.length
@@ -385,14 +488,22 @@ export default function SimulationFeedbackPanel() {
         ) : undefined}
       />
 
-      {/* Filtros: campaña (super/multi) + escenario (si hay intentos) */}
-      {(isSuperAdmin || multiCampaign || scenarioOptions.length > 0) && (
+      {/* Filtros: campaña (super/multi) + curso + escenario (si hay intentos) */}
+      {(isSuperAdmin || multiCampaign || courseOptions.length > 0 || scenarioOptions.length > 0) && (
         <div className="flex flex-wrap gap-3 mb-5">
           {(isSuperAdmin || multiCampaign) && (
             <FilterDropdown
               value={filterCampaign === 'all' ? '' : filterCampaign}
-              onChange={(v) => { setFilterCampaign(v || 'all'); setFilterScenario('all') }}
+              onChange={(v) => { setFilterCampaign(v || 'all'); setFilterCourse('all'); setFilterScenario('all') }}
               options={[{ value: '', label: t('common.all_campaigns') }, ...campaigns.map((c) => ({ value: c.id, label: c.name }))]}
+              className="max-w-xs"
+            />
+          )}
+          {courseOptions.length > 0 && (
+            <FilterDropdown
+              value={activeCourse === 'all' ? '' : activeCourse}
+              onChange={(v) => { setFilterCourse(v || 'all'); setFilterScenario('all') }}
+              options={[{ value: '', label: t('admin.sim_panel.all_courses', 'Todos los cursos') }, ...courseOptions]}
               className="max-w-xs"
             />
           )}

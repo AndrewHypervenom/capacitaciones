@@ -3950,6 +3950,7 @@
       "renew_code": "Renew code"
     },
     "worlds": {
+      "all_courses": "All courses",
       "saved_before_ai": "Pending changes were saved before generating.",
       "theme": "Look & feel",
       "save_error": "The world could not be saved.",
@@ -4786,6 +4787,8 @@
       "resolved": "Resolved",
       "unresolved": "Unresolved",
       "all_scenarios": "All scenarios",
+      "all_courses": "All courses",
+      "no_course": "No linked course",
       "risk_detail": "Their best score is below 60%. Worth reinforcing practice.",
       "risk_action": "See who",
       "kpi_learners_hint": "People with simulators available in this scope.",

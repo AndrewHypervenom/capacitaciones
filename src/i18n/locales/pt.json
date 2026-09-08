@@ -3950,6 +3950,7 @@
       "renew_code": "Renovar código"
     },
     "worlds": {
+      "all_courses": "Todos os cursos",
       "saved_before_ai": "As alterações pendentes foram salvas antes de gerar.",
       "theme": "Ambientação",
       "save_error": "Não foi possível salvar o mundo.",
@@ -4786,6 +4787,8 @@
       "resolved": "Resolvido",
       "unresolved": "Não resolvido",
       "all_scenarios": "Todos os cenários",
+      "all_courses": "Todos os cursos",
+      "no_course": "Sem curso associado",
       "risk_detail": "A melhor pontuação está abaixo de 60%. Vale reforçar a prática.",
       "risk_action": "Ver quais",
       "kpi_learners_hint": "Pessoas com simuladores disponíveis neste escopo.",

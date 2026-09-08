@@ -2,19 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import i18n from '@/i18n'
 import { ChevronDown, ChevronRight, Download, Loader2, Star, Search, Globe2, AlertTriangle, Map as MapIcon, GaugeCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { getMyPeopleIds } from '@/services/org.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
+import { pickLang } from '@/lib/contentLang'
 import StarDisplay from '@/components/StarDisplay'
 import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
 
 const WORLD_ACCENT = 'rgb(var(--brand-green))'
 
 interface Campaign { id: string; name: string }
-interface World { id: string; name: string; icon: string; campaign_id: string | null }
+interface World { id: string; name: string; icon: string; campaign_id: string | null; course_id: string | null }
 interface WorldLevel { id: string; name: string; world_id: string; order_index: number; min_score_pct: number | null }
 interface Profile { id: string; display_name: string | null; campaign_id: string | null; is_active?: boolean | null }
 interface Progress { user_id: string; level_id: string; world_id: string; score: number }
@@ -43,6 +45,9 @@ interface WorldStat {
   worldId: string
   worldName: string
   worldIcon: string
+  /** Campaña y curso DEL MUNDO (no de la persona): con eso filtran los selectores. */
+  campaignId: string | null
+  courseId: string | null
   completedLevels: number
   totalLevels: number
   avgStars: number
@@ -85,6 +90,9 @@ export default function FeedbackPanel() {
   const [levels, setLevels] = useState<WorldLevel[]>([])
   const [filterCampaign, setFilterCampaign] = useState('all')
   const [filterWorld, setFilterWorld] = useState('all')
+  const [filterCourse, setFilterCourse] = useState('all')
+  /** curso → título, solo de los cursos que tienen mundos. */
+  const [courseTitles, setCourseTitles] = useState<Map<string, string>>(new Map())
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<LearnerStatus | 'all'>('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'avance', dir: 'desc' })
@@ -116,10 +124,14 @@ export default function FeedbackPanel() {
       }
       const scope = ids.length ? ids : ['']
 
+      // Quién es "mi gente" ahora: los aprendices alcanzados por mis cursos.
+      // `null` = el RPC todavía no existe → se cae al filtro por campaña.
+      const myPeople = scopedToCampaign ? await getMyPeopleIds().catch(() => null) : null
+
       const [campRes, worldRes, levelRes, profileRes, progressRes] = await Promise.all([
         Promise.resolve({ data: accessible }),
         (() => {
-          let q = supabase.from('worlds').select('id,name,icon,campaign_id')
+          let q = supabase.from('worlds').select('id,name,icon,campaign_id,course_id')
           if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
@@ -128,7 +140,14 @@ export default function FeedbackPanel() {
           // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
           // baja se filtran en memoria para no depender de la columna).
           let q = supabase.from('profiles').select('*').eq('role', 'learner')
-          if (scopedToCampaign) q = q.in('campaign_id', scope)
+          // Mi gente = los aprendices alcanzados por mis cursos (ver
+          // get_my_people_ids). `myPeople` es null si el SQL no se ha corrido:
+          // entonces se cae al filtro por campaña de siempre.
+          if (scopedToCampaign) {
+            q = myPeople
+              ? q.in('id', myPeople.length ? myPeople : [''])
+              : q.in('campaign_id', scope)
+          }
           return q
         })(),
         (() => {
@@ -148,8 +167,23 @@ export default function FeedbackPanel() {
       const profiles = hideInactiveUnlessSuperAdmin((profileRes.data ?? []) as Profile[], isSuperAdmin)
       const progress = (progressRes.data ?? []) as Progress[]
 
+      // Títulos de los cursos a los que cuelgan los mundos: solo eso hace falta
+      // para el filtro por curso, así no se trae el catálogo entero.
+      const courseIds = [...new Set(ws.map(w => w.course_id).filter(Boolean))] as string[]
+      const courseMap = new Map<string, string>()
+      if (courseIds.length > 0) {
+        const { data: courseRows } = await supabase
+          .from('courses')
+          .select('id,title_es,title_en,title_pt')
+          .in('id', courseIds)
+        for (const c of (courseRows ?? []) as Array<{ id: string; title_es: string; title_en: string | null; title_pt: string | null }>) {
+          courseMap.set(c.id, pickLang(c.title_es, c.title_en, c.title_pt, i18n.resolvedLanguage ?? 'es') || c.title_es)
+        }
+      }
+
       setCampaigns(camps)
       setWorlds(ws)
+      setCourseTitles(courseMap)
       setLevels(lvls)
 
       const campMap = new Map(camps.map(c => [c.id, c.name]))
@@ -171,8 +205,20 @@ export default function FeedbackPanel() {
 
       const result: LearnerRow[] = []
 
+      // Mundos en los que cada persona tiene progreso, sean o no de su campaña.
+      // Sin esto, quien juega un mundo de otra campaña —lo normal con el
+      // catálogo compartido— desaparecía del panel entero: el `continue` de
+      // abajo lo sacaba antes de mirarle el progreso.
+      const playedByUser = new Map<string, Set<string>>()
+      for (const pr of progress) {
+        const set = playedByUser.get(pr.user_id) ?? new Set<string>()
+        set.add(pr.world_id)
+        playedByUser.set(pr.user_id, set)
+      }
+
       for (const profile of profiles) {
-        const campaignWorlds = ws.filter(w => w.campaign_id === profile.campaign_id)
+        const played = playedByUser.get(profile.id) ?? new Set<string>()
+        const campaignWorlds = ws.filter(w => w.campaign_id === profile.campaign_id || played.has(w.id))
         if (campaignWorlds.length === 0) continue
 
         const worldStats: WorldStat[] = []
@@ -196,6 +242,8 @@ export default function FeedbackPanel() {
             worldId: w.id,
             worldName: w.name,
             worldIcon: w.icon,
+            campaignId: w.campaign_id,
+            courseId: w.course_id,
             completedLevels: progs.length,
             totalLevels: wLevels.length,
             avgStars: Math.round(avg(starVals) * 10) / 10,
@@ -232,10 +280,38 @@ export default function FeedbackPanel() {
 
   // Ámbito: filtros de campaña/mundo (los superadmin). Alimenta KPIs, dona y conteos de chips.
   const scoped = useMemo(() => rows.filter(r => {
-    if (filterCampaign !== 'all' && r.campaignId !== filterCampaign) return false
+    // La campaña de la PERSONA o la del mundo que jugó: `campaign_id` significa
+    // audiencia en el perfil y programa en el contenido, y mirar solo el perfil
+    // dejaba fuera a quien practicó contenido de esta campaña viniendo de otra.
+    if (filterCampaign !== 'all'
+      && r.campaignId !== filterCampaign
+      && !r.worlds.some(w => w.campaignId === filterCampaign && w.completedLevels > 0)) return false
+    if (filterCourse !== 'all' && !r.worlds.some(w => w.courseId === filterCourse)) return false
     if (filterWorld !== 'all' && !r.worlds.some(w => w.worldId === filterWorld)) return false
     return true
-  }), [rows, filterCampaign, filterWorld])
+  }), [rows, filterCampaign, filterCourse, filterWorld])
+
+  /** Cursos que tienen mundos dentro del alcance de campaña actual. */
+  const courseOptions = useMemo(() => {
+    const ids = new Set<string>()
+    for (const w of worlds) {
+      if (filterCampaign !== 'all' && w.campaign_id !== filterCampaign) continue
+      if (w.course_id) ids.add(w.course_id)
+    }
+    return [...ids]
+      .map(id => ({ value: id, label: courseTitles.get(id) ?? id }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [worlds, filterCampaign, courseTitles])
+
+  /** Mundos que ofrece el selector: los del curso elegido, si hay uno. */
+  const worldOptions = useMemo(
+    () => worlds.filter(w => {
+      if (filterCampaign !== 'all' && w.campaign_id !== filterCampaign) return false
+      if (filterCourse !== 'all' && w.course_id !== filterCourse) return false
+      return true
+    }),
+    [worlds, filterCampaign, filterCourse],
+  )
 
   // KPIs + distribución por estado, derivados del ámbito.
   const stats = useMemo(() => {
@@ -453,15 +529,23 @@ export default function FeedbackPanel() {
           {(isSuperAdmin || multiCampaign) && (
           <FilterDropdown
             value={filterCampaign === 'all' ? '' : filterCampaign}
-            onChange={v => setFilterCampaign(v || 'all')}
+            onChange={v => { setFilterCampaign(v || 'all'); setFilterCourse('all'); setFilterWorld('all') }}
             options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
             className="max-w-xs"
           />
           )}
+          {courseOptions.length > 0 && (
+            <FilterDropdown
+              value={filterCourse === 'all' ? '' : filterCourse}
+              onChange={v => { setFilterCourse(v || 'all'); setFilterWorld('all') }}
+              options={[{ value: '', label: i18n.t('admin.worlds.all_courses', 'Todos los cursos') }, ...courseOptions]}
+              className="max-w-xs"
+            />
+          )}
           <FilterDropdown
             value={filterWorld === 'all' ? '' : filterWorld}
             onChange={v => setFilterWorld(v || 'all')}
-            options={[{ value: '', label: 'Todos los mundos' }, ...worlds.map(w => ({ value: w.id, label: `${w.icon} ${w.name}` }))]}
+            options={[{ value: '', label: 'Todos los mundos' }, ...worldOptions.map(w => ({ value: w.id, label: `${w.icon} ${w.name}` }))]}
             className="max-w-xs"
           />
         </div>
