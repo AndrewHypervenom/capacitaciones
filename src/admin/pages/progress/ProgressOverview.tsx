@@ -127,6 +127,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
 
   const [tab, setTab] = useState<Tab>('summary');
   const [campaign, setCampaign] = useState<string>('all');
+  const [course, setCourse] = useState<string>('all');
   const [range, setRange] = useState<RangeKey>('all');
   const [onlyLearners, setOnlyLearners] = useState(true);
   const [job, setJob] = useState<string>('all');
@@ -180,30 +181,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     return ids;
   }, [campaign, people, cells, campaignOwnCourseIds]);
 
-  const scopedPeople = useMemo(() => {
-    return people.filter((p) => {
-      if (onlyLearners && p.role !== 'learner') return false;
-      if (campaignPeopleIds !== null && !campaignPeopleIds.has(p.id)) return false;
-      // Cargo y país salen del perfil; "sin dato" es un valor más y se puede
-      // filtrar por él (suele ser el primer hallazgo: gente sin cargo).
-      if (job !== 'all' && (p.jobTitle ?? NO_VALUE) !== job) return false;
-      if (country !== 'all' && (p.country ?? NO_VALUE) !== country) return false;
-      return true;
-    });
-  }, [people, onlyLearners, campaignPeopleIds, job, country]);
-
-  /** Opciones de los cortes, sacadas de la gente que hay (no de un catálogo). */
-  const jobOptions = useMemo(() => segmentOptions(people, (p) => p.jobTitle), [people]);
-  const countryOptions = useMemo(() => segmentOptions(people, (p) => p.country), [people]);
-
-  const peopleIds = useMemo(() => new Set(scopedPeople.map((p) => p.id)), [scopedPeople]);
-
-  /** Cuántos de los que se ven vienen de otra campaña (inscritos, no de casa). */
-  const guestCount = useMemo(
-    () => (campaign === 'all' ? 0 : scopedPeople.filter((p) => p.campaignId !== campaign).length),
-    [scopedPeople, campaign],
-  );
-
   /**
    * Cursos del alcance: los de la campaña, más los que su gente de casa tenga
    * asignados de OTRAS campañas — ese progreso también es de esta campaña, y
@@ -219,11 +196,73 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     return ids;
   }, [campaign, people, cells, campaignOwnCourseIds]);
 
-  const scopedCourses = useMemo(
-    () => (campaignCourseIds === null ? courses : courses.filter((c) => campaignCourseIds.has(c.id))),
+  /**
+   * Los cursos que se pueden elegir en el filtro: los del alcance de la
+   * campaña, SIN aplicar el filtro de curso (si no, elegir uno vaciaría la
+   * lista y no habría cómo volver a cambiarlo).
+   */
+  const courseOptions = useMemo(
+    () => (campaignCourseIds === null ? courses : courses.filter((c) => campaignCourseIds.has(c.id)))
+      .slice()
+      .sort((a, b) => a.title.localeCompare(b.title)),
     [courses, campaignCourseIds],
   );
+
+  /**
+   * Curso elegido, ya validado contra el alcance actual: cambiar de campaña no
+   * puede dejar seleccionado un curso que esa campaña no tiene (se leería como
+   * "no hay nadie" en vez de "ese curso no es de aquí").
+   */
+  const activeCourse = useMemo(
+    () => (course !== 'all' && !courseOptions.some((c) => c.id === course) ? 'all' : course),
+    [course, courseOptions],
+  );
+
+  const scopedCourses = useMemo(
+    () => (activeCourse === 'all' ? courseOptions : courseOptions.filter((c) => c.id === activeCourse)),
+    [courseOptions, activeCourse],
+  );
   const courseIds = useMemo(() => new Set(scopedCourses.map((c) => c.id)), [scopedCourses]);
+
+  /**
+   * Quién cuenta cuando se filtra por UN curso: las personas que lo tienen
+   * asignado o que ya hicieron algo en él. Sin esto, el tablero seguía
+   * contando a gente que no tiene nada que ver con el curso elegido.
+   */
+  const coursePeopleIds = useMemo(() => {
+    if (activeCourse === 'all') return null;
+    const ids = new Set<string>();
+    for (const cell of cells) {
+      if (cell.courseId === activeCourse && (cell.assigned || cell.started)) ids.add(cell.userId);
+    }
+    return ids;
+  }, [cells, activeCourse]);
+
+  const scopedPeople = useMemo(() => {
+    return people.filter((p) => {
+      if (onlyLearners && p.role !== 'learner') return false;
+      if (campaignPeopleIds !== null && !campaignPeopleIds.has(p.id)) return false;
+      if (coursePeopleIds !== null && !coursePeopleIds.has(p.id)) return false;
+      // Cargo y país salen del perfil; "sin dato" es un valor más y se puede
+      // filtrar por él (suele ser el primer hallazgo: gente sin cargo).
+      if (job !== 'all' && (p.jobTitle ?? NO_VALUE) !== job) return false;
+      if (country !== 'all' && (p.country ?? NO_VALUE) !== country) return false;
+      return true;
+    });
+  }, [people, onlyLearners, campaignPeopleIds, coursePeopleIds, job, country]);
+
+  /** Opciones de los cortes, sacadas de la gente que hay (no de un catálogo). */
+  const jobOptions = useMemo(() => segmentOptions(people, (p) => p.jobTitle), [people]);
+  const countryOptions = useMemo(() => segmentOptions(people, (p) => p.country), [people]);
+
+  const peopleIds = useMemo(() => new Set(scopedPeople.map((p) => p.id)), [scopedPeople]);
+
+  /** Cuántos de los que se ven vienen de otra campaña (inscritos, no de casa). */
+  const guestCount = useMemo(
+    () => (campaign === 'all' ? 0 : scopedPeople.filter((p) => p.campaignId !== campaign).length),
+    [scopedPeople, campaign],
+  );
+
 
   const scopedActivity = useMemo(
     () => activity.filter((a) =>
@@ -1020,6 +1059,24 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
               ]}
             />
           </div>
+
+          {/* Filtro por CURSO. El resto de columnas —temario, completados,
+              certificados— son sumas de todos los cursos asignados, así que
+              "certificado" y "30% de temario" conviven en la misma fila sin que
+              ninguno de los dos esté mal: son cursos distintos. Elegir uno es
+              lo que vuelve la fila legible. */}
+          {courseOptions.length > 1 && (
+            <div className="w-[210px]">
+              <Select
+                value={activeCourse}
+                onChange={setCourse}
+                options={[
+                  { value: 'all', label: t('admin.progress_overview.all_courses', 'Todos los cursos') },
+                  ...courseOptions.map((c) => ({ value: c.id, label: c.title })),
+                ]}
+              />
+            </div>
+          )}
 
           <div className="w-[165px]">
             <Select
@@ -2017,7 +2074,7 @@ function PeopleTab({
                   {th('campaign', t('admin.progress_overview.col_campaign', 'Programa'), 'left', undefined, 'w-[150px]')}
                   {th('assigned', t('admin.progress_overview.col_assigned', 'Asignados'), 'right', t('admin.progress_overview.help_assigned', 'Cursos que le tocan, por asignación directa o por su programa.'))}
                   {th('mandatory', t('admin.progress_overview.col_mandatory', 'Obligatorios'), 'right', t('admin.progress_overview.help_mandatory', 'Cursos obligatorios terminados sobre los que le tocan. Es la cifra de cumplimiento que se audita.'))}
-                  {th('syllabus', t('admin.progress_overview.col_syllabus', 'Temario'), 'right', t('admin.progress_overview.help_syllabus', 'Módulos completados sobre los módulos de sus cursos asignados.'))}
+                  {th('syllabus', t('admin.progress_overview.col_syllabus', 'Temario'), 'right', t('admin.progress_overview.help_syllabus', 'Módulos completados sobre los de TODOS sus cursos asignados. Por eso alguien puede estar certificado en un curso y tener el temario al 30%: filtra por curso para verlo aislado.'))}
                   {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos certificados, o con todas sus entregas aprobadas y ninguna pendiente de evaluar.'))}
                   {th('certified', t('admin.progress_overview.col_certified', 'Certificados'), 'right', t('admin.progress_overview.help_certified', 'Certificados emitidos a esta persona.'))}
                   {th('score', t('admin.progress_overview.col_score_short', 'Nota'), 'right', t('admin.progress_overview.help_score', 'Promedio de todas sus entregas dentro del alcance elegido.'))}
