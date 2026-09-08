@@ -5414,6 +5414,8 @@
         "courses": "Courses",
         "courses_deleted": "Courses in the trash",
         "courses_approved": "Courses they approved",
+        "modules": "Modules",
+        "modules_no_course": "Modules with no course",
         "exams": "Exams",
         "exam_questions": "Exam questions",
         "scenarios": "Simulations",
@@ -5423,7 +5425,8 @@
         "guided_missions": "Guided missions",
         "live_quizzes": "Live quizzes",
         "ai_scenario_drafts": "AI drafts"
-      }
+      },
+      "loose_modules": "{{count}} of those modules don't belong to any course. Their author changes, but who can open them is still decided by their campaign: move them with \"Move to another campaign\" if needed."
     }
   },
   "themes": {

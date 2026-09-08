@@ -5414,6 +5414,8 @@
         "courses": "Cursos",
         "courses_deleted": "Cursos en la papelera",
         "courses_approved": "Cursos que aprobó",
+        "modules": "Módulos",
+        "modules_no_course": "Módulos sin curso",
         "exams": "Exámenes",
         "exam_questions": "Preguntas de examen",
         "scenarios": "Simulaciones",
@@ -5423,7 +5425,8 @@
         "guided_missions": "Misiones guiadas",
         "live_quizzes": "Quizzes en vivo",
         "ai_scenario_drafts": "Borradores de IA"
-      }
+      },
+      "loose_modules": "{{count}} de esos módulos no pertenecen a ningún curso. Cambian de autor, pero quién puede abrirlos lo sigue decidiendo su campaña: si hace falta, muévelos con \"Mover a otra campaña\"."
     }
   },
   "themes": {

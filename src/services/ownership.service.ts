@@ -9,9 +9,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * revés, el contenido queda sin dueño (nadie puede administrarlo) o el borrado
  * falla por las claves foráneas que apuntan a esa persona.
  *
- * Los MÓDULOS no aparecen aquí porque no tienen dueño propio: quién los
- * administra sale de su campaña y del curso al que pertenecen, así que van con
- * el curso. Un módulo suelto se mueve con `move_module_to_campaign`.
+ * Los módulos entran desde que `modules.created_by` existe. Los que cuelgan de
+ * un curso ya iban con él; los SUELTOS (sin curso) eran justo los que se
+ * quedaban sin nadie, y por eso se cuentan aparte.
  */
 
 /**
@@ -26,6 +26,9 @@ export type AuthoredCounts = {
   courses: number
   courses_deleted: number
   courses_approved: number
+  modules: number
+  /** Subconjunto de `modules`: los que no pertenecen a ningún curso. */
+  modules_no_course: number
   exams: number
   exam_questions: number
   scenarios: number
@@ -69,7 +72,13 @@ export async function transferContent(
   return (data ?? {}) as Record<string, number>
 }
 
-/** Total de cosas con autoría, para saber si hay algo que transferir. */
+/**
+ * Total de cosas con autoría, para saber si hay algo que transferir.
+ * `modules_no_course` NO suma: es un subconjunto de `modules` y contarlo otra
+ * vez inflaría el número que se le enseña al superadmin.
+ */
 export function totalAuthored(a: AuthoredCounts): number {
-  return Object.values(a ?? {}).reduce((sum, n) => sum + (Number(n) || 0), 0)
+  return Object.entries(a ?? {})
+    .filter(([k]) => k !== 'modules_no_course')
+    .reduce((sum, [, n]) => sum + (Number(n) || 0), 0)
 }

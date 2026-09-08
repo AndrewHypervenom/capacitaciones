@@ -57,12 +57,16 @@ export function TransferContentModal({
   )
 
   // Solo las filas con algo: una lista de doce ceros no dice nada.
+  // `modules_no_course` se saca de la lista: no es una cosa más, es un matiz
+  // sobre los módulos, y va como aviso debajo.
   const rows = useMemo(() => {
     if (!authored) return []
     return (Object.entries(authored) as [keyof AuthoredCounts, number][])
-      .filter(([, n]) => Number(n) > 0)
+      .filter(([k, n]) => k !== 'modules_no_course' && Number(n) > 0)
       .map(([k, n]) => ({ key: k, n: Number(n), label: t(`admin.transfer.kind.${k}`, LABEL_ES[k]) }))
   }, [authored, t])
+
+  const looseModules = Number(authored?.modules_no_course ?? 0)
 
   const total = authored ? totalAuthored(authored) : 0
 
@@ -145,10 +149,17 @@ export function TransferContentModal({
                 ))}
               </ul>
             )}
-            {/* Los módulos no tienen dueño propio: es la duda que siempre surge. */}
-            <p className="mt-2.5 text-[11.5px] leading-relaxed text-text-subtle">
-              {t('admin.transfer.modules_note', 'Los módulos van con su curso: no tienen dueño propio, los administra quien administra el curso y la campaña.')}
-            </p>
+            {/* Cambiar el autor no cambia quién PUEDE abrir un módulo suelto:
+                eso lo decide su campaña. Es la letra pequeña que evita creer
+                que con transferir ya quedó todo resuelto. */}
+            {looseModules > 0 && (
+              <p className="mt-2.5 text-[11.5px] leading-relaxed text-text-subtle">
+                {t('admin.transfer.loose_modules', {
+                  count: looseModules,
+                  defaultValue: '{{count}} de esos módulos no pertenecen a ningún curso. Cambian de autor, pero quién puede abrirlos lo sigue decidiendo su campaña: si hace falta, muévelos con "Mover a otra campaña".',
+                })}
+              </p>
+            )}
           </div>
 
           {/* A quién */}
@@ -196,6 +207,8 @@ const LABEL_ES: Record<keyof AuthoredCounts, string> = {
   courses: 'Cursos',
   courses_deleted: 'Cursos en la papelera',
   courses_approved: 'Cursos que aprobó',
+  modules: 'Módulos',
+  modules_no_course: 'Módulos sin curso',
   exams: 'Exámenes',
   exam_questions: 'Preguntas de examen',
   scenarios: 'Simulaciones',
