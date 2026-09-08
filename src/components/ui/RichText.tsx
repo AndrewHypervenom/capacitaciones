@@ -376,16 +376,19 @@ function CopyableText({ value, children, inert = false }: { value: string; child
   if (inert) {
     return (
       <span className="inline-flex max-w-full items-center rounded-lg border border-line bg-subtle/60 px-2 py-0.5 align-middle">
-        <span className="break-all font-medium text-text">{children}</span>
+        <span className="min-w-0 break-words font-medium text-text">{children}</span>
       </span>
     )
   }
 
   return (
-    <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-subtle/60 px-2 py-0.5 align-middle">
+    <span className="inline-flex max-w-full items-center gap-1 rounded-lg border border-line bg-subtle/60 px-2 py-0.5 align-middle">
       {/* `select-text` gana al `user-select: none` de la protección: el dato ya
-          es copiable con el botón, así que impedir seleccionarlo solo estorba. */}
-      <span className="select-text break-all font-medium text-text">{children}</span>
+          es copiable con el botón, así que impedir seleccionarlo solo estorba.
+          `break-words` (y no `break-all`) parte el dato SOLO si no cabe: un
+          correo cortado a la mitad sin necesidad se lee fatal. `min-w-0` es lo
+          que le permite encogerse dentro del flex en vez de desbordar. */}
+      <span className="min-w-0 select-text break-words font-medium text-text">{children}</span>
       <Tooltip label={done ? t('common.copied', 'Copiado') : t('common.copy', 'Copiar')}>
         <button
           type="button"
