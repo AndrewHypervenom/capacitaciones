@@ -6,7 +6,7 @@ import {
   Search, RefreshCw, Sparkles, TrendingUp, Clock, Layers, GraduationCap,
   ChevronRight, Inbox, FileSpreadsheet, CalendarRange, Filter, BarChart3,
   MessageSquareQuote, AlertTriangle, Hourglass, CircleSlash, ShieldCheck, ListChecks,
-  CalendarClock,
+  CalendarClock, Copy, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/stores/userStore';
@@ -44,13 +44,14 @@ import { pickLang } from '@/lib/contentLang';
    negocio ya tiene.
    ──────────────────────────────────────────────────────────────────────────── */
 
-type Tab = 'summary' | 'people' | 'courses' | 'exam' | 'survey';
+type Tab = 'summary' | 'people' | 'courses' | 'certificates' | 'exam' | 'survey';
 type Focus = 'none' | 'started' | 'idle' | 'certified' | 'pending' | 'risk' | 'mandatory' | 'overdue';
 type RangeKey = '7' | '30' | '90' | 'all';
 type PeopleSort =
   | 'name' | 'campaign' | 'assigned' | 'mandatory' | 'syllabus' | 'started' | 'completed'
   | 'certified' | 'score' | 'time' | 'last' | 'pending' | 'overdue';
 type CourseSort = 'title' | 'assigned' | 'started' | 'completed' | 'certified' | 'overdue' | 'score' | 'nps' | 'last';
+type CertSort = 'person' | 'course' | 'campaign' | 'score' | 'date';
 
 const RANGE_DAYS: Record<RangeKey, number | null> = { '7': 7, '30': 30, '90': 90, all: null };
 
@@ -136,6 +137,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const [focus, setFocus] = useState<Focus>('none');
   const [peopleSort, setPeopleSort] = useState<{ key: PeopleSort; dir: 'asc' | 'desc' }>({ key: 'last', dir: 'desc' });
   const [courseSort, setCourseSort] = useState<{ key: CourseSort; dir: 'asc' | 'desc' }>({ key: 'assigned', dir: 'desc' });
+  const [certSort, setCertSort] = useState<{ key: CertSort; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' });
   const [drawerPerson, setDrawerPerson] = useState<ProgramPerson | null>(null);
   const [drawerCourse, setDrawerCourse] = useState<ProgramCourse | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -536,6 +538,77 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     });
   }, [courseRows, query, courseSort, surveys.byCourse]);
 
+  /* ── Certificados emitidos, uno por fila ──────────────────────────────
+     La lista de diplomas es la prueba que se pide fuera del equipo ("¿quién se
+     certificó?"), y hasta ahora solo existía como un número en un KPI. Sale del
+     mismo alcance que el resto del tablero (`scopedCerts`: programa, curso,
+     cargo, país y rango ya aplicados), así que lo que se ve aquí cuadra con lo
+     que dice la tarjeta de arriba. */
+  const certRows = useMemo(() => {
+    const personById = new Map(rows.map((p) => [p.id, p]));
+    const courseById = new Map(courses.map((c) => [c.id, c]));
+    const q = fold(query);
+    const list = scopedCerts
+      .map((c) => {
+        const person = personById.get(c.userId);
+        const courseRow = courseById.get(c.courseId);
+        /* "Certificado" no es "al día": el diploma se emitió contra el temario
+           que había ese día. Si el curso creció después, se dice —el certificado
+           sigue valiendo, lo que cambió fue el curso. Misma regla que
+           `courseState('certified_outdated')`. */
+        const syllabus = modulesByCourse[c.courseId]?.length ?? courseRow?.modules ?? 0;
+        const done = doneModules[`${c.userId}|${c.courseId}`]?.length ?? 0;
+        const missing = syllabus > 0 && done < syllabus ? syllabus - done : 0;
+        return {
+          key: `${c.userId}|${c.courseId}|${c.certId}`,
+          userId: c.userId,
+          courseId: c.courseId,
+          certId: c.certId,
+          score: c.score,
+          issuedAt: new Date(c.issuedAt).getTime(),
+          person,
+          personName: person?.name ?? c.userId,
+          email: person?.email ?? null,
+          avatarUrl: person?.avatarUrl ?? null,
+          jobTitle: person?.jobTitle ?? null,
+          country: person?.country ?? null,
+          courseTitle: courseRow?.title ?? c.courseId,
+          courseIcon: courseRow?.icon ?? null,
+          /* El programa DUEÑO del curso, que es por el que se clasifica un
+             certificado; el de la persona va debajo solo cuando no coinciden
+             (curso compartido), porque si no se lee como un error. */
+          programName: courseRow?.campaignName ?? null,
+          personProgram: person?.campaignName ?? null,
+          missing,
+        };
+      })
+      .filter((r) => !q
+        || fold(r.personName).includes(q)
+        || fold(r.email ?? '').includes(q)
+        || fold(r.courseTitle).includes(q)
+        || fold(r.certId).includes(q));
+
+    const dir = certSort.dir === 'asc' ? 1 : -1;
+    const val = (r: typeof list[number]): string | number => {
+      switch (certSort.key) {
+        case 'person': return r.personName.toLowerCase();
+        case 'course': return r.courseTitle.toLowerCase();
+        case 'campaign': return (r.programName ?? '').toLowerCase();
+        case 'score': return r.score ?? -1;
+        case 'date':
+        default: return r.issuedAt;
+      }
+    };
+    return [...list].sort((a, b) => {
+      const va = val(a); const vb = val(b);
+      if (typeof va === 'string' && typeof vb === 'string') return va.localeCompare(vb) * dir;
+      return ((va as number) - (vb as number)) * dir;
+    });
+  }, [scopedCerts, rows, courses, modulesByCourse, doneModules, query, certSort]);
+
+  /** Certificados que ya no cubren el temario completo del curso. */
+  const outdatedCerts = useMemo(() => certRows.filter((r) => r.missing > 0).length, [certRows]);
+
   /* ── Pulso de actividad de los últimos 14 días ────────────────────────── */
 
   const pulse = useMemo(() => {
@@ -678,6 +751,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     mandatoryCol: t('admin.progress_overview.mandatory', 'Obligatorio'),
     modulesCol: t('admin.progress_overview.col_modules', 'Módulos'),
     overdue: t('admin.progress_overview.col_overdue', 'Vencidos'),
+    verifyUrl: t('admin.progress_overview.col_verify_url', 'Enlace de verificación'),
     yes: t('admin.progress_overview.yes', 'Sí'),
     no: t('admin.progress_overview.no', 'No'),
   };
@@ -757,25 +831,31 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     };
   };
 
-  const certificatesSheet = (): Sheet => {
-    const personById = new Map(people.map((p) => [p.id, p]));
-    const courseById = new Map(courses.map((c) => [c.id, c]));
-    return {
-      name: t('admin.progress_overview.sheet_certificates', 'Certificados'),
-      rows: scopedCerts
-        .slice()
-        .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
-        .map<SheetRow>((c) => ({
-          [L.person]: personById.get(c.userId)?.name ?? c.userId,
-          [L.email]: personById.get(c.userId)?.email ?? '',
-          [L.campaignCol]: personById.get(c.userId)?.campaignName ?? '',
-          [L.course]: courseById.get(c.courseId)?.title ?? c.courseId,
-          [L.score]: c.score,
-          [L.certId]: c.certId,
-          [L.date]: xlsDate(c.issuedAt, i18n.language),
-        })),
-    };
-  };
+  /**
+   * La hoja sale de `certRows`, o sea de lo que se está viendo en la pestaña
+   * Certificados: mismo orden, misma búsqueda y mismos filtros. Un Excel que no
+   * coincide con la pantalla que lo pidió es un Excel que hay que volver a
+   * explicar.
+   */
+  const certificatesSheet = (): Sheet => ({
+    name: t('admin.progress_overview.sheet_certificates', 'Certificados'),
+    rows: certRows.map<SheetRow>((r) => ({
+      [L.person]: r.personName,
+      [L.email]: r.email ?? '',
+      [L.jobCol]: r.jobTitle ?? '',
+      [L.countryCol]: countryLabel(r.country) ?? '',
+      [L.campaignCol]: r.programName ?? '',
+      [L.course]: r.courseTitle,
+      [L.score]: r.score,
+      [L.date]: xlsDate(new Date(r.issuedAt).toISOString(), i18n.language),
+      [L.certId]: r.certId,
+      // El verificador público: es lo que se pega en un correo o en LinkedIn.
+      [L.verifyUrl]: `${window.location.origin}/verify/${r.certId}`,
+      [L.state]: r.missing > 0
+        ? t('admin.progress_overview.cert_state_outdated', { count: r.missing, defaultValue: 'Faltan {{count}} módulos del temario actual' })
+        : t('admin.progress_overview.cert_state_ok', 'Al día'),
+    })),
+  });
 
   const deliveriesSheet = (): Sheet => ({
     name: t('admin.progress_overview.sheet_deliveries', 'Entregas'),
@@ -912,6 +992,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     { key: 'summary', label: t('admin.progress_overview.tab_summary', 'Resumen'), icon: <BarChart3 className="h-4 w-4" /> },
     { key: 'people', label: t('admin.progress_overview.tab_people', 'Personas'), icon: <Users className="h-4 w-4" />, count: rows.length },
     { key: 'courses', label: t('admin.progress_overview.tab_courses', 'Cursos'), icon: <Layers className="h-4 w-4" />, count: scopedCourses.length },
+    { key: 'certificates', label: t('admin.progress_overview.tab_certificates', 'Certificados'), icon: <Award className="h-4 w-4" />, count: certificatesKnown ? certRows.length : undefined },
     { key: 'exam', label: t('admin.progress_overview.tab_exam', 'Examen final'), icon: <GraduationCap className="h-4 w-4" /> },
     { key: 'survey', label: t('admin.progress_overview.tab_survey', 'Satisfacción'), icon: <HeartHandshake className="h-4 w-4" /> },
   ];
@@ -1231,8 +1312,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           value={loading ? null : kpi.certificates}
           accent={VIOLET}
           loading={loading}
-          active={focus === 'certified'}
-          onClick={() => toggleFocus('certified')}
+          active={tab === 'certificates'}
+          /* Antes filtraba a las personas con certificado; ahora abre la lista
+             de diplomas, que es lo que se busca al pulsar el número. */
+          onClick={() => setTab('certificates')}
           delta={trend ? { value: trend.certificates, label: trendLabel } : null}
           hint={certificatesKnown
             ? t('admin.progress_overview.kpi_certificates_hint', { count: kpi.certified, defaultValue: '{{count}} personas con al menos uno' })
@@ -1442,6 +1525,23 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             onExport={() => void runExport('matrix')}
           />
         </div>
+      )}
+
+      {tab === 'certificates' && (
+        <CertificatesTab
+          loading={loading}
+          known={certificatesKnown}
+          rows={certRows}
+          total={scopedCerts.length}
+          outdated={outdatedCerts}
+          query={query}
+          sort={certSort}
+          onSort={setCertSort}
+          onPerson={setDrawerPerson}
+          onExport={() => void runExport('certificates')}
+          exporting={exporting}
+          lang={i18n.language}
+        />
       )}
 
       {tab === 'exam' && (
@@ -2355,6 +2455,315 @@ function CoursesTab({
             </tbody>
           </table>
         </div>
+      )}
+    </SectionCard>
+  );
+}
+
+/* ══ Certificados ══════════════════════════════════════════════════════════
+   Quién se certificó, uno por fila. El KPI de arriba dice cuántos son; esta
+   pestaña es la lista que se pide fuera del equipo ("mándame quiénes se
+   certificaron en el programa X"), con el diploma a un clic, el enlace público
+   de verificación copiable y el aviso de los que se emitieron antes de que el
+   curso creciera. El programa y el curso se eligen en la barra de alcance de
+   arriba, la misma para todo el tablero: aquí no hay filtros propios que
+   puedan contradecirla. */
+
+export interface CertRowView {
+  key: string;
+  userId: string;
+  courseId: string;
+  certId: string;
+  score: number;
+  issuedAt: number;
+  person: ProgramPerson | undefined;
+  personName: string;
+  email: string | null;
+  avatarUrl: string | null;
+  jobTitle: string | null;
+  country: string | null;
+  courseTitle: string;
+  courseIcon: string | null;
+  programName: string | null;
+  personProgram: string | null;
+  missing: number;
+}
+
+function CertificatesTab({
+  loading, known, rows, total, outdated, query, sort, onSort, onPerson, onExport, exporting, lang,
+}: {
+  loading: boolean;
+  known: boolean;
+  rows: CertRowView[];
+  total: number;
+  outdated: number;
+  query: string;
+  sort: { key: CertSort; dir: 'asc' | 'desc' };
+  onSort: (s: { key: CertSort; dir: 'asc' | 'desc' }) => void;
+  onPerson: (p: ProgramPerson) => void;
+  onExport: () => void;
+  exporting: boolean;
+  lang: string;
+}) {
+  const { t } = useTranslation();
+  const [limit, setLimit] = useState(50);
+
+  // Al cambiar búsqueda u orden se vuelve a la primera tanda, en el propio
+  // render (mismo patrón que la tabla de personas): con 800 certificados, dejar
+  // el límite viejo hacía pintar una lista larga que ya no correspondía.
+  const listKey = `${query}|${sort.key}|${sort.dir}|${rows.length}`;
+  const [lastKey, setLastKey] = useState(listKey);
+  if (listKey !== lastKey) {
+    setLastKey(listKey);
+    setLimit(50);
+  }
+
+  const th = (key: CertSort, label: string, align: 'left' | 'right' = 'right', title?: string, className?: string) => (
+    <SortableTh
+      label={label}
+      align={align}
+      title={title}
+      className={className}
+      active={sort.key === key}
+      dir={sort.key === key ? sort.dir : 'desc'}
+      onClick={() => onSort({ key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' })}
+    />
+  );
+
+  const openCertificate = (r: CertRowView) => {
+    // En una pestaña nueva: el diploma es una vista del aprendiz y no debe
+    // sacar al capacitador del tablero que está mirando.
+    window.open(`/certificate/${r.courseId}/${r.userId}`, '_blank', 'noopener');
+  };
+
+  const copyVerify = async (r: CertRowView) => {
+    const url = `${window.location.origin}/verify/${r.certId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success(
+        t('admin.progress_overview.cert_copied', 'Enlace copiado'),
+        t('admin.progress_overview.cert_copied_desc', 'Cualquiera puede comprobar el certificado con ese enlace.'),
+      );
+    } catch {
+      toast.error(t('admin.progress_overview.cert_copy_err', 'No se pudo copiar el enlace'));
+    }
+  };
+
+  const fmtDate = (ms: number) =>
+    new Date(ms).toLocaleDateString(lang, { day: '2-digit', month: 'short', year: 'numeric' });
+
+  return (
+    <SectionCard
+      title={t('admin.progress_overview.certs_title', 'Certificados emitidos')}
+      subtitle={
+        known
+          ? t('admin.progress_overview.certs_sub', {
+              shown: Math.min(limit, rows.length),
+              count: rows.length,
+              total,
+              defaultValue: 'Mostrando {{shown}} de {{count}} (de {{total}} en el alcance). Clic en una fila para abrir el diploma.',
+            })
+          : t('admin.progress_overview.certs_unknown', 'No se pudieron leer los certificados con este permiso. La lista puede estar incompleta: no es que no haya ninguno.')
+      }
+      icon={<Award className="h-4 w-4" />}
+      accent={VIOLET}
+      action={rows.length > 0 && (
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={exporting}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[12px] font-semibold text-text-muted transition-colors hover:border-[rgb(var(--brand-green))]/40 hover:text-text disabled:opacity-50"
+        >
+          <FileSpreadsheet className={cn('h-3.5 w-3.5', exporting && 'animate-pulse')} />
+          {t('admin.progress_overview.certs_export', 'Excel de esta lista')}
+        </button>
+      )}
+    >
+      {loading ? (
+        <SkeletonRows rows={8} cols={6} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={<Award className="h-6 w-6" />}
+          title={t('admin.progress_overview.no_certs', 'Ningún certificado en este alcance')}
+          description={t('admin.progress_overview.no_certs_desc', 'Prueba con otro programa o curso, amplía el rango de fechas o limpia la búsqueda. Terminar el temario no emite el diploma: la persona tiene que pasar por la pantalla de certificación del curso.')}
+        />
+      ) : (
+        <>
+          {/* Los desactualizados se avisan ARRIBA, no solo con un chip por fila:
+              con 800 certificados nadie los va a descubrir bajando. */}
+          {outdated > 0 && (
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] px-3.5 py-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="text-[12px] leading-relaxed text-text-muted">
+                <span className="font-semibold text-text">
+                  {t('admin.progress_overview.certs_outdated_count', { count: outdated, defaultValue: '{{count}} certificados ya no cubren todo el temario' })}
+                </span>{' '}
+                {t('admin.progress_overview.certs_outdated_hint', 'Se emitieron cuando el curso tenía menos módulos. Siguen siendo válidos; para ponerlos al día, pide la recertificación en Contenido → Cursos → pestaña Certificación.')}
+              </p>
+            </div>
+          )}
+
+          <div className="-mx-2 overflow-x-auto px-2">
+            <table className="w-full min-w-[980px] table-fixed border-separate border-spacing-0 text-[12.5px]">
+              <thead>
+                <tr>
+                  {th('person', t('admin.progress_overview.col_person', 'Persona'), 'left', undefined, 'w-[230px]')}
+                  {th('course', t('admin.progress_overview.col_course', 'Curso'), 'left', t('admin.progress_overview.help_cert_course', 'El curso que acredita el diploma.'), 'w-[230px]')}
+                  {th('campaign', t('admin.progress_overview.col_program_owner', 'Programa'), 'left', t('admin.progress_overview.help_cert_program', 'El programa dueño del curso. Si la persona viene de otro, aparece debajo de su nombre.'), 'w-[160px]')}
+                  {th('score', t('admin.progress_overview.col_score_short', 'Nota'), 'right', t('admin.progress_overview.help_cert_score', 'Con la que se emitió el certificado.'), 'w-[70px]')}
+                  {th('date', t('admin.progress_overview.col_issued', 'Emitido'), 'right', t('admin.progress_overview.help_cert_issued', 'Fecha de emisión del diploma.'), 'w-[120px]')}
+                  {/* No se ordena por código: es un identificador, no un dato
+                      que alguien quiera clasificar. */}
+                  <th
+                    scope="col"
+                    className="sticky top-0 z-10 w-[170px] whitespace-nowrap border-b border-line bg-surface/95 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-text-muted backdrop-blur"
+                  >
+                    <Tooltip anchor="element" delay={120} maxWidth={260} label={t('admin.progress_overview.help_cert_code', 'Código público de verificación. El botón copia el enlace para comprobarlo desde fuera.')}>
+                      <span>{t('admin.progress_overview.col_cert_code', 'Código')}</span>
+                    </Tooltip>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, limit).map((r) => (
+                  <tr
+                    key={r.key}
+                    onClick={() => openCertificate(r)}
+                    className="cursor-pointer transition-colors hover:bg-subtle/60"
+                  >
+                    <td className="border-b border-line/60 px-2.5 py-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <PersonAvatar name={r.personName} url={r.avatarUrl} size={30} />
+                        <Tooltip
+                          anchor="element"
+                          maxWidth={320}
+                          delay={120}
+                          className="min-w-0 flex-1"
+                          label={
+                            <span className="block">
+                              {r.personName}
+                              {r.email ? <span className="block opacity-80">{r.email}</span> : null}
+                              <span className="block opacity-80">
+                                {t('admin.progress_overview.cert_person_hint', 'Clic aquí para su ficha; clic en la fila para el diploma.')}
+                              </span>
+                            </span>
+                          }
+                        >
+                          <span
+                            className="block min-w-0"
+                            onClick={(e) => {
+                              // La ficha de la persona y el diploma son dos
+                              // destinos distintos: el nombre lleva a la ficha.
+                              if (!r.person) return;
+                              e.stopPropagation();
+                              onPerson(r.person);
+                            }}
+                          >
+                            <span className="block truncate font-medium text-text hover:underline">
+                              <Highlight text={r.personName} term={query} />
+                            </span>
+                            {r.email && (
+                              <span className="block truncate text-[11px] text-text-subtle">
+                                <Highlight text={r.email} term={query} />
+                              </span>
+                            )}
+                          </span>
+                        </Tooltip>
+                      </div>
+                    </td>
+
+                    <td className="border-b border-line/60 px-2.5 py-2.5">
+                      <Tooltip anchor="element" maxWidth={320} delay={120} className="min-w-0 w-full" label={r.courseTitle}>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          {r.courseIcon && <span className="shrink-0">{r.courseIcon}</span>}
+                          <span className="block min-w-0 truncate text-text">
+                            <Highlight text={r.courseTitle} term={query} />
+                          </span>
+                        </span>
+                      </Tooltip>
+                      {r.missing > 0 && (
+                        <Tooltip
+                          maxWidth={300}
+                          label={t('admin.users.cert_outdated_hint', 'El certificado se emitió cuando el curso tenía menos módulos. Sigue siendo válido, pero ya no cubre el temario completo.')}
+                        >
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-600 dark:text-amber-400">
+                            <AlertTriangle className="h-3 w-3" />
+                            {t('admin.users.cert_outdated', { count: r.missing, defaultValue: 'Faltan {{count}} módulos' })}
+                          </span>
+                        </Tooltip>
+                      )}
+                    </td>
+
+                    <td className="border-b border-line/60 px-2.5 py-2.5 text-text-muted">
+                      <span className="block min-w-0">
+                        <span className="block truncate">{r.programName ?? '—'}</span>
+                        {/* Solo cuando la persona NO es del programa dueño: es un
+                            curso compartido, y esa diferencia explica por qué el
+                            certificado no aparece en los conteos de su campaña. */}
+                        {r.personProgram && r.personProgram !== r.programName && (
+                          <Tooltip
+                            maxWidth={280}
+                            label={t('admin.progress_overview.cert_guest_hint', 'La persona pertenece a otro programa: hizo un curso compartido.')}
+                          >
+                            <span className="block truncate text-[11px] text-text-subtle">
+                              {r.personProgram}
+                            </span>
+                          </Tooltip>
+                        )}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-line/60 px-2.5 py-2.5 text-right">
+                      <ScoreCell score={r.score ?? null} />
+                    </td>
+
+                    <td className="whitespace-nowrap border-b border-line/60 px-2.5 py-2.5 text-right tabular-nums text-text-muted">
+                      {fmtDate(r.issuedAt)}
+                    </td>
+
+                    <td className="border-b border-line/60 px-2.5 py-2.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-subtle">
+                          <Highlight text={r.certId} term={query} />
+                        </span>
+                        <Tooltip label={t('admin.progress_overview.cert_copy', 'Copiar enlace de verificación')}>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void copyVerify(r); }}
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-subtle hover:text-text"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={t('admin.progress_overview.cert_open', 'Abrir el diploma')}>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openCertificate(r); }}
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-subtle hover:text-text"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {rows.length > limit && (
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setLimit((l) => l + 100)}
+                className="rounded-xl border border-line px-4 py-2 text-[12.5px] font-semibold text-text-muted transition-colors hover:border-[rgb(var(--brand-green))]/40 hover:text-text"
+              >
+                {t('admin.progress_overview.load_more', { count: rows.length - limit, defaultValue: 'Ver {{count}} más' })}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </SectionCard>
   );
