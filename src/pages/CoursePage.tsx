@@ -9,6 +9,8 @@ import { supabase } from '@/lib/supabase';
 import type { CourseScenario } from '@/services/scenarios.service';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/stores/authStore';
+import { IS_LEARNER_PREVIEW } from '@/lib/previewMode';
 import {
   useProgressStore,
   useModuleDone,
@@ -128,6 +130,14 @@ export default function CoursePage() {
   const language = useUserStore((s) => s.language);
   // El mundo es solo para staff (preview del CMS); el aprendiz ya no lo ve.
   const { isAdminOrCapacitador, user } = useAuth();
+  // Rol REAL: dentro de la vista previa `useAuth` reporta 'learner' a propósito.
+  // Sin esto, el staff que revisa el curso en la vista previa no está asignado
+  // NI cuenta como staff, así que el mundo (y todo lo que cuelga de "es mi
+  // curso") desaparecía aunque estuviera publicado. Mismo guarda que
+  // `useLearnerCourses`.
+  const realRole = useAuthStore((s) => s.profile?.role ?? null);
+  const previewStaff =
+    IS_LEARNER_PREVIEW && (realRole === 'superadmin' || realRole === 'capacitador');
   const isModuleDone = useModuleDone();
   const reduce = useReducedMotion();
 
@@ -231,21 +241,39 @@ export default function CoursePage() {
   // mundo" y para el paso "Mundo" del recorrido. Además de saber que EXISTE hay
   // que saber si ya se terminó: sin eso el porcentaje del curso no puede
   // contarlo y el aprendiz vería 100% con el mundo sin tocar.
-  const [worldId, setWorldId] = useState<string | null>(null);
+  const [world, setWorld] = useState<{
+    id: string;
+    name: string;
+    name_en: string | null;
+    name_pt: string | null;
+    icon: string;
+  } | null>(null);
+  const worldId = world?.id ?? null;
   const [worldLevels, setWorldLevels] = useState(0);
   const [worldLevelsDone, setWorldLevelsDone] = useState(0);
   useEffect(() => {
-    if (!course?.id) { setWorldId(null); setWorldLevels(0); setWorldLevelsDone(0); return; }
+    if (!course?.id) { setWorld(null); setWorldLevels(0); setWorldLevelsDone(0); return; }
     let active = true;
     (async () => {
       const { data } = await supabase
         .from('worlds')
-        .select('id, status, campaign_id')
+        .select('id, status, campaign_id, name, name_en, name_pt, icon')
         .eq('course_id', course.id)
         .maybeSingle();
-      const id = data?.status === 'published' ? (data.id as string) : null;
+      const row = data?.status === 'published' ? data : null;
       if (!active) return;
-      setWorldId(id);
+      setWorld(
+        row
+          ? {
+              id: row.id as string,
+              name: (row.name as string) ?? '',
+              name_en: (row.name_en as string | null) ?? null,
+              name_pt: (row.name_pt as string | null) ?? null,
+              icon: (row.icon as string) || '🗺️',
+            }
+          : null,
+      );
+      const id = row?.id as string | undefined;
       if (!id) { setWorldLevels(0); setWorldLevelsDone(0); return; }
       // Niveles del mundo y cuáles ya completó ESTA persona. Un fallo de lectura
       // deja el mundo en 0 niveles, y entonces no aporta pasos: preferimos no
@@ -605,6 +633,12 @@ export default function CoursePage() {
       setPickerOpen(true);
     }
   };
+  /* "Este curso es mío": asignado de verdad, o la vista previa del staff, que
+     existe justo para revisar el curso tal como lo verá el aprendiz. Sin lo
+     segundo, la vista previa escondía el mundo (nadie asignado, y `useAuth`
+     reporta 'learner' a propósito). */
+  const asLearnerOfCourse = course.isAssigned || previewStaff;
+
   // Desbloqueo del mundo (juego), mismo esquema configurable que el simulador.
   const worldRule = course.world_unlock_rule ?? 'after_modules';
   const worldUnlockModule = course.world_unlock_module_id
@@ -663,7 +697,7 @@ export default function CoursePage() {
      veinte niveles se comería el porcentaje del curso entero. Solo lo aporta si
      el aprendiz lo tiene (el staff lo ve en modo vista previa, y esa preview no
      es parte de su recorrido). */
-  const worldInJourney = !!worldId && course.isAssigned && worldLevels > 0;
+  const worldInJourney = !!worldId && asLearnerOfCourse && worldLevels > 0;
   const worldDone = worldInJourney && worldLevelsDone >= worldLevels;
   const journey = buildCourseJourney({
     modules: { total, done },
@@ -1010,8 +1044,8 @@ export default function CoursePage() {
           {/* El mundo se desbloquea segun la regla configurada por el capacitador
               (desde el inicio / tras los modulos / tras un modulo). El staff
               (superadmin/capacitador) siempre puede entrar (preview). */}
-          {worldId && (isAdminOrCapacitador || course.isAssigned) && (
-            isAdminOrCapacitador || worldUnlocked ? (
+          {worldId && (isAdminOrCapacitador || asLearnerOfCourse) && (
+            isAdminOrCapacitador || previewStaff || worldUnlocked ? (
               <Link
                 to="/world"
                 state={{ worldId, from: 'course' }}
@@ -1349,6 +1383,86 @@ export default function CoursePage() {
                     </span>
                   </button>
                 ))}
+              </div>
+            )}
+          </FadeIn>
+        );
+      })()}
+
+      {/* ── El mundo del curso (juego) ──────────────────────────────────────
+           Antes el mundo solo existía como un botón más en la fila de acciones
+           de la cabecera: el aprendiz podía terminar el curso sin enterarse de
+           que había un mundo, aunque cuenta como un paso del recorrido. Ahora
+           tiene su parada propia, con el mismo lenguaje que el examen final. */}
+      {worldId && (isAdminOrCapacitador || asLearnerOfCourse) && worldLevels > 0 && (() => {
+        const openable = isAdminOrCapacitador || previewStaff || worldUnlocked;
+        const done = worldLevelsDone >= worldLevels;
+        const card = (
+          <>
+            <div
+              className={cn(
+                'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
+                openable ? 'bg-primary/10 text-primary' : 'bg-subtle text-text-subtle',
+              )}
+            >
+              {done ? <Award className="h-5 w-5" /> : openable ? <Map className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-subtle">
+                {done
+                  ? t('courses.world_section_done', 'Completado')
+                  : openable
+                    ? t('courses.world_section_ready', 'Disponible')
+                    : t('courses.world_section_locked', 'Bloqueado')}
+              </p>
+              <div className="mt-0.5 truncate text-[16px] font-medium tracking-tight text-text">
+                <span className="mr-1.5">{world?.icon}</span>
+                {pickText(world?.name ?? '', world?.name_en ?? null, world?.name_pt ?? null, language)}
+              </div>
+              <p className="mt-0.5 text-[12.5px] text-text-muted">
+                {openable
+                  ? t('courses.world_section_meta', {
+                      done: worldLevelsDone,
+                      total: worldLevels,
+                      defaultValue: '{{done}} de {{total}} niveles superados',
+                    })
+                  : worldLockedReason}
+              </p>
+            </div>
+
+            <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-text-muted">
+              {t('courses.play_world')}
+              <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">&rarr;</span>
+            </span>
+          </>
+        );
+        return (
+          <FadeIn className="mt-14">
+            <SectionHead
+              id="world-section"
+              title={t('courses.world_section_title', 'Mundo del curso')}
+              subtitle={t(
+                'courses.world_section_subtitle',
+                'El juego del curso: niveles con retos hechos con el contenido de sus modulos.',
+              )}
+              aside={
+                <span className="shrink-0 text-[12.5px] tabular-nums text-text-muted">
+                  {worldLevelsDone}/{worldLevels}
+                </span>
+              }
+            />
+            {openable ? (
+              <Link
+                to="/world"
+                state={{ worldId, from: 'course' }}
+                className="group flex items-center gap-4 rounded-2xl border border-line p-5 transition-all duration-500 ease-apple hover:-translate-y-1 hover:shadow-card-hover"
+              >
+                {card}
+              </Link>
+            ) : (
+              <div className="flex cursor-not-allowed items-center gap-4 rounded-2xl border border-line p-5 opacity-70">
+                {card}
               </div>
             )}
           </FadeIn>

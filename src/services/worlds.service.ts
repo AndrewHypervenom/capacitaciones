@@ -164,6 +164,13 @@ export interface WorldGenOptions {
   minScorePct?: number
   /** Preguntas por sección (parada del mapa) que se guarda en cada quiz. Default 3. */
   sectionSize?: number
+  /**
+   * Indicaciones libres del capacitador para esta generación ("céntrate en el
+   * procedimiento de escalamiento", "nada de fechas", "tono formal"…). Van tal
+   * cual al prompt, tanto al esqueleto de niveles como a cada quiz. No relajan la
+   * regla de no inventar: siguen mandando el contenido del módulo.
+   */
+  instructions?: string
 }
 
 /** Mínimo de caracteres de contenido para generar sin que la IA invente. */
@@ -207,6 +214,9 @@ export async function generateRegionLevelsFlexible(
   // Preguntas por sección (parada del mapa). Se guarda en el quiz para que el
   // ArenaPlayer agrupe igual que lo pedido. Default 3.
   const sectionSize = clampInt(opts.sectionSize, 1, 10, 3)
+  // Indicaciones del capacitador (opcionales). Se recortan para no inflar el
+  // prompt con un documento pegado por error.
+  const instructions = (opts.instructions ?? '').trim().slice(0, 1500)
 
   // 1. Esqueleto de niveles (barato, una sola llamada).
   throwIfAborted(signal)
@@ -216,6 +226,7 @@ export async function generateRegionLevelsFlexible(
     moduleSubtitle: source.subtitle ?? '',
     moduleText: source.moduleText,
     levelCount,
+    instructions,
   }, signal)) as { levels?: GeneratedLevelOutline[] }
 
   const skeletons = (outline.levels ?? []).slice(0, levelCount)
@@ -227,6 +238,11 @@ export async function generateRegionLevelsFlexible(
     .eq('id', regionId)
     .single()
   const base = ((regionRow as { order_index?: number } | null)?.order_index ?? 0) * 100
+
+  /* Enunciados ya generados en esta región: van al prompt del siguiente nivel
+     como lista de "esto ya está preguntado". Sin esto, cada quiz se generaba sin
+     saber de los anteriores y el mismo dato terminaba preguntado en dos niveles. */
+  const askedSoFar: string[] = []
 
   for (let i = 0; i < skeletons.length; i++) {
     throwIfAborted(signal)
@@ -241,8 +257,14 @@ export async function generateRegionLevelsFlexible(
         moduleText: source.moduleText,
         focus: lv.focus ?? lv.description ?? '',
         questionCount: questionsPerLevel,
+        instructions,
+        avoidQuestions: askedSoFar.slice(-40),
       }, signal)) as GeneratedQuiz
       if ((quiz.steps?.length ?? 0) > 0) quizId = await insertArenaQuiz(world, quiz, minScorePct, sectionSize)
+      for (const step of quiz.steps ?? []) {
+        const q = (step as { question?: string }).question
+        if (q) askedSoFar.push(q)
+      }
     } catch (e) {
       console.error('Fallo generando el quiz de un nivel; queda sin quiz:', e)
     }
@@ -357,12 +379,14 @@ export function generateLevelsForRegion(opts: {
   questionsPerLevel?: number
   minScorePct?: number
   sectionSize?: number
+  /** Indicaciones libres para la IA (opcional). */
+  instructions?: string
 }): void {
   const { id: taskId, signal } = bgTask.startCancelable(
     i18n.t('worldgen.world_title', { name: opts.regionName }),
     i18n.t('worldgen.outline'),
   )
-  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel, minScorePct: opts.minScorePct, sectionSize: opts.sectionSize }
+  const genOpts: WorldGenOptions = { levelCount: opts.levelCount, questionsPerLevel: opts.questionsPerLevel, minScorePct: opts.minScorePct, sectionSize: opts.sectionSize, instructions: opts.instructions }
 
   void (async () => {
     const { data: w } = await supabase.from('worlds').select('*').eq('id', opts.worldId).single()

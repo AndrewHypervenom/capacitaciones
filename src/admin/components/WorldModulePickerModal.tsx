@@ -88,6 +88,8 @@ export function WorldModulePickerModal({
   const [sections, setSections] = useState<number | ''>(2)
   const [perSection, setPerSection] = useState<number | ''>(DEFAULT_PER_SECTION)
   const [minScore, setMinScore] = useState<number | ''>(80)
+  // Indicaciones libres para la IA (mismo campo que al generar un módulo).
+  const [prompt, setPrompt] = useState('')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -215,6 +217,7 @@ export function WorldModulePickerModal({
         questionsPerLevel: (sections === '' ? 2 : Number(sections)) * per,
         sectionSize: per,
         minScorePct: minScore === '' ? 80 : Number(minScore),
+        instructions: prompt.trim(),
       },
     )
   }
@@ -287,7 +290,7 @@ export function WorldModulePickerModal({
                   <p className="text-[13px] text-text-muted">
                     {search.trim()
                       ? i18n.t('admin.worlds.picker_empty_search', { defaultValue: 'Ningún módulo coincide con la búsqueda.' })
-                      : i18n.t('admin.worlds.picker_empty', { defaultValue: 'No hay módulos disponibles en tus campañas.' })}
+                      : i18n.t('admin.worlds.picker_empty', { defaultValue: 'No hay módulos disponibles en tus programas.' })}
                   </p>
                 </div>
               ) : (
@@ -456,6 +459,21 @@ export function WorldModulePickerModal({
                   total: (sections === '' ? 2 : Number(sections)) * (perSection === '' ? DEFAULT_PER_SECTION : Number(perSection)),
                 })}
               </p>
+              <div className="mt-4">
+                <label className="mb-1.5 block text-[12px] font-medium text-text-muted">
+                  {i18n.t('admin.worlds.gen_prompt_label')}{' '}
+                  <span className="font-normal text-text-subtle">{i18n.t('admin.worlds.gen_prompt_optional')}</span>
+                </label>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  rows={3}
+                  maxLength={1500}
+                  placeholder={i18n.t('admin.worlds.gen_prompt_ph')}
+                  className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2.5 text-[13px] text-text placeholder:text-text-subtle focus:border-[#8B5CF6]/50 focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-text-muted">{i18n.t('admin.worlds.gen_prompt_hint')}</p>
+              </div>
             </div>
 
             {/* ── Footer ── */}

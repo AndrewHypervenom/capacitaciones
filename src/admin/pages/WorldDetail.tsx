@@ -167,6 +167,9 @@ export default function WorldDetail() {
   const [aiSections, setAiSections] = useState<number | ''>(2)
   const [aiPerSection, setAiPerSection] = useState<number | ''>(DEFAULT_QUESTIONS_PER_SECTION)
   const [aiMinScore, setAiMinScore] = useState<number | ''>(80)
+  // Indicaciones libres para la IA, como en la generación de módulos. Sirven
+  // para acotar el enfoque cuando la IA se repite entre niveles.
+  const [aiPrompt, setAiPrompt] = useState('')
 
   // Previsualizar la transición de nivel elegida, sin tener que jugar un nivel.
   const [previewTrans, setPreviewTrans] = useState(false)
@@ -185,6 +188,7 @@ export default function WorldDetail() {
   const [bulkLevels, setBulkLevels] = useState<number | ''>(3)
   const [bulkSections, setBulkSections] = useState<number | ''>(2)
   const [bulkPerSection, setBulkPerSection] = useState<number | ''>(DEFAULT_QUESTIONS_PER_SECTION)
+  const [bulkPrompt, setBulkPrompt] = useState('')
 
   // Reset progress
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -615,6 +619,7 @@ export default function WorldDetail() {
     setAiSections(2)
     setAiPerSection(DEFAULT_QUESTIONS_PER_SECTION)
     setAiMinScore(80)
+    setAiPrompt('')
   }
   // Dispara la generación EN SEGUNDO PLANO (cancelable) y cierra el modal: el
   // avance vive en el indicador global. Al terminar, WORLD_LEVELS_EVENT refresca.
@@ -648,6 +653,7 @@ export default function WorldDetail() {
       questionsPerLevel: (aiSections === '' ? 2 : Number(aiSections)) * perSection,
       sectionSize: perSection,
       minScorePct: aiMinScore === '' ? 80 : Number(aiMinScore),
+      instructions: aiPrompt.trim(),
     })
     setExpanded(prev => ({ ...prev, [region.id]: true }))
     toast.success(i18n.t('admin.worlds.ai_gen_started'))
@@ -672,7 +678,7 @@ export default function WorldDetail() {
       world as unknown as WorldRow,
       modulesWithoutRegion.map(m => ({ id: m.id, title_es: m.title_es, icon: m.icon })),
       regions.length,
-      { levelCount: lvl, questionsPerLevel: qpl, sectionSize: perSection },
+      { levelCount: lvl, questionsPerLevel: qpl, sectionSize: perSection, instructions: bulkPrompt.trim() },
     )
     toast.success(i18n.t('admin.worlds.ai_gen_started'))
     setBulkOpen(false)
@@ -1356,6 +1362,23 @@ export default function WorldDetail() {
                 </div>
                 <p className="text-[11px] text-text-muted mt-1">{i18n.t('admin.worlds.gen_min_score_hint')}</p>
               </div>
+              {/* Indicaciones libres, como al generar un módulo: es lo que evita
+                  que la IA vuelva a preguntar lo mismo en cada nivel. */}
+              <div>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">
+                  {i18n.t('admin.worlds.gen_prompt_label')}{' '}
+                  <span className="font-normal text-text-subtle">{i18n.t('admin.worlds.gen_prompt_optional')}</span>
+                </label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={e => setAiPrompt(e.target.value)}
+                  rows={3}
+                  maxLength={1500}
+                  placeholder={i18n.t('admin.worlds.gen_prompt_ph')}
+                  className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text resize-none focus:outline-none placeholder:text-text-subtle"
+                />
+                <p className="text-[11px] text-text-muted mt-1">{i18n.t('admin.worlds.gen_prompt_hint')}</p>
+              </div>
               <AiReviewNotice />
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
@@ -1438,6 +1461,21 @@ export default function WorldDetail() {
                 </div>
               </div>
               <p className="text-[11px] text-text-muted opacity-70">{i18n.t('admin.worlds.gen_sections_hint', { total: (bulkSections === '' ? 2 : Number(bulkSections)) * (bulkPerSection === '' ? DEFAULT_QUESTIONS_PER_SECTION : Number(bulkPerSection)) })}</p>
+              <div>
+                <label className="block text-[12px] font-medium text-text-muted mb-1.5">
+                  {i18n.t('admin.worlds.gen_prompt_label')}{' '}
+                  <span className="font-normal text-text-subtle">{i18n.t('admin.worlds.gen_prompt_optional')}</span>
+                </label>
+                <textarea
+                  value={bulkPrompt}
+                  onChange={e => setBulkPrompt(e.target.value)}
+                  rows={3}
+                  maxLength={1500}
+                  placeholder={i18n.t('admin.worlds.gen_prompt_ph')}
+                  className="w-full px-3 py-2.5 rounded-xl text-[13px] bg-bg border border-line text-text resize-none focus:outline-none placeholder:text-text-subtle"
+                />
+                <p className="text-[11px] text-text-muted mt-1">{i18n.t('admin.worlds.gen_prompt_hint')}</p>
+              </div>
               <AiReviewNotice />
             </div>
             <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
