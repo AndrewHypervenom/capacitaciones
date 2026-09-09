@@ -18,7 +18,7 @@ const SIM_ACCENT = 'rgb(var(--brand-cyan, 6 182 212))'
 
 // ── Tipos de datos ───────────────────────────────────────────
 interface Campaign { id: string; name: string }
-interface Profile { id: string; display_name: string | null; campaign_id: string | null; is_active?: boolean | null }
+interface Profile { id: string; display_name: string | null; campaign_id: string | null; is_active?: boolean | null; role?: string | null }
 
 interface AiFeedback { summary?: string; strengths?: string[]; improvements?: string[] }
 
@@ -60,6 +60,19 @@ interface LearnerBase {
   displayName: string
   campaignId: string | null
   campaignName: string
+  /**
+   * Practicó contenido de este alcance pero NO está en la lista de gente del
+   * capacitador (otra audiencia, cuenta dada de baja, o un perfil que la RLS no
+   * deja leer). Se muestra igual: descartarlo era lo que hacía decir "todavía
+   * no hay simulaciones registradas" con los intentos delante.
+   */
+  outsider?: boolean
+  /**
+   * El que practicó es staff (capacitador/superadmin/RH), no un aprendiz. Pasa
+   * a menudo —el capacitador prueba su propio simulador— y hay que distinguirlo
+   * a la vista: su intento no es participación de la gente formada.
+   */
+  staff?: boolean
 }
 
 interface LearnerRow extends LearnerBase {
@@ -237,17 +250,56 @@ export default function SimulationFeedbackPanel() {
         }
       }
 
+      /* ── Quien practicó pero no está en la lista de gente ─────────────
+         `profiles` se pide acotado a "mi gente" (get_my_people_ids) y a rol
+         learner. Un intento cuyo autor no salga de ahí —otra audiencia, cuenta
+         dada de baja, rol distinto, o un perfil que la RLS no deja leer— se
+         perdía ENTERO: no había fila que lo sostuviera, y el panel acababa
+         diciendo "todavía no hay simulaciones registradas" mientras el filtro
+         de curso se construía con esos mismos intentos. Se rescatan aquí: se
+         piden sus perfiles por id y, si tampoco llegan, la fila se crea igual
+         con lo que el intento ya sabe. Un intento guardado nunca desaparece de
+         la vista sin decirlo. */
+      const known = new Set(profiles.map((p) => p.id))
+      const missingIds = [...new Set(attempts.map((a) => a.user_id))].filter((id) => !known.has(id))
+      const rescued: Profile[] = []
+      if (missingIds.length > 0) {
+        const { data: extra } = await supabase
+          .from('profiles')
+          .select('id,display_name,campaign_id,is_active,role')
+          .in('id', missingIds)
+        rescued.push(...((extra ?? []) as Profile[]))
+      }
+      const rescuedById = new Map(rescued.map((p) => [p.id, p]))
+
       if (cancelled) return
       setCourseTitles(courseMap)
       const campMap = new Map(camps.map((c) => [c.id, c.name]))
       setScenarioTitles(titles)
       setCampaigns(camps)
-      setLearners(profiles.map((p) => ({
-        userId: p.id,
-        displayName: p.display_name ?? t('admin.sim_panel.no_name', 'Sin nombre'),
-        campaignId: p.campaign_id,
-        campaignName: p.campaign_id ? (campMap.get(p.campaign_id) ?? '—') : '—',
-      })))
+      const nameOf = (p: Profile) => p.display_name ?? t('admin.sim_panel.no_name', 'Sin nombre')
+      const campaignNameOf = (id: string | null) => (id ? (campMap.get(id) ?? '—') : '—')
+      setLearners([
+        ...profiles.map((p) => ({
+          userId: p.id,
+          displayName: nameOf(p),
+          campaignId: p.campaign_id,
+          campaignName: campaignNameOf(p.campaign_id),
+        })),
+        ...missingIds.map((id) => {
+          const p = rescuedById.get(id)
+          return {
+            userId: id,
+            displayName: p
+              ? nameOf(p)
+              : t('admin.sim_panel.outsider_name', 'Aprendiz de otro programa'),
+            campaignId: p?.campaign_id ?? null,
+            campaignName: campaignNameOf(p?.campaign_id ?? null),
+            outsider: true,
+            staff: !!p?.role && p.role !== 'learner',
+          }
+        }),
+      ])
       setAllAttempts(attempts)
       } catch (e) {
         if (!cancelled) console.error('SimulationFeedbackPanel load error:', e)
@@ -360,6 +412,9 @@ export default function SimulationFeedbackPanel() {
     const practiced = new Set(scopedAttempts.map((a) => a.user_id))
     return rows.filter((r) => {
       if (practiced.has(r.userId)) return true
+      // El rescatado solo existe por sus intentos: fuera de ellos no es "gente
+      // pendiente de practicar" y no debe engordar el total ni la participación.
+      if (r.outsider) return false
       return filterCampaign === 'all' || r.campaignId === filterCampaign
     })
   }, [rows, scopedAttempts, filterCampaign])
@@ -526,10 +581,36 @@ export default function SimulationFeedbackPanel() {
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
       ) : scoped.length === 0 ? (
+        /* Estado vacío honesto. "Todavía no hay simulaciones registradas" es
+           verdad solo cuando NO hay un intento en toda la vista; con un filtro
+           puesto, lo que pasa es que ese filtro no deja nada, y decir lo primero
+           mandaba a buscar un fallo de guardado que no existe. */
         <div className="rounded-2xl border border-dashed border-line p-6 sm:p-12 text-center">
           <div className="text-[2rem] mb-3">🎧</div>
-          <div className="text-[15px] font-medium text-text mb-2">{t('admin.sim_panel.no_data', 'Todavía no hay simulaciones registradas')}</div>
-          <div className="text-[13px] text-text-muted">{t('admin.sim_panel.no_data_desc', 'Cuando tus aprendices practiquen en los simuladores, sus resultados aparecerán aquí.')}</div>
+          {allAttempts.length === 0 ? (
+            <>
+              <div className="text-[15px] font-medium text-text mb-2">{t('admin.sim_panel.no_data', 'Todavía no hay simulaciones registradas')}</div>
+              <div className="text-[13px] text-text-muted">{t('admin.sim_panel.no_data_desc', 'Cuando tus aprendices practiquen en los simuladores, sus resultados aparecerán aquí.')}</div>
+            </>
+          ) : (
+            <>
+              <div className="text-[15px] font-medium text-text mb-2">
+                {t('admin.sim_panel.filtered_out', 'Ningún aprendiz con estos filtros')}
+              </div>
+              <div className="text-[13px] text-text-muted">
+                {t('admin.sim_panel.filtered_out_desc', { count: allAttempts.length, defaultValue: 'Hay {{count}} intentos registrados fuera de este alcance. Prueba con otro programa o curso, o quita los filtros.' })}
+              </div>
+              {(filterCampaign !== 'all' || activeCourse !== 'all' || filterScenario !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => { setFilterCampaign('all'); setFilterCourse('all'); setFilterScenario('all') }}
+                  className="mt-4 inline-flex items-center justify-center rounded-xl border border-line px-4 py-2 text-[12.5px] font-semibold text-text-muted transition-colors hover:text-text"
+                >
+                  {t('admin.sim_panel.clear_filters', 'Quitar los filtros')}
+                </button>
+              )}
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -702,7 +783,18 @@ export default function SimulationFeedbackPanel() {
                                 <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-subtle text-[13px] font-medium text-text">
                                   {row.displayName.charAt(0).toUpperCase()}
                                 </div>
-                                <div className="text-[13px] text-text truncate">{row.displayName}</div>
+                                <div className="min-w-0">
+                                  <div className="text-[13px] text-text truncate">{row.displayName}</div>
+                                  {/* Practicó tu contenido pero no está en tu lista de
+                                      gente: se dice, en vez de esconderlo. */}
+                                  {row.outsider && (
+                                    <div className="text-[11px] text-text-subtle truncate">
+                                      {row.staff
+                                        ? t('admin.sim_panel.staff_hint', 'Del equipo, no es un aprendiz')
+                                        : t('admin.sim_panel.outsider_hint', 'Practicó tu contenido desde otro programa')}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                               {multiCampaign && <div className="text-[12px] text-text-muted truncate">{row.campaignName}</div>}
                               <StatusBadge status={row.status} label={statusLabel(row.status)} />
@@ -738,6 +830,13 @@ export default function SimulationFeedbackPanel() {
                             <div className="min-w-0">
                               <div className="text-[14px] font-medium text-text truncate">{row.displayName}</div>
                               {multiCampaign && <div className="text-[11px] text-text-muted truncate">{row.campaignName}</div>}
+                              {row.outsider && (
+                                <div className="text-[11px] text-text-subtle truncate">
+                                  {row.staff
+                                    ? t('admin.sim_panel.staff_hint', 'Del equipo, no es un aprendiz')
+                                    : t('admin.sim_panel.outsider_hint', 'Practicó tu contenido desde otro programa')}
+                                </div>
+                              )}
                             </div>
                           </div>
                           {isOpen ? <ChevronDown className="h-4 w-4 text-text-muted shrink-0" /> : <ChevronRight className="h-4 w-4 text-text-muted shrink-0" />}
