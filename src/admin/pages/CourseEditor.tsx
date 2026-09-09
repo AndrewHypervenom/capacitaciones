@@ -132,6 +132,7 @@ import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseR
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover'
+import { LegacyCourseNoticeModal } from '@/components/course/LegacyCourseNotice'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Select } from '@/components/ui/Select'
@@ -497,6 +498,8 @@ export default function CourseEditor() {
 
   // ── Evaluación (condiciones del certificado + simulador + resultados) ──
   const [cond, setCond] = useState<CertConditions>(DEFAULT_CERT_CONDITIONS)
+  /** Vista previa del aviso de curso migrado, tal cual lo verá el aprendiz. */
+  const [legacyPreview, setLegacyPreview] = useState(false)
   // Pestaña del examen: publica su estado sucio y su guardado en la barra única.
   const [examDirty, setExamDirty] = useState(false)
   const examSaveRef = useRef<(() => Promise<boolean>) | null>(null)
@@ -3669,6 +3672,16 @@ export default function CourseEditor() {
         />
       )}
 
+      {/* Vista previa del aviso de curso migrado: el modal real del aprendiz,
+          con el correo que hay escrito AHORA en el editor (todavía sin guardar,
+          que es justo cuando uno quiere comprobarlo). */}
+      {legacyPreview && (
+        <LegacyCourseNoticeModal
+          email={cond.legacy_notice_email}
+          onClose={() => setLegacyPreview(false)}
+        />
+      )}
+
       {/* ── Separar un módulo en dos ── */}
       {splitModuleId && (
         <ModuleSplitModal
@@ -4104,6 +4117,78 @@ export default function CourseEditor() {
                 </div>
               )}
             </div>
+
+            {/* Curso migrado de Sinergy. SOLO el superadmin: decide a quién se le
+                homologa un certificado de la plataforma anterior, y eso no es
+                una decisión de contenido sino de cumplimiento. Va junto a "en
+                construcción" porque son los dos avisos que se le dan al
+                aprendiz ANTES de que empiece, no condiciones que se evalúan.
+
+                La vista previa es el componente REAL del aprendiz, no una
+                imitación: quien enciende esto tiene que estar viendo lo mismo
+                que va a ver la persona. */}
+            {isSuperAdmin && (
+              <div
+                className={cn(
+                  'mb-4 rounded-xl border px-3.5 py-3 transition-colors',
+                  cond.legacy_notice ? 'border-primary/40 bg-primary/5' : 'border-line',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <ShieldCheck
+                    className={cn('h-4 w-4 shrink-0', cond.legacy_notice ? 'text-primary' : 'text-text-muted')}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[13px] font-medium text-text">
+                        {t('admin.courses.cond_legacy_notice')}
+                      </span>
+                      <Tooltip
+                        label={t('admin.courses.cond_legacy_notice_hint')}
+                        anchor="element"
+                        maxWidth={280}
+                        describedBy
+                      >
+                        <Info className="h-3.5 w-3.5 shrink-0 text-text-subtle" />
+                      </Tooltip>
+                    </div>
+                  </div>
+                  <Toggle
+                    on={cond.legacy_notice}
+                    onClick={() => setCond({ ...cond, legacy_notice: !cond.legacy_notice })}
+                  />
+                </div>
+                {cond.legacy_notice && (
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <input
+                        type="email"
+                        value={cond.legacy_notice_email}
+                        onChange={(e) => setCond({ ...cond, legacy_notice_email: e.target.value })}
+                        placeholder={t('courses.legacy_notice_email_default')}
+                        className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-text placeholder:text-text-subtle"
+                      />
+                      <span className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-text-subtle">
+                        <Info className="h-3 w-3 shrink-0" />
+                        {t('admin.courses.cond_legacy_notice_email_label')}
+                      </span>
+                    </div>
+                    {/* La previa abre el modal DE VERDAD, el mismo que verá el
+                        aprendiz: una maqueta dentro de la tarjeta se vería
+                        distinta (otro ancho, otro fondo) justo en lo que se
+                        está intentando comprobar. */}
+                    <button
+                      type="button"
+                      onClick={() => setLegacyPreview(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-1.5 text-[12.5px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      {t('admin.courses.cond_legacy_notice_preview')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-3">
               {/* Completar módulos */}

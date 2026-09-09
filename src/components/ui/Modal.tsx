@@ -156,11 +156,21 @@ export function Modal({
               <p className="mt-0.5 text-[12px] leading-snug text-text-muted">{subtitle}</p>
             )}
           </div>
+          {/* La X también obedece a `dismissible`. Antes no: un modal marcado como
+              "no se cierra" se cerraba igual por aquí, así que el bloqueo solo
+              tapaba dos de las tres salidas. Se queda a la vista, apagada, para
+              que el modal no parezca roto ni le falte algo. */}
           <button
             type="button"
-            onClick={onClose}
+            onClick={dismissible ? onClose : undefined}
+            disabled={!dismissible}
             aria-label={i18n.t('common.close', 'Cerrar')}
-            className="-mr-1.5 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-text-subtle transition-colors hover:bg-glass/8 hover:text-text"
+            className={cn(
+              '-mr-1.5 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-text-subtle transition-colors',
+              dismissible
+                ? 'hover:bg-glass/8 hover:text-text'
+                : 'cursor-not-allowed opacity-40',
+            )}
           >
             <X className="h-4 w-4" />
           </button>

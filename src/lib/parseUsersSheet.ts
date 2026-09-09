@@ -57,12 +57,32 @@ const STATUS_ALIASES = [
 ]
 // Deliberadamente cortos: "área" o "proyecto" suelen ser otra cosa y no
 // queremos adivinar campañas a partir de columnas que solo se le parecen.
-const CAMPAIGN_ALIASES = ['campaign', 'campaña', 'campana', 'cuenta cliente']
+const CAMPAIGN_ALIASES = ['campaign', 'programa', 'campana', 'cuenta cliente']
 // País de la persona. Sin 'ciudad' ni 'sede': son otra cosa y el perfil solo
 // guarda país.
 // Los alias se comparan ya normalizados (sin tildes y en minúsculas): por eso
 // van escritos así, no como aparecen en el archivo.
 const COUNTRY_ALIASES = ['pais', 'country', 'nacionalidad', 'nationality', 'paise']
+// Operación/unidad y área/departamento: los dos ejes con los que Talento Humano
+// clasifica a la gente. Vienen como TEXTO libre y se casan luego contra el
+// catálogo cerrado (`org_units`) por nombre; aquí solo se extrae lo que dice el
+// archivo, sin inventar.
+//
+// Ojo con los solapamientos: 'cuenta cliente' ya es alias de CAMPAÑA, así que
+// aquí no va 'cuenta' a secas — `matchAlias` hace `includes` con alias de más de
+// tres letras y se robaría esa columna.
+// Cargo. Cuidado con los solapamientos: 'perfil' y 'rol' ya son alias de ROL, y
+// 'funcion' pegaría por `includes` dentro de "FUNCIONARIO" (que es nombre). Por
+// eso la lista es corta y sin ambigüedades: 'cargo' ya cubre por `includes` a
+// "nombre del cargo" y "denominación del cargo".
+const JOB_TITLE_ALIASES = [
+  'cargo', 'puesto', 'position', 'job title', 'job_title', 'jobtitle',
+  'ocupacion', 'ocupación',
+]
+const OPERATION_ALIASES = ['operacion', 'operation', 'unidad', 'unit', 'proyecto']
+const AREA_ALIASES = [
+  'area', 'departamento', 'department', 'dpto', 'depto', 'division',
+]
 
 /** Normaliza para comparar encabezados: sin tildes, sin dobles espacios, minúsculas. */
 function norm(s: string): string {
@@ -154,6 +174,15 @@ export interface ColumnMapping {
   status?: number
   /** País de la persona. Opcional: si no viene, se aplica el país por defecto. */
   country?: number
+  /** Operación o unidad. Opcional: texto libre que se casa contra `org_units`. */
+  operation?: number
+  /** Área o departamento. Opcional: igual que `operation`. */
+  area?: number
+  /**
+   * Cargo. Opcional. La base de usuarios es la ÚNICA fuente del cargo: en el
+   * perfil no se puede editar, así que si el archivo lo trae, manda.
+   */
+  jobTitle?: number
 }
 
 /**
@@ -240,6 +269,9 @@ export function analyzeGrid(rows: string[][]): SheetAnalysis {
       nationalId: nidCandidate,
       status: row.findIndex((c) => matchAlias(c, STATUS_ALIASES)),
       country: row.findIndex((c) => matchAlias(c, COUNTRY_ALIASES)),
+      operation: row.findIndex((c) => matchAlias(c, OPERATION_ALIASES)),
+      area: row.findIndex((c) => matchAlias(c, AREA_ALIASES)),
+      jobTitle: row.findIndex((c) => matchAlias(c, JOB_TITLE_ALIASES)),
     }
     return {
       headerRow: r,
@@ -333,6 +365,18 @@ export interface ExtractedRow {
   /** País tal como venía en el archivo ('' si no hay columna). */
   countryRaw: string
   /**
+   * Operación y área TAL COMO VIENEN en el archivo. No se convierten a id aquí
+   * a propósito: el catálogo (`org_units`) es cerrado y quien decide si "RRHH"
+   * es "Talento Humano" no es el parser. La importación las casa por nombre y
+   * lo que no case se muestra para que alguien lo resuelva, en vez de crear una
+   * unidad nueva a espaldas del superadmin — que es justo como se desordenaron
+   * las campañas.
+   */
+  operationRaw: string
+  areaRaw: string
+  /** Cargo tal como viene en el archivo ('' si no hay columna). */
+  jobTitleRaw: string
+  /**
    * `invalid` significa "sin correo válido". Una fila con cédula pero sin correo
    * llega marcada así a propósito: para la carga masiva sigue siendo inservible
    * (no se puede crear una cuenta sin correo), mientras la sincronización con
@@ -367,6 +411,12 @@ export function extractRows(
     const countryCol = mapping.country ?? NONE
     const countryRaw = countryCol >= 0 ? (row[countryCol] ?? '') : ''
     const country = normalizeCountryCode(countryRaw) ?? ''
+    const operationCol = mapping.operation ?? NONE
+    const operationRaw = (operationCol >= 0 ? (row[operationCol] ?? '') : '').trim()
+    const areaCol = mapping.area ?? NONE
+    const areaRaw = (areaCol >= 0 ? (row[areaCol] ?? '') : '').trim()
+    const jobCol = mapping.jobTitle ?? NONE
+    const jobTitleRaw = (jobCol >= 0 ? (row[jobCol] ?? '') : '').trim()
     // Fila en blanco: no es un error, simplemente no existe.
     if (!rawEmailCell && !name && !nationalId) continue
 
@@ -384,6 +434,9 @@ export function extractRows(
         status,
         country,
         countryRaw,
+        operationRaw,
+        areaRaw,
+        jobTitleRaw,
         issue: 'invalid',
       })
       continue
@@ -406,8 +459,13 @@ export function extractRows(
         status,
         // El país sí vale para todas: una celda con varios correos es un equipo
         // del mismo sitio, no personas de países distintos.
+        // Operación y área valen para todas por el mismo motivo que el país.
         country,
         countryRaw,
+        operationRaw,
+        areaRaw,
+        // El cargo vale para todas las personas de la celda, igual que el país.
+        jobTitleRaw,
         issue,
       })
     }

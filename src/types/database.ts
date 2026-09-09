@@ -36,6 +36,15 @@ export interface CertConditions {
   /** Nota del capacitador, en sus palabras, sobre qué falta y cuándo llega.
    *  Es lo que lee el aprendiz; vacío = se usa el texto genérico. */
   coming_soon_note: string
+  /** El curso viene migrado de la plataforma anterior (Sinergy): a quien ya lo
+   *  hizo allá se le homologa el certificado en vez de pedirle que lo repita.
+   *  Enciende un aviso en la ficha del curso, ANTES de que empiece nada. Lo
+   *  decide solo el superadmin, curso por curso (Curso → Certificación). */
+  legacy_notice: boolean
+  /** A dónde manda el aprendiz su certificado anterior. Vacío = el correo por
+   *  defecto que trae la traducción. Es editable a propósito: quien recibe las
+   *  homologaciones cambia sin que deba cambiar el código. */
+  legacy_notice_email: string
 }
 
 export interface Database {
@@ -2620,6 +2629,8 @@ export const DEFAULT_CERT_CONDITIONS: CertConditions = {
   exam_min_score: 80,
   coming_soon: false,
   coming_soon_note: '',
+  legacy_notice: false,
+  legacy_notice_email: '',
 }
 export type Profile = Database['public']['Tables']['profiles']['Row']
 /** Dispositivo con ingreso biométrico registrado (huella / Face ID / Hello). */

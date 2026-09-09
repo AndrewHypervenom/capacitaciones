@@ -36,8 +36,15 @@ const MAX_AVATAR_BYTES = 3 * 1024 * 1024; // 3 MB: sobra para una foto y cuida e
 
 type TabId = 'trayectoria' | 'certificados' | 'datos' | 'seguridad';
 
-/** Campos que cuentan para "perfil completo" (la foto va aparte, en el hero). */
-const COMPLETABLE = ['display_name', 'job_title', 'national_id', 'phone', 'country'] as const;
+/**
+ * Campos que cuentan para "perfil completo" (la foto va aparte, en el hero).
+ *
+ * Sin `job_title`: el cargo lo mantiene Talento Humano con la base de usuarios y
+ * aquí no se puede editar. Dejarlo en la cuenta clavaría el medidor por debajo
+ * del 100% a quien no tiene cargo cargado, sin nada que pudiera hacer al
+ * respecto — una casilla que no se puede marcar.
+ */
+const COMPLETABLE = ['display_name', 'national_id', 'phone', 'country'] as const;
 
 export default function Profile() {
   const { t, i18n } = useTranslation();
@@ -179,7 +186,9 @@ export default function Profile() {
     try {
       const updated = await updateProfile(user.id, {
         display_name: form.display_name.trim() || null,
-        job_title: form.job_title.trim() || null,
+        // `job_title` NO va: lo manda la base de usuarios de Talento Humano y
+        // esta pantalla ya no lo edita. Mandarlo aquí lo reescribiría con lo
+        // que hubiera quedado en el formulario.
         national_id: form.national_id.trim() || null,
         phone: form.phone.trim() || null,
         country: form.country || null,
@@ -296,10 +305,11 @@ export default function Profile() {
         }
         meta={[
           {
+            // Sin `onFill`: el botón "Completar" llevaba al campo del cargo, que
+            // ahora está apagado. Ofrecer una acción que no se puede hacer es
+            // peor que no ofrecer ninguna.
             id: 'job', icon: Briefcase, label: t('profile.job_title'),
             value: profile?.job_title ?? null,
-            onFill: () => goToData('job_title'),
-            fillLabel: t('profile.add_data', 'Completar'),
           },
           {
             id: 'id', icon: IdCard, label: t('profile.national_id'),
@@ -451,9 +461,27 @@ export default function Profile() {
                   <label className={label} htmlFor="pf-display_name">{t('profile.full_name', 'Nombre completo')}</label>
                   <Input id="pf-display_name" value={form.display_name} onChange={set('display_name')} autoComplete="name" placeholder={t('profile.full_name', 'Nombre completo')} />
                 </div>
+                {/* El cargo NO se edita aquí.
+                    Sale de la base de usuarios que carga Talento Humano, y esa
+                    es su única fuente: si cada quien pudiera escribir el suyo,
+                    los reportes por cargo dejarían de significar nada y la
+                    siguiente carga se lo pisaría igual. Se muestra —hace falta
+                    para saber que está bien—, pero apagado y con el motivo al
+                    lado, no escondido. */}
                 <div>
                   <label className={label} htmlFor="pf-job_title">{t('profile.job_title', 'Cargo')}</label>
-                  <Input id="pf-job_title" value={form.job_title} onChange={set('job_title')} autoComplete="organization-title" placeholder={t('profile.job_title_ph', 'Ej. Asesor comercial')} />
+                  <Input
+                    id="pf-job_title"
+                    value={profile?.job_title ?? ''}
+                    readOnly
+                    disabled
+                    placeholder={t('profile.job_title_empty', 'Sin cargo registrado')}
+                    className="cursor-not-allowed opacity-70"
+                  />
+                  <p className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-text-subtle">
+                    <Lock className="mt-px h-3 w-3 shrink-0" />
+                    {t('profile.job_title_locked', 'Lo mantiene Talento Humano con la base de usuarios. Si no coincide, escríbele a tu capacitador.')}
+                  </p>
                 </div>
                 <div>
                   <label className={label} htmlFor="pf-national_id">{t('profile.national_id', 'Cédula / Documento')}</label>

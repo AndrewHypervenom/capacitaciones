@@ -452,7 +452,15 @@
     "deadline_from_enroll_other": "Você terá {{count}} dias a partir da inscrição",
     "deadline_due_on": "Prazo final: {{date}}",
     "deadline_blocked_hint": "o curso está fechado; peça ao seu instrutor para ampliar o prazo",
-    "deadline_module_locked_hint": "Fechado: o prazo do curso venceu"
+    "deadline_module_locked_hint": "Fechado: o prazo do curso venceu",
+    "legacy_notice_title": "Você já fez este curso no Sinergy?",
+    "legacy_notice_lead": "Como este curso foi migrado do Sinergy para o Learning AI, se você já tem o certificado de conclusão, não precisa fazê-lo de novo.",
+    "legacy_notice_send": "Envie seu certificado para",
+    "legacy_notice_after": "Faremos a verificação e o aproveitamento correspondente para registrar sua conclusão na nova plataforma. 💚",
+    "legacy_notice_email_default": "alejandraam@positivosmais.com",
+    "legacy_notice_ack": "Entendi",
+    "legacy_notice_wait_one": "Você pode fechar em {{count}} segundo",
+    "legacy_notice_wait_other": "Você pode fechar em {{count}} segundos"
   },
   "course_practice": {
     "title": "Pratique a chamada",
@@ -596,7 +604,9 @@
       "note_10": "Cada curso que você termina abre a porta para mais alguém.",
       "note_11": "Perguntar a tempo poupa semanas de trabalho.",
       "note_12": "Hoje também conta, mesmo devagar."
-    }
+    },
+    "job_title_empty": "Sem cargo registrado",
+    "job_title_locked": "O RH mantém isto pela base de usuários. Se não bater, fale com seu instrutor."
   },
   "module": {
     "back": "← Voltar ao painel",
@@ -2211,7 +2221,10 @@
       "email_free": "Esse e-mail está livre.",
       "email_unknown": "outro e-mail",
       "email_taken_pending_change": "Esse e-mail está reservado por uma troca de e-mail não confirmada. Até que seja confirmada (ou desfeita) ele não fica livre para mais ninguém.",
-      "email_taken_old_identity": "Esse e-mail foi de uma conta que depois teve o endereço trocado (hoje usa {{email}}), e continua ocupado pela identidade anterior. Trocar o e-mail pelo painel do Supabase não o libera: é preciso limpar essa identidade para reutilizá-lo."
+      "email_taken_old_identity": "Esse e-mail foi de uma conta que depois teve o endereço trocado (hoje usa {{email}}), e continua ocupado pela identidade anterior. Trocar o e-mail pelo painel do Supabase não o libera: é preciso limpar essa identidade para reutilizá-lo.",
+      "bulk_sync_jobs_one": "Atualizar o cargo de {{n}} pessoa que já existe",
+      "bulk_sync_jobs_other": "Atualizar o cargo de {{n}} pessoas que já existem",
+      "bulk_sync_jobs_hint": "O arquivo é a fonte do cargo: não dá para editar no perfil. O atual é substituído; nada mais é alterado."
     },
     "hr": {
       "title": "Sincronizar com o RH",
@@ -2855,7 +2868,11 @@
       "owner_error": "Não foi possível mudar o dono",
       "owner_campaign_ok": "Verá em {{campaign}}. Programas: {{name}}.",
       "owner_campaign_warn": "Não verá o curso: está em {{campaign}} e essa pessoa só alcança {{list}}. Mude assim mesmo e mova abaixo, ou dê acesso a esse programa em Usuários.",
-      "owner_no_campaigns": "nenhuma"
+      "owner_no_campaigns": "nenhuma",
+      "cond_legacy_notice": "Curso migrado do Sinergy",
+      "cond_legacy_notice_hint": "Mostra ao aluno, ao abrir o curso, que se ele já fez no Sinergy pode enviar o certificado e receber o aproveitamento em vez de repetir. Só o superadmin liga isto.",
+      "cond_legacy_notice_email_label": "Para onde enviam o certificado. Vazio = o e-mail padrão.",
+      "cond_legacy_notice_preview": "Ver a pré-visualização"
     },
     "simulations": {
       "save": "Salvar",

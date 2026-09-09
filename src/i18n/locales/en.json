@@ -452,7 +452,15 @@
     "deadline_from_enroll_other": "You'll have {{count}} days from the moment you enroll",
     "deadline_due_on": "Due date: {{date}}",
     "deadline_blocked_hint": "the course is closed; ask your trainer to extend the deadline",
-    "deadline_module_locked_hint": "Closed: the course deadline has passed"
+    "deadline_module_locked_hint": "Closed: the course deadline has passed",
+    "legacy_notice_title": "Did you already take this course in Sinergy?",
+    "legacy_notice_lead": "This course was migrated from Sinergy to Learning AI, so if you already hold its completion certificate, you don't need to take it again.",
+    "legacy_notice_send": "Send us your certificate at",
+    "legacy_notice_after": "We will verify it and grant the matching credit so your completion is recorded on the new platform. 💚",
+    "legacy_notice_email_default": "alejandraam@positivosmais.com",
+    "legacy_notice_ack": "Got it",
+    "legacy_notice_wait_one": "You can close in {{count}} second",
+    "legacy_notice_wait_other": "You can close in {{count}} seconds"
   },
   "course_practice": {
     "title": "Practice the call",
@@ -596,7 +604,9 @@
       "note_10": "Every course you finish opens a door for someone else.",
       "note_11": "Asking in time saves weeks of work.",
       "note_12": "Today counts too, even if you move slowly."
-    }
+    },
+    "job_title_empty": "No job title on record",
+    "job_title_locked": "HR keeps this up to date through the user database. If it's wrong, contact your trainer."
   },
   "module": {
     "back": "← Back to dashboard",
@@ -2211,7 +2221,10 @@
       "email_free": "That email is available.",
       "email_unknown": "another email",
       "email_taken_pending_change": "That email is held by an unconfirmed email change. Until it is confirmed (or undone) it is not free for anyone else.",
-      "email_taken_old_identity": "That email belonged to an account whose address was later changed (it now uses {{email}}), and it is still held by the old identity. Changing the email from the Supabase dashboard does not release it: that identity has to be cleaned up before the address can be reused."
+      "email_taken_old_identity": "That email belonged to an account whose address was later changed (it now uses {{email}}), and it is still held by the old identity. Changing the email from the Supabase dashboard does not release it: that identity has to be cleaned up before the address can be reused.",
+      "bulk_sync_jobs_one": "Update the job title of {{n}} existing person",
+      "bulk_sync_jobs_other": "Update the job title of {{n}} existing people",
+      "bulk_sync_jobs_hint": "The file is the source for job titles: they can't be edited in the profile. Their current one is replaced; nothing else is touched."
     },
     "hr": {
       "title": "Sync with HR",
@@ -2855,7 +2868,11 @@
       "owner_error": "Couldn't change the owner",
       "owner_campaign_ok": "They will see it in {{program}}. Their programs: {{name}}.",
       "owner_campaign_warn": "They won't see this course: it lives in {{program}} and they only reach {{list}}. Change it anyway and move it below, or give them access to that program in Users.",
-      "owner_no_campaigns": "none"
+      "owner_no_campaigns": "none",
+      "cond_legacy_notice": "Course migrated from Sinergy",
+      "cond_legacy_notice_hint": "Tells the learner, when they open the course, that if they already took it in Sinergy they can send their certificate and get credit instead of repeating it. Superadmin only.",
+      "cond_legacy_notice_email_label": "Where they send the certificate. Empty = the default address.",
+      "cond_legacy_notice_preview": "Open the preview"
     },
     "simulations": {
       "save": "Save",

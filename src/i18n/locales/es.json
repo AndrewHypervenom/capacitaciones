@@ -452,7 +452,15 @@
     "deadline_from_enroll_other": "Tendrás {{count}} días desde que te inscribas",
     "deadline_due_on": "Fecha límite: {{date}}",
     "deadline_blocked_hint": "el curso está cerrado; pídele a tu capacitador que amplíe el plazo",
-    "deadline_module_locked_hint": "Cerrado: se venció el plazo del curso"
+    "deadline_module_locked_hint": "Cerrado: se venció el plazo del curso",
+    "legacy_notice_title": "¿Ya realizaste este curso en Sinergy?",
+    "legacy_notice_lead": "Como este curso fue migrado de Sinergy a Learning AI, si ya cuentas con el certificado de finalización, no es necesario que lo realices nuevamente.",
+    "legacy_notice_send": "Envíanos tu certificado a",
+    "legacy_notice_after": "Realizaremos la verificación y homologación correspondiente para registrar tu cumplimiento en nuestra nueva plataforma. 💚",
+    "legacy_notice_email_default": "alejandraam@positivosmais.com",
+    "legacy_notice_ack": "Entendido",
+    "legacy_notice_wait_one": "Puedes cerrar en {{count}} segundo",
+    "legacy_notice_wait_other": "Puedes cerrar en {{count}} segundos"
   },
   "course_practice": {
     "title": "Practica la llamada",
@@ -596,7 +604,9 @@
       "note_10": "Cada curso que terminas le abre la puerta a alguien más.",
       "note_11": "Preguntar a tiempo ahorra semanas de trabajo.",
       "note_12": "Hoy también cuenta, aunque avances despacio."
-    }
+    },
+    "job_title_empty": "Sin cargo registrado",
+    "job_title_locked": "Lo mantiene Talento Humano con la base de usuarios. Si no coincide, escríbele a tu capacitador."
   },
   "module": {
     "back": "← Volver al panel",
@@ -2211,7 +2221,10 @@
       "email_free": "Ese correo está libre.",
       "email_unknown": "otro correo",
       "email_taken_pending_change": "Ese correo está reservado por un cambio de correo sin confirmar. Hasta que se confirme (o se deshaga) no queda libre para nadie más.",
-      "email_taken_old_identity": "Ese correo fue de una cuenta a la que después le cambiaron el correo (hoy usa {{email}}), y sigue ocupado por su identidad anterior. Cambiar el correo desde el panel de Supabase no lo libera: hay que limpiar esa identidad para poder reutilizarlo."
+      "email_taken_old_identity": "Ese correo fue de una cuenta a la que después le cambiaron el correo (hoy usa {{email}}), y sigue ocupado por su identidad anterior. Cambiar el correo desde el panel de Supabase no lo libera: hay que limpiar esa identidad para poder reutilizarlo.",
+      "bulk_sync_jobs_one": "Actualizar el cargo de {{n}} persona que ya existe",
+      "bulk_sync_jobs_other": "Actualizar el cargo de {{n}} personas que ya existen",
+      "bulk_sync_jobs_hint": "El archivo es la fuente del cargo: en el perfil no se puede editar. Se reemplaza el que tengan; no se toca nada más."
     },
     "hr": {
       "title": "Sincronizar con Talento Humano",
@@ -2855,7 +2868,11 @@
       "owner_error": "No se pudo cambiar el dueño",
       "owner_campaign_ok": "Lo verá en {{campaign}}. Sus programas: {{name}}.",
       "owner_campaign_warn": "No verá el curso: está en {{campaign}} y esa persona solo llega a {{list}}. Cámbialo igual y muévelo abajo, o dale acceso a ese programa en Usuarios.",
-      "owner_no_campaigns": "ninguna"
+      "owner_no_campaigns": "ninguna",
+      "cond_legacy_notice": "Curso migrado de Sinergy",
+      "cond_legacy_notice_hint": "Muestra al aprendiz, al abrir el curso, que si ya lo hizo en Sinergy puede enviar su certificado y se le homologa en vez de repetirlo. Solo lo enciende el superadmin.",
+      "cond_legacy_notice_email_label": "A dónde envían el certificado. Vacío = el correo por defecto.",
+      "cond_legacy_notice_preview": "Ver la vista previa"
     },
     "simulations": {
       "save": "Guardar",

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Award, CalendarClock, Check, ClipboardCheck, Flame, GraduationCap, Hammer, ListChecks, Loader2, Lock, LogOut, Map, PhoneCall, Play, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -32,6 +32,7 @@ import type { ExamState } from '@/types/exam';
 import type { CourseCertStatus } from '@/types/database';
 import { CountryFlag } from '@/components/layout/CountryFlag';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
+import { LegacyCourseNoticeModal, legacyNoticeSeenKey } from '@/components/course/LegacyCourseNotice';
 import { SimulatorPickerModal, type SimPick } from '@/components/simulator/SimulatorPickerModal';
 import { PracticeStop } from '@/components/simulator/PracticeStop';
 import { toast } from '@/stores/toastStore';
@@ -269,6 +270,36 @@ export default function CoursePage() {
     })();
     return () => { active = false; };
   }, [course?.id, user?.id, isModuleDone]);
+
+  /* ── Aviso de curso migrado de Sinergy ──────────────────────────────────
+     Se abre SOLO la primera vez que esta persona entra al curso: un modal en
+     cada visita es un peaje para quien de verdad está haciendo el curso. Pero
+     tampoco puede desaparecer para siempre por un clic distraído, así que
+     después queda un botón junto al título para volver a abrirlo.
+
+     El "ya lo vio" es por navegador (localStorage). Es información, no un
+     permiso: verlo dos veces desde otro equipo no le hace daño a nadie, y
+     guardarlo en la base sería una escritura por cada apertura de curso. */
+  const legacyOn = !!course?.cert_conditions?.legacy_notice;
+  const [legacyOpen, setLegacyOpen] = useState(false);
+  useEffect(() => {
+    if (!legacyOn || !course?.id) return;
+    try {
+      if (localStorage.getItem(legacyNoticeSeenKey(course.id))) return;
+    } catch {
+      // Almacenamiento bloqueado (incógnito estricto): se muestra igual. Que
+      // el aviso salga de más es mucho mejor que no salga.
+    }
+    setLegacyOpen(true);
+  }, [legacyOn, course?.id]);
+
+  const closeLegacy = useCallback(() => {
+    setLegacyOpen(false);
+    if (!course?.id) return;
+    try {
+      localStorage.setItem(legacyNoticeSeenKey(course.id), '1');
+    } catch { /* modo privado: volverá a salir, y no pasa nada */ }
+  }, [course?.id]);
 
   // Simulaciones YA APROBADAS por esta persona en este curso, por escenario.
   // `certStatus.best_score` es un único mejor puntaje del curso entero: sirve
@@ -737,6 +768,19 @@ export default function CoursePage() {
             </>
           )}
         </div>
+
+        {/* El aviso ya salió como modal al entrar. Esto es la puerta de vuelta:
+            sin ella, cerrarlo sin leer lo perdería para siempre. */}
+        {legacyOn && (
+          <button
+            type="button"
+            onClick={() => setLegacyOpen(true)}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/[0.06] px-3.5 py-1.5 text-[12.5px] font-medium text-primary transition-colors duration-300 hover:border-primary/50"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            {t('courses.legacy_notice_title')}
+          </button>
+        )}
 
         {/* ── Límite de tiempo ────────────────────────────────────────────
             Un solo aviso, del color de lo que pasa: gris mientras sobra
@@ -1633,6 +1677,12 @@ export default function CoursePage() {
       })()}
 
     </div>
+    {legacyOpen && (
+      <LegacyCourseNoticeModal
+        email={course.cert_conditions?.legacy_notice_email}
+        onClose={closeLegacy}
+      />
+    )}
     {pickerOpen && (
       <SimulatorPickerModal
         /* Solo lo que se puede jugar ahora: con simulaciones ancladas a módulos

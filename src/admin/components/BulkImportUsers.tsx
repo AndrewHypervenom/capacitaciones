@@ -18,7 +18,10 @@ import {
   readGrids, analyzeGrid, extractRows, finalDisplayName,
   type SheetGrid, type ColumnMapping, type ExtractedRow,
 } from '@/lib/parseUsersSheet'
+import { fold } from '@/lib/normalize'
 import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import type { OrgUnit } from '@/types/database'
 import type { Campaign } from '@/types/database'
 
 /**
@@ -93,11 +96,33 @@ interface PreviewRow {
    * muestra en ámbar: el alta sigue, pero sin país, y quien carga lo ve.
    */
   countryUnknown: string
+  /** Id de la unidad del catálogo que le toca ('' = sin clasificar). */
+  operationId: string
+  areaId: string
+  /** Nombre de la unidad, para pintarlo sin volver a buscar. */
+  operationName: string
+  areaName: string
+  /**
+   * El archivo traía una operación/área que NO está en el catálogo. Se muestra
+   * en ámbar y el alta sigue sin clasificar: nunca se crea la unidad sola. El
+   * catálogo lo abre el superadmin, que es todo el punto del gobierno nuevo.
+   */
+  operationUnknown: string
+  areaUnknown: string
+  /**
+   * Cargo que trae el archivo ('' si la columna no viene o la celda está vacía).
+   *
+   * A diferencia de la campaña, el cargo SÍ se pisa: la base de usuarios es su
+   * única fuente —en el perfil ni siquiera se puede editar— y una carga nueva
+   * es exactamente el momento en que alguien cambió de puesto.
+   */
+  jobTitle: string
   status: RowStatus
   include: boolean
   /**
-   * Qué se le va a hacer a esta persona: crearla, o —si ya existe y quedó sin
-   * campaña— solo completarle la campaña. Nunca se le quita la que ya tenga.
+   * Qué se le va a hacer a esta persona: crearla, o —si ya existe— actualizarle
+   * lo que la base de usuarios manda: la campaña si estaba sin ninguna (nunca se
+   * le quita la que ya tenga) y el cargo, que siempre viene de aquí.
    */
   action: 'create' | 'assign'
 }
@@ -157,6 +182,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [headerRow, setHeaderRow] = useState(0)
   const [mapping, setMapping] = useState<ColumnMapping>({
     email: NONE, name: NONE, role: NONE, campaign: NONE, country: NONE,
+    operation: NONE, area: NONE,
   })
 
   // Ajustes que aplican a las filas sin valor propio. El capacitador arranca en
@@ -167,6 +193,11 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [campaignDefault, setCampaignDefault] = useState(() =>
     isSuperAdmin ? '' : resolveCreationCampaignId(null, campaigns.map((c) => c.id)),
   )
+
+  // El catálogo cerrado de operaciones y áreas, para casar lo que trae la
+  // nómina. Si está vacío (nadie ha creado unidades todavía) las dos columnas
+  // simplemente no clasifican a nadie y se avisa: es mejor que fingir que sí.
+  const [units, setUnits] = useState<OrgUnit[]>([])
 
   // Correcciones manuales del usuario en la tabla de revisión
   const [nameEdits, setNameEdits] = useState<Record<string, string>>({})
@@ -183,6 +214,10 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [fillUnsupported, setFillUnsupported] = useState(false)
   // Completar la campaña de quienes ya existen y no tienen ninguna.
   const [fillCampaign, setFillCampaign] = useState(false)
+  /* Actualizar el cargo de quien ya existe. Nace ENCENDIDO —al revés que
+     `fillCampaign`— porque es justo para lo que se recarga la base maestra: la
+     gente cambia de puesto y el perfil no deja corregirlo a mano. */
+  const [syncJobs, setSyncJobs] = useState(true)
   const [checkState, setCheckState] = useState<'idle' | 'checking' | 'done' | 'unavailable'>('idle')
 
   const [processing, setProcessing] = useState(false)
@@ -195,6 +230,17 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   // anterior a este soporte. Se avisa en vez de dar por hecho que se guardó.
   const [countryIgnored, setCountryIgnored] = useState(false)
   const [defaultPwdValue, setDefaultPwdValue] = useState('')
+
+  // El catálogo se pide una vez al abrir. Si el SQL de la reestructura no se ha
+  // corrido, `getOrgUnits` devuelve vacío y todo esto se comporta como antes.
+  useEffect(() => {
+    let alive = true
+    getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((list) => { if (alive) setUnits(list) })
+      .catch(() => { if (alive) setUnits([]) })
+    return () => { alive = false }
+  }, [])
 
   useEffect(() => {
     if (!defaultPasswordOn) return
@@ -366,6 +412,20 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     return extractRows(grid.rows, hasHeader ? headerRow : -1, mapping)
   }, [grid, hasHeader, headerRow, mapping])
 
+  /**
+   * Unidades por nombre plegado (sin tildes ni mayúsculas): "TALENTO HUMANO",
+   * "Talento Humano" y "talento humano" son la misma área. Nadie escribe las
+   * tildes igual dos veces en un Excel.
+   */
+  const unitsByName = useMemo(() => {
+    const ops = new Map<string, OrgUnit>()
+    const areas = new Map<string, OrgUnit>()
+    for (const u of units) {
+      ;(u.kind === 'operation' ? ops : areas).set(fold(u.name), u)
+    }
+    return { ops, areas }
+  }, [units])
+
   const rows: PreviewRow[] = useMemo(() => {
     return extracted.map((r, i) => {
       const key = `${r.sourceLine}:${r.email || `x${i}`}`
@@ -383,11 +443,23 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         campaignByName.get(r.campaign.trim().toLowerCase()) ?? (campaignDefault || null)
       // El país del archivo manda; el predeterminado solo rellena lo que falta.
       const rowCountry = r.country || countryDefault
+      // Operación y área: se casan contra el catálogo por nombre. Lo que no
+      // casa NO crea nada — queda sin clasificar y se muestra en ámbar.
+      const opHit = r.operationRaw ? unitsByName.ops.get(fold(r.operationRaw)) : undefined
+      const areaHit = r.areaRaw ? unitsByName.areas.get(fold(r.areaRaw)) : undefined
       // Ya existe, quedó sin campaña y hay una campaña que darle: en vez de
       // saltarla, esta fila le completa la campaña. Al que ya tiene una no se
       // le toca (ni siquiera aparece como candidato).
       const canFill =
         status === 'exists' && fillCampaign && noCampaign.has(r.email) && !!rowCampaign
+      // El cargo del archivo. Es lo único que se actualiza a quien ya existe
+      // TENGA O NO campaña: el archivo es la base maestra de cargos.
+      const rowJobTitle = syncJobs ? r.jobTitleRaw.trim() : ''
+      const canSyncJob = status === 'exists' && !!rowJobTitle
+      // Ya existe y hay algo que traerle de la base: en vez de saltarla, esta
+      // fila lo actualiza.
+      const updatesExisting = canFill || canSyncJob
+      const isNew = status === 'new'
       return {
         key,
         sourceLine: r.sourceLine,
@@ -399,17 +471,27 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         campaignId: rowCampaign,
         country: rowCountry,
         countryUnknown: !r.country && r.countryRaw.trim() ? r.countryRaw.trim() : '',
+        operationId: opHit?.id ?? '',
+        areaId: areaHit?.id ?? '',
+        operationName: opHit?.name ?? '',
+        areaName: areaHit?.name ?? '',
+        operationUnknown: !opHit && r.operationRaw ? r.operationRaw : '',
+        areaUnknown: !areaHit && r.areaRaw ? r.areaRaw : '',
+        jobTitle: isNew ? r.jobTitleRaw.trim() : rowJobTitle,
         status,
-        // Sin campaña, el servidor rechazaría el alta del capacitador: se marca
-        // como no incluible en vez de dejar que falle fila por fila.
-        include:
-          (status === 'new' || canFill) &&
-          !excluded[key] &&
-          !(campaignRequired && !rowCampaign),
-        action: canFill ? 'assign' : 'create',
+        // Sin campaña, el servidor rechazaría el ALTA del capacitador: se marca
+        // como no incluible en vez de dejar que falle fila por fila. A quien ya
+        // existe no le hace falta ninguna campaña para corregirle el cargo, así
+        // que ese requisito no le aplica.
+        include: excluded[key]
+          ? false
+          : isNew
+            ? !(campaignRequired && !rowCampaign)
+            : updatesExisting,
+        action: isNew ? 'create' : 'assign',
       }
     })
-  }, [extracted, existing, noCampaign, fillCampaign, nameEdits, excluded, canChooseRole, campaignRequired, roleDefault, campaignDefault, countryDefault, campaignByName])
+  }, [extracted, existing, noCampaign, fillCampaign, syncJobs, nameEdits, excluded, canChooseRole, campaignRequired, roleDefault, campaignDefault, countryDefault, campaignByName, unitsByName])
 
   const counts = useMemo(() => {
     const c = { new: 0, exists: 0, duplicate: 0, invalid: 0, excluded: 0 }
@@ -427,6 +509,11 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     [rows, noCampaign],
   )
   const toAssign = useMemo(() => rows.filter((r) => r.include && r.action === 'assign').length, [rows])
+  /** Gente que ya existe y a la que el archivo le trae cargo. */
+  const syncableJobs = useMemo(
+    () => rows.filter((r) => r.status === 'exists' && r.jobTitle).length,
+    [rows],
+  )
   const toCreate = useMemo(() => rows.filter((r) => r.include && r.action === 'create').length, [rows])
 
   const selected = useMemo(() => rows.filter((r) => r.include), [rows])
@@ -438,16 +525,46 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     () => selected.filter((r) => !r.country && r.countryUnknown).length,
     [selected],
   )
+  /**
+   * Nombres de operación y área que el archivo trae y el catálogo no tiene.
+   * Se listan por NOMBRE, no por número de filas: lo accionable es "falta crear
+   * el área Calidad", no "hay 37 filas raras". Con el nombre a la vista, el
+   * superadmin la crea en /admin/units y se vuelve a cargar.
+   */
+  const unknownUnits = useMemo(() => {
+    const ops = new Set<string>()
+    const areas = new Set<string>()
+    for (const r of selected) {
+      if (r.operationUnknown) ops.add(r.operationUnknown)
+      if (r.areaUnknown) areas.add(r.areaUnknown)
+    }
+    return [...ops, ...areas].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [selected])
+  // Las columnas solo aparecen si el archivo trae ese eje mapeado. Una columna
+  // de guiones no informa: estorba.
+  const showOperation = (mapping.operation ?? NONE) >= 0
+  const showArea = (mapping.area ?? NONE) >= 0
+
+  /** Cuánta gente de esta carga quedaría sin clasificar del todo. */
+  const unclassified = useMemo(
+    () => selected.filter((r) => r.action === 'create' && (!r.operationId || !r.areaId)).length,
+    [selected],
+  )
 
   /* ── Acciones ──────────────────────────────────────────────────────────── */
 
   const downloadTemplate = () => {
     // El país acepta el nombre ("Colombia") o el código ISO ("CO"): la plantilla
     // muestra las dos formas para que ninguna parezca la única válida.
+    // Operación y área van con ejemplos tomados del catálogo REAL cuando lo hay:
+    // así la plantilla enseña los nombres exactos que van a casar, en vez de
+    // inventar unos que luego saldrían en ámbar.
+    const sampleOp = units.find((u) => u.kind === 'operation')?.name ?? 'Bradescard'
+    const sampleArea = units.find((u) => u.kind === 'area')?.name ?? 'Talento Humano'
     const ws = XLSX.utils.aoa_to_sheet([
-      ['email', 'display_name', 'pais'],
-      ['ana@ejemplo.com', 'Ana Pérez', 'Colombia'],
-      ['juan@ejemplo.com', 'Juan Gómez', 'MX'],
+      ['email', 'display_name', 'cargo', 'pais', 'operacion', 'area'],
+      ['ana@ejemplo.com', 'Ana Pérez', 'Asesor comercial', 'Colombia', sampleOp, sampleArea],
+      ['juan@ejemplo.com', 'Juan Gómez', 'Coordinador de calidad', 'MX', sampleOp, sampleArea],
     ])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'usuarios')
@@ -460,15 +577,29 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     setProgress({ done: 0, total: selected.length })
     const payload = selected.map((r) =>
       r.action === 'assign'
-        // Solo el correo y la campaña: la fila de "completar campaña" no debe
-        // poder pisar el nombre, el rol ni el país de alguien que ya existe.
-        ? { email: r.email, campaign: r.campaignId ?? undefined, mode: 'assign_campaign' as const }
+        // A quien ya existe solo se le toca lo que la base maestra manda: la
+        // campaña (si estaba sin ninguna) y el cargo. Ni el nombre, ni el rol,
+        // ni el país, ni la contraseña.
+        //
+        // `mode` sigue llamándose 'assign_campaign' a propósito: una función de
+        // borde todavía sin desplegar ignora `job_title` y se comporta como
+        // siempre, en vez de no reconocer el modo y caer al camino de ALTA
+        // intentando crear cuentas que ya existen.
+        ? {
+            email: r.email,
+            campaign: r.campaignId ?? undefined,
+            job_title: r.jobTitle || undefined,
+            mode: 'assign_campaign' as const,
+          }
         : {
             email: r.email,
             display_name: r.name,
             role: r.role,
             campaign: r.campaignId ?? undefined,
             country: r.country || undefined,
+            operation_id: r.operationId || undefined,
+            area_id: r.areaId || undefined,
+            job_title: r.jobTitle || undefined,
           },
     )
     // Lo que ya contestó el servidor. Vive fuera del try: si una tanda se cae,
@@ -779,6 +910,29 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                           options={columnOptions}
                         />
                       </Field>
+                      {/* Operación y área solo se ofrecen si hay catálogo: sin
+                          unidades creadas, mapear la columna no clasificaría a
+                          nadie y sería un control que miente. */}
+                      {units.some((u) => u.kind === 'operation') && (
+                        <Field label={t('admin.users.bulk_map_operation', 'Operación')}>
+                          <Select
+                            compact
+                            value={String(mapping.operation ?? NONE)}
+                            onChange={(v) => changeMapping({ operation: Number(v) })}
+                            options={columnOptions}
+                          />
+                        </Field>
+                      )}
+                      {units.some((u) => u.kind === 'area') && (
+                        <Field label={t('admin.users.bulk_map_area', 'Área')}>
+                          <Select
+                            compact
+                            value={String(mapping.area ?? NONE)}
+                            onChange={(v) => changeMapping({ area: Number(v) })}
+                            options={columnOptions}
+                          />
+                        </Field>
+                      )}
                       <Field label={t('admin.users.bulk_country_all')}>
                         <Select
                           compact
@@ -921,6 +1075,31 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                           </label>
                         </div>
                       )}
+                      {/* Actualizar el cargo de quien ya existe. Es el motivo
+                          por el que se recarga la base maestra: el cargo no se
+                          puede editar en el perfil, así que este archivo es la
+                          única vía. Nace encendido, pero a la vista y con el
+                          número exacto de personas a las que va a cambiar algo:
+                          pisar datos en silencio no. */}
+                      {syncableJobs > 0 && (
+                        <div className="rounded-xl border border-[#10D451]/40 bg-[#10D451]/10 p-3">
+                          <label className="flex cursor-pointer items-start gap-2 text-[13px] text-text">
+                            <input
+                              type="checkbox"
+                              checked={syncJobs}
+                              onChange={(e) => setSyncJobs(e.target.checked)}
+                              className="mt-0.5 h-4 w-4 accent-[#10D451]"
+                            />
+                            <span>
+                              {t('admin.users.bulk_sync_jobs', { n: syncableJobs })}
+                              <span className="mt-0.5 block text-[12px] text-text-muted">
+                                {t('admin.users.bulk_sync_jobs_hint')}
+                              </span>
+                            </span>
+                          </label>
+                        </div>
+                      )}
+
                       {fillUnsupported && counts.exists > 0 && (
                         <p className="flex items-start gap-2 text-[12px] text-amber-500">
                           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -945,6 +1124,12 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                   <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_campaign')}</th>
                                 )}
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_country')}</th>
+                                {showOperation && (
+                                  <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_operation', 'Operación')}</th>
+                                )}
+                                {showArea && (
+                                  <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_area', 'Área')}</th>
+                                )}
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_password')}</th>
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_status')}</th>
                               </tr>
@@ -1024,6 +1209,26 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                       <span className="text-text-subtle">—</span>
                                     )}
                                   </td>
+                                  {showOperation && (
+                                    <UnitCell
+                                      name={r.operationName}
+                                      unknown={r.operationUnknown}
+                                      unknownTitle={t('admin.users.bulk_unit_unknown', {
+                                        value: r.operationUnknown,
+                                        defaultValue: '"{{value}}" no está en el catálogo: la persona quedará sin clasificar.',
+                                      })}
+                                    />
+                                  )}
+                                  {showArea && (
+                                    <UnitCell
+                                      name={r.areaName}
+                                      unknown={r.areaUnknown}
+                                      unknownTitle={t('admin.users.bulk_unit_unknown', {
+                                        value: r.areaUnknown,
+                                        defaultValue: '"{{value}}" no está en el catálogo: la persona quedará sin clasificar.',
+                                      })}
+                                    />
+                                  )}
                                   <td className="px-3 py-2 font-mono text-text-muted">
                                     {defaultPasswordOn
                                       ? defaultPwdValue || t('admin.users.bulk_pwd_default')
@@ -1043,6 +1248,44 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                         <p className="flex items-center gap-2 text-[12px] text-amber-500">
                           <AlertTriangle className="h-4 w-4 shrink-0" />
                           {t('admin.users.bulk_country_unknown_hint', { n: unknownCountries })}
+                        </p>
+                      )}
+
+                      {/* Lo que el catálogo no tiene. Se listan los NOMBRES
+                          porque es lo accionable: el superadmin los crea en
+                          Operaciones y áreas y se vuelve a cargar el archivo.
+                          No se crean solos a propósito — el catálogo cerrado es
+                          justo lo que evita que esto se vuelva a desordenar. */}
+                      {unknownUnits.length > 0 && (
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                          <p className="flex items-center gap-2 text-[12px] font-medium text-amber-500">
+                            <AlertTriangle className="h-4 w-4 shrink-0" />
+                            {t('admin.users.bulk_units_unknown_title', {
+                              n: unknownUnits.length,
+                              defaultValue: '{{n}} operación o área del archivo no está en el catálogo',
+                            })}
+                          </p>
+                          <p className="mt-1.5 text-[12px] text-text-muted">
+                            {unknownUnits.join(' · ')}
+                          </p>
+                          <p className="mt-1.5 text-[12px] text-text-muted">
+                            {t('admin.users.bulk_units_unknown_hint', {
+                              defaultValue: 'Se pueden importar igual, pero esas personas entrarán sin clasificar. Créalas primero en Operaciones y áreas y vuelve a cargar el archivo.',
+                            })}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* El número que RH persigue. Solo se muestra cuando el
+                          archivo trae al menos un eje: si no, "sin clasificar"
+                          sería todo el mundo y el aviso perdería sentido. */}
+                      {(showOperation || showArea) && unclassified > 0 && (
+                        <p className="flex items-center gap-2 text-[12px] text-text-muted">
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                          {t('admin.users.bulk_unclassified_hint', {
+                            n: unclassified,
+                            defaultValue: '{{n}} persona quedará sin operación o sin área. Se puede corregir después con otra carga.',
+                          })}
                         </p>
                       )}
 
@@ -1293,6 +1536,30 @@ function StatusBadge({
 }
 
 /** Rejilla cruda: para que se vea el archivo tal cual y se pueda elegir la columna. */
+/**
+ * Celda de operación o área en la vista previa.
+ *
+ * Tres estados, y el del medio es el que importa: si el archivo trae un nombre
+ * que el catálogo no tiene, se pinta en ámbar con el valor crudo. El alta sigue
+ * adelante —una unidad desconocida no debe bloquear a 800 personas— pero queda
+ * a la vista que esa persona entrará sin clasificar.
+ */
+function UnitCell({
+  name, unknown, unknownTitle,
+}: { name: string; unknown: string; unknownTitle: string }) {
+  return (
+    <td className="max-w-[150px] truncate px-3 py-2 text-text-muted">
+      {name ? (
+        name
+      ) : unknown ? (
+        <span className="text-amber-500" title={unknownTitle}>{unknown}</span>
+      ) : (
+        <span className="text-text-subtle">—</span>
+      )}
+    </td>
+  )
+}
+
 function RawPreview({ grid }: { grid: SheetGrid }) {
   const rows = grid.rows.slice(0, 8)
   const width = Math.min(rows.reduce((m, r) => Math.max(m, r.length), 0), 8)
