@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { chunk } from '@/lib/chunk'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import type { Campaign, CollaboratorProfile } from '@/types/database'
 
@@ -317,12 +318,25 @@ export async function getCampaignIdsByUser(
   const ids = users.map((u) => u.id)
   if (ids.length === 0) return map
 
+  // En tandas de 100: el filtro `in.(...)` viaja en la URL y con 800 personas
+  // se pasaba de 30 KB, muy por encima del tope del proxy. Devolvía 400 y,
+  // como el error se traga aquí abajo, la pantalla mostraba a todo el mundo
+  // con una sola campaña. Ver lib/chunk.ts.
+  const pages = await Promise.all(
+    chunk(ids).map((slice) =>
+      supabase.from('campaign_collaborators').select('user_id, campaign_id').in('user_id', slice),
+    ),
+  )
+  const error = pages.find((p) => p.error)?.error ?? null
+  const data = pages.flatMap((p) => p.data ?? [])
   // No-fatal: si la tabla no existe todavía, cada usuario queda con su casa.
-  const { data, error } = await supabase
-    .from('campaign_collaborators')
-    .select('user_id, campaign_id')
-    .in('user_id', ids)
-  if (error) return map
+  if (error) {
+    // No es fatal (cada quien se queda con su casa), pero callarlo del todo fue
+    // lo que hizo que "guarda y no guarda" tardara días en verse: la pantalla
+    // queda coherente y no hay ni un rastro de que faltan datos.
+    console.warn('[campaigns] no se pudieron leer las colaboraciones:', error.message)
+    return map
+  }
 
   for (const row of (data ?? []) as Array<{ user_id: string; campaign_id: string }>) {
     const current = map[row.user_id]
