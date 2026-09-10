@@ -1672,6 +1672,7 @@ export default function UserList() {
         <TransferContentModal
           user={transferFor}
           candidates={users.filter((u) => u.role === 'capacitador' || u.role === 'superadmin')}
+          campaigns={campaigns.map((c) => ({ id: c.id, name: c.name }))}
           onClose={() => setTransferFor(null)}
           onDone={() => { /* el contenido cambió de dueño; la lista de gente no. */ }}
         />

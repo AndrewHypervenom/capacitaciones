@@ -98,3 +98,27 @@ export async function setCourseOwner(courseId: string, ownerId: string): Promise
   })
   if (error) throw error
 }
+
+/**
+ * Los ids que se pueden REUBICAR de campaña al cambiar de dueño: los cursos
+ * (que arrastran su contenido: módulos, mundos, arenas y simuladores) y los
+ * módulos SUELTOS (los que no cuelgan de ningún curso, que son los únicos que
+ * `move_module_to_campaign` acepta por separado).
+ *
+ * Se pide ANTES de transferir: después el `created_by` ya es el del destino y
+ * esta consulta devolvería lo que esa persona tuviera de antes también.
+ */
+export type OwnedRefs = { courses: string[]; looseModules: string[] }
+
+export async function getOwnedRefs(userId: string): Promise<OwnedRefs> {
+  const [c, m] = await Promise.all([
+    db.from('courses').select('id').eq('created_by', userId).is('deleted_at', null),
+    db.from('modules').select('id').eq('created_by', userId).is('course_id', null).is('deleted_at', null),
+  ])
+  if (c.error) throw c.error
+  if (m.error) throw m.error
+  return {
+    courses: ((c.data ?? []) as { id: string }[]).map((r) => r.id),
+    looseModules: ((m.data ?? []) as { id: string }[]).map((r) => r.id),
+  }
+}

@@ -5,9 +5,11 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { toast } from '@/stores/toastStore'
 import {
-  getUserContent, transferContent, totalAuthored,
+  getUserContent, getOwnedRefs, transferContent, totalAuthored,
   type AuthoredCounts, type BlockingRef,
 } from '@/services/ownership.service'
+import { moveCourseToCampaign } from '@/services/courses.service'
+import { moveModuleToCampaign } from '@/services/modules.service'
 
 /**
  * Pasar el contenido de una persona a otra, antes de darla de baja.
@@ -23,12 +25,15 @@ import {
 export function TransferContentModal({
   user,
   candidates,
+  campaigns = [],
   onClose,
   onDone,
 }: {
   user: { id: string; display_name: string | null }
   /** A quién se le puede pasar: capacitadores y superadmins, menos el propio. */
   candidates: { id: string; display_name: string | null }[]
+  /** Programas a los que se puede reubicar el contenido, además de cambiarle el dueño. */
+  campaigns?: { id: string; name: string }[]
   onClose: () => void
   onDone: () => void
 }) {
@@ -37,6 +42,10 @@ export function TransferContentModal({
   const [authored, setAuthored] = useState<AuthoredCounts | null>(null)
   const [blocking, setBlocking] = useState<BlockingRef[]>([])
   const [target, setTarget] = useState('')
+  // Vacío = dejar el contenido en el programa donde está. Cambiar de dueño y
+  // cambiar de programa son dos cosas distintas: quién lo administra vs. a
+  // quién le llega. Por eso el programa es opcional y no se elige por defecto.
+  const [campaign, setCampaign] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,6 +63,11 @@ export function TransferContentModal({
       .filter((c) => c.id !== user.id)
       .map((c) => ({ value: c.id, label: c.display_name || c.id })),
     [candidates, user.id],
+  )
+
+  const campaignOptions = useMemo(
+    () => campaigns.map((c) => ({ value: c.id, label: c.name })),
+    [campaigns],
   )
 
   // Solo las filas con algo: una lista de doce ceros no dice nada.
@@ -74,12 +88,46 @@ export function TransferContentModal({
     if (!target) return
     setSaving(true)
     try {
+      // Los ids se piden ANTES de transferir: después el `created_by` ya es el
+      // del destino y la consulta arrastraría también lo que esa persona
+      // tuviera de antes, que nadie pidió mover.
+      const refs = campaign ? await getOwnedRefs(user.id) : null
+
       const moved = await transferContent(user.id, target)
       const n = Object.values(moved).reduce((s, v) => s + (Number(v) || 0), 0)
-      toast.success(
-        t('admin.transfer.done_title', 'Contenido transferido'),
-        t('admin.transfer.done_body', { count: n, defaultValue: '{{count}} elementos cambiaron de dueño.' }),
-      )
+
+      // El cambio de programa va DESPUÉS y por su propio RPC. Si alguno falla,
+      // el cambio de dueño ya está hecho y no se deshace: se dice cuántos
+      // quedaron sin mover en vez de fingir que salió todo.
+      let relocated = 0
+      let failed = 0
+      if (refs) {
+        for (const id of refs.courses) {
+          try { await moveCourseToCampaign(id, campaign); relocated++ } catch { failed++ }
+        }
+        for (const id of refs.looseModules) {
+          try { await moveModuleToCampaign(id, campaign); relocated++ } catch { failed++ }
+        }
+      }
+
+      const campaignName = campaigns.find((c) => c.id === campaign)?.name ?? ''
+      const body = campaign
+        ? t('admin.transfer.done_body_moved', {
+            count: n,
+            moved: relocated,
+            campaign: campaignName,
+            defaultValue: '{{count}} elementos cambiaron de dueño. {{moved}} pasaron al programa {{campaign}}.',
+          })
+        : t('admin.transfer.done_body', { count: n, defaultValue: '{{count}} elementos cambiaron de dueño.' })
+
+      if (failed > 0) {
+        toast.error(
+          t('admin.transfer.partial_title', 'Transferido, pero sin mover todo'),
+          `${body} ${t('admin.transfer.partial_body', { count: failed, defaultValue: '{{count}} no se pudieron mover de programa.' })}`,
+        )
+      } else {
+        toast.success(t('admin.transfer.done_title', 'Contenido transferido'), body)
+      }
       onDone()
       onClose()
     } catch (e) {
@@ -156,7 +204,7 @@ export function TransferContentModal({
               <p className="mt-2.5 text-[11.5px] leading-relaxed text-text-subtle">
                 {t('admin.transfer.loose_modules', {
                   count: looseModules,
-                  defaultValue: '{{count}} de esos módulos no pertenecen a ningún curso. Cambian de autor, pero quién puede abrirlos lo sigue decidiendo su campaña: si hace falta, muévelos con "Mover a otra campaña".',
+                  defaultValue: '{{count}} de esos módulos no pertenecen a ningún curso. Cambian de autor, pero quién puede abrirlos lo sigue decidiendo su programa: si hace falta, muévelos con "Mover a otro programa".',
                 })}
               </p>
             )}
@@ -174,6 +222,26 @@ export function TransferContentModal({
               placeholder={t('admin.transfer.pick', 'Elige un capacitador o superadmin')}
             />
           </div>
+
+          {/* A qué programa. Opcional: cambiar de dueño no obliga a mudar el
+              contenido, pero cuando el nuevo dueño trabaja en otro programa sí
+              hace falta o no lo vería nadie de su gente. */}
+          {campaignOptions.length > 0 && (
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+                {t('admin.transfer.to_campaign', 'Programa destino')}
+              </label>
+              <Select
+                value={campaign}
+                onChange={setCampaign}
+                options={campaignOptions}
+                placeholder={t('admin.transfer.keep_campaign', 'Dejarlo donde está')}
+              />
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-text-subtle">
+                {t('admin.transfer.campaign_hint', 'Cada curso se lleva su contenido (módulos, mundos, arenas y simuladores). Los módulos sueltos se mueven uno a uno. Las asignaciones a aprendices no se tocan.')}
+              </p>
+            </div>
+          )}
 
           {/* Qué seguirá bloqueando el borrado */}
           {blocking.length > 0 && (
