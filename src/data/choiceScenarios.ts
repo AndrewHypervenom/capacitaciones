@@ -45,26 +45,48 @@ export function getChoiceScenario(id: string): ChoiceScenario | undefined {
  *
  * El recorrido corta ciclos: un nodo ya en la ruta actual no se vuelve a
  * puntuar.
+ *
+ * Por qué se memoiza (2026-09-10). La versión anterior exploraba TODOS los
+ * caminos simples sin memoria, con un presupuesto de 20.000 llamadas como
+ * freno. En un escenario con varias decisiones seguidas los caminos crecen de
+ * forma exponencial, así que el presupuesto se agotaba a media exploración y
+ * `best` empezaba a devolver 0: el máximo salía TRUNCADO, por debajo del real.
+ * Un máximo demasiado bajo hace que el aprendiz lo alcance —o lo supere— con
+ * dos aciertos, y `toScorePct` recorta a 100%: de ahí salían desempeños del
+ * 100% en llamadas de 18 segundos. Con memoria por nodo el recorrido es lineal
+ * en aristas, no hace falta presupuesto y el resultado es siempre el mismo.
+ *
+ * El valor memoizado es el del nodo, no el del camino. Tras `unloopScenario` el
+ * grafo va solo hacia adelante y eso es exacto; si algún escenario viejo
+ * conservara un ciclo, la arista que vuelve sobre la ruta actual sigue valiendo
+ * 0 (como antes) y el máximo podría quedar por lo bajo en ese tramo — nunca por
+ * lo alto, que es lo que regalaba el 100%.
  */
 export function calcMaxPoints(scenario: ChoiceScenario): number {
-  // Sin memoización: el mejor puntaje de un nodo depende del camino ya
-  // recorrido (por los ciclos), y los escenarios son pequeños. El presupuesto
-  // evita que un grafo denso dispare la exploración.
-  let budget = 20000;
+  /** Nodos que están en la ruta que se explora ahora mismo (detección de ciclo). */
+  const inPath = new Set<string>();
+  /** Mejor puntaje desde cada nodo, ya resuelto. */
+  const memo = new Map<string, number>();
 
-  const best = (nodeId: string, path: Set<string>): number => {
+  const best = (nodeId: string): number => {
     const node = scenario.nodes[nodeId];
-    if (!node || !node.options?.length || path.has(nodeId) || budget-- <= 0) return 0;
+    // Nodo inexistente o final sin opciones: desde aquí no se suma nada más.
+    if (!node || !node.options?.length) return 0;
+    if (inPath.has(nodeId)) return 0;
+    const done = memo.get(nodeId);
+    if (done !== undefined) return done;
 
-    const next = new Set(path).add(nodeId);
+    inPath.add(nodeId);
     let max = 0;
     for (const opt of node.options) {
-      max = Math.max(max, opt.points + best(opt.nextId, next));
+      max = Math.max(max, opt.points + best(opt.nextId));
     }
+    inPath.delete(nodeId);
+    memo.set(nodeId, max);
     return max;
   };
 
-  return best(scenario.startId, new Set());
+  return best(scenario.startId);
 }
 
 export const CHOICE_SCENARIOS: ChoiceScenario[] = [

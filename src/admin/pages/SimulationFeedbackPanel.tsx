@@ -13,6 +13,8 @@ import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
 import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
 import { pickLang } from '@/lib/contentLang'
+import { toUtcMs } from '@/lib/datetime'
+import { Tooltip } from '@/components/ui/Tooltip'
 
 const SIM_ACCENT = 'rgb(var(--brand-cyan, 6 182 212))'
 
@@ -43,11 +45,30 @@ const PASS_SCORE = 80
 
 type LearnerStatus = 'not_started' | 'in_progress' | 'at_risk' | 'completed'
 
-const STATUS_META: Record<LearnerStatus, { color: string; labelKey: string; fallback: string }> = {
-  completed:   { color: '#22c55e', labelKey: 'admin.sim_panel.status_completed',   fallback: 'Dominado' },
-  in_progress: { color: '#3b82f6', labelKey: 'admin.sim_panel.status_in_progress', fallback: 'Practicando' },
-  at_risk:     { color: '#ef4444', labelKey: 'admin.sim_panel.status_at_risk',     fallback: 'En riesgo' },
-  not_started: { color: '#94a3b8', labelKey: 'admin.sim_panel.status_not_started', fallback: 'Sin intentos' },
+// El `hint` es lo que dice el globo: qué hizo falta exactamente para merecer
+// ese chip. Sin él, "Dominado" y "Practicando" se leen como una opinión del
+// sistema en vez de como una regla que se puede comprobar.
+const STATUS_META: Record<LearnerStatus, { color: string; labelKey: string; fallback: string; hintKey: string; hintFallback: string }> = {
+  completed: {
+    color: '#22c55e', labelKey: 'admin.sim_panel.status_completed', fallback: 'Dominado',
+    hintKey: 'admin.sim_panel.status_completed_hint',
+    hintFallback: 'Su mejor puntaje llega al 80% Y cerró al menos una llamada llegando al final por sus propios medios.',
+  },
+  in_progress: {
+    color: '#3b82f6', labelKey: 'admin.sim_panel.status_in_progress', fallback: 'Practicando',
+    hintKey: 'admin.sim_panel.status_in_progress_hint',
+    hintFallback: 'Ya practicó y su puntaje pasa del 60%, pero todavía no termina ninguna llamada: o colgó, o la conversación se cortó antes del cierre.',
+  },
+  at_risk: {
+    color: '#ef4444', labelKey: 'admin.sim_panel.status_at_risk', fallback: 'En riesgo',
+    hintKey: 'admin.sim_panel.status_at_risk_hint',
+    hintFallback: 'Su mejor puntaje se queda por debajo del 60%. Conviene acompañarlo en la práctica.',
+  },
+  not_started: {
+    color: '#94a3b8', labelKey: 'admin.sim_panel.status_not_started', fallback: 'Sin intentos',
+    hintKey: 'admin.sim_panel.status_not_started_hint',
+    hintFallback: 'Todavía no ha entrado al simulador dentro de este alcance.',
+  },
 }
 const STATUS_ORDER: LearnerStatus[] = ['at_risk', 'not_started', 'in_progress', 'completed']
 
@@ -81,27 +102,56 @@ interface LearnerRow extends LearnerBase {
   scenariosCount: number
   avgScore: number
   bestScore: number
-  avgEmpathy: number
-  avgChecklist: number
+  /** `null` cuando ningún intento las mide (simulador de opción múltiple). */
+  avgEmpathy: number | null
+  avgChecklist: number | null
+  /** Cuántos de sus intentos traen empatía/checklist reales. */
+  softCount: number
   resolvedRate: number
   status: LearnerStatus
   lastAt: number
 }
 
-type SortKey = 'name' | 'estado' | 'intentos' | 'desempeno' | 'empatia'
+type SortKey = 'name' | 'estado' | 'intentos' | 'desempeno' | 'empatia' | 'ultima'
 
 const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0)
 
-function computeStatus(count: number, best: number): LearnerStatus {
+/**
+ * Estado del aprendiz.
+ *
+ * "Dominado" exige puntaje ALTO **y** al menos una llamada resuelta. Sin lo
+ * segundo, un ensayo abortado a los 18 segundos —acertó lo poco que alcanzó a
+ * contestar y colgó— salía como "Dominado" con 100%, y quien lo leía no podía
+ * reconciliarlo con su memoria: no había practicado la simulación completa.
+ * Puntaje alto sin cerrar ninguna llamada es "Practicando", no dominio.
+ */
+function computeStatus(count: number, best: number, anyResolved: boolean): LearnerStatus {
   if (count === 0) return 'not_started'
-  if (best >= PASS_SCORE) return 'completed'
+  if (best >= PASS_SCORE && anyResolved) return 'completed'
   if (best < RISK_SCORE) return 'at_risk'
   return 'in_progress'
 }
 
+/**
+ * ¿Este intento trae empatía y checklist DE VERDAD?
+ *
+ * El simulador de opción múltiple NO los mide: guarda el puntaje copiado en las
+ * tres columnas (ver ChoiceSimulatorRun.tsx). Mostrarlos como "Empatía 56%" era
+ * inventarse un dato — ese 56% era el promedio de sus puntajes, nada más. Se
+ * reconocen por el slug; para un escenario fuera del alcance del capacitador
+ * (que no aparece en ninguna de las dos tablas) queda la firma que los delata:
+ * los tres porcentajes idénticos al puntaje.
+ */
+function hasSoftMetrics(a: SimAttempt, kinds: Map<string, 'call' | 'choice'>): boolean {
+  const kind = kinds.get(a.scenario_slug)
+  if (kind === 'choice') return false
+  if (kind === 'call') return true
+  return !(a.checklist_pct === a.score && a.empathy_pct === a.score)
+}
+
 /** Agrega los intentos de un aprendiz (ya filtrados por escenario si aplica). */
-function aggregate(base: LearnerBase, attempts: SimAttempt[]): LearnerRow {
-  const list = [...attempts].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+function aggregate(base: LearnerBase, attempts: SimAttempt[], kinds: Map<string, 'call' | 'choice'>): LearnerRow {
+  const list = [...attempts].sort((a, b) => (toUtcMs(b.created_at) ?? 0) - (toUtcMs(a.created_at) ?? 0))
   // Mejor puntaje por escenario → promedio justo (no infla con reintentos).
   const bestByScenario = new Map<string, number>()
   for (const a of list) {
@@ -109,6 +159,7 @@ function aggregate(base: LearnerBase, attempts: SimAttempt[]): LearnerRow {
     if (prev === undefined || a.score > prev) bestByScenario.set(a.scenario_slug, a.score)
   }
   const bests = [...bestByScenario.values()]
+  const soft = list.filter((a) => hasSoftMetrics(a, kinds))
   const count = list.length
   const bestScore = bests.length ? Math.max(...bests) : 0
   return {
@@ -118,11 +169,14 @@ function aggregate(base: LearnerBase, attempts: SimAttempt[]): LearnerRow {
     scenariosCount: bestByScenario.size,
     avgScore: Math.round(avg(bests)),
     bestScore,
-    avgEmpathy: Math.round(avg(list.map((a) => a.empathy_pct))),
-    avgChecklist: Math.round(avg(list.map((a) => a.checklist_pct))),
+    // Solo los intentos que de verdad las miden (ver hasSoftMetrics). Si no hay
+    // ninguno, `null`: la columna dice "—" en vez de un promedio fabricado.
+    avgEmpathy: soft.length ? Math.round(avg(soft.map((a) => a.empathy_pct))) : null,
+    avgChecklist: soft.length ? Math.round(avg(soft.map((a) => a.checklist_pct))) : null,
+    softCount: soft.length,
     resolvedRate: count ? Math.round((list.filter((a) => a.resolved).length / count) * 100) : 0,
-    status: computeStatus(count, bestScore),
-    lastAt: list.length ? Date.parse(list[0].created_at) : 0,
+    status: computeStatus(count, bestScore, list.some((a) => a.resolved)),
+    lastAt: list.length ? (toUtcMs(list[0].created_at) ?? 0) : 0,
   }
 }
 
@@ -131,6 +185,28 @@ function fmtDuration(sec: number): string {
   const m = Math.floor(sec / 60)
   const s = sec % 60
   return `${m}:${String(s).padStart(2, '0')}`
+}
+
+/** Fecha y hora exactas del intento: lo que zanja un "no recuerdo haberlo hecho". */
+function fmtDateTime(ms: number, locale: string): string {
+  if (!ms) return '—'
+  return new Date(ms).toLocaleString(locale, {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+/** Fecha corta para la columna: "10 sep" y, si es de otro año, con año. */
+function fmtDateShort(ms: number, locale: string): string {
+  if (!ms) return '—'
+  const d = new Date(ms)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString(locale, { day: '2-digit', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
+}
+
+/** Distancia en días, para el renglón de apoyo ("hoy", "ayer", "hace 5 d"). */
+function daysAgo(ms: number): number {
+  const start = (x: number) => { const d = new Date(x); d.setHours(0, 0, 0, 0); return d.getTime() }
+  return Math.round((start(Date.now()) - start(ms)) / 86400000)
 }
 
 export default function SimulationFeedbackPanel() {
@@ -144,6 +220,8 @@ export default function SimulationFeedbackPanel() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   /** slug → título legible del escenario (llamada u opción). */
   const [scenarioTitles, setScenarioTitles] = useState<Map<string, string>>(new Map())
+  /** slug → de qué simulador viene. Decide si empatía y checklist son reales. */
+  const [scenarioKinds, setScenarioKinds] = useState<Map<string, 'call' | 'choice'>>(new Map())
   const [filterCampaign, setFilterCampaign] = useState('all')
   const [filterScenario, setFilterScenario] = useState('all')
   const [filterCourse, setFilterCourse] = useState('all')
@@ -230,11 +308,14 @@ export default function SimulationFeedbackPanel() {
       // Mapa slug → título en el idioma actual (llamada tiene 3 idiomas; opción, es).
       const lang = i18n.resolvedLanguage ?? 'es'
       const titles = new Map<string, string>()
+      const kinds = new Map<string, 'call' | 'choice'>()
       for (const s of (callRes.data ?? []) as Array<{ slug: string; title_es: string; title_en: string | null; title_pt: string | null }>) {
         titles.set(s.slug, pickLang(s.title_es, s.title_en, s.title_pt, lang) || s.slug)
+        kinds.set(s.slug, 'call')
       }
       for (const s of (choiceRes.data ?? []) as Array<{ slug: string; title_es: string }>) {
         if (!titles.has(s.slug)) titles.set(s.slug, s.title_es || s.slug)
+        if (!kinds.has(s.slug)) kinds.set(s.slug, 'choice')
       }
       // Títulos de los cursos que los intentos mencionan: es lo único que hace
       // falta para el filtro por curso, y así no se trae el catálogo entero.
@@ -276,6 +357,7 @@ export default function SimulationFeedbackPanel() {
       setCourseTitles(courseMap)
       const campMap = new Map(camps.map((c) => [c.id, c.name]))
       setScenarioTitles(titles)
+      setScenarioKinds(kinds)
       setCampaigns(camps)
       const nameOf = (p: Profile) => p.display_name ?? t('admin.sim_panel.no_name', 'Sin nombre')
       const campaignNameOf = (id: string | null) => (id ? (campMap.get(id) ?? '—') : '—')
@@ -392,8 +474,8 @@ export default function SimulationFeedbackPanel() {
       arr.push(a)
       byUser.set(a.user_id, arr)
     }
-    return learners.map((base) => aggregate(base, byUser.get(base.userId) ?? []))
-  }, [learners, scopedAttempts])
+    return learners.map((base) => aggregate(base, byUser.get(base.userId) ?? [], scenarioKinds))
+  }, [learners, scopedAttempts, scenarioKinds])
 
   /**
    * Quién se ve.
@@ -433,7 +515,11 @@ export default function SimulationFeedbackPanel() {
       totalAttempts,
       desempeno: Math.round(avg(withAttempts.map((r) => r.avgScore))),
       resolucion: Math.round(avg(withAttempts.map((r) => r.resolvedRate))),
-      empatia: Math.round(avg(withAttempts.map((r) => r.avgEmpathy))),
+      // Promedio solo sobre quien las tiene medidas; si nadie, no hay KPI que dar.
+      empatia: (() => {
+        const vals = withAttempts.map((r) => r.avgEmpathy).filter((v): v is number => v !== null)
+        return vals.length ? Math.round(avg(vals)) : null
+      })(),
       statusCounts,
       practiced,
       participation: learners > 0 ? Math.round((practiced / learners) * 100) : 0,
@@ -455,7 +541,14 @@ export default function SimulationFeedbackPanel() {
         case 'estado': return (STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)) * m
         case 'intentos': return (a.attemptsCount - b.attemptsCount) * m
         case 'desempeno': return (a.avgScore - b.avgScore) * m
-        case 'empatia': return (a.avgEmpathy - b.avgEmpathy) * m
+        case 'empatia': {
+          // Sin empatía medida no compite: se va al fondo en los dos sentidos.
+          if (a.avgEmpathy === null || b.avgEmpathy === null) {
+            return (a.avgEmpathy === null ? 1 : 0) - (b.avgEmpathy === null ? 1 : 0)
+          }
+          return (a.avgEmpathy - b.avgEmpathy) * m
+        }
+        case 'ultima': return (a.lastAt - b.lastAt) * m
         default: return 0
       }
     })
@@ -480,20 +573,21 @@ export default function SimulationFeedbackPanel() {
         'Escenarios practicados': r.scenariosCount,
         'Desempeño (%)': r.avgScore,
         'Mejor puntaje (%)': r.bestScore,
-        'Empatía prom. (%)': r.avgEmpathy,
-        'Checklist prom. (%)': r.avgChecklist,
+        'Empatía prom. (%)': r.avgEmpathy ?? '',
+        'Checklist prom. (%)': r.avgChecklist ?? '',
         'Tasa de resolución (%)': r.resolvedRate,
+        'Última práctica': r.lastAt ? fmtDateTime(r.lastAt, i18n.language) : '—',
       }))
       const sheet2 = tableRows.flatMap((r) =>
         r.attempts.map((a) => ({
           Aprendiz: r.displayName,
           Escenario: scenarioTitle(a.scenario_slug),
           'Puntaje (%)': a.score,
-          'Empatía (%)': a.empathy_pct,
-          'Checklist (%)': a.checklist_pct,
+          'Empatía (%)': hasSoftMetrics(a, scenarioKinds) ? a.empathy_pct : '',
+          'Checklist (%)': hasSoftMetrics(a, scenarioKinds) ? a.checklist_pct : '',
           Resuelto: a.resolved ? 'Sí' : 'No',
           'Duración (s)': a.duration_sec,
-          Fecha: new Date(a.created_at).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }),
+          Fecha: fmtDateTime(toUtcMs(a.created_at) ?? 0, i18n.language),
         })),
       )
       const XLSX = await import('xlsx')
@@ -506,7 +600,7 @@ export default function SimulationFeedbackPanel() {
     } finally {
       setExporting(false)
     }
-  }, [tableRows, campaigns, campaignId, exporting, statusLabel, scenarioTitle])
+  }, [tableRows, campaigns, campaignId, exporting, statusLabel, scenarioTitle, scenarioKinds, i18n.language])
 
   const setSortKey = (key: SortKey) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }))
@@ -758,14 +852,27 @@ export default function SimulationFeedbackPanel() {
                   <div className="min-w-[760px]">
                     <div
                       className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
-                      style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto auto 1fr auto auto' : '1.6fr auto auto 1fr auto auto' }}
+                      style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto auto 1fr auto auto auto' : '1.6fr auto auto 1fr auto auto auto' }}
                     >
                       <SortTh label={t('admin.sim_panel.col_learner', 'Aprendiz')} col="name" sort={sort} onSort={setSortKey} />
                       {multiCampaign && <span>{t('admin.worlds.campaign')}</span>}
                       <SortTh label={t('admin.sim_panel.col_status', 'Estado')} col="estado" sort={sort} onSort={setSortKey} />
-                      <SortTh label={t('admin.sim_panel.col_attempts', 'Intentos')} col="intentos" sort={sort} onSort={setSortKey} />
-                      <SortTh label={t('admin.sim_panel.col_score', 'Desempeño')} col="desempeno" sort={sort} onSort={setSortKey} />
+                      <SortTh
+                        label={t('admin.sim_panel.col_attempts', 'Intentos')}
+                        col="intentos"
+                        sort={sort}
+                        onSort={setSortKey}
+                        hint={t('admin.sim_panel.col_attempts_hint', 'Cuántas veces practicó y sobre cuántos escenarios distintos. Dos intentos en un solo escenario no cubren el simulador entero.')}
+                      />
+                      <SortTh
+                        label={t('admin.sim_panel.col_score', 'Desempeño')}
+                        col="desempeno"
+                        sort={sort}
+                        onSort={setSortKey}
+                        hint={t('admin.sim_panel.col_score_hint', 'Promedio de su MEJOR puntaje en cada escenario que practicó. Es el porcentaje de aciertos sobre las opciones que alcanzó a contestar, no cuánto del escenario recorrió: mira la columna "Intentos · N esc." para saber el alcance real.')}
+                      />
                       <SortTh label={t('admin.sim_panel.col_empathy', 'Empatía')} col="empatia" sort={sort} onSort={setSortKey} />
+                      <SortTh label={t('admin.sim_panel.col_last', 'Última práctica')} col="ultima" sort={sort} onSort={setSortKey} />
                       <span />
                     </div>
                     <div className="divide-y divide-line">
@@ -776,7 +883,7 @@ export default function SimulationFeedbackPanel() {
                           <div key={row.userId} style={atRisk ? { boxShadow: 'inset 3px 0 0 #ef4444' } : undefined}>
                             <div
                               className="grid gap-4 px-5 py-3.5 items-center cursor-pointer hover:bg-subtle/50 transition-colors"
-                              style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto auto 1fr auto auto' : '1.6fr auto auto 1fr auto auto' }}
+                              style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto auto 1fr auto auto auto' : '1.6fr auto auto 1fr auto auto auto' }}
                               onClick={() => setExpandedUser((p) => (p === row.userId ? null : row.userId))}
                             >
                               <div className="flex items-center gap-3 min-w-0">
@@ -800,12 +907,13 @@ export default function SimulationFeedbackPanel() {
                               <StatusBadge status={row.status} label={statusLabel(row.status)} />
                               <div className="text-[13px] text-text tabular-nums"><span className="font-medium">{row.attemptsCount}</span><span className="text-text-muted"> · {row.scenariosCount} esc.</span></div>
                               <ScoreBar value={row.avgScore} />
-                              <div className="flex items-center gap-1 text-[12px] text-text tabular-nums"><HeartHandshake className="h-3.5 w-3.5 text-pink-500 shrink-0" />{row.avgEmpathy}%</div>
+                              <EmpathyCell value={row.avgEmpathy} />
+                              <LastPractice at={row.lastAt} locale={i18n.language} />
                               <div className="text-text-muted">{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</div>
                             </div>
                             {isOpen && (
                               <div className="px-5 py-4 bg-subtle/40 border-t border-line">
-                                <AttemptList attempts={row.attempts} scenarioTitle={scenarioTitle} />
+                                <AttemptList attempts={row.attempts} scenarioTitle={scenarioTitle} kinds={scenarioKinds} />
                               </div>
                             )}
                           </div>
@@ -844,13 +952,18 @@ export default function SimulationFeedbackPanel() {
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <StatusBadge status={row.status} label={statusLabel(row.status)} />
                           <span className="text-[12px] text-text tabular-nums">{row.attemptsCount} {t('admin.sim_panel.attempts_short', 'intentos')}</span>
-                          <span className="inline-flex items-center gap-1 text-[12px] text-text tabular-nums"><HeartHandshake className="h-3.5 w-3.5 text-pink-500" />{row.avgEmpathy}%</span>
+                          {row.avgEmpathy !== null && (
+                            <span className="inline-flex items-center gap-1 text-[12px] text-text tabular-nums"><HeartHandshake className="h-3.5 w-3.5 text-pink-500" />{row.avgEmpathy}%</span>
+                          )}
+                          {row.lastAt > 0 && (
+                            <span className="text-[12px] text-text-muted tabular-nums">{fmtDateTime(row.lastAt, i18n.language)}</span>
+                          )}
                         </div>
                         <ScoreBar value={row.avgScore} />
                       </button>
                       {isOpen && (
                         <div className="px-4 py-3 bg-subtle/40 border-t border-line">
-                          <AttemptList attempts={row.attempts} scenarioTitle={scenarioTitle} />
+                          <AttemptList attempts={row.attempts} scenarioTitle={scenarioTitle} kinds={scenarioKinds} />
                         </div>
                       )}
                     </div>
@@ -894,12 +1007,15 @@ function StatusDonut({ total, counts, learnersLabel }: { total: number; counts: 
 }
 
 function StatusBadge({ status, label }: { status: LearnerStatus; label: string }) {
+  const { t } = useTranslation()
   const meta = STATUS_META[status]
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium w-fit" style={{ background: `${meta.color}1a`, color: meta.color }}>
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
-      {label}
-    </span>
+    <Tooltip label={t(meta.hintKey, meta.hintFallback)} anchor="element" maxWidth={280}>
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium w-fit" style={{ background: `${meta.color}1a`, color: meta.color }}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
+        {label}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -916,19 +1032,76 @@ function ScoreBar({ value }: { value: number }) {
   )
 }
 
-function SortTh({ label, col, sort, onSort }: { label: string; col: SortKey; sort: { key: SortKey; dir: 'asc' | 'desc' }; onSort: (k: SortKey) => void }) {
+function SortTh({ label, col, sort, onSort, hint }: { label: string; col: SortKey; sort: { key: SortKey; dir: 'asc' | 'desc' }; onSort: (k: SortKey) => void; hint?: string }) {
   const active = sort.key === col
-  return (
+  const btn = (
     <button onClick={() => onSort(col)} className={`flex items-center gap-1 text-left uppercase tracking-wider ${active ? 'text-text' : 'hover:text-text'} transition-colors`}>
       {label}
       <ChevronDown className={`h-3 w-3 transition-transform ${active ? 'opacity-100' : 'opacity-0'} ${active && sort.dir === 'asc' ? 'rotate-180' : ''}`} />
     </button>
   )
+  // El globo explica QUÉ mide la columna: sin eso, "Desempeño 100%" se lee como
+  // "hizo la simulación entera y perfecta", que no es lo que dice el número.
+  return hint ? <Tooltip label={hint} anchor="element" maxWidth={300}>{btn}</Tooltip> : btn
+}
+
+/**
+ * Empatía promedio, o el hueco honesto.
+ *
+ * El simulador de opción múltiple no mide empatía: antes se veía "56%" que en
+ * realidad era el promedio de los puntajes. Sin dato real va una raya, y el
+ * globo explica por qué — mejor un hueco que una cifra inventada.
+ */
+function EmpathyCell({ value }: { value: number | null }) {
+  const { t } = useTranslation()
+  if (value === null) {
+    return (
+      <Tooltip
+        label={t('admin.sim_panel.empathy_na', 'El simulador de opción múltiple no mide empatía.')}
+        anchor="element"
+        maxWidth={220}
+      >
+        <div className="text-[12px] text-text-muted tabular-nums">—</div>
+      </Tooltip>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1 text-[12px] text-text tabular-nums">
+      <HeartHandshake className="h-3.5 w-3.5 text-pink-500 shrink-0" />{value}%
+    </div>
+  )
+}
+
+/**
+ * Cuándo practicó por última vez.
+ *
+ * Por qué existe: la tabla decía "100% de desempeño" sin decir CUÁNDO, y quien
+ * lo leía no podía reconciliarlo con su memoria ("no recuerdo haber practicado
+ * la simulación"). Un puntaje sin fecha no se puede verificar. Arriba va la
+ * fecha corta, debajo la distancia en días, y el globo trae la hora exacta.
+ */
+function LastPractice({ at, locale }: { at: number; locale: string }) {
+  const { t } = useTranslation()
+  if (!at) return <div className="text-[12px] text-text-muted tabular-nums">—</div>
+  const d = daysAgo(at)
+  const rel =
+    d <= 0 ? t('admin.sim_panel.last_today', 'hoy')
+    : d === 1 ? t('admin.sim_panel.last_yesterday', 'ayer')
+    : d < 30 ? t('admin.sim_panel.last_days', { count: d, defaultValue: 'hace {{count}} d' })
+    : t('admin.sim_panel.last_months', { count: Math.round(d / 30), defaultValue: 'hace {{count}} m' })
+  return (
+    <Tooltip label={fmtDateTime(at, locale)} anchor="element">
+      <div className="text-right leading-tight">
+        <div className="text-[12px] text-text tabular-nums whitespace-nowrap">{fmtDateShort(at, locale)}</div>
+        <div className="text-[11px] text-text-muted tabular-nums whitespace-nowrap">{rel}</div>
+      </div>
+    </Tooltip>
+  )
 }
 
 /* ── Detalle: lista de intentos del aprendiz ── */
-function AttemptList({ attempts, scenarioTitle }: { attempts: SimAttempt[]; scenarioTitle: (slug: string) => string }) {
-  const { t } = useTranslation()
+function AttemptList({ attempts, scenarioTitle, kinds }: { attempts: SimAttempt[]; scenarioTitle: (slug: string) => string; kinds: Map<string, 'call' | 'choice'> }) {
+  const { t, i18n } = useTranslation()
   if (attempts.length === 0) return <div className="py-3 text-[13px] text-text-muted">{t('admin.sim_panel.no_attempts', 'Sin intentos todavía.')}</div>
   return (
     <div className="space-y-2">
@@ -938,13 +1111,28 @@ function AttemptList({ attempts, scenarioTitle }: { attempts: SimAttempt[]; scen
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-[13px] font-medium text-text truncate flex-1 min-w-[120px]">{scenarioTitle(a.scenario_slug)}</span>
             <span className="inline-flex items-center gap-1 text-[12px] tabular-nums font-semibold" style={{ color: scoreColor(a.score) }}>{a.score}%</span>
-            <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums" title={t('admin.sim_panel.empathy', 'Empatía')}><HeartHandshake className="h-3.5 w-3.5 text-pink-500" />{a.empathy_pct}%</span>
-            <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums" title={t('admin.sim_panel.checklist', 'Checklist')}><ListChecks className="h-3.5 w-3.5 text-blue-500" />{a.checklist_pct}%</span>
+            {/* Solo si el simulador las mide: en el de opción múltiple estas dos
+                columnas son copias del puntaje, y repetir 100% tres veces hacía
+                pasar por medición lo que era el mismo número. */}
+            {hasSoftMetrics(a, kinds) && (
+              <>
+                <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums" title={t('admin.sim_panel.empathy', 'Empatía')}><HeartHandshake className="h-3.5 w-3.5 text-pink-500" />{a.empathy_pct}%</span>
+                <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums" title={t('admin.sim_panel.checklist', 'Checklist')}><ListChecks className="h-3.5 w-3.5 text-blue-500" />{a.checklist_pct}%</span>
+              </>
+            )}
             <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums" title={t('admin.sim_panel.duration', 'Duración')}><Clock className="h-3.5 w-3.5" />{fmtDuration(a.duration_sec)}</span>
             {a.resolved
-              ? <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-600 dark:text-green-400"><CheckCircle2 className="h-3.5 w-3.5" />{t('admin.sim_panel.resolved', 'Resuelto')}</span>
-              : <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-red-500 dark:text-red-400"><XCircle className="h-3.5 w-3.5" />{t('admin.sim_panel.unresolved', 'No resuelto')}</span>}
-            <span className="text-[11px] text-text-muted/70 tabular-nums w-full sm:w-auto sm:ml-auto">{new Date(a.created_at).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              ? (
+                <Tooltip label={t('admin.sim_panel.resolved_hint', 'Llegó al final de la llamada por sus propios medios y con al menos la mitad de los puntos.')} anchor="element" maxWidth={280}>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-600 dark:text-green-400"><CheckCircle2 className="h-3.5 w-3.5" />{t('admin.sim_panel.resolved', 'Resuelto')}</span>
+                </Tooltip>
+              )
+              : (
+                <Tooltip label={t('admin.sim_panel.unresolved_hint', 'La llamada no llegó a su cierre: colgó, se cortó sola o terminó en un desenlace malo. Es independiente del puntaje — se puede acertar lo poco que alcanzó a contestar y aun así no resolver.')} anchor="element" maxWidth={300}>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-red-500 dark:text-red-400"><XCircle className="h-3.5 w-3.5" />{t('admin.sim_panel.unresolved', 'No resuelto')}</span>
+                </Tooltip>
+              )}
+            <span className="text-[11px] text-text-muted/70 tabular-nums w-full sm:w-auto sm:ml-auto">{fmtDateTime(toUtcMs(a.created_at) ?? 0, i18n.language)}</span>
           </div>
           {a.ai_feedback?.summary && (
             <div className="mt-2 pt-2 border-t border-line/60 flex items-start gap-2">

@@ -321,6 +321,12 @@ export default function ChoiceSimulatorRun() {
       campaignId: simContext.campaignId ?? null,
       scenarioSlug: scenario.id,
       score: pct,
+      // OJO: este simulador NO mide checklist ni empatía — no hay pasos
+      // obligatorios que tachar ni frases empáticas que detectar, solo puntos
+      // por opción. Se guarda el puntaje porque las columnas son NOT NULL, pero
+      // NO son mediciones: el panel del capacitador las descarta por el tipo de
+      // escenario (hasSoftMetrics en SimulationFeedbackPanel.tsx) para no
+      // mostrar "Empatía 56%" cuando ese 56% era el promedio de los puntajes.
       checklistPct: pct / 100,
       empathyPct: pct / 100,
       // Se considera resuelta si llegó a un final bueno por sus propios medios
