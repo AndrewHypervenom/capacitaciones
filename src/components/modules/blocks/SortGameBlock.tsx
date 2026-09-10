@@ -27,6 +27,8 @@ import { CompletedActivityBanner } from './CompletedActivityBanner';
 import type { GameSortBlock, GameSortProcess } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
+import { useGameAttempts } from '@/hooks/useGameAttempts';
+import type { QuizPolicy } from '@/lib/quizPolicy';
 
 function normalizeProcesses(block: GameSortBlock): GameSortProcess[] {
   // Solo cuentan los procesos que realmente tienen pasos. El editor rápido de
@@ -160,6 +162,10 @@ interface Props {
   sectionId?: string;
   /** Último intento guardado en la base (para restaurar "ya completado"). */
   savedAttempt?: any;
+  /** Intentos ya gastados según la base (el navegador solo puede sumar). */
+  savedAttemptCount?: number;
+  /** Reglas del curso: cuántos intentos tiene este juego. Ver lib/quizPolicy. */
+  policy?: QuizPolicy;
 }
 
 const fadeSlide = {
@@ -169,7 +175,15 @@ const fadeSlide = {
   transition: { duration: 0.22, ease: 'easeOut' },
 };
 
-export default function SortGameBlock({ block, language, userId, campaignId, moduleId, sectionId, savedAttempt }: Props) {
+export default function SortGameBlock({ block, language, userId, campaignId, moduleId, sectionId, savedAttempt, savedAttemptCount = 0, policy }: Props) {
+  /* Presupuesto de intentos. Agotarlo NO cierra el juego: se sigue jugando en
+     práctica y llegar al umbral abre el módulo igual (ver useGameAttempts). */
+  const attempts = useGameAttempts({
+    moduleId,
+    unitKey: `${sectionId || ''}__SORT_PROCESS`,
+    policy,
+    savedAttemptCount,
+  });
   const { t } = useTranslation();
   const processes = normalizeProcesses(block);
 
@@ -273,18 +287,27 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
             mensajeDetalle = `${scoreWithHelpLocal} de ${processes.length} procesos necesitaron repaso: ${nombresRepasar}${extra}.`;
           }
 
+          // El intento pone el TECHO de la nota, y el mínimo del módulo su
+          // SUELO: resolverlo nunca deja por debajo de lo que hace falta para
+          // pasar. Lo que sí se pierde entero es el XP (ver quizPolicy).
+          const settled = attempts.settle(pct);
           await saveActivityAttempt({
             user_id: userId,
             campaign_id: campaignId,
             module_id: mId,
             section_id: sId,
             game_type: 'SORT_PROCESS',
-            score: pct,
-            attempt_number: 1,
+            score: settled.score,
+            attempt_number: settled.attempt,
             status: pct === 100 ? 'completed' : 'failed',
             time_spent_seconds: elapsed || null,
             submitted_answers: {
               mensaje: "Juego de ordenar completado",
+              intento: settled.attempt,
+              // Lo que de verdad logró: en práctica el `score` va en 0 para no
+              // tocar la nota, pero la compuerta necesita saber si llegó.
+              pct_real: pct,
+              ...(settled.practice ? { practica: true } : {}),
               proceso_finalizado: (block as any).title?.es || 'Secuenciación',
               aciertos: scoreFirstTryLocal,
               total: processes.length,
@@ -746,13 +769,26 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
               </motion.p>
             )}
           </div>
+          {/* Reintentar siempre se puede: con presupuesto baja el techo del
+              puntaje, sin presupuesto ya no puntúa pero sigue abriendo el
+              módulo. El contenido nunca se cierra. */}
           <button
             onClick={handleReset}
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl glass border border-glass-border/15 text-text-subtle text-[13px] hover:text-text transition-colors"
           >
             <RefreshCcw className="h-3.5 w-3.5" />
-            {t('module.blocks.retry')}
+            {attempts.practice ? t('module.blocks.retry_practice') : t('module.blocks.retry')}
+            {!attempts.practice && attempts.max > 0 && (
+              <span className="tabular-nums text-text-subtle/70">
+                {t('module.check_attempts_left', { count: attempts.left })}
+              </span>
+            )}
           </button>
+          <p className="mt-2 text-center text-[11.5px] text-text-subtle">
+            {attempts.practice
+              ? t('module.blocks.retry_practice_note')
+              : t('module.blocks.retry_score_note')}
+          </p>
         </motion.div>
       )}
     </div>

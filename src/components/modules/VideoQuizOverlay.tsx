@@ -33,6 +33,14 @@ interface VideoQuizOverlayProps {
    *  de lanzar las preguntas de golpe, se abre diciendo cómo le fue y ofreciendo
    *  volver a intentarla o seguir con el video. */
   previousResult?: { score: number; total: number } | null
+  /**
+   * ¿Se le pueden enseñar ya las respuestas correctas?
+   *
+   * Solo cuando la verificación deja de valer nota: aprobada, o sin intentos.
+   * Mientras pueda repetirla para puntuar, enseñarle las explicaciones —que casi
+   * siempre dicen cuál era la buena— convierte la siguiente vuelta en recitar.
+   */
+  revealAnswers?: boolean
   /** Se dispara al pulsar "Continuar video": cierra el overlay y reanuda la reproducción. */
   onComplete: (score: number, total: number) => void
   /** Cierra el overlay y regresa al segmento anterior para repasar la información;
@@ -80,7 +88,7 @@ function ConfettiPiece({ color, angle, delay, isBar }: { color: string; angle: n
 
 type Phase = 'intro' | 'question' | 'summary'
 
-export function VideoQuizOverlay({ marker, language, previousResult, onGraded, onComplete, onReview }: VideoQuizOverlayProps) {
+export function VideoQuizOverlay({ marker, language, previousResult, onGraded, onComplete, onReview, revealAnswers = false }: VideoQuizOverlayProps) {
   const { t } = useTranslation()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selected, setSelected] = useState<number | null>(null)
@@ -352,7 +360,6 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                 {optionOrder.map((i, position) => {
                   const opt = options[i]
                   const isSelectedOpt = selected === i
-                  const isCorrectOpt = i === q.correct
 
                   const cls = cn(
                     'w-full flex items-center gap-3 rounded-2xl border text-left transition-all duration-200 font-medium',
@@ -363,9 +370,7 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                         ? 'border-neon-green bg-neon-green/10 text-white'
                         : isSelectedOpt && !isCorrect
                           ? 'border-red-500 bg-red-500/10 text-white'
-                          : !isSelectedOpt && isCorrectOpt
-                            ? 'border-neon-green/40 bg-neon-green/5 text-neon-green/80'
-                            : 'border-zinc-800/40 bg-zinc-900/40 text-zinc-600',
+                          : 'border-zinc-800/40 bg-zinc-900/40 text-zinc-600',
                   )
 
                   return (
@@ -379,41 +384,22 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                             ? 'bg-neon-green text-black'
                             : isSelectedOpt && !isCorrect
                               ? 'bg-red-500 text-white'
-                              : isCorrectOpt
-                                ? 'bg-neon-green/20 text-neon-green'
-                                : 'bg-zinc-800 text-zinc-600',
+                              : 'bg-zinc-800 text-zinc-600',
                       )}>
                         {LETTERS[position]}
                       </span>
                       <span className="flex-1 break-words"><RichTextInline text={opt} inertLinks /></span>
                       {isAnswered && isSelectedOpt && isCorrect && <CheckCircle2 className="h-5 w-5 text-neon-green shrink-0" />}
                       {isAnswered && isSelectedOpt && !isCorrect && <XCircle className="h-5 w-5 text-red-400 shrink-0" />}
-                      {isAnswered && !isSelectedOpt && isCorrectOpt && <CheckCircle2 className="h-5 w-5 text-neon-green/40 shrink-0" />}
+                      {/* La correcta que NO elegiste ya no se señala aquí: con la
+                          verificación entera repetible, marcarla convertía el
+                          segundo intento en recitar lo que se acaba de ver. Las
+                          explicaciones salen todas juntas al terminar. */}
                     </button>
                   )
                 })}
               </div>
 
-              <AnimatePresence>
-                {isAnswered && explanation && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={cn(
-                      'rounded-xl leading-relaxed border-l-2',
-                      compact ? 'mt-2.5 px-3 py-2 text-[11.5px]' : 'mt-4 px-4 py-3 text-[13px]',
-                      isCorrect
-                        ? 'bg-neon-green/5 border-neon-green text-zinc-400'
-                        : 'bg-zinc-900 border-amber-400 text-zinc-400',
-                    )}
-                  >
-                    <span className="font-semibold text-white mr-1.5">
-                      {isCorrect ? t('video.correct') : t('video.correct_answer')}
-                    </span>
-                    <RichTextInline text={explanation} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
             {/* Botón de acción inferior */}
@@ -512,17 +498,28 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                     <div
                       key={i}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-xl',
-                        compact ? 'px-3 py-1.5 text-[11.5px]' : 'px-4 py-2.5 text-[13px]',
+                        'flex items-start gap-2.5 rounded-xl text-left',
+                        compact ? 'px-3 py-2 text-[11.5px]' : 'px-4 py-3 text-[13px]',
                         correct
                           ? 'bg-neon-green/10 text-zinc-300'
                           : 'bg-red-500/10 text-zinc-400',
                       )}
                     >
                       {correct
-                        ? <CheckCircle2 className="h-4 w-4 shrink-0 text-neon-green" />
-                        : <XCircle className="h-4 w-4 shrink-0 text-red-400" />}
-                      <span className="line-clamp-1">{qText}</span>
+                        ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neon-green" />
+                        : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />}
+                      <div className="min-w-0 flex-1">
+                        <span className="line-clamp-2">{qText}</span>
+                        {/* La explicación de las falladas, solo cuando la
+                            verificación ya no vale nota (aprobada o sin
+                            intentos). Antes salía siempre, y como el set entero
+                            se puede repetir, era soplar la vuelta siguiente. */}
+                        {!correct && revealAnswers && (questions[i].explanation[lang] || questions[i].explanation.es) && (
+                          <p className={cn('mt-1 leading-relaxed text-zinc-500', compact ? 'text-[10.5px]' : 'text-[12px]')}>
+                            <RichTextInline text={questions[i].explanation[lang] || questions[i].explanation.es} inertLinks />
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -537,8 +534,10 @@ export function VideoQuizOverlay({ marker, language, previousResult, onGraded, o
                   <PlayCircle className="h-4 w-4" />
                   {t('video.continue_video')}
                 </button>
-                {/* Repetir SIEMPRE está a la mano, no solo cuando le fue mal: la
-                    nota que queda es la del último intento. */}
+                {/* Repetir SIEMPRE está a la mano, no solo cuando le fue mal.
+                    Ya no es gratis ni castiga: queda el MEJOR intento, pero el
+                    XP baja en cada vuelta y el techo de la nota también (ver
+                    src/lib/quizPolicy.ts). */}
                 <button
                   type="button"
                   onClick={handleRestart}

@@ -1154,9 +1154,17 @@ export default function CourseEditor() {
   // OJO: van ANTES del early return de carga. Estaban después, así que el
   // render de "cargando" ejecutaba 2 hooks menos que el render con datos y
   // React reventaba con "rendered more hooks than during the previous render".
+  // Módulos dados por vistos: el aviso los ignora. NO hay interfaz para
+  // ponerlos — es una excepción que se escribe a mano en `cert_conditions`
+  // (jsonb, sin DDL) cuando se decide que a los ya certificados no se les pide
+  // nada. Ver [[cert_snapshot_recertification]].
+  const recertNoticeHidden = useMemo(
+    () => new Set(cond.recert_notice_hidden_modules ?? []),
+    [cond.recert_notice_hidden_modules],
+  )
   const outdatedCerts = useMemo(
-    () => recert.filter((r) => r.new_module_ids.length > 0),
-    [recert],
+    () => recert.filter((r) => r.new_module_ids.some((id) => !recertNoticeHidden.has(id))),
+    [recert, recertNoticeHidden],
   )
   const pendingRecert = useMemo(() => recert.filter((r) => r.needs_recert), [recert])
 
@@ -4238,6 +4246,93 @@ export default function CourseEditor() {
                 </div>
               </div>
 
+              {/* ── Reglas de los quizzes ─────────────────────────────────
+                  Cuántos intentos tiene cada pregunta y cada juego. Va junto
+                  al puntaje mínimo del módulo porque es lo que hace
+                  que ese puntaje signifique algo: con intentos infinitos y la
+                  respuesta correcta a la vista, todo el mundo sacaba 100.
+                  Ver src/lib/quizPolicy.ts. */}
+              <div className="rounded-xl border border-line px-3.5 py-3">
+                <div className="flex items-center gap-3">
+                  <HelpCircle className="h-4 w-4 text-text-muted shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    {/* El renglón de abajo dice la regla; el globo dice lo que
+                        NO cabe ahí y es lo que más se pregunta: qué pasa cuando
+                        se agotan (spoiler: no bloquea a nadie). */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[13px] font-medium text-text">
+                        {t('admin.courses.cond_quiz_attempts')}
+                      </span>
+                      <Tooltip
+                        /* `whitespace-pre-line`: el globo pinta la etiqueta en
+                           un span plano y sin esto los saltos de línea se
+                           colapsan, dejando los tres puntos en una sola tira. */
+                        label={
+                          <span className="block whitespace-pre-line text-left">
+                            {t('admin.courses.cond_quiz_attempts_tip')}
+                          </span>
+                        }
+                        anchor="element"
+                        variant="panel"
+                        maxWidth={300}
+                        describedBy
+                      >
+                        <Info className="h-3.5 w-3.5 shrink-0 text-text-subtle" />
+                      </Tooltip>
+                    </div>
+                    <div className="text-[11px] text-text-muted">
+                      {cond.quiz_max_attempts === 0
+                        ? t('admin.courses.cond_quiz_attempts_unlimited')
+                        : t('admin.courses.cond_quiz_attempts_hint', { count: cond.quiz_max_attempts })}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <input
+                      type="number" min={0} max={5}
+                      value={cond.quiz_max_attempts}
+                      onChange={(e) => setCond({ ...cond, quiz_max_attempts: Math.max(0, Math.min(5, +e.target.value)) })}
+                      className="w-16 rounded-lg border border-line bg-surface px-2 py-1 text-[13px] text-text"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-3 border-t border-line/60 pt-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[13px] font-medium text-text">
+                        {t('admin.courses.cond_game_attempts')}
+                      </span>
+                      <Tooltip
+                        /* `whitespace-pre-line`: el globo pinta la etiqueta en
+                           un span plano y sin esto los saltos de línea se
+                           colapsan, dejando los tres puntos en una sola tira. */
+                        label={
+                          <span className="block whitespace-pre-line text-left">
+                            {t('admin.courses.cond_game_attempts_tip')}
+                          </span>
+                        }
+                        anchor="element"
+                        variant="panel"
+                        maxWidth={300}
+                        describedBy
+                      >
+                        <Info className="h-3.5 w-3.5 shrink-0 text-text-subtle" />
+                      </Tooltip>
+                    </div>
+                    <div className="text-[11px] text-text-muted">
+                      {cond.game_max_attempts === 0
+                        ? t('admin.courses.cond_quiz_attempts_unlimited')
+                        : t('admin.courses.cond_game_attempts_hint', { count: cond.game_max_attempts })}
+                    </div>
+                  </div>
+                  <input
+                    type="number" min={0} max={9}
+                    value={cond.game_max_attempts}
+                    onChange={(e) => setCond({ ...cond, game_max_attempts: Math.max(0, Math.min(9, +e.target.value)) })}
+                    className="w-16 shrink-0 rounded-lg border border-line bg-surface px-2 py-1 text-[13px] text-text"
+                  />
+                </div>
+              </div>
+
               {/* Requiere simulador */}
               <div className="rounded-xl border border-line px-3.5 py-3">
                 <div className="flex items-center gap-3">
@@ -4833,6 +4928,16 @@ export default function CourseEditor() {
                       </p>
                     )}
 
+                    {/* El titular cuenta a quien se perdio contenido nuevo, pero el
+                        boton marca TODOS los certificados emitidos antes del corte.
+                        Decir las dos cifras evita pulsarlo creyendo que afecta a 2
+                        cuando en realidad afecta a 8. */}
+                    {recert.length > outdatedCerts.length && (
+                      <p className="text-[12px] text-text-muted mt-1.5">
+                        {t('admin.courses.recert_scope_note', { count: recert.length })}
+                      </p>
+                    )}
+
                     <div className="mt-3">
                       <Button
                         variant="ghost"
@@ -4843,7 +4948,7 @@ export default function CourseEditor() {
                         <RefreshCw className={cn('h-3.5 w-3.5', recertBusy && 'animate-spin')} />
                         {recertBusy
                           ? t('admin.courses.recert_working')
-                          : t('admin.courses.recert_cta')}
+                          : t('admin.courses.recert_cta_count', { count: recert.length })}
                       </Button>
                     </div>
                   </div>

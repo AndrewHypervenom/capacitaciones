@@ -1,3 +1,5 @@
+import { DEFAULT_QUIZ_ATTEMPTS, DEFAULT_GAME_ATTEMPTS } from '@/lib/quizPolicy'
+
 // Tipos para el schema de Supabase.
 // Para regenerar automáticamente después de crear el proyecto:
 //   npx supabase gen types typescript --project-id <your-project-id> > src/types/database.ts
@@ -36,6 +38,16 @@ export interface CertConditions {
   /** Nota del capacitador, en sus palabras, sobre qué falta y cuándo llega.
    *  Es lo que lee el aprendiz; vacío = se usa el texto genérico. */
   coming_soon_note: string
+  /**
+   * Intentos por pregunta en los quizzes del curso (bloque y marcador de video).
+   * 0 = sin tope (el comportamiento viejo). Ver src/lib/quizPolicy.ts.
+   */
+  quiz_max_attempts: number
+  /**
+   * Intentos por JUEGO (clasificar, ordenar). Más que en un quiz a propósito:
+   * un juego también se pierde por arrastrar mal, no solo por no saber.
+   */
+  game_max_attempts: number
   /** El curso viene migrado de la plataforma anterior (Sinergy): a quien ya lo
    *  hizo allá se le homologa el certificado en vez de pedirle que lo repita.
    *  Enciende un aviso en la ficha del curso, ANTES de que empiece nada. Lo
@@ -45,6 +57,12 @@ export interface CertConditions {
    *  defecto que trae la traducción. Es editable a propósito: quien recibe las
    *  homologaciones cambia sin que deba cambiar el código. */
   legacy_notice_email: string
+  /** Excepción manual: módulos que el aviso de "se publicó contenido después de
+   *  sus certificados" debe ignorar en Evaluación → Resultados. NO hay interfaz
+   *  que lo escriba — se pone por SQL cuando se decide que a los ya certificados
+   *  no se les pide nada. El aviso vuelve solo si se publica un módulo que no
+   *  esté en la lista. No invalida certificados ni toca la recertificación. */
+  recert_notice_hidden_modules?: string[]
 }
 
 export interface Database {
@@ -2629,8 +2647,11 @@ export const DEFAULT_CERT_CONDITIONS: CertConditions = {
   exam_min_score: 80,
   coming_soon: false,
   coming_soon_note: '',
+  quiz_max_attempts: DEFAULT_QUIZ_ATTEMPTS,
+  game_max_attempts: DEFAULT_GAME_ATTEMPTS,
   legacy_notice: false,
   legacy_notice_email: '',
+  recert_notice_hidden_modules: [],
 }
 export type Profile = Database['public']['Tables']['profiles']['Row']
 /** Dispositivo con ingreso biométrico registrado (huella / Face ID / Hello). */

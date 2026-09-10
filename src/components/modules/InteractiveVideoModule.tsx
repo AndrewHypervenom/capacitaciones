@@ -28,6 +28,8 @@ import { YouTubePlayer } from './YouTubePlayer'
 import { VimeoPlayer } from './VimeoPlayer'
 import type { PlayerLike } from '@/lib/youtube'
 import { saveActivityAttempt } from '@/services/activity.service'
+import { useProgressStore } from '@/stores/progressStore'
+import { DEFAULT_QUIZ_POLICY, recordedScore, type QuizPolicy } from '@/lib/quizPolicy'
 import {
   announcePlaying,
   focusVideo,
@@ -94,6 +96,10 @@ interface InteractiveVideoModuleProps {
   seekRef?: React.MutableRefObject<((seconds: number) => void) | null>
   /** El contenedor puede pedir repetir una verificación (panel lateral del cine). */
   retryRef?: React.MutableRefObject<((markerId: string) => void) | null>
+  /** Reglas de intentos del curso. Ver src/lib/quizPolicy.ts. */
+  quizPolicy?: QuizPolicy
+  /** Intentos ya gastados por unidad, según la base (misma clave que la compuerta). */
+  attemptCounts?: Map<string, number>
 }
 
 /** Segundos de la cuenta regresiva antes de encadenar el siguiente video. */
@@ -206,6 +212,8 @@ export function InteractiveVideoModule({
   onState,
   seekRef,
   retryRef,
+  quizPolicy = DEFAULT_QUIZ_POLICY,
+  attemptCounts,
 }: InteractiveVideoModuleProps) {
   const { t } = useTranslation()
   const playerId = useId()
@@ -882,6 +890,25 @@ export function InteractiveVideoModule({
     setShowRates(false)
   }
 
+  /**
+   * ¿Se le pueden enseñar ya las respuestas de este marcador?
+   *
+   * Solo cuando repetirlo ya no puede subirle la nota: o lo aprobó, o se le
+   * acabaron los intentos. Mientras pueda repetir para puntuar, las
+   * explicaciones serían un soplo — el set entero se vuelve a jugar.
+   */
+  const markerAnswersRevealed = (markerId: string): boolean => {
+    const done = completedQuizzes[markerId]
+    if (done && isVideoQuizPassed(done)) return true
+    if (quizPolicy.maxAttempts <= 0) return false
+    const unitKey = `${section.id || ''}__VIDEO_QUIZ__${markerId}`
+    const used = Math.max(
+      moduleId ? useProgressStore.getState().quizAttempts[moduleId]?.[unitKey] ?? 0 : 0,
+      attemptCounts?.get(unitKey) ?? 0,
+    )
+    return used >= quizPolicy.maxAttempts
+  }
+
   // Se dispara al terminar de responder (pantalla de resultados del overlay).
   // Marca el quiz como hecho y persiste el intento aunque el aprendiz cierre sin
   // pulsar "Continuar". Con el quiz ya hecho, se libera el avance del video.
@@ -897,13 +924,33 @@ export function InteractiveVideoModule({
     // admin no los pasa → no ensucia datos).
     if (userId && campaignId) {
       const pct = total > 0 ? Math.round((score / total) * 100) : 0
+      /* Mismas reglas que el resto del sitio (ver src/lib/quizPolicy.ts):
+         · El intento pone TECHO a la nota; el mínimo del módulo le pone SUELO.
+         · El XP se cobra entero al repetir; la nota nunca cae por debajo de lo
+           que hace falta para pasar, así que repetir esto no bloquea a nadie.
+         Antes cada repetición guardaba su puntaje y ganaba el último: se repetía
+         el set hasta clavarlo y la nota no decía nada. */
+      const unitKey = `${section.id || ''}__VIDEO_QUIZ__${activeMarker.id}`
+      const store = useProgressStore.getState()
+      const usedBefore = Math.max(
+        moduleId ? store.quizAttempts[moduleId]?.[unitKey] ?? 0 : 0,
+        attemptCounts?.get(unitKey) ?? 0,
+      )
+      const practice =
+        quizPolicy.maxAttempts > 0 && usedBefore >= quizPolicy.maxAttempts
+      const attempt = practice
+        ? 0
+        : moduleId
+          ? store.spendQuizAttempt(moduleId, unitKey)
+          : usedBefore + 1
+      const saved = recordedScore(pct, attempt, quizPolicy.minScore)
       void saveActivityAttempt({
         user_id: userId,
         campaign_id: campaignId,
         module_id: moduleId || '',
         section_id: section.id || '',
         game_type: 'VIDEO_QUIZ',
-        score: pct,
+        score: saved,
         status: pct >= 75 ? 'completed' : 'failed',
         time_spent_seconds: 0,
         submitted_answers: {
@@ -911,6 +958,11 @@ export function InteractiveVideoModule({
           aciertos: score,
           total,
           errores: total - score,
+          intento: attempt,
+          // Lo que logró de verdad: la compuerta lo mira para abrir el módulo
+          // aunque la nota guardada esté topada por el intento.
+          pct_real: pct,
+          ...(practice ? { practica: true } : {}),
           tema: activeMarker.title[lang],
           // Pregunta por pregunta: qué eligió y qué era lo correcto.
           detalle: detail,
@@ -1456,6 +1508,7 @@ export function InteractiveVideoModule({
               onGraded={handleQuizGraded}
               onComplete={handleOverlayComplete}
               onReview={handleReviewQuiz}
+              revealAnswers={markerAnswersRevealed(activeMarker.id)}
             />
           )}
         </AnimatePresence>

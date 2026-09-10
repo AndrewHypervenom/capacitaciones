@@ -4,6 +4,7 @@ import type { ContentBlock, GameClassifyBlock } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { Callout } from '@/components/modules/Callout';
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck';
+import type { QuizPolicy } from '@/lib/quizPolicy';
 import { FlashcardBlockRenderer } from './FlashcardBlock';
 import { AccordionBlockRenderer } from './AccordionBlock';
 import { TabsBlockRenderer } from './TabsBlock';
@@ -60,6 +61,10 @@ interface Props {
   campaignId?: string;
   /** Último intento guardado por actividad (clave `${sectionId}__GAME_TYPE` o `KC__quizKey`). */
   savedAttempts?: Map<string, any>;
+  /** Reglas de los quizzes del curso (intentos, confianza). Ver lib/quizPolicy. */
+  quizPolicy?: QuizPolicy;
+  /** Intentos ya gastados por quiz según la base (misma clave que `savedAttempts`). */
+  attemptCounts?: Map<string, number>;
 }
 /**
  * Espera de un bloque que llega en su propio chunk. El hueco reserva alto para
@@ -75,7 +80,7 @@ function LazyBlock({ children }: { children: ReactNode }) {
   );
 }
 
-function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex, campaignId, savedAttempts }: Omit<Props, 'noAnimate'>) {
+function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex, campaignId, savedAttempts, quizPolicy, attemptCounts }: Omit<Props, 'noAnimate'>) {
   switch (block.type) {
     // El párrafo se escribe con formato enriquecido (negrita, cursiva, saltos de
     // línea, viñetas, espacio extra): se renderiza con RichText conservando la
@@ -228,8 +233,10 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           sectionId={sectionId}
           quizKey={quizKey}
           savedAttempt={quizKey ? savedAttempts?.get(`KC__${quizKey}`) : undefined}
+          savedAttemptCount={quizKey ? attemptCounts?.get(`KC__${quizKey}`) : undefined}
           userId={userId}
           campaignId={campaignId}
+          policy={quizPolicy}
           quiz={{
             question: fillML(block.question),
             options: {
@@ -334,6 +341,8 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           moduleId={moduleId}
           sectionId={sectionId}
           savedAttempt={sectionId ? savedAttempts?.get(`${sectionId}__SORT_PROCESS`) : undefined}
+          savedAttemptCount={sectionId ? attemptCounts?.get(`${sectionId}__SORT_PROCESS`) : undefined}
+          policy={quizPolicy}
         />
         </LazyBlock>
       );
@@ -349,6 +358,8 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
           moduleId={moduleId}
           sectionId={sectionId}
           savedAttempt={sectionId ? savedAttempts?.get(`${sectionId}__CLASSIFY_CASES`) : undefined}
+          savedAttemptCount={sectionId ? attemptCounts?.get(`${sectionId}__CLASSIFY_CASES`) : undefined}
+          policy={quizPolicy}
         />
         </LazyBlock>
       );
@@ -403,7 +414,7 @@ function blockSpacing(type: ContentBlock['type']): string {
   }
 }
 
-export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate, userId, campaignId, sectionId, savedAttempts }: Props) {
+export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate, userId, campaignId, sectionId, savedAttempts, quizPolicy, attemptCounts }: Props) {
 
   // campaignId ya llega resuelto desde ModulePage → module.campaign_id.
   // No usamos fallback de UUID de ceros: si falta, avisamos y dejamos
@@ -424,6 +435,8 @@ export function BlockRenderer({ block, language, moduleId, blockIndex, noAnimate
       campaignId={idSeguro}
       sectionId={sectionId}
       savedAttempts={savedAttempts}
+      quizPolicy={quizPolicy}
+      attemptCounts={attemptCounts}
     />
   );
 

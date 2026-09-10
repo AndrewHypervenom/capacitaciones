@@ -10,6 +10,14 @@ import { cn } from '@/lib/cn';
 import { playQuizSound } from '@/lib/sound';
 import { shuffledIndicesMoved } from '@/lib/quizShuffle';
 import { saveActivityAttempt } from '@/services/activity.service';
+import {
+  DEFAULT_QUIZ_POLICY,
+  hasAttemptsLeft,
+  recordedScore,
+  shouldRevealAnswer,
+  xpFactorForAttempt,
+  type QuizPolicy,
+} from '@/lib/quizPolicy';
 import { RichTextInline } from '@/components/ui/RichText';
 
 interface Props {
@@ -36,6 +44,18 @@ interface Props {
    * tenga que responderla de nuevo.
    */
   savedAttempt?: any;
+  /**
+   * Cuántos intentos lleva gastados esta pregunta SEGÚN LA BASE. Es lo que
+   * impide recuperar el presupuesto limpiando el navegador o entrando desde
+   * otro equipo: el store local solo puede sumar, nunca restar.
+   */
+  savedAttemptCount?: number;
+  /**
+   * Reglas del curso: cuántos intentos tiene la pregunta. Si no llega, se
+   * usan las de fábrica (ver src/lib/quizPolicy.ts) — nunca "sin límite", que
+   * era el comportamiento que había que quitar.
+   */
+  policy?: QuizPolicy;
 }
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'];
@@ -114,13 +134,13 @@ export function KnowledgeCheck({
   totalQuizzes,
   quizKey,
   savedAttempt,
+  savedAttemptCount = 0,
+  policy = DEFAULT_QUIZ_POLICY,
 }: Props) {
   const { t } = useTranslation();
   const recordCheck = useProgressStore((s) => s.recordCheck);
   const recordQuizResult = useProgressStore((s) => s.recordQuizResult);
-  // Marca si el aprendiz ya falló ESTA pregunta: si luego la acierta al
-  // reintentar, cuenta como redención ("Segunda Oportunidad").
-  const [failedBefore, setFailedBefore] = useState(false);
+  const markQuizFailed = useProgressStore((s) => s.markQuizFailed);
 
   // Llave estable del quiz dentro del módulo: la explícita (bloques) o el índice
   // de sección (quiz de sección tradicional).
@@ -156,6 +176,47 @@ export function KnowledgeCheck({
   const [showConfetti, setShowConfetti] = useState(false);
   const reducedMotion = useReducedMotion();
 
+  /* ── El presupuesto de intentos ─────────────────────────────────────────
+     Sale del store persistido, no de un `useState`: si viviera solo en el
+     componente, recargar la página devolvería los intentos y el tope no
+     serviría de nada. */
+  const spendQuizAttempt = useProgressStore((s) => s.spendQuizAttempt);
+  const localAttempts = useProgressStore(
+    (s) => s.quizAttempts[moduleId]?.[storeKey] ?? 0,
+  );
+  /* El mayor de los dos. El local va por delante (responde sin esperar al
+     guardado) y el de la base es el que no se puede borrar desde el navegador.
+     Cuando el capacitador reinicia, se van los dos a la vez: borra las filas y
+     el aviso de reinicio limpia la caché local (ver applyReset). */
+  const attemptsUsed = Math.max(localAttempts, savedAttemptCount);
+  const attemptsLeft = policy.maxAttempts === 0
+    ? Infinity
+    : Math.max(0, policy.maxAttempts - attemptsUsed);
+
+  /**
+   * ¿Falló esta pregunta un día ANTERIOR? Es lo único que hace que acertarla
+   * cuente como redención ("Segunda Oportunidad").
+   *
+   * Se lee del store, no de un `useState` de la sesión: con estado local,
+   * fallar y acertar en el mismo minuto volvía a pagar el logro — justo el
+   * atajo que el tope de intentos viene a cerrar.
+   */
+  const failedOn = useProgressStore((s) => s.quizFailedOn[moduleId]?.[storeKey]);
+  const failedBefore = !!failedOn && failedOn < new Date().toISOString().split('T')[0];
+
+
+  /**
+   * Modo práctica: se agotaron los intentos y la persona quiere volver a
+   * responderla igual.
+   *
+   * La NOTA ya está cerrada (quedó en 0) y no se vuelve a tocar: no se gasta
+   * intento, no se guarda nada y el capacitador sigue viendo lo que de verdad
+   * pasó. Lo que se reabre es la pregunta, para poder comprobar que ya se
+   * entendió. Sin esto la pantalla terminaba en "cuenta como fallada" y punto
+   * muerto: ni decía qué hacer, ni dejaba hacer nada.
+   */
+  const [practice, setPractice] = useState(false);
+
   // Orden en que se pintan las opciones. Es SOLO presentación: la respuesta
   // elegida, el store y el intento guardado siguen usando el índice original,
   // así que un intento viejo se restaura igual de bien. Se rebaraja al
@@ -173,12 +234,70 @@ export function KnowledgeCheck({
   // ─── ELEGIR OPCIÓN ────────────────────────────────────────────────────────
   const choose = (i: number) => {
     if (selected !== null) return;
+    // Sin intentos solo se puede responder en modo práctica, y eso no puntúa.
+    if (!practice && !hasAttemptsLeft(attemptsUsed, policy)) return;
+
+    setSelected(i);
+
+    /* ── Modo práctica ────────────────────────────────────────────────────
+       La NOTA ya está cerrada y no se toca: no gasta intento y su puntaje no
+       cuenta. Pero sí se guarda, marcado como práctica, por una razón que no
+       es cosmética: acertar aquí es lo que DESBLOQUEA el módulo.
+
+       Nota y desbloqueo son cosas distintas. La nota dice qué sabía la persona
+       sin ayuda —y se queda en 0—; el desbloqueo dice si ya lo entendió. Sin
+       esta fila, un quiz fallado dejaba el módulo cerrado y alguien tenía que
+       ir a reiniciarle la actividad a cada persona: una pregunta mal redactada
+       se convertía en setecientos desbloqueos a mano. */
+    if (practice) {
+      const ok = i === quiz.correct;
+      playQuizSound(ok ? 'correct' : 'wrong');
+      if (userId && campaignId) {
+        void saveActivityAttempt({
+          user_id: userId,
+          campaign_id: campaignId,
+          module_id: moduleId,
+          section_id: sectionId || '',
+          game_type: 'KNOWLEDGE_CHECK',
+          /* Resolverlo aquí vale el MÍNIMO del módulo, no 0: el XP ya se
+             perdió entero al agotar los intentos, y hundir además la nota es
+             lo que dejaba el módulo cerrado y obligaba a desbloquear gente a
+             mano. Fallar practicando sigue valiendo 0, pero como el promedio
+             se queda con el mejor intento, no le quita nada ya ganado. */
+          score: recordedScore(ok ? 100 : 0, 0, policy.minScore),
+          status: ok ? 'completed' : 'failed',
+          time_spent_seconds: 0,
+          submitted_answers: {
+            quiz_key: quizKey ?? null,
+            opcion_index: i,
+            practica: true,
+            correcta: ok,
+            pregunta: quiz.question[language],
+            opcion_elegida: quiz.options[language][i],
+            opcion_correcta: quiz.options[language][quiz.correct],
+            mensaje_detalle: ok
+              ? 'Practicando tras agotar los intentos: acertó (nota al mínimo, sin XP)'
+              : 'Practicando tras agotar los intentos: falló',
+          },
+        });
+      }
+      return;
+    }
 
     // 1. Actualizar estado local y store
-    setSelected(i);
     recordCheck(moduleId, storeKey, i);
+    // Este intento ya se gastó, se acierte o no.
+    const usedNow = spendQuizAttempt(moduleId, storeKey);
 
     const isCorrectAnswer = i === quiz.correct;
+    /* Dos cosas distintas, y solo una puede llegar a cero:
+       · La NOTA baja con el intento pero tiene SUELO en el mínimo del módulo,
+         para que resolverlo nunca impida completar.
+       · El XP sí se cobra entero: a la primera se paga completo, después menos.
+       Antes cualquier reintento guardaba 100 y el panel leía el último intento,
+       así que insistir borraba el error. */
+    const score = recordedScore(isCorrectAnswer ? 100 : 0, usedNow, policy.minScore);
+    const xpFactor = xpFactorForAttempt(usedNow);
 
     // Sonido de feedback (usa el tema del módulo activo).
     playQuizSound(isCorrectAnswer ? 'correct' : 'wrong');
@@ -189,8 +308,13 @@ export function KnowledgeCheck({
     // `moduleId` va al store para que distinga repaso de primera vez: si el
     // módulo ya está completado, el acierto paga tarifa de repaso (ver
     // XP_REWARDS.reviewRate) en vez del precio completo.
-    recordQuizResult(isCorrectAnswer, isCorrectAnswer && failedBefore, moduleId);
-    if (!isCorrectAnswer) setFailedBefore(true);
+    /* Redención: solo si el fallo fue OTRO DÍA. Antes bastaba fallar y acertar
+       al segundo clic —con la correcta ya pintada en verde delante—, así que el
+       logro premiaba justo el atajo que el tope de intentos viene a cerrar.
+       Volver al día siguiente y acertar sí es haberlo estudiado. */
+    const redeemed = isCorrectAnswer && failedBefore;
+    recordQuizResult(isCorrectAnswer, redeemed, moduleId, xpFactor);
+    if (!isCorrectAnswer) markQuizFailed(moduleId, storeKey);
 
     // 2. Guardar intento en backend (solo si tenemos los ids necesarios)
     if (userId && campaignId) {
@@ -201,7 +325,7 @@ export function KnowledgeCheck({
         module_id: moduleId,
         section_id: sectionId || '',
         game_type: 'KNOWLEDGE_CHECK',
-        score: isCorrect ? 100 : 0,
+        score,
         status: isCorrect ? 'completed' : 'failed',
         time_spent_seconds: 0,
         submitted_answers: {
@@ -215,8 +339,15 @@ export function KnowledgeCheck({
           opcion_correcta: quiz.options[language][quiz.correct],
           // Explícito para el panel del capacitador (no deducirlo del puntaje).
           correcta: isCorrect,
+          // El número de intento es lo que convierte el detalle en información:
+          // "acertó" no dice lo mismo a la primera que a la tercera después de
+          // dos fallos.
+          intento: usedNow,
+          intentos_max: policy.maxAttempts || null,
           mensaje_detalle: isCorrect
-            ? null
+            ? usedNow > 1
+              ? `Acertó en el intento ${usedNow}`
+              : null
             : `Respondió "${quiz.options[language][i]}" — correcto era "${quiz.options[language][quiz.correct]}"`,
         },
       });
@@ -231,14 +362,31 @@ export function KnowledgeCheck({
 
   // ─── REINTENTAR (solo cuando falló) ──────────────────────────────────────
   const retry = () => {
+    if (!hasAttemptsLeft(attemptsUsed, policy)) return;
     setSelected(null);
     setShuffleSeed((n) => n + 1);
-    // Limpiamos también el store para que al volver a la página no quede bloqueado
+    // Limpiamos la RESPUESTA, no los intentos gastados: el presupuesto no se
+    // recarga por reintentar, que es justo lo que lo hacía inútil.
     recordCheck(moduleId, storeKey, -1); // -1 = sin respuesta
+  };
+
+  /** Reabre la pregunta SIN puntuar: la nota ya quedó cerrada en 0. */
+  const startPractice = () => {
+    setPractice(true);
+    setSelected(null);
+    setShuffleSeed((n) => n + 1);
   };
 
   const answered = selected !== null;
   const correct = answered && selected === quiz.correct;
+  /* ¿Se le enseña ya cuál era la buena? Solo si acertó o se quedó sin intentos.
+     Esta línea es el cambio de fondo: antes la correcta se pintaba en verde en
+     cuanto respondías, así que fallar, mirar y reintentar era gratis. */
+  const revealed = answered && (practice || shouldRevealAnswer(correct, attemptsUsed, policy));
+  /** Falló y todavía le quedan intentos: se le dice que no, no cuál era. */
+  const canRetry = answered && !correct && !practice && hasAttemptsLeft(attemptsUsed, policy);
+  /** Se quedó sin intentos sin acertar. La nota quedó cerrada en 0. */
+  const exhausted = answered && !correct && !practice && !hasAttemptsLeft(attemptsUsed, policy);
 
   return (
     <motion.div
@@ -257,6 +405,15 @@ export function KnowledgeCheck({
           <span className="text-[11px] uppercase tracking-wider text-text-subtle font-semibold">
             {t('module.knowledge_check')}
           </span>
+          {/* La regla se anuncia ANTES, no al agotarla. Enterarse de que había
+              dos intentos cuando ya no queda ninguno es una trampa, no una
+              regla: nadie puede administrar un presupuesto que no sabía que
+              tenía. */}
+          {!answered && policy.maxAttempts > 0 && (
+            <span className="text-[11px] tabular-nums text-text-subtle">
+              · {t('module.check_attempts_budget', { count: attemptsLeft })}
+            </span>
+          )}
         </div>
 
         {/* Indicadores de progreso (multi-quiz) */}
@@ -296,14 +453,16 @@ export function KnowledgeCheck({
           {order.map((i, position) => {
             const opt = quiz.options[language][i];
             const isSelected = selected === i;
+            // `isCorrect` solo se puede usar para PINTAR cuando ya se reveló.
             const isCorrect = i === quiz.correct;
+            const showCorrect = revealed && isCorrect;
             const showState = answered;
 
             return (
               <motion.button
                 key={i}
                 onClick={() => choose(i)}
-                disabled={answered}
+                disabled={answered || (!practice && attemptsLeft <= 0)}
                 initial={reducedMotion ? false : { opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{
@@ -319,8 +478,8 @@ export function KnowledgeCheck({
                     'glass border-glass-border/10 hover:border-neon-green/25 hover:bg-glass/6 cursor-pointer',
                   showState && isSelected && isCorrect && 'glass border-neon-green/25 bg-neon-green/6',
                   showState && isSelected && !isCorrect && 'glass border-neon-magenta/25 bg-neon-magenta/6',
-                  showState && !isSelected && isCorrect && 'glass border-neon-green/20 opacity-70',
-                  showState && !isSelected && !isCorrect && 'glass border-glass-border/5 opacity-35',
+                  showState && !isSelected && showCorrect && 'glass border-neon-green/20 opacity-70',
+                  showState && !isSelected && !showCorrect && 'glass border-glass-border/5 opacity-35',
                   answered && 'cursor-default',
                 )}
               >
@@ -332,11 +491,15 @@ export function KnowledgeCheck({
                       'bg-glass/8 text-text-muted group-hover:bg-neon-green/10 group-hover:text-neon-green border border-glass-border/10',
                     showState && isSelected && isCorrect && 'bg-neon-green/80 text-black',
                     showState && isSelected && !isCorrect && 'bg-neon-magenta/80 text-white',
-                    showState && !isSelected && isCorrect && 'bg-neon-green/10 text-neon-green',
-                    showState && !isSelected && !isCorrect && 'bg-glass/8 text-text-subtle',
+                    showState && !isSelected && showCorrect && 'bg-neon-green/10 text-neon-green',
+                    showState && !isSelected && !showCorrect && 'bg-glass/8 text-text-subtle',
                   )}
                 >
-                  {showState && isSelected ? (
+                  {showState && !isSelected && showCorrect ? (
+                    // La correcta que no eligió. Antes era su letra pintada de
+                    // verde y no se leía como "esta era": parecía decoración.
+                    <Check className="h-4 w-4" strokeWidth={3} />
+                  ) : showState && isSelected ? (
                     <>
                       {isCorrect ? (
                         <Check className="h-4 w-4" strokeWidth={3} />
@@ -363,6 +526,13 @@ export function KnowledgeCheck({
                 </span>
 
                 <span className="text-[14.5px] leading-snug flex-1"><RichTextInline text={opt} inertLinks /></span>
+                {/* En palabras, no solo en color: un verde sin etiqueta obliga a
+                    deducir qué pasó, y con daltonismo no dice nada. */}
+                {showState && showCorrect && (
+                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-neon-green">
+                    {t('module.check_was_correct')}
+                  </span>
+                )}
               </motion.button>
             );
           })}
@@ -389,37 +559,85 @@ export function KnowledgeCheck({
                   <span
                     className={cn(
                       'h-1.5 w-1.5 rounded-full animate-glow-pulse',
-                      correct ? 'bg-neon-green' : 'bg-neon-magenta',
+                      correct ? 'bg-neon-green' : exhausted ? 'bg-text-muted' : 'bg-neon-magenta',
                     )}
                   />
                   <span
                     className={cn(
                       'text-[11px] uppercase tracking-wider font-semibold',
-                      correct ? 'text-neon-green' : 'text-neon-magenta',
+                      correct ? 'text-neon-green' : exhausted ? 'text-text-muted' : 'text-neon-magenta',
                     )}
                   >
-                    {correct ? t('module.check_correct') : t('module.check_incorrect')}
+                    {/* Tres estados, no dos. Antes, sin intentos, seguía diciendo
+                        "revisa otra vez" — pedirle reintentar a quien ya no puede
+                        es lo que hacía la pantalla incomprensible. */}
+                    {correct
+                      ? t('module.check_correct')
+                      : exhausted
+                        ? t('module.check_closed')
+                        : t('module.check_incorrect')}
                   </span>
                 </div>
-                <p className="text-[14px] leading-relaxed text-text/90">
-                  <RichTextInline text={quiz.explanation[language]} />
-                </p>
+                {/* La explicación TAMBIÉN se guarda hasta el final: casi siempre
+                    contiene la respuesta, así que enseñarla mientras quedan
+                    intentos es regalarla por la puerta de al lado. Mientras
+                    tanto se dice lo único útil: que esa no era. */}
+                {revealed ? (
+                  <p className="text-[14px] leading-relaxed text-text/90">
+                    <RichTextInline text={quiz.explanation[language]} />
+                  </p>
+                ) : (
+                  <p className="text-[14px] leading-relaxed text-text/90">
+                    {t('module.check_try_again')}
+                  </p>
+                )}
 
-                {/* Siempre permitir volver a responder: si falló, para corregir; si
-                    acertó, para poder re-registrar el intento (p. ej. quizzes que
-                    quedaron marcados localmente pero sin guardarse en la base). */}
-                <button
-                  onClick={retry}
-                  className={cn(
-                    "mt-4 flex items-center gap-1.5 text-[12.5px] font-medium transition-colors cursor-pointer",
-                    correct
-                      ? "text-text-subtle hover:text-text"
-                      : "text-neon-magenta/70 hover:text-neon-magenta"
-                  )}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  {correct ? t('module.blocks.completed_redo') : t('module.blocks.retry')}
-                </button>
+                {/* Reintentar solo si falló y le queda presupuesto. Acertar ya no
+                    ofrece "rehacer": con el puntaje decreciente, volver a
+                    responder solo podría BAJARLE la nota. */}
+                {canRetry && (
+                  <button
+                    onClick={retry}
+                    className="mt-4 flex items-center gap-1.5 text-[12.5px] font-medium text-neon-magenta/70 transition-colors hover:text-neon-magenta cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {t('module.blocks.retry')}
+                    {policy.maxAttempts > 0 && (
+                      <span className="tabular-nums text-text-subtle">
+                        {t('module.check_attempts_left', { count: attemptsLeft })}
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                {/* Qué pasó y qué puede hacer AHORA. Antes esto era una línea
+                    gris al pie, debajo de la explicación: lo más importante de
+                    la pantalla, escrito como una nota al margen, y sin ninguna
+                    salida. */}
+                {exhausted && (
+                  <div className="mt-4 rounded-xl border border-glass-border/12 px-4 py-3">
+                    <p className="text-[13px] font-medium text-text">
+                      {t('module.check_closed_title')}
+                    </p>
+                    <p className="mt-1 text-[12.5px] leading-relaxed text-text-muted">
+                      {t('module.check_closed_hint')}
+                    </p>
+                    <button
+                      onClick={startPractice}
+                      className="mt-3 flex items-center gap-1.5 text-[12.5px] font-medium text-text-muted transition-colors hover:text-text cursor-pointer"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {t('module.check_practice_again')}
+                    </button>
+                  </div>
+                )}
+
+                {/* En práctica se dice, para que nadie crea que recuperó la nota. */}
+                {practice && (
+                  <p className="mt-3 text-[12px] text-text-subtle">
+                    {t('module.check_practice_note')}
+                  </p>
+                )}
 
               </div>
             </motion.div>

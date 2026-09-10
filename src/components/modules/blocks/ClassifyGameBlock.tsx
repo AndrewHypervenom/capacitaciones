@@ -24,6 +24,8 @@ import { CheckCircle2, XCircle, Trophy, RefreshCcw } from 'lucide-react';
 import type { GameClassifyBlock, ClassifyCase } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { cn } from '@/lib/cn';
+import { useGameAttempts } from '@/hooks/useGameAttempts';
+import type { QuizPolicy } from '@/lib/quizPolicy';
 
 interface Props {
   block: GameClassifyBlock;
@@ -34,6 +36,10 @@ interface Props {
   sectionId?: string;
   /** Último intento guardado en la base (para restaurar "ya completado"). */
   savedAttempt?: any;
+  /** Intentos ya gastados según la base (el navegador solo puede sumar). */
+  savedAttemptCount?: number;
+  /** Reglas del curso: cuántos intentos tiene este juego. Ver lib/quizPolicy. */
+  policy?: QuizPolicy;
 }
 
 const CATEGORY_STYLES: Record<string, { border: string; bg: string; text: string; badge: string }> = {
@@ -142,7 +148,15 @@ function DropZone({
   );
 }
 
-export function ClassifyGameBlockRenderer({ block, language, userId, campaignId, moduleId, sectionId, savedAttempt }: Props) {
+export function ClassifyGameBlockRenderer({ block, language, userId, campaignId, moduleId, sectionId, savedAttempt, savedAttemptCount = 0, policy }: Props) {
+  /* Presupuesto de intentos. Agotarlo NO cierra el juego: se sigue jugando en
+     práctica y llegar al umbral abre el módulo igual (ver useGameAttempts). */
+  const attempts = useGameAttempts({
+    moduleId,
+    unitKey: `${sectionId || ''}__CLASSIFY_CASES`,
+    policy,
+    savedAttemptCount,
+  });
   const { t } = useTranslation();
   // Vista "ya completado": si hay intento en la base y el aprendiz no ha vuelto a
   // interactuar en esta sesión, mostramos el aviso en vez de rearrancar el juego.
@@ -307,6 +321,10 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
     });
 
     // ── GUARDADO EN SUPABASE ──
+    // El intento pone el TECHO de la nota, y el mínimo del módulo su SUELO:
+    // resolverlo nunca deja por debajo de lo que hace falta para pasar. Lo que
+    // sí se pierde entero es el XP (ver quizPolicy).
+    const settled = attempts.settle(pct);
     if (userId && campaignId) {
       void saveActivityAttempt({
         user_id: userId,
@@ -314,8 +332,8 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
         module_id: moduleId || '',
         section_id: sectionId || '',
         game_type: 'CLASSIFY_CASES',
-        score: pct,
-        attempt_number: 1,
+        score: settled.score,
+        attempt_number: settled.attempt,
         status: pct >= 70 ? 'completed' : 'failed',
         time_spent_seconds: elapsedSeconds,
         submitted_answers: {
@@ -325,6 +343,11 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
           mensaje: 'Juego de clasificar casos completado',
           mensaje_detalle: mensajeDetalle,
           detalle,
+          intento: settled.attempt,
+          // `pct_real` es lo que de verdad logró. En práctica el `score` va en 0
+          // para no tocar la nota, pero la compuerta necesita saber si llegó.
+          pct_real: pct,
+          ...(settled.practice ? { practica: true } : {}),
         },
       });
     } else {
@@ -544,13 +567,27 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
               </p>
             )}
 
+            {/* Reintentar siempre se puede. Lo que cambia es qué vale: con
+                presupuesto, el techo del puntaje baja; sin presupuesto, ya no
+                puntúa pero sigue abriendo el módulo si se alcanza el umbral.
+                Nunca se cierra el contenido. */}
             <button
               onClick={handleReset}
               className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl glass border border-glass-border/15 text-text-subtle text-[13px] hover:text-text transition-colors"
             >
               <RefreshCcw className="h-3.5 w-3.5" />
-              {t('module.blocks.retry')}
+              {attempts.practice ? t('module.blocks.retry_practice') : t('module.blocks.retry')}
+              {!attempts.practice && attempts.max > 0 && (
+                <span className="tabular-nums text-text-subtle/70">
+                  {t('module.check_attempts_left', { count: attempts.left })}
+                </span>
+              )}
             </button>
+            <p className="text-center text-[11.5px] text-text-subtle">
+              {attempts.practice
+                ? t('module.blocks.retry_practice_note')
+                : t('module.blocks.retry_score_note')}
+            </p>
           </motion.div>
         )}
       </AnimatePresence>

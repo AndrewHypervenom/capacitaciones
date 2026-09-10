@@ -112,6 +112,25 @@ export interface ProgressState {
   moduleSlugToId: Record<string, string>;
   attempts: SimulatorAttempt[];
   checkAnswers: Record<string, Record<string, number>>;
+  /**
+   * Intentos GASTADOS en cada pregunta: `moduleId → quizKey → n`.
+   *
+   * Vive en el store persistido y no en el componente porque si no, recargar la
+   * página devolvía el presupuesto entero: fallar dos veces, F5, y a probar de
+   * nuevo hasta acertar. Eso es exactamente lo que el tope viene a impedir.
+   */
+  quizAttempts: Record<string, Record<string, number>>;
+  /**
+   * Día (YYYY-MM-DD) en que se falló cada pregunta por primera vez:
+   * `moduleId → quizKey → fecha`.
+   *
+   * Existe para el logro de redención. Antes bastaba fallar y acertar al
+   * segundo clic —con la respuesta correcta ya pintada en verde delante—, así
+   * que el logro premiaba exactamente el atajo que el tope de intentos viene a
+   * cerrar. Ahora solo cuenta si el acierto llega OTRO DÍA: eso ya es haber
+   * vuelto a estudiarlo.
+   */
+  quizFailedOn: Record<string, Record<string, string>>;
   xp: number;
   streak: number;
   lastActivityDate: string | null;
@@ -181,6 +200,15 @@ export interface ProgressState {
   /** ¿Este módulo ya cobró repaso hoy? (para pintar el botón sin intentarlo). */
   reviewedToday: (key: ModuleKey) => boolean;
   recordCheck: (moduleId: string, quizKey: string, optionIdx: number) => void;
+  /** Suma un intento gastado a una pregunta y devuelve el total (1-based). */
+  spendQuizAttempt: (moduleId: string, quizKey: string) => number;
+  /**
+   * Registra que hoy se falló esta pregunta y dice si YA se había fallado en un
+   * día anterior — que es la única forma de redención que se premia.
+   */
+  markQuizFailed: (moduleId: string, quizKey: string) => { failedBefore: boolean };
+  /** Devuelve el presupuesto a cero (repaso de la sección, reinicio del panel). */
+  clearQuizAttempts: (moduleId: string, quizKey: string) => void;
   addAttempt: (attempt: SimulatorAttempt) => string[];
   earnXP: (amount: number) => void;
   updateStreak: () => string[];
@@ -191,7 +219,13 @@ export interface ProgressState {
    * Registra el resultado de una pregunta. `redeemed` indica que el aprendiz
    * había fallado esta misma pregunta y ahora la acertó al reintentar → redención.
    */
-  recordQuizResult: (correct: boolean, redeemed?: boolean, moduleId?: string) => string[];
+  /**
+   * `xpFactor` (0..1) recorta el XP del acierto según en qué intento llegó:
+   * a la primera se paga entero, después menos, y resolverlo practicando (con
+   * los intentos agotados) no paga nada. Es AQUÍ donde se cobra fallar — la
+   * nota tiene suelo porque de ella depende poder avanzar, el XP no.
+   */
+  recordQuizResult: (correct: boolean, redeemed?: boolean, moduleId?: string, xpFactor?: number) => string[];
   /** Registra una certificación de curso (con su puntaje) y evalúa logros. */
   recordCertification: (courseId: string, score?: number | null) => string[];
   /** Registra avance de mundo (niveles y mundos completados) y evalúa logros. */
@@ -372,6 +406,8 @@ export const useProgressStore = create<ProgressState>()(
       moduleSlugToId: {},
       attempts: [],
       checkAnswers: {},
+      quizAttempts: {},
+      quizFailedOn: {},
       xp: 0,
       streak: 0,
       lastActivityDate: null,
@@ -566,6 +602,39 @@ export const useProgressStore = create<ProgressState>()(
           },
         }),
 
+      spendQuizAttempt: (moduleId, quizKey) => {
+        const used = (get().quizAttempts[moduleId]?.[quizKey] ?? 0) + 1;
+        set({
+          quizAttempts: {
+            ...get().quizAttempts,
+            [moduleId]: { ...(get().quizAttempts[moduleId] ?? {}), [quizKey]: used },
+          },
+        });
+        return used;
+      },
+
+      markQuizFailed: (moduleId, quizKey) => {
+        const today = new Date().toISOString().split('T')[0];
+        const prev = get().quizFailedOn[moduleId]?.[quizKey];
+        // Solo se guarda el PRIMER fallo: si se sobreescribiera con el de hoy,
+        // fallar de nuevo borraría la deuda y la redención nunca se cumpliría.
+        if (!prev) {
+          set({
+            quizFailedOn: {
+              ...get().quizFailedOn,
+              [moduleId]: { ...(get().quizFailedOn[moduleId] ?? {}), [quizKey]: today },
+            },
+          });
+        }
+        return { failedBefore: !!prev && prev < today };
+      },
+
+      clearQuizAttempts: (moduleId, quizKey) => {
+        const forModule = { ...(get().quizAttempts[moduleId] ?? {}) };
+        delete forModule[quizKey];
+        set({ quizAttempts: { ...get().quizAttempts, [moduleId]: forModule } });
+      },
+
       addAttempt: (attempt) => {
         const prevBest = bestSimScore(get().attempts);
         const attempts = [attempt, ...get().attempts].slice(0, 40);
@@ -611,7 +680,7 @@ export const useProgressStore = create<ProgressState>()(
         return true;
       },
 
-      recordQuizResult: (correct, redeemed, moduleId) => {
+      recordQuizResult: (correct, redeemed, moduleId, xpFactor = 1) => {
         if (!correct) {
           // Un fallo reinicia la racha de aciertos; no otorga nada.
           set({ quizStreak: 0 });
@@ -644,7 +713,11 @@ export const useProgressStore = create<ProgressState>()(
           reviewSpent = spent + base;
           reviewDate = today;
         } else {
-          gain = boosted(XP_REWARDS.quizCorrect + (redeemed ? XP_REWARDS.quizRedeemed : 0), 'quiz');
+          // El factor del intento se aplica al XP del ACIERTO, no al bono de
+          // redención: ese ya se gana por volver otro día, que es justo lo que
+          // se quiere premiar.
+          const base = Math.round(XP_REWARDS.quizCorrect * Math.max(0, Math.min(1, xpFactor)));
+          gain = boosted(base + (redeemed ? XP_REWARDS.quizRedeemed : 0), 'quiz');
         }
 
         set({
@@ -752,6 +825,8 @@ export const useProgressStore = create<ProgressState>()(
           moduleSlugToId: {},
           attempts: [],
           checkAnswers: {},
+          quizAttempts: {},
+          quizFailedOn: {},
           xp: 0,
           streak: 0,
           lastActivityDate: null,
@@ -816,6 +891,16 @@ export const useProgressStore = create<ProgressState>()(
         for (const [moduleKey, answers] of Object.entries(incoming.checkAnswers ?? {})) {
           checkAnswers[moduleKey] = { ...answers, ...(s.checkAnswers[moduleKey] ?? {}) };
         }
+        // Intentos: gana el MAYOR de las dos pestañas. Con la fusión normal
+        // ("lo mío manda") bastaba tener dos pestañas abiertas para que el
+        // presupuesto de una no contara en la otra.
+        const quizAttempts: ProgressState['quizAttempts'] = { ...s.quizAttempts };
+        for (const [moduleKey, used] of Object.entries(incoming.quizAttempts ?? {})) {
+          const mine = s.quizAttempts[moduleKey] ?? {};
+          const merged = { ...mine };
+          for (const [k, n] of Object.entries(used)) merged[k] = Math.max(mine[k] ?? 0, n);
+          quizAttempts[moduleKey] = merged;
+        }
 
         // Intentos del simulador: unión por id, ordenados por fecha.
         const byId = new Map(s.attempts.map((a) => [a.id, a]));
@@ -832,6 +917,7 @@ export const useProgressStore = create<ProgressState>()(
           courseReviewRound: { ...incoming.courseReviewRound, ...s.courseReviewRound },
           courseReviewCount: { ...incoming.courseReviewCount, ...s.courseReviewCount },
           checkAnswers,
+          quizAttempts,
           attempts,
           xp: maxOf(s.xp, incoming.xp),
           streak: maxOf(s.streak, incoming.streak),
@@ -880,6 +966,7 @@ export const useProgressStore = create<ProgressState>()(
           (next.reviewXPToday !== undefined && next.reviewXPToday !== s.reviewXPToday) ||
           (next.reviewXPDate !== undefined && next.reviewXPDate !== s.reviewXPDate) ||
           JSON.stringify(next.checkAnswers) !== JSON.stringify(s.checkAnswers) ||
+          JSON.stringify(next.quizAttempts) !== JSON.stringify(s.quizAttempts) ||
           JSON.stringify(next.moduleSlugToId) !== JSON.stringify(s.moduleSlugToId) ||
           JSON.stringify(next.reviewedAt) !== JSON.stringify(s.reviewedAt) ||
           JSON.stringify(next.courseReviewRound) !== JSON.stringify(s.courseReviewRound) ||
@@ -912,8 +999,15 @@ export const useProgressStore = create<ProgressState>()(
         // Respuestas de knowledge-check (objeto keyed por UUID de módulo).
         if (payload.check_answer_keys?.length) {
           const next = { ...s.checkAnswers };
-          for (const k of payload.check_answer_keys) delete next[k];
+          const nextAttempts = { ...s.quizAttempts };
+          for (const k of payload.check_answer_keys) {
+            delete next[k];
+            // El presupuesto se va con las respuestas: reiniciar un módulo y
+            // dejar los intentos gastados sería devolverlo bloqueado.
+            delete nextAttempts[k];
+          }
           patch.checkAnswers = next;
+          patch.quizAttempts = nextAttempts;
         }
 
         // Intentos del simulador (guardan scenarioId = slug del escenario).
@@ -946,6 +1040,8 @@ export const useProgressStore = create<ProgressState>()(
             completedModules: state.completedModules ?? [],
             attempts: state.attempts ?? [],
             checkAnswers: {},
+            quizAttempts: {},
+            quizFailedOn: {},
             xp: 0, streak: 0, lastActivityDate: null, badges: [], quizCorrectCount: 0, quizStreak: 0,
           } as Partial<ProgressState>;
         }

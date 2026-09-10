@@ -35,6 +35,7 @@ import { Button } from '@/components/ui/Button';
 import { Reveal } from '@/components/ui/Reveal';
 import { RichText, RichTextInline } from '@/components/ui/RichText';
 import { KnowledgeCheck } from '@/components/modules/KnowledgeCheck';
+import { DEFAULT_QUIZ_ATTEMPTS, DEFAULT_GAME_ATTEMPTS, type QuizPolicy } from '@/lib/quizPolicy';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
 import { PassiveVideoEmbed } from '@/components/modules/PassiveVideoEmbed';
 import { SimpleVideo } from '@/components/modules/SimpleVideo';
@@ -409,6 +410,18 @@ export default function ModulePage() {
     return () => { active = false; };
   }, [module?.courseId]);
 
+  /* Reglas de quizzes y juegos de ESTE curso: cuántos intentos tiene cada uno y
+     cuál es el suelo de la nota. Salen de `cert_conditions`, que ya viene con el
+     curso — no hace falta pedir nada más. Un módulo suelto (sin curso) usa las
+     de fábrica. Va DESPUÉS de `coursePassPct` porque depende de él.
+     Ver src/lib/quizPolicy.ts. */
+  const quizPolicy = useMemo<QuizPolicy>(() => ({
+    maxAttempts: backCourse?.cert_conditions?.quiz_max_attempts ?? DEFAULT_QUIZ_ATTEMPTS,
+    gameAttempts: backCourse?.cert_conditions?.game_max_attempts ?? DEFAULT_GAME_ATTEMPTS,
+    // El suelo de la nota es el mínimo del módulo: fallar la baja hasta aquí y
+    // ni un punto más, para que nunca impida completar.
+    minScore: coursePassPct,
+  }), [backCourse, coursePassPct]);
   // Actividades calificables esperadas del módulo, con la misma clave que usa
   // el registro de intentos (`section_id__GAME_TYPE`) para poder cruzarlas.
   const gradedUnits = useMemo<GradedUnit[]>(() => {
@@ -497,7 +510,14 @@ export default function ModulePage() {
       } else {
         key = `${sid}__${a.game_type}`;
       }
-      m.set(key, typeof a.score === 'number' ? a.score : 0);
+      /* El MEJOR intento, no el último.
+         Antes ganaba el más reciente, y con eso reintentar borraba el error:
+         todo el mundo acababa en 100. Ahora no hace falta ese castigo, porque
+         el techo de cada intento ya impide que repetir suba la nota — y en
+         cambio el "último gana" sí hacía daño: practicar y volver a fallar te
+         tumbaba una nota que ya te habías ganado. */
+      const sc = typeof a.score === 'number' ? a.score : 0;
+      m.set(key, Math.max(m.get(key) ?? 0, sc));
     }
     return m;
   }, [attemptsFeedback]);
@@ -513,6 +533,7 @@ export default function ModulePage() {
     });
     const m = new Map<string, any>();
     for (const a of ordered as any[]) {
+      if (a.submitted_answers?.practica === true) continue; // no restauran estado
       const sid = a.section_id || a.id;
       const quizKey = a.submitted_answers?.quiz_key;
       let key: string;
@@ -526,6 +547,43 @@ export default function ModulePage() {
         key = `${sid}__${a.game_type}`;
       }
       m.set(key, a);
+    }
+    return m;
+  }, [attemptsFeedback]);
+
+  /**
+   * Cuántos intentos lleva GASTADOS cada quiz, según la base.
+   *
+   * El presupuesto se lleva en el navegador (progressStore) para que responda al
+   * instante, pero solo con eso bastaba limpiar el almacenamiento —o entrar
+   * desde otro equipo— para recuperar los intentos. La base es la que manda:
+   * cada respuesta deja su fila, así que contarlas es el número de verdad.
+   *
+   * Sale de los MISMOS datos que `attemptByUnit`, que ya están cargados: esto
+   * no pide nada más, solo cuenta en vez de quedarse con el último.
+   */
+  const attemptCountByUnit = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of (attemptsFeedback ?? []) as any[]) {
+      if (a.submitted_answers?.practica === true) continue; // no gastan presupuesto
+      const sid = a.section_id || a.id;
+      const quizKey = a.submitted_answers?.quiz_key;
+      let key: string;
+      if (a.game_type === 'KNOWLEDGE_CHECK') {
+        key = quizKey ? `KC__${quizKey}` : `${sid}__KNOWLEDGE_CHECK`;
+      } else if (
+        a.game_type === 'SORT_PROCESS' ||
+        a.game_type === 'CLASSIFY_CASES' ||
+        a.game_type === 'VIDEO_QUIZ'
+      ) {
+        // Los juegos llevan su presupuesto con la MISMA clave que la compuerta.
+        key = `${sid}__${a.game_type}`;
+      } else if (a.game_type === 'VIDEO_QUIZ') {
+        key = `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`;
+      } else {
+        continue;
+      }
+      m.set(key, (m.get(key) ?? 0) + 1);
     }
     return m;
   }, [attemptsFeedback]);
@@ -551,6 +609,44 @@ export default function ModulePage() {
     return out;
   }, [attemptByUnit, module]);
 
+  /**
+   * Quizzes que la persona ACABÓ acertando, cuente o no para la nota.
+   *
+   * Nota y desbloqueo son cosas distintas y hay que medirlas por separado:
+   *   · La NOTA dice qué sabía sin ayuda. Baja con cada intento y se queda en 0
+   *     si agotó el presupuesto. Es lo que el capacitador reporta.
+   *   · El DESBLOQUEO dice si ya lo entendió. Para eso vale cualquier acierto,
+   *     incluido el de practicar después de agotar los intentos.
+   *
+   * Sin esta separación, una sola pregunta mal redactada dejaba el módulo
+   * cerrado para todo el mundo y alguien tenía que ir a reiniciarle la
+   * actividad a cada persona, una por una.
+   */
+  const masteredUnits = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of (attemptsFeedback ?? []) as any[]) {
+      const sa = a.submitted_answers ?? {};
+      const sid = a.section_id || a.id;
+      if (a.game_type === 'KNOWLEDGE_CHECK') {
+        // `correcta` es explícito desde hace tiempo; el respaldo por puntaje
+        // cubre los intentos viejos, anteriores a que se guardara la bandera.
+        const ok = sa.correcta === true || (sa.correcta === undefined && a.score === 100);
+        if (ok) set.add(sa.quiz_key ? `KC__${sa.quiz_key}` : `${sid}__KNOWLEDGE_CHECK`);
+      } else if (a.game_type === 'SORT_PROCESS' || a.game_type === 'CLASSIFY_CASES') {
+        /* En un juego "lo logró" es haber llegado al umbral, aunque la nota que
+           quedó registrada sea menor por el intento —o 0, si fue en práctica.
+           `pct_real` es lo que consiguió de verdad; los intentos viejos no la
+           traen y se miran por su puntaje, como siempre. */
+        const real = typeof sa.pct_real === 'number' ? sa.pct_real : (a.score ?? 0);
+        const key = a.game_type === 'VIDEO_QUIZ'
+          ? `${sid}__VIDEO_QUIZ__${sa.marker_id ?? 'default'}`
+          : `${sid}__${a.game_type}`;
+        if (real >= coursePassPct) set.add(key);
+      }
+    }
+    return set;
+  }, [attemptsFeedback, coursePassPct]);
+
   const moduleGate = useMemo(() => {
     type Pending = { unit: GradedUnit; status: 'failed' | 'pending'; score: number | null };
     const total = gradedUnits.length;
@@ -559,16 +655,27 @@ export default function ModulePage() {
     let sum = 0;
     let done = 0;
     const pending: Pending[] = [];
+    let gateSum = 0;
     for (const u of gradedUnits) {
       const has = scoreByUnit.has(u.key);
       const sc = scoreByUnit.get(u.key) ?? 0;
       sum += sc;
+      /* Para ABRIR el módulo, un quiz que acabó acertando vale como acertado
+         aunque su nota sea 40 o 0. Los juegos y demás actividades siguen
+         midiéndose por su puntaje, igual que siempre. */
+      const gateScore = masteredUnits.has(u.key) ? 100 : sc;
+      gateSum += gateScore;
       if (has) done++;
-      if (sc < coursePassPct) pending.push({ unit: u, status: has ? 'failed' : 'pending', score: has ? sc : null });
+      if (gateScore < coursePassPct) {
+        pending.push({ unit: u, status: has ? 'failed' : 'pending', score: has ? sc : null });
+      }
     }
+    // El puntaje que se MUESTRA y se reporta es el honesto; el de la compuerta
+    // solo decide si puede avanzar.
     const score = Math.round(sum / total);
-    return { active: true, score, done, total, canComplete: score >= coursePassPct, pending };
-  }, [gradedUnits, scoreByUnit, coursePassPct]);
+    const gateScore = Math.round(gateSum / total);
+    return { active: true, score, done, total, canComplete: gateScore >= coursePassPct, pending };
+  }, [gradedUnits, scoreByUnit, masteredUnits, coursePassPct]);
   
   // ─── PROCESAMIENTO DINÁMICO DE MÉTRICAS CARD LATERAL ───
   const computedMetrics = useMemo(() => {
@@ -762,6 +869,32 @@ export default function ModulePage() {
         onStart={goToSimulation}
         className="mt-10"
       />
+
+      {/* ── El puntaje del módulo, siempre a la vista ─────────────────────────
+          La compuerta ya no mira la nota (mira si acabó entendiéndolo), así que
+          la nota dejaría de verse justo cuando deja de bloquear — y una nota
+          que nadie ve no es un incentivo: el quiz se vuelve "clic y sigo".
+
+          Aquí es donde se siente. No impide avanzar, pero queda escrito, con el
+          nombre de quien lo va a leer. */}
+      {!completed && moduleGate.active && moduleGate.canComplete && (
+        <div className="mt-10 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 rounded-2xl border border-line px-5 py-4">
+          <span className="text-[13px] text-text-muted">{t('module.score_label')}</span>
+          <span
+            className={cn(
+              'text-[17px] font-semibold tabular-nums leading-none',
+              moduleGate.score >= coursePassPct ? 'text-primary' : 'text-amber-500',
+            )}
+          >
+            {moduleGate.score}%
+          </span>
+          <span className="w-full text-[12.5px] text-text-muted sm:w-auto">
+            {moduleGate.score >= coursePassPct
+              ? t('module.score_hint_ok')
+              : t('module.score_hint_low')}
+          </span>
+        </div>
+      )}
 
       <div className="mt-10 flex flex-col items-center justify-end gap-3 border-t border-line pt-6 sm:flex-row">
         {/* Sin halo ni icono latiendo: es una accion secundaria, no la principal. */}
@@ -1071,6 +1204,8 @@ export default function ModulePage() {
                         campaignId={module.campaign_id}
                         moduleId={module.dbId || module.id}
                         savedQuizResults={s.id ? videoQuizResultsBySection[s.id] : undefined}
+                        quizPolicy={quizPolicy}
+                        attemptCounts={attemptCountByUnit}
                       />
                       {/* Material que acompaña al video (PDFs, texto, imágenes…):
                           los mismos bloques que en una sección normal. */}
@@ -1087,6 +1222,8 @@ export default function ModulePage() {
                               userId={targetUserId ?? ''}
                               campaignId={module.campaign_id}
                               savedAttempts={attemptByUnit}
+                              attemptCounts={attemptCountByUnit}
+                              quizPolicy={quizPolicy}
                             />
                           ))}
                         </div>
@@ -1120,6 +1257,7 @@ export default function ModulePage() {
                               userId={targetUserId ?? ''}
                               campaignId={module.campaign_id}
                               savedAttempts={attemptByUnit}
+                              quizPolicy={quizPolicy}
                             />
                           ))}
                         </div>
@@ -1144,7 +1282,9 @@ export default function ModulePage() {
                         language={language}
                         quizIndex={quizIdx >= 0 ? quizIdx : undefined}
                         totalQuizzes={totalQuizzes}
+                        policy={quizPolicy}
                         savedAttempt={s.id ? attemptByUnit.get(`${s.id}__KNOWLEDGE_CHECK`) : undefined}
+                        savedAttemptCount={s.id ? attemptCountByUnit.get(`${s.id}__KNOWLEDGE_CHECK`) : undefined}
                       />
                     )}
                     </SectionLayout>
