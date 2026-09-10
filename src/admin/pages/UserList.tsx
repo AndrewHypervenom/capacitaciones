@@ -35,9 +35,11 @@ import { UserProgressDrawer } from '@/admin/components/UserProgressDrawer'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
 import { HrRosterSyncModal } from '@/admin/components/HrRosterSyncModal'
 import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
+import { ChangeEmailModal } from '@/admin/components/ChangeEmailModal'
 import { getDefaultPassword } from '@/services/appSettings.service'
 import { setUsersActive } from '@/services/hrSync.service'
 import { logActivity } from '@/services/audit.service'
+import { checkEmailAvailable, type ExistingAccount } from '@/services/userEmail.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { COUNTRY_OPTIONS } from '@/lib/countries'
 import type { Profile, Campaign } from '@/types/database'
@@ -48,20 +50,6 @@ const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
 /** `profiles.email` ya existe en el tipo; el alias se conserva por claridad y
  *  porque la columna puede venir vacía si el SQL del correo no se ha corrido. */
 type ProfileWithEmail = Profile
-
-/** Lo que la Edge Function averiguó sobre un correo que ya tiene cuenta. */
-interface ExistingAccount {
-  known?: boolean
-  orphan?: boolean
-  /** Tomado sin que ninguna cuenta lo muestre: cambio sin confirmar o correo anterior. */
-  ghost?: boolean
-  reason?: 'pending_change' | 'old_identity'
-  currentEmail?: string | null
-  displayName?: string | null
-  role?: string | null
-  campaignName?: string | null
-  isActive?: boolean
-}
 
 /**
  * Traduce "A user with this email address has already been registered" a algo
@@ -208,6 +196,9 @@ export default function UserList() {
   // Credenciales temporales pendientes por usuario (solo el superadmin las recibe
   // vía RLS). Permite copiar el bloque de credenciales de cualquier pendiente.
   const [tempCreds, setTempCreds] = useState<Record<string, TempCred>>({})
+  // Cambio del correo de ingreso de una persona (solo superadmin). Se hace al
+  // momento, como la baja o el restablecimiento: no es un borrador.
+  const [emailUser, setEmailUser] = useState<ProfileWithEmail | null>(null)
   // Dispositivos con ingreso biométrico por persona (solo informativo).
   const [passkeys, setPasskeys] = useState<Record<string, { count: number; lastUsedAt: string | null }>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -404,6 +395,27 @@ export default function UserList() {
   }
 
   /**
+   * El correo que se le ve a alguien: el del perfil (copia de `auth.users` que
+   * mantiene un trigger) y, si esa columna aún viene vacía, el de la credencial
+   * temporal — que solo existe mientras la persona no haya entrado nunca.
+   */
+  const emailOf = (u: ProfileWithEmail): string | null =>
+    u.email ?? tempCreds[u.id]?.email ?? null
+
+  /**
+   * Refleja el correo recién cambiado sin recargar la lista. Se toca también
+   * `savedUsers` a propósito: el cambio ya está en la base, así que no debe
+   * contar como una edición pendiente en la barra de guardado.
+   */
+  const applyNewEmail = (userId: string, email: string) => {
+    const setEmail = (list: ProfileWithEmail[]) =>
+      list.map((u) => (u.id === userId ? { ...u, email } : u))
+    setUsers(setEmail)
+    setSavedUsers(setEmail)
+    setTempCreds((prev) => (prev[userId] ? { ...prev, [userId]: { ...prev[userId], email } } : prev))
+  }
+
+  /**
    * Abre el formulario de alta arrancando en la campaña donde el panel está
    * parado: un capacitador con varias campañas crea en la que está mirando, no
    * en su casa. Sigue pudiendo cambiarla antes de crear.
@@ -434,35 +446,16 @@ export default function UserList() {
       return
     }
     setEmailCheck({ state: 'checking' })
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({ mode: 'check', email }),
-        },
-      )
-      const json = await res.json()
-      // Una Edge Function anterior a este soporte ignoraría `mode` y crearía la
-      // cuenta; por eso el modo check exige que el servidor conteste `available`.
-      if (!res.ok || typeof json.available !== 'boolean') {
-        setEmailCheck(null)
-        return
-      }
-      setEmailCheck(
-        json.available
+    const { available, existing } = await checkEmailAvailable(email)
+    // Sin respuesta clara no se bloquea el alta: el servidor volverá a decidir
+    // al crear (una Edge Function anterior a este soporte ignoraría `mode`).
+    setEmailCheck(
+      available === null
+        ? null
+        : available
           ? { state: 'free' }
-          : { state: 'taken', message: describeTakenEmail(json.existing, t) },
-      )
-    } catch {
-      // Sin red no se bloquea el alta: el servidor volverá a decidir al crear.
-      setEmailCheck(null)
-    }
+          : { state: 'taken', message: describeTakenEmail(existing, t) },
+    )
   }
 
   const handleInvite = async () => {
@@ -1357,11 +1350,24 @@ export default function UserList() {
                         )}
                       </div>
                     )}
-                    <div className="text-[11px] text-text-subtle truncate">
-                      {/* `profiles.email` primero; la credencial temporal solo
-                          cubre a quien no ha entrado nunca, y el id es el
-                          último recurso si el SQL del correo no se ha corrido. */}
-                      {user.email ?? tempCreds[user.id]?.email ?? `${user.id.slice(0, 8)}…`}
+                    <div className="flex items-center gap-1 min-w-0 group">
+                      <div className="text-[11px] text-text-subtle truncate">
+                        {/* `profiles.email` primero; la credencial temporal solo
+                            cubre a quien no ha entrado nunca, y el id es el
+                            último recurso si el SQL del correo no se ha corrido. */}
+                        {emailOf(user) ?? `${user.id.slice(0, 8)}…`}
+                      </div>
+                      {isSuperAdmin && (
+                        <Tooltip label={t('admin.users.edit_email_hint')} className="shrink-0" maxWidth={260}>
+                          <button
+                            onClick={() => setEmailUser(user)}
+                            className="h-6 w-6 shrink-0 flex items-center justify-center rounded-md text-text-subtle hover:text-text hover:bg-glass/6 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
+                            aria-label={t('admin.users.edit_email')}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                      )}
                     </div>
                     {(user.job_title || user.national_id || user.phone) && (
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-text-muted">
@@ -1666,6 +1672,17 @@ export default function UserList() {
 
       {pwdOpen && (
         <DefaultPasswordModal onClose={() => setPwdOpen(false)} onSaved={setDefaultPwdOn} />
+      )}
+
+      {emailUser && (
+        <ChangeEmailModal
+          user={emailUser}
+          currentEmail={emailOf(emailUser)}
+          isSelf={emailUser.id === authUser?.id}
+          onClose={() => setEmailUser(null)}
+          onSaved={(email) => applyNewEmail(emailUser.id, email)}
+          describeTaken={(existing) => describeTakenEmail(existing, t)}
+        />
       )}
 
       {transferFor && (
