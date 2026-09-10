@@ -569,17 +569,18 @@ export default function ModulePage() {
       const sid = a.section_id || a.id;
       const quizKey = a.submitted_answers?.quiz_key;
       let key: string;
-      if (a.game_type === 'KNOWLEDGE_CHECK') {
+      if (a.game_type === 'VIDEO_QUIZ') {
+        /* Un video lleva VARIOS marcadores, y cada uno es un quiz aparte con su
+           propio presupuesto: la clave tiene que bajar hasta el marcador, igual
+           que en scoreByUnit y attemptByUnit. Cuando VIDEO_QUIZ caía en la rama
+           de los juegos, todos los marcadores del video compartían un solo
+           contador y el primero que se agotaba dejaba sin intentos a los demás. */
+        key = `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`;
+      } else if (a.game_type === 'KNOWLEDGE_CHECK') {
         key = quizKey ? `KC__${quizKey}` : `${sid}__KNOWLEDGE_CHECK`;
-      } else if (
-        a.game_type === 'SORT_PROCESS' ||
-        a.game_type === 'CLASSIFY_CASES' ||
-        a.game_type === 'VIDEO_QUIZ'
-      ) {
+      } else if (a.game_type === 'SORT_PROCESS' || a.game_type === 'CLASSIFY_CASES') {
         // Los juegos llevan su presupuesto con la MISMA clave que la compuerta.
         key = `${sid}__${a.game_type}`;
-      } else if (a.game_type === 'VIDEO_QUIZ') {
-        key = `${sid}__VIDEO_QUIZ__${a.submitted_answers?.marker_id ?? 'default'}`;
       } else {
         continue;
       }
