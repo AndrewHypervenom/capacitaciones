@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -536,7 +536,7 @@ export default function UserList() {
     // recuperarlos solo por un permiso viejo colgado.
     const patch = newRole === 'capacitador'
       ? { role: newRole }
-      : { role: newRole, can_create_learners: false, can_approve_courses: false }
+      : { role: newRole, can_create_learners: false, can_approve_courses: false, is_guest_author: false }
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, ...patch } : u))
   }
 
@@ -545,6 +545,17 @@ export default function UserList() {
    * sus campañas. Solo el superadmin lo mueve: la interfaz lo esconde y un
    * trigger en la base impide que nadie más lo cambie por su cuenta.
    */
+  /**
+   * Marca a un capacitador como AUTOR TEMPORAL: prepara contenido en su
+   * programa pero no reparte formación ni publica. Es para el gerente o el
+   * especialista que viene a traer su curso y se va; cuando pasa a ser de
+   * planta se desmarca y recupera todo, sin perder lo que creó.
+   */
+  const handleToggleGuestAuthor = (user: ProfileWithEmail) => {
+    const next = user.is_guest_author !== true
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, is_guest_author: next } : u)))
+  }
+
   const handleToggleCanCreate = (user: ProfileWithEmail) => {
     const next = user.can_create_learners !== true
     setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_create_learners: next } : u)))
@@ -592,6 +603,7 @@ export default function UserList() {
       before.display_name !== u.display_name ||
       before.role !== u.role ||
       before.can_create_learners !== u.can_create_learners ||
+      before.is_guest_author !== u.is_guest_author ||
       before.can_approve_courses !== u.can_approve_courses
     )
   })
@@ -614,6 +626,7 @@ export default function UserList() {
             display_name: u.display_name,
             role: u.role,
             can_create_learners: u.can_create_learners,
+            is_guest_author: u.is_guest_author,
             can_approve_courses: u.can_approve_courses,
           })
           .eq('id', u.id)
@@ -644,7 +657,7 @@ export default function UserList() {
           t('admin.users.campaigns_save_error'),
           t('test_mode.mix_users', {
             defaultValue:
-              'No se pueden mezclar campañas de prueba con campañas reales en la misma persona. Déjale solo unas o solo otras.',
+              'No se pueden mezclar programas de prueba con programas reales en la misma persona. Déjale solo unas o solo otras.',
           }),
         )
         return false
@@ -1249,6 +1262,21 @@ export default function UserList() {
                         )}
                         {/* De un vistazo: a quiénes escogió el superadmin.
                             Sin esto el permiso solo se ve entrando al icono. */}
+                        {isSuperAdmin && user.role === 'capacitador' && user.is_guest_author && (
+                          <Tooltip
+                            label={t('admin.users.guest_author_hint', 'Autor temporal: prepara contenido en su programa, pero no asigna formación ni publica.')}
+                            className="shrink-0"
+                            maxWidth={260}
+                          >
+                            <span
+                              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{ background: 'rgba(179,61,158,0.14)', color: '#9B2E88' }}
+                            >
+                              <PenLine className="h-3 w-3" />
+                              {t('admin.users.guest_author_badge', 'Autor temporal')}
+                            </span>
+                          </Tooltip>
+                        )}
                         {isSuperAdmin && user.role === 'capacitador' && user.can_create_learners && (
                           <Tooltip
                             label={t('admin.users.can_create_badge_hint')}
@@ -1358,28 +1386,23 @@ export default function UserList() {
                 )}
                 {isSuperAdmin && (
                   <div className="flex items-center gap-1.5 min-w-0">
-                    {user.role === 'learner' ? (
-                      // El aprendiz vive en UNA campaña: su progreso, inscripciones
-                      // y certificados cuelgan de ella.
-                      <Select
-                        compact
-                        className="w-full min-w-0"
-                        value={user.campaign_id ?? ''}
-                        onChange={(v) => handleCampaignsChange(user, v ? [v] : [])}
-                        options={campaignOptions(i18n.t('admin.worlds.no_campaign'))}
-                      />
-                    ) : (
-                      <MultiSelect
-                        compact
-                        className="w-full min-w-0"
-                        values={userCampaigns[user.id] ?? []}
-                        onChange={(ids) => handleCampaignsChange(user, ids)}
-                        options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
-                        placeholder={i18n.t('admin.worlds.no_campaign')}
-                        summary={(n) => t('admin.users.campaigns_count', { count: n })}
-                        aria-label={t('admin.users.col_campaign')}
-                      />
-                    )}
+                    {/* Uno o varios programas, sea quien sea la persona: el
+                        primero de la lista es la CASA (profiles.campaign_id) y
+                        el resto viven en campaign_collaborators. Se pinta
+                        siempre desde el borrador (`userCampaigns`), nunca desde
+                        `user.campaign_id`: leyendo del perfil la selección se
+                        deshacía sola al soltar el menú y parecía que la pantalla
+                        no dejaba asignar. */}
+                    <MultiSelect
+                      compact
+                      className="w-full min-w-0"
+                      values={userCampaigns[user.id] ?? []}
+                      onChange={(ids) => handleCampaignsChange(user, ids)}
+                      options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+                      placeholder={i18n.t('admin.worlds.no_campaign')}
+                      summary={(n) => t('admin.users.campaigns_count', { count: n })}
+                      aria-label={t('admin.users.col_campaign')}
+                    />
                   </div>
                 )}
                 {/* Cada acción explica QUÉ hace al pasar el mouse: los iconos
@@ -1490,6 +1513,34 @@ export default function UserList() {
                         aria-pressed={user.can_approve_courses === true}
                       >
                         <BadgeCheck className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {/* Autor temporal: la tercera puerta. A diferencia de las dos
+                      de arriba, esta QUITA permisos en vez de darlos — por eso
+                      el candado de verdad está en la base (políticas
+                      restrictivas y un trigger), no en este botón. */}
+                  {isSuperAdmin && user.role === 'capacitador' && (
+                    <Tooltip
+                      label={
+                        user.is_guest_author
+                          ? t('admin.users.guest_author_on_hint', 'Es autor temporal: prepara contenido, pero no asigna formación ni publica. Toca para devolverle todo.')
+                          : t('admin.users.guest_author_off_hint', 'Marcar como autor temporal: podrá crear contenido en su programa, pero no asignar formación ni publicar.')
+                      }
+                      className="shrink-0"
+                      maxWidth={280}
+                    >
+                      <button
+                        onClick={() => handleToggleGuestAuthor(user)}
+                        className={`h-10 w-10 shrink-0 flex items-center justify-center rounded-lg transition-colors ${
+                          user.is_guest_author
+                            ? 'text-[#B33D9E] hover:bg-[#B33D9E]/10'
+                            : 'text-text-subtle hover:text-text hover:bg-glass/6'
+                        }`}
+                        aria-label={t('admin.users.guest_author_label', 'Autor temporal')}
+                        aria-pressed={user.is_guest_author === true}
+                      >
+                        <PenLine className="h-4 w-4" />
                       </button>
                     </Tooltip>
                   )}
