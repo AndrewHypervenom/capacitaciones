@@ -21,6 +21,7 @@ import {
   getAssignableCampaigns,
   getCampaignIdsByUser,
   setUserCampaigns as saveUserCampaigns,
+  isCampaignWriteDenied,
   withoutTestPeople,
   isTestScopeError,
 } from '@/services/campaigns.service'
@@ -652,6 +653,20 @@ export default function UserList() {
     } catch (err) {
       // Mezclar campañas de prueba con campañas reales está prohibido: el
       // progreso de una cuenta de prueba acabaría en los reportes de verdad.
+      // La base aceptó la petición pero no escribió (política RLS que falta).
+      // Antes esto salía como "Cambios guardados" y el superadmin descubría el
+      // engaño al recargar.
+      if (isCampaignWriteDenied(err)) {
+        toast.error(
+          t('admin.users.campaigns_save_error'),
+          t('admin.users.campaigns_save_denied', {
+            defaultValue:
+              'La base de datos rechazó el cambio en silencio (falta la política de permisos sobre {{table}}). No se guardó nada.',
+            table: (err as { table?: string }).table ?? 'campaign_collaborators',
+          }),
+        )
+        return false
+      }
       if (isTestScopeError(err)) {
         toast.error(
           t('admin.users.campaigns_save_error'),

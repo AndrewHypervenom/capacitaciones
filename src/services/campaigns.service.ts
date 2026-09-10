@@ -343,6 +343,22 @@ export async function getCampaignIdsByUser(
  *
  * Devuelve la nueva casa para que quien llama actualice su estado local.
  */
+/**
+ * El guardado no se pudo escribir: la base aceptó la petición pero la RLS dejó
+ * la operación en cero filas. Se separa de un error normal porque el remedio no
+ * es reintentar, es una política que falta.
+ */
+export class CampaignWriteDeniedError extends Error {
+  constructor(public table: string) {
+    super(`La base no permitió escribir en ${table}`)
+    this.name = 'CampaignWriteDeniedError'
+  }
+}
+
+export function isCampaignWriteDenied(err: unknown): boolean {
+  return err instanceof CampaignWriteDeniedError
+}
+
 export async function setUserCampaigns(
   userId: string,
   campaignIds: string[],
@@ -354,11 +370,17 @@ export async function setUserCampaigns(
   const home =
     currentHomeId && wanted.includes(currentHomeId) ? currentHomeId : wanted[0] ?? null
 
-  const { error: profileError } = await supabase
+  // `.select()` no es adorno: una UPDATE que la RLS no deja tocar NO devuelve
+  // error, devuelve cero filas. Sin esto la pantalla cantaba "guardado" y al
+  // recargar no había cambiado nada. Si no vuelve la fila, es que no se
+  // escribió y hay que decirlo.
+  const { data: updated, error: profileError } = await supabase
     .from('profiles')
     .update({ campaign_id: home })
     .eq('id', userId)
+    .select('id')
   if (profileError) throw profileError
+  if (!updated || updated.length === 0) throw new CampaignWriteDeniedError('profiles')
 
   const collabIds = wanted.filter((id) => id !== home)
 
@@ -377,6 +399,20 @@ export async function setUserCampaigns(
         { onConflict: 'campaign_id,user_id' },
       )
     if (insError) throw insError
+  }
+
+  // Mismo motivo: borrar e insertar bajo una RLS que no autoriza sale como
+  // "cero filas afectadas", sin error. Se relee el resultado y se compara con
+  // lo pedido; si no coincide, el guardado fue mentira.
+  const { data: after, error: afterError } = await supabase
+    .from('campaign_collaborators')
+    .select('campaign_id')
+    .eq('user_id', userId)
+  if (!afterError) {
+    const got = new Set((after ?? []).map((r) => (r as { campaign_id: string }).campaign_id))
+    const mismatch =
+      got.size !== collabIds.length || collabIds.some((id) => !got.has(id))
+    if (mismatch) throw new CampaignWriteDeniedError('campaign_collaborators')
   }
 
   return home
