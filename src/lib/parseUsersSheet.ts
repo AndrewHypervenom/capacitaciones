@@ -79,7 +79,15 @@ const JOB_TITLE_ALIASES = [
   'cargo', 'puesto', 'position', 'job title', 'job_title', 'jobtitle',
   'ocupacion', 'ocupación',
 ]
-const OPERATION_ALIASES = ['operacion', 'operation', 'unidad', 'unit', 'proyecto']
+// 'cr' (centro de resultados) es como Talento Humano nombra la operación en su
+// base, y es el encabezado que trae la base unificada. Va con dos letras a
+// propósito: `matchAlias` solo deja que los alias de más de tres letras peguen
+// por `includes`, así que 'cr' únicamente casa con la columna llamada "CR" y no
+// se cuela dentro de "CARGO" ni de "CIUDAD".
+const OPERATION_ALIASES = [
+  'operacion', 'operation', 'unidad', 'unit', 'proyecto',
+  'cr', 'centro de resultados', 'centro de costos', 'centro de costo',
+]
 const AREA_ALIASES = [
   'area', 'departamento', 'department', 'dpto', 'depto', 'division',
 ]
@@ -344,6 +352,13 @@ export type RowIssue = 'ok' | 'invalid' | 'duplicate'
 export interface ExtractedRow {
   /** Índice de fila en el archivo (1-based, como lo ve el usuario en Excel). */
   sourceLine: number
+  /**
+   * Hoja de la que salió la fila. La base maestra viene partida por país
+   * (ARGENTINA, MEXICO, COLOMBIA) y se leen TODAS: quedarse con una hoja es
+   * cargar un tercio de la empresa sin enterarse. Vacío cuando se leyó una sola
+   * hoja y no hay ambigüedad.
+   */
+  sheet: string
   email: string
   /** Valor crudo cuando el correo no se pudo interpretar (para mostrarlo tal cual). */
   raw: string
@@ -393,6 +408,7 @@ export function extractRows(
   rows: string[][],
   headerRow: number,
   mapping: ColumnMapping,
+  sheet = '',
 ): ExtractedRow[] {
   const out: ExtractedRow[] = []
   const seen = new Set<string>()
@@ -424,6 +440,7 @@ export function extractRows(
     if (found.length === 0) {
       out.push({
         sourceLine: r + 1,
+        sheet,
         email: '',
         raw: rawEmailCell,
         name,
@@ -447,6 +464,7 @@ export function extractRows(
       if (issue === 'ok') seen.add(email)
       out.push({
         sourceLine: r + 1,
+        sheet,
         email,
         raw: rawEmailCell,
         // Con varios correos en la misma celda el nombre solo aplica al primero.
@@ -471,6 +489,45 @@ export function extractRows(
     }
   }
   return out
+}
+
+/**
+ * Lee TODAS las hojas del libro de una vez y devuelve una sola lista de filas,
+ * cada una sabiendo de qué hoja salió.
+ *
+ * La base maestra llega partida por país, así que leer solo la hoja activa
+ * significaba importar Colombia y dejar fuera a México y Argentina sin que nada
+ * lo dijera. Cada hoja se analiza por separado —sus encabezados pueden empezar
+ * en filas distintas— y `sheets` permite excluir a mano las que no son de gente
+ * (portadas, resúmenes) antes de cruzar nada.
+ *
+ * La deduplicación NO se hace aquí: una persona repetida entre dos hojas tiene
+ * que verse como repetida, no desaparecer. De eso se encarga el cruce.
+ */
+export function extractAllSheets(
+  grids: SheetGrid[],
+  opts: {
+    /** Nombres de hoja a leer. Si se omite, se leen todas. */
+    only?: string[]
+    /** Mapeo forzado por hoja; si falta, se deduce con `analyzeGrid`. */
+    mappingBySheet?: Record<string, { headerRow: number; mapping: ColumnMapping }>
+  } = {},
+): { rows: ExtractedRow[]; bySheet: { sheet: string; rows: number; emails: number }[] } {
+  const rows: ExtractedRow[] = []
+  const bySheet: { sheet: string; rows: number; emails: number }[] = []
+  for (const g of grids) {
+    if (opts.only && !opts.only.includes(g.name)) continue
+    const forced = opts.mappingBySheet?.[g.name]
+    const a = forced ?? analyzeGrid(g.rows)
+    const got = extractRows(g.rows, a.headerRow, a.mapping, g.name)
+    rows.push(...got)
+    bySheet.push({
+      sheet: g.name,
+      rows: got.length,
+      emails: got.filter((r) => r.email !== '').length,
+    })
+  }
+  return { rows, bySheet }
 }
 
 /** Nombre final tal como lo guardará el servidor (parte local del correo si viene vacío). */

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   X, Upload, FileSpreadsheet, Download, Loader2, AlertCircle, AlertTriangle,
   ArrowLeft, UserPlus, UserMinus, UserCheck, CheckCircle2, MinusCircle, Copy, ShieldAlert,
+  PencilLine, Lock, Layers,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFileDrop } from '@/hooks/useFileDrop'
@@ -13,15 +14,19 @@ import { countryLabelWithFlag } from '@/lib/countries'
 import { Select } from '@/components/ui/Select'
 import { toast } from '@/stores/toastStore'
 import {
-  readGrids, analyzeGrid, extractRows,
+  readGrids, analyzeGrid, extractAllSheets,
   type SheetGrid, type ColumnMapping, type ExtractedRow,
 } from '@/lib/parseUsersSheet'
 import {
-  getRoster, diffNovelties, countByAction, applySync,
+  getRoster, diffNovelties, countByAction, applySync, rosterSupportsUpdates,
   guessStatusKinds, distinctStatusValues, normStatus, CONFIRM_DEACTIVATIONS_OVER,
   type RosterPerson, type SyncEntry, type SyncAction, type ApplyResult, type StatusKind,
+  type UnitLookup,
 } from '@/services/hrSync.service'
-import type { Campaign } from '@/types/database'
+import { getOrganizations, getAllOrgUnits } from '@/services/org.service'
+import { fold } from '@/lib/normalize'
+import { Tooltip } from '@/components/ui/Tooltip'
+import type { Campaign, OrgUnit } from '@/types/database'
 
 const NONE = -1
 const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
@@ -33,8 +38,24 @@ type Tab = SyncAction
 
 interface HrRosterSyncModalProps {
   campaigns: Campaign[]
+  /**
+   * Si quien está mirando puede dar de baja. **Solo el superadmin.** Recursos
+   * Humanos ve las bajas propuestas y las puede exportar para tramitarlas, pero
+   * no las ejecuta: un alta de más se corrige y una baja indebida deja a alguien
+   * fuera sin que nadie se entere hasta que reclama. `applySync` vuelve a
+   * filtrarlas, así que esto es la puerta y no la pared.
+   */
+  canDeactivate: boolean
   onClose: () => void
   onApplied: () => void | Promise<void>
+}
+
+/** Lo que se dedujo de UNA hoja del libro, y si entra en la carga. */
+interface SheetPlan {
+  include: boolean
+  hasHeader: boolean
+  headerRow: number
+  mapping: ColumnMapping
 }
 
 function currentPeriod(): string {
@@ -55,7 +76,7 @@ function currentPeriod(): string {
  * pantalla muestra y deja corregir cómo se interpretó cada valor de estado antes
  * de aplicar. Ver `diffNovelties`.
  */
-export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyncModalProps) {
+export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied }: HrRosterSyncModalProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -66,15 +87,20 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
   const [fatalError, setFatalError] = useState<string | null>(null)
 
   const [grids, setGrids] = useState<SheetGrid[]>([])
-  const [sheetIdx, setSheetIdx] = useState(0)
-  const [hasHeader, setHasHeader] = useState(true)
-  const [headerRow, setHeaderRow] = useState(0)
-  const [mapping, setMapping] = useState<ColumnMapping>({
-    email: NONE, name: NONE, role: NONE, campaign: NONE, nationalId: NONE, status: NONE,
-  })
+  /**
+   * Una entrada por hoja del libro. **Se leen TODAS**, no la que parezca mejor:
+   * la base maestra viene partida por país y quedarse con una es importar un
+   * tercio de la empresa sin que nada lo diga. Cada hoja trae su propio mapeo
+   * porque sus encabezados pueden empezar en filas distintas.
+   */
+  const [plans, setPlans] = useState<Record<string, SheetPlan>>({})
+  /** Hoja cuyas columnas se están ajustando a mano. */
+  const [tuning, setTuning] = useState('')
 
   const [roster, setRoster] = useState<RosterPerson[]>([])
   const [rosterError, setRosterError] = useState<string | null>(null)
+  /** Catálogo de CR y áreas, para casar lo que dice el archivo. */
+  const [units, setUnits] = useState<OrgUnit[]>([])
 
   /** Correcciones del superadmin a la lectura de un valor de estado. */
   const [statusOverrides, setStatusOverrides] = useState<Record<string, StatusKind>>({})
@@ -90,13 +116,38 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
   const [campaignOverrides, setCampaignOverrides] = useState<Record<string, string>>({})
   const [reason, setReason] = useState('')
   const [confirmRisky, setConfirmRisky] = useState(false)
-  const [tab, setTab] = useState<Tab>('deactivate')
+  const [tab, setTab] = useState<Tab>('update')
 
   const [applying, setApplying] = useState(false)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [result, setResult] = useState<ApplyResult | null>(null)
 
-  const grid = grids[sheetIdx]
+  const grid = grids.find((g) => g.name === tuning)
+  const plan = plans[tuning]
+  const mapping = plan?.mapping ?? { email: NONE, name: NONE, role: NONE, campaign: NONE, nationalId: NONE, status: NONE }
+  const hasHeader = plan?.hasHeader ?? true
+  const headerRow = plan?.headerRow ?? 0
+
+  const setPlan = useCallback((sheet: string, patch: Partial<SheetPlan>) => {
+    setPlans((prev) => (prev[sheet] ? { ...prev, [sheet]: { ...prev[sheet], ...patch } } : prev))
+  }, [])
+  const setMapping = useCallback(
+    (m: ColumnMapping) => setPlan(tuning, { mapping: m }),
+    [setPlan, tuning],
+  )
+
+  /**
+   * El catálogo casado por nombre normalizado. Nunca crea unidades: lo que el
+   * archivo trae y el catálogo no tiene sale listado para que el superadmin lo
+   * abra en /admin/units. Es lo que impide que cada carga invente sus propios
+   * CR, que es exactamente cómo se desordenaron las campañas.
+   */
+  const unitLookup: UnitLookup = useMemo(() => {
+    const pick = (kind: OrgUnit['kind']) =>
+      new Map(units.filter((u) => u.kind === kind).map((u) => [fold(u.name), u]))
+    return { operations: pick('operation'), areas: pick('area') }
+  }, [units])
+  const unitNames = useMemo(() => new Map(units.map((u) => [u.id, u])), [units])
 
   /** Campañas por nombre, para resolver la columna de campaña del archivo. */
   const campaignByName = useMemo(() => {
@@ -130,7 +181,7 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
     setFileName(file.name)
     setReading(true)
     try {
-      const [parsed, people] = await Promise.all([
+      const [parsed, people, catalog] = await Promise.all([
         readGrids(file),
         // Todas las cuentas: solo se usan para reconocer a quién nombra el
         // archivo, nunca para deducir bajas.
@@ -138,24 +189,41 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
           setRosterError((err as Error).message)
           return [] as RosterPerson[]
         }),
+        // El catálogo de CR y áreas. Si falla, la carga sigue: simplemente no se
+        // proponen cambios de CR.
+        getOrganizations()
+          .then((orgs) => (orgs[0] ? getAllOrgUnits(orgs[0].id) : []))
+          .catch(() => [] as OrgUnit[]),
       ])
       if (parsed.length === 0) {
         setGrids([])
         setFatalError(t('admin.users.bulk_empty_file'))
         return
       }
-      // La hoja buena es la que trae gente: correos o cédulas.
-      const analyses = parsed.map((g) => analyzeGrid(g.rows))
-      let idx = analyses.findIndex((a) => a.emailCount > 0 || a.nationalIdCount > 0)
-      if (idx === -1) idx = 0
-      const a = analyses[idx]
+      /* TODAS las hojas, cada una con su propio mapeo. Solo se dejan fuera las
+       * que no traen a nadie identificable (portadas, resúmenes): esas no son
+       * gente, y marcarlas obligaría a desmarcarlas una por una. */
+      const next: Record<string, SheetPlan> = {}
+      for (const g of parsed) {
+        const a = analyzeGrid(g.rows)
+        next[g.name] = {
+          include: a.emailCount > 0 || a.nationalIdCount > 0,
+          hasHeader: a.headerRow >= 0,
+          headerRow: a.headerRow,
+          mapping: a.mapping,
+        }
+      }
+      // Si ninguna hoja convence, se abre la primera para que se pueda mapear a
+      // mano en vez de dejar la pantalla vacía sin explicación.
+      if (!Object.values(next).some((x) => x.include) && parsed[0]) {
+        next[parsed[0].name].include = true
+      }
       setGrids(parsed)
-      setSheetIdx(idx)
-      setHasHeader(a.headerRow >= 0)
-      setHeaderRow(a.headerRow)
-      setMapping(a.mapping)
+      setPlans(next)
+      setTuning(parsed.find((g) => next[g.name].include)?.name ?? parsed[0].name)
       setRoster(people)
-      setTab('deactivate')
+      setUnits(catalog)
+      setTab('update')
       setStep('review')
     } catch {
       setGrids([])
@@ -174,20 +242,18 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
     onReject: (name) => toast.error(t('common.drop_invalid', { name })),
   })
 
-  const changeSheet = (idx: number) => {
-    setSheetIdx(idx)
-    const a = analyzeGrid(grids[idx].rows)
-    setHasHeader(a.headerRow >= 0)
-    setHeaderRow(a.headerRow)
-    setMapping(a.mapping)
-    setStatusOverrides({})
+  const toggleSheet = (name: string, include: boolean) => {
+    setPlan(name, { include })
     setDecisions({})
     setCampaignOverrides({})
+    if (include) setTuning(name)
   }
 
   const restart = () => {
     setStep('file')
     setGrids([])
+    setPlans({})
+    setTuning('')
     setFileName('')
     setResult(null)
     setDecisions({})
@@ -198,12 +264,57 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
 
   /* ── El cruce ────────────────────────────────────────────────────────────── */
 
-  const extracted: ExtractedRow[] = useMemo(() => {
-    if (!grid) return []
-    return extractRows(grid.rows, hasHeader ? headerRow : -1, mapping)
-  }, [grid, hasHeader, headerRow, mapping])
+  /** Las hojas que entran en la carga, en el orden del libro. */
+  const activeSheets = useMemo(
+    () => grids.filter((g) => plans[g.name]?.include).map((g) => g.name),
+    [grids, plans],
+  )
 
-  const hasStatusColumn = (mapping.status ?? NONE) >= 0
+  const { rows: extracted, bySheet } = useMemo(() => {
+    if (grids.length === 0) return { rows: [] as ExtractedRow[], bySheet: [] }
+    return extractAllSheets(grids, {
+      only: activeSheets,
+      mappingBySheet: Object.fromEntries(
+        Object.entries(plans).map(([name, pl]) => [
+          name,
+          { headerRow: pl.hasHeader ? pl.headerRow : -1, mapping: pl.mapping },
+        ]),
+      ),
+    })
+  }, [grids, plans, activeSheets])
+
+  /**
+   * Hay columna de estado si la tiene alguna hoja incluida. La base maestra la
+   * trae en las tres; un libro donde solo una la tenga se trata como si la
+   * tuviera, y las hojas sin ella caen en "no se toca".
+   */
+  const hasStatusColumn = useMemo(
+    () => activeSheets.some((n) => (plans[n]?.mapping.status ?? NONE) >= 0),
+    [activeSheets, plans],
+  )
+
+  /** ¿El roster trae los campos que hacen falta para proponer correcciones? */
+  const canUpdate = useMemo(() => rosterSupportsUpdates(roster), [roster])
+
+  /**
+   * CR y áreas que el archivo nombra y el catálogo no tiene. No se crean solas:
+   * se listan para que el superadmin las abra en /admin/units. Mientras tanto
+   * esa gente se queda sin clasificar, que es visible y reversible — al revés
+   * que una unidad inventada, que ya no hay quien la distinga.
+   */
+  const unmatchedUnits = useMemo(() => {
+    const ops = new Map<string, number>()
+    const areas = new Map<string, number>()
+    for (const r of extracted) {
+      const op = r.operationRaw.trim()
+      if (op && !unitLookup.operations.has(fold(op))) ops.set(op, (ops.get(op) ?? 0) + 1)
+      const ar = r.areaRaw.trim()
+      if (ar && !unitLookup.areas.has(fold(ar))) areas.set(ar, (areas.get(ar) ?? 0) + 1)
+    }
+    const sort = (m: Map<string, number>) =>
+      [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, n }))
+    return { operations: sort(ops), areas: sort(areas) }
+  }, [extracted, unitLookup])
 
   /** Valores distintos de la columna de estado, con cuántas filas trae cada uno. */
   const statusValues = useMemo(() => distinctStatusValues(extracted), [extracted])
@@ -232,6 +343,9 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
       // Sin valor global: la campaña sale de la columna del archivo y, si no la
       // trae, se elige persona por persona en la pestaña de altas.
       defaultCampaignId: null,
+      units: unitLookup,
+      unitNames,
+      allowUpdates: canUpdate,
     })
     // La decisión del superadmin manda sobre la propuesta, y la campaña elegida a
     // mano sobre la que salió del archivo o del valor por defecto.
@@ -242,7 +356,7 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
         ? (campaignOverrides[e.key] || null)
         : e.campaignId,
     }))
-  }, [extracted, roster, statusKinds, missingStatusAs, campaignByName, decisions, campaignOverrides])
+  }, [extracted, roster, statusKinds, missingStatusAs, campaignByName, decisions, campaignOverrides, unitLookup, unitNames, canUpdate])
 
   /** Filas del archivo que corresponden a alguien que ya tiene cuenta. */
   const matchedCount = useMemo(() => entries.filter((e) => e.person).length, [entries])
@@ -256,8 +370,30 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
     () => entries.filter((e) => e.action === 'create' && e.include && !e.campaignId).length,
     [entries],
   )
-  const hasIdentity = (mapping.email ?? NONE) >= 0 || (mapping.nationalId ?? NONE) >= 0
-  const nothingToDo = included.create + included.deactivate + included.reactivate === 0
+  const hasIdentity = useMemo(
+    () =>
+      activeSheets.some(
+        (n) => (plans[n]?.mapping.email ?? NONE) >= 0 || (plans[n]?.mapping.nationalId ?? NONE) >= 0,
+      ),
+    [activeSheets, plans],
+  )
+  /** Choques duros: el correo es de otra persona. No se aplican nunca. */
+  const conflicts = useMemo(
+    () => entries.filter((e) => e.reason === 'identity_conflict'),
+    [entries],
+  )
+  /** Correcciones marcadas y cuántos datos moverían en total. */
+  const updateFields = useMemo(
+    () => entries.filter((e) => e.include && e.changes.length > 0).reduce((n, e) => n + e.changes.length, 0),
+    [entries],
+  )
+  /** Correos de ingreso que cambiarían: es el cambio más delicado de la lista. */
+  const emailChanges = useMemo(
+    () => entries.filter((e) => e.include && e.changes.some((c) => c.field === 'email')).length,
+    [entries],
+  )
+  const nothingToDo =
+    included.create + included.deactivate + included.reactivate + included.update === 0
   const blocked = !hasIdentity || nothingToDo || (manyDeactivations && !confirmRisky)
 
   const tabEntries = useMemo(() => entries.filter((e) => e.action === tab), [entries, tab])
@@ -271,6 +407,8 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
   }, [grid, hasHeader, headerRow, t])
 
   const toggleAll = (action: SyncAction, include: boolean) => {
+    // Las bajas no se marcan en bloque si quien mira no puede darlas.
+    if (action === 'deactivate' && include && !canDeactivate) return
     setDecisions((prev) => {
       const next = { ...prev }
       for (const e of entries) {
@@ -297,13 +435,17 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
   const apply = async () => {
     if (blocked || applying) return
     setApplying(true)
-    setProgress({ done: 0, total: included.create + included.deactivate + included.reactivate })
+    setProgress({
+      done: 0,
+      total: included.create + included.deactivate + included.reactivate + included.update,
+    })
     try {
       const res = await applySync({
         entries,
         fileName,
         period,
         reason: effectiveReason,
+        canDeactivate,
         onProgress: (done, total) => setProgress({ done, total }),
       })
       setResult(res)
@@ -347,18 +489,33 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
   /** Reporte de lo que se va a hacer (o se hizo), para adjuntar a TH. */
   const downloadReport = () => {
     const aoa: (string | number)[][] = [
-      ['accion', 'motivo', 'fila', 'correo', 'cedula', 'nombre', 'estado_archivo', 'campana', 'cruce', 'se_aplica'],
+      [
+        'accion', 'motivo', 'hoja', 'fila', 'correo', 'ficha', 'nombre', 'cargo',
+        'cr', 'area', 'estado_archivo', 'campana', 'cruce', 'cambios', 'se_aplica',
+      ],
       ...entries.map((e) => [
         t(`admin.hr.action_${e.action}`),
         e.reason ? t(`admin.hr.reason_${e.reason}`) : '',
+        e.sheet,
         e.sourceLine,
         e.email,
         e.nationalIdRaw,
         e.name || e.person?.display_name || '',
+        e.jobTitleRaw,
+        // El CR del catálogo si casó; si no, lo que decía el archivo con un
+        // interrogante, que es información distinta de "no traía nada".
+        e.operation?.name ?? (e.operationRaw ? `${e.operationRaw} (?)` : ''),
+        e.area?.name ?? (e.areaRaw ? `${e.areaRaw} (?)` : ''),
         e.status,
         e.action === 'create' ? (e.campaignId ? campaignNameById.get(e.campaignId) ?? '' : '') : '',
         e.matchedBy ? t(`admin.hr.matched_${e.matchedBy}`) : '',
-        e.include ? t('admin.hr.yes') : t('admin.hr.no'),
+        e.changes.map((c) => `${t(`admin.hr.field_${c.field}`)}: ${c.fromLabel} → ${c.toLabel}`).join(' · '),
+        // Una baja propuesta que quien mira no puede ejecutar sale marcada como
+        // tal: el reporte sirve para tramitarla con el superadmin, no para
+        // aparentar que se aplicó.
+        e.action === 'deactivate' && !canDeactivate
+          ? t('admin.hr.only_superadmin_short')
+          : e.include ? t('admin.hr.yes') : t('admin.hr.no'),
       ]),
     ]
     const ws = XLSX.utils.aoa_to_sheet(aoa)
@@ -397,6 +554,7 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
   )
 
   const tabs: { id: Tab; label: string; n: number; icon: typeof UserPlus; tone: string }[] = [
+    { id: 'update', label: t('admin.hr.tab_update'), n: counts.update, icon: PencilLine, tone: '#B33D9E' },
     { id: 'deactivate', label: t('admin.hr.tab_deactivate'), n: counts.deactivate, icon: UserMinus, tone: '#ef4444' },
     { id: 'create', label: t('admin.hr.tab_create'), n: counts.create, icon: UserPlus, tone: '#10D451' },
     { id: 'reactivate', label: t('admin.hr.tab_reactivate'), n: counts.reactivate, icon: UserCheck, tone: '#3b82f6' },
@@ -522,14 +680,60 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                       </button>
                     </div>
 
+                    {/* TODAS las hojas del libro, con lo que trae cada una. La
+                        base maestra viene partida por pais: si una hoja se queda
+                        fuera hay que verlo aqui, no descubrirlo cuando falte un
+                        tercio de la empresa. */}
+                    {grids.length > 1 && (
+                      <div className="space-y-1.5">
+                        <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-text-subtle">
+                          <Layers className="h-3.5 w-3.5" />
+                          {t('admin.hr.sheets_title', { n: grids.length })}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {grids.map((g) => {
+                            const on = plans[g.name]?.include ?? false
+                            const stat = bySheet.find((x) => x.sheet === g.name)
+                            return (
+                              <label
+                                key={g.name}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors"
+                                style={{
+                                  borderColor: on ? '#10D451' : 'var(--line, rgba(127,127,127,.28))',
+                                  background: on ? 'rgba(16,212,81,.08)' : undefined,
+                                  color: on ? 'var(--text)' : 'var(--text-muted)',
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  onChange={(ev) => toggleSheet(g.name, ev.target.checked)}
+                                  className="h-4 w-4 accent-[#10D451]"
+                                />
+                                <span className="font-medium">{g.name}</span>
+                                <span className="tabular-nums text-text-subtle">
+                                  {on && stat
+                                    ? t('admin.hr.sheet_rows', { n: stat.rows })
+                                    : t('admin.hr.sheet_off')}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       {grids.length > 1 && (
-                        <Field label={t('admin.users.bulk_sheet')}>
+                        <Field label={t('admin.hr.tuning_sheet')}>
                           <Select
                             compact
-                            value={String(sheetIdx)}
-                            onChange={(v) => changeSheet(Number(v))}
-                            options={grids.map((g, i) => ({ value: String(i), label: g.name }))}
+                            value={tuning}
+                            onChange={setTuning}
+                            options={grids.map((g) => ({
+                              value: g.name,
+                              label: plans[g.name]?.include ? g.name : g.name + ' - ' + t('admin.hr.sheet_off'),
+                            }))}
                           />
                         </Field>
                       )}
@@ -565,6 +769,35 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                           options={columnOptions}
                         />
                       </Field>
+                      <Field label={t('admin.hr.map_job_title')}>
+                        <Select
+                          compact
+                          value={String(mapping.jobTitle ?? NONE)}
+                          onChange={(v) => setMapping({ ...mapping, jobTitle: Number(v) })}
+                          options={columnOptions}
+                        />
+                      </Field>
+                      {/* "CR" es como Talento Humano llama a la operacion. La
+                          equivalencia se repite en cada sitio donde aparece la
+                          sigla: quien lleva anos diciendo "operacion" no tiene
+                          por que aprender una sigla nueva para reconocer su
+                          propio dato. */}
+                      <Field label={t('admin.hr.map_operation')} hint={t('admin.units.cr_equals_operation')}>
+                        <Select
+                          compact
+                          value={String(mapping.operation ?? NONE)}
+                          onChange={(v) => setMapping({ ...mapping, operation: Number(v) })}
+                          options={columnOptions}
+                        />
+                      </Field>
+                      <Field label={t('admin.hr.map_area')}>
+                        <Select
+                          compact
+                          value={String(mapping.area ?? NONE)}
+                          onChange={(v) => setMapping({ ...mapping, area: Number(v) })}
+                          options={columnOptions}
+                        />
+                      </Field>
                       <Field label={t('admin.hr.map_campaign')}>
                         <Select
                           compact
@@ -580,10 +813,12 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                         <input
                           type="checkbox"
                           checked={hasHeader}
-                          onChange={(e) => {
-                            setHasHeader(e.target.checked)
-                            if (e.target.checked && headerRow < 0) setHeaderRow(0)
-                          }}
+                          onChange={(e) =>
+                            setPlan(tuning, {
+                              hasHeader: e.target.checked,
+                              headerRow: e.target.checked && headerRow < 0 ? 0 : headerRow,
+                            })
+                          }
                           className="h-4 w-4 accent-[#10D451]"
                         />
                         {t('admin.users.bulk_has_header')}
@@ -665,6 +900,79 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                     </p>
                   )}
 
+                  {/* Choque de identidad: el correo del archivo es de alguien que
+                      en el sitio se llama de otra forma Y tiene otro cargo. No se
+                      aplica ni marcandolo a mano — la correccion esta en el
+                      archivo, no aqui. */}
+                  {conflicts.length > 0 && (
+                    <div className="space-y-1.5 rounded-xl border border-red-500/40 bg-red-500/10 p-3">
+                      <p className="flex items-center gap-2 text-[13px] font-medium text-red-500">
+                        <ShieldAlert className="h-4 w-4 shrink-0" />
+                        {t('admin.hr.conflicts_title', { n: conflicts.length })}
+                      </p>
+                      <p className="text-[12px] text-text-muted">{t('admin.hr.conflicts_hint')}</p>
+                      <ul className="space-y-0.5 text-[12px] text-text-muted">
+                        {conflicts.slice(0, 4).map((e) => (
+                          <li key={e.key}>
+                            · <span className="font-mono">{e.email}</span>{' '}
+                            {t('admin.hr.conflicts_line', {
+                              file: e.name || '—',
+                              site: e.person?.display_name || '—',
+                            })}
+                          </li>
+                        ))}
+                        {conflicts.length > 4 && (
+                          <li className="text-text-subtle">
+                            {t('admin.hr.conflicts_more', { n: conflicts.length - 4 })}
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* CR y areas que el archivo nombra y el catalogo no tiene.
+                      NUNCA se crean solas desde aqui: el catalogo cerrado es lo
+                      que impide repetir el desorden de las campanas. */}
+                  {(unmatchedUnits.operations.length > 0 || unmatchedUnits.areas.length > 0) && (
+                    <div className="space-y-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                      <p className="flex items-center gap-2 text-[13px] font-medium text-amber-500">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        {t('admin.hr.unmatched_units_title', {
+                          n: unmatchedUnits.operations.length + unmatchedUnits.areas.length,
+                        })}
+                      </p>
+                      <p className="text-[12px] text-text-muted">{t('admin.hr.unmatched_units_hint')}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {[...unmatchedUnits.operations, ...unmatchedUnits.areas].slice(0, 12).map((u) => (
+                          <span
+                            key={u.name}
+                            className="rounded-md border border-line bg-surface px-1.5 py-0.5 font-mono text-[11px] text-text-muted"
+                          >
+                            {u.name} <span className="tabular-nums text-text-subtle">{u.n}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* El roster llego sin los campos nuevos: proponer correcciones
+                      sin saber que dice hoy el perfil seria adivinar. */}
+                  {!canUpdate && (
+                    <p className="flex items-center gap-2 rounded-xl border border-line bg-subtle/60 p-3 text-[12px] text-text-muted">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {t('admin.hr.updates_unavailable')}
+                    </p>
+                  )}
+
+                  {/* Recursos Humanos ve las bajas y las puede exportar; no las
+                      ejecuta. El candado de verdad esta en `applySync`. */}
+                  {!canDeactivate && counts.deactivate > 0 && (
+                    <p className="flex items-center gap-2 rounded-xl border border-line bg-subtle/60 p-3 text-[12px] text-text-muted">
+                      <Lock className="h-4 w-4 shrink-0" />
+                      {t('admin.hr.deactivate_locked', { n: counts.deactivate })}
+                    </p>
+                  )}
+
                   {rosterError && (
                     <p className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-[13px] text-red-500">
                       <AlertCircle className="h-4 w-4 shrink-0" />
@@ -724,7 +1032,7 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                     </span>
                   </div>
 
-                  {(tab === 'create' || tab === 'deactivate' || tab === 'reactivate') && tabEntries.length > 0 && (
+                  {(tab === 'create' || tab === 'deactivate' || tab === 'reactivate' || tab === 'update') && tabEntries.length > 0 && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[12px] text-text-muted">
                       <button onClick={() => toggleAll(tab, true)} className="rounded-md px-1.5 py-1 hover:text-text">
                         {t('admin.hr.select_all')}
@@ -734,7 +1042,12 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                         {t('admin.hr.select_none')}
                       </button>
                       {tab === 'deactivate' && (
-                        <span className="text-text-subtle">{t('admin.hr.confirm_each_hint')}</span>
+                        <span className="text-text-subtle">
+                          {canDeactivate ? t('admin.hr.confirm_each_hint') : t('admin.hr.only_superadmin')}
+                        </span>
+                      )}
+                      {tab === 'update' && (
+                        <span className="text-text-subtle">{t('admin.hr.update_hint')}</span>
                       )}
                       {/* Atajo para no elegir campaña 200 veces cuando todas van al mismo lado. */}
                       {tab === 'create' && (
@@ -766,26 +1079,39 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                             <th className="px-3 py-2 font-normal">{t('profile.national_id')}</th>
                             <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_email')}</th>
                             <th className="px-3 py-2 font-normal">{t('admin.hr.col_match')}</th>
+                            {/* De que hoja salio la fila: con la base partida por
+                                pais es el dato que permite volver al archivo. */}
+                            {grids.length > 1 && (
+                              <th className="px-3 py-2 font-normal">{t('admin.hr.col_sheet')}</th>
+                            )}
                             {/* El país solo se aplica a las altas: a quien ya
                                 tiene cuenta no se le pisa el perfil. */}
                             {tab === 'create' && (
                               <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_country')}</th>
                             )}
                             <th className="px-3 py-2 font-normal">
-                              {tab === 'create' ? t('admin.users.bulk_col_campaign') : t('admin.hr.col_why')}
+                              {tab === 'create'
+                                ? t('admin.users.bulk_col_campaign')
+                                : tab === 'update'
+                                  ? t('admin.hr.col_changes')
+                                  : t('admin.hr.col_why')}
                             </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-line">
                           {tabEntries.slice(0, VISIBLE_ROWS).map((e) => {
-                            const selectable = e.action === 'create' || e.action === 'deactivate' || e.action === 'reactivate'
+                            const selectable =
+                              e.action === 'create' ||
+                              e.action === 'reactivate' ||
+                              e.action === 'update' ||
+                              (e.action === 'deactivate' && canDeactivate)
                             return (
                               <tr key={e.key} className={e.include ? '' : 'opacity-55'}>
                                 <td className="px-3 py-2">
                                   <input
                                     type="checkbox"
                                     className="h-4 w-4 accent-[#10D451]"
-                                    checked={e.include}
+                                    checked={e.include && !(e.action === 'deactivate' && !canDeactivate)}
                                     disabled={!selectable}
                                     onChange={(ev) =>
                                       setDecisions((prev) => ({ ...prev, [e.key]: ev.target.checked }))
@@ -794,14 +1120,28 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                                   />
                                 </td>
                                 <td className="px-1 py-2 text-right text-text-subtle">{e.sourceLine ?? '—'}</td>
-                                <td className="max-w-[220px] truncate px-3 py-2 text-text">
-                                  {e.name || e.person?.display_name || <span className="text-text-subtle">—</span>}
+                                <td className="max-w-[220px] px-3 py-2 text-text">
+                                  <span className="block truncate">
+                                    {e.name || e.person?.display_name || <span className="text-text-subtle">—</span>}
+                                  </span>
+                                  {/* El nombre no casa: se ensena el del sitio al
+                                      lado. Es lo unico que permite distinguir
+                                      "le faltaba el apellido" de "es otra
+                                      persona" sin abrir el perfil. */}
+                                  {e.identity?.nameMismatch && e.person?.display_name && (
+                                    <span className="block truncate text-[11px] text-amber-500">
+                                      {t('admin.hr.name_in_site', { name: e.person.display_name })}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-text-muted">{e.nationalIdRaw || '—'}</td>
                                 <td className="max-w-[220px] truncate px-3 py-2 text-text-muted">{e.email || '—'}</td>
                                 <td className="px-3 py-2 text-text-subtle">
                                   {e.matchedBy ? t(`admin.hr.matched_${e.matchedBy}`) : '—'}
                                 </td>
+                                {grids.length > 1 && (
+                                  <td className="max-w-[110px] truncate px-3 py-2 text-text-subtle">{e.sheet || '—'}</td>
+                                )}
                                 {tab === 'create' && (
                                   <td className="max-w-[150px] truncate px-3 py-2 text-text-muted">
                                     {countryLabelWithFlag(e.country) ?? <span className="text-text-subtle">—</span>}
@@ -822,6 +1162,26 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                                       ]}
                                     />
                                   </td>
+                                ) : e.changes.length > 0 ? (
+                                  <td className="px-3 py-2">
+                                    <div className="flex flex-col gap-0.5">
+                                      {e.changes.map((c) => (
+                                        <span key={c.field} className="text-[11px] text-text-muted">
+                                          <span className="text-text-subtle">{t(`admin.hr.field_${c.field}`)}: </span>
+                                          <span className="line-through opacity-70">{c.fromLabel}</span>
+                                          {' → '}
+                                          <span className="font-medium text-text">{c.toLabel}</span>
+                                          {/* El correo no es un UPDATE mas: mueve
+                                              la cuenta de ingreso. Se avisa. */}
+                                          {c.needsAuth && (
+                                            <span className="ml-1 text-[10px] text-amber-500">
+                                              {t('admin.hr.field_needs_auth')}
+                                            </span>
+                                          )}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
                                 ) : (
                                   <td className="px-3 py-2 text-text-muted">
                                     {e.reason ? t(`admin.hr.reason_${e.reason}`) : t(`admin.hr.action_${e.action}`)}
@@ -832,7 +1192,7 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                           })}
                           {tabEntries.length === 0 && (
                             <tr>
-                              <td colSpan={7} className="py-8 text-center text-text-muted">
+                              <td colSpan={9} className="py-8 text-center text-text-muted">
                                 {t('admin.hr.tab_empty')}
                               </td>
                             </tr>
@@ -861,12 +1221,29 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
               {/* ── Paso 3: resultado ─────────────────────────────────────── */}
               {step === 'result' && result && (
                 <div className="space-y-4">
-                  <div className="grid gap-2 sm:grid-cols-4">
+                  <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
                     <Stat label={t('admin.hr.tab_create')} value={result.created.filter((r) => r.status === 'created').length} tone="#10D451" />
+                    <Stat label={t('admin.hr.tab_update')} value={result.updated} tone="#B33D9E" />
                     <Stat label={t('admin.hr.tab_deactivate')} value={result.deactivated} tone="#ef4444" />
                     <Stat label={t('admin.hr.tab_reactivate')} value={result.reactivated} tone="#3b82f6" />
                     <Stat label={t('admin.hr.tab_unchanged')} value={result.unchanged} tone="#64748b" />
                   </div>
+
+                  {result.emailsChanged > 0 && (
+                    <p className="rounded-xl border border-line bg-subtle/60 p-3 text-[12px] text-text-muted">
+                      {t('admin.hr.emails_changed_result', { n: result.emailsChanged })}
+                    </p>
+                  )}
+
+                  {/* Bajas que se propusieron y no se aplicaron. Quedan escritas
+                      en el historial de la carga para que se puedan tramitar, no
+                      para que se pierdan. */}
+                  {result.deactivationsBlocked > 0 && (
+                    <p className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-[12px] text-amber-500">
+                      <Lock className="h-4 w-4 shrink-0" />
+                      {t('admin.hr.deactivations_blocked_result', { n: result.deactivationsBlocked })}
+                    </p>
+                  )}
 
                   {result.errors.length > 0 && (
                     <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3">
@@ -935,10 +1312,20 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
                   <p className="text-[12px] text-text-muted">
                     {t('admin.hr.footer_summary', {
                       create: included.create,
-                      deactivate: included.deactivate,
+                      deactivate: canDeactivate ? included.deactivate : 0,
                       reactivate: included.reactivate,
                     })}
+                    {included.update > 0 && (
+                      <> · {t('admin.hr.footer_updates', { n: included.update, fields: updateFields })}</>
+                    )}
                   </p>
+                  {/* El cambio de correo mueve la cuenta de ingreso: se avisa
+                      aparte del resto de correcciones, que solo tocan el perfil. */}
+                  {emailChanges > 0 && (
+                    <p className="text-[12px] text-amber-500">
+                      {t('admin.hr.email_changes_warning', { n: emailChanges })}
+                    </p>
+                  )}
                   {pendingDeactivations > 0 && (
                     <p className="text-[12px] text-amber-500">
                       {t('admin.hr.pending_deactivations', { n: pendingDeactivations })}
@@ -999,12 +1386,23 @@ export function HrRosterSyncModal({ campaigns, onClose, onApplied }: HrRosterSyn
 
 /* ── Auxiliares ──────────────────────────────────────────────────────────────── */
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({
+  label, required, hint, children,
+}: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-[11px] uppercase tracking-wider text-text-subtle">
+      <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-text-subtle">
         {label}
         {required && <span className="ml-0.5 text-[#10D451]">*</span>}
+        {/* La pista va en el tooltip del sitio, nunca en `title`: el nativo
+            tarda un segundo, no se ve en tactil y no sigue el tema. */}
+        {hint && (
+          <Tooltip label={hint} maxWidth={260}>
+            <span className="flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-line text-[8px] font-bold normal-case">
+              ?
+            </span>
+          </Tooltip>
+        )}
       </span>
       {children}
     </label>
