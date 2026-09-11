@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabase'
 import { normalizeNationalId, type ExtractedRow } from '@/lib/parseUsersSheet'
+import { fold } from '@/lib/normalize'
+import type { OrgUnit } from '@/types/database'
+import { updateUserEmail } from '@/services/userEmail.service'
 
 /**
  * Altas y bajas de aprendices contra la base de Talento Humano.
@@ -40,9 +43,31 @@ export interface RosterPerson {
   deactivated_at: string | null
   hr_last_seen_at: string | null
   created_at: string
+  /* ── Lo que la base maestra puede ACTUALIZAR ───────────────────────────────
+   * Llegan `undefined` mientras no se haya corrido el SQL que amplía
+   * `get_hr_roster`. Es la señal de que todavía no se pueden proponer
+   * actualizaciones: sin saber qué dice hoy el perfil, "cambió el cargo" sería
+   * una adivinanza. La interfaz lo dice y sigue haciendo altas y bajas. */
+  job_title?: string | null
+  country?: string | null
+  operation_id?: string | null
+  area_id?: string | null
+  role?: string | null
 }
 
-export type SyncAction = 'create' | 'reactivate' | 'unchanged' | 'deactivate' | 'skipped'
+/** ¿El roster viene con los campos que hacen falta para proponer cambios? */
+export function rosterSupportsUpdates(roster: RosterPerson[]): boolean {
+  return roster.length === 0 || roster.some((p) => p.job_title !== undefined)
+}
+
+export type SyncAction =
+  | 'create'
+  | 'reactivate'
+  | 'unchanged'
+  | 'deactivate'
+  | 'skipped'
+  /** La persona ya existe y la base trae algún dato distinto. */
+  | 'update'
 
 export type SyncReason =
   /** El archivo la marca como retirada. */
@@ -59,6 +84,62 @@ export type SyncReason =
   | 'status_ignored'
   /** El archivo no dice el estado de esta fila: nunca se da de baja a ciegas. */
   | 'status_unknown'
+  /**
+   * El correo es de alguien que en el sitio se llama de otra forma Y tiene otro
+   * cargo. No es "el nombre está mejor escrito": son dos personas distintas
+   * compartiendo un correo, o una columna corrida. No se aplica nunca — ni
+   * marcándola a mano — porque la corrección es en el archivo, no aquí.
+   */
+  | 'identity_conflict'
+
+/** Campos del perfil que la base maestra puede corregir. */
+export type ProfileField =
+  | 'email'
+  | 'display_name'
+  | 'job_title'
+  | 'country'
+  | 'national_id'
+  | 'operation_id'
+  | 'area_id'
+
+/** Un dato que la base dice distinto de lo que hoy tiene el perfil. */
+export interface FieldChange {
+  field: ProfileField
+  /** Lo que hay hoy en el sitio (null = vacío). */
+  from: string | null
+  /** El valor que se guardaría. Para operación y área es el uuid de la unidad. */
+  to: string
+  /** Cómo se lee `to` en pantalla: el nombre del CR, no su uuid. */
+  toLabel: string
+  /** Cómo se lee `from` en pantalla. */
+  fromLabel: string
+  /**
+   * Cambiar el correo no es un UPDATE a `profiles`: hay que mover también la
+   * cuenta de autenticación, o la persona seguiría entrando con el viejo.
+   * Va por la Edge Function `update-user-email`, y es lo único de esta lista
+   * que puede fallar por su cuenta.
+   */
+  needsAuth?: boolean
+}
+
+/**
+ * En qué se parecen la fila del archivo y la cuenta que se le asignó.
+ *
+ * Es la respuesta a "actualízale el dato si los nombres coinciden exactamente y
+ * el cargo también": nunca se escribe sobre una cuenta por un solo dato en
+ * común. Hacen falta DOS señales de las cuatro (ficha, correo, nombre, cargo), y
+ * las que no coinciden quedan a la vista.
+ */
+export interface IdentityCheck {
+  agree: ProfileField[]
+  differ: ProfileField[]
+  /** Dos o más señales coinciden: se puede escribir sobre esta cuenta. */
+  confident: boolean
+  /** El nombre no coincide. Se muestra en ámbar aunque haya confianza. */
+  nameMismatch: boolean
+  /** Ni el nombre ni el cargo coinciden, y los dos están escritos: no se toca. */
+  conflict: boolean
+}
 
 export interface SyncEntry {
   /** Clave estable para React y para las exclusiones manuales. */
@@ -77,7 +158,7 @@ export interface SyncEntry {
    * Solo se aplica a las altas: a quien ya tiene cuenta no se le pisa el perfil.
    */
   country: string
-  matchedBy: 'national_id' | 'email' | null
+  matchedBy: 'national_id' | 'email' | 'name_job' | null
   /** Cuenta existente que corresponde a esta fila. */
   person?: RosterPerson
   reason?: SyncReason
@@ -89,6 +170,19 @@ export interface SyncEntry {
   campaignId: string | null
   /** Nombre de campaña tal como venía en el archivo ('' si no traía columna). */
   campaignRaw: string
+  /** Hoja del libro de la que salió la fila (la base viene partida por país). */
+  sheet: string
+  /** Cargo, CR y área tal como los escribe el archivo. */
+  jobTitleRaw: string
+  operationRaw: string
+  areaRaw: string
+  /** Unidades del catálogo a las que casaron `operationRaw` y `areaRaw`. */
+  operation?: OrgUnit
+  area?: OrgUnit
+  /** Datos que la base dice distinto. Vacío cuando no hay nada que corregir. */
+  changes: FieldChange[]
+  /** Cuánto se parecen la fila y la cuenta. Solo cuando hay cuenta. */
+  identity?: IdentityCheck
   /**
    * Propuesta de si se aplica esta fila. Las **bajas nacen en `false`**: cada una
    * se confirma a mano, porque apagar la cuenta de quien sigue trabajando es el
@@ -103,6 +197,7 @@ export interface SyncCounts {
   deactivate: number
   unchanged: number
   skipped: number
+  update: number
 }
 
 /* ── Estado laboral del archivo ────────────────────────────────────────────── */
@@ -189,6 +284,222 @@ export function guessStatusKinds(rows: ExtractedRow[]): Record<string, StatusKin
   return out
 }
 
+/* ── ¿Es la misma persona? ─────────────────────────────────────────────────── */
+
+/**
+ * Dos nombres que designan a la misma persona.
+ *
+ * Exacto ignorando tildes y mayúsculas, o **uno contenido en el otro palabra a
+ * palabra**: en la base real hay 23 casos de "Javier Alejandro Vega" en el sitio
+ * contra "JAVIER ALEJANDRO VEGA FLOREZ" en la nómina — el apellido que faltaba,
+ * no otra persona. Un apodo o un apellido MAL ESCRITO ("Cebrera" por "Cabrera")
+ * NO pasa por aquí a propósito: sale en ámbar para que alguien lo mire.
+ */
+export function namesAgree(a: string, b: string): boolean {
+  const wa = fold(a).split(/\s+/).filter(Boolean)
+  const wb = fold(b).split(/\s+/).filter(Boolean)
+  if (wa.length === 0 || wb.length === 0) return false
+  if (wa.join(' ') === wb.join(' ')) return true
+  const [short, long] = wa.length <= wb.length ? [wa, wb] : [wb, wa]
+  // Al menos dos palabras en común y todas las del corto dentro del largo: con
+  // una sola ("Juan") medio directorio sería la misma persona.
+  if (short.length < 2) return false
+  return short.every((w) => long.includes(w))
+}
+
+/** Dos cargos que son el mismo puesto. Comparación simple: el catálogo es de TH. */
+function jobsAgree(a: string, b: string): boolean {
+  const fa = fold(a).replace(/\s+/g, ' ').trim()
+  const fb = fold(b).replace(/\s+/g, ' ').trim()
+  return fa !== '' && fa === fb
+}
+
+/**
+ * Cuánto se parecen la fila del archivo y la cuenta que se le asignó.
+ *
+ * Una sola columna en común NUNCA basta para escribir sobre un perfil: el correo
+ * se reutiliza, la ficha se teclea mal y el nombre se repite. Se exigen DOS
+ * señales de las cuatro. Lo que no coincide no se esconde: viaja en `differ` y
+ * la interfaz lo enseña al lado del cambio propuesto.
+ */
+export function checkIdentity(
+  row: { email: string; name: string; nationalId: string; jobTitleRaw: string },
+  person: RosterPerson,
+): IdentityCheck {
+  const agree: ProfileField[] = []
+  const differ: ProfileField[] = []
+
+  const mailFile = row.email.trim().toLowerCase()
+  const mailDb = (person.email ?? '').trim().toLowerCase()
+  if (mailFile && mailDb) (mailFile === mailDb ? agree : differ).push('email')
+
+  const nidFile = row.nationalId
+  const nidDb = normalizeNationalId(person.national_id ?? '')
+  if (nidFile && nidDb) (nidFile === nidDb ? agree : differ).push('national_id')
+
+  const nameDb = person.display_name ?? ''
+  const nameOk = namesAgree(row.name, nameDb)
+  if (row.name.trim() && nameDb.trim()) (nameOk ? agree : differ).push('display_name')
+
+  // `job_title` llega `undefined` mientras el SQL no esté corrido: entonces no
+  // es una señal ni a favor ni en contra, simplemente no se puede consultar.
+  const jobDb = person.job_title
+  const jobKnown = jobDb !== undefined
+  const jobOk = jobKnown && jobsAgree(row.jobTitleRaw, jobDb ?? '')
+  const jobComparable = jobKnown && row.jobTitleRaw.trim() !== '' && (jobDb ?? '').trim() !== ''
+  if (jobComparable) (jobOk ? agree : differ).push('job_title')
+
+  const nameMismatch = differ.includes('display_name')
+
+  /* Cuándo se bloquea del todo. Dos caminos, y el segundo lo encontraron los
+   * datos reales:
+   *
+   *  a) El cargo DESMIENTE al nombre: los dos están escritos y los dos difieren.
+   *  b) Los dos nombres no comparten NI UNA palabra. "Cebrera Roble" contra
+   *     "CABRERA ROBLES" comparte el nombre de pila: es un apellido mal tecleado
+   *     y se revisa a mano. "Javier Ignacio Herrera Padilla" contra "Edier
+   *     Heraldo Hernandez Molano" no comparte nada: son dos personas con el
+   *     mismo correo, y eso no se corrige aquí sino en el archivo.
+   *
+   * Hacía falta (b) porque casi ningún perfil tiene cargo todavía — justo el dato
+   * que esta carga viene a llenar — y sin él (a) no se disparaba nunca.
+   */
+  const palabras = (v: string) => new Set(fold(v).split(/\s+/).filter(Boolean))
+  const delArchivo = palabras(row.name)
+  const delSitio = palabras(person.display_name ?? '')
+  const nadaEnComun =
+    delArchivo.size > 0 && delSitio.size > 0 && ![...delArchivo].some((w) => delSitio.has(w))
+  const conflict = nameMismatch && ((jobComparable && !jobOk) || nadaEnComun)
+
+  return { agree, differ, confident: agree.length >= 2 && !conflict, nameMismatch, conflict }
+}
+
+/* ── Qué habría que corregir ───────────────────────────────────────────────── */
+
+/** Catálogo ya casado por nombre, para traducir "CLARO MILLA" al CR del sitio. */
+export interface UnitLookup {
+  operations: Map<string, OrgUnit>
+  areas: Map<string, OrgUnit>
+}
+
+function labelOf(value: string | null | undefined, fallback = '—'): string {
+  const v = (value ?? '').trim()
+  return v === '' ? fallback : v
+}
+
+/**
+ * ¿Cambió de verdad, o solo cambió cómo está escrito?
+ *
+ * La base de Talento Humano exporta TODO EN MAYÚSCULAS y sin tildes fiables.
+ * Comparando tal cual, las 726 personas que ya están bien salen como "hay que
+ * corregirles el cargo" — y aceptar eso dejaría el sitio entero gritando. Un
+ * cambio de mayúsculas, tildes o espacios NO es un cambio.
+ */
+function reallyDiffers(a: string | null | undefined, b: string | null | undefined): boolean {
+  return fold(a ?? '') !== fold(b ?? '')
+}
+
+/** Palabras que en un nombre o un cargo van en minúscula salvo al principio. */
+const MINUSCULAS = new Set([
+  'de', 'del', 'la', 'las', 'lo', 'los', 'y', 'e', 'o', 'u', 'en', 'el',
+  'a', 'al', 'con', 'para', 'por', 'da', 'do', 'dos', 'das', 'van', 'von',
+])
+
+/**
+ * Devuelve el texto con mayúsculas de nombre propio, pero SOLO si venía todo en
+ * mayúsculas. Si ya trae mayúsculas y minúsculas, alguien lo escribió así a
+ * propósito y no se toca.
+ *
+ * Las siglas cortas se respetan ("GERENTE DE OPERACIONES PL" → "Gerente de
+ * Operaciones PL"): convertirlas en "Pl" es peor que no hacer nada, y en los
+ * cargos de esta empresa hay muchas (TI, SST, RH, PL, AMS).
+ */
+export function titleCaseFromRoster(raw: string): string {
+  const text = raw.trim().replace(/\s+/g, ' ')
+  if (!text || text !== text.toUpperCase()) return text
+  /** Un trozo sin separadores: "sst", "hansen", "de". */
+  const trozo = (w: string, first: boolean): string => {
+    if (/[0-9]/.test(w)) return w
+    const low = w.toLocaleLowerCase('es')
+    // El conector va PRIMERO: "DE" y "LA" también son de dos letras, y la regla
+    // de siglas los dejaría gritando en mitad del nombre.
+    if (!first && MINUSCULAS.has(low)) return low
+    const letters = w.replace(/[^A-Za-zÀ-ɏ]/g, '')
+    // Sigla corta: TI, SST, PL, J&J. Se queda como está.
+    if (letters.length > 0 && letters.length <= 3) return w
+    return low.charAt(0).toLocaleUpperCase('es') + low.slice(1)
+  }
+  /* Los guiones y las barras se tratan trozo a trozo, o "COORDINADOR SG-SST"
+   * sale "Sg-Sst": la sigla estaba dentro de la palabra, no al lado. */
+  const word = (w: string, first: boolean): string =>
+    w
+      .split(/([-/.])/)
+      .map((part, i) => (/^[-/.]$/.test(part) ? part : trozo(part, first && i === 0)))
+      .join('')
+  return text.split(' ').map((w, i) => word(w, i === 0)).join(' ')
+}
+
+/**
+ * Los datos que la base dice distinto de lo que hay hoy en el perfil.
+ *
+ * Solo se propone lo que la base AFIRMA: una celda vacía nunca borra un dato
+ * que ya está. Es la diferencia entre "TH todavía no lo tiene" y "TH dice que
+ * está vacío", y confundirlas vacía medio directorio en una sola carga.
+ */
+export function computeChanges(
+  row: {
+    email: string; name: string; nationalId: string; nationalIdRaw: string
+    jobTitleRaw: string; country: string
+  },
+  person: RosterPerson,
+  units: { operation?: OrgUnit; area?: OrgUnit },
+  /** Todas las unidades por id, para poder escribir el CR que tiene HOY. */
+  unitNames?: Map<string, OrgUnit>,
+): FieldChange[] {
+  const out: FieldChange[] = []
+  const push = (field: ProfileField, from: string | null, to: string, fromLabel?: string, toLabel?: string, needsAuth = false) => {
+    out.push({ field, from, to, fromLabel: fromLabel ?? labelOf(from), toLabel: toLabel ?? to, needsAuth })
+  }
+
+  const mailFile = row.email.trim().toLowerCase()
+  const mailDb = (person.email ?? '').trim().toLowerCase()
+  if (mailFile && mailFile !== mailDb) push('email', person.email, mailFile, undefined, undefined, true)
+
+  /* Nombre y cargo entran con mayúsculas de nombre propio, no como los exporta
+   * la nómina. Y solo si el dato cambió de verdad — ver `reallyDiffers`. */
+  const nameFile = titleCaseFromRoster(row.name)
+  if (nameFile && reallyDiffers(nameFile, person.display_name)) {
+    push('display_name', person.display_name, nameFile)
+  }
+
+  // El cargo tiene UNA sola fuente: esta base. Por eso se pisa, al revés que la
+  // campaña, que solo se completa.
+  const jobFile = titleCaseFromRoster(row.jobTitleRaw)
+  if (person.job_title !== undefined && jobFile && reallyDiffers(jobFile, person.job_title)) {
+    push('job_title', person.job_title, jobFile)
+  }
+
+  if (person.country !== undefined && row.country && row.country !== (person.country ?? '')) {
+    push('country', person.country, row.country)
+  }
+
+  const nidFile = row.nationalId
+  if (nidFile && nidFile !== normalizeNationalId(person.national_id ?? '')) {
+    push('national_id', person.national_id, row.nationalIdRaw.trim() || nidFile)
+  }
+
+  const nameOfUnit = (id: string | null | undefined) =>
+    labelOf(id ? unitNames?.get(id)?.name : null)
+  if (units.operation && person.operation_id !== undefined && units.operation.id !== person.operation_id) {
+    push('operation_id', person.operation_id, units.operation.id, nameOfUnit(person.operation_id), units.operation.name)
+  }
+  if (units.area && person.area_id !== undefined && units.area.id !== person.area_id) {
+    push('area_id', person.area_id, units.area.id, nameOfUnit(person.area_id), units.area.name)
+  }
+
+  return out
+}
+
 /* ── Nómina actual del sitio ───────────────────────────────────────────────── */
 
 /**
@@ -235,6 +546,20 @@ export interface DiffOptions {
   campaignByName?: Map<string, string>
   /** Campaña que reciben las altas cuyo nombre no salió del archivo. */
   defaultCampaignId?: string | null
+  /**
+   * El catálogo de CR y áreas ya casado por nombre (ver `resolveUnitsFromRoster`).
+   * Sin él no se proponen cambios de CR ni de área — nunca se inventa una unidad
+   * desde el archivo.
+   */
+  units?: UnitLookup
+  /** Todas las unidades por id, para escribir el CR que la persona tiene hoy. */
+  unitNames?: Map<string, OrgUnit>
+  /**
+   * Si se proponen correcciones de datos. Se apaga solo cuando el roster llega
+   * sin los campos nuevos (SQL sin correr): proponer a ciegas sería peor que no
+   * proponer.
+   */
+  allowUpdates?: boolean
 }
 
 /**
@@ -257,9 +582,17 @@ export function diffNovelties({
   missingStatusAs,
   campaignByName,
   defaultCampaignId = null,
+  units,
+  unitNames,
+  allowUpdates = true,
 }: DiffOptions): SyncEntry[] {
   const byNationalId = new Map<string, RosterPerson>()
   const byEmail = new Map<string, RosterPerson>()
+  /* Nombre + cargo: la tercera llave, y la única que resuelve "esta persona
+   * cambió de correo". Sin ella, un correo nuevo para alguien que ya trabaja
+   * aquí crea una cuenta duplicada y su progreso se queda en la vieja. Solo se
+   * usa cuando las dos partes coinciden exactamente: es una llave débil. */
+  const byNameJob = new Map<string, RosterPerson[]>()
   for (const p of roster) {
     const nid = normalizeNationalId(p.national_id ?? '')
     // La primera gana: si dos cuentas comparten cédula (un duplicado viejo), la
@@ -267,6 +600,8 @@ export function diffNovelties({
     if (nid && !byNationalId.has(nid)) byNationalId.set(nid, p)
     const mail = (p.email ?? '').trim().toLowerCase()
     if (mail && !byEmail.has(mail)) byEmail.set(mail, p)
+    const nj = `${fold(p.display_name ?? '')}|${fold(p.job_title ?? '')}`
+    if (p.display_name && p.job_title) byNameJob.set(nj, [...(byNameJob.get(nj) ?? []), p])
   }
 
   const entries: SyncEntry[] = []
@@ -279,15 +614,24 @@ export function diffNovelties({
     const dedupeKey = nid ? `n:${nid}` : email ? `e:${email}` : ''
     const key = `f${row.sourceLine}:${i}`
     const campaignRaw = row.campaign.trim()
+    const operation = units?.operations.get(fold(row.operationRaw))
+    const area = units?.areas.get(fold(row.areaRaw))
     const base = {
       key,
       sourceLine: row.sourceLine,
+      sheet: row.sheet,
       email,
       name: row.name.trim(),
       nationalId: nid,
       nationalIdRaw: row.nationalIdRaw,
       status: row.status,
       country: row.country,
+      jobTitleRaw: row.jobTitleRaw,
+      operationRaw: row.operationRaw,
+      areaRaw: row.areaRaw,
+      operation,
+      area,
+      changes: [] as FieldChange[],
       campaignRaw,
       // La campaña del archivo manda sobre el valor por defecto; si el nombre no
       // corresponde a ninguna campaña del sitio se usa el default y la interfaz
@@ -307,10 +651,24 @@ export function diffNovelties({
     }
     seenKeys.add(dedupeKey)
 
-    const matched = (nid ? byNationalId.get(nid) : undefined) ?? (email ? byEmail.get(email) : undefined)
+    /* Orden de las llaves, de la más fuerte a la más débil: ficha de TH, correo
+     * y, por último, nombre + cargo exactos. La última existe solo para el caso
+     * de "le cambiaron el correo": si casara con más de una persona no se usa,
+     * porque dos homónimos con el mismo puesto son exactamente el escenario en
+     * el que escribir sobre el perfil equivocado no se nota nunca. */
+    const njKey = `${fold(row.name)}|${fold(row.jobTitleRaw)}`
+    const njHits = row.name.trim() && row.jobTitleRaw.trim() ? (byNameJob.get(njKey) ?? []) : []
+    const matched =
+      (nid ? byNationalId.get(nid) : undefined) ??
+      (email ? byEmail.get(email) : undefined) ??
+      (njHits.length === 1 ? njHits[0] : undefined)
     const matchedBy: SyncEntry['matchedBy'] = !matched
       ? null
-      : nid && byNationalId.get(nid) === matched ? 'national_id' : 'email'
+      : nid && byNationalId.get(nid) === matched
+        ? 'national_id'
+        : email && byEmail.get(email) === matched
+          ? 'email'
+          : 'name_job'
 
     // Qué dice el archivo de esta persona. Sin estado legible se usa el default
     // elegido, que jamás puede ser "retirada".
@@ -347,10 +705,46 @@ export function diffNovelties({
 
     // Activa según el archivo.
     if (matched) {
+      const identity = checkIdentity(
+        { email, name: row.name, nationalId: nid, jobTitleRaw: row.jobTitleRaw },
+        matched,
+      )
+
+      /* Mismo correo, otro nombre y otro cargo: no es un dato mal escrito, son
+       * dos personas. No se aplica ni marcándolo a mano — la corrección está en
+       * el archivo. */
+      if (identity.conflict) {
+        entries.push({
+          ...base, action: 'skipped', matchedBy, person: matched,
+          identity, reason: 'identity_conflict', include: false,
+        })
+        return
+      }
+
+      const changes =
+        allowUpdates && identity.confident
+          ? computeChanges(
+              { email, name: row.name, nationalId: nid, nationalIdRaw: row.nationalIdRaw,
+                jobTitleRaw: row.jobTitleRaw, country: row.country },
+              matched,
+              { operation, area },
+              unitNames,
+            )
+          : []
+
+      if (!matched.is_active) {
+        entries.push({ ...base, action: 'reactivate', matchedBy, person: matched, identity, changes, include: true })
+        return
+      }
       entries.push(
-        matched.is_active
-          ? { ...base, action: 'unchanged', matchedBy, person: matched, include: true }
-          : { ...base, action: 'reactivate', matchedBy, person: matched, include: true },
+        changes.length > 0
+          ? {
+              ...base, action: 'update', matchedBy, person: matched, identity, changes,
+              /* Un nombre que no casa se revisa a mano: nace sin marcar aunque
+               * haya confianza por otras dos columnas. */
+              include: !identity.nameMismatch,
+            }
+          : { ...base, action: 'unchanged', matchedBy, person: matched, identity, include: true },
       )
       return
     }
@@ -368,7 +762,7 @@ export function diffNovelties({
 }
 
 export function countByAction(entries: SyncEntry[], onlyIncluded = false): SyncCounts {
-  const c: SyncCounts = { create: 0, reactivate: 0, deactivate: 0, unchanged: 0, skipped: 0 }
+  const c: SyncCounts = { create: 0, reactivate: 0, deactivate: 0, unchanged: 0, skipped: 0, update: 0 }
   for (const e of entries) {
     if (onlyIncluded && !e.include) continue
     c[e.action]++
@@ -399,7 +793,19 @@ export interface ApplyOptions {
   /** Periodo que representa la nómina, "2026-07". */
   period: string
   reason: string
-  onProgress?: (done: number, total: number, phase: 'create' | 'deactivate' | 'reactivate' | 'finish') => void
+  /**
+   * Si quien aplica puede dar de baja. **Solo el superadmin.** No es cosmético:
+   * aunque la interfaz esconda el botón, esta función vuelve a filtrar las
+   * bajas, porque un alta de más se corrige y una baja indebida deja a alguien
+   * fuera sin que nadie se entere hasta que reclama. Recursos Humanos ve las
+   * bajas propuestas y las puede exportar; no las ejecuta.
+   */
+  canDeactivate: boolean
+  onProgress?: (
+    done: number,
+    total: number,
+    phase: 'create' | 'deactivate' | 'reactivate' | 'update' | 'finish',
+  ) => void
 }
 
 export interface ApplyResult {
@@ -407,7 +813,55 @@ export interface ApplyResult {
   deactivated: number
   reactivated: number
   unchanged: number
+  /** Perfiles corregidos y cuántos campos se tocaron en total. */
+  updated: number
+  fieldsUpdated: number
+  /** Correos movidos también en la cuenta de ingreso. */
+  emailsChanged: number
+  /** Bajas que se propusieron y NO se aplicaron por no ser superadmin. */
+  deactivationsBlocked: number
   errors: string[]
+}
+
+/** Campos de `profiles` que se escriben directo; el correo va aparte. */
+const DIRECT_FIELDS: Exclude<ProfileField, 'email'>[] = [
+  'display_name', 'job_title', 'country', 'national_id', 'operation_id', 'area_id',
+]
+
+/**
+ * Aplica las correcciones de una entrada. El correo va primero y por su propio
+ * camino: si falla (porque otra cuenta ya lo usa) el resto de los datos se
+ * guarda igual, en vez de perderse toda la fila por un choque de correo.
+ */
+async function applyEntryChanges(
+  entry: SyncEntry,
+): Promise<{ fields: number; emailChanged: boolean; error?: string }> {
+  const id = entry.person?.id
+  if (!id) return { fields: 0, emailChanged: false }
+  let emailChanged = false
+  let error: string | undefined
+
+  const mail = entry.changes.find((c) => c.field === 'email')
+  if (mail) {
+    try {
+      await updateUserEmail(id, mail.to)
+      emailChanged = true
+    } catch (err) {
+      error = `${entry.email}: ${(err as Error).message}`
+    }
+  }
+
+  const patch: Partial<Record<Exclude<ProfileField, 'email'>, string>> = {}
+  for (const c of entry.changes) {
+    if (c.field === 'email') continue
+    if (DIRECT_FIELDS.includes(c.field)) patch[c.field] = c.to
+  }
+  if (Object.keys(patch).length > 0) {
+    const { error: dbError } = await supabase.from('profiles').update(patch).eq('id', id)
+    if (dbError) error = `${entry.email}: ${dbError.message}`
+  }
+
+  return { fields: Object.keys(patch).length + (emailChanged ? 1 : 0), emailChanged, error }
 }
 
 async function authHeader(): Promise<Record<string, string>> {
@@ -419,16 +873,22 @@ async function authHeader(): Promise<Record<string, string>> {
 }
 
 /**
- * Da de baja (o vuelve a dar de alta) a un grupo de aprendices.
+ * Da de baja (o vuelve a dar de alta) a un grupo de personas.
  *
  * Vive en una Edge Function porque además de `profiles` hay que tocar la cuenta
  * de autenticación: sin bloquearla ahí, una persona dada de baja seguiría
  * pudiendo iniciar sesión.
+ *
+ * `allowStaff` decide si la llamada puede tocar capacitadores, Talento Humano y
+ * superadmins. Por defecto NO: la sincronización de nómina manda listas largas
+ * y un cruce de documentos no puede dejar a un capacitador sin acceso. La baja
+ * de staff se hace a mano, persona por persona, desde la pantalla de Usuarios.
  */
 export async function setUsersActive(
   userIds: string[],
   active: boolean,
   reason = '',
+  allowStaff = false,
 ): Promise<{ updated: number; skipped: { id: string; reason: string }[] }> {
   if (userIds.length === 0) return { updated: 0, skipped: [] }
   const res = await fetch(
@@ -436,7 +896,7 @@ export async function setUsersActive(
     {
       method: 'POST',
       headers: await authHeader(),
-      body: JSON.stringify({ userIds, active, reason }),
+      body: JSON.stringify({ userIds, active, reason, allowStaff }),
     },
   )
   const json = await res.json()
@@ -456,16 +916,26 @@ function chunk<T>(list: T[], size: number): T[][] {
  * personas no depende de que una sola llamada aguante.
  */
 export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
-  const { entries, fileName, period, reason, onProgress } = opts
+  const { entries, fileName, period, reason, canDeactivate, onProgress } = opts
   const included = entries.filter((e) => e.include)
   const toCreate = included.filter((e) => e.action === 'create')
-  const toDeactivate = included.filter((e) => e.action === 'deactivate')
+  const proposedDeactivations = included.filter((e) => e.action === 'deactivate')
+  /* El candado real. La interfaz esconde el botón, pero quien llame a esta
+   * función sin ser superadmin tampoco da de baja a nadie. */
+  const toDeactivate = canDeactivate ? proposedDeactivations : []
   const toReactivate = included.filter((e) => e.action === 'reactivate')
   const unchanged = included.filter((e) => e.action === 'unchanged')
+  // Una reactivación también puede traer datos corregidos.
+  const toUpdate = included.filter((e) => e.changes.length > 0 && e.action !== 'create')
 
-  const total = toCreate.length + toDeactivate.length + toReactivate.length
+  const total = toCreate.length + toDeactivate.length + toReactivate.length + toUpdate.length
   let done = 0
-  const result: ApplyResult = { created: [], deactivated: 0, reactivated: 0, unchanged: unchanged.length, errors: [] }
+  const result: ApplyResult = {
+    created: [], deactivated: 0, reactivated: 0, unchanged: unchanged.length,
+    updated: 0, fieldsUpdated: 0, emailsChanged: 0,
+    deactivationsBlocked: canDeactivate ? 0 : proposedDeactivations.length,
+    errors: [],
+  }
 
   /* Altas — agrupadas por campaña, porque cada persona puede ir a la suya. Cada
    * grupo reutiliza la carga masiva ya probada (contraseña inicial, credencial
@@ -540,6 +1010,21 @@ export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
     onProgress?.(done, total, 'reactivate')
   }
 
+  /* Correcciones de datos. De una en una y no en lote: cada persona puede
+   * llevar un juego de campos distinto, y el cambio de correo toca la cuenta de
+   * ingreso, que no admite tandas. */
+  for (const e of toUpdate) {
+    const r = await applyEntryChanges(e)
+    if (r.fields > 0) {
+      result.updated += 1
+      result.fieldsUpdated += r.fields
+    }
+    if (r.emailChanged) result.emailsChanged += 1
+    if (r.error) result.errors.push(r.error)
+    done += 1
+    onProgress?.(done, total, 'update')
+  }
+
   onProgress?.(total, total, 'finish')
 
   /* Rastro en las cuentas confirmadas: en qué nómina se las vio por última vez,
@@ -576,6 +1061,16 @@ export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
     skipped_count: entries.filter((e) => e.action === 'skipped' || !e.include).length,
     detail: {
       reason,
+      updated: toUpdate.map((e) => ({
+        id: e.person!.id,
+        email: e.email,
+        fields: e.changes.map((c) => `${c.field}: ${c.fromLabel} → ${c.toLabel}`),
+      })),
+      /* Bajas que se propusieron y no se aplicaron por no ser superadmin. Quedan
+       * escritas para que se puedan retomar, no para que se pierdan. */
+      deactivations_blocked: canDeactivate
+        ? []
+        : proposedDeactivations.map((e) => ({ id: e.person!.id, email: e.email })),
       created: result.created.map((r) => ({ email: r.email, status: r.status })),
       deactivated: toDeactivate.map((e) => ({
         id: e.person!.id,

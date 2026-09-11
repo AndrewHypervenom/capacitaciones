@@ -110,7 +110,7 @@ function diasRestantes(expiresAt: string | null): number | null {
 }
 
 export default function UserList() {
-  const { isSuperAdmin, canCreateLearners, campaignId, user: authUser } = useAuth()
+  const { isSuperAdmin, isRh, canCreateLearners, campaignId, user: authUser } = useAuth()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -241,6 +241,11 @@ export default function UserList() {
   // viene con el rol. Las BAJAS siguen siendo solo del superadmin: ese es el
   // punto de control del proceso de Talento Humano y no se delega.
   const canCreateUsers = isSuperAdmin || (canCreateLearners && assignableCampaigns.length > 0)
+  /* Recursos Humanos SI carga la base maestra: dar de alta y mantener los datos
+   * de la gente es literalmente su trabajo. Lo que no puede es dar de baja — eso
+   * se queda en el superadmin, y el asistente lo esconde y `applySync` lo vuelve
+   * a filtrar. */
+  const canSyncRoster = isSuperAdmin || isRh
   // Capacitador sin el permiso: se le explica por qué no ve los botones, en vez
   // de dejar la pantalla muda.
   const showNoPermissionHint = !isSuperAdmin && !canCreateLearners
@@ -721,17 +726,51 @@ export default function UserList() {
   }
 
   /**
-   * Da de baja (o vuelve a dar de alta) a una persona. La baja NO borra: bloquea
-   * el ingreso y la saca de listados y contadores, conservando su historial, así
-   * que reactivarla la devuelve exactamente donde estaba.
+   * Traduce el código que devuelve la función de borde cuando no cambió nada.
+   * Sin esto el aviso de error mostraba el código crudo ("eres_tu").
+   */
+  const skipReason = (code?: string) => {
+    if (code === 'eres_tu') {
+      return t('admin.users.status_skip_self', 'No puedes darte de baja a ti mismo.')
+    }
+    if (code === 'no_existe') {
+      return t('admin.users.status_skip_missing', 'La cuenta ya no existe.')
+    }
+    /* El servidor todavía es el viejo: rechaza dar de baja a alguien del equipo.
+       Sin este caso el aviso decía "ya estaba así", que es mentira. */
+    if (code === 'no_es_aprendiz') {
+      return t(
+        'admin.users.status_skip_staff_old_server',
+        'El servidor todavía no acepta dar de baja al equipo: falta desplegar la función set-user-status.',
+      )
+    }
+    return t('admin.users.status_no_change')
+  }
+
+  /**
+   * Da de baja (o vuelve a dar de alta) a una persona —de cualquier rol. La baja
+   * NO borra: bloquea el ingreso y la saca de listados y contadores, conservando
+   * su historial, así que reactivarla la devuelve exactamente donde estaba.
+   *
+   * En staff se avisa aparte de lo que NO arregla la baja: el contenido que creó
+   * sigue publicado y sigue siendo suyo. Para eso está "Cambiar de dueño", y hay
+   * que pasarlo ANTES, porque después la persona ya no aparece en los listados.
    */
   const handleToggleActive = async (user: ProfileWithEmail) => {
     const name = user.display_name ?? user.email ?? user.id.slice(0, 8)
     const deactivating = user.is_active !== false
+    const isStaff = user.role !== 'learner'
     const ok = await confirm({
       title: deactivating ? t('admin.users.deactivate') : t('admin.users.reactivate'),
       description: deactivating
-        ? t('admin.users.deactivate_confirm', { name })
+        ? t('admin.users.deactivate_confirm', { name }) +
+          (isStaff
+            ? '\n\n' +
+              t(
+                'admin.users.deactivate_staff_note',
+                'Ojo: es parte del equipo. El contenido que creó sigue publicado y a su nombre; si hay que traspasarlo, usa "Cambiar de dueño" antes de darle de baja.',
+              )
+            : '')
         : t('admin.users.reactivate_confirm', { name }),
       confirmLabel: deactivating ? t('admin.users.deactivate') : t('admin.users.reactivate'),
       tone: deactivating ? 'danger' : 'default',
@@ -740,9 +779,9 @@ export default function UserList() {
 
     setTogglingId(user.id)
     try {
-      const { updated, skipped } = await setUsersActive([user.id], !deactivating)
+      const { updated, skipped } = await setUsersActive([user.id], !deactivating, '', true)
       if (updated === 0) {
-        throw new Error(skipped[0]?.reason ?? t('admin.users.status_no_change'))
+        throw new Error(skipReason(skipped[0]?.reason))
       }
       const setActive = (list: ProfileWithEmail[]) =>
         list.map((u) => (u.id === user.id ? { ...u, is_active: !deactivating } : u))
@@ -891,6 +930,9 @@ export default function UserList() {
               </span>
             </button>
             </Tooltip>
+            </>
+          )}
+          {canSyncRoster && (
             <Tooltip label={t('admin.hr.button_hint')} maxWidth={260}>
             <button
               onClick={() => setHrOpen(true)}
@@ -900,7 +942,6 @@ export default function UserList() {
               {t('admin.hr.button')}
             </button>
             </Tooltip>
-            </>
           )}
           {canCreateUsers && (
             <>
@@ -1565,7 +1606,10 @@ export default function UserList() {
                       </button>
                     </Tooltip>
                   )}
-                  {isSuperAdmin && user.role === 'learner' && (
+                  {/* Dar de baja: cualquier rol menos uno mismo. El staff también
+                      se va de la empresa, y hasta ahora la única salida era
+                      borrarlo —que sí pierde el rastro. La baja conserva todo. */}
+                  {isSuperAdmin && user.id !== authUser?.id && (
                     <Tooltip
                       label={user.is_active === false ? t('admin.users.reactivate_hint') : t('admin.users.deactivate_hint')}
                       className="shrink-0"
@@ -1665,6 +1709,7 @@ export default function UserList() {
       {hrOpen && (
         <HrRosterSyncModal
           campaigns={campaigns}
+          canDeactivate={isSuperAdmin}
           onClose={() => setHrOpen(false)}
           onApplied={refreshData}
         />

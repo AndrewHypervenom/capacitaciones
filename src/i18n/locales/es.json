@@ -1124,7 +1124,8 @@
     "drop_image_tip": "Haz clic o arrastra una imagen aquí",
     "copy": "Copiar",
     "copied": "Copiado",
-    "copy_failed": "No se pudo copiar"
+    "copy_failed": "No se pudo copiar",
+    "and": "y"
   },
   "bgtask": {
     "cancel": "Cancelar",
@@ -1960,7 +1961,11 @@
         "removed": "{{name}} ya no entra al programa de prueba",
         "mixed_title": "Esa cuenta trabaja en programas reales",
         "mixed_desc": "{{name}} ya tiene programas del mundo real, y nadie puede estar en los dos: su progreso de pruebas terminaría en los KPIs y en los Excel. Usa una cuenta dedicada a pruebas, o quítale antes los programas reales en /admin/usuarios."
-      }
+      },
+      "legacy_badge": "A migrar",
+      "legacy_hint": "Esto era un «programa» del modelo anterior. Se reemplaza por CR (la operación) más la categoría del curso. No crees contenido nuevo aquí.",
+      "legacy_banner_title": "Estos programas están en transición",
+      "legacy_banner_body": "Lo que aparece en rojo es del modelo anterior. Lo nuevo son los CR (operaciones) que trae la base de Talento Humano, en verde, más la categoría del curso."
     },
     "users": {
       "saved_all": "Cambios guardados",
@@ -2123,6 +2128,10 @@
       "reset_pwd_hint": "Devuelve a la persona a su contraseña inicial y la copia.",
       "deactivate_hint": "Da de baja: bloquea el ingreso y la saca de listados y KPIs, sin borrar nada. Solo el superadmin puede hacerlo, y se revierte cuando quieras.",
       "reactivate_hint": "Le devuelve el acceso con todo su historial intacto, justo donde lo dejó. Solo el superadmin puede hacerlo.",
+      "deactivate_staff_note": "Ojo: es parte del equipo. El contenido que creó sigue publicado y a su nombre; si hay que traspasarlo, usa «Cambiar de dueño» antes de darle de baja.",
+      "status_skip_self": "No puedes darte de baja a ti mismo.",
+      "status_skip_missing": "La cuenta ya no existe.",
+      "status_skip_staff_old_server": "El servidor todavía no acepta dar de baja al equipo: falta desplegar la función set-user-status.",
       "delete_user_hint": "Borra la cuenta y su historial. No se puede deshacer.",
       "can_create_label": "Permiso para crear aprendices",
       "can_create_badge": "Da de alta",
@@ -2340,7 +2349,44 @@
       "confirm_each_hint": "Marca una por una las bajas que sí van.",
       "set_campaign_all": "Poner a todas:",
       "pending_deactivations": "{{n}} bajas propuestas sin confirmar: no se aplicarán.",
-      "creates_without_campaign": "{{n}} altas quedarían sin programa: entrarían sin cursos asignados."
+      "creates_without_campaign": "{{n}} altas quedarían sin programa: entrarían sin cursos asignados.",
+      "tab_update": "Correcciones",
+      "action_update": "Corregir datos",
+      "update_hint": "Solo se corrige lo que la base dice distinto. Una celda vacía nunca borra un dato.",
+      "col_changes": "Que cambia",
+      "col_sheet": "Hoja",
+      "field_email": "Correo",
+      "field_display_name": "Nombre",
+      "field_job_title": "Cargo",
+      "field_country": "País",
+      "field_national_id": "Ficha",
+      "field_operation_id": "CR",
+      "field_area_id": "Área",
+      "field_needs_auth": "(tambien el ingreso)",
+      "matched_name_job": "Nombre y cargo",
+      "reason_identity_conflict": "El correo es de otra persona",
+      "name_in_site": "En el sitio: {{name}}",
+      "conflicts_title": "{{n}} filas con el correo de otra persona",
+      "conflicts_hint": "El correo ya existe en el sitio, pero a nombre de alguien con otro nombre y otro cargo. No se aplican: la corrección va en el archivo, no aquí.",
+      "conflicts_line": "el archivo dice {{file}}, el sitio {{site}}",
+      "conflicts_more": "y {{n}} más.",
+      "unmatched_units_title": "{{n}} CR o áreas que el catálogo no tiene",
+      "unmatched_units_hint": "No se crean solas. Ábrelas en Unidades y vuelve a cargar el archivo; mientras tanto esa gente se queda sin clasificar.",
+      "updates_unavailable": "Todavía no se pueden proponer correcciones de datos: falta correr el SQL que amplía la lectura de la nómina. Las altas y las bajas funcionan igual.",
+      "deactivate_locked": "Hay {{n}} bajas propuestas. Solo el superadmin las aplica; puedes descargarlas en el reporte para tramitarlas.",
+      "deactivations_blocked_result": "{{n}} bajas quedaron propuestas y sin aplicar: solo el superadmin puede darlas.",
+      "only_superadmin": "Las bajas solo las aplica el superadmin.",
+      "only_superadmin_short": "Solo superadmin",
+      "footer_updates": "{{n}} correcciones ({{fields}} datos)",
+      "email_changes_warning": "{{n}} personas cambiarían el correo con el que inician sesión. Su contraseña no cambia.",
+      "emails_changed_result": "{{n}} correos de ingreso movidos. Avísales: entran con el nuevo y la misma contraseña.",
+      "sheets_title": "Hojas del archivo ({{n}}) · se leen todas",
+      "sheet_rows": "{{n}} filas",
+      "sheet_off": "fuera",
+      "tuning_sheet": "Ajustar columnas de",
+      "map_job_title": "Columna del cargo",
+      "map_operation": "Columna del CR",
+      "map_area": "Columna del área"
     },
     "courses": {
       "tip_publish_module": "Hacerlo visible para el aprendiz.",
@@ -2922,7 +2968,16 @@
       "cond_game_attempts_hint_one": "{{count}} intento en clasificar y ordenar. Más que en un quiz: un juego también se pierde por arrastrar mal.",
       "cond_game_attempts_hint_other": "{{count}} intentos en clasificar y ordenar. Más que en un quiz: un juego también se pierde por arrastrar mal.",
       "cond_quiz_attempts_tip": "Aplica a los quizzes del contenido y a los que salen dentro de un video.\nLo que se pierde al fallar es el XP, no la posibilidad de avanzar:\n· XP: 100% a la primera, 60% a la segunda, 40% a la tercera. Agotados los intentos, 0.\n· NOTA: baja igual, pero tiene SUELO en el puntaje mínimo del módulo. Resolver una pregunta nunca deja la nota por debajo de lo que hace falta para pasar, así que ningún fallo cierra el módulo.\nAl agotar los intentos se le muestra cuál era la correcta y puede responderla: eso le deja la nota en el mínimo, sin XP, y sigue adelante. Nunca hay que desbloquear a nadie a mano.\nPon 0 para quitar el tope. No es lo recomendado: sin límite todos acaban en 100 con el XP completo, y ni la nota ni el XP vuelven a decir nada.",
-      "cond_game_attempts_tip": "Lo que se pierde al repetir es el XP, no la posibilidad de avanzar:\n· XP: 100% a la primera, 60% a la segunda, 40% de ahí en adelante. Agotados los intentos, 0.\n· NOTA: el intento le pone techo, pero el mínimo del módulo le pone SUELO. Lo que el suelo NO tapa es el desempeño malo: quien de verdad saca 50% se queda con 50, porque eso sí es lo que hizo.\nAgotados los intentos se sigue jugando: alcanzar el mínimo ahí deja la nota en el mínimo, sin XP, y el módulo se abre. Nunca hay que desbloquear a nadie a mano.\nPon 0 para quitar el tope. No es lo recomendado: sin límite se repite hasta clavarlo y el desempeño deja de medirse."
+      "cond_game_attempts_tip": "Lo que se pierde al repetir es el XP, no la posibilidad de avanzar:\n· XP: 100% a la primera, 60% a la segunda, 40% de ahí en adelante. Agotados los intentos, 0.\n· NOTA: el intento le pone techo, pero el mínimo del módulo le pone SUELO. Lo que el suelo NO tapa es el desempeño malo: quien de verdad saca 50% se queda con 50, porque eso sí es lo que hizo.\nAgotados los intentos se sigue jugando: alcanzar el mínimo ahí deja la nota en el mínimo, sin XP, y el módulo se abre. Nunca hay que desbloquear a nadie a mano.\nPon 0 para quitar el tope. No es lo recomendado: sin límite se repite hasta clavarlo y el desempeño deja de medirse.",
+      "audience_cascade_title": "A quién le llega",
+      "audience_step_country": "1. País",
+      "audience_step_area": "2. Área",
+      "audience_step_cr": "3. CR",
+      "audience_cascade_hint": "Elige país, luego área y luego CR. Así se sabe a qué personas va el contenido.",
+      "publish_needs_audience": "Para publicar falta definir a quién le llega: {{missing}}.",
+      "publish_missing_country": "el país",
+      "publish_missing_area": "el área",
+      "publish_missing_cr": "el CR"
     },
     "simulations": {
       "save": "Guardar",
@@ -5584,6 +5639,12 @@
         "ai_scenario_drafts": "Borradores de IA"
       },
       "loose_modules": "{{count}} de esos módulos no pertenecen a ningún curso. Cambian de autor, pero quién puede abrirlos lo sigue decidiendo su programa: si hace falta, muévelos con \"Mover a otro programa\"."
+    },
+    "units": {
+      "cr_equals_operation": "CR es la operación: el centro de resultados al que Talento Humano carga a cada persona.",
+      "origin_roster": "Nuevo · viene de la base",
+      "origin_roster_hint": "Este CR llegó con la base de Talento Humano. Es el modelo nuevo.",
+      "legacy_badge": "A migrar"
     }
   },
   "themes": {

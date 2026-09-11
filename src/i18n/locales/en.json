@@ -1124,7 +1124,8 @@
     "drop_image_tip": "Click or drag an image here",
     "copy": "Copy",
     "copied": "Copied",
-    "copy_failed": "Couldn't copy"
+    "copy_failed": "Couldn't copy",
+    "and": "and"
   },
   "bgtask": {
     "cancel": "Cancel",
@@ -1960,7 +1961,11 @@
         "removed": "{{name}} no longer enters the test program",
         "mixed_title": "That account works on real programs",
         "mixed_desc": "{{name}} already has real-world programs, and nobody can live in both: their test progress would end up in the KPIs and the spreadsheets. Use an account dedicated to testing, or remove their real programs first in /admin/users."
-      }
+      },
+      "legacy_badge": "To migrate",
+      "legacy_hint": "This was a \"programme\" under the old model. It is replaced by the CR (the operation) plus the course category. Do not build new content here.",
+      "legacy_banner_title": "These programmes are in transition",
+      "legacy_banner_body": "Anything in red belongs to the old model. The new one is the CRs (operations) that come with the HR roster, in green, plus the course category."
     },
     "users": {
       "saved_all": "Changes saved",
@@ -2123,6 +2128,10 @@
       "reset_pwd_hint": "Sends the person back to their initial password and copies it.",
       "deactivate_hint": "Deactivates: blocks sign-in and removes them from lists and KPIs, without deleting anything. Only the superadmin can do it, and it's reversible.",
       "reactivate_hint": "Restores access with their full history intact, right where they left off. Only the superadmin can do it.",
+      "deactivate_staff_note": "Heads up: they are part of the team. The content they created stays published and under their name; if it has to change hands, use “Change owner” before deactivating them.",
+      "status_skip_self": "You cannot deactivate your own account.",
+      "status_skip_missing": "That account no longer exists.",
+      "status_skip_staff_old_server": "The server does not accept deactivating staff yet: the set-user-status function still needs to be deployed.",
       "delete_user_hint": "Deletes the account and its history. Cannot be undone.",
       "can_create_label": "Permission to create learners",
       "can_create_badge": "Can add users",
@@ -2340,7 +2349,44 @@
       "confirm_each_hint": "Tick the deactivations that really apply, one by one.",
       "set_campaign_all": "Set for all:",
       "pending_deactivations": "{{n}} proposed deactivations not confirmed: they will not be applied.",
-      "creates_without_campaign": "{{n}} new accounts would have no program: they would start with no courses."
+      "creates_without_campaign": "{{n}} new accounts would have no program: they would start with no courses.",
+      "tab_update": "Corrections",
+      "action_update": "Fix data",
+      "update_hint": "Only what the roster states differently is changed. An empty cell never clears a value.",
+      "col_changes": "What changes",
+      "col_sheet": "Sheet",
+      "field_email": "Email",
+      "field_display_name": "Name",
+      "field_job_title": "Job title",
+      "field_country": "Country",
+      "field_national_id": "Employee no.",
+      "field_operation_id": "CR",
+      "field_area_id": "Area",
+      "field_needs_auth": "(sign-in too)",
+      "matched_name_job": "Name and job title",
+      "reason_identity_conflict": "That email belongs to someone else",
+      "name_in_site": "On the site: {{name}}",
+      "conflicts_title": "{{n}} rows whose email belongs to someone else",
+      "conflicts_hint": "The email already exists here, under a different name and a different job title. These are never applied: fix the file, not this screen.",
+      "conflicts_line": "the file says {{file}}, the site says {{site}}",
+      "conflicts_more": "and {{n}} more.",
+      "unmatched_units_title": "{{n}} CRs or areas the catalogue does not have",
+      "unmatched_units_hint": "They are never created on their own. Add them under Units and load the file again; until then those people stay unclassified.",
+      "updates_unavailable": "Data corrections are not available yet: the SQL that widens the roster read has not been run. Additions and deactivations work as usual.",
+      "deactivate_locked": "{{n}} deactivations proposed. Only the superadmin applies them; download the report to hand them over.",
+      "deactivations_blocked_result": "{{n}} deactivations were proposed and not applied: only the superadmin can do that.",
+      "only_superadmin": "Only the superadmin applies deactivations.",
+      "only_superadmin_short": "Superadmin only",
+      "footer_updates": "{{n}} corrections ({{fields}} values)",
+      "email_changes_warning": "{{n}} people would change the email they sign in with. Their password stays the same.",
+      "emails_changed_result": "{{n}} sign-in emails moved. Tell them: same password, new address.",
+      "sheets_title": "Sheets in the file ({{n}}) - all are read",
+      "sheet_rows": "{{n}} rows",
+      "sheet_off": "out",
+      "tuning_sheet": "Adjust columns of",
+      "map_job_title": "Job title column",
+      "map_operation": "CR column",
+      "map_area": "Area column"
     },
     "courses": {
       "tip_publish_module": "Make it visible to the learner.",
@@ -2922,7 +2968,16 @@
       "cond_game_attempts_hint_one": "{{count}} try on classify and sort. More than a quiz: a game is also lost by dragging wrong.",
       "cond_game_attempts_hint_other": "{{count}} tries on classify and sort. More than a quiz: a game is also lost by dragging wrong.",
       "cond_quiz_attempts_tip": "Applies to content quizzes and to the ones that appear inside a video.\nWhat a wrong answer costs is XP, not the ability to move on:\n· XP: 100% first try, 60% second, 40% third. Once out of tries, 0.\n· SCORE: it drops too, but it has a FLOOR at the module's minimum. Solving a question never leaves the score below what's needed to pass, so no mistake closes the module.\nWhen they run out we show the correct answer and they can answer it: that leaves the score at the minimum, no XP, and they move on. Nobody ever needs unblocking by hand.\nSet 0 to remove the limit. Not recommended: with no cap everyone ends at 100 with full XP, and neither the score nor the XP means anything again.",
-      "cond_game_attempts_tip": "What repeating costs is XP, not the ability to move on:\n· XP: 100% first try, 60% second, 40% from there. Once out of tries, 0.\n· SCORE: the try caps it, but the module minimum floors it. What the floor does NOT cover is poor performance: someone who really scores 50% keeps 50, because that's what they did.\nOnce out of tries they keep playing: reaching the minimum there leaves the score at the minimum, no XP, and the module opens. Nobody ever needs unblocking by hand.\nSet 0 to remove the limit. Not recommended: with no cap they repeat until they nail it and performance stops being measured."
+      "cond_game_attempts_tip": "What repeating costs is XP, not the ability to move on:\n· XP: 100% first try, 60% second, 40% from there. Once out of tries, 0.\n· SCORE: the try caps it, but the module minimum floors it. What the floor does NOT cover is poor performance: someone who really scores 50% keeps 50, because that's what they did.\nOnce out of tries they keep playing: reaching the minimum there leaves the score at the minimum, no XP, and the module opens. Nobody ever needs unblocking by hand.\nSet 0 to remove the limit. Not recommended: with no cap they repeat until they nail it and performance stops being measured.",
+      "audience_cascade_title": "Who it reaches",
+      "audience_step_country": "1. Country",
+      "audience_step_area": "2. Area",
+      "audience_step_cr": "3. CR",
+      "audience_cascade_hint": "Pick country, then area, then CR. That is how you know which people the content goes to.",
+      "publish_needs_audience": "Before publishing, define who it reaches: {{missing}}.",
+      "publish_missing_country": "the country",
+      "publish_missing_area": "the area",
+      "publish_missing_cr": "the CR"
     },
     "simulations": {
       "save": "Save",
@@ -5584,6 +5639,12 @@
         "ai_scenario_drafts": "AI drafts"
       },
       "loose_modules": "{{count}} of those modules don't belong to any course. Their author changes, but who can open them is still decided by their program: move them with \"Move to another program\" if needed."
+    },
+    "units": {
+      "cr_equals_operation": "CR is the operation: the cost centre HR books each person to.",
+      "origin_roster": "New - from the roster",
+      "origin_roster_hint": "This CR came with the HR roster. It belongs to the new model.",
+      "legacy_badge": "To migrate"
     }
   },
   "themes": {

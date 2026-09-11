@@ -1124,7 +1124,8 @@
     "drop_image_tip": "Clique ou arraste uma imagem aqui",
     "copy": "Copiar",
     "copied": "Copiado",
-    "copy_failed": "Não foi possível copiar"
+    "copy_failed": "Não foi possível copiar",
+    "and": "e"
   },
   "bgtask": {
     "cancel": "Cancelar",
@@ -1960,7 +1961,11 @@
         "removed": "{{name}} não entra mais no programa de teste",
         "mixed_title": "Essa conta trabalha em programas reais",
         "mixed_desc": "{{name}} já tem programas do mundo real, e ninguém pode estar nos dois: o progresso de teste acabaria nos KPIs e nas planilhas. Use uma conta dedicada a testes ou tire antes os programas reais em /admin/usuários."
-      }
+      },
+      "legacy_badge": "A migrar",
+      "legacy_hint": "Isto era um «programa» do modelo anterior. É substituído pelo CR (a operação) mais a categoria do curso. Não crie conteúdo novo aqui.",
+      "legacy_banner_title": "Estes programas estão em transição",
+      "legacy_banner_body": "O que aparece em vermelho é do modelo anterior. O novo são os CR (operações) que vêm da base do RH, em verde, mais a categoria do curso."
     },
     "users": {
       "saved_all": "Alterações salvas",
@@ -2123,6 +2128,10 @@
       "reset_pwd_hint": "Devolve a pessoa à senha inicial e a copia.",
       "deactivate_hint": "Dá baixa: bloqueia o acesso e tira a pessoa de listas e KPIs, sem apagar nada. Só o superadmin pode fazer isso, e dá para reverter quando quiser.",
       "reactivate_hint": "Devolve o acesso com todo o histórico intacto, exatamente onde parou. Só o superadmin pode fazer isso.",
+      "deactivate_staff_note": "Atenção: faz parte da equipe. O conteúdo que criou continua publicado e no nome dela; se precisar passar para outra pessoa, use «Mudar de dono» antes de desativar.",
+      "status_skip_self": "Você não pode desativar a sua própria conta.",
+      "status_skip_missing": "A conta já não existe.",
+      "status_skip_staff_old_server": "O servidor ainda não aceita desativar a equipe: falta publicar a função set-user-status.",
       "delete_user_hint": "Apaga a conta e o histórico. Não dá para desfazer.",
       "can_create_label": "Permissão para criar aprendizes",
       "can_create_badge": "Dá alta",
@@ -2340,7 +2349,44 @@
       "confirm_each_hint": "Marque uma por uma as desativações que valem.",
       "set_campaign_all": "Aplicar a todas:",
       "pending_deactivations": "{{n}} desativações propostas sem confirmar: não serão aplicadas.",
-      "creates_without_campaign": "{{n}} contas novas ficariam sem programa: entrariam sem cursos."
+      "creates_without_campaign": "{{n}} contas novas ficariam sem programa: entrariam sem cursos.",
+      "tab_update": "Correções",
+      "action_update": "Corrigir dados",
+      "update_hint": "Só se corrige o que a base diz diferente. Uma célula vazia nunca apaga um dado.",
+      "col_changes": "O que muda",
+      "col_sheet": "Aba",
+      "field_email": "E-mail",
+      "field_display_name": "Nome",
+      "field_job_title": "Cargo",
+      "field_country": "País",
+      "field_national_id": "Matrícula",
+      "field_operation_id": "CR",
+      "field_area_id": "Área",
+      "field_needs_auth": "(tambem o acesso)",
+      "matched_name_job": "Nome e cargo",
+      "reason_identity_conflict": "O e-mail é de outra pessoa",
+      "name_in_site": "No site: {{name}}",
+      "conflicts_title": "{{n}} linhas com o e-mail de outra pessoa",
+      "conflicts_hint": "O e-mail já existe no site, mas com outro nome e outro cargo. Não se aplicam: a correção é no arquivo, não aqui.",
+      "conflicts_line": "o arquivo diz {{file}}, o site diz {{site}}",
+      "conflicts_more": "e mais {{n}}.",
+      "unmatched_units_title": "{{n}} CR ou áreas que o catálogo não tem",
+      "unmatched_units_hint": "Nunca são criadas sozinhas. Abra-as em Unidades e carregue o arquivo de novo; até lá essas pessoas ficam sem classificação.",
+      "updates_unavailable": "Ainda não dá para propor correções de dados: falta rodar o SQL que amplia a leitura da folha. Admissões e desligamentos funcionam igual.",
+      "deactivate_locked": "Há {{n}} desligamentos propostos. Só o superadmin os aplica; baixe o relatório para encaminhá-los.",
+      "deactivations_blocked_result": "{{n}} desligamentos ficaram propostos e não aplicados: só o superadmin pode fazê-lo.",
+      "only_superadmin": "Os desligamentos só o superadmin aplica.",
+      "only_superadmin_short": "Só superadmin",
+      "footer_updates": "{{n}} correções ({{fields}} dados)",
+      "email_changes_warning": "{{n}} pessoas mudariam o e-mail de acesso. A senha delas não muda.",
+      "emails_changed_result": "{{n}} e-mails de acesso movidos. Avise: mesma senha, endereço novo.",
+      "sheets_title": "Abas do arquivo ({{n}}) · todas são lidas",
+      "sheet_rows": "{{n}} linhas",
+      "sheet_off": "fora",
+      "tuning_sheet": "Ajustar colunas de",
+      "map_job_title": "Coluna do cargo",
+      "map_operation": "Coluna do CR",
+      "map_area": "Coluna da área"
     },
     "courses": {
       "tip_publish_module": "Deixar visível para o aluno.",
@@ -2922,7 +2968,16 @@
       "cond_game_attempts_hint_one": "{{count}} tentativa em classificar e ordenar. Mais que num quiz: um jogo também se perde por arrastar errado.",
       "cond_game_attempts_hint_other": "{{count}} tentativas em classificar e ordenar. Mais que num quiz: um jogo também se perde por arrastar errado.",
       "cond_quiz_attempts_tip": "Aplica-se aos quizzes do conteúdo e aos que aparecem dentro de um vídeo.\nO que se perde ao errar é o XP, não a possibilidade de avançar:\n· XP: 100% na primeira, 60% na segunda, 40% na terceira. Esgotadas as tentativas, 0.\n· NOTA: também cai, mas tem PISO no mínimo do módulo. Resolver uma pergunta nunca deixa a nota abaixo do necessário para passar, então nenhum erro fecha o módulo.\nAo esgotar as tentativas mostramos qual era a correta e ele pode respondê-la: isso deixa a nota no mínimo, sem XP, e ele segue. Nunca é preciso desbloquear ninguém na mão.\nPonha 0 para tirar o limite. Não é o recomendado: sem limite todos acabam em 100 com o XP completo, e nem a nota nem o XP voltam a dizer algo.",
-      "cond_game_attempts_tip": "O que se perde ao repetir é o XP, não a possibilidade de avançar:\n· XP: 100% na primeira, 60% na segunda, 40% daí em diante. Esgotadas, 0.\n· NOTA: a tentativa põe teto, mas o mínimo do módulo põe PISO. O que o piso NÃO cobre é o mau desempenho: quem realmente tira 50% fica com 50, porque foi isso que fez.\nEsgotadas as tentativas continua jogando: alcançar o mínimo ali deixa a nota no mínimo, sem XP, e o módulo abre. Nunca é preciso desbloquear ninguém na mão.\nPonha 0 para tirar o limite. Não é o recomendado: sem limite repete-se até acertar e o desempenho deixa de ser medido."
+      "cond_game_attempts_tip": "O que se perde ao repetir é o XP, não a possibilidade de avançar:\n· XP: 100% na primeira, 60% na segunda, 40% daí em diante. Esgotadas, 0.\n· NOTA: a tentativa põe teto, mas o mínimo do módulo põe PISO. O que o piso NÃO cobre é o mau desempenho: quem realmente tira 50% fica com 50, porque foi isso que fez.\nEsgotadas as tentativas continua jogando: alcançar o mínimo ali deixa a nota no mínimo, sem XP, e o módulo abre. Nunca é preciso desbloquear ninguém na mão.\nPonha 0 para tirar o limite. Não é o recomendado: sem limite repete-se até acertar e o desempenho deixa de ser medido.",
+      "audience_cascade_title": "Para quem vai",
+      "audience_step_country": "1. País",
+      "audience_step_area": "2. Área",
+      "audience_step_cr": "3. CR",
+      "audience_cascade_hint": "Escolha país, depois área e depois CR. É assim que se sabe para quais pessoas o conteúdo vai.",
+      "publish_needs_audience": "Para publicar falta definir para quem vai: {{missing}}.",
+      "publish_missing_country": "o país",
+      "publish_missing_area": "a área",
+      "publish_missing_cr": "o CR"
     },
     "simulations": {
       "save": "Salvar",
@@ -5584,6 +5639,12 @@
         "ai_scenario_drafts": "Rascunhos de IA"
       },
       "loose_modules": "{{count}} desses módulos não pertencem a nenhum curso. Mudam de autor, mas quem pode abri-los continua sendo decidido pelo programa: mova-os com \"Mover para outro programa\" se precisar."
+    },
+    "units": {
+      "cr_equals_operation": "CR é a operação: o centro de resultados em que o RH lança cada pessoa.",
+      "origin_roster": "Novo · vem da base",
+      "origin_roster_hint": "Este CR chegou com a base do RH. É do modelo novo.",
+      "legacy_badge": "A migrar"
     }
   },
   "themes": {
