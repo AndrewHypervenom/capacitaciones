@@ -1473,7 +1473,9 @@
       "group_supervision": "Supervisão",
       "ai_limits": "Limites de IA",
       "site_feedback": "Opiniões",
-      "publish_approvals": "Publicações"
+      "publish_approvals": "Publicações",
+      "units": "CR",
+      "campaigns_legacy": "Programas (a migrar)"
     },
     "entity_types": {
       "campaigns": "Programa",
@@ -5649,7 +5651,9 @@
       "cr_equals_operation": "CR é a operação: o centro de resultados em que o RH lança cada pessoa.",
       "origin_roster": "Novo · vem da base",
       "origin_roster_hint": "Este CR chegou com a base do RH. É do modelo novo.",
-      "legacy_badge": "A migrar"
+      "legacy_badge": "A migrar",
+      "title": "CR, áreas e categorias",
+      "read_only": "Esta lista quem abre é o superadmin. Aqui você pode consultá-la para saber para qual CR ou área direcionar um curso."
     }
   },
   "themes": {

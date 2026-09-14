@@ -16,13 +16,32 @@ import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { usePendingPublicationsStore } from '@/stores/pendingPublicationsStore'
 import { cn } from '@/lib/cn'
+import { Tooltip } from '@/components/ui/Tooltip'
 
 type NeonColor = 'green' | 'violet' | 'cyan' | 'magenta' | 'amber' | 'neutral'
+
+/**
+ * Envuelve en tooltip solo si hay pista. Sin esto cada elemento del menú
+ * cargaría con un nodo de más que no dice nada, y la mayoría no necesita pista:
+ * "Cursos" se explica solo. Las que sí: las siglas y lo que está a migrar.
+ */
+function MaybeTip({ hint, children }: { hint?: string; children: React.ReactNode }) {
+  if (!hint) return <>{children}</>
+  return (
+    <Tooltip label={hint} maxWidth={280} anchor="element" describedBy>
+      {children}
+    </Tooltip>
+  )
+}
 
 interface MenuItem {
   to: string
   label: string
   end: boolean
+  /** Pista al pasar el ratón. Se usa para las siglas y para lo que está a migrar. */
+  hint?: string
+  /** Del modelo anterior: se marca en rojo para que no se lea como algo vigente. */
+  legacy?: boolean
 }
 
 interface MenuCategory {
@@ -86,7 +105,20 @@ export function AdminNav() {
       title: t('admin.nav.group_content', 'Contenido'),
       icon: BookOpen,
       items: [
-        { to: '/admin/campaigns', label: t('admin.nav.campaigns', 'Programas'), end: false },
+        /* CR es el catálogo NUEVO (`/admin/units`), no la lista de campañas.
+         * Renombrar "Programas" a "CR" y dejarlo apuntando a `/admin/campaigns`
+         * habría sido peor que no cambiar nada: el menú prometería los 88 CR y
+         * abriría los 16 programas viejos, los mismos que la pantalla pinta en
+         * rojo. Lo ve TODO el staff; editarlo sigue siendo del superadmin. */
+        { to: '/admin/units', label: t('admin.nav.units', 'CR'), end: false,
+          hint: t('admin.units.cr_equals_operation') },
+        /* Ya no hay "campañas" como concepto vivo: la entrada se queda Únicamente
+         * como la lista de lo que falta migrar, dicho en el nombre y en rojo. No
+         * se borra del menú porque esas campañas siguen siendo las dueñas del
+         * contenido — quitarla dejaría sin acceso a los cursos que cuelgan de
+         * ellas. Desaparecerá sola el día que no quede ninguna. */
+        { to: '/admin/campaigns', label: t('admin.nav.campaigns_legacy', 'Programas (a migrar)'),
+          end: false, legacy: true, hint: t('admin.campaigns.legacy_hint') },
         { to: '/admin/courses', label: t('admin.nav.courses', 'Cursos'), end: false },
         { to: '/admin/modules', label: t('admin.nav.modules', 'Módulos'), end: false }
       ]
@@ -108,9 +140,8 @@ export function AdminNav() {
       icon: Users,
       items: [
         { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false },
-        // Catálogo de operaciones y áreas: el gobierno de la clasificación.
-        // Solo superadmin — que nadie más pueda inventar unidades es justo el punto.
-        ...(isSuperAdmin ? [{ to: '/admin/units', label: t('admin.nav.units', 'Operaciones y áreas'), end: false }] : []),
+        // El catálogo de CR y áreas subió al grupo Contenido, donde el capacitador
+        // lo busca al definir a quién le llega un curso. Una sola entrada.
         // La "Vista global" ya no es una entrada aparte: su matriz vive dentro
         // del Panorama de Progreso, con los mismos filtros y su exportación.
         // Gamificación (logros + niveles XP): solo superadmin.
@@ -341,9 +372,9 @@ export function AdminNav() {
                 {/* ELEMENTOS ADENTRO DEL ACORDEÓN */}
                 {category.title && isCategoryOpen && (
                   <div className="space-y-0.5 transition-all duration-200">
-                    {category.items.map(({ to, label, end }) => (
+                    {category.items.map(({ to, label, end, hint, legacy }) => (
+                      <MaybeTip key={to} hint={hint}>
                       <NavLink
-                        key={to}
                         to={to}
                         end={end}
                         onClick={() => setIsOpen(false)}
@@ -355,7 +386,12 @@ export function AdminNav() {
                         )}
                       >
                         <div className="flex items-center w-full pl-9 pr-3 py-2">
-                          <span className="font-medium">{label}</span>
+                          {/* Punto rojo: lo que queda del modelo anterior se
+                              reconoce de un vistazo, sin tener que leer. */}
+                          {legacy && (
+                            <span className="mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                          )}
+                          <span className={cn('font-medium', legacy && 'text-red-500/90')}>{label}</span>
                           <AnimatePresence>
                             {to === '/admin/chat' && helpUnread > 0 && (
                               <motion.span
@@ -396,6 +432,7 @@ export function AdminNav() {
                           </AnimatePresence>
                         </div>
                       </NavLink>
+                      </MaybeTip>
                     ))}
                   </div>
                 )}

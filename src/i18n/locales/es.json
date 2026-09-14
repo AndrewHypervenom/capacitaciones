@@ -1473,7 +1473,9 @@
       "group_supervision": "Supervisión",
       "ai_limits": "Límites de IA",
       "site_feedback": "Opiniones",
-      "publish_approvals": "Publicaciones"
+      "publish_approvals": "Publicaciones",
+      "units": "CR",
+      "campaigns_legacy": "Programas (a migrar)"
     },
     "entity_types": {
       "campaigns": "Programa",
@@ -5649,7 +5651,9 @@
       "cr_equals_operation": "CR es la operación: el centro de resultados al que Talento Humano carga a cada persona.",
       "origin_roster": "Nuevo · viene de la base",
       "origin_roster_hint": "Este CR llegó con la base de Talento Humano. Es el modelo nuevo.",
-      "legacy_badge": "A migrar"
+      "legacy_badge": "A migrar",
+      "title": "CR, áreas y categorías",
+      "read_only": "Esta lista la abre el superadmin. Aquí puedes consultarla para saber a qué CR o área dirigir un curso."
     }
   },
   "themes": {

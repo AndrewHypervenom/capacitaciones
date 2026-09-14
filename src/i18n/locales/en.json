@@ -1473,7 +1473,9 @@
       "group_supervision": "Supervision",
       "ai_limits": "AI limits",
       "site_feedback": "Feedback",
-      "publish_approvals": "Publishing"
+      "publish_approvals": "Publishing",
+      "units": "CR",
+      "campaigns_legacy": "Programmes (to migrate)"
     },
     "entity_types": {
       "campaigns": "Program",
@@ -5649,7 +5651,9 @@
       "cr_equals_operation": "CR is the operation: the cost centre HR books each person to.",
       "origin_roster": "New - from the roster",
       "origin_roster_hint": "This CR came with the HR roster. It belongs to the new model.",
-      "legacy_badge": "To migrate"
+      "legacy_badge": "To migrate",
+      "title": "CRs, areas and categories",
+      "read_only": "Only the superadmin adds to this list. Here you can look it up to know which CR or area to aim a course at."
     }
   },
   "themes": {

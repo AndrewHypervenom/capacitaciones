@@ -150,7 +150,12 @@ export default function AdminRouter() {
           {/* Gamificación: logros + niveles de XP (solo superadmin) */}
           <Route path="gamification" element={isSuperAdmin ? <Gamification /> : <Navigate to="/admin" replace />} />
           {/* Catálogo cerrado de operaciones y áreas: lo define solo el superadmin. */}
-          <Route path="units" element={isSuperAdmin ? <OrgUnits /> : <Navigate to="/admin" replace />} />
+          {/* El catálogo de CR y áreas lo CONSULTA todo el staff: el capacitador lo
+              necesita para saber a qué CR puede dirigir un curso. Escribir sigue
+              siendo del superadmin, y no por esconder la pantalla sino porque lo
+              impone la RLS; la vista se pone de solo lectura para no ofrecer
+              botones que van a fallar. */}
+          <Route path="units" element={<OrgUnits />} />
           {/* Bitácora de actividad del equipo: solo superadmin */}
           <Route path="activity" element={isSuperAdmin ? <ActivityLog /> : <Navigate to="/admin" replace />} />
           <Route path="traffic" element={isSuperAdmin ? <Traffic /> : <Navigate to="/admin" replace />} />

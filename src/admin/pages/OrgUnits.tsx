@@ -5,6 +5,7 @@ import { cn } from '@/lib/cn'
 import { fold } from '@/lib/normalize'
 import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -61,6 +62,9 @@ const KIND_HELP: Record<OrgUnitKind, string> = {
 export default function OrgUnits() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  /* Quien no es superadmin CONSULTA el catálogo, no lo escribe. El candado real
+   * es la RLS; esto solo evita ofrecerle botones que la base va a rechazar. */
+  const { isSuperAdmin } = useAuth()
 
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [orgId, setOrgId] = useState('')
@@ -319,7 +323,14 @@ export default function OrgUnits() {
 
       <p className="text-[12px] text-text-muted -mt-2">{KIND_HELP[kindTab]}</p>
 
+      {!isSuperAdmin && (
+        <p className="rounded-xl border border-line bg-subtle/60 px-3 py-2 text-[12px] text-text-muted">
+          {t('admin.units.read_only', 'Esta lista la abre el superadmin. Aquí puedes consultarla para saber a qué CR o área dirigir un curso.')}
+        </p>
+      )}
+
       {/* Alta */}
+      {isSuperAdmin && (
       <div className="flex flex-wrap gap-2">
         <Input
           value={newName}
@@ -337,6 +348,7 @@ export default function OrgUnits() {
           {t('admin.units.add', 'Añadir')}
         </Button>
       </div>
+      )}
 
       {/* Lista */}
       {loading ? (
@@ -374,11 +386,15 @@ export default function OrgUnits() {
                   !u.is_active && 'opacity-55',
                 )}
               >
-                <Input
-                  value={nameOf(u)}
-                  onChange={(e) => setName(u.id, e.target.value)}
-                  className="h-10 flex-1 min-w-[180px]"
-                />
+                {isSuperAdmin ? (
+                  <Input
+                    value={nameOf(u)}
+                    onChange={(e) => setName(u.id, e.target.value)}
+                    className="h-10 flex-1 min-w-[180px]"
+                  />
+                ) : (
+                  <span className="flex-1 min-w-[180px] text-sm text-text">{nameOf(u)}</span>
+                )}
                 {fromRoster && (
                   <Tooltip label={t('admin.units.origin_roster_hint')} maxWidth={280}>
                     <span className="cursor-help whitespace-nowrap rounded-full border border-brand-green/50 bg-brand-green/10 px-2 py-0.5 text-[11px] font-medium text-brand-green">
@@ -391,21 +407,23 @@ export default function OrgUnits() {
                     ? t('admin.units.course_count', '{{count}} curso', { count: usados })
                     : t('admin.units.people_count', '{{count}} persona', { count: usados })}
                 </span>
-                <Tooltip
-                  label={
-                    u.is_active
-                      ? t('admin.units.archive', 'Archivar')
-                      : t('admin.units.restore', 'Reactivar')
-                  }
-                >
-                  <Button variant="ghost" size="sm" onClick={() => toggleArchive(u)}>
-                    {u.is_active ? (
-                      <Archive className="w-4 h-4" />
-                    ) : (
-                      <RotateCcw className="w-4 h-4" />
-                    )}
-                  </Button>
-                </Tooltip>
+                {isSuperAdmin && (
+                  <Tooltip
+                    label={
+                      u.is_active
+                        ? t('admin.units.archive', 'Archivar')
+                        : t('admin.units.restore', 'Reactivar')
+                    }
+                  >
+                    <Button variant="ghost" size="sm" onClick={() => toggleArchive(u)}>
+                      {u.is_active ? (
+                        <Archive className="w-4 h-4" />
+                      ) : (
+                        <RotateCcw className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </Tooltip>
+                )}
               </li>
             )
           })}
