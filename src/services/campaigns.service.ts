@@ -23,6 +23,25 @@ export function isTestCampaign(c: { is_test?: boolean | null } | null | undefine
   return c?.is_test === true
 }
 
+/**
+ * ¿Esta campaña es del modelo anterior — lo que se llamaba "programa"?
+ *
+ * Se pinta en ROJO al staff mientras dura la transición a CR (la operación, que
+ * clasifica a la gente) más la categoría del curso (que dice de qué trata).
+ *
+ * **Sin la columna, legado.** Si `is_legacy` todavía no existe llega `undefined`
+ * y la respuesta es `true`, porque hoy TODAS las campañas lo son: callarlo hasta
+ * que se corra el SQL dejaría la pantalla diciendo que no hay nada que migrar.
+ * Al revés que `is_test`, donde la ausencia significa "no" con seguridad.
+ * El entorno de pruebas nunca es legado de nada.
+ */
+export function isLegacyCampaign(
+  c: { is_legacy?: boolean | null; is_test?: boolean | null } | null | undefined,
+): boolean {
+  if (!c || isTestCampaign(c)) return false
+  return c.is_legacy !== false
+}
+
 /** Ids de las campañas de prueba, para excluirlas de consultas y reportes. */
 let testIdsCache: Promise<string[]> | null = null
 

@@ -340,7 +340,7 @@ export default function SimulationList() {
               setSelectedCampaignId(v)
             }}
             options={[
-              ...(isSuperAdmin ? [{ value: ALL_CAMPAIGNS, label: t('admin.courses.filter_all_campaigns', 'Todas las campañas') }] : []),
+              ...(isSuperAdmin ? [{ value: ALL_CAMPAIGNS, label: t('admin.courses.filter_all_campaigns', 'Todos los programas') }] : []),
               ...campaigns.map((c) => ({ value: c.id, label: c.name })),
             ]}
             className="max-w-xs"

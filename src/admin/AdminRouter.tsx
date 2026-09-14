@@ -35,6 +35,7 @@ import AiUsage from './pages/AiUsage'
 import Traffic from './pages/Traffic'
 import AiLimits from './pages/AiLimits'
 import Gamification from './pages/Gamification'
+import OrgUnits from './pages/OrgUnits'
 import ActivityLog from './pages/ActivityLog'
 import DeletionApprovals from './pages/DeletionApprovals'
 import PublishApprovals from './pages/PublishApprovals'
@@ -49,7 +50,7 @@ function LegacyPreviewRedirect() {
 }
 
 export default function AdminRouter() {
-  const { loading, isAuthenticated, isCapacitador, isSuperAdmin, canApproveCourses } = useAuth()
+  const { loading, isAuthenticated, isCapacitador, isSuperAdmin, isRh, canAccessAdminPanel, canApproveCourses } = useAuth()
 
   // Cuenta los cursos en cola mientras el panel esté abierto, para el globo del
   // menú y la tarjeta del tablero. Solo pide si quien mira puede aprobar.
@@ -76,12 +77,14 @@ export default function AdminRouter() {
 
   if (loading) return null
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
-  if (!isSuperAdmin && !isCapacitador) return <Navigate to="/dashboard" replace />
+  if (!canAccessAdminPanel) return <Navigate to="/dashboard" replace />
 
-  // Sin campañas no hay nada que gestionar, pero tampoco lo bloqueamos: un
-  // capacitador nuevo (o al que le quitaron su única campaña) puede crear la
-  // suya aquí mismo. CampaignWizard.finalize se la asigna como campaña casa, así
-  // que al crearla `useHasNoCampaigns` recalcula a false y aparece el panel.
+  // Sin programa no hay nada que gestionar. El superadmin puede crear uno aquí
+  // mismo; el capacitador YA NO, porque crear programas dejó de ser suyo — era
+  // la puerta por la que aparecían escritorios personales disfrazados de
+  // programa. A él se le dice qué hacer en vez de dejarlo en un callejón: tres
+  // cuentas nuevas de agosto se quedaron semanas frente a esta pantalla, y dos
+  // ni volvieron a entrar.
   if (noCampaigns) {
     return (
       <>
@@ -89,11 +92,17 @@ export default function AdminRouter() {
           <div className="max-w-md rounded-2xl border border-line bg-surface p-8 text-center">
             <FolderX className="mx-auto mb-4 h-10 w-10 text-text-subtle" />
             <h1 className="text-[18px] font-bold text-text">{t('admin.no_campaigns.title')}</h1>
-            <p className="mt-2 text-[13px] text-text-muted">{t('admin.no_campaigns.desc')}</p>
-            <Button variant="neon" size="sm" className="mt-6 mx-auto" onClick={() => setWizardOpen(true)}>
-              <Plus className="h-4 w-4" />
-              {t('admin.no_campaigns.create')}
-            </Button>
+            <p className="mt-2 text-[13px] text-text-muted">
+              {isSuperAdmin
+                ? t('admin.no_campaigns.desc')
+                : t('admin.no_campaigns.ask_admin', 'Pídele al superadmin que te asigne uno y aparecerá aquí. No hace falta que crees nada.')}
+            </p>
+            {isSuperAdmin && (
+              <Button variant="neon" size="sm" className="mt-6 mx-auto" onClick={() => setWizardOpen(true)}>
+                <Plus className="h-4 w-4" />
+                {t('admin.no_campaigns.create')}
+              </Button>
+            )}
           </div>
         </div>
         <CampaignWizard
@@ -132,14 +141,16 @@ export default function AdminRouter() {
               La ruta se conserva para enlaces viejos y lleva al editor. */}
           <Route path="modules/:moduleId/preview" element={<LegacyPreviewRedirect />} />
           {/* Usuarios: superadmin (todo) y capacitador (solo su campaña, lectura + asignar cursos) */}
-          <Route path="users" element={isSuperAdmin || isCapacitador ? <UserList /> : <Navigate to="/admin" replace />} />
-          <Route path="users/:id" element={isSuperAdmin || isCapacitador ? <UserProfile /> : <Navigate to="/admin" replace />} />
+          <Route path="users" element={canAccessAdminPanel ? <UserList /> : <Navigate to="/admin" replace />} />
+          <Route path="users/:id" element={canAccessAdminPanel ? <UserProfile /> : <Navigate to="/admin" replace />} />
           {/* La antigua "Vista global" (matriz usuarios × cursos) se fusionó con
               el Panorama de Progreso: mismos datos y mismos filtros, más KPIs y
               exportación. La ruta se conserva porque hay enlaces viejos. */}
           <Route path="overview" element={<Navigate to="/admin/progress?view=modules&tab=overview" replace />} />
           {/* Gamificación: logros + niveles de XP (solo superadmin) */}
           <Route path="gamification" element={isSuperAdmin ? <Gamification /> : <Navigate to="/admin" replace />} />
+          {/* Catálogo cerrado de operaciones y áreas: lo define solo el superadmin. */}
+          <Route path="units" element={isSuperAdmin ? <OrgUnits /> : <Navigate to="/admin" replace />} />
           {/* Bitácora de actividad del equipo: solo superadmin */}
           <Route path="activity" element={isSuperAdmin ? <ActivityLog /> : <Navigate to="/admin" replace />} />
           <Route path="traffic" element={isSuperAdmin ? <Traffic /> : <Navigate to="/admin" replace />} />

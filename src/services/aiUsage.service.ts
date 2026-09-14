@@ -229,7 +229,7 @@ export async function fetchAiUsage(filters: AiUsageFilters): Promise<AiUsageData
   const byCampaign = groupBreakdown(
     rows,
     (r) => (r.user_id && userCampaign.get(r.user_id)) || 'none',
-    (k) => ({ label: k === 'none' ? 'Sin campaña' : campaignName.get(k) || 'Campaña', color: '#8b5cf6' }),
+    (k) => ({ label: k === 'none' ? 'Sin programa' : campaignName.get(k) || 'Programa', color: '#8b5cf6' }),
   ).map((b, i) => ({ ...b, color: colorAt(i) }))
 
   return {

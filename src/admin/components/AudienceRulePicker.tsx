@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Globe, Loader2, MapPin, Users, Building2, Layers } from 'lucide-react'
+import { Globe, Loader2, MapPin, Users, Building2, Layers, Search } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { fold } from '@/lib/normalize'
 import { COUNTRIES, OPERATION_COUNTRIES } from '@/lib/countries'
 import { GlassCard } from '@/components/ui/GlassCard'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { getOrganizations, getOrgUnits } from '@/services/org.service'
-import { countAudience, ruleIsEmpty, type AudienceRule } from '@/services/audiences.service'
+import {
+  countAudience, ruleIsEmpty, getAudiencePopulation, matchesAudience,
+  type AudienceRule, type AudiencePerson,
+} from '@/services/audiences.service'
 import type { OrgUnit } from '@/types/database'
 
 /**
@@ -33,6 +38,32 @@ import type { OrgUnit } from '@/types/database'
  * Degradación: sin unidades en el catálogo, los ejes de operación y área no se
  * pintan. Un selector vacío no ayuda; parece que la función está rota.
  */
+
+/**
+ * ¿La audiencia está DECIDIDA lo bastante como para publicar?
+ *
+ * El asistente guía PAÍS → ÁREA → CR porque va de lo general a lo particular: así
+ * el número de CR que hay que mirar baja de ochenta y ocho a los de ese país y
+ * esa área. Pero **solo el primer paso es obligatorio**, y los otros dos son
+ * formas de ESTRECHAR, no requisitos:
+ *
+ *   «Toda la organización»              → listo. Habilidades blandas, Avanza +.
+ *   Colombia                             → listo. Todo el país.
+ *   Colombia + Talento Humano            → listo, más estrecho.
+ *   Colombia + Talento Humano + CLARO    → listo, más estrecho todavía.
+ *   Nada                                 → NO. No le llegaría a nadie.
+ *
+ * Exigir los tres ejes obligaba a inventarse un área y un CR para un curso que
+ * va a toda la compañía — y una audiencia inventada para pasar un candado es
+ * peor que no tener candado: acaba llegando a quien no debe.
+ *
+ * Lo único que se bloquea es la regla VACÍA, que no le llega a nadie y hace que
+ * el curso parezca roto. Misma decisión que toma `audience_matches()` en la base,
+ * que falla cerrado a propósito.
+ */
+export function audienceReadyToPublish(r: AudienceRule): boolean {
+  return !ruleIsEmpty(r)
+}
 
 /** Deja la regla comparable: mismo contenido, misma cadena. */
 export function normalizeRule(r: AudienceRule) {
@@ -89,6 +120,44 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
   const operations = useMemo(() => units.filter((u) => u.kind === 'operation'), [units])
   const areas = useMemo(() => units.filter((u) => u.kind === 'area'), [units])
 
+  /* El censo de aprendices, para poder escribir al lado de cada opción a cuánta
+   * gente lleva. Es la diferencia entre elegir un CR de una lista de ochenta y
+   * ocho nombres y elegirlo sabiendo que tiene noventa y seis personas. */
+  const [censo, setCenso] = useState<AudiencePerson[]>([])
+  useEffect(() => {
+    if (!orgId) return
+    let alive = true
+    getAudiencePopulation(orgId)
+      .then((p) => { if (alive) setCenso(p) })
+      .catch(() => { if (alive) setCenso([]) })
+    return () => { alive = false }
+  }, [orgId])
+
+  /**
+   * A cuánta gente llevaría cada opción **con lo ya elegido en los pasos de
+   * arriba**: los CR se cuentan dentro del país y el área marcados, no sobre toda
+   * la compañía. Ese es el número que convierte el paso 3 en una decisión en vez
+   * de una lista.
+   */
+  const cuentaPara = useMemo(() => {
+    const contar = (previa: Partial<AudienceRule>, eje: keyof AudienceRule, id: string) => {
+      const regla: AudienceRule = {
+        everyone: false,
+        countries: [], operationIds: [], areaIds: [],
+        isMandatory: value.isMandatory,
+        ...previa,
+        [eje]: [id],
+      } as AudienceRule
+      return censo.filter((p) => matchesAudience(regla, p)).length
+    }
+    return {
+      pais: (code: string) => contar({}, 'countries', code),
+      area: (id: string) => contar({ countries: value.countries }, 'areaIds', id),
+      cr: (id: string) =>
+        contar({ countries: value.countries, areaIds: value.areaIds }, 'operationIds', id),
+    }
+  }, [censo, value.countries, value.areaIds, value.isMandatory])
+
   // Solo los países donde hay operación. Si una regla vieja trae otro país, se
   // pinta igual: esconderlo haría desaparecer de la vista una condición que
   // sigue vigente, y nadie entendería por qué el curso no le llega a alguien.
@@ -120,16 +189,20 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
           .join(' o '),
       )
     }
-    if (value.operationIds.length) {
-      partes.push(
-        t('admin.courses.aud_operation', 'Operación') + ': ' +
-        value.operationIds.map((id) => units.find((u) => u.id === id)?.name ?? '—').join(' o '),
-      )
-    }
+    /* MISMO ORDEN Y MISMO NOMBRE QUE LOS PASOS. Antes esta frase decía
+     * "Operación" mientras el paso de arriba decía "CR", y listaba la operación
+     * antes que el área. Dos nombres para la misma cosa a cuatro centímetros uno
+     * del otro es exactamente lo que hace dudar de si son dos cosas. */
     if (value.areaIds.length) {
       partes.push(
         t('admin.courses.aud_area', 'Área') + ': ' +
         value.areaIds.map((id) => units.find((u) => u.id === id)?.name ?? '—').join(' o '),
+      )
+    }
+    if (value.operationIds.length) {
+      partes.push(
+        'CR: ' +
+        value.operationIds.map((id) => units.find((u) => u.id === id)?.name ?? '—').join(' o '),
       )
     }
     return partes.join('  ·  ')
@@ -165,37 +238,72 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
 
       {!value.everyone && (
         <>
+          {/* PAIS -> AREA -> CR, en ese orden y numerados. Cada paso se abre
+              cuando el anterior tiene algo marcado: primero donde, luego que
+              tipo de gente, y solo entonces que CR. Elegir CR de primero
+              obligaba a mirar ochenta y ocho nombres sin ningun criterio.
+              Los pasos 2 y 3 dicen OPCIONAL porque lo son: estrechan la
+              audiencia, no la completan. Un curso para todo Colombia — o para
+              toda la compania — esta terminado en el paso 1. */}
           <Eje
+            paso={1}
             icon={MapPin}
             titulo={t('admin.courses.aud_country', 'País')}
             ayuda={t('admin.courses.aud_country_help', 'Sin ninguno marcado, no restringe por país.')}
-            opciones={paises.map((c) => ({ id: c.code, label: `${c.flag} ${c.name}`.trim() }))}
+            opciones={paises.map((c) => ({
+              id: c.code,
+              label: `${c.flag} ${c.name}`.trim(),
+              n: cuentaPara.pais(c.code),
+            }))}
             seleccion={value.countries}
             onToggle={(id) => toggle('countries', id)}
             disabled={disabled}
           />
-          {operations.length > 0 && (
-            <Eje
-              icon={Building2}
-              titulo={t('admin.courses.aud_operation', 'Operación')}
-              ayuda={t('admin.courses.aud_operation_help', 'Sin ninguna marcada, no restringe por operación.')}
-              opciones={operations.map((u) => ({ id: u.id, label: u.name }))}
-              seleccion={value.operationIds}
-              onToggle={(id) => toggle('operationIds', id)}
-              disabled={disabled}
-            />
-          )}
           {areas.length > 0 && (
             <Eje
+              paso={2}
               icon={Layers}
               titulo={t('admin.courses.aud_area', 'Área')}
               ayuda={t('admin.courses.aud_area_help', 'Sin ninguna marcada, no restringe por área.')}
-              opciones={areas.map((u) => ({ id: u.id, label: u.name }))}
+              opciones={areas.map((u) => ({ id: u.id, label: u.name, n: cuentaPara.area(u.id) }))}
               seleccion={value.areaIds}
               onToggle={(id) => toggle('areaIds', id)}
               disabled={disabled}
+              opcional
+              esperando={value.countries.length === 0}
+              esperandoTexto={t('admin.courses.aud_wait_country', 'Elige primero el país.')}
             />
           )}
+          {operations.length > 0 && (
+            <Eje
+              paso={3}
+              icon={Building2}
+              titulo="CR"
+              pista={t('admin.units.cr_equals_operation')}
+              ayuda={t('admin.courses.aud_operation_help', 'Sin ninguna marcada, no restringe por operación.')}
+              opciones={operations.map((u) => ({ id: u.id, label: u.name, n: cuentaPara.cr(u.id) }))}
+              seleccion={value.operationIds}
+              onToggle={(id) => toggle('operationIds', id)}
+              disabled={disabled}
+              opcional
+              buscable
+              /* Espera al PAÍS, no al área. El área es opcional, y encadenar un paso
+                 obligatorio detrás de uno opcional dejaba sin poder hacer el caso
+                 más natural de todos: un curso para un CR entero, sin importar el
+                 área. Pedía marcar un área que nadie quería. */
+              esperando={value.countries.length === 0}
+              esperandoTexto={t('admin.courses.aud_wait_country', 'Elige primero el país.')}
+            />
+          )}
+
+          {/* La semántica, escrita. Es lo único de esta pantalla que no se puede
+              deducir mirando: que dentro de un paso se suma y entre pasos se
+              cruza. Vivía solo en un comentario del código, donde no la lee quien
+              tiene que entenderla. */}
+          <p className="rounded-xl border border-line bg-subtle/60 px-3 py-2 text-[12px] text-text-muted">
+            <span className="font-medium text-text">{t('admin.courses.aud_how_title')}</span>{' '}
+            {t('admin.courses.aud_how_body')}
+          </p>
         </>
       )}
 
@@ -234,49 +342,131 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
 }
 
 function Eje({
-  icon: Icon, titulo, ayuda, opciones, seleccion, onToggle, disabled,
+  paso, icon: Icon, titulo, pista, ayuda, opciones, seleccion, onToggle, disabled,
+  opcional, buscable, esperando, esperandoTexto,
 }: {
+  paso: number
   icon: React.ComponentType<{ className?: string }>
   titulo: string
+  /** Equivalencia que no todo el mundo tiene por que saber (CR = operación). */
+  pista?: string
   ayuda: string
-  opciones: { id: string; label: string }[]
+  /** `n` = a cuánta gente lleva esa opción con lo ya elegido en los pasos de arriba. */
+  opciones: { id: string; label: string; n?: number }[]
   seleccion: string[]
   onToggle: (id: string) => void
   disabled?: boolean
+  /** Estrecha la audiencia, no la completa: se puede publicar sin tocarlo. */
+  opcional?: boolean
+  /** Con decenas de opciones, una rejilla de píldoras deja de ser elegible. */
+  buscable?: boolean
+  /** El paso anterior todavía no tiene nada: este se atenua y no se toca. */
+  esperando?: boolean
+  esperandoTexto?: string
 }) {
+  const { t } = useTranslation()
+  const apagado = disabled || esperando
+  const [busca, setBusca] = useState('')
+
+  /* Las que tienen gente primero. Con ochenta y ocho CR, el orden alfabético
+   * entierra los que de verdad se usan entre los que no tienen a nadie. Lo
+   * marcado se queda arriba del todo para no perderlo de vista al buscar. */
+  const lista = useMemo(() => {
+    const q = fold(busca)
+    return opciones
+      .filter((o) => !q || fold(o.label).includes(q) || seleccion.includes(o.id))
+      .sort((a, b) => {
+        const sa = seleccion.includes(a.id) ? 1 : 0
+        const sb = seleccion.includes(b.id) ? 1 : 0
+        if (sa !== sb) return sb - sa
+        if (a.n !== undefined && b.n !== undefined && a.n !== b.n) return b.n - a.n
+        return a.label.localeCompare(b.label, 'es')
+      })
+  }, [opciones, seleccion, busca])
+
   return (
-    <div>
+    <div className={cn(esperando && 'opacity-55')}>
       <h3 className="flex items-center gap-2 text-[13px] font-semibold text-text mb-0.5">
+        <span
+          className={cn(
+            'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+            seleccion.length > 0
+              ? 'bg-primary/15 text-primary'
+              : 'border border-line text-text-subtle',
+          )}
+        >
+          {paso}
+        </span>
         <Icon className="h-4 w-4 text-text-muted" />
         {titulo}
+        {pista && (
+          <Tooltip label={pista} maxWidth={280}>
+            <span className="flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-line text-[8px] font-bold text-text-subtle">
+              ?
+            </span>
+          </Tooltip>
+        )}
         {seleccion.length > 0 && (
           <span className="text-[11px] font-normal text-text-subtle tabular-nums">
             {seleccion.length}
           </span>
         )}
+        {opcional && seleccion.length === 0 && (
+          <span className="text-[11px] font-normal uppercase tracking-wider text-text-subtle">
+            {t('admin.courses.aud_optional', 'opcional')}
+          </span>
+        )}
       </h3>
-      <p className="text-[12px] text-text-muted mb-2">{ayuda}</p>
+      <p className="text-[12px] text-text-muted mb-2">
+        {esperando ? esperandoTexto : ayuda}
+      </p>
+
+      {buscable && !apagado && opciones.length > 12 && (
+        <div className="relative mb-2 max-w-[280px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-subtle" />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={t('admin.courses.aud_search', 'Buscar entre {{n}}…', { n: opciones.length })}
+            className="h-9 w-full rounded-full border border-line bg-subtle pl-9 pr-3 text-[12px] text-text outline-none"
+          />
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-1.5">
-        {opciones.map((o) => {
+        {lista.map((o) => {
           const on = seleccion.includes(o.id)
+          // Sin gente hoy no se esconde: esconderlo deja al capacitador buscando
+          // un CR que existe. Se atenua, que dice lo mismo sin hacerle perder
+          // el rato — y puede querer dejarlo listo para cuando entre gente.
+          const vacio = o.n === 0 && !on
           return (
             <button
               key={o.id}
               type="button"
-              disabled={disabled}
+              disabled={apagado}
               onClick={() => onToggle(o.id)}
               className={cn(
-                'min-h-[32px] px-3 rounded-full border text-[12px] transition-colors',
+                'flex min-h-[32px] items-center gap-1.5 rounded-full border px-3 text-[12px] transition-colors',
                 on
                   ? 'border-primary/50 bg-primary/10 text-text'
                   : 'border-line text-text-muted hover:border-primary/30 hover:text-text',
-                disabled && 'opacity-60 cursor-not-allowed',
+                vacio && 'opacity-45',
+                apagado && 'opacity-60 cursor-not-allowed',
               )}
             >
               {o.label}
+              {o.n !== undefined && (
+                <span className="text-[11px] tabular-nums text-text-subtle">{o.n}</span>
+              )}
             </button>
           )
         })}
+        {lista.length === 0 && (
+          <p className="text-[12px] text-text-subtle">
+            {t('admin.courses.aud_no_match', 'Nada coincide con la búsqueda.')}
+          </p>
+        )}
       </div>
     </div>
   )

@@ -118,9 +118,15 @@ export function isKnownCountry(code?: string | null): boolean {
  * Portugal tiene que poder decirlo. Pero al segmentar un curso esa misma lista
  * son 23 banderas para elegir entre tres, y las veinte que sobran no le llegan
  * a nadie porque no hay un solo perfil con ese país. Aquí van solo las que
- * segmentan de verdad; se amplía cuando abra un mercado nuevo.
+ * segmentan de verdad.
+ *
+ * EL CRITERIO PARA AÑADIR UNO: que haya al menos una persona con ese país en
+ * su perfil. Brasil entró con UNA sola, y con razón: sin él, marcar "Colombia,
+ * México y Argentina" pensando "todo LATAM" dejaba a esa persona fuera y nadie
+ * se enteraba. Un país con gente y sin casilla es un agujero silencioso; uno
+ * con casilla y sin gente solo es una casilla de más.
  */
-export const OPERATION_COUNTRY_CODES = ['CO', 'MX', 'AR']
+export const OPERATION_COUNTRY_CODES = ['CO', 'MX', 'AR', 'BR']
 
 export const OPERATION_COUNTRIES: Country[] = OPERATION_COUNTRY_CODES
   .map((code) => BY_CODE.get(code))

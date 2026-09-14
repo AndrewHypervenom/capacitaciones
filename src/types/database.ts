@@ -187,6 +187,11 @@ export interface Database {
            *  PROGRAMA (Avanza +, Sé y comparto, S+ Lidera); en `profiles.campaign_id`
            *  todavía significa audiencia heredada. Ver la reestructura de campañas. */
           org_id: string | null
+          /** Del modelo anterior: esto se llamaba "programa" y hacía a la vez de
+           *  categoría, de audiencia y de dueño. Se pinta en rojo al staff
+           *  mientras se migra a CR (operación) + categoría. Nace en `true`: una
+           *  campaña creada sin pensarlo se ve, en vez de colarse como nueva. */
+          is_legacy: boolean
           created_at: string
         }
         Insert: {
@@ -198,6 +203,7 @@ export interface Database {
           is_active?: boolean
           is_test?: boolean
           org_id?: string | null
+          is_legacy?: boolean
           created_at?: string
         }
         Update: {
@@ -269,6 +275,10 @@ export interface Database {
           name: string
           is_active: boolean
           sort_order: number
+          /** De dónde salió: 'roster' la trajo la base de Talento Humano,
+           *  'manual' la creó alguien en /admin/units. Es lo que pinta en verde
+           *  los CR nuevos mientras dura la transición. */
+          origin: 'manual' | 'roster'
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -281,6 +291,7 @@ export interface Database {
           name: string
           is_active?: boolean
           sort_order?: number
+          origin?: 'manual' | 'roster'
           created_at?: string
         }
         Update: {
@@ -288,6 +299,7 @@ export interface Database {
           name?: string
           is_active?: boolean
           sort_order?: number
+          origin?: 'manual' | 'roster'
           deleted_at?: string | null
           deleted_by?: string | null
         }

@@ -97,7 +97,7 @@ import {
   EMPTY_RULE, getAudience, saveAudience,
   type AudienceRule,
 } from '@/services/audiences.service'
-import { AudienceRulePicker, normalizeRule } from '@/admin/components/AudienceRulePicker'
+import { AudienceRulePicker, normalizeRule, audienceReadyToPublish } from '@/admin/components/AudienceRulePicker'
 import { getOrganizations, getOrgUnits } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
@@ -1367,6 +1367,22 @@ export default function CourseEditor() {
   // interruptor que va a fallar.
   const publishAllowed = canPublishNow(course, canApproveCourses) && !isGuestAuthor
 
+  /* Segundo candado de publicacion: PAIS -> AREA -> CR.
+   *
+   * Se puede escribir el curso entero sin haberlo decidido — obligar a elegir la
+   * audiencia antes de saber que va a ser el curso solo produce audiencias
+   * puestas al azar — pero no se puede poner en aire sin saber a quien le llega.
+   * Un curso publicado sin regla no le llega a nadie y parece roto; uno publicado
+   * con una regla puesta de cualquier forma le llega a quien no debe.
+   *
+   * Solo aplica cuando la pestana de asignacion ya cargo: si no, `draftAudience`
+   * todavia es la regla vacia de arranque y bloquearia publicar un curso que si
+   * tiene audiencia guardada. */
+  // Sin `useMemo`: este bloque vive DESPUES de la salida temprana por "cargando",
+  // y un hook ahi rompe el orden de los hooks. Es una comparacion de tres
+  // arreglos; memorizarla no ahorra nada y costaba una regla rota.
+  const audienceIncomplete = assignLoaded && !audienceReadyToPublish(draftAudience)
+
   /**
    * Recarga el curso tras una decisión, para que el estado no quede a medias, y
    * vuelve a contar la cola: aprobar desde aquí tiene que bajar el globo del
@@ -1442,6 +1458,14 @@ export default function CourseEditor() {
 
   const handleTogglePublished = async () => {
     const next = !course.is_published
+    /* Antes que la aprobacion: sin saber a quien le llega no se publica. Va
+     * primero porque pedir revision de un curso que nadie va a ver le hace
+     * perder el tiempo a dos personas en vez de a una. */
+    if (next && audienceIncomplete) {
+      toast.error(t('admin.courses.publish_needs_audience'))
+      setTab('assign')
+      return
+    }
     // La puerta: sin aprobación, el interruptor no publica — pide la revisión.
     if (next && !publishAllowed) {
       await handleRequestApproval()

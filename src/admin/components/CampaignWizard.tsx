@@ -358,7 +358,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           <FlaskConical className={cn('h-4 w-4 mt-0.5 shrink-0', isTest ? 'text-amber-600 dark:text-amber-400' : 'text-text-subtle')} />
                           <div className="min-w-0 flex-1">
                             <div className={cn('text-[13px] font-medium', isTest ? 'text-amber-700 dark:text-amber-300' : 'text-text')}>
-                              {i18n.t('admin.campaigns.wizard.test_label', 'Campaña de prueba')}
+                              {i18n.t('admin.campaigns.wizard.test_label', 'Programa de prueba')}
                             </div>
                             <p className="text-[11.5px] text-text-muted mt-0.5">
                               {i18n.t('admin.campaigns.wizard.test_hint', 'Entorno aislado: no le sale a los capacitadores reales y su data no entra en KPIs, reportes ni Excel.')}
@@ -367,7 +367,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           <Toggle
                             on={isTest}
                             onClick={() => setIsTest(!isTest)}
-                            label={i18n.t('admin.campaigns.wizard.test_label', 'Campaña de prueba')}
+                            label={i18n.t('admin.campaigns.wizard.test_label', 'Programa de prueba')}
                           />
                         </div>
                       )}
@@ -392,7 +392,7 @@ export function CampaignWizard({ open, onClose, onCreated }: CampaignWizardProps
                           { id: 'slug', label: 'Slug', value: slug, mono: true },
                           description && { id: 'description', label: i18n.t('admin.campaigns.wizard.review_description'), value: description },
                           { id: 'status', label: i18n.t('admin.campaigns.wizard.review_status'), value: isActive ? i18n.t('admin.campaigns.wizard.status_active') : i18n.t('admin.campaigns.wizard.status_inactive'), colored: true },
-                          isTest && { id: 'test', label: i18n.t('admin.campaigns.wizard.review_env', 'Entorno'), value: i18n.t('admin.campaigns.wizard.test_label', 'Campaña de prueba') },
+                          isTest && { id: 'test', label: i18n.t('admin.campaigns.wizard.review_env', 'Entorno'), value: i18n.t('admin.campaigns.wizard.test_label', 'Programa de prueba') },
                         ].filter(Boolean).map((row: any) => (
                           <div key={row.id} className="flex items-start gap-4 px-4 py-3">
                             <span className="text-[11px] uppercase tracking-wider text-text-subtle w-24 shrink-0 pt-0.5">

@@ -1124,8 +1124,7 @@
     "drop_image_tip": "Haz clic o arrastra una imagen aquí",
     "copy": "Copiar",
     "copied": "Copiado",
-    "copy_failed": "No se pudo copiar",
-    "and": "y"
+    "copy_failed": "No se pudo copiar"
   },
   "bgtask": {
     "cancel": "Cancelar",
@@ -2974,10 +2973,16 @@
       "audience_step_area": "2. Área",
       "audience_step_cr": "3. CR",
       "audience_cascade_hint": "Elige país, luego área y luego CR. Así se sabe a qué personas va el contenido.",
-      "publish_needs_audience": "Para publicar falta definir a quién le llega: {{missing}}.",
-      "publish_missing_country": "el país",
-      "publish_missing_area": "el área",
-      "publish_missing_cr": "el CR"
+      "publish_needs_audience": "Para publicar falta decir a quién le llega. Elige al menos un país, o marca «Toda la organización».",
+      "aud_optional": "opcional",
+      "aud_area_help": "Estrecha la audiencia dentro del país elegido. Si no marcas ninguna, le llega a todas las áreas.",
+      "aud_operation_help": "Estrecha todavía más. Si no marcas ninguno, le llega a todos los CR. El número cuenta solo dentro de lo que ya elegiste arriba.",
+      "aud_country_help": "Obligatorio, salvo que el curso vaya a toda la organización. El número dice a cuántos aprendices llega cada uno.",
+      "aud_everyone_desc": "Le llega a todos los aprendices de los tres países, sin condiciones. Es el caso de las habilidades blandas, Avanza +, Sé y comparto o S+ Lidera. Para un solo país, no marques esto: usa el paso 1.",
+      "aud_search": "Buscar entre {{n}}…",
+      "aud_no_match": "Nada coincide con la búsqueda.",
+      "aud_how_title": "Cómo se lee esta regla",
+      "aud_how_body": "Dentro de un paso se SUMA (Colombia o México). Entre pasos se CRUZA (Colombia Y Talento Humano). Un paso sin nada marcado no restringe."
     },
     "simulations": {
       "save": "Guardar",

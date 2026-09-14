@@ -299,7 +299,7 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
 
       // Campaña de INSCRIPCIÓN del aprendiz (contexto en el que hizo el curso).
       const campaignId = row.campaign_id || null;
-      const campaignName = campaignId ? campaignById.get(campaignId)?.name || 'Campaña' : null;
+      const campaignName = campaignId ? campaignById.get(campaignId)?.name || 'Programa' : null;
 
       rawAttempts.forEach((attempt: any) => {
         const sectionData = attempt.section_id ? sectionById.get(attempt.section_id) ?? null : null;

@@ -148,6 +148,50 @@ export async function clearAudience(courseId: string): Promise<void> {
   if (error && !isMissingSchema(error)) throw error
 }
 
+export interface AudiencePerson {
+  country: string | null
+  operation_id: string | null
+  area_id: string | null
+}
+
+/**
+ * Los tres datos de cada aprendiz con los que se resuelve cualquier regla.
+ *
+ * Se pide UNA vez por organización y se cachea: son tres columnas de texto de
+ * ochocientas filas, y el selector de audiencia las consulta con cada clic para
+ * poder decir, al lado de cada opción, a cuánta gente lleva. Volver al servidor
+ * por cada tecla convertiría esa ayuda en una espera.
+ */
+let poblacion = new Map<string, Promise<AudiencePerson[]>>()
+
+export async function getAudiencePopulation(orgId: string): Promise<AudiencePerson[]> {
+  if (!orgId) return []
+  const hit = poblacion.get(orgId)
+  if (hit) return hit
+  const pending = (async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('country, operation_id, area_id')
+      .eq('org_id', orgId)
+      .eq('is_active', true)
+      .eq('role', 'learner')
+    if (error) {
+      if (isMissingSchema(error)) return []
+      throw error
+    }
+    return (data ?? []) as AudiencePerson[]
+  })()
+  poblacion.set(orgId, pending)
+  // Un fallo no se cachea: el siguiente intento tiene que poder funcionar.
+  pending.catch(() => poblacion.delete(orgId))
+  return pending
+}
+
+/** Tras una carga de nómina la gente cambió de CR: el censo hay que rehacerlo. */
+export function invalidateAudiencePopulation(): void {
+  poblacion = new Map()
+}
+
 /**
  * A cuánta gente le llegaría esta regla, contando de verdad contra los perfiles.
  *
@@ -160,21 +204,7 @@ export async function countAudience(
   rule: AudienceRule,
 ): Promise<{ matched: number; total: number } | null> {
   if (!orgId) return null
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('country, operation_id, area_id')
-    .eq('org_id', orgId)
-    .eq('is_active', true)
-    .eq('role', 'learner')
-  if (error) {
-    if (isMissingSchema(error)) return null
-    throw error
-  }
-  const people = (data ?? []) as Array<{
-    country: string | null
-    operation_id: string | null
-    area_id: string | null
-  }>
+  const people = await getAudiencePopulation(orgId)
   return {
     matched: people.filter((p) => matchesAudience(rule, p)).length,
     total: people.length,

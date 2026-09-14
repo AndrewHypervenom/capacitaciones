@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
+import { getMyPeopleIds } from '@/services/org.service'
 import { getAccessibleCampaigns, getTestCampaignIds } from '@/services/campaigns.service'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import { useAuth } from '@/hooks/useAuth'
@@ -42,6 +43,11 @@ export default function AdminDashboard() {
       // Sin campañas accesibles: nada que contar (evita filtros vacíos).
       const scope = ids.length ? ids : ['']
 
+      // El contador de personas del capacitador pasa a ser "mi gente" —los
+      // aprendices alcanzados por sus cursos— en vez de "los de mis campañas".
+      // `null` = el RPC todavía no existe y se cae al filtro de siempre.
+      const myPeople = isSuperAdmin ? null : await getMyPeopleIds().catch(() => null)
+
       // El superadmin cuenta sobre TODO, así que las campañas de prueba se
       // descuentan a mano; si no, los KPIs del tablero subirían con cada
       // módulo y cada cuenta creada para probar. Con el Modo pruebas encendido
@@ -60,7 +66,10 @@ export default function AdminDashboard() {
         // El capacitador solo cuenta las personas de sus campañas y nunca a superadmins.
         isSuperAdmin
           ? notTest(supabase.from('profiles').select('id', { count: 'exact', head: true }))
-          : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope).neq('role', 'superadmin'),
+          : (myPeople
+              ? supabase.from('profiles').select('id', { count: 'exact', head: true }).in('id', myPeople.length ? myPeople : [''])
+              : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope)
+            ).neq('role', 'superadmin'),
       ])
       setStats({
         // Las campañas ya vienen filtradas por `getAccessibleCampaigns`, así que

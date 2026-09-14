@@ -38,6 +38,7 @@ import {
   getAccessibleCampaigns,
   invalidateTestCampaigns,
   isTestCampaign,
+  isLegacyCampaign,
   countTrainersToDetach,
   detachTrainersFromTestCampaign,
 } from '@/services/campaigns.service'
@@ -264,10 +265,10 @@ export default function CampaignList() {
         return true
       }
 
-      toast.success(t('admin.campaigns.saved', { defaultValue: 'Campañas guardadas' }))
+      toast.success(t('admin.campaigns.saved', { defaultValue: 'Programas guardadas' }))
       return true
     } catch {
-      toast.error(t('admin.campaigns.save_error', { defaultValue: 'No se pudieron guardar las campañas.' }))
+      toast.error(t('admin.campaigns.save_error', { defaultValue: 'No se pudieron guardar los programas.' }))
       return false
     }
   }
@@ -314,7 +315,7 @@ export default function CampaignList() {
           }),
           description: t('admin.campaigns.delete_history_desc', {
             defaultValue:
-              'El contenido ya no existe, pero siguen ahí: {{detalle}}. Al eliminar la campaña se borran también, y no se pueden recuperar.',
+              'El contenido ya no existe, pero siguen ahí: {{detalle}}. Al eliminar el programa se borran también, y no se pueden recuperar.',
             detalle: listar(json.history),
           }),
         })
@@ -376,7 +377,11 @@ export default function CampaignList() {
             </GradientHeading>
             <p className="text-text-muted text-[13px] mt-1">{t('admin.campaigns.subtitle')}</p>
           </div>
-          {isAdminOrCapacitador && (
+          {/* Crear un programa es SOLO del superadmin. Que cada capacitador
+              pudiera crear el suyo es lo que dejó dieciséis listas que
+              significaban cosas distintas: categorías, cuentas, pilotos y
+              escritorios personales, todo revuelto. Se elige de la lista. */}
+          {isSuperAdmin && (
             <Button variant="neon" onClick={() => setWizardOpen(true)} className="shrink-0">
               <Plus className="h-4 w-4" />
               Nueva campaña
@@ -399,19 +404,38 @@ export default function CampaignList() {
             <FolderOpen className="h-8 w-8 text-text-muted" />
           </div>
           <GradientHeading as="h3" variant="white" size="title" className="mb-2">
-            Sin campañas
+            {t('admin.campaigns.empty_title', 'Sin programas')}
           </GradientHeading>
           <p className="text-text-muted text-[14px] mb-6">
-            Crea la primera campaña para comenzar a agregar módulos y aprendices.
+            {isSuperAdmin
+              ? t('admin.campaigns.empty_superadmin', 'Crea el primer programa para empezar a agregar módulos y aprendices.')
+              : t('admin.campaigns.empty_trainer', 'Todavía no tienes ningún programa asignado. Pídeselo al superadmin y aparecerán aquí.')}
           </p>
-          {isAdminOrCapacitador && (
+          {/* Crear un programa es SOLO del superadmin. Que cada capacitador
+              pudiera crear el suyo es lo que dejó dieciséis listas que
+              significaban cosas distintas: categorías, cuentas, pilotos y
+              escritorios personales, todo revuelto. Se elige de la lista. */}
+          {isSuperAdmin && (
             <Button variant="neon" onClick={() => setWizardOpen(true)}>
-              <Plus className="h-4 w-4" /> Nueva campaña
+              <Plus className="h-4 w-4" /> Nuevo programa
             </Button>
           )}
         </GlassCard>
       ) : (
         <FadeIn className="space-y-3" y={14}>
+          {/* El aviso de la transición. Se enseña mientras quede alguna campaña
+              del modelo anterior y desaparece solo cuando ya no queda ninguna:
+              un banner que hay que acordarse de quitar a mano se queda años. */}
+          {visibleCampaigns.some(isLegacyCampaign) && (
+            <div className="rounded-2xl border border-red-500/35 bg-red-500/[0.07] px-4 py-3">
+              <p className="text-[13px] font-medium text-red-500">
+                {t('admin.campaigns.legacy_banner_title')}
+              </p>
+              <p className="mt-0.5 text-[12px] text-text-muted">
+                {t('admin.campaigns.legacy_banner_body')}
+              </p>
+            </div>
+          )}
           {visibleCampaigns.map((c) => (
             <motion.div
               key={c.id}
@@ -461,6 +485,19 @@ export default function CampaignList() {
                             {c.is_active ? 'activa' : 'inactiva'}
                           </NeonBadge>
                           {isTestCampaign(c) && <TestBadge />}
+                          {/* ROJO = del modelo anterior. Lo reemplazan el CR (la
+                              operacion, que clasifica a la gente) y la categoria
+                              del curso (que dice de que trata). La marca sale de
+                              `is_legacy`; si la columna todavia no existe se
+                              asume legado, porque hoy TODAS lo son y callarlo
+                              seria peor que sobrar una insignia. */}
+                          {isLegacyCampaign(c) && (
+                            <Tooltip label={t('admin.campaigns.legacy_hint')} maxWidth={300}>
+                              <span className="cursor-help whitespace-nowrap rounded-full border border-red-500/45 bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-500">
+                                {t('admin.campaigns.legacy_badge')}
+                              </span>
+                            </Tooltip>
+                          )}
                           <span className="text-[11px] text-text-subtle">
                             {c.moduleCount} módulos
                           </span>
@@ -694,7 +731,7 @@ export default function CampaignList() {
       <SaveDock
         pending={
           dirtyCampaigns.length > 0
-            ? [{ id: 'campaigns', label: t('admin.campaigns.title', { defaultValue: 'Campañas' }) }]
+            ? [{ id: 'campaigns', label: t('admin.campaigns.title', { defaultValue: 'Programas' }) }]
             : []
         }
         onSave={saveCampaigns}

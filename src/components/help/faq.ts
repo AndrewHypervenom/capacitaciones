@@ -176,7 +176,7 @@ export const FAQ: FaqEntry[] = [
     strong: ['crear curso', 'create course', 'nuevo curso', 'criar curso', 'obligatorio', 'mandatory'],
     keywords: ['curso', 'course', 'agrupar', 'modulos', 'catalogo', 'catalog'],
     answer: {
-      es: 'Crea y edita cursos en [Cursos](/admin/courses). Un curso agrupa varios módulos, se asigna a campañas o personas y puede ser obligatorio o de catálogo abierto.',
+      es: 'Crea y edita cursos en [Cursos](/admin/courses). Un curso agrupa varios módulos, se asigna a programas o personas y puede ser obligatorio o de catálogo abierto.',
       en: 'Create and edit courses in [Courses](/admin/courses). A course groups several modules, is assigned to campaigns or people, and can be mandatory or open-catalog.',
       pt: 'Crie e edite cursos em [Cursos](/admin/courses). Um curso agrupa vários módulos, é atribuído a campanhas ou pessoas e pode ser obrigatório ou de catálogo aberto.',
     },
@@ -220,7 +220,7 @@ export const FAQ: FaqEntry[] = [
     strong: ['roles', 'permisos', 'permissions', 'superadmin', 'capacitador', 'papeis'],
     keywords: ['que roles', 'tipos de usuario', 'aprendiz', 'learner', 'admin'],
     answer: {
-      es: 'Hay 3 roles: **superadmin** (control total, incluidas campañas y creación de usuarios), **capacitador** (gestiona su campaña: contenido, aprendices y asignación de cursos) y **learner** (consume la capacitación).',
+      es: 'Hay 3 roles: **superadmin** (control total, incluidas programas y creación de usuarios), **capacitador** (gestiona su programa: contenido, aprendices y asignación de cursos) y **learner** (consume la capacitación).',
       en: 'There are 3 roles: **superadmin** (full control, including campaigns and user creation), **capacitador/trainer** (manages their campaign: content, learners and course assignment) and **learner** (takes the training).',
       pt: 'Há 3 funções: **superadmin** (controle total, incluindo campanhas e criação de usuários), **capacitador/instrutor** (gerencia sua campanha: conteúdo, aprendizes e atribuição de cursos) e **learner** (faz a capacitação).',
     },
@@ -365,7 +365,7 @@ export const FAQ: FaqEntry[] = [
     strong: ['biblioteca de modulos', 'reutilizar modulo', 'copiar modulo', 'mover modulo'],
     keywords: ['curso', 'otra campana', 'duplicar', 'agregar'],
     answer: {
-      es: 'En el curso → pestaña **Módulos** → **Biblioteca de módulos**: ahí reutilizas módulos de tu campaña o de otras. **Mover** traslada el mismo módulo (deja de estar donde estaba) y **Copiar** crea una copia independiente que puedes editar sin tocar el original.',
+      es: 'En el curso → pestaña **Módulos** → **Biblioteca de módulos**: ahí reutilizas módulos de tu programa o de otras. **Mover** traslada el mismo módulo (deja de estar donde estaba) y **Copiar** crea una copia independiente que puedes editar sin tocar el original.',
       en: 'In the course → **Modules** tab → **Module library**: reuse modules from your campaign or others. **Move** relocates the same module (it leaves its previous place) and **Copy** creates an independent copy you can edit without touching the original.',
       pt: 'No curso → aba **Módulos** → **Biblioteca de módulos**: reaproveite módulos da sua campanha ou de outras. **Mover** transfere o mesmo módulo (sai de onde estava) e **Copiar** cria uma cópia independente, editável sem mexer no original.',
     },

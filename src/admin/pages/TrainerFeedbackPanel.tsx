@@ -904,7 +904,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 ref={searchRef}
                 type="text"
                 placeholder={
-                  level === 'campaign' ? t('admin.trainer_panel.ph_search_any', 'Buscar persona, campaña…')
+                  level === 'campaign' ? t('admin.trainer_panel.ph_search_any', 'Buscar persona, programa…')
                     : level === 'course' ? t('admin.trainer_panel.ph_search_course')
                     : level === 'module' ? t('admin.trainer_panel.ph_search_module')
                     : level === 'learner' ? t('admin.trainer_panel.ph_search_learner')

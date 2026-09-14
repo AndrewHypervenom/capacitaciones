@@ -131,7 +131,6 @@ export default function UserProfile() {
     try {
       const updated = await updateProfile(profile.id, {
         display_name: form.display_name.trim() || null,
-        job_title: form.job_title.trim() || null,
         national_id: form.national_id.trim() || null,
         phone: form.phone.trim() || null,
         country: form.country || null,
@@ -497,9 +496,16 @@ export default function UserProfile() {
                     <label className={editLabel}>{t('profile.full_name', 'Nombre completo')}</label>
                     <Input value={form.display_name} onChange={set('display_name')} placeholder={t('profile.full_name', 'Nombre completo')} />
                   </div>
+                  {/* El CARGO no se edita aquí: lo manda la nómina de Talento
+                      Humano, que es la fuente de verdad. Si se pudiera escribir
+                      a mano, la próxima sincronización lo pisaría sin avisar y
+                      quien lo escribió creería que se perdió su cambio. Se
+                      muestra en gris para que se vea de dónde viene. */}
                   <div>
                     <label className={editLabel}>{t('profile.job_title', 'Cargo')}</label>
-                    <Input value={form.job_title} onChange={set('job_title')} placeholder={t('profile.job_title_ph', 'Ej. Asesor comercial')} />
+                    <div className="flex h-12 items-center rounded-2xl border border-line bg-subtle px-4 text-[15px] text-text-muted">
+                      {profile.job_title || <span className="text-text-subtle">{t('profile.job_title_from_hr', 'Lo define Talento Humano')}</span>}
+                    </div>
                   </div>
                   <div>
                     <label className={editLabel}>{t('profile.national_id', 'Cédula / Documento')}</label>

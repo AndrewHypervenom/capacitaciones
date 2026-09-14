@@ -11,14 +11,19 @@ import { useAuth } from '@/hooks/useAuth'
  *
  * Tener campaña casa ya implica tener campaña, así que solo se consulta la tabla
  * de colaboraciones cuando la casa está vacía. El superadmin ve todas las
- * campañas por definición y nunca se queda sin.
+ * campañas por definición y nunca se queda sin, y Recursos Humanos no trabaja
+ * por campañas en absoluto: a ninguno de los dos se le bloquea nunca.
  */
 export function useHasNoCampaigns(): boolean | null {
-  const { campaignId, isCapacitador, isSuperAdmin, user } = useAuth()
+  const { campaignId, isCapacitador, isSuperAdmin, isRh, user } = useAuth()
   const [result, setResult] = useState<boolean | null>(null)
 
   useEffect(() => {
-    if (isSuperAdmin || !isCapacitador) {
+    // Recursos Humanos NO tiene campaña ni la necesita: su alcance es la gente
+    // de toda la organización. Sin esta salida vería la pantalla de bloqueo
+    // "no tienes campañas" desde el primer día, que es el error más fácil de
+    // cometer al añadir el rol.
+    if (isSuperAdmin || isRh || !isCapacitador) {
       setResult(false)
       return
     }
@@ -40,7 +45,7 @@ export function useHasNoCampaigns(): boolean | null {
         () => { if (alive) setResult(false) },
       )
     return () => { alive = false }
-  }, [campaignId, isCapacitador, isSuperAdmin, user?.id])
+  }, [campaignId, isCapacitador, isSuperAdmin, isRh, user?.id])
 
   return result
 }

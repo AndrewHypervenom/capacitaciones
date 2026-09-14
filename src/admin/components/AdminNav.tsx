@@ -33,7 +33,7 @@ interface MenuCategory {
 
 export function AdminNav() {
   const { t } = useTranslation()
-  const { displayName, avatarUrl, isSuperAdmin, isCapacitador, canApproveCourses } = useAuth()
+  const { displayName, avatarUrl, isSuperAdmin, isCapacitador, isRh, canApproveCourses } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
@@ -86,7 +86,7 @@ export function AdminNav() {
       title: t('admin.nav.group_content', 'Contenido'),
       icon: BookOpen,
       items: [
-        { to: '/admin/campaigns', label: t('admin.nav.campaigns', 'Campañas'), end: false },
+        { to: '/admin/campaigns', label: t('admin.nav.campaigns', 'Programas'), end: false },
         { to: '/admin/courses', label: t('admin.nav.courses', 'Cursos'), end: false },
         { to: '/admin/modules', label: t('admin.nav.modules', 'Módulos'), end: false }
       ]
@@ -108,6 +108,9 @@ export function AdminNav() {
       icon: Users,
       items: [
         { to: '/admin/users', label: t('admin.nav.users', 'Usuarios'), end: false },
+        // Catálogo de operaciones y áreas: el gobierno de la clasificación.
+        // Solo superadmin — que nadie más pueda inventar unidades es justo el punto.
+        ...(isSuperAdmin ? [{ to: '/admin/units', label: t('admin.nav.units', 'Operaciones y áreas'), end: false }] : []),
         // La "Vista global" ya no es una entrada aparte: su matriz vive dentro
         // del Panorama de Progreso, con los mismos filtros y su exportación.
         // Gamificación (logros + niveles XP): solo superadmin.
@@ -151,9 +154,23 @@ export function AdminNav() {
     }] : []),
   ];
 
-  const links = adminLinks
+  /**
+   * Recursos Humanos administra GENTE, no contenido: se queda con el panel, la
+   * lista de personas y el progreso.
+   *
+   * Se filtra con una lista BLANCA sobre el menú ya construido, en vez de ir
+   * añadiendo condiciones dentro de cada grupo. Así una pantalla nueva no se
+   * le cuela a RH sin que alguien lo decida a propósito: lo que no está aquí,
+   * no se ve. Falla cerrado, que es el lado correcto en el que equivocarse.
+   */
+  const RH_ALLOWED = ['/admin', '/admin/users', '/admin/progress']
+  const links = isRh
+    ? adminLinks
+        .map((c) => ({ ...c, items: c.items.filter((i) => RH_ALLOWED.includes(i.to)) }))
+        .filter((c) => c.items.length > 0)
+    : adminLinks
 
-  // El capacitador no debe ver la palabra "Admin" como título del panel.
+  // Ni el capacitador ni RH deben ver la palabra "Admin" como título del panel.
   const panelTitle = isSuperAdmin ? t('nav.admin', 'Admin') : t('nav.manage', 'Gestión')
 
   const roleColor: NeonColor = isSuperAdmin ? 'amber' : isCapacitador ? 'violet' : 'neutral'

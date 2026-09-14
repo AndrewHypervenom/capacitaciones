@@ -317,3 +317,24 @@ export async function getMyPeopleIds(): Promise<string[] | null> {
   }
   return (data ?? []) as string[]
 }
+
+/**
+ * Cuántos cursos usa cada categoría. Es el equivalente, del lado del
+ * contenido, a `countPeopleByUnit`: sirve para avisar antes de archivar una
+ * categoría que está en uso, y para ver de un vistazo cuáles sobran.
+ */
+export async function countCoursesByCategory(): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  const { data, error } = await supabase
+    .from('courses')
+    .select('category_id')
+    .is('deleted_at', null)
+  if (error) {
+    if (isMissingSchema(error)) return out
+    throw error
+  }
+  for (const r of (data ?? []) as Array<{ category_id: string | null }>) {
+    if (r.category_id) out.set(r.category_id, (out.get(r.category_id) ?? 0) + 1)
+  }
+  return out
+}
