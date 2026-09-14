@@ -2275,7 +2275,9 @@
       "bulk_sync_jobs_hint": "The file is the source for job titles: they can't be edited in the profile. Their current one is replaced; nothing else is touched.",
       "bulk_sync_jobs": "Update the job title of {{n}} people",
       "bulk_no_campaign_warn": "{{n}} new accounts would be created with NO programme.",
-      "bulk_no_campaign_hint": "Someone without a programme can sign in but sees no courses and records no progress. Pick one under \"Programme for all\", or you will have to assign it one by one later."
+      "bulk_no_campaign_hint": "Someone without a programme can sign in but sees no courses and records no progress. Pick one under \"Programme for all\", or you will have to assign it one by one later.",
+      "delete_done": "{{name}} deleted",
+      "delete_error": "Could not delete"
     },
     "hr": {
       "title": "Sync with HR",

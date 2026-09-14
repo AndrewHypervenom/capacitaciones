@@ -2275,7 +2275,9 @@
       "bulk_sync_jobs_hint": "El archivo es la fuente del cargo: en el perfil no se puede editar. Se reemplaza el que tengan; no se toca nada más.",
       "bulk_sync_jobs": "Actualizar el cargo de {{n}} personas",
       "bulk_no_campaign_warn": "{{n}} cuentas nuevas nacerían SIN programa.",
-      "bulk_no_campaign_hint": "Una persona sin programa entra al sitio pero no ve cursos ni acumula progreso. Elige uno en «Programa para todos», o tendrás que asignárselo después una por una."
+      "bulk_no_campaign_hint": "Una persona sin programa entra al sitio pero no ve cursos ni acumula progreso. Elige uno en «Programa para todos», o tendrás que asignárselo después una por una.",
+      "delete_done": "{{name}} eliminado",
+      "delete_error": "No se pudo eliminar"
     },
     "hr": {
       "title": "Sincronizar con Talento Humano",

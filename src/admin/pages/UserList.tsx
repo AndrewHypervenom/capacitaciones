@@ -830,8 +830,16 @@ export default function UserList() {
       if (!res.ok) throw new Error(json.error ?? 'Error al eliminar usuario')
       setUsers((prev) => prev.filter((u) => u.id !== userId))
       setSavedUsers((prev) => prev.filter((u) => u.id !== userId))
+      toast.success(t('admin.users.delete_done', { name: user.display_name ?? user.email ?? '' }))
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al eliminar usuario')
+      /* Con el aviso del sitio, no con `alert()`: el nativo bloquea la pestaña,
+       * no se puede copiar y, sobre todo, aparecía con el mensaje crudo de
+       * Postgres. Lo más común aquí es intentar borrar a alguien con historial,
+       * y para eso la respuesta ya viene explicada. */
+      toast.error(
+        t('admin.users.delete_error', 'No se pudo eliminar'),
+        err instanceof Error ? err.message : undefined,
+      )
     } finally {
       setDeletingId(null)
     }
