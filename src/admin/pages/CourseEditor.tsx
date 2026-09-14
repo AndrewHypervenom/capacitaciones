@@ -1953,7 +1953,24 @@ export default function CourseEditor() {
         setSavedAudience(draftAudience)
       } catch (e) {
         console.error('[CourseEditor] audiencia', e)
-        toast.error(t('admin.courses.audience_rule_save_error', 'No se pudo guardar a quién le llega el curso.'))
+        /* El motivo REAL, no solo "no se pudo".
+         *
+         * Esta es la operación de la que depende toda la migración a CR: si
+         * falla, quien la ve tiene que poder decir POR QUÉ falló sin abrir la
+         * consola. Un "no se pudo" a secas obliga a adivinar entre permisos,
+         * tabla que no existe y dato mal formado — tres arreglos distintos. */
+        const detalle = e && typeof e === 'object' && 'message' in e
+          ? String((e as { message?: unknown }).message ?? '')
+          : String(e)
+        const codigo = e && typeof e === 'object' && 'code' in e
+          ? String((e as { code?: unknown }).code ?? '')
+          : ''
+        toast.error(
+          t('admin.courses.audience_rule_save_error', 'No se pudo guardar a quién le llega el curso.'),
+          codigo === '42501'
+            ? t('admin.courses.audience_rule_denied', 'La base rechazó el permiso. Falta la política de escritura sobre course_audiences.')
+            : detalle || undefined,
+        )
       }
       invalidateModulesCache()
       // La lista de cursos del aprendiz vive en una caché en memoria con la

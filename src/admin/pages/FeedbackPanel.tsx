@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import i18n from '@/i18n'
 import { ChevronDown, ChevronRight, Download, Loader2, Search, Globe2, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { getMyPeopleIds } from '@/services/org.service'
+import { getMyPeopleIds, getOrganizations, getOrgUnits } from '@/services/org.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
@@ -12,13 +12,23 @@ import { fold } from '@/lib/normalize'
 import { pickLang } from '@/lib/contentLang'
 import StarDisplay from '@/components/StarDisplay'
 import { PanelHeader, InsightBanner, StatStrip } from './progress/ProgressChrome'
+import type { OrgUnit } from '@/types/database'
 
 const WORLD_ACCENT = 'rgb(var(--brand-green))'
 
 interface Campaign { id: string; name: string }
 interface World { id: string; name: string; icon: string; campaign_id: string | null; course_id: string | null }
 interface WorldLevel { id: string; name: string; world_id: string; order_index: number; min_score_pct: number | null }
-interface Profile { id: string; display_name: string | null; campaign_id: string | null; is_active?: boolean | null }
+/* Tipo local reducido: esta vista pide `select('*')` pero solo usa un puñado de
+   campos, y declararlos aquí evita arrastrar el Row entero de la base. */
+interface Profile {
+  id: string
+  display_name: string | null
+  campaign_id: string | null
+  is_active?: boolean | null
+  operation_id?: string | null
+  area_id?: string | null
+}
 interface Progress { user_id: string; level_id: string; world_id: string; score: number }
 interface Attempt { id: string; level_id: string; score: number; completed_at: string }
 
@@ -59,6 +69,9 @@ interface LearnerRow {
   displayName: string
   campaignId: string | null
   campaignName: string
+  /** CR y área de la persona: los ejes con los que ahora se acota todo. */
+  operationId: string | null
+  areaId: string | null
   worlds: WorldStat[]
   completedLevels: number
   totalLevels: number
@@ -89,6 +102,11 @@ export default function FeedbackPanel() {
   const [worlds, setWorlds] = useState<World[]>([])
   const [levels, setLevels] = useState<WorldLevel[]>([])
   const [filterCampaign, setFilterCampaign] = useState('all')
+  /* CR y área: los mismos cortes que el Panorama, para que las tres vistas de
+     Progreso se filtren igual. Se comparan por id, no por nombre. */
+  const [filterOperation, setFilterOperation] = useState('all')
+  const [filterArea, setFilterArea] = useState('all')
+  const [units, setUnits] = useState<OrgUnit[]>([])
   const [filterWorld, setFilterWorld] = useState('all')
   const [filterCourse, setFilterCourse] = useState('all')
   /** curso → título, solo de los cursos que tienen mundos. */
@@ -101,6 +119,17 @@ export default function FeedbackPanel() {
   const [attempts, setAttempts] = useState<Attempt[]>([])
   const [attemptsLoading, setAttemptsLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
+
+  /* El catálogo de CR y áreas: noventa y cinco filas de dos columnas. Se pide
+     siempre porque es lo que hay que poder elegir. */
+  useEffect(() => {
+    let vivo = true
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((list) => { if (vivo) setUnits(list) })
+      .catch(() => { if (vivo) setUnits([]) })
+    return () => { vivo = false }
+  }, [])
 
   useEffect(() => {
     if (authLoading) return
@@ -257,6 +286,8 @@ export default function FeedbackPanel() {
           displayName: profile.display_name ?? 'Sin nombre',
           campaignId: profile.campaign_id,
           campaignName: profile.campaign_id ? (campMap.get(profile.campaign_id) ?? '—') : '—',
+          operationId: profile.operation_id ?? null,
+          areaId: profile.area_id ?? null,
           worlds: worldStats,
           completedLevels: totalCompleted,
           totalLevels,
@@ -288,8 +319,10 @@ export default function FeedbackPanel() {
       && !r.worlds.some(w => w.campaignId === filterCampaign && w.completedLevels > 0)) return false
     if (filterCourse !== 'all' && !r.worlds.some(w => w.courseId === filterCourse)) return false
     if (filterWorld !== 'all' && !r.worlds.some(w => w.worldId === filterWorld)) return false
+    if (filterOperation !== 'all' && r.operationId !== filterOperation) return false
+    if (filterArea !== 'all' && r.areaId !== filterArea) return false
     return true
-  }), [rows, filterCampaign, filterCourse, filterWorld])
+  }), [rows, filterCampaign, filterCourse, filterWorld, filterOperation, filterArea])
 
   /** Cursos que tienen mundos dentro del alcance de campaña actual. */
   const courseOptions = useMemo(() => {
@@ -523,8 +556,10 @@ export default function FeedbackPanel() {
         ) : undefined}
       />
 
-      {/* Filtros: el de campaña aparece si el usuario abarca varias; el de mundo, siempre que haya datos */}
-      {(isSuperAdmin || multiCampaign) && (
+      {/* Filtros. La barra ya no cuelga de "abarca varias campañas": CR y área
+          son los cortes de todo el mundo, y esconderlos a quien tiene una sola
+          campaña le dejaba sin la única segmentación que ahora importa. */}
+      {(
         <div className="flex flex-wrap gap-3 mb-5">
           {(isSuperAdmin || multiCampaign) && (
           <FilterDropdown
@@ -534,6 +569,26 @@ export default function FeedbackPanel() {
             className="max-w-xs"
           />
           )}
+          {/* CR y ÁREA: el mismo orden y los mismos nombres que en el Panorama
+              y que en la audiencia de un curso. Tres pantallas, un idioma. */}
+          <FilterDropdown
+            value={filterOperation === 'all' ? '' : filterOperation}
+            onChange={v => setFilterOperation(v || 'all')}
+            options={[
+              { value: '', label: i18n.t('admin.progress_overview.all_operations', 'Todos los CR') },
+              ...units.filter(u => u.kind === 'operation').map(u => ({ value: u.id, label: u.name })),
+            ]}
+            className="max-w-xs"
+          />
+          <FilterDropdown
+            value={filterArea === 'all' ? '' : filterArea}
+            onChange={v => setFilterArea(v || 'all')}
+            options={[
+              { value: '', label: i18n.t('admin.progress_overview.all_areas', 'Todas las áreas') },
+              ...units.filter(u => u.kind === 'area').map(u => ({ value: u.id, label: u.name })),
+            ]}
+            className="max-w-xs"
+          />
           {courseOptions.length > 0 && (
             <FilterDropdown
               value={filterCourse === 'all' ? '' : filterCourse}

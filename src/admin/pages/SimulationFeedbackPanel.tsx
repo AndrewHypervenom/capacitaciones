@@ -9,6 +9,8 @@ import { getMyPeopleIds } from '@/services/org.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import type { OrgUnit } from '@/types/database'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
 import { PanelHeader, InsightBanner, StatStrip } from './progress/ProgressChrome'
@@ -20,7 +22,17 @@ const SIM_ACCENT = 'rgb(var(--brand-cyan, 6 182 212))'
 
 // ── Tipos de datos ───────────────────────────────────────────
 interface Campaign { id: string; name: string }
-interface Profile { id: string; display_name: string | null; campaign_id: string | null; is_active?: boolean | null; role?: string | null }
+/* Tipo local reducido: la vista pide `select('*')` pero solo usa unos pocos
+   campos, y declararlos aquí evita arrastrar el Row entero de la base. */
+interface Profile {
+  id: string
+  display_name: string | null
+  campaign_id: string | null
+  is_active?: boolean | null
+  role?: string | null
+  operation_id?: string | null
+  area_id?: string | null
+}
 
 interface AiFeedback { summary?: string; strengths?: string[]; improvements?: string[] }
 
@@ -81,6 +93,9 @@ interface LearnerBase {
   displayName: string
   campaignId: string | null
   campaignName: string
+  /** CR y área de la persona: los ejes con los que ahora se acota todo. */
+  operationId?: string | null
+  areaId?: string | null
   /**
    * Practicó contenido de este alcance pero NO está en la lista de gente del
    * capacitador (otra audiencia, cuenta dada de baja, o un perfil que la RLS no
@@ -223,6 +238,11 @@ export default function SimulationFeedbackPanel() {
   /** slug → de qué simulador viene. Decide si empatía y checklist son reales. */
   const [scenarioKinds, setScenarioKinds] = useState<Map<string, 'call' | 'choice'>>(new Map())
   const [filterCampaign, setFilterCampaign] = useState('all')
+  /* CR y área: los mismos cortes que el Panorama y que Mundos. Tres pantallas,
+     un idioma. Se comparan por id, no por nombre. */
+  const [filterOperation, setFilterOperation] = useState('all')
+  const [filterArea, setFilterArea] = useState('all')
+  const [units, setUnits] = useState<OrgUnit[]>([])
   const [filterScenario, setFilterScenario] = useState('all')
   const [filterCourse, setFilterCourse] = useState('all')
   /** curso → título, para el filtro (solo los cursos que tienen intentos). */
@@ -243,6 +263,17 @@ export default function SimulationFeedbackPanel() {
     (s: LearnerStatus) => t(STATUS_META[s].labelKey, STATUS_META[s].fallback),
     [t],
   )
+
+  /* El catálogo de CR y áreas. Noventa y cinco filas de dos columnas: se pide
+     siempre porque es lo que hay que poder elegir. */
+  useEffect(() => {
+    let vivo = true
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((list) => { if (vivo) setUnits(list) })
+      .catch(() => { if (vivo) setUnits([]) })
+    return () => { vivo = false }
+  }, [])
 
   useEffect(() => {
     if (authLoading) return
@@ -367,6 +398,8 @@ export default function SimulationFeedbackPanel() {
           displayName: nameOf(p),
           campaignId: p.campaign_id,
           campaignName: campaignNameOf(p.campaign_id),
+          operationId: p.operation_id ?? null,
+          areaId: p.area_id ?? null,
         })),
         ...missingIds.map((id) => {
           const p = rescuedById.get(id)
@@ -377,6 +410,8 @@ export default function SimulationFeedbackPanel() {
               : t('admin.sim_panel.outsider_name', 'Aprendiz de otro programa'),
             campaignId: p?.campaign_id ?? null,
             campaignName: campaignNameOf(p?.campaign_id ?? null),
+            operationId: p?.operation_id ?? null,
+            areaId: p?.area_id ?? null,
             outsider: true,
             staff: !!p?.role && p.role !== 'learner',
           }
@@ -493,13 +528,18 @@ export default function SimulationFeedbackPanel() {
   const scoped = useMemo(() => {
     const practiced = new Set(scopedAttempts.map((a) => a.user_id))
     return rows.filter((r) => {
+      /* CR y área se comprueban SIEMPRE, también sobre quien ya practicó: si no,
+         filtrar por un CR seguiría mostrando a gente de otro solo por tener
+         intentos, y el número de arriba no cuadraría con la tabla. */
+      if (filterOperation !== 'all' && r.operationId !== filterOperation) return false
+      if (filterArea !== 'all' && r.areaId !== filterArea) return false
       if (practiced.has(r.userId)) return true
       // El rescatado solo existe por sus intentos: fuera de ellos no es "gente
       // pendiente de practicar" y no debe engordar el total ni la participación.
       if (r.outsider) return false
       return filterCampaign === 'all' || r.campaignId === filterCampaign
     })
-  }, [rows, scopedAttempts, filterCampaign])
+  }, [rows, scopedAttempts, filterCampaign, filterOperation, filterArea])
 
   const stats = useMemo(() => {
     const learners = scoped.length
@@ -640,9 +680,28 @@ export default function SimulationFeedbackPanel() {
         ) : undefined}
       />
 
-      {/* Filtros: campaña (super/multi) + curso + escenario (si hay intentos) */}
-      {(isSuperAdmin || multiCampaign || courseOptions.length > 0 || scenarioOptions.length > 0) && (
+      {/* Filtros: CR y área SIEMPRE (son los cortes de todo el mundo), más
+          campaña, curso y escenario cuando aplican. */}
+      {(
         <div className="flex flex-wrap gap-3 mb-5">
+          <FilterDropdown
+            value={filterOperation === 'all' ? '' : filterOperation}
+            onChange={(v) => setFilterOperation(v || 'all')}
+            options={[
+              { value: '', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
+              ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
+            ]}
+            className="max-w-xs"
+          />
+          <FilterDropdown
+            value={filterArea === 'all' ? '' : filterArea}
+            onChange={(v) => setFilterArea(v || 'all')}
+            options={[
+              { value: '', label: t('admin.progress_overview.all_areas', 'Todas las áreas') },
+              ...units.filter((u) => u.kind === 'area').map((u) => ({ value: u.id, label: u.name })),
+            ]}
+            className="max-w-xs"
+          />
           {(isSuperAdmin || multiCampaign) && (
             <FilterDropdown
               value={filterCampaign === 'all' ? '' : filterCampaign}
