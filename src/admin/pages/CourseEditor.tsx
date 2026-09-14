@@ -98,7 +98,7 @@ import {
   type AudienceRule,
 } from '@/services/audiences.service'
 import { AudienceRulePicker, normalizeRule, audienceReadyToPublish } from '@/admin/components/AudienceRulePicker'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getOrganizations, getOrgUnits, createOrgUnit } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { setCourseOwner } from '@/services/ownership.service'
@@ -489,6 +489,11 @@ export default function CourseEditor() {
      `savedAudience` es la línea base para saber si cambió. */
   /** Catálogo cerrado de categorías. Vacío mientras el SQL no se haya corrido. */
   const [categories, setCategories] = useState<OrgUnit[]>([])
+  /* Alta de categoría en línea. Se queda en el editor porque la decisión —de
+     qué trata este curso— se toma justo aquí, mirando el curso. */
+  const [newCatOpen, setNewCatOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [creatingCat, setCreatingCat] = useState(false)
   const [savedAudience, setSavedAudience] = useState<AudienceRule>(EMPTY_RULE)
   const [draftAudience, setDraftAudience] = useState<AudienceRule>(EMPTY_RULE)
   const [savingAssign, setSavingAssign] = useState(false)
@@ -741,14 +746,45 @@ export default function CourseEditor() {
   // quedaría incompleto y guardar borraría lo que no alcanzó a cargarse.
   // Catálogo de categorías. Si el SQL no se ha corrido llega vacío y el
   // selector lo dice, en vez de aparecer roto.
+  const [orgId, setOrgId] = useState('')
   useEffect(() => {
     let alive = true
     getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id, 'category') : []))
+      .then((orgs) => {
+        if (alive) setOrgId(orgs[0]?.id ?? '')
+        return orgs[0] ? getOrgUnits(orgs[0].id, 'category') : []
+      })
       .then((list) => { if (alive) setCategories(list) })
       .catch(() => { if (alive) setCategories([]) })
     return () => { alive = false }
   }, [])
+
+  /**
+   * Crea la categoría y la deja ELEGIDA en el curso.
+   *
+   * Lo segundo importa tanto como lo primero: quien acaba de escribir el nombre
+   * de su categoría ya decidió que es la de este curso. Dejarla creada pero sin
+   * seleccionar obliga a un paso más que nadie entiende para qué es.
+   */
+  const createCategory = async () => {
+    const name = newCatName.trim()
+    if (!name || !orgId || creatingCat) return
+    setCreatingCat(true)
+    try {
+      const unidad = await createOrgUnit({ orgId, kind: 'category', name })
+      setCategories((prev) => [...prev, unidad].sort((a, b) => a.name.localeCompare(b.name, 'es')))
+      setForm((f) => ({ ...f, category_id: unidad.id }))
+      setNewCatOpen(false)
+      setNewCatName('')
+      toast.success(t('admin.courses.category_created', 'Categoría creada'))
+    } catch (e) {
+      /* El mensaje del servicio ya distingue "ya existe una con ese nombre" de
+         un fallo de permiso; no se traga ni se reescribe. */
+      toast.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCreatingCat(false)
+    }
+  }
 
   useEffect(() => {
     if (!courseId || !course) return
@@ -3018,17 +3054,52 @@ export default function CourseEditor() {
                 <label className="block text-[12px] font-medium text-text-muted mb-1.5">
                   {t('admin.courses.field_category')}
                 </label>
-                <Select
-                  value={form.category_id ?? ''}
-                  onChange={(v) => setForm({ ...form, category_id: v || null })}
-                  options={[
-                    { value: '', label: t('admin.courses.category_none', 'Sin categoría') },
-                    ...categories.map((c) => ({ value: c.id, label: c.name })),
-                  ]}
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    className="min-w-[200px] flex-1"
+                    value={form.category_id ?? ''}
+                    onChange={(v) => setForm({ ...form, category_id: v || null })}
+                    options={[
+                      { value: '', label: t('admin.courses.category_none', 'Sin categoría') },
+                      ...categories.map((c) => ({ value: c.id, label: c.name })),
+                    ]}
+                  />
+                  {/* Crear la categoría desde aquí.
+                      De qué trata un curso lo sabe quien lo escribe, y mandarlo
+                      a otra pantalla a pedir permiso es exactamente cómo se
+                      acaba escribiendo la categoría a mano en un campo libre —
+                      que es de lo que veníamos. El catálogo sigue siendo
+                      cerrado: la categoría nueva entra en la lista de todos. */}
+                  {newCatOpen ? (
+                    <span className="flex items-center gap-1.5">
+                      <input
+                        autoFocus
+                        value={newCatName}
+                        onChange={(e) => setNewCatName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void createCategory()
+                          if (e.key === 'Escape') { setNewCatOpen(false); setNewCatName('') }
+                        }}
+                        placeholder={t('admin.courses.category_new_ph', 'Nombre de la categoría')}
+                        className={cn(inputCls, 'h-10 w-[220px]')}
+                      />
+                      <Button variant="neon" onClick={createCategory} disabled={!newCatName.trim() || creatingCat}>
+                        {creatingCat ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button variant="ghost" onClick={() => { setNewCatOpen(false); setNewCatName('') }}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </span>
+                  ) : (
+                    <Button variant="ghost" onClick={() => setNewCatOpen(true)} className="shrink-0">
+                      <Plus className="h-3.5 w-3.5" />
+                      {t('admin.courses.category_new', 'Nueva')}
+                    </Button>
+                  )}
+                </div>
                 <p className="mt-1.5 text-[11px] text-text-subtle">
                   {categories.length === 0
-                    ? t('admin.courses.category_empty_catalog', 'Todavía no hay categorías. Las crea el superadmin en Operaciones y áreas.')
+                    ? t('admin.courses.category_empty_catalog2', 'Todavía no hay categorías. Crea la primera con «Nueva».')
                     : !form.category_id
                       ? t('admin.courses.category_missing', 'Sin categoría el curso no aparece en los filtros del aprendiz.')
                       : t('admin.courses.category_hint', 'De qué trata el curso. Es distinto de quién lo administra.')}

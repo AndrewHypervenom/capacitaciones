@@ -2995,7 +2995,17 @@
       "aud_nobody_classified": "Todavía nadie está clasificado aquí, así que se muestran todos. Se acortará solo cuando se cargue la base de Talento Humano.",
       "assign_campaigns_going_away": "Se va a quitar",
       "assign_campaigns_going_away_title": "Esto desaparece.",
-      "assign_campaigns_going_away_body": "Asignar por programa se retira: lo reemplaza la regla de país, área y CR de arriba. No marques programas nuevos aquí. Lo único que se queda, además de la regla, son las «Personas específicas» de abajo, para excepciones puntuales."
+      "assign_campaigns_going_away_body": "Asignar por programa se retira: lo reemplaza la regla de país, área y CR de arriba. No marques programas nuevos aquí. Lo único que se queda, además de la regla, son las «Personas específicas» de abajo, para excepciones puntuales.",
+      "migrate_title": "{{count}} cursos todavía se reparten por programa",
+      "migrate_body": "Ábrelos y di a quién le llegan: país, y si hace falta área y CR. Nadie pierde nada — definirlo solo suma.",
+      "migrate_filter": "Ver solo esos",
+      "migrate_show_all": "Ver todos",
+      "no_rule_badge": "Sin regla",
+      "no_rule_hint": "Este curso todavía llega por programa. Ábrelo, ve a Asignar y di a quién le llega: país, y si hace falta área y CR.",
+      "category_new": "Nueva",
+      "category_new_ph": "Nombre de la categoría",
+      "category_created": "Categoría creada",
+      "category_empty_catalog2": "Todavía no hay categorías. Crea la primera con «Nueva»."
     },
     "simulations": {
       "save": "Guardar",
@@ -3884,7 +3894,15 @@
       "kpi_overdue_hint": "{{count}} cursos asignados con el plazo vencido",
       "kpi_overdue_none": "Nadie con el plazo vencido (solo cuentan los cursos con límite de tiempo)",
       "focus_overdue": "Solo con cursos vencidos",
-      "kpi_journey_unknown": "Solo se pudo medir el temario: sin simuladores, mundo ni examen, esta cifra puede salir alta"
+      "kpi_journey_unknown": "Solo se pudo medir el temario: sin simuladores, mundo ni examen, esta cifra puede salir alta",
+      "more_stats": "Más cifras",
+      "less_stats": "Menos cifras",
+      "kpi_syllabus_person": "Media por persona · mediana {{median}}% sobre {{count}} personas",
+      "kpi_syllabus_none": "Todavía no hay temario asignado",
+      "all_operations": "Todos los CR",
+      "all_areas": "Todas las áreas",
+      "pick_scope_title": "Elige qué quieres mirar",
+      "pick_scope_body": "Un CR, un área o un curso. El tablero se calcula sobre lo que elijas — así no se consulta el programa entero para mirar un equipo de doce personas."
     },
     "feedback_panel": {
       "title": "Progreso de Aprendices",
@@ -5010,7 +5028,8 @@
       "kpi_at_risk": "En riesgo",
       "kpi_at_risk_hint": "Practicaron, pero su mejor puntaje no llega al 60%.",
       "risk_title_one": "{{count}} aprendiz en riesgo",
-      "risk_title_other": "{{count}} aprendices en riesgo"
+      "risk_title_other": "{{count}} aprendices en riesgo",
+      "kpi_score_short": "Puntaje promedio de quienes practicaron. Es desempeño en simulación."
     },
     "audit": {
       "open": "Abrir",
@@ -5664,7 +5683,15 @@
       "origin_roster_hint": "Este CR llegó con la base de Talento Humano. Es el modelo nuevo.",
       "legacy_badge": "A migrar",
       "title": "CR, áreas y categorías",
-      "read_only": "Esta lista la abre el superadmin. Aquí puedes consultarla para saber a qué CR o área dirigir un curso."
+      "read_only": "Esta lista la abre el superadmin. Aquí puedes consultarla para saber a qué CR o área dirigir un curso.",
+      "delete": "Eliminar",
+      "deleted": "Eliminada",
+      "delete_title": "Eliminar «{{name}}»",
+      "delete_desc": "Nadie la está usando. Desaparece del catálogo y el nombre queda libre.",
+      "delete_in_use": "La usan {{count}}: no se puede eliminar",
+      "delete_blocked": "No se puede eliminar «{{name}}»",
+      "delete_blocked_people": "{{count}} persona la tiene asignada. Reasígnala primero (la próxima carga de la base lo hace sola).",
+      "delete_blocked_courses": "{{count}} curso la usa. Cámbiale la categoría primero."
     }
   },
   "themes": {

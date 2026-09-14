@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Globe, Loader2, MapPin, Users, Building2, Layers, Search } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { fold } from '@/lib/normalize'
@@ -63,6 +64,38 @@ import type { OrgUnit } from '@/types/database'
  */
 export function audienceReadyToPublish(r: AudienceRule): boolean {
   return !ruleIsEmpty(r)
+}
+
+/**
+ * La regla leída en palabras: «Colombia · Área: Operativa · CR: CLARO MILLA».
+ *
+ * Exportada porque la lista de cursos tiene que decir EXACTAMENTE lo mismo que
+ * el editor. Dos frases distintas para la misma regla es lo que hace dudar de
+ * cuál es la buena.
+ *
+ * MISMO ORDEN Y MISMO NOMBRE QUE LOS PASOS. Antes decía "Operación" mientras el
+ * paso de arriba decía "CR", y listaba la operación antes que el área.
+ */
+export function audienceSummary(
+  rule: AudienceRule,
+  units: OrgUnit[],
+  /* Se recibe `t` en vez de llamar a `useTranslation` dentro: esto no es un
+     componente y tiene que poder usarse desde una lista, un export o un tooltip. */
+  t: TFunction,
+): string {
+  if (rule.everyone) return t('admin.courses.aud_all', 'Toda la organización')
+  const nombre = (id: string) => units.find((u) => u.id === id)?.name ?? '—'
+  const partes: string[] = []
+  if (rule.countries.length) {
+    partes.push(rule.countries.map((c) => COUNTRIES.find((x) => x.code === c)?.name ?? c).join(' o '))
+  }
+  if (rule.areaIds.length) {
+    partes.push(`${t('admin.courses.aud_area', 'Área')}: ${rule.areaIds.map(nombre).join(' o ')}`)
+  }
+  if (rule.operationIds.length) {
+    partes.push(`CR: ${rule.operationIds.map(nombre).join(' o ')}`)
+  }
+  return partes.join('  ·  ')
 }
 
 /** Deja la regla comparable: mismo contenido, misma cadena. */
@@ -179,34 +212,7 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
   }
 
   /** La regla leída en palabras. Es la frase que evita el malentendido. */
-  const frase = useMemo(() => {
-    if (value.everyone) return t('admin.courses.aud_all', 'Toda la organización')
-    const partes: string[] = []
-    if (value.countries.length) {
-      partes.push(
-        value.countries
-          .map((c) => COUNTRIES.find((x) => x.code === c)?.name ?? c)
-          .join(' o '),
-      )
-    }
-    /* MISMO ORDEN Y MISMO NOMBRE QUE LOS PASOS. Antes esta frase decía
-     * "Operación" mientras el paso de arriba decía "CR", y listaba la operación
-     * antes que el área. Dos nombres para la misma cosa a cuatro centímetros uno
-     * del otro es exactamente lo que hace dudar de si son dos cosas. */
-    if (value.areaIds.length) {
-      partes.push(
-        t('admin.courses.aud_area', 'Área') + ': ' +
-        value.areaIds.map((id) => units.find((u) => u.id === id)?.name ?? '—').join(' o '),
-      )
-    }
-    if (value.operationIds.length) {
-      partes.push(
-        'CR: ' +
-        value.operationIds.map((id) => units.find((u) => u.id === id)?.name ?? '—').join(' o '),
-      )
-    }
-    return partes.join('  ·  ')
-  }, [value, units, t])
+  const frase = useMemo(() => audienceSummary(value, units, t), [value, units, t])
 
   const vacia = ruleIsEmpty(value)
 

@@ -53,6 +53,9 @@ export interface ProgramPerson {
   /** Cargo y país: los dos ejes de segmentación que el perfil ya guarda. */
   jobTitle: string | null;
   country: string | null;
+  /** CR (operación) y área: los ejes con los que ahora se reparte la formación. */
+  operationId: string | null;
+  areaId: string | null;
   avatarUrl: string | null;
   createdAt: string | null;
   /** Cursos que le tocan (asignación directa o por campaña). */
@@ -348,7 +351,20 @@ async function fetchCertificates(): Promise<{ rows: RawCertificate[]; ok: boolea
   }
 }
 
-export function useProgramData(lang: Lang, excludeSuperadmins: boolean): ProgramData {
+export function useProgramData(
+  lang: Lang,
+  excludeSuperadmins: boolean,
+  /**
+   * Si se consulta algo.
+   *
+   * El tablero lee dieciocho tablas de un tirón. Hacerlo al abrir la pantalla
+   * —antes de que nadie haya dicho qué quiere mirar— es trabajo que casi siempre
+   * se tira: quien entra viene a ver UN CR, UN área o UN curso. Se espera a que
+   * lo diga. En `false` no se pide NADA y `loading` queda en false: la pantalla
+   * no puede quedarse girando a la espera de algo que no va a pasar.
+   */
+  enabled = true,
+): ProgramData {
   // Entorno de pruebas: con el Modo pruebas apagado, las campañas marcadas
   // `is_test` no existen para este tablero — ni su gente, ni sus cursos, ni su
   // progreso. Es lo que evita que las cuentas de prueba ensucien los KPIs, el
@@ -405,6 +421,12 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
   }, []);
 
   useEffect(() => {
+    /* Sin alcance elegido no se pide nada, y `loading` se apaga: una pantalla
+       girando a la espera de algo que nadie pidió es peor que una vacía. */
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     const run = async () => {
       setLoading(true);
@@ -429,7 +451,8 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
               id: string; display_name: string | null; role: string;
               campaign_id: string | null; avatar_url: string | null; created_at: string | null;
               job_title: string | null; country: string | null; email: string | null;
-            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country, email'),
+              operation_id: string | null; area_id: string | null;
+            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country, email, operation_id, area_id'),
             supabase.from('campaigns').select('id, name, deleted_at, is_test').order('name'),
             fetchAll<{
               id: string; title_es: string; title_en: string | null; title_pt: string | null;
@@ -646,6 +669,8 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
             campaignName: p.campaign_id ? campaignName.get(p.campaign_id) ?? null : null,
             jobTitle: p.job_title?.trim() || null,
             country: p.country?.trim() || null,
+            operationId: p.operation_id ?? null,
+            areaId: p.area_id ?? null,
             avatarUrl: p.avatar_url,
             createdAt: p.created_at,
             assigned: 0, mandatory: 0, mandatoryDone: 0, started: 0, completed: 0, certified: 0,
@@ -961,7 +986,7 @@ export function useProgramData(lang: Lang, excludeSuperadmins: boolean): Program
     };
     void run();
     return () => { cancelled = true; };
-  }, [lang, excludeSuperadmins, nonce]);
+  }, [lang, excludeSuperadmins, nonce, enabled]);
 
   /* ── Tiempo de estudio (diferido) ───────────────────────────────────────
      `module_time` tiene una fila por persona y módulo: en un sitio grande son

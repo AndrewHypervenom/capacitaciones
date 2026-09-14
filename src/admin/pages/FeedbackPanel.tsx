@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import i18n from '@/i18n'
-import { ChevronDown, ChevronRight, Download, Loader2, Star, Search, Globe2, AlertTriangle, Map as MapIcon, GaugeCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download, Loader2, Search, Globe2, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getMyPeopleIds } from '@/services/org.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
@@ -11,7 +11,7 @@ import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
 import { pickLang } from '@/lib/contentLang'
 import StarDisplay from '@/components/StarDisplay'
-import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
+import { PanelHeader, InsightBanner, StatStrip } from './progress/ProgressChrome'
 
 const WORLD_ACCENT = 'rgb(var(--brand-green))'
 
@@ -564,70 +564,69 @@ export default function FeedbackPanel() {
         </div>
       ) : (
         <>
-          {/* ── KPIs ── */}
-          {/* Seis métricas y ninguna suelta: alcance → participación →
-              finalización → aprendizaje → calidad → riesgo. Cada una dice de
-              qué marco sale, para que el informe se pueda defender fuera. */}
-          <KpiRow className="xl:grid-cols-3 2xl:grid-cols-6">
-            <Kpi
-              accent={WORLD_ACCENT}
-              icon={<Globe2 className="h-4 w-4" />}
-              label={i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices alcanzados')}
-              value={String(stats.learners)}
-              sub={stats.statusCounts.not_started > 0
-                ? i18n.t('admin.feedback_panel.kpi_learners_idle', { count: stats.statusCounts.not_started, defaultValue: '{{count}} sin empezar' })
-                : undefined}
-              hint={i18n.t('admin.feedback_panel.kpi_learners_hint', 'Personas con mundos disponibles en este alcance.')}
-              frame={i18n.t('admin.progress_std.iso_coverage', 'ISO 30414 · Cobertura')}
-            />
-            <Kpi
-              accent="#3b82f6"
-              icon={<GaugeCircle className="h-4 w-4" />}
-              label={i18n.t('admin.feedback_panel.kpi_participation', 'Participación')}
-              value={`${stats.participation}%`}
-              sub={`${stats.started}/${stats.learners}`}
-              hint={i18n.t('admin.feedback_panel.kpi_participation_hint', 'Quiénes empezaron, de todos los que podían.')}
-              frame={i18n.t('admin.progress_std.iso_participation', 'ISO 30414 · Participación')}
-              onClick={() => setStatusFilter(statusFilter === 'not_started' ? 'all' : 'not_started')}
-              active={statusFilter === 'not_started'}
-            />
-            <Kpi
-              accent={WORLD_ACCENT}
-              highlight
-              icon={<MapIcon className="h-4 w-4" />}
-              label={i18n.t('admin.feedback_panel.kpi_avance', 'Avance de niveles')}
-              value={`${stats.avance}%`}
-              hint={i18n.t('admin.feedback_panel.kpi_avance_hint', 'Niveles completados sobre los niveles que les tocan.')}
-            />
-            <Kpi
-              accent="#22c55e"
-              icon={<GaugeCircle className="h-4 w-4" />}
-              label={i18n.t('admin.feedback_panel.kpi_completion', 'Finalización')}
-              value={`${stats.completion}%`}
-              sub={`${stats.statusCounts.completed}/${stats.started}`}
-              hint={i18n.t('admin.feedback_panel.kpi_completion_hint', 'De los que empezaron, cuántos terminaron todos sus niveles.')}
-              frame={i18n.t('admin.progress_std.iso_completion', 'ISO 30414 · Finalización')}
-              onClick={() => setStatusFilter(statusFilter === 'completed' ? 'all' : 'completed')}
-              active={statusFilter === 'completed'}
-            />
-            <Kpi
-              accent="#f59e0b"
-              icon={<Star className="h-4 w-4" />}
-              label={i18n.t('admin.feedback_panel.kpi_avg_stars', 'Estrellas promedio')}
-              value={stats.avgStars.toFixed(1)}
-              sub="/ 3"
-              hint={i18n.t('admin.feedback_panel.kpi_stars_hint', 'Calidad con la que superan los niveles, no solo si los superan.')}
-            />
-            <Kpi
-              accent="#ef4444"
-              icon={<AlertTriangle className="h-4 w-4" />}
-              label={i18n.t('admin.feedback_panel.kpi_at_risk', 'En riesgo')}
-              value={String(stats.statusCounts.at_risk)}
-              hint={i18n.t('admin.feedback_panel.kpi_at_risk_hint', 'Empezaron pero su desempeño promedio no llega al 60%.')}
-              onClick={() => setStatusFilter(statusFilter === 'at_risk' ? 'all' : 'at_risk')}
-              active={statusFilter === 'at_risk'}
-            />
-          </KpiRow>
+          {/* ── Las cifras, en una tira ──────────────────────────────────
+              Mismo criterio que el Panorama: seis tarjetas altas empujaban la
+              tabla fuera de la primera pantalla, así que pulsar una para
+              filtrar parecía no hacer nada. Siguen siendo las mismas seis y
+              siguen filtrando igual; ahora la tabla está justo debajo. */}
+          <StatStrip
+            moreLabel={i18n.t('admin.progress_overview.more_stats', 'Más cifras')}
+            lessLabel={i18n.t('admin.progress_overview.less_stats', 'Menos cifras')}
+            items={[
+              {
+                key: 'learners',
+                label: i18n.t('admin.feedback_panel.kpi_learners', 'Aprendices alcanzados'),
+                value: String(stats.learners),
+                accent: WORLD_ACCENT,
+                hint: stats.statusCounts.not_started > 0
+                  ? i18n.t('admin.feedback_panel.kpi_learners_idle', { count: stats.statusCounts.not_started, defaultValue: '{{count}} sin empezar' })
+                  : i18n.t('admin.feedback_panel.kpi_learners_hint', 'Personas con mundos disponibles en este alcance.'),
+              },
+              {
+                key: 'participation',
+                label: i18n.t('admin.feedback_panel.kpi_participation', 'Participación'),
+                value: `${stats.participation}%`,
+                accent: '#3b82f6',
+                onClick: () => setStatusFilter(statusFilter === 'not_started' ? 'all' : 'not_started'),
+                active: statusFilter === 'not_started',
+                hint: `${stats.started}/${stats.learners} · ${i18n.t('admin.feedback_panel.kpi_participation_hint', 'Quiénes empezaron, de todos los que podían.')}`,
+              },
+              {
+                key: 'completion',
+                label: i18n.t('admin.feedback_panel.kpi_completion', 'Finalización'),
+                value: `${stats.completion}%`,
+                accent: '#22c55e',
+                onClick: () => setStatusFilter(statusFilter === 'completed' ? 'all' : 'completed'),
+                active: statusFilter === 'completed',
+                hint: `${stats.statusCounts.completed}/${stats.started} · ${i18n.t('admin.feedback_panel.kpi_completion_hint', 'De los que empezaron, cuántos terminaron todos sus niveles.')}`,
+              },
+              {
+                key: 'risk',
+                label: i18n.t('admin.feedback_panel.kpi_at_risk', 'En riesgo'),
+                value: String(stats.statusCounts.at_risk),
+                accent: '#ef4444',
+                onClick: () => setStatusFilter(statusFilter === 'at_risk' ? 'all' : 'at_risk'),
+                active: statusFilter === 'at_risk',
+                hint: i18n.t('admin.feedback_panel.kpi_at_risk_hint', 'Empezaron pero su desempeño promedio no llega al 60%.'),
+              },
+            ]}
+            secondary={[
+              {
+                key: 'avance',
+                label: i18n.t('admin.feedback_panel.kpi_avance', 'Avance de niveles'),
+                value: `${stats.avance}%`,
+                accent: WORLD_ACCENT,
+                hint: i18n.t('admin.feedback_panel.kpi_avance_hint', 'Niveles completados sobre los niveles que les tocan.'),
+              },
+              {
+                key: 'stars',
+                label: i18n.t('admin.feedback_panel.kpi_avg_stars', 'Estrellas promedio'),
+                value: `${stats.avgStars.toFixed(1)} / 3`,
+                accent: '#f59e0b',
+                hint: i18n.t('admin.feedback_panel.kpi_stars_hint', 'Calidad con la que superan los niveles, no solo si los superan.'),
+              },
+            ]}
+          />
 
           {/* Insight accionable: aprendices en riesgo */}
           {stats.statusCounts.at_risk > 0 && statusFilter !== 'at_risk' && (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Archive, Building2, Layers, Loader2, Plus, RotateCcw, Search, Users } from 'lucide-react'
+import { Building2, Layers, Loader2, Plus, Search, Trash2, Users } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { fold } from '@/lib/normalize'
 import { toast } from '@/stores/toastStore'
@@ -16,7 +16,7 @@ import { SaveDock } from '@/admin/components/SaveDock'
 import { usePageDraft } from '@/admin/hooks/usePageDraft'
 import {
   countCoursesByCategory, countPeopleByUnit, createOrgUnit, getAllOrgUnits,
-  getOrganizations, renameOrgUnit, setOrgUnitActive,
+  getOrganizations, renameOrgUnit, deleteOrgUnit,
 } from '@/services/org.service'
 import type { Organization, OrgUnit, OrgUnitKind } from '@/types/database'
 
@@ -62,9 +62,24 @@ const KIND_HELP: Record<OrgUnitKind, string> = {
 export default function OrgUnits() {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  /* Quien no es superadmin CONSULTA el catálogo, no lo escribe. El candado real
-   * es la RLS; esto solo evita ofrecerle botones que la base va a rechazar. */
-  const { isSuperAdmin } = useAuth()
+  const { isSuperAdmin, isCapacitador } = useAuth()
+
+  /**
+   * El permiso es POR EJE, no global.
+   *
+   * CR y áreas describen la ORGANIZACIÓN: salen de la base de Talento Humano y
+   * si cada quien pudiera inventarlos volveríamos al desorden que la
+   * reestructura vino a quitar. Solo el superadmin.
+   *
+   * Las CATEGORÍAS describen el CONTENIDO: de qué trata un curso. Eso lo sabe
+   * quien lo escribe, y obligarle a pedir permiso para nombrar su propio tema
+   * convierte al superadmin en un cuello de botella — que es exactamente cómo
+   * se acaba escribiendo la categoría a mano en un campo de texto.
+   *
+   * El candado real es la RLS; esto solo evita ofrecer botones que van a fallar.
+   */
+  const puedeEditar = (kind: OrgUnitKind) =>
+    isSuperAdmin || (isCapacitador && kind === 'category')
 
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [orgId, setOrgId] = useState('')
@@ -83,6 +98,8 @@ export default function OrgUnits() {
   /** Cuántos cursos usa cada categoría. Es el equivalente a "cuánta gente"
       del otro lado: sirve para avisar antes de archivar una que está en uso. */
   const [courseCounts, setCourseCounts] = useState<Map<string, number>>(new Map())
+  /** ¿Puede escribir en el eje que está abierto ahora mismo? */
+  const puedeEditarTab = puedeEditar(kindTab)
 
   /* ─── Carga ─────────────────────────────────────────────────────────── */
 
@@ -172,38 +189,42 @@ export default function OrgUnits() {
     }
   }
 
-  const toggleArchive = async (u: OrgUnit) => {
-    const usados =
-      u.kind === 'operation' ? (counts?.byOperation.get(u.id) ?? 0)
-      : u.kind === 'area' ? (counts?.byArea.get(u.id) ?? 0)
-      : (courseCounts.get(u.id) ?? 0)
-    if (u.is_active) {
-      const ok = await confirm({
-        title: t('admin.units.archive_title', 'Archivar “{{name}}”', { name: u.name }),
-        // Archivar con gente dentro no rompe nada, pero hay que decirlo: esa
-        // gente conserva la unidad y deja de poder elegirse para los demás.
-        description:
-          usados > 0
-            ? u.kind === 'category'
-              ? t(
-                  'admin.units.archive_with_courses',
-                  'Hay {{count}} curso con esta categoría. La conserva, pero nadie más podrá elegirla.',
-                  { count: usados },
-                )
-              : t(
-                  'admin.units.archive_with_people',
-                  'Hay {{count}} persona con esta unidad. La conserva, pero nadie más podrá elegirla.',
-                  { count: usados },
-                )
-            : t('admin.units.archive_empty', 'Dejará de aparecer al clasificar a alguien.'),
-        confirmLabel: t('admin.units.archive', 'Archivar'),
-        // Archivar es reversible (se reactiva con un clic): no merece el rojo.
-        tone: 'default',
-      })
-      if (!ok) return
+  /** Cuánto se usa una unidad: gente en los dos ejes de personas, cursos en categorías. */
+  const usoDe = (u: OrgUnit) =>
+    u.kind === 'operation' ? (counts?.byOperation.get(u.id) ?? 0)
+    : u.kind === 'area' ? (counts?.byArea.get(u.id) ?? 0)
+    : (courseCounts.get(u.id) ?? 0)
+
+  /**
+   * Eliminar del catálogo. Sustituye a "archivar", que dejaba una lista larga
+   * de cosas a medio morir: el catálogo tiene que ser el espejo exacto de la
+   * base de Talento Humano, y una unidad archivada seguía ahí, ocupando sitio y
+   * obligando a preguntarse si cuenta o no.
+   *
+   * No se puede borrar lo que alguien está usando. Se dice con el número
+   * delante, porque "no se puede" sin decir cuántos obliga a irse a buscarlo.
+   */
+  const remove = async (u: OrgUnit) => {
+    const usados = usoDe(u)
+    if (usados > 0) {
+      toast.error(
+        t('admin.units.delete_blocked', 'No se puede eliminar “{{name}}”', { name: u.name }),
+        u.kind === 'category'
+          ? t('admin.units.delete_blocked_courses', '{{count}} curso la usa. Cámbiale la categoría primero.', { count: usados })
+          : t('admin.units.delete_blocked_people', '{{count}} persona la tiene asignada. Reasígnala primero (la próxima carga de la base lo hace sola).', { count: usados }),
+      )
+      return
     }
+    const ok = await confirm({
+      title: t('admin.units.delete_title', 'Eliminar “{{name}}”', { name: u.name }),
+      description: t('admin.units.delete_desc', 'Nadie la está usando. Desaparece del catálogo y el nombre queda libre.'),
+      confirmLabel: t('admin.units.delete', 'Eliminar'),
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
-      await setOrgUnitActive(u.id, !u.is_active)
+      await deleteOrgUnit(u.id, usados)
+      toast.success(t('admin.units.deleted', 'Eliminada'))
       await reload()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
@@ -323,14 +344,14 @@ export default function OrgUnits() {
 
       <p className="text-[12px] text-text-muted -mt-2">{KIND_HELP[kindTab]}</p>
 
-      {!isSuperAdmin && (
+      {!puedeEditarTab && (
         <p className="rounded-xl border border-line bg-subtle/60 px-3 py-2 text-[12px] text-text-muted">
           {t('admin.units.read_only', 'Esta lista la abre el superadmin. Aquí puedes consultarla para saber a qué CR o área dirigir un curso.')}
         </p>
       )}
 
       {/* Alta */}
-      {isSuperAdmin && (
+      {puedeEditarTab && (
       <div className="flex flex-wrap gap-2">
         <Input
           value={newName}
@@ -386,7 +407,7 @@ export default function OrgUnits() {
                   !u.is_active && 'opacity-55',
                 )}
               >
-                {isSuperAdmin ? (
+                {puedeEditar(u.kind) ? (
                   <Input
                     value={nameOf(u)}
                     onChange={(e) => setName(u.id, e.target.value)}
@@ -407,20 +428,23 @@ export default function OrgUnits() {
                     ? t('admin.units.course_count', '{{count}} curso', { count: usados })
                     : t('admin.units.people_count', '{{count}} persona', { count: usados })}
                 </span>
-                {isSuperAdmin && (
+                {/* Eliminar, no archivar. El catálogo tiene que ser el espejo
+                    exacto de la base de Talento Humano: una unidad archivada
+                    seguía en la lista obligando a preguntarse si cuenta.
+                    Se apaga cuando alguien la usa — ahí el mensaje dice cuántos. */}
+                {puedeEditar(u.kind) && (
                   <Tooltip
-                    label={
-                      u.is_active
-                        ? t('admin.units.archive', 'Archivar')
-                        : t('admin.units.restore', 'Reactivar')
-                    }
+                    label={usados > 0
+                      ? t('admin.units.delete_in_use', 'La usan {{count}}: no se puede eliminar', { count: usados })
+                      : t('admin.units.delete', 'Eliminar')}
                   >
-                    <Button variant="ghost" size="sm" onClick={() => toggleArchive(u)}>
-                      {u.is_active ? (
-                        <Archive className="w-4 h-4" />
-                      ) : (
-                        <RotateCcw className="w-4 h-4" />
-                      )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(u)}
+                      className={usados > 0 ? 'opacity-40' : 'hover:text-red-500'}
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </Tooltip>
                 )}

@@ -2995,7 +2995,17 @@
       "aud_nobody_classified": "Nobody is classified here yet, so all are shown. It will shorten on its own once the HR roster is loaded.",
       "assign_campaigns_going_away": "Being removed",
       "assign_campaigns_going_away_title": "This is going away.",
-      "assign_campaigns_going_away_body": "Assigning by programme is being retired: the country / area / CR rule above replaces it. Do not tick new programmes here. Besides the rule, the only thing that stays is \"Specific people\" below, for one-off exceptions."
+      "assign_campaigns_going_away_body": "Assigning by programme is being retired: the country / area / CR rule above replaces it. Do not tick new programmes here. Besides the rule, the only thing that stays is \"Specific people\" below, for one-off exceptions.",
+      "migrate_title": "{{count}} courses are still handed out by programme",
+      "migrate_body": "Open them and say who they reach: country, plus area and CR if needed. Nobody loses anything — setting it only adds.",
+      "migrate_filter": "Show only those",
+      "migrate_show_all": "Show all",
+      "no_rule_badge": "No rule",
+      "no_rule_hint": "This course still arrives through a programme. Open it, go to Assign and say who it reaches: country, plus area and CR if needed.",
+      "category_new": "New",
+      "category_new_ph": "Category name",
+      "category_created": "Category created",
+      "category_empty_catalog2": "No categories yet. Create the first one with \"New\"."
     },
     "simulations": {
       "save": "Save",
@@ -3884,7 +3894,15 @@
       "kpi_overdue_hint": "{{count}} assigned courses past their deadline",
       "kpi_overdue_none": "Nobody past their deadline (only courses with a time limit count)",
       "focus_overdue": "Only with overdue courses",
-      "kpi_journey_unknown": "Only the syllabus could be measured: without simulators, world or exam, this figure may read high"
+      "kpi_journey_unknown": "Only the syllabus could be measured: without simulators, world or exam, this figure may read high",
+      "more_stats": "More figures",
+      "less_stats": "Fewer figures",
+      "kpi_syllabus_person": "Average per person · median {{median}}% across {{count}} people",
+      "kpi_syllabus_none": "No syllabus assigned yet",
+      "all_operations": "All CRs",
+      "all_areas": "All areas",
+      "pick_scope_title": "Pick what you want to look at",
+      "pick_scope_body": "A CR, an area or a course. The dashboard is computed on what you pick — so it does not query the whole programme to look at a team of twelve."
     },
     "feedback_panel": {
       "title": "Learner Progress",
@@ -5010,7 +5028,8 @@
       "kpi_at_risk": "At risk",
       "kpi_at_risk_hint": "They practised, but their best score is below 60%.",
       "risk_title_one": "{{count}} learner at risk",
-      "risk_title_other": "{{count}} learners at risk"
+      "risk_title_other": "{{count}} learners at risk",
+      "kpi_score_short": "Average score of those who practised. This is simulated performance."
     },
     "audit": {
       "open": "Open",
@@ -5664,7 +5683,15 @@
       "origin_roster_hint": "This CR came with the HR roster. It belongs to the new model.",
       "legacy_badge": "To migrate",
       "title": "CRs, areas and categories",
-      "read_only": "Only the superadmin adds to this list. Here you can look it up to know which CR or area to aim a course at."
+      "read_only": "Only the superadmin adds to this list. Here you can look it up to know which CR or area to aim a course at.",
+      "delete": "Delete",
+      "deleted": "Deleted",
+      "delete_title": "Delete \"{{name}}\"",
+      "delete_desc": "Nobody is using it. It leaves the catalogue and the name is free again.",
+      "delete_in_use": "{{count}} use it: cannot delete",
+      "delete_blocked": "Cannot delete \"{{name}}\"",
+      "delete_blocked_people": "{{count}} person has it assigned. Reassign them first (the next roster load does it on its own).",
+      "delete_blocked_courses": "{{count}} course uses it. Change its category first."
     }
   },
   "themes": {

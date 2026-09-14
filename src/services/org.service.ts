@@ -154,7 +154,19 @@ export async function createOrgUnit(input: {
     // El índice único es (org_id, kind, slug) sobre lo no borrado: el choque
     // significa que ya existe con otro nombre que produce el mismo slug.
     if (error.code === '23505') {
-      throw new Error(`Ya existe ${input.kind === 'area' ? 'un área' : 'una operación'} con ese nombre.`)
+      const que = input.kind === 'area' ? 'un área'
+        : input.kind === 'category' ? 'una categoría'
+        : 'un CR'
+      throw new Error(`Ya existe ${que} con ese nombre.`)
+    }
+    /* 42501 = la RLS lo rechazó. Decirlo así y no con el texto crudo de
+       Postgres: quien lo ve tiene que saber a quién pedírselo. */
+    if (error.code === '42501') {
+      throw new Error(
+        input.kind === 'category'
+          ? 'No tienes permiso para crear categorías. Pídeselo al superadmin.'
+          : 'Solo el superadmin puede crear CR y áreas: salen de la base de Talento Humano.',
+      )
     }
     throw error
   }
@@ -176,11 +188,38 @@ export async function renameOrgUnit(id: string, name: string): Promise<void> {
 
 /**
  * Archiva una unidad: deja de poder elegirse, pero quien ya la tenía la
- * conserva. Nunca se borra — borrarla dejaría a esa gente sin clasificación y
- * rompería los reportes históricos.
+ * conserva. Se sigue usando internamente; la pantalla ya no lo ofrece.
  */
 export async function setOrgUnitActive(id: string, isActive: boolean): Promise<void> {
   const { error } = await supabase.from('org_units').update({ is_active: isActive }).eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Borra una unidad del catálogo.
+ *
+ * **Solo si no la usa nadie.** Borrar un CR con noventa personas dentro las
+ * dejaría con un identificador que no apunta a ningún sitio: no se verían como
+ * "sin clasificar" —que al menos es visible y se arregla con otra carga— sino
+ * como clasificadas en algo que ya no existe. Por eso se comprueba aquí y no
+ * solo en la pantalla: la comprobación tiene que viajar con la operación.
+ *
+ * Es borrado SUAVE (`deleted_at`), como todo lo demás del sitio: el índice único
+ * del catálogo solo mira lo no borrado, así que el nombre queda libre para
+ * volver a crearse, y los reportes históricos siguen pudiendo resolverlo.
+ */
+export async function deleteOrgUnit(id: string, enUso: number): Promise<void> {
+  if (enUso > 0) {
+    throw new Error(
+      `No se puede eliminar: ${enUso} ${enUso === 1 ? 'registro la usa' : 'registros la usan'}. ` +
+      'Reasígnalos primero.',
+    )
+  }
+  const { data: auth } = await supabase.auth.getUser()
+  const { error } = await supabase
+    .from('org_units')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: auth.user?.id ?? null })
+    .eq('id', id)
   if (error) throw error
 }
 

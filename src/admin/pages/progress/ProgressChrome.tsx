@@ -1,5 +1,5 @@
-import { type ReactNode } from 'react'
-import { ArrowRight } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ArrowRight, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Tooltip } from '@/components/ui/Tooltip'
 
@@ -15,6 +15,102 @@ import { Tooltip } from '@/components/ui/Tooltip'
 export const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`
 /** Mezcla hacia negro para el segundo stop del degradado del chip. */
 const darken = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, #000)`
+
+
+/* ────────────────────────────────────────────────────────────────────────
+   La TIRA de cifras.
+   Reemplaza a la rejilla de nueve tarjetas que ocupaba la primera pantalla
+   entera. El problema no era que las cifras sobraran: era que empujaban la
+   tabla fuera de vista, así que al pulsar una para filtrar "no pasaba nada"
+   — pasaba novecientos píxeles más abajo.
+   Aquí cada cifra sigue siendo clicable y filtra igual, pero la tabla queda
+   inmediatamente debajo y el filtro se ve al instante. Las cifras de segunda
+   fila viven detrás de un desplegable: no se borran, se ordenan.
+   ──────────────────────────────────────────────────────────────────────── */
+
+export interface StatItem {
+  key: string
+  label: string
+  /** Ya formateado: "793", "6%", "—". */
+  value: string
+  /** La línea pequeña de debajo. Opcional pero es lo que da el contexto. */
+  hint?: string
+  accent?: string
+  /** Si se pasa, la cifra es un filtro y se puede pulsar. */
+  onClick?: () => void
+  /** Filtro aplicado ahora mismo. */
+  active?: boolean
+}
+
+export function StatStrip({
+  items, secondary, loading, moreLabel, lessLabel,
+}: {
+  items: StatItem[]
+  /** Cifras de segundo plano: se muestran al desplegar. */
+  secondary?: StatItem[]
+  loading?: boolean
+  moreLabel: string
+  lessLabel: string
+}) {
+  const [open, setOpen] = useState(false)
+  const pintar = (x: StatItem) => {
+    const clicable = Boolean(x.onClick)
+    return (
+      <button
+        key={x.key}
+        type="button"
+        onClick={x.onClick}
+        disabled={!clicable}
+        aria-pressed={clicable ? Boolean(x.active) : undefined}
+        className={cn(
+          'group flex min-w-0 flex-1 basis-[150px] flex-col items-start gap-0.5 rounded-xl px-3 py-2 text-left transition-colors',
+          clicable && 'hover:bg-glass/6',
+          !clicable && 'cursor-default',
+          x.active && 'bg-glass/8',
+        )}
+        style={x.active && x.accent ? { boxShadow: `inset 0 0 0 1px ${tint(x.accent, 45)}` } : undefined}
+      >
+        <span className="flex items-baseline gap-1.5">
+          <span
+            className="text-[20px] font-semibold leading-none tabular-nums"
+            style={{ color: x.accent ?? 'var(--text)' }}
+          >
+            {loading ? '·' : x.value}
+          </span>
+          <span className="truncate text-[12px] font-medium text-text">{x.label}</span>
+        </span>
+        {x.hint && (
+          /* Dos líneas como techo: el contexto ayuda, pero un párrafo dentro de
+             una tira la convierte otra vez en un muro. */
+          <span className="line-clamp-2 text-[11px] leading-snug text-text-subtle">{x.hint}</span>
+        )}
+      </button>
+    )
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-line bg-subtle/40">
+      <div className="flex flex-wrap items-stretch gap-1 p-1.5">{items.map(pintar)}</div>
+      {secondary && secondary.length > 0 && (
+        <>
+          {open && (
+            <div className="flex flex-wrap items-stretch gap-1 border-t border-line px-1.5 pb-1.5 pt-1.5">
+              {secondary.map(pintar)}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex w-full items-center justify-center gap-1.5 border-t border-line py-1.5 text-[11px] text-text-subtle transition-colors hover:text-text"
+          >
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+            {open ? lessLabel : moreLabel}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
 
 /** Encabezado de panel: chip de degradado + título + subtítulo + acciones. */
 export function PanelHeader({

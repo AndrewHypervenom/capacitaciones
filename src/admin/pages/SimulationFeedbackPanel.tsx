@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  ChevronDown, ChevronRight, Download, Loader2, Search, Phone, ListChecks,
+  ChevronDown, ChevronRight, Download, Loader2, Search, ListChecks,
   HeartHandshake, Clock, CheckCircle2, XCircle, Sparkles, PhoneCall, AlertTriangle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
-import { PanelHeader, KpiRow, Kpi, InsightBanner } from './progress/ProgressChrome'
+import { PanelHeader, InsightBanner, StatStrip } from './progress/ProgressChrome'
 import { pickLang } from '@/lib/contentLang'
 import { toUtcMs } from '@/lib/datetime'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -711,63 +711,65 @@ export default function SimulationFeedbackPanel() {
           {/* Ojo con lo que se puede afirmar aquí: esto es desempeño en un
               entorno SIMULADO, no en el puesto real. Anticipa cómo va a
               atender, no demuestra cómo atiende. El orden va de cuánta gente
-              practica a con qué calidad lo hace. */}
-          <KpiRow className="xl:grid-cols-3 2xl:grid-cols-6">
-            <Kpi
-              accent={SIM_ACCENT}
-              icon={<Sparkles className="h-4 w-4" />}
-              label={t('admin.sim_panel.kpi_learners', 'Aprendices alcanzados')}
-              value={String(stats.learners)}
-              sub={stats.statusCounts.not_started > 0
-                ? t('admin.sim_panel.kpi_learners_idle', { count: stats.statusCounts.not_started, defaultValue: '{{count}} sin empezar' })
-                : undefined}
-              hint={t('admin.sim_panel.kpi_learners_hint', 'Personas con simuladores disponibles en este alcance.')}
-              frame={t('admin.progress_std.iso_coverage', 'ISO 30414 · Cobertura')}
-            />
-            <Kpi
-              accent="#3b82f6"
-              icon={<CheckCircle2 className="h-4 w-4" />}
-              label={t('admin.sim_panel.kpi_participation', 'Participación')}
-              value={`${stats.participation}%`}
-              sub={`${stats.practiced}/${stats.learners}`}
-              hint={t('admin.sim_panel.kpi_participation_hint', 'Quiénes han practicado al menos una vez.')}
-              frame={t('admin.progress_std.iso_participation', 'ISO 30414 · Participación')}
-              onClick={() => setStatusFilter(statusFilter === 'not_started' ? 'all' : 'not_started')}
-              active={statusFilter === 'not_started'}
-            />
-            <Kpi
-              accent={SIM_ACCENT}
-              highlight
-              icon={<Phone className="h-4 w-4" />}
-              label={t('admin.sim_panel.kpi_attempts', 'Intentos de práctica')}
-              value={String(stats.totalAttempts)}
-              sub={t('admin.sim_panel.kpi_attempts_sub', { n: stats.attemptsPerLearner, defaultValue: '{{n}} por persona' })}
-              hint={t('admin.sim_panel.kpi_attempts_hint', 'Volumen de práctica: repetir es justo lo que se busca aquí.')}
-            />
-            <Kpi
-              accent={SIM_ACCENT}
-              icon={<ListChecks className="h-4 w-4" />}
-              label={t('admin.sim_panel.kpi_score', 'Desempeño')}
-              value={`${stats.desempeno}%`}
-              hint={t('admin.sim_panel.kpi_score_hint', 'Puntaje promedio de quienes practicaron. Es desempeño en simulación: para el nivel de conducta hace falta la observación en el puesto real.')}
-            />
-            <Kpi
-              accent="#22c55e"
-              icon={<CheckCircle2 className="h-4 w-4" />}
-              label={t('admin.sim_panel.kpi_resolved', 'Tasa de resolución')}
-              value={`${stats.resolucion}%`}
-              hint={t('admin.sim_panel.kpi_resolved_hint', 'Llamadas SIMULADAS que terminaron resueltas. Anticipa el resultado de negocio, pero no lo sustituye: el FCR real vive en los sistemas del contact center.')}
-            />
-            <Kpi
-              accent="#ef4444"
-              icon={<AlertTriangle className="h-4 w-4" />}
-              label={t('admin.sim_panel.kpi_at_risk', 'En riesgo')}
-              value={String(stats.statusCounts.at_risk)}
-              hint={t('admin.sim_panel.kpi_at_risk_hint', 'Practicaron, pero su mejor puntaje no llega al 60%.')}
-              onClick={() => setStatusFilter(statusFilter === 'at_risk' ? 'all' : 'at_risk')}
-              active={statusFilter === 'at_risk'}
-            />
-          </KpiRow>
+              practica a con qué calidad lo hace.
+              En tira y no en tarjetas, por lo mismo que en las otras dos
+              vistas: la tabla tiene que caber en la primera pantalla. */}
+          <StatStrip
+            moreLabel={t('admin.progress_overview.more_stats', 'Más cifras')}
+            lessLabel={t('admin.progress_overview.less_stats', 'Menos cifras')}
+            items={[
+              {
+                key: 'learners',
+                label: t('admin.sim_panel.kpi_learners', 'Aprendices alcanzados'),
+                value: String(stats.learners),
+                accent: SIM_ACCENT,
+                hint: stats.statusCounts.not_started > 0
+                  ? t('admin.sim_panel.kpi_learners_idle', { count: stats.statusCounts.not_started, defaultValue: '{{count}} sin empezar' })
+                  : t('admin.sim_panel.kpi_learners_hint', 'Personas con simuladores disponibles en este alcance.'),
+              },
+              {
+                key: 'participation',
+                label: t('admin.sim_panel.kpi_participation', 'Participación'),
+                value: `${stats.participation}%`,
+                accent: '#3b82f6',
+                onClick: () => setStatusFilter(statusFilter === 'not_started' ? 'all' : 'not_started'),
+                active: statusFilter === 'not_started',
+                hint: `${stats.practiced}/${stats.learners} · ${t('admin.sim_panel.kpi_participation_hint', 'Quiénes han practicado al menos una vez.')}`,
+              },
+              {
+                key: 'score',
+                label: t('admin.sim_panel.kpi_score', 'Desempeño'),
+                value: `${stats.desempeno}%`,
+                accent: SIM_ACCENT,
+                hint: t('admin.sim_panel.kpi_score_short', 'Puntaje promedio de quienes practicaron. Es desempeño en simulación.'),
+              },
+              {
+                key: 'risk',
+                label: t('admin.sim_panel.kpi_at_risk', 'En riesgo'),
+                value: String(stats.statusCounts.at_risk),
+                accent: '#ef4444',
+                onClick: () => setStatusFilter(statusFilter === 'at_risk' ? 'all' : 'at_risk'),
+                active: statusFilter === 'at_risk',
+                hint: t('admin.sim_panel.kpi_at_risk_hint', 'Practicaron, pero su mejor puntaje no llega al 60%.'),
+              },
+            ]}
+            secondary={[
+              {
+                key: 'attempts',
+                label: t('admin.sim_panel.kpi_attempts', 'Intentos de práctica'),
+                value: String(stats.totalAttempts),
+                accent: SIM_ACCENT,
+                hint: t('admin.sim_panel.kpi_attempts_sub', { n: stats.attemptsPerLearner, defaultValue: '{{n}} por persona' }),
+              },
+              {
+                key: 'resolved',
+                label: t('admin.sim_panel.kpi_resolved', 'Tasa de resolución'),
+                value: `${stats.resolucion}%`,
+                accent: '#22c55e',
+                hint: t('admin.sim_panel.kpi_resolved_hint', 'Llamadas SIMULADAS que terminaron resueltas. Anticipa el resultado de negocio, pero no lo sustituye: el FCR real vive en los sistemas del contact center.'),
+              },
+            ]}
+          />
 
           {/* Insight accionable: aprendices en riesgo */}
           {stats.statusCounts.at_risk > 0 && statusFilter !== 'at_risk' && (

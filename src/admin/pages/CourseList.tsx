@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -42,6 +42,10 @@ import { RichTextArea } from '@/components/ui/RichTextArea'
 import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { getAudiences, ruleIsEmpty, type AudienceRule } from '@/services/audiences.service'
+import { getOrganizations, getAllOrgUnits } from '@/services/org.service'
+import type { OrgUnit } from '@/types/database'
+import { audienceSummary } from '@/admin/components/AudienceRulePicker'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
@@ -69,6 +73,11 @@ const PREVIEW_HINT_KEY = 'course-preview-hint-seen'
 type CourseSort = 'default' | 'az' | 'za'
 const COURSE_SORT_KEY = 'admin-courses-sort'
 
+/** Un curso sin fila en `course_audiences` se lee igual que uno con la regla vacía. */
+const EMPTY_RULE: AudienceRule = {
+  everyone: false, countries: [], operationIds: [], areaIds: [], isMandatory: false,
+}
+
 export default function CourseList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
@@ -94,6 +103,12 @@ export default function CourseList() {
     isSuperAdmin ? ALL_CAMPAIGNS : '',
   )
   const [courses, setCourses] = useState<AdminCourse[]>([])
+  /** Regla de audiencia por curso: qué país / área / CR tiene definidos. */
+  const [audiences, setAudiences] = useState<Map<string, AudienceRule>>(new Map())
+  /** Filtro de la migración: solo los que todavía no tienen regla. */
+  const [onlyUnmigrated, setOnlyUnmigrated] = useState(false)
+  /** El catálogo de CR y áreas, para escribir la regla con nombres. */
+  const [units, setUnits] = useState<OrgUnit[]>([])
   // El orden elegido se recuerda: quien trabaja alfabéticamente no quiere
   // volver a elegirlo cada vez que entra al panel.
   const [sort, setSort] = useState<CourseSort>(() => {
@@ -291,6 +306,13 @@ export default function CourseList() {
   }, [selectedCampaignId, setViewCampaign])
 
   useEffect(() => {
+    getOrganizations()
+      .then((orgs) => (orgs[0] ? getAllOrgUnits(orgs[0].id) : []))
+      .then(setUnits)
+      .catch(() => setUnits([]))
+  }, [])
+
+  useEffect(() => {
     if (!selectedCampaignId) return
     // Esqueleto solo la primera vez: los refrescos de fondo no deben parpadear.
     if (courses.length === 0) setLoading(true)
@@ -301,12 +323,34 @@ export default function CourseList() {
           cs.map((c) => ({ ...c, campaign_name: null }) as AdminCourse),
         )
     load
-      .then(setCourses)
+      .then((cs) => {
+        setCourses(cs)
+        /* Las reglas, en una sola consulta para toda la lista. Es lo que
+         * permite decir curso por curso si ya sabe a quién le llega o si
+         * todavía depende del programa. Va aparte del catálogo a propósito:
+         * si `course_audiences` no existiera, la lista sigue pintándose. */
+        getAudiences(cs.map((c) => c.id))
+          .then(setAudiences)
+          .catch(() => setAudiences(new Map()))
+      })
       .catch(() => setError(t('admin.courses.error_load')))
       .finally(() => setLoading(false))
     // `courses` solo decide el esqueleto; no puede volver a disparar la carga.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaignId, t, refreshKey])
+
+  /**
+   * Cuántos cursos siguen repartiéndose por programa.
+   *
+   * Es el contador de la migración, y es el único número que dice cuánto falta.
+   * Solo cuenta los PUBLICADOS: un borrador sin regla no le está fallando a
+   * nadie todavía, y meterlo en la cuenta haría que el trabajo pareciera más
+   * grande de lo que es.
+   */
+  const sinRegla = useMemo(
+    () => courses.filter((c) => c.is_published && ruleIsEmpty(audiences.get(c.id) ?? EMPTY_RULE)).length,
+    [courses, audiences],
+  )
 
   // Trae lo último cuando se vuelve a esta pestaña o cuando otra avisa que
   // cambió un curso o un módulo (los módulos cambian el conteo de la tarjeta).
@@ -372,7 +416,14 @@ export default function CourseList() {
     }
   }, [sort])
 
-  const visibleCourses = useMemo(() => sortByTitle(courses), [courses, sortByTitle])
+  const visibleCourses = useMemo(() => {
+    const base = onlyUnmigrated
+      ? courses.filter((c) => c.is_published && ruleIsEmpty(
+          audiences.get(c.id) ?? EMPTY_RULE,
+        ))
+      : courses
+    return sortByTitle(base)
+  }, [courses, sortByTitle, onlyUnmigrated, audiences])
 
   const filteredShared = useMemo(() => {
     const q = sharedSearch.trim().toLowerCase()
@@ -732,6 +783,34 @@ export default function CourseList() {
           </Button>
         </GlassCard>
       ) : (
+        <>
+        {/* El contador de la migración.
+            Vive aquí y no en una pantalla aparte porque es donde el capacitador
+            ya está: el trabajo es "abre tus cursos y di a quién le llegan", así
+            que el recordatorio tiene que estar encima de sus cursos. Se apaga
+            solo cuando no queda ninguno — un aviso que hay que acordarse de
+            quitar a mano se queda para siempre. */}
+        {sinRegla > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/[0.07] px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-amber-500">
+                {t('admin.courses.migrate_title', { count: sinRegla })}
+              </p>
+              <p className="mt-0.5 text-[12px] text-text-muted">
+                {t('admin.courses.migrate_body')}
+              </p>
+            </div>
+            <Button
+              variant={onlyUnmigrated ? 'neon' : 'ghost'}
+              className="shrink-0"
+              onClick={() => setOnlyUnmigrated((v) => !v)}
+            >
+              {onlyUnmigrated
+                ? t('admin.courses.migrate_show_all', 'Ver todos')
+                : t('admin.courses.migrate_filter', 'Ver solo esos')}
+            </Button>
+          </div>
+        )}
         <FadeIn className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" y={16}>
           {visibleCourses.map((course) => (
             <GlassCard
@@ -813,6 +892,32 @@ export default function CourseList() {
                   {course.visibility === 'catalog' && (
                     <NeonBadge color="cyan">{t('admin.courses.catalog_badge')}</NeonBadge>
                   )}
+                  {/* A quién le llega, escrito en la propia tarjeta.
+                      Es la pieza que faltaba para migrar sin abrir curso por
+                      curso: o dice "Colombia · Área: Operativa · CR: CLARO
+                      MILLA", o dice en rojo que todavía reparte por programa. */}
+                  {(() => {
+                    const regla = audiences.get(course.id)
+                    const vacia = !regla || ruleIsEmpty(regla)
+                    if (vacia) {
+                      return (
+                        <Tooltip label={t('admin.courses.no_rule_hint')} maxWidth={300}>
+                          <span className="inline-flex cursor-help items-center gap-1 rounded-full border border-red-500/45 bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-500">
+                            <Users className="h-3 w-3" />
+                            {t('admin.courses.no_rule_badge', 'Sin regla')}
+                          </span>
+                        </Tooltip>
+                      )
+                    }
+                    return (
+                      <Tooltip label={audienceSummary(regla, units, t)} maxWidth={320}>
+                        <span className="inline-flex max-w-[260px] cursor-help items-center gap-1 rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-muted">
+                          <Users className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{audienceSummary(regla, units, t)}</span>
+                        </span>
+                      </Tooltip>
+                    )
+                  })()}
                   {selectedCampaignId === ALL_CAMPAIGNS && course.campaign_name && (
                     <span className="inline-flex items-center rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-subtle">
                       {t('admin.courses.shared_from', { name: course.campaign_name })}
@@ -886,6 +991,7 @@ export default function CourseList() {
             </GlassCard>
           ))}
         </FadeIn>
+        </>
       ))}
 
       {/* Modal de creación */}

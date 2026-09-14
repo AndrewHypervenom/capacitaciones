@@ -2995,7 +2995,17 @@
       "aud_nobody_classified": "Ainda ninguém está classificado aqui, então todos aparecem. Vai encurtar sozinho quando a base do RH for carregada.",
       "assign_campaigns_going_away": "Vai ser retirado",
       "assign_campaigns_going_away_title": "Isto desaparece.",
-      "assign_campaigns_going_away_body": "Atribuir por programa está sendo retirado: a regra de país, área e CR acima o substitui. Não marque programas novos aqui. Além da regra, o único que fica são as «Pessoas específicas» abaixo, para exceções pontuais."
+      "assign_campaigns_going_away_body": "Atribuir por programa está sendo retirado: a regra de país, área e CR acima o substitui. Não marque programas novos aqui. Além da regra, o único que fica são as «Pessoas específicas» abaixo, para exceções pontuais.",
+      "migrate_title": "{{count}} cursos ainda são distribuídos por programa",
+      "migrate_body": "Abra-os e diga para quem vão: país, e se precisar área e CR. Ninguém perde nada — definir só soma.",
+      "migrate_filter": "Ver só esses",
+      "migrate_show_all": "Ver todos",
+      "no_rule_badge": "Sem regra",
+      "no_rule_hint": "Este curso ainda chega por programa. Abra-o, vá em Atribuir e diga para quem vai: país, e se precisar área e CR.",
+      "category_new": "Nova",
+      "category_new_ph": "Nome da categoria",
+      "category_created": "Categoria criada",
+      "category_empty_catalog2": "Ainda não há categorias. Crie a primeira com «Nova»."
     },
     "simulations": {
       "save": "Salvar",
@@ -3884,7 +3894,15 @@
       "kpi_overdue_hint": "{{count}} cursos atribuídos com o prazo vencido",
       "kpi_overdue_none": "Ninguém com o prazo vencido (só contam os cursos com limite de tempo)",
       "focus_overdue": "Somente com cursos vencidos",
-      "kpi_journey_unknown": "Só foi possível medir o conteúdo: sem simuladores, mundo nem prova, este número pode sair alto"
+      "kpi_journey_unknown": "Só foi possível medir o conteúdo: sem simuladores, mundo nem prova, este número pode sair alto",
+      "more_stats": "Mais números",
+      "less_stats": "Menos números",
+      "kpi_syllabus_person": "Média por pessoa · mediana {{median}}% sobre {{count}} pessoas",
+      "kpi_syllabus_none": "Ainda não há conteúdo atribuído",
+      "all_operations": "Todos os CR",
+      "all_areas": "Todas as áreas",
+      "pick_scope_title": "Escolha o que quer olhar",
+      "pick_scope_body": "Um CR, uma área ou um curso. O painel é calculado sobre o que você escolher — assim não se consulta o programa inteiro para olhar uma equipe de doze pessoas."
     },
     "feedback_panel": {
       "title": "Progresso dos Aprendizes",
@@ -5010,7 +5028,8 @@
       "kpi_at_risk": "Em risco",
       "kpi_at_risk_hint": "Praticaram, mas a melhor pontuação não chega a 60%.",
       "risk_title_one": "{{count}} aprendiz em risco",
-      "risk_title_other": "{{count}} aprendizes em risco"
+      "risk_title_other": "{{count}} aprendizes em risco",
+      "kpi_score_short": "Pontuação média de quem praticou. É desempenho em simulação."
     },
     "audit": {
       "open": "Abrir",
@@ -5664,7 +5683,15 @@
       "origin_roster_hint": "Este CR chegou com a base do RH. É do modelo novo.",
       "legacy_badge": "A migrar",
       "title": "CR, áreas e categorias",
-      "read_only": "Esta lista quem abre é o superadmin. Aqui você pode consultá-la para saber para qual CR ou área direcionar um curso."
+      "read_only": "Esta lista quem abre é o superadmin. Aqui você pode consultá-la para saber para qual CR ou área direcionar um curso.",
+      "delete": "Excluir",
+      "deleted": "Excluída",
+      "delete_title": "Excluir «{{name}}»",
+      "delete_desc": "Ninguém a está usando. Sai do catálogo e o nome fica livre.",
+      "delete_in_use": "{{count}} a usam: não dá para excluir",
+      "delete_blocked": "Não dá para excluir «{{name}}»",
+      "delete_blocked_people": "{{count}} pessoa a tem atribuída. Reatribua primeiro (a próxima carga da base faz isso sozinha).",
+      "delete_blocked_courses": "{{count}} curso a usa. Mude a categoria dele primeiro."
     }
   },
   "themes": {

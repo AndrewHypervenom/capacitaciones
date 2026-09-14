@@ -1,5 +1,5 @@
 
-import { useRef, useLayoutEffect, useState } from 'react'
+import { lazy, Suspense, useRef, useLayoutEffect, useState } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FolderX, Plus } from 'lucide-react'
@@ -13,35 +13,66 @@ import { CampaignWizard } from './components/CampaignWizard'
 import { Button } from '@/components/ui/Button'
 import { ViewPresenceChip } from '@/components/presence/ViewPresenceChip'
 import AdminDashboard from './pages/AdminDashboard'
-import CampaignList from './pages/CampaignList'
-import NewModulePage from './pages/NewModulePage'
-import ImportContent from './pages/ImportContent'
-import UserList from './pages/UserList'
-import UserProfile from './pages/UserProfile'
-import LiveQuizAdmin from './pages/LiveQuizAdmin'
-import ModuleList from './pages/ModuleList'
-import ModuleEditor from './pages/ModuleEditor'
-import CourseList from './pages/CourseList'
-import CourseEditor from './pages/CourseEditor'
-import SimulationList from './pages/SimulationList'
-import SimulationEditor from './pages/SimulationEditor'
-import ChoiceSimEditor from './pages/ChoiceSimEditor'
-import ProgressHub from './pages/ProgressHub'
-import LearningMissions from './pages/LearningMissions'
-import Worlds from './pages/Worlds'
-import WorldDetail from './pages/WorldDetail'
-import ChatLogs from './pages/ChatLogs'
-import AiUsage from './pages/AiUsage'
-import Traffic from './pages/Traffic'
-import AiLimits from './pages/AiLimits'
-import Gamification from './pages/Gamification'
-import OrgUnits from './pages/OrgUnits'
-import ActivityLog from './pages/ActivityLog'
-import DeletionApprovals from './pages/DeletionApprovals'
-import PublishApprovals from './pages/PublishApprovals'
+
+/* ── Las páginas del panel van en su propio archivo ───────────────────────
+ *
+ * Antes TODAS se importaban de golpe y Vite las metía en un solo paquete de
+ * 2,25 MB: entrar a cualquier pantalla del panel obligaba a descargar y
+ * compilar el editor de cursos, el de módulos, los mundos y el tablero de
+ * progreso entero — aunque solo se fuera a mirar la lista de usuarios.
+ *
+ * La regla de rutas perezosas ya estaba puesta en `App.tsx` para el lado del
+ * aprendiz; aquí no se había aplicado nunca. El Panel se queda cargado de
+ * entrada a propósito: es donde aterriza todo el mundo, y partirlo solo
+ * añadiría una espera en el caso más frecuente.
+ * ──────────────────────────────────────────────────────────────────────── */
+const CampaignList = lazy(() => import('./pages/CampaignList'))
+const NewModulePage = lazy(() => import('./pages/NewModulePage'))
+const ImportContent = lazy(() => import('./pages/ImportContent'))
+const UserList = lazy(() => import('./pages/UserList'))
+const UserProfile = lazy(() => import('./pages/UserProfile'))
+const LiveQuizAdmin = lazy(() => import('./pages/LiveQuizAdmin'))
+const ModuleList = lazy(() => import('./pages/ModuleList'))
+const ModuleEditor = lazy(() => import('./pages/ModuleEditor'))
+const CourseList = lazy(() => import('./pages/CourseList'))
+const CourseEditor = lazy(() => import('./pages/CourseEditor'))
+const SimulationList = lazy(() => import('./pages/SimulationList'))
+const SimulationEditor = lazy(() => import('./pages/SimulationEditor'))
+const ChoiceSimEditor = lazy(() => import('./pages/ChoiceSimEditor'))
+const ProgressHub = lazy(() => import('./pages/ProgressHub'))
+const LearningMissions = lazy(() => import('./pages/LearningMissions'))
+const Worlds = lazy(() => import('./pages/Worlds'))
+const WorldDetail = lazy(() => import('./pages/WorldDetail'))
+const ChatLogs = lazy(() => import('./pages/ChatLogs'))
+const AiUsage = lazy(() => import('./pages/AiUsage'))
+const Traffic = lazy(() => import('./pages/Traffic'))
+const AiLimits = lazy(() => import('./pages/AiLimits'))
+const Gamification = lazy(() => import('./pages/Gamification'))
+const OrgUnits = lazy(() => import('./pages/OrgUnits'))
+const ActivityLog = lazy(() => import('./pages/ActivityLog'))
+const DeletionApprovals = lazy(() => import('./pages/DeletionApprovals'))
+const PublishApprovals = lazy(() => import('./pages/PublishApprovals'))
+const SiteFeedback = lazy(() => import('./pages/SiteFeedback'))
+
 import { usePendingPublicationsSync } from '@/stores/pendingPublicationsStore'
-import SiteFeedback from './pages/SiteFeedback'
 import { HelpWidget } from '@/components/help/HelpWidget'
+
+/**
+ * Lo que se ve mientras llega el archivo de una pantalla.
+ *
+ * Un esqueleto tenue y no un spinner: con el archivo en caché esto dura dos
+ * fotogramas, y un spinner que aparece y desaparece en 30 ms se percibe como un
+ * parpadeo, que es peor que no poner nada.
+ */
+function RouteFallback() {
+  return (
+    <div className="p-4 sm:p-8">
+      <div className="h-7 w-52 animate-pulse rounded-lg bg-glass/8" />
+      <div className="mt-3 h-4 w-80 animate-pulse rounded bg-glass/6" />
+      <div className="mt-6 h-28 animate-pulse rounded-2xl bg-glass/5" />
+    </div>
+  )
+}
 
 /** Enlace viejo a la vista previa de página completa → editor del módulo. */
 function LegacyPreviewRedirect() {
@@ -126,6 +157,10 @@ export default function AdminRouter() {
         {/* Mientras el modo pruebas esté encendido, el panel lo dice arriba de
             todo: sin esto es facilísimo exportar un Excel con data de prueba. */}
         <TestModeBanner />
+        {/* Un único Suspense alrededor de las rutas. Dentro y no fuera del
+            contenedor con scroll, para que la barra lateral y el aviso de modo
+            pruebas no parpadeen al cambiar de pantalla. */}
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route index element={<AdminDashboard />} />
           <Route path="campaigns" element={<CampaignList />} />
@@ -189,6 +224,7 @@ export default function AdminRouter() {
           <Route path="feedback" element={<Navigate to="/admin/progress?view=worlds" replace />} />
           <Route path="progress" element={<ProgressHub />} />
         </Routes>
+        </Suspense>
       </div>
       {/* Vale para CUALQUIER vista del panel: avisa si alguien más está aquí. */}
       <ViewPresenceChip />

@@ -5,7 +5,7 @@ import {
   Users, UserCheck, Award, Gauge, HeartHandshake, ClipboardCheck, Download,
   Search, RefreshCw, Sparkles, TrendingUp, Clock, Layers, GraduationCap,
   ChevronRight, Inbox, FileSpreadsheet, CalendarRange, Filter, BarChart3,
-  MessageSquareQuote, AlertTriangle, Hourglass, CircleSlash, ShieldCheck, ListChecks,
+  MessageSquareQuote, AlertTriangle, Hourglass, CircleSlash,
   CalendarClock, Copy, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,7 +17,7 @@ import { Select } from '@/components/ui/Select';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { countryLabel, countryLabelWithFlag } from '@/lib/countries';
 import { UserProgressDrawer } from '@/admin/components/UserProgressDrawer';
-import type { Profile } from '@/types/database';
+import type { Profile, OrgUnit } from '@/types/database';
 import { downloadWorkbook, xlsDate, xlsHours, type Sheet, type SheetRow } from '@/lib/exportXlsx';
 import { formatElapsed } from '@/hooks/useModuleTimer';
 import {
@@ -30,8 +30,14 @@ import {
   GREEN, MAGENTA, BLUE, AMBER, VIOLET, CYAN,
 } from './OverviewChrome';
 import { scoreHex, useSearchHotkey, Highlight } from './ModulesChrome';
+import { StatStrip } from './ProgressChrome';
 import { CourseProgressDrawer } from './CourseProgressDrawer';
 import { pickLang } from '@/lib/contentLang';
+import { getOrganizations, getOrgUnits } from '@/services/org.service';
+
+/** Miles separados. Un "2015" a secas se lee mal al lado de un porcentaje. */
+const fmt = (n: number | null | undefined) =>
+  n === null || n === undefined ? '—' : n.toLocaleString('es');
 
 /* ────────────────────────────────────────────────────────────────────────────
    Panorama de Progreso.
@@ -119,7 +125,38 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const { isSuperAdmin } = useAuth();
   const lang = (useUserStore((s) => s.language) ?? 'es') as 'es' | 'en' | 'pt';
 
-  const data = useProgramData(lang, !isSuperAdmin);
+  const [campaign, setCampaign] = useState<string>('all');
+  const [course, setCourse] = useState<string>('all');
+  /* CR y área: los ejes con los que ahora se reparte la formación, y los que
+     acotan lo que este tablero tiene que leer. */
+  const [operation, setOperation] = useState<string>('all');
+  const [area, setArea] = useState<string>('all');
+  const [units, setUnits] = useState<OrgUnit[]>([]);
+
+  /**
+   * Hasta que no se elige un CR, un área o un curso, NO se consulta nada.
+   *
+   * El tablero lee dieciocho tablas de un tirón. Hacerlo al abrir la pantalla es
+   * trabajo que casi siempre se tira: nadie entra aquí a mirar "todo", se entra
+   * a mirar UN CR, UN área o UN curso. El programa no cuenta como alcance a
+   * propósito — es el eje que se está jubilando, y dejar que sirviera de
+   * atajo mantendría viva justo la costumbre que se quiere quitar.
+   */
+  const scopeChosen = operation !== 'all' || area !== 'all' || course !== 'all';
+
+  /* El catálogo SÍ se pide de entrada: son noventa y cinco filas de dos
+     columnas, y es precisamente lo que hay que poder elegir para que se cargue
+     todo lo demás. Pedirlo bajo demanda dejaría los selectores vacíos. */
+  useEffect(() => {
+    let alive = true;
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((list) => { if (alive) setUnits(list); })
+      .catch(() => { if (alive) setUnits([]); });
+    return () => { alive = false; };
+  }, []);
+
+  const data = useProgramData(lang, !isSuperAdmin, scopeChosen);
   const {
     loading, error, people, courses, cells, campaigns, activity, certificates, certificatesKnown,
     assignmentsKnown, journeyKnown, modulesByCourse, doneModules, study, loadStudyTime, surveys, loadSurveys,
@@ -127,8 +164,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   } = data;
 
   const [tab, setTab] = useState<Tab>('summary');
-  const [campaign, setCampaign] = useState<string>('all');
-  const [course, setCourse] = useState<string>('all');
   const [range, setRange] = useState<RangeKey>('all');
   const [onlyLearners, setOnlyLearners] = useState(true);
   const [job, setJob] = useState<string>('all');
@@ -249,9 +284,13 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       // filtrar por él (suele ser el primer hallazgo: gente sin cargo).
       if (job !== 'all' && (p.jobTitle ?? NO_VALUE) !== job) return false;
       if (country !== 'all' && (p.country ?? NO_VALUE) !== country) return false;
+      // CR y área: los ejes nuevos. Se comparan por id, no por nombre, porque
+      // el nombre del CR puede corregirse en la próxima carga de la nómina.
+      if (operation !== 'all' && p.operationId !== operation) return false;
+      if (area !== 'all' && p.areaId !== area) return false;
       return true;
     });
-  }, [people, onlyLearners, campaignPeopleIds, coursePeopleIds, job, country]);
+  }, [people, onlyLearners, campaignPeopleIds, coursePeopleIds, job, country, operation, area]);
 
   /** Opciones de los cortes, sacadas de la gente que hay (no de un catálogo). */
   const jobOptions = useMemo(() => segmentOptions(people, (p) => p.jobTitle), [people]);
@@ -375,9 +414,34 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     // la finalización general — mezclarlas era esconder el dato que importa.
     const mandatoryTotal = reached.reduce((s, p) => s + p.mandatory, 0);
     const mandatoryDone = reached.reduce((s, p) => s + p.mandatoryDone, 0);
-    // Avance de temario: módulos hechos sobre los módulos asignados.
+    /* Avance de temario: POR PERSONA, no por asignación.
+     *
+     * Sumar los módulos de todo el mundo daba "354 de 64.502" — un denominador
+     * que sale de multiplicar los cursos por la gente, y que crece cada vez que
+     * alguien asigna un curso a todos. Ese 1% no medía el avance: medía cuánto
+     * se había repartido.
+     *
+     * Ahora cada persona aporta SU porcentaje y se promedia. El número deja de
+     * depender del reparto. Va con la MEDIANA al lado a propósito: con mucha
+     * gente sin empezar, la media la levantan unos pocos muy avanzados, y la
+     * mediana es la que dice cómo va la persona del medio.
+     */
     const modulesDone = reached.reduce((s, p) => s + p.modulesDone, 0);
     const modulesTotal = reached.reduce((s, p) => s + p.modulesTotal, 0);
+    const conTemario = reached.filter((p) => p.modulesTotal > 0);
+    const pcts = conTemario
+      .map((p) => (p.modulesDone / p.modulesTotal) * 100)
+      .sort((a, b) => a - b);
+    const syllabusAvg = pcts.length
+      ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+      : null;
+    const syllabusMedian = pcts.length
+      ? Math.round(
+          pcts.length % 2
+            ? pcts[(pcts.length - 1) / 2]
+            : (pcts[pcts.length / 2 - 1] + pcts[pcts.length / 2]) / 2,
+        )
+      : null;
 
     // Fuera de plazo. Se reportan las dos cifras porque responden preguntas
     // distintas: a cuánta GENTE hay que perseguir, y cuántas ASIGNACIONES se
@@ -391,7 +455,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       mandatoryTotal, mandatoryDone,
       compliance: mandatoryTotal > 0 ? Math.round((mandatoryDone / mandatoryTotal) * 100) : null,
       modulesDone, modulesTotal,
-      syllabus: modulesTotal > 0 ? Math.round((modulesDone / modulesTotal) * 100) : null,
+      /** Avance medio POR PERSONA. Ver el comentario de arriba. */
+      syllabus: syllabusAvg,
+      syllabusMedian,
+      syllabusPeople: pcts.length,
       participation: total > 0 ? Math.round((started / total) * 100) : 0,
       deliveries: scopedActivity.length,
       certificates: scopedCerts.length,
@@ -1141,6 +1208,31 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             />
           </div>
 
+          {/* CR y ÁREA. Van delante del curso porque son el orden en el que se
+              piensa —dónde, qué tipo de gente, qué curso— y el mismo con el que
+              se define la audiencia de un curso. Cualquiera de los tres
+              enciende el tablero. */}
+          <div className="w-[190px]">
+            <Select
+              value={operation}
+              onChange={setOperation}
+              options={[
+                { value: 'all', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
+                ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
+              ]}
+            />
+          </div>
+          <div className="w-[175px]">
+            <Select
+              value={area}
+              onChange={setArea}
+              options={[
+                { value: 'all', label: t('admin.progress_overview.all_areas', 'Todas las áreas') },
+                ...units.filter((u) => u.kind === 'area').map((u) => ({ value: u.id, label: u.name })),
+              ]}
+            />
+          </div>
+
           {/* Filtro por CURSO. El resto de columnas —temario, completados,
               certificados— son sumas de todos los cursos asignados, así que
               "certificado" y "30% de temario" conviven en la misma fila sin que
@@ -1257,140 +1349,135 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         </div>
       </Rise>
 
-      {/* ── KPIs ─────────────────────────────────────────────────────────── */}
-      {/* Seis en fila solo cuando la pantalla de verdad da: por debajo de eso
-          las tarjetas se estrechan tanto que la etiqueta no cabe. */}
-      <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-        <KpiCard
-          delay={0.02}
-          icon={<Users className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_reach', 'Personas alcanzadas')}
-          frame={t('admin.progress_std.iso_coverage', 'ISO 30414 · Cobertura')}
-          value={loading ? null : kpi.total}
-          accent={BLUE}
+      {/* ── Sin alcance: no se ha consultado nada todavía ────────────────
+          No es un estado vacío de "no hay datos" — es un "todavía no te he
+          preguntado qué quieres ver". La diferencia importa: un vacío hace
+          pensar que algo falló, y aquí lo único que falta es elegir. */}
+      {!scopeChosen ? (
+        <Rise delay={0.06}>
+          <div className="rounded-2xl border border-line bg-subtle/40 px-6 py-14 text-center">
+            <Filter className="mx-auto mb-3 h-8 w-8 text-text-subtle" />
+            <p className="text-[15px] font-medium text-text">
+              {t('admin.progress_overview.pick_scope_title', 'Elige qué quieres mirar')}
+            </p>
+            <p className="mx-auto mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-text-muted">
+              {t('admin.progress_overview.pick_scope_body', 'Un CR, un área o un curso. El tablero se calcula sobre lo que elijas — así no se consulta el programa entero para mirar un equipo de doce personas.')}
+            </p>
+          </div>
+        </Rise>
+      ) : (
+      <>
+      {/* ── Las cifras, en una tira ──────────────────────────────────────
+          Antes eran nueve tarjetas que ocupaban la pantalla entera y dejaban la
+          tabla fuera de vista: se pulsaba una para filtrar y "no pasaba nada"
+          — pasaba novecientos píxeles más abajo. Siguen siendo las mismas
+          nueve y siguen filtrando igual; lo que cambia es que ahora la tabla
+          está justo debajo. Las tres de segundo plano se despliegan. */}
+      <Rise delay={0.06}>
+        <StatStrip
           loading={loading}
-          hint={assignmentsKnown
-            ? t('admin.progress_overview.kpi_reach_hint', { count: kpi.total - kpi.idle, defaultValue: '{{count}} con actividad registrada' })
-            : t('admin.progress_overview.kpi_reach_noassign', 'Sin datos de asignación visibles')}
+          moreLabel={t('admin.progress_overview.more_stats', 'Más cifras')}
+          lessLabel={t('admin.progress_overview.less_stats', 'Menos cifras')}
+          items={[
+            {
+              key: 'reach',
+              label: t('admin.progress_overview.kpi_reach', 'Personas alcanzadas'),
+              value: fmt(kpi.total),
+              accent: BLUE,
+              hint: assignmentsKnown
+                ? t('admin.progress_overview.kpi_reach_hint', { count: kpi.total - kpi.idle, defaultValue: '{{count}} con actividad registrada' })
+                : t('admin.progress_overview.kpi_reach_noassign', 'Sin datos de asignación visibles'),
+            },
+            {
+              key: 'participation',
+              label: t('admin.progress_overview.kpi_participation', 'Participación'),
+              value: loading ? '·' : `${kpi.participation}%`,
+              accent: GREEN,
+              active: focus === 'started',
+              onClick: () => toggleFocus('started'),
+              hint: t('admin.progress_overview.kpi_participation_hint', { started: kpi.started, total: kpi.total, defaultValue: '{{started}} de {{total}} han hecho al menos una actividad' }),
+            },
+            {
+              key: 'pending',
+              label: t('admin.progress_overview.kpi_pending', 'Por evaluar'),
+              value: fmt(kpi.pending),
+              accent: CYAN,
+              active: focus === 'pending',
+              onClick: () => toggleFocus('pending'),
+              hint: t('admin.progress_overview.kpi_pending_hint', 'Entregas esperando retroalimentación'),
+            },
+            {
+              key: 'overdue',
+              label: t('admin.progress_overview.kpi_overdue', 'Fuera de plazo'),
+              value: fmt(kpi.overduePeople),
+              accent: '#ef4444',
+              active: focus === 'overdue',
+              onClick: kpi.overdueAssignments > 0 ? () => toggleFocus('overdue') : undefined,
+              hint: kpi.overdueAssignments > 0
+                ? t('admin.progress_overview.kpi_overdue_hint', { count: kpi.overdueAssignments, defaultValue: '{{count}} cursos asignados con el plazo vencido' })
+                : t('admin.progress_overview.kpi_overdue_none', 'Nadie con el plazo vencido (solo cuentan los cursos con límite de tiempo)'),
+            },
+            {
+              key: 'certificates',
+              label: t('admin.progress_overview.kpi_certificates', 'Certificados'),
+              value: fmt(kpi.certificates),
+              accent: VIOLET,
+              active: tab === 'certificates',
+              onClick: () => setTab('certificates'),
+              hint: certificatesKnown
+                ? t('admin.progress_overview.kpi_certificates_hint', { count: kpi.certified, defaultValue: '{{count}} personas con al menos uno' })
+                : t('admin.progress_overview.kpi_certificates_unknown', 'No se pudieron leer los certificados'),
+            },
+            {
+              key: 'score',
+              label: t('admin.progress_overview.kpi_score', 'Nota promedio'),
+              value: kpi.avgScore === null ? '—' : String(kpi.avgScore),
+              accent: AMBER,
+              hint: t('admin.progress_overview.kpi_score_hint', { count: kpi.deliveries, defaultValue: 'Sobre {{count}} entregas evaluadas o resueltas' }),
+            },
+          ]}
+          secondary={[
+            {
+              key: 'syllabus',
+              label: t('admin.progress_overview.kpi_syllabus', 'Avance del temario'),
+              value: kpi.syllabus === null ? '—' : `${kpi.syllabus}%`,
+              accent: '#14b8a6',
+              /* Media Y mediana. Con mucha gente sin empezar, la media la
+                 levantan unos pocos muy avanzados; la mediana dice cómo va la
+                 persona del medio, que es la pregunta de verdad. */
+              hint: kpi.syllabus === null
+                ? t('admin.progress_overview.kpi_syllabus_none', 'Todavía no hay temario asignado')
+                : t('admin.progress_overview.kpi_syllabus_person', {
+                    median: kpi.syllabusMedian, count: kpi.syllabusPeople,
+                    defaultValue: 'Media por persona · mediana {{median}}% sobre {{count}} personas',
+                  }),
+            },
+            {
+              key: 'compliance',
+              label: t('admin.progress_overview.kpi_compliance', 'Cumplimiento obligatorio'),
+              value: kpi.compliance === null ? '—' : `${kpi.compliance}%`,
+              accent: '#f97316',
+              active: focus === 'mandatory',
+              onClick: kpi.mandatoryTotal > 0 ? () => toggleFocus('mandatory') : undefined,
+              hint: !journeyKnown
+                ? t('admin.progress_overview.kpi_journey_unknown', 'Solo se pudo medir el temario: sin simuladores, mundo ni examen, esta cifra puede salir alta')
+                : kpi.mandatoryTotal > 0
+                  ? t('admin.progress_overview.kpi_compliance_hint', { done: kpi.mandatoryDone, total: kpi.mandatoryTotal, defaultValue: '{{done}} de {{total}} asignaciones obligatorias terminadas' })
+                  : t('admin.progress_overview.kpi_compliance_none', 'Ningún curso está marcado como obligatorio todavía'),
+            },
+            {
+              key: 'nps',
+              label: t('admin.progress_overview.kpi_nps', 'NPS'),
+              value: nps.score === null ? '—' : String(nps.score),
+              accent: MAGENTA,
+              onClick: () => setTab('survey'),
+              hint: nps.total > 0
+                ? t('admin.progress_overview.kpi_nps_hint', { count: nps.total, defaultValue: 'De {{count}} encuestas de cierre' })
+                : t('admin.progress_overview.kpi_nps_empty', 'Abre Satisfacción para calcularlo'),
+            },
+          ]}
         />
-        <KpiCard
-          delay={0.06}
-          icon={<UserCheck className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_participation', 'Participación')}
-          frame={t('admin.progress_std.iso_participation', 'ISO 30414 · Participación')}
-          value={loading ? null : kpi.participation}
-          suffix="%"
-          accent={GREEN}
-          loading={loading}
-          active={focus === 'started'}
-          onClick={() => toggleFocus('started')}
-          delta={trend ? { value: trend.activePeople, label: trendLabel } : null}
-          hint={t('admin.progress_overview.kpi_participation_hint', { started: kpi.started, total: kpi.total, defaultValue: '{{started}} de {{total}} han hecho al menos una actividad' })}
-          footer={<StackedBar
-            height={7}
-            showLegend={false}
-            segments={[
-              { key: 'a', label: t('admin.progress_overview.seg_started', 'Participaron'), value: kpi.started, color: GREEN },
-              { key: 'b', label: t('admin.progress_overview.seg_idle', 'Sin iniciar'), value: kpi.idle, color: '#a1a1aa' },
-            ]}
-          />}
-        />
-        <KpiCard
-          delay={0.1}
-          icon={<Gauge className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_score', 'Nota promedio')}
-          value={loading ? null : kpi.avgScore}
-          accent={AMBER}
-          loading={loading}
-          hint={t('admin.progress_overview.kpi_score_hint', { count: kpi.deliveries, defaultValue: 'Sobre {{count}} entregas evaluadas o resueltas' })}
-        />
-        <KpiCard
-          delay={0.14}
-          icon={<Award className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_certificates', 'Certificados')}
-          frame={t('admin.progress_std.iso_completion', 'ISO 30414 · Finalización')}
-          value={loading ? null : kpi.certificates}
-          accent={VIOLET}
-          loading={loading}
-          active={tab === 'certificates'}
-          /* Antes filtraba a las personas con certificado; ahora abre la lista
-             de diplomas, que es lo que se busca al pulsar el número. */
-          onClick={() => setTab('certificates')}
-          delta={trend ? { value: trend.certificates, label: trendLabel } : null}
-          hint={certificatesKnown
-            ? t('admin.progress_overview.kpi_certificates_hint', { count: kpi.certified, defaultValue: '{{count}} personas con al menos uno' })
-            : t('admin.progress_overview.kpi_certificates_unknown', 'No se pudieron leer los certificados')}
-        />
-        {/* Cumplimiento: la finalización de lo OBLIGATORIO, que es la cifra que
-            se audita. Se pinta "—" si no hay nada marcado como obligatorio. */}
-        <KpiCard
-          delay={0.16}
-          icon={<ShieldCheck className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_compliance', 'Cumplimiento obligatorio')}
-          frame={t('admin.progress_std.iso_mandatory', 'ISO 30414 · Formación obligatoria')}
-          value={loading ? null : kpi.compliance}
-          suffix="%"
-          accent="#f97316"
-          loading={loading}
-          active={focus === 'mandatory'}
-          onClick={kpi.mandatoryTotal > 0 ? () => toggleFocus('mandatory') : undefined}
-          hint={!journeyKnown
-            ? t('admin.progress_overview.kpi_journey_unknown', 'Solo se pudo medir el temario: sin simuladores, mundo ni examen, esta cifra puede salir alta')
-            : kpi.mandatoryTotal > 0
-              ? t('admin.progress_overview.kpi_compliance_hint', { done: kpi.mandatoryDone, total: kpi.mandatoryTotal, defaultValue: '{{done}} de {{total}} asignaciones obligatorias terminadas' })
-              : t('admin.progress_overview.kpi_compliance_none', 'Ningún curso está marcado como obligatorio todavía')}
-        />
-        {/* Avance de temario: el "cuánto llevan" real, módulo a módulo. */}
-        <KpiCard
-          delay={0.2}
-          icon={<ListChecks className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_syllabus', 'Avance del temario')}
-          value={loading ? null : kpi.syllabus}
-          suffix="%"
-          accent="#14b8a6"
-          loading={loading}
-          hint={t('admin.progress_overview.kpi_syllabus_hint', { done: kpi.modulesDone, total: kpi.modulesTotal, defaultValue: '{{done}} de {{total}} módulos asignados completados' })}
-        />
-        <KpiCard
-          delay={0.18}
-          icon={<HeartHandshake className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_nps', 'NPS')}
-          value={nps.score}
-          accent={MAGENTA}
-          loading={surveys.loading}
-          onClick={() => setTab('survey')}
-          hint={nps.total > 0
-            ? t('admin.progress_overview.kpi_nps_hint', { count: nps.total, defaultValue: 'De {{count}} encuestas de cierre' })
-            : t('admin.progress_overview.kpi_nps_empty', 'Abre Satisfacción para calcularlo')}
-        />
-        {/* Vencidos: solo cuenta lo que tiene límite de tiempo configurado, así
-            que un 0 aquí puede significar "nadie se pasó" o "ningún curso tiene
-            plazo". El pie lo dice en vez de dejarlo a la imaginación. */}
-        <KpiCard
-          delay={0.24}
-          icon={<CalendarClock className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_overdue', 'Fuera de plazo')}
-          value={loading ? null : kpi.overduePeople}
-          accent="#ef4444"
-          loading={loading}
-          active={focus === 'overdue'}
-          onClick={kpi.overdueAssignments > 0 ? () => toggleFocus('overdue') : undefined}
-          hint={kpi.overdueAssignments > 0
-            ? t('admin.progress_overview.kpi_overdue_hint', { count: kpi.overdueAssignments, defaultValue: '{{count}} cursos asignados con el plazo vencido' })
-            : t('admin.progress_overview.kpi_overdue_none', 'Nadie con el plazo vencido (solo cuentan los cursos con límite de tiempo)')}
-        />
-        <KpiCard
-          delay={0.22}
-          icon={<ClipboardCheck className="h-5 w-5" />}
-          label={t('admin.progress_overview.kpi_pending', 'Por evaluar')}
-          value={loading ? null : kpi.pending}
-          accent={CYAN}
-          loading={loading}
-          active={focus === 'pending'}
-          onClick={() => toggleFocus('pending')}
-          hint={t('admin.progress_overview.kpi_pending_hint', 'Entregas esperando retroalimentación')}
-        />
-      </div>
+      </Rise>
 
       {/* ── Pestañas ─────────────────────────────────────────────────────── */}
       <Rise delay={0.1}>
@@ -1562,7 +1649,12 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           lang={i18n.language}
         />
       )}
+      </>
+      )}
 
+      {/* Los cajones van FUERA del alcance: se abren desde dentro, pero cerrar
+          el alcance con uno abierto no debe hacerlo desaparecer a mitad de
+          lectura. */}
       {/* Detalle de un curso: sus módulos y quién va por dónde. */}
       {drawerCourse && (
         <CourseProgressDrawer
