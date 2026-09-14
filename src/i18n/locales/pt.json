@@ -2273,7 +2273,9 @@
       "bulk_sync_jobs_one": "Atualizar o cargo de {{n}} pessoa que já existe",
       "bulk_sync_jobs_other": "Atualizar o cargo de {{n}} pessoas que já existem",
       "bulk_sync_jobs_hint": "O arquivo é a fonte do cargo: não dá para editar no perfil. O atual é substituído; nada mais é alterado.",
-      "bulk_sync_jobs": "Atualizar o cargo de {{n}} pessoas"
+      "bulk_sync_jobs": "Atualizar o cargo de {{n}} pessoas",
+      "bulk_no_campaign_warn": "{{n}} contas novas nasceriam SEM programa.",
+      "bulk_no_campaign_hint": "Uma pessoa sem programa entra no site mas não vê cursos nem acumula progresso. Escolha um em «Programa para todos», ou terá de atribuí-lo depois uma a uma."
     },
     "hr": {
       "title": "Sincronizar com o RH",

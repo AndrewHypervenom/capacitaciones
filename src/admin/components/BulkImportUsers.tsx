@@ -1397,6 +1397,23 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                         </p>
                       )}
 
+                      {/* El superadmin SÍ puede crear sin programa — a veces hace
+                          falta — pero no en silencio. Una carga de 700 aprendices
+                          apareció al día siguiente sin programa y sin progreso, y
+                          la única señal fue que nadie veía sus cursos. Avisa con el
+                          número exacto y no bloquea. */}
+                      {!campaignRequired && !campaignDefault && toCreate > 0 && (
+                        <p className="flex items-start gap-2 text-[12px] text-amber-500">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span>
+                            {t('admin.users.bulk_no_campaign_warn', { n: toCreate })}
+                            <span className="mt-0.5 block text-text-muted">
+                              {t('admin.users.bulk_no_campaign_hint')}
+                            </span>
+                          </span>
+                        </p>
+                      )}
+
                       {tooMany && (
                         <p className="flex items-center gap-2 text-[12px] text-red-500">
                           <AlertCircle className="h-4 w-4 shrink-0" />
