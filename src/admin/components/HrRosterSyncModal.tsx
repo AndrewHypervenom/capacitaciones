@@ -23,8 +23,7 @@ import {
   type RosterPerson, type SyncEntry, type SyncAction, type ApplyResult, type StatusKind,
   type UnitLookup,
 } from '@/services/hrSync.service'
-import { getOrganizations, getAllOrgUnits } from '@/services/org.service'
-import { fold } from '@/lib/normalize'
+import { getOrganizations, getAllOrgUnits, indexUnits, findUnit } from '@/services/org.service'
 import { Tooltip } from '@/components/ui/Tooltip'
 import type { Campaign, OrgUnit } from '@/types/database'
 
@@ -142,11 +141,10 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
    * abra en /admin/units. Es lo que impide que cada carga invente sus propios
    * CR, que es exactamente cómo se desordenaron las campañas.
    */
-  const unitLookup: UnitLookup = useMemo(() => {
-    const pick = (kind: OrgUnit['kind']) =>
-      new Map(units.filter((u) => u.kind === kind).map((u) => [fold(u.name), u]))
-    return { operations: pick('operation'), areas: pick('area') }
-  }, [units])
+  const unitLookup: UnitLookup = useMemo(
+    () => ({ operations: indexUnits(units, 'operation'), areas: indexUnits(units, 'area') }),
+    [units],
+  )
   const unitNames = useMemo(() => new Map(units.map((u) => [u.id, u])), [units])
 
   /** Campañas por nombre, para resolver la columna de campaña del archivo. */
@@ -307,9 +305,9 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
     const areas = new Map<string, number>()
     for (const r of extracted) {
       const op = r.operationRaw.trim()
-      if (op && !unitLookup.operations.has(fold(op))) ops.set(op, (ops.get(op) ?? 0) + 1)
+      if (op && !findUnit(unitLookup.operations, op)) ops.set(op, (ops.get(op) ?? 0) + 1)
       const ar = r.areaRaw.trim()
-      if (ar && !unitLookup.areas.has(fold(ar))) areas.set(ar, (areas.get(ar) ?? 0) + 1)
+      if (ar && !findUnit(unitLookup.areas, ar)) areas.set(ar, (areas.get(ar) ?? 0) + 1)
     }
     const sort = (m: Map<string, number>) =>
       [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, n }))

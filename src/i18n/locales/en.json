@@ -2272,7 +2272,8 @@
       "email_taken_old_identity": "That email belonged to an account whose address was later changed (it now uses {{email}}), and it is still held by the old identity. Changing the email from the Supabase dashboard does not release it: that identity has to be cleaned up before the address can be reused.",
       "bulk_sync_jobs_one": "Update the job title of {{n}} existing person",
       "bulk_sync_jobs_other": "Update the job title of {{n}} existing people",
-      "bulk_sync_jobs_hint": "The file is the source for job titles: they can't be edited in the profile. Their current one is replaced; nothing else is touched."
+      "bulk_sync_jobs_hint": "The file is the source for job titles: they can't be edited in the profile. Their current one is replaced; nothing else is touched.",
+      "bulk_sync_jobs": "Update the job title of {{n}} people"
     },
     "hr": {
       "title": "Sync with HR",
@@ -2978,13 +2979,16 @@
       "publish_needs_audience": "Before publishing, say who it reaches. Pick at least one country, or tick \"Whole organisation\".",
       "aud_optional": "optional",
       "aud_area_help": "Narrows the audience within the chosen country. Tick none and it reaches every area.",
-      "aud_operation_help": "Narrows it further. Tick none and it reaches every CR. The number counts only within what you picked above.",
+      "aud_operation_help": "Narrows it further. Tick an area and only its CRs stay here. Tick none and it reaches them all.",
       "aud_country_help": "Required, unless the course goes to the whole organisation. The number shows how many learners each one reaches.",
       "aud_everyone_desc": "Reaches every learner in all three countries, no conditions. This is the case for soft skills, Avanza +, Sé y comparto or S+ Lidera. For a single country, do not tick this: use step 1.",
       "aud_search": "Search among {{n}}…",
       "aud_no_match": "Nothing matches the search.",
       "aud_how_title": "How this rule reads",
-      "aud_how_body": "Within a step it ADDS UP (Colombia or Mexico). Across steps it CROSSES (Colombia AND Talento Humano). A step with nothing ticked does not restrict."
+      "aud_how_body": "Within a step it ADDS UP (Colombia or Mexico). Across steps it CROSSES (Colombia AND Talento Humano). A step with nothing ticked does not restrict.",
+      "aud_hidden_empty": "{{n}} with nobody, hidden · show all",
+      "aud_hide_empty": "Hide the ones with nobody",
+      "aud_nobody_classified": "Nobody is classified here yet, so all are shown. It will shorten on its own once the HR roster is loaded."
     },
     "simulations": {
       "save": "Save",

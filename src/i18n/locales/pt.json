@@ -2272,7 +2272,8 @@
       "email_taken_old_identity": "Esse e-mail foi de uma conta que depois teve o endereço trocado (hoje usa {{email}}), e continua ocupado pela identidade anterior. Trocar o e-mail pelo painel do Supabase não o libera: é preciso limpar essa identidade para reutilizá-lo.",
       "bulk_sync_jobs_one": "Atualizar o cargo de {{n}} pessoa que já existe",
       "bulk_sync_jobs_other": "Atualizar o cargo de {{n}} pessoas que já existem",
-      "bulk_sync_jobs_hint": "O arquivo é a fonte do cargo: não dá para editar no perfil. O atual é substituído; nada mais é alterado."
+      "bulk_sync_jobs_hint": "O arquivo é a fonte do cargo: não dá para editar no perfil. O atual é substituído; nada mais é alterado.",
+      "bulk_sync_jobs": "Atualizar o cargo de {{n}} pessoas"
     },
     "hr": {
       "title": "Sincronizar com o RH",
@@ -2978,13 +2979,16 @@
       "publish_needs_audience": "Para publicar falta dizer para quem vai. Escolha ao menos um país, ou marque «Toda a organização».",
       "aud_optional": "opcional",
       "aud_area_help": "Estreita a audiência dentro do país escolhido. Sem nenhuma marcada, vai para todas as áreas.",
-      "aud_operation_help": "Estreita ainda mais. Sem nenhum marcado, vai para todos os CR. O número conta só dentro do que você já escolheu acima.",
+      "aud_operation_help": "Estreita ainda mais. Ao marcar uma área, aqui ficam só os CR dela. Sem nenhum marcado, vai para todos.",
       "aud_country_help": "Obrigatório, a não ser que o curso vá para toda a organização. O número diz a quantos aprendizes cada um chega.",
       "aud_everyone_desc": "Chega a todos os aprendizes dos três países, sem condições. É o caso das habilidades comportamentais, Avanza +, Sé y comparto ou S+ Lidera. Para um só país, não marque isto: use o passo 1.",
       "aud_search": "Buscar entre {{n}}…",
       "aud_no_match": "Nada coincide com a busca.",
       "aud_how_title": "Como se lê esta regra",
-      "aud_how_body": "Dentro de um passo SOMA (Colômbia ou México). Entre passos CRUZA (Colômbia E Talento Humano). Um passo sem nada marcado não restringe."
+      "aud_how_body": "Dentro de um passo SOMA (Colômbia ou México). Entre passos CRUZA (Colômbia E Talento Humano). Um passo sem nada marcado não restringe.",
+      "aud_hidden_empty": "{{n}} sem gente, ocultos · ver todos",
+      "aud_hide_empty": "Ocultar os que não têm gente",
+      "aud_nobody_classified": "Ainda ninguém está classificado aqui, então todos aparecem. Vai encurtar sozinho quando a base do RH for carregada."
     },
     "simulations": {
       "save": "Salvar",

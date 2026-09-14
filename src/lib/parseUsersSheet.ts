@@ -527,6 +527,24 @@ export function extractAllSheets(
       emails: got.filter((r) => r.email !== '').length,
     })
   }
+
+  /* Los repetidos se marcan sobre el CONJUNTO, no hoja por hoja.
+   *
+   * `extractRows` solo puede ver su propia hoja, así que alguien que aparece en
+   * ARGENTINA y otra vez en COLOMBIA salía como dos personas nuevas y se
+   * intentaba crear dos veces. Gana la primera aparición — la segunda no se
+   * esconde: se marca como repetida y queda a la vista con su hoja y su fila,
+   * que es como se descubre que la nómina trae a alguien duplicado. */
+  const vistos = new Set<string>()
+  for (const r of rows) {
+    if (!r.email) continue
+    if (vistos.has(r.email)) r.issue = 'duplicate'
+    else {
+      vistos.add(r.email)
+      if (r.issue === 'duplicate') r.issue = 'ok'
+    }
+  }
+
   return { rows, bySheet }
 }
 

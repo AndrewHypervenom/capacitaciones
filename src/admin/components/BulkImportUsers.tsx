@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   X, Upload, FileSpreadsheet, Download, Loader2, Check, AlertCircle, AlertTriangle,
-  ArrowLeft, ShieldCheck, Copy, Pencil, RefreshCw,
+  ArrowLeft, ShieldCheck, Copy, Pencil, RefreshCw, Layers,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFileDrop } from '@/hooks/useFileDrop'
@@ -15,12 +15,11 @@ import { getDefaultPassword } from '@/services/appSettings.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { toast } from '@/stores/toastStore'
 import {
-  readGrids, analyzeGrid, extractRows, finalDisplayName,
+  readGrids, analyzeGrid, extractAllSheets, finalDisplayName,
   type SheetGrid, type ColumnMapping, type ExtractedRow,
 } from '@/lib/parseUsersSheet'
-import { fold } from '@/lib/normalize'
 import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getOrganizations, getOrgUnits, indexUnits, findUnit } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import type { Campaign } from '@/types/database'
 
@@ -67,6 +66,14 @@ function chunk<T>(list: T[], size: number): T[][] {
 }
 
 type Step = 'file' | 'review' | 'result'
+
+/** Lo que se dedujo de UNA hoja del libro, y si entra en la carga. */
+interface SheetPlan {
+  include: boolean
+  hasHeader: boolean
+  headerRow: number
+  mapping: ColumnMapping
+}
 type RowStatus = 'new' | 'exists' | 'duplicate' | 'invalid'
 
 interface RowResult {
@@ -82,6 +89,8 @@ interface RowResult {
 interface PreviewRow {
   key: string
   sourceLine: number
+  /** Hoja de la que salió: con tres hojas, "fila 12" no identifica nada. */
+  sheet: string
   email: string
   raw: string
   name: string
@@ -175,15 +184,17 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [reading, setReading] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
 
-  // Archivo interpretado
+  /* Archivo interpretado: TODAS las hojas, cada una con su propio mapeo.
+   *
+   * Antes se importaba la hoja que el modal eligiera y las demás se quedaban
+   * fuera sin que nada lo dijera. Con la base maestra —partida en ARGENTINA,
+   * MEXICO y COLOMBIA— eso es cargar un tercio de la empresa y creer que se
+   * cargó entera. Cada hoja trae su mapeo porque sus encabezados pueden empezar
+   * en filas distintas. */
   const [grids, setGrids] = useState<SheetGrid[]>([])
-  const [sheetIdx, setSheetIdx] = useState(0)
-  const [hasHeader, setHasHeader] = useState(true)
-  const [headerRow, setHeaderRow] = useState(0)
-  const [mapping, setMapping] = useState<ColumnMapping>({
-    email: NONE, name: NONE, role: NONE, campaign: NONE, country: NONE,
-    operation: NONE, area: NONE,
-  })
+  const [plans, setPlans] = useState<Record<string, SheetPlan>>({})
+  /** Hoja cuyas columnas se están ajustando a mano. */
+  const [tuning, setTuning] = useState('')
 
   // Ajustes que aplican a las filas sin valor propio. El capacitador arranca en
   // la campaña donde está parado el panel, y solo puede moverse entre las suyas.
@@ -261,7 +272,20 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     return m
   }, [campaigns])
 
-  const grid = grids[sheetIdx]
+  const grid = grids.find((g) => g.name === tuning)
+  const plan = plans[tuning]
+  const mapping = plan?.mapping ?? {
+    email: NONE, name: NONE, role: NONE, campaign: NONE, country: NONE,
+    operation: NONE, area: NONE,
+  }
+  const hasHeader = plan?.hasHeader ?? true
+  const headerRow = plan?.headerRow ?? 0
+
+  /** Las hojas que entran en la carga, en el orden del libro. */
+  const activeSheets = useMemo(
+    () => grids.filter((g) => plans[g.name]?.include).map((g) => g.name),
+    [grids, plans],
+  )
 
   /* ── Verificación contra el sitio (vista previa: no crea nada) ─────────── */
 
@@ -317,12 +341,18 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
    * efecto: un efecto se lanzaría también con cada tecleo en los nombres.
    */
   const verifyWith = useCallback(
-    (g: SheetGrid | undefined, hRow: number, m: ColumnMapping) => {
-      if (!g || m.email < 0) return
-      const emails = extractRows(g.rows, hRow, m)
-        .filter((r) => r.issue === 'ok')
-        .map((r) => r.email)
-      verify(emails)
+    (gs: SheetGrid[], ps: Record<string, SheetPlan>) => {
+      const { rows } = extractAllSheets(gs, {
+        only: gs.filter((g) => ps[g.name]?.include).map((g) => g.name),
+        mappingBySheet: Object.fromEntries(
+          Object.entries(ps).map(([name, pl]) => [
+            name,
+            { headerRow: pl.hasHeader ? pl.headerRow : -1, mapping: pl.mapping },
+          ]),
+        ),
+      })
+      const emails = rows.filter((r) => r.issue === 'ok').map((r) => r.email)
+      if (emails.length > 0) verify(emails)
     },
     [verify],
   )
@@ -345,18 +375,29 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
         setFatalError(t('admin.users.bulk_empty_file'))
         return
       }
-      // Se elige la hoja que sí trae correos; si ninguna, la primera.
-      const analyses = parsed.map((g) => analyzeGrid(g.rows))
-      let idx = analyses.findIndex((a) => a.emailCount > 0)
-      if (idx === -1) idx = 0
-      const a = analyses[idx]
+      /* TODAS las hojas que traigan correos. Las que no (portadas, resúmenes)
+       * entran desmarcadas: no son gente, y marcarlas obligaría a desmarcarlas
+       * una por una. */
+      const next: Record<string, SheetPlan> = {}
+      for (const g of parsed) {
+        const a = analyzeGrid(g.rows)
+        next[g.name] = {
+          include: a.emailCount > 0,
+          hasHeader: a.headerRow >= 0,
+          headerRow: a.headerRow,
+          mapping: a.mapping,
+        }
+      }
+      // Si ninguna convence, se abre la primera para poder mapearla a mano en
+      // vez de dejar la pantalla vacía sin explicación.
+      if (!Object.values(next).some((x) => x.include) && parsed[0]) {
+        next[parsed[0].name].include = true
+      }
       setGrids(parsed)
-      setSheetIdx(idx)
-      setHasHeader(a.headerRow >= 0)
-      setHeaderRow(a.headerRow)
-      setMapping(a.mapping)
+      setPlans(next)
+      setTuning(parsed.find((g) => next[g.name].include)?.name ?? parsed[0].name)
       setStep('review')
-      verifyWith(parsed[idx], a.headerRow, a.mapping)
+      verifyWith(parsed, next)
     } catch {
       setGrids([])
       setFatalError(t('admin.users.bulk_unreadable'))
@@ -374,61 +415,67 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     onReject: (name) => toast.error(t('common.drop_invalid', { name })),
   })
 
-  /** Al cambiar de hoja se vuelve a deducir todo para esa hoja. */
-  const changeSheet = (idx: number) => {
-    setSheetIdx(idx)
-    const a = analyzeGrid(grids[idx].rows)
-    setHasHeader(a.headerRow >= 0)
-    setHeaderRow(a.headerRow)
-    setMapping(a.mapping)
+  /** Aplica un cambio al plan de UNA hoja y revalida el conjunto. */
+  const patchPlan = (sheet: string, patch: Partial<SheetPlan>, revalidar = false) => {
+    const next = plans[sheet] ? { ...plans, [sheet]: { ...plans[sheet], ...patch } } : plans
+    setPlans(next)
+    if (revalidar) {
+      setExisting(new Set())
+      verifyWith(grids, next)
+    }
+  }
+
+  /** Entra o sale una hoja entera de la carga. */
+  const toggleSheet = (name: string, include: boolean) => {
     setNameEdits({})
     setExcluded({})
-    setExisting(new Set())
-    verifyWith(grids[idx], a.headerRow, a.mapping)
+    if (include) setTuning(name)
+    patchPlan(name, { include }, true)
   }
 
   /** Cambiar el mapeo cambia qué correos hay: se vuelve a verificar. */
   const changeMapping = (patch: Partial<ColumnMapping>) => {
-    const next = { ...mapping, ...patch }
-    setMapping(next)
-    if (patch.email !== undefined) {
-      setExisting(new Set())
-      verifyWith(grid, hasHeader ? headerRow : -1, next)
-    }
+    patchPlan(tuning, { mapping: { ...mapping, ...patch } }, patch.email !== undefined)
   }
 
   const changeHasHeader = (checked: boolean) => {
-    setHasHeader(checked)
-    const nextHeaderRow = checked && headerRow < 0 ? 0 : headerRow
-    if (checked && headerRow < 0) setHeaderRow(0)
-    setExisting(new Set())
-    verifyWith(grid, checked ? nextHeaderRow : -1, mapping)
+    patchPlan(
+      tuning,
+      { hasHeader: checked, headerRow: checked && headerRow < 0 ? 0 : headerRow },
+      true,
+    )
   }
 
   /* ── Filas resueltas ───────────────────────────────────────────────────── */
 
-  const extracted: ExtractedRow[] = useMemo(() => {
-    if (!grid) return []
-    return extractRows(grid.rows, hasHeader ? headerRow : -1, mapping)
-  }, [grid, hasHeader, headerRow, mapping])
+  const { rows: extracted, bySheet } = useMemo(() => {
+    if (grids.length === 0) return { rows: [] as ExtractedRow[], bySheet: [] }
+    return extractAllSheets(grids, {
+      only: activeSheets,
+      mappingBySheet: Object.fromEntries(
+        Object.entries(plans).map(([name, pl]) => [
+          name,
+          { headerRow: pl.hasHeader ? pl.headerRow : -1, mapping: pl.mapping },
+        ]),
+      ),
+    })
+  }, [grids, plans, activeSheets])
 
   /**
    * Unidades por nombre plegado (sin tildes ni mayúsculas): "TALENTO HUMANO",
    * "Talento Humano" y "talento humano" son la misma área. Nadie escribe las
    * tildes igual dos veces en un Excel.
    */
-  const unitsByName = useMemo(() => {
-    const ops = new Map<string, OrgUnit>()
-    const areas = new Map<string, OrgUnit>()
-    for (const u of units) {
-      ;(u.kind === 'operation' ? ops : areas).set(fold(u.name), u)
-    }
-    return { ops, areas }
-  }, [units])
+  const unitsByName = useMemo(
+    () => ({ ops: indexUnits(units, 'operation'), areas: indexUnits(units, 'area') }),
+    [units],
+  )
 
   const rows: PreviewRow[] = useMemo(() => {
     return extracted.map((r, i) => {
-      const key = `${r.sourceLine}:${r.email || `x${i}`}`
+      // La hoja entra en la clave: con tres hojas, la fila 12 existe tres veces
+      // y sin esto React reusaría la misma fila para tres personas distintas.
+      const key = `${r.sheet}:${r.sourceLine}:${r.email || `x${i}`}`
       const status: RowStatus =
         r.issue === 'invalid' ? 'invalid'
         : r.issue === 'duplicate' ? 'duplicate'
@@ -445,8 +492,8 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
       const rowCountry = r.country || countryDefault
       // Operación y área: se casan contra el catálogo por nombre. Lo que no
       // casa NO crea nada — queda sin clasificar y se muestra en ámbar.
-      const opHit = r.operationRaw ? unitsByName.ops.get(fold(r.operationRaw)) : undefined
-      const areaHit = r.areaRaw ? unitsByName.areas.get(fold(r.areaRaw)) : undefined
+      const opHit = findUnit(unitsByName.ops, r.operationRaw)
+      const areaHit = findUnit(unitsByName.areas, r.areaRaw)
       // Ya existe, quedó sin campaña y hay una campaña que darle: en vez de
       // saltarla, esta fila le completa la campaña. Al que ya tiene una no se
       // le toca (ni siquiera aparece como candidato).
@@ -463,6 +510,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
       return {
         key,
         sourceLine: r.sourceLine,
+        sheet: r.sheet,
         email: r.email,
         raw: r.raw,
         name: finalDisplayName(editedName ?? r.name, r.email),
@@ -875,14 +923,59 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                       </button>
                     </div>
 
+                    {/* TODAS las hojas del libro. La base maestra viene partida
+                        por país: si una se queda fuera hay que verlo aquí, no
+                        descubrirlo cuando falte un tercio de la empresa. */}
+                    {grids.length > 1 && (
+                      <div className="space-y-1.5">
+                        <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-text-subtle">
+                          <Layers className="h-3.5 w-3.5" />
+                          {t('admin.hr.sheets_title', { n: grids.length })}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {grids.map((g) => {
+                            const on = plans[g.name]?.include ?? false
+                            const stat = bySheet.find((x) => x.sheet === g.name)
+                            return (
+                              <label
+                                key={g.name}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors"
+                                style={{
+                                  borderColor: on ? '#10D451' : 'var(--line, rgba(127,127,127,.28))',
+                                  background: on ? 'rgba(16,212,81,.08)' : undefined,
+                                  color: on ? 'var(--text)' : 'var(--text-muted)',
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  onChange={(ev) => toggleSheet(g.name, ev.target.checked)}
+                                  className="h-4 w-4 accent-[#10D451]"
+                                />
+                                <span className="font-medium">{g.name}</span>
+                                <span className="tabular-nums text-text-subtle">
+                                  {on && stat
+                                    ? t('admin.hr.sheet_rows', { n: stat.rows })
+                                    : t('admin.hr.sheet_off')}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       {grids.length > 1 && (
-                        <Field label={t('admin.users.bulk_sheet')}>
+                        <Field label={t('admin.hr.tuning_sheet')}>
                           <Select
                             compact
-                            value={String(sheetIdx)}
-                            onChange={(v) => changeSheet(Number(v))}
-                            options={grids.map((g, i) => ({ value: String(i), label: g.name }))}
+                            value={tuning}
+                            onChange={setTuning}
+                            options={grids.map((g) => ({
+                              value: g.name,
+                              label: plans[g.name]?.include ? g.name : g.name + ' - ' + t('admin.hr.sheet_off'),
+                            }))}
                           />
                         </Field>
                       )}
@@ -1115,6 +1208,9 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                               <tr className="bg-subtle text-[11px] uppercase tracking-wider text-text-muted">
                                 <th className="w-10 px-3 py-2" />
                                 <th className="w-10 px-1 py-2 text-right font-normal">#</th>
+                                {grids.length > 1 && (
+                                  <th className="px-3 py-2 font-normal">{t('admin.hr.col_sheet')}</th>
+                                )}
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_email')}</th>
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_name')}</th>
                                 {canChooseRole && (
@@ -1153,6 +1249,11 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                     />
                                   </td>
                                   <td className="px-1 py-2 text-right text-text-subtle">{r.sourceLine}</td>
+                                  {grids.length > 1 && (
+                                    <td className="max-w-[110px] truncate px-3 py-2 text-text-subtle">
+                                      {r.sheet || '—'}
+                                    </td>
+                                  )}
                                   <td className="max-w-[220px] truncate px-3 py-2 text-text">
                                     {r.email || <span className="text-red-500">{r.raw || '—'}</span>}
                                   </td>

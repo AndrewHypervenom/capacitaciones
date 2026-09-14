@@ -266,6 +266,7 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
               titulo={t('admin.courses.aud_area', 'Área')}
               ayuda={t('admin.courses.aud_area_help', 'Sin ninguna marcada, no restringe por área.')}
               opciones={areas.map((u) => ({ id: u.id, label: u.name, n: cuentaPara.area(u.id) }))}
+              filtrarVacios
               seleccion={value.areaIds}
               onToggle={(id) => toggle('areaIds', id)}
               disabled={disabled}
@@ -287,6 +288,10 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
               disabled={disabled}
               opcional
               buscable
+              /* Al marcar un área, aquí quedan solo los CR de esa área. Es el
+                 embudo que pidió el usuario, y con ochenta y ocho CR es la
+                 diferencia entre elegir y rebuscar. */
+              filtrarVacios
               /* Espera al PAÍS, no al área. El área es opcional, y encadenar un paso
                  obligatorio detrás de uno opcional dejaba sin poder hacer el caso
                  más natural de todos: un curso para un CR entero, sin importar el
@@ -343,7 +348,7 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
 
 function Eje({
   paso, icon: Icon, titulo, pista, ayuda, opciones, seleccion, onToggle, disabled,
-  opcional, buscable, esperando, esperandoTexto,
+  opcional, buscable, filtrarVacios, esperando, esperandoTexto,
 }: {
   paso: number
   icon: React.ComponentType<{ className?: string }>
@@ -360,6 +365,12 @@ function Eje({
   opcional?: boolean
   /** Con decenas de opciones, una rejilla de píldoras deja de ser elegible. */
   buscable?: boolean
+  /**
+   * Esconde las opciones a las que no llega nadie **con lo ya elegido arriba**:
+   * al marcar un área, el paso del CR se queda solo con los CR de esa área.
+   * Es lo que convierte tres listas independientes en un embudo.
+   */
+  filtrarVacios?: boolean
   /** El paso anterior todavía no tiene nada: este se atenua y no se toca. */
   esperando?: boolean
   esperandoTexto?: string
@@ -367,13 +378,30 @@ function Eje({
   const { t } = useTranslation()
   const apagado = disabled || esperando
   const [busca, setBusca] = useState('')
+  const [verTodos, setVerTodos] = useState(false)
+
+  /* Las opciones a las que llega alguien. Lo ya marcado nunca se esconde,
+   * aunque se quede en cero al estrechar por arriba: ver desaparecer algo que
+   * uno acaba de elegir es la peor forma de enterarse. */
+  const conGente = useMemo(
+    () => opciones.filter((o) => (o.n ?? 1) > 0 || seleccion.includes(o.id)),
+    [opciones, seleccion],
+  )
+
+  /* LA RED DE SEGURIDAD. Si al filtrar no queda NADA, no se filtra: se enseña
+   * todo con una nota. Hoy nadie tiene área ni CR asignados — eso llega con la
+   * carga de la base maestra — así que filtrar dejaría el paso en blanco y
+   * parecería una pantalla rota en vez de un dato que falta. */
+  const filtrando = Boolean(filtrarVacios) && !verTodos && conGente.length > 0
+  const sinDatos = Boolean(filtrarVacios) && conGente.length === 0
+  const ocultos = opciones.length - conGente.length
 
   /* Las que tienen gente primero. Con ochenta y ocho CR, el orden alfabético
    * entierra los que de verdad se usan entre los que no tienen a nadie. Lo
    * marcado se queda arriba del todo para no perderlo de vista al buscar. */
   const lista = useMemo(() => {
     const q = fold(busca)
-    return opciones
+    return (filtrando ? conGente : opciones)
       .filter((o) => !q || fold(o.label).includes(q) || seleccion.includes(o.id))
       .sort((a, b) => {
         const sa = seleccion.includes(a.id) ? 1 : 0
@@ -382,7 +410,7 @@ function Eje({
         if (a.n !== undefined && b.n !== undefined && a.n !== b.n) return b.n - a.n
         return a.label.localeCompare(b.label, 'es')
       })
-  }, [opciones, seleccion, busca])
+  }, [opciones, conGente, filtrando, seleccion, busca])
 
   return (
     <div className={cn(esperando && 'opacity-55')}>
@@ -421,13 +449,15 @@ function Eje({
         {esperando ? esperandoTexto : ayuda}
       </p>
 
-      {buscable && !apagado && opciones.length > 12 && (
+      {buscable && !apagado && (filtrando ? conGente : opciones).length > 12 && (
         <div className="relative mb-2 max-w-[280px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-subtle" />
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder={t('admin.courses.aud_search', 'Buscar entre {{n}}…', { n: opciones.length })}
+            placeholder={t('admin.courses.aud_search', 'Buscar entre {{n}}…', {
+              n: (filtrando ? conGente : opciones).length,
+            })}
             className="h-9 w-full rounded-full border border-line bg-subtle pl-9 pr-3 text-[12px] text-text outline-none"
           />
         </div>
@@ -468,6 +498,32 @@ function Eje({
           </p>
         )}
       </div>
+
+      {/* Decir SIEMPRE por qué la lista tiene el largo que tiene. Una lista que
+          se acorta sola sin explicarse es indistinguible de una que falla. */}
+      {!apagado && filtrando && ocultos > 0 && (
+        <button
+          type="button"
+          onClick={() => setVerTodos(true)}
+          className="mt-1.5 text-[11px] text-text-subtle underline-offset-2 hover:text-text hover:underline"
+        >
+          {t('admin.courses.aud_hidden_empty', '{{n}} sin gente, ocultos · ver todos', { n: ocultos })}
+        </button>
+      )}
+      {!apagado && verTodos && ocultos > 0 && (
+        <button
+          type="button"
+          onClick={() => setVerTodos(false)}
+          className="mt-1.5 text-[11px] text-text-subtle underline-offset-2 hover:text-text hover:underline"
+        >
+          {t('admin.courses.aud_hide_empty', 'Ocultar los que no tienen gente')}
+        </button>
+      )}
+      {!apagado && sinDatos && (
+        <p className="mt-1.5 text-[11px] text-amber-500">
+          {t('admin.courses.aud_nobody_classified', 'Todavía nadie está clasificado aquí, así que se muestran todos. Se acortará solo cuando se cargue la base de Talento Humano.')}
+        </p>
+      )}
     </div>
   )
 }

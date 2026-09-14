@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { normalizeNationalId, type ExtractedRow } from '@/lib/parseUsersSheet'
 import { fold } from '@/lib/normalize'
 import type { OrgUnit } from '@/types/database'
+import { findUnit, type UnitIndex } from '@/services/org.service'
 import { updateUserEmail } from '@/services/userEmail.service'
 
 /**
@@ -376,10 +377,16 @@ export function checkIdentity(
 
 /* ── Qué habría que corregir ───────────────────────────────────────────────── */
 
-/** Catálogo ya casado por nombre, para traducir "CLARO MILLA" al CR del sitio. */
+/**
+ * Catálogo indexado, para traducir "CLARO MILLA" al CR del sitio.
+ *
+ * Se apoya en `indexUnits`/`findUnit` (org.service) y no en un Map propio: si el
+ * asistente casara los nombres con una regla y la carga masiva con otra, un
+ * mismo archivo clasificaría a la gente distinto según por dónde entrara.
+ */
 export interface UnitLookup {
-  operations: Map<string, OrgUnit>
-  areas: Map<string, OrgUnit>
+  operations: UnitIndex
+  areas: UnitIndex
 }
 
 function labelOf(value: string | null | undefined, fallback = '—'): string {
@@ -614,8 +621,8 @@ export function diffNovelties({
     const dedupeKey = nid ? `n:${nid}` : email ? `e:${email}` : ''
     const key = `f${row.sourceLine}:${i}`
     const campaignRaw = row.campaign.trim()
-    const operation = units?.operations.get(fold(row.operationRaw))
-    const area = units?.areas.get(fold(row.areaRaw))
+    const operation = findUnit(units?.operations, row.operationRaw)
+    const area = findUnit(units?.areas, row.areaRaw)
     const base = {
       key,
       sourceLine: row.sourceLine,

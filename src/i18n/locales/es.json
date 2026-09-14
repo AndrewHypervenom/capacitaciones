@@ -2272,7 +2272,8 @@
       "email_taken_old_identity": "Ese correo fue de una cuenta a la que después le cambiaron el correo (hoy usa {{email}}), y sigue ocupado por su identidad anterior. Cambiar el correo desde el panel de Supabase no lo libera: hay que limpiar esa identidad para poder reutilizarlo.",
       "bulk_sync_jobs_one": "Actualizar el cargo de {{n}} persona que ya existe",
       "bulk_sync_jobs_other": "Actualizar el cargo de {{n}} personas que ya existen",
-      "bulk_sync_jobs_hint": "El archivo es la fuente del cargo: en el perfil no se puede editar. Se reemplaza el que tengan; no se toca nada más."
+      "bulk_sync_jobs_hint": "El archivo es la fuente del cargo: en el perfil no se puede editar. Se reemplaza el que tengan; no se toca nada más.",
+      "bulk_sync_jobs": "Actualizar el cargo de {{n}} personas"
     },
     "hr": {
       "title": "Sincronizar con Talento Humano",
@@ -2978,13 +2979,16 @@
       "publish_needs_audience": "Para publicar falta decir a quién le llega. Elige al menos un país, o marca «Toda la organización».",
       "aud_optional": "opcional",
       "aud_area_help": "Estrecha la audiencia dentro del país elegido. Si no marcas ninguna, le llega a todas las áreas.",
-      "aud_operation_help": "Estrecha todavía más. Si no marcas ninguno, le llega a todos los CR. El número cuenta solo dentro de lo que ya elegiste arriba.",
+      "aud_operation_help": "Estrecha todavía más. Al marcar un área, aquí quedan solo sus CR. Si no marcas ninguno, le llega a todos.",
       "aud_country_help": "Obligatorio, salvo que el curso vaya a toda la organización. El número dice a cuántos aprendices llega cada uno.",
       "aud_everyone_desc": "Le llega a todos los aprendices de los tres países, sin condiciones. Es el caso de las habilidades blandas, Avanza +, Sé y comparto o S+ Lidera. Para un solo país, no marques esto: usa el paso 1.",
       "aud_search": "Buscar entre {{n}}…",
       "aud_no_match": "Nada coincide con la búsqueda.",
       "aud_how_title": "Cómo se lee esta regla",
-      "aud_how_body": "Dentro de un paso se SUMA (Colombia o México). Entre pasos se CRUZA (Colombia Y Talento Humano). Un paso sin nada marcado no restringe."
+      "aud_how_body": "Dentro de un paso se SUMA (Colombia o México). Entre pasos se CRUZA (Colombia Y Talento Humano). Un paso sin nada marcado no restringe.",
+      "aud_hidden_empty": "{{n}} sin gente, ocultos · ver todos",
+      "aud_hide_empty": "Ocultar los que no tienen gente",
+      "aud_nobody_classified": "Todavía nadie está clasificado aquí, así que se muestran todos. Se acortará solo cuando se cargue la base de Talento Humano."
     },
     "simulations": {
       "save": "Guardar",

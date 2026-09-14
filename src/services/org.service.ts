@@ -228,6 +228,49 @@ export async function countPeopleByUnit(orgId: string): Promise<{
 /* ─── Casar la nómina con el catálogo ───────────────────────────────────── */
 
 /**
+ * El índice con el que un nombre del archivo encuentra su unidad.
+ *
+ * Dos pasadas, y el orden importa: primero EXACTO (ignorando tildes y
+ * mayúsculas, como todo el sitio) y solo si falla, TOLERANDO EL PLURAL. Con la
+ * base real hacía falta exactamente para un caso —la nómina dice `PREVENTAS` y
+ * el catálogo `Preventa`— y los otros 93 nombres casan exacto.
+ *
+ * La segunda pasada es un respaldo, nunca la primera, para que dos unidades que
+ * de verdad se llamen distinto ("Venta" y "Ventas") no se confundan jamás: si
+ * las dos existen con su nombre exacto, la pasada exacta las resuelve y la
+ * flexible no llega a correr.
+ */
+export interface UnitIndex {
+  byExact: Map<string, OrgUnit>
+  byLoose: Map<string, OrgUnit>
+}
+
+/** Clave tolerante: sin la 's' final de cada palabra. */
+function looseKey(name: string): string {
+  return fold(name).replace(/s\b/g, '')
+}
+
+export function indexUnits(units: OrgUnit[], kind?: OrgUnitKind): UnitIndex {
+  const list = kind ? units.filter((u) => u.kind === kind) : units
+  const byExact = new Map<string, OrgUnit>()
+  const byLoose = new Map<string, OrgUnit>()
+  for (const u of list) {
+    const e = fold(u.name)
+    if (!byExact.has(e)) byExact.set(e, u)
+    const l = looseKey(u.name)
+    if (!byLoose.has(l)) byLoose.set(l, u)
+  }
+  return { byExact, byLoose }
+}
+
+/** La unidad que corresponde a lo que dice el archivo, o `undefined`. */
+export function findUnit(ix: UnitIndex | undefined, raw: string): OrgUnit | undefined {
+  const name = (raw ?? '').trim()
+  if (!name || !ix) return undefined
+  return ix.byExact.get(fold(name)) ?? ix.byLoose.get(looseKey(name))
+}
+
+/**
  * Convierte los nombres de operación y área que trae la nómina en unidades del
  * catálogo.
  *
@@ -254,11 +297,8 @@ export async function resolveUnitsFromRoster(
   unmatched: { operations: string[]; areas: string[] }
 }> {
   const units = await getOrgUnits(orgId)
-  const byKind = (kind: OrgUnitKind) =>
-    new Map(units.filter((u) => u.kind === kind).map((u) => [fold(u.name), u]))
-
-  const catalogOps = byKind('operation')
-  const catalogAreas = byKind('area')
+  const catalogOps = indexUnits(units, 'operation')
+  const catalogAreas = indexUnits(units, 'area')
 
   const operations = new Map<string, OrgUnit>()
   const areas = new Map<string, OrgUnit>()
@@ -268,13 +308,13 @@ export async function resolveUnitsFromRoster(
   for (const r of rows) {
     const op = (r.operationRaw ?? '').trim()
     if (op) {
-      const hit = catalogOps.get(fold(op))
+      const hit = findUnit(catalogOps, op)
       if (hit) operations.set(op, hit)
       else missOps.add(op)
     }
     const ar = (r.areaRaw ?? '').trim()
     if (ar) {
-      const hit = catalogAreas.get(fold(ar))
+      const hit = findUnit(catalogAreas, ar)
       if (hit) areas.set(ar, hit)
       else missAreas.add(ar)
     }
