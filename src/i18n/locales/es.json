@@ -919,7 +919,7 @@
     "duration_hours_other": "{{count}} horas",
     "duration_minutes_one": "{{count}} minuto",
     "duration_minutes_other": "{{count}} minutos",
-    "for_completing": "Por haber completado satisfactoriamente {{course}}",
+    "for_completing": "Por haber completado satisfactoriamente el curso de {{course}}",
     "registry_line": "División de Formación de Positivo S+ · Bogotá, Colombia. Verificable en línea.",
     "trainer_not_earned_title": "Certificado no obtenido",
     "trainer_not_earned_hint": "{{name}} aún no cumple las condiciones para certificarse en este curso.",

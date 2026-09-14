@@ -919,7 +919,7 @@
     "duration_hours_other": "{{count}} hours",
     "duration_minutes_one": "{{count}} minute",
     "duration_minutes_other": "{{count}} minutes",
-    "for_completing": "For successfully completing {{course}}",
+    "for_completing": "For successfully completing the course {{course}}",
     "registry_line": "Training Division of Positivo S+ · Bogotá, Colombia. Verifiable online.",
     "trainer_not_earned_title": "Certificate not earned",
     "trainer_not_earned_hint": "{{name}} has not yet met the requirements to be certified in this course.",

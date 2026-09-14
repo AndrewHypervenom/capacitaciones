@@ -199,6 +199,30 @@ function MetaItem({ label, value, accent }: { label: string; value: string; acce
  * vista privada (Certificate.tsx) como la página pública verificable
  * (PublicCertificate.tsx). El `ref` apunta al <article> para exportarlo a PDF.
  */
+
+/**
+ * El nombre del curso, listo para un diploma.
+ *
+ * En el catálogo un emoji al principio ayuda a distinguir el curso de un
+ * vistazo — los títulos reales incluyen "Monitoreo", "Inbound" y "Aeropuerto
+ * AIFA" con su icono delante — y por eso NO se toca el título en la base: ahí
+ * está bien. En un certificado, en cambio, es un documento que alguien imprime
+ * y adjunta a una hoja de vida, y un emoji en mitad de "COMPLETADO
+ * SATISFACTORIAMENTE ... MONITOREO" lo convierte en otra cosa.
+ *
+ * También cae la puntuación del final: hay un curso llamado "Prevención del
+ * Consumo de Alcohol, Tabaco y Sustancias Psicoactivas:" —con dos puntos— y en
+ * mitad de una frase queda como si faltara algo.
+ */
+export function certificateCourseTitle(title: string): string {
+  return title
+    // Emoji, símbolos y sus modificadores al principio, con sus espacios.
+    .replace(/^(?:[\p{Extended_Pictographic}‍️⃣]|\s)+/u, '')
+    // Puntuación colgando al final: dos puntos, guiones, barras, comas.
+    .replace(/[\s:;,\-–—·|]+$/u, '')
+    .trim()
+}
+
 export const CertificateSheet = forwardRef<HTMLElement, CertificateSheetData>(
   function CertificateSheet(
     { viewName, nationalId, courseTitle, completedCount, totalModules, showScore, scoreValue, issuedOn, durationMin, certId, verifyUrl, lang },
@@ -307,7 +331,7 @@ export const CertificateSheet = forwardRef<HTMLElement, CertificateSheetData>(
               marginTop: 26, fontSize: 21, letterSpacing: 0.4,
               textTransform: 'uppercase', color: INK, lineHeight: 1.35, maxWidth: 860,
             }}>
-              {t('certificate.for_completing', { course: courseTitle })}
+              {t('certificate.for_completing', { course: certificateCourseTitle(courseTitle) })}
             </div>
 
             {/* Línea de otorgamiento */}
