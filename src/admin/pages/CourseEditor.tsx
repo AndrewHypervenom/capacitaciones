@@ -3846,12 +3846,26 @@ export default function CourseEditor() {
             />
           </div>
 
-          {/* Campañas */}
+          {/* Campañas — EN RETIRADA.
+              Sigue aquí porque es lo que hoy sostiene el acceso de los cursos que
+              todavía no tienen regla: quitarlo antes de tiempo dejaría a esa gente
+              sin nada. Pero se anuncia que se va, y en rojo, para que nadie
+              empiece a usarlo hoy y haya que deshacerlo mañana. Lo que queda
+              después es la regla de arriba más las personas puntuales. */}
           <div>
-            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text mb-1">
-              <FolderOpen className="h-4 w-4 text-text-muted" />
-              {t('admin.courses.assign_campaigns_title')}
+            <h2 className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-text mb-1">
+              <FolderOpen className="h-4 w-4 text-red-500/80" />
+              <span className="text-red-500/90">{t('admin.courses.assign_campaigns_title')}</span>
+              <span className="rounded-full border border-red-500/45 bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-500">
+                {t('admin.courses.assign_campaigns_going_away', 'Se va a quitar')}
+              </span>
             </h2>
+            <p className="mb-3 rounded-xl border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-text-muted">
+              <span className="font-medium text-red-500/90">
+                {t('admin.courses.assign_campaigns_going_away_title')}
+              </span>{' '}
+              {t('admin.courses.assign_campaigns_going_away_body')}
+            </p>
             <p className="text-[12px] text-text-muted mb-3">
               {form.visibility === 'catalog'
                 ? t('admin.courses.assign_campaigns_hint_public')

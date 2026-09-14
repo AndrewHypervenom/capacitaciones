@@ -2621,7 +2621,7 @@
       "assign_campaigns_title": "Programas",
       "assign_campaigns_hint": "El curso será visible para todos los aprendices de los programas seleccionados.",
       "assign_users_title": "Personas específicas",
-      "assign_users_hint": "Asigna el curso a personas puntuales, sin importar su programa.",
+      "assign_users_hint": "Excepciones puntuales: personas concretas que deben tener el curso aunque la regla de arriba no las alcance. Esto SE QUEDA.",
       "assign_campaigns_hint_public": "Opcional: hazlo obligatorio para programas concretas (ya es visible para todos).",
       "assign_users_hint_public": "Opcional: hazlo obligatorio para personas concretas (ya es visible para todos).",
       "audience_title": "¿Quién puede ver este curso?",
@@ -2990,7 +2990,10 @@
       "aud_how_body": "Dentro de un paso se SUMA (Colombia o México). Entre pasos se CRUZA (Colombia Y Talento Humano). Un paso sin nada marcado no restringe.",
       "aud_hidden_empty": "{{n}} sin gente, ocultos · ver todos",
       "aud_hide_empty": "Ocultar los que no tienen gente",
-      "aud_nobody_classified": "Todavía nadie está clasificado aquí, así que se muestran todos. Se acortará solo cuando se cargue la base de Talento Humano."
+      "aud_nobody_classified": "Todavía nadie está clasificado aquí, así que se muestran todos. Se acortará solo cuando se cargue la base de Talento Humano.",
+      "assign_campaigns_going_away": "Se va a quitar",
+      "assign_campaigns_going_away_title": "Esto desaparece.",
+      "assign_campaigns_going_away_body": "Asignar por programa se retira: lo reemplaza la regla de país, área y CR de arriba. No marques programas nuevos aquí. Lo único que se queda, además de la regla, son las «Personas específicas» de abajo, para excepciones puntuales."
     },
     "simulations": {
       "save": "Guardar",

@@ -2621,7 +2621,7 @@
       "assign_campaigns_title": "Programs",
       "assign_campaigns_hint": "The course will be visible to every learner in the selected programs.",
       "assign_users_title": "Specific people",
-      "assign_users_hint": "Assign the course to specific people, regardless of their program.",
+      "assign_users_hint": "One-off exceptions: specific people who must have the course even if the rule above does not reach them. This one STAYS.",
       "assign_campaigns_hint_public": "Optional: make it mandatory for specific programs (it's already visible to everyone).",
       "assign_users_hint_public": "Optional: make it mandatory for specific people (it's already visible to everyone).",
       "audience_title": "Who can see this course?",
@@ -2990,7 +2990,10 @@
       "aud_how_body": "Within a step it ADDS UP (Colombia or Mexico). Across steps it CROSSES (Colombia AND Talento Humano). A step with nothing ticked does not restrict.",
       "aud_hidden_empty": "{{n}} with nobody, hidden · show all",
       "aud_hide_empty": "Hide the ones with nobody",
-      "aud_nobody_classified": "Nobody is classified here yet, so all are shown. It will shorten on its own once the HR roster is loaded."
+      "aud_nobody_classified": "Nobody is classified here yet, so all are shown. It will shorten on its own once the HR roster is loaded.",
+      "assign_campaigns_going_away": "Being removed",
+      "assign_campaigns_going_away_title": "This is going away.",
+      "assign_campaigns_going_away_body": "Assigning by programme is being retired: the country / area / CR rule above replaces it. Do not tick new programmes here. Besides the rule, the only thing that stays is \"Specific people\" below, for one-off exceptions."
     },
     "simulations": {
       "save": "Save",

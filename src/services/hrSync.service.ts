@@ -50,6 +50,16 @@ export interface RosterPerson {
    * actualizaciones: sin saber qué dice hoy el perfil, "cambió el cargo" sería
    * una adivinanza. La interfaz lo dice y sigue haciendo altas y bajas. */
   job_title?: string | null
+  /**
+   * El cargo de esta persona está FIJADO A MANO y la nómina no lo toca.
+   *
+   * El cargo tiene una sola fuente —la base maestra— y eso es lo correcto para
+   * ochocientas personas. Pero hay casos en que el título del contrato no es el
+   * trabajo real, y volver a corregirlo a mano después de cada carga no es una
+   * solución: es una tarea recurrente que alguien va a olvidar. Se marca el
+   * perfil y se acabó, hasta que quien lo fijó lo suelte.
+   */
+  job_title_locked?: boolean | null
   country?: string | null
   operation_id?: string | null
   area_id?: string | null
@@ -345,7 +355,9 @@ export function checkIdentity(
   // `job_title` llega `undefined` mientras el SQL no esté corrido: entonces no
   // es una señal ni a favor ni en contra, simplemente no se puede consultar.
   const jobDb = person.job_title
-  const jobKnown = jobDb !== undefined
+  // Un cargo fijado a mano puede diferir del de la nómina a propósito: usarlo
+  // para desmentir el nombre convertiría esa decisión en un choque de identidad.
+  const jobKnown = jobDb !== undefined && !person.job_title_locked
   const jobOk = jobKnown && jobsAgree(row.jobTitleRaw, jobDb ?? '')
   const jobComparable = jobKnown && row.jobTitleRaw.trim() !== '' && (jobDb ?? '').trim() !== ''
   if (jobComparable) (jobOk ? agree : differ).push('job_title')
@@ -482,7 +494,14 @@ export function computeChanges(
   // El cargo tiene UNA sola fuente: esta base. Por eso se pisa, al revés que la
   // campaña, que solo se completa.
   const jobFile = titleCaseFromRoster(row.jobTitleRaw)
-  if (person.job_title !== undefined && jobFile && reallyDiffers(jobFile, person.job_title)) {
+  if (
+    person.job_title !== undefined &&
+    // Fijado a mano: la nómina ni lo propone. No se enseña como cambio que se
+    // puede desmarcar, porque desmarcarlo cada mes es justo lo que se evita.
+    !person.job_title_locked &&
+    jobFile &&
+    reallyDiffers(jobFile, person.job_title)
+  ) {
     push('job_title', person.job_title, jobFile)
   }
 
@@ -971,6 +990,13 @@ export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
                 campaign: campaign || undefined,
                 national_id: e.nationalId || undefined,
                 country: e.country || undefined,
+                /* El CR y el área van DESDE EL ALTA. Antes no: la cuenta nacía
+                 * sin clasificar aunque la nómina dijera su CR en la misma fila,
+                 * y hacía falta volver a cargar el archivo para que apareciera
+                 * como "corrección". Cuarenta y tres personas entraron así. */
+                operation_id: e.operation?.id,
+                area_id: e.area?.id,
+                job_title: titleCaseFromRoster(e.jobTitleRaw) || undefined,
               })),
             }),
           },
@@ -1036,10 +1062,17 @@ export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
 
   /* Rastro en las cuentas confirmadas: en qué nómina se las vio por última vez,
    * y la cédula del archivo cuando el perfil todavía no la tenía. */
-  const confirmed = [...unchanged, ...toReactivate]
-  const seenIds = confirmed.map((e) => e.person!.id)
+  /* A quién vio esta nómina. Van también los CORREGIDOS: el archivo los nombra
+   * igual que a los que no cambiaron, y dejarlos fuera hacía que la persona a la
+   * que se le acababa de poner el CR figurara como "no aparece en la nómina" —
+   * justo al revés de lo que pasó. */
+  const confirmed = [...unchanged, ...toReactivate, ...toUpdate]
+  const seenIds = [...new Set(confirmed.map((e) => e.person!.id))]
   const nowIso = new Date().toISOString()
-  for (const group of chunk(seenIds, 200)) {
+  /* Tandas de 100 y no de 200: `.in()` viaja en la URL y con ochocientas
+   * personas doscientos uuid por llamada rozan el límite de longitud. Cuando
+   * revienta no dice "URL larga", dice 400 — y parece que no hay filas. */
+  for (const group of chunk(seenIds, 100)) {
     await supabase.from('profiles').update({ hr_last_seen_at: nowIso }).in('id', group)
   }
   const missingNid = confirmed.filter((e) => e.nationalId && !e.person!.national_id)

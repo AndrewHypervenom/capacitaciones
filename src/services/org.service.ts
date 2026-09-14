@@ -245,9 +245,21 @@ export interface UnitIndex {
   byLoose: Map<string, OrgUnit>
 }
 
-/** Clave tolerante: sin la 's' final de cada palabra. */
+/**
+ * Clave exacta. `fold` quita tildes y mayúsculas pero **NO colapsa los espacios
+ * de en medio**, y la nómina trae CR escritos con dos espacios
+ * ("IBM UPS  SITIO", "IBM -  AVVILLAS SITIO ISIT"). El catálogo se sembró con
+ * los espacios ya normalizados, así que sin esto esos nombres no casaban y cinco
+ * personas se quedaban sin CR — sin ningún error a la vista, solo "sin
+ * clasificar". Un espacio de más no es otro centro de resultados.
+ */
+function exactKey(name: string): string {
+  return fold(name).replace(/\s+/g, ' ')
+}
+
+/** Clave tolerante: además, sin la 's' final de cada palabra. */
 function looseKey(name: string): string {
-  return fold(name).replace(/s\b/g, '')
+  return exactKey(name).replace(/s\b/g, '')
 }
 
 export function indexUnits(units: OrgUnit[], kind?: OrgUnitKind): UnitIndex {
@@ -255,7 +267,7 @@ export function indexUnits(units: OrgUnit[], kind?: OrgUnitKind): UnitIndex {
   const byExact = new Map<string, OrgUnit>()
   const byLoose = new Map<string, OrgUnit>()
   for (const u of list) {
-    const e = fold(u.name)
+    const e = exactKey(u.name)
     if (!byExact.has(e)) byExact.set(e, u)
     const l = looseKey(u.name)
     if (!byLoose.has(l)) byLoose.set(l, u)
@@ -267,7 +279,7 @@ export function indexUnits(units: OrgUnit[], kind?: OrgUnitKind): UnitIndex {
 export function findUnit(ix: UnitIndex | undefined, raw: string): OrgUnit | undefined {
   const name = (raw ?? '').trim()
   if (!name || !ix) return undefined
-  return ix.byExact.get(fold(name)) ?? ix.byLoose.get(looseKey(name))
+  return ix.byExact.get(exactKey(name)) ?? ix.byLoose.get(looseKey(name))
 }
 
 /**

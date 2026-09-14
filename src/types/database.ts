@@ -1263,6 +1263,9 @@ export interface Database {
           avatar_url: string | null
           phone: string | null
           national_id: string | null
+          /** El cargo está fijado a mano: la carga de la base maestra no lo
+           *  propone ni lo pisa. Ver supabase/sql/22_cargo_fijado_a_mano.sql. */
+          job_title_locked: boolean
           job_title: string | null
           bio: string | null
           /** Cuenta vigente. `false` = dada de baja: no puede entrar y sale de
