@@ -28,8 +28,11 @@ export function useAuth() {
     // Dar de alta aprendices NO viene con el rol de capacitador: el superadmin
     // lo concede persona por persona. Sin el permiso, el panel no ofrece los
     // botones de alta (y las Edge Functions rechazan igual a quien insista).
+    // RH sí lo trae con el rol (dar de alta es su oficio): la Edge Function ya lo
+    // aceptaba, pero el panel le escondía el botón de «Crear usuario».
     canCreateLearners:
-      role === 'superadmin' || (role === 'capacitador' && profile?.can_create_learners === true),
+      role === 'superadmin' || role === 'rh' ||
+      (role === 'capacitador' && profile?.can_create_learners === true),
     // Aprobar la publicación de un curso tampoco viene con el rol: el
     // superadmin siempre puede, y designa a mano qué capacitador más puede
     // (profiles.can_approve_courses, desde /admin/users). Sin el permiso, el

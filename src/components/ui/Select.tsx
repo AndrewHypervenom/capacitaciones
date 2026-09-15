@@ -9,6 +9,7 @@ import {
 import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { fold } from '@/lib/normalize'
 
 export interface SelectOption {
   value: string
@@ -36,6 +37,9 @@ export interface SelectProps {
   id?: string
   name?: string
   'aria-label'?: string
+  /** Buscador arriba del menú (sin tildes). Para listas largas, como los CR. */
+  searchable?: boolean
+  searchPlaceholder?: string
 }
 
 /** Alto ideal del menú (16rem, como el max-h-64 de antes). */
@@ -69,11 +73,22 @@ export function Select({
   id,
   name,
   'aria-label': ariaLabel,
+  searchable,
+  searchPlaceholder,
 }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
+  const [query, setQuery] = useState('')
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  const q = searchable ? fold(query.trim()) : ''
+  const visible = q ? options.filter(o => fold(o.label).includes(q)) : options
+
+  useEffect(() => {
+    if (open && searchable) searchRef.current?.focus()
+  }, [open, searchable])
   const [pos, setPos] = useState<PanelPos>({ top: 0, left: 0, width: 0, openUp: false, maxH: PANEL_MAX_H })
 
   const measure = useCallback(() => {
@@ -124,6 +139,7 @@ export function Select({
   }
 
   const openAt = (idx: number) => {
+    setQuery('')
     setOpen(true)
     setActiveIdx(idx)
   }
@@ -137,6 +153,7 @@ export function Select({
       }
       return
     }
+    if (!visible.length && e.key !== 'Escape') return
     if (e.key === 'Escape') {
       e.preventDefault()
       setOpen(false)
@@ -145,19 +162,20 @@ export function Select({
       e.preventDefault()
       setActiveIdx(i => {
         let n = i
-        do { n = (n + 1) % options.length } while (options[n]?.disabled && n !== i)
+        do { n = (n + 1) % visible.length } while (visible[n]?.disabled && n !== i)
         return n
       })
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActiveIdx(i => {
         let n = i
-        do { n = (n - 1 + options.length) % options.length } while (options[n]?.disabled && n !== i)
+        do { n = (n - 1 + visible.length) % visible.length } while (visible[n]?.disabled && n !== i)
         return n
       })
-    } else if (e.key === 'Enter' || e.key === ' ') {
+    } else if (e.key === 'Enter' || (e.key === ' ' && !searchable)) {
+      // Con buscador, el espacio se escribe: "IBM UPS" lleva uno.
       e.preventDefault()
-      const opt = options[activeIdx]
+      const opt = visible[activeIdx]
       if (opt && !opt.disabled) commit(opt.value)
     }
   }
@@ -225,7 +243,22 @@ export function Select({
               zIndex: 9999,
             }}
           >
-            {options.map((opt, idx) => {
+            {searchable && (
+              <div className="sticky top-0 z-10 bg-surface px-2 pb-1">
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
+                  onKeyDown={onKeyDown}
+                  placeholder={searchPlaceholder}
+                  className="w-full rounded-lg border border-line bg-bg px-2.5 py-1.5 text-[13px] text-text outline-none focus:border-primary"
+                />
+              </div>
+            )}
+            {searchable && visible.length === 0 && (
+              <div className="px-3.5 py-2 text-[12px] text-text-subtle">—</div>
+            )}
+            {visible.map((opt, idx) => {
               const isSelected = opt.value === value
               return (
                 <button
