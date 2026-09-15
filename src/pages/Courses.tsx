@@ -277,7 +277,7 @@ export default function Courses() {
     setQuery('');
   };
 
-  const hasAdvanced = campaigns.length > 1 || levels.length > 1 || categories.length > 1;
+  const hasAdvanced = levels.length > 1 || categories.length > 1;
 
   /* ── Cargando ───────────────────────────────────────────────────────────── */
   if (loading) {
@@ -612,7 +612,7 @@ export default function Courses() {
                             className="group mb-4 flex w-full items-center gap-2 border-b border-line/70 pb-2 text-left transition-colors hover:border-text-subtle/40"
                           >
                             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle transition-colors group-hover:text-text-muted">
-                              {name || t('courses.campaign_none')}
+                              {name || t('courses.category_none')}
                             </span>
                             <span className="text-[11px] tabular-nums text-text-subtle/70">{list.length}</span>
                             <motion.span

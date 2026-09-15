@@ -387,6 +387,7 @@
     "filter_category_label": "Filter by category",
     "group_by_campaign": "Group by category",
     "campaign_none": "No program",
+    "category_none": "No category",
     "search_clear": "Clear search",
     "no_results_hint": "Try different words or remove one of the filters.",
     "my_courses": "My courses",

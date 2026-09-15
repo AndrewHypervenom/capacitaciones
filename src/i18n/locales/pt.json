@@ -387,6 +387,7 @@
     "filter_category_label": "Filtrar por categoria",
     "group_by_campaign": "Agrupar por categoria",
     "campaign_none": "Sem programa",
+    "category_none": "Sem categoria",
     "search_clear": "Limpar a busca",
     "no_results_hint": "Tente outras palavras ou remova algum dos filtros.",
     "my_courses": "Meus cursos",
