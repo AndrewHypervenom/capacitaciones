@@ -100,6 +100,7 @@ import {
 import { AudienceRulePicker, normalizeRule, audienceReadyToPublish } from '@/admin/components/AudienceRulePicker'
 import { getOrganizations, getOrgUnits, createOrgUnit } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
+import { COUNTRIES } from '@/lib/countries'
 import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { setCourseOwner } from '@/services/ownership.service'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
@@ -473,6 +474,8 @@ export default function CourseEditor() {
   const [ownerCampaigns, setOwnerCampaigns] = useState<Campaign[] | null>(null)
   const [courseCampaigns, setCourseCampaigns] = useState<CourseCampaignRow[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  // Nombres de CR y área por id, para escribir en cada persona dónde está.
+  const [unitNames, setUnitNames] = useState<Map<string, string>>(new Map())
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
   const [userSearch, setUserSearch] = useState('')
   const [campaignSearch, setCampaignSearch] = useState('')
@@ -830,27 +833,44 @@ export default function CourseEditor() {
     const ids = Array.from(
       new Set([authCampaignId, ...accessibleCampaigns.map((c) => c.id)].filter(Boolean)),
     ) as string[]
-    // Sin campañas accesibles todavía no hay a quién ofrecer: evitamos pedir
-    // toda la tabla y dejamos la lista como está hasta que lleguen.
-    if (!isSuperAdmin && ids.length === 0) { setProfiles([]); return }
     let active = true
-    let profilesQuery = supabase
-      .from('profiles')
-      .select('*')
-      .order('display_name')
-    if (!isSuperAdmin) {
-      // AQUÍ NO va "mi gente" (get_my_people_ids), y no es un olvido: sería
-      // circular. Mi gente son los alcanzados por mis cursos, así que usarla
-      // para elegir A QUIÉN ASIGNAR significaría que solo puedo asignarle a
-      // quien YA tiene un curso mío — nunca podría llegar a alguien nuevo.
-      //
-      // Ver a mi gente y poder asignarle un curso son dos preguntas distintas.
-      // La asignación individual sigue acotada a la campaña, igual que la RLS
-      // (`course_assignments_capacitador_write`), y es la excepción: lo normal
-      // pasa a ser la regla de audiencia de arriba.
-      profilesQuery = profilesQuery.eq('role', 'learner').in('campaign_id', ids)
+    getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((u) => { if (active) setUnitNames(new Map(u.map((x) => [x.id, x.name]))) })
+      .catch(() => {})
+    if (isSuperAdmin) {
+      supabase
+        .from('profiles')
+        .select('*')
+        .order('display_name')
+        .then(({ data }) => { if (active) setProfiles((data ?? []) as Profile[]) })
+      return () => { active = false }
     }
-    profilesQuery.then(({ data }) => { if (active) setProfiles((data ?? []) as Profile[]) })
+    // AQUÍ NO va "mi gente" (get_my_people_ids), y no es un olvido: sería
+    // circular. Mi gente son los alcanzados por mis cursos, así que usarla para
+    // elegir A QUIÉN ASIGNAR significaría que solo puedo asignarle a quien YA
+    // tiene un curso mío — nunca podría llegar a alguien nuevo.
+    //
+    // Y tampoco va por CAMPAÑA: con la migración a país/área/CR el programa ya
+    // no clasifica a nadie, y filtrar por él dejaba a la capacitadora sin ver a
+    // aprendices de otra campaña (o sin campaña) que el superadmin sí veía.
+    // `get_assignable_learners` (SQL 33) devuelve a todos los aprendices
+    // activos; la RLS de course_assignments deja escribir a quien gestiona el
+    // curso. Sin el SQL corrido se cae al filtro de siempre.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(supabase.rpc as any)('get_assignable_learners').then(
+      async ({ data, error }: { data: Profile[] | null; error: { code?: string } | null }) => {
+        if (!active) return
+        if (!error) { setProfiles(data ?? []); return }
+        const { data: legacy } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('role', 'learner')
+          .in('campaign_id', ids.length ? ids : [''])
+          .order('display_name')
+        if (active) setProfiles((legacy ?? []) as Profile[])
+      },
+    )
     return () => { active = false }
   }, [courseId, isSuperAdmin, authCampaignId, accessibleCampaigns])
 
@@ -941,21 +961,22 @@ export default function CourseEditor() {
     return visibleCampaigns.filter((c) => fold(c.name ?? '').includes(q))
   }, [visibleCampaigns, campaignSearch])
 
-  // Con varias campañas la lista de personas se mezcla, así que el buscador
-  // también mira el nombre de la campaña: escribir "Piloto" deja solo su gente.
-  // Y el correo, que es como se identifica a la gente cuando el nombre está
-  // repetido o escrito distinto (`profiles.email`, ver sync_profile_email).
+  // El buscador mira nombre, correo (así se distingue a quien tiene el nombre
+  // repetido, ver sync_profile_email) y dónde está: país, área y CR. Escribir
+  // "TUPY" deja solo a la gente de ese CR. El programa ya no: pasó a ser CR.
   const filteredProfiles = useMemo(() => {
     const q = fold(userSearch.trim())
     if (!q) return profiles
-    const campaignById = new Map(campaigns.map((c) => [c.id, c.name ?? '']))
+    const countryName = new Map(COUNTRIES.map((c) => [c.code, c.name]))
     return profiles.filter(
       (p) =>
         fold(p.display_name ?? '').includes(q) ||
         fold(p.email ?? '').includes(q) ||
-        fold(campaignById.get(p.campaign_id ?? '') ?? '').includes(q),
+        fold(countryName.get(p.country ?? '') ?? '').includes(q) ||
+        fold(unitNames.get(p.area_id ?? '') ?? '').includes(q) ||
+        fold(unitNames.get(p.operation_id ?? '') ?? '').includes(q),
     )
-  }, [profiles, userSearch, campaigns])
+  }, [profiles, userSearch, unitNames])
 
   // ¿Hay cambios pendientes respecto a lo guardado en BD?
   const assignDirty = useMemo(() => {
@@ -4097,7 +4118,13 @@ export default function CourseEditor() {
                 filteredProfiles.map((p) => {
                   const isAssigned = p.id in draftUsers
                   const isMandatory = draftUsers[p.id]
-                  const campaignName = campaigns.find((c) => c.id === p.campaign_id)?.name
+                  // Dónde está la persona, con los ejes nuevos: país · área · CR.
+                  const country = COUNTRIES.find((c) => c.code === p.country)
+                  const placeLabel = [
+                    country ? `${country.flag} ${country.name}` : null,
+                    p.area_id ? unitNames.get(p.area_id) : null,
+                    p.operation_id ? unitNames.get(p.operation_id) : null,
+                  ].filter(Boolean).join(' · ')
                   // Las dos vías suman: marcar su campaña no reemplaza esta
                   // casilla ni al revés. Se dice en la tarjeta para que nadie
                   // destilde a una persona creyendo que ya sobra.
@@ -4132,9 +4159,9 @@ export default function CourseEditor() {
                                 {t('admin.courses.also_via_campaign')}
                               </span>
                             )}
-                            {campaignName && (
+                            {placeLabel && (
                               <span className="block text-[11px] text-text-subtle truncate">
-                                {campaignName}
+                                {placeLabel}
                               </span>
                             )}
                           </span>
