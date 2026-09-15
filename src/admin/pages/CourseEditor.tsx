@@ -1420,7 +1420,17 @@ export default function CourseEditor() {
   // Sin `useMemo`: este bloque vive DESPUES de la salida temprana por "cargando",
   // y un hook ahi rompe el orden de los hooks. Es una comparacion de tres
   // arreglos; memorizarla no ahorra nada y costaba una regla rota.
-  const audienceIncomplete = assignLoaded && !audienceReadyToPublish(draftAudience)
+  /* Personas específicas marcadas: alcanza para publicar aunque no haya regla.
+   * Es el caso del curso EN PRUEBA —"que lo vean estas tres y nadie más"— y el
+   * del curso que ya existe pero cuya operación todavía no da el visto bueno:
+   * ponerle el CR para pasar el candado se lo mandaría a la operación entera,
+   * que es justo lo que no se quiere. Sin esto, la única salida era una
+   * audiencia inventada, y una audiencia inventada acaba llegando a quien no
+   * debe. Lo que se sigue bloqueando es publicar SIN regla y SIN personas: eso
+   * no le llega a nadie y el curso parece roto. */
+  const assignedPeopleCount = Object.keys(draftUsers).length
+  const audienceIncomplete =
+    assignLoaded && !audienceReadyToPublish(draftAudience) && assignedPeopleCount === 0
   /** La regla no alcanza a nadie: no se puede marcar obligatoria. */
   const audienceReachesNobody = !audienceReadyToPublish(draftAudience)
 
@@ -3999,6 +4009,15 @@ export default function CourseEditor() {
                 ? t('admin.courses.assign_users_hint_public')
                 : t('admin.courses.assign_users_hint')}
             </p>
+
+            {/* El curso se sostiene solo con estas personas: se dice en pantalla
+                para que nadie invente una regla de CR —que se lo mandaría a la
+                operación entera— solo para poder publicar. */}
+            {assignedPeopleCount > 0 && !audienceReadyToPublish(draftAudience) && (
+              <p className="mb-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 text-[12px] text-text-muted">
+                {t('admin.courses.publish_people_only_note', { count: assignedPeopleCount })}
+              </p>
+            )}
 
             <div className="relative mb-3 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />
