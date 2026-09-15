@@ -2686,6 +2686,8 @@
       "save_assignments": "Guardar asignaciones",
       "unsaved_changes": "Tienes cambios sin guardar",
       "assign_saved_ok": "Asignaciones guardadas",
+      "audience_rule_save_error": "No se pudo guardar a quién le llega el curso.",
+      "audience_rule_denied": "No tienes permiso para cambiar a quién le llega este curso. Pídeselo a un superadmin o a quien administra su programa.",
       "assign_load_error": "No se pudieron cargar las asignaciones de este curso. Vuelve a entrar antes de tocar la audiencia: si guardas ahora, no sabemos a quién ya lo tiene asignado.",
       "assign_remove_title": "Vas a quitar el curso",
       "assign_remove_campaigns_one": "{{count}} programa",

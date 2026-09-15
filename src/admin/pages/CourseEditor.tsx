@@ -1950,10 +1950,12 @@ export default function CourseEditor() {
       // borrados parciales que proteger como en campañas y personas, así que no
       // necesita la relectura defensiva de arriba. Si la tabla todavía no
       // existe, el fallo se avisa y no arrastra al resto del guardado.
+      let audienceFailed = false
       try {
         await saveAudience(course.id, draftAudience)
         setSavedAudience(draftAudience)
       } catch (e) {
+        audienceFailed = true
         console.error('[CourseEditor] audiencia', e)
         /* El motivo REAL, no solo "no se pudo".
          *
@@ -1970,7 +1972,7 @@ export default function CourseEditor() {
         toast.error(
           t('admin.courses.audience_rule_save_error', 'No se pudo guardar a quién le llega el curso.'),
           codigo === '42501'
-            ? t('admin.courses.audience_rule_denied', 'La base rechazó el permiso. Falta la política de escritura sobre course_audiences.')
+            ? t('admin.courses.audience_rule_denied')
             : detalle || undefined,
         )
       }
@@ -1982,6 +1984,10 @@ export default function CourseEditor() {
       // hasta un F5. Al tocar asignaciones esa caché deja de valer para
       // cualquiera, no solo para quien guarda.
       invalidateLearnerCoursesCache()
+      /* Si la regla no entró, NO hay «guardado» que anunciar: el verde junto al
+       * rojo hacía creer que sí había funcionado. Se devuelve false para que la
+       * barra no diga «Cambios guardados» y el cambio siga pendiente. */
+      if (audienceFailed) return false
       if (!opts?.silent) toast.success(t('admin.courses.assign_saved_ok'))
       // Asignar un curso en borrador no le llega a nadie. Se avisa en el momento
       // exacto del error —al guardar— y también en el guardado silencioso de la

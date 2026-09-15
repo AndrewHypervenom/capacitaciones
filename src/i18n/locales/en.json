@@ -2686,6 +2686,8 @@
       "save_assignments": "Save assignments",
       "unsaved_changes": "You have unsaved changes",
       "assign_saved_ok": "Assignments saved",
+      "audience_rule_save_error": "Couldn't save who this course reaches.",
+      "audience_rule_denied": "You don't have permission to change who this course reaches. Ask a superadmin or whoever manages its program.",
       "assign_load_error": "This course's assignments could not be loaded. Reopen the course before touching the audience: if you save now, we don't know who already has it.",
       "assign_remove_title": "You're about to remove the course",
       "assign_remove_campaigns_one": "{{count}} program",

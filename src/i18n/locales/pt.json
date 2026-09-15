@@ -2686,6 +2686,8 @@
       "save_assignments": "Salvar atribuições",
       "unsaved_changes": "Você tem alterações não salvas",
       "assign_saved_ok": "Atribuições salvas",
+      "audience_rule_save_error": "Não foi possível salvar para quem o curso vai.",
+      "audience_rule_denied": "Você não tem permissão para mudar para quem este curso vai. Peça a um superadmin ou a quem administra o programa.",
       "assign_load_error": "Não foi possível carregar as atribuições deste curso. Abra o curso de novo antes de mexer no público: se salvar agora, não sabemos quem já o tem.",
       "assign_remove_title": "Você vai tirar o curso",
       "assign_remove_campaigns_one": "{{count}} programa",
