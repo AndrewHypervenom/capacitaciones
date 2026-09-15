@@ -155,14 +155,14 @@ export async function getLearnerCourses(
     .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
     .order('sort_order')
 
-  const [coursesRes, ccRes, caRes, testIds, byRule] = await Promise.all([
+  // `course_campaigns` YA NO ENTREGA CURSOS (2026-09-15). El programa se retiró:
+  // un curso le llega a alguien por la regla de país/área/CR, por asignación
+  // individual o porque está en el catálogo abierto. Lo asignado solo por
+  // programa dejó de llegar a propósito: la migración no avanzaba mientras el
+  // camino viejo siguiera funcionando. Las filas siguen en la base (el progreso
+  // no se toca); simplemente no se leen aquí.
+  const [coursesRes, caRes, testIds, byRule] = await Promise.all([
     preview ? coursesQuery : coursesQuery.eq('is_published', true),
-    campaignId
-      ? supabase
-          .from('course_campaigns')
-          .select('course_id, campaign_id, is_mandatory, assigned_at')
-          .eq('campaign_id', campaignId)
-      : Promise.resolve({ data: [], error: null }),
     supabase
       .from('course_assignments')
       .select('course_id, user_id, is_mandatory, assigned_by, assigned_at')
@@ -176,9 +176,6 @@ export async function getLearnerCourses(
   ])
 
   if (coursesRes.error) throw coursesRes.error
-  const byCampaign = new Map(
-    ((ccRes.data ?? []) as CourseCampaignRow[]).map((r) => [r.course_id, r]),
-  )
   const byUser = new Map(
     ((caRes.data ?? []) as CourseAssignmentRow[]).map((r) => [r.course_id, r]),
   )
@@ -203,7 +200,7 @@ export async function getLearnerCourses(
     // "Inscribirme" la base le responde TEST_SCOPE_MISMATCH. Mejor no
     // ofrecérselo que enseñarle un error. Sus cursos asignados no se tocan.
     .filter((c) => {
-      if (preview || byCampaign.has(c.id) || byUser.has(c.id) || byRule.has(c.id)) return true
+      if (preview || byUser.has(c.id) || byRule.has(c.id)) return true
       return c.visibility === 'catalog' && !viewerIsTest
     })
 
@@ -217,19 +214,17 @@ export async function getLearnerCourses(
   const categories = await fetchCategoryNames()
 
   return rows.map((c) => {
-    const cc = byCampaign.get(c.id)
     const ca = byUser.get(c.id)
     return {
       ...c,
       modules: preview ? c.modules : c.modules.filter((m) => m.is_published),
-      isAssigned: !!cc || !!ca || byRule.has(c.id),
-      isMandatory:
-        (cc?.is_mandatory ?? false) || (ca?.is_mandatory ?? false) || (byRule.get(c.id) ?? false),
+      isAssigned: !!ca || byRule.has(c.id),
+      isMandatory: (ca?.is_mandatory ?? false) || (byRule.get(c.id) ?? false),
       // Auto-inscrito: existe asignación directa creada por él mismo.
       selfEnrolled: !!ca && ca.assigned_by === userId,
       // Manda la más antigua: el plazo se cuenta desde que de verdad lo tuvo,
       // no desde la última vez que alguien volvió a asignárselo.
-      assignedAt: earliest(ca?.assigned_at, cc?.assigned_at),
+      assignedAt: earliest(ca?.assigned_at, null),
       campaign_name: c.campaigns?.name ?? names.get(c.campaign_id) ?? null,
       // La del catálogo manda; si el curso todavía no se ha migrado, vale la
       // categoría vieja en texto. Así el filtro del aprendiz no pierde nada

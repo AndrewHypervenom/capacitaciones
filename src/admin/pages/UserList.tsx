@@ -30,7 +30,6 @@ import { Avatar } from '@/components/ui/Avatar'
 import { FadeIn } from '@/components/ui/motion'
 import { Select } from '@/components/ui/Select'
 import { Tooltip } from '@/components/ui/Tooltip'
-import { MultiSelect } from '@/components/ui/MultiSelect'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { UserProgressDrawer } from '@/admin/components/UserProgressDrawer'
 import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
@@ -148,7 +147,6 @@ export default function UserList() {
   const [pwdOpen, setPwdOpen] = useState(false)
   const [defaultPwdOn, setDefaultPwdOn] = useState(false)
   const [search, setSearch] = useState('')
-  const [campaignFilter, setCampaignFilter] = useState('')
   // Las cuentas dadas de baja no estorban el día a día: se ven si se piden.
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active')
   const [users, setUsers] = useState<ProfileWithEmail[]>([])
@@ -230,7 +228,7 @@ export default function UserList() {
       // si no, un capacitador con campaña casa A no aparecería al filtrar por B
       // aunque trabaje en B.
       const matchesCampaign =
-        !campaignFilter || (userCampaigns[u.id] ?? []).includes(campaignFilter)
+        true
       // `is_active` puede venir undefined si el SQL de altas/bajas aún no se
       // corrió: sin la columna, todas las cuentas cuentan como activas.
       const active = u.is_active !== false
@@ -238,7 +236,7 @@ export default function UserList() {
         statusFilter === 'all' || (statusFilter === 'active' ? active : !active)
       return matchesQuery && matchesCampaign && matchesStatus
     })
-  }, [users, search, campaignFilter, statusFilter, userCampaigns, tempCreds])
+  }, [users, search, statusFilter, tempCreds])
 
   const inactiveCount = useMemo(() => users.filter((u) => u.is_active === false).length, [users])
 
@@ -603,15 +601,6 @@ export default function UserList() {
     setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_approve_courses: next } : u)))
   }
 
-  /**
-   * Guarda el conjunto EXACTO de campañas del usuario. Las que se quitan dejan
-   * de verse de inmediato (la RLS deriva el acceso de esta pertenencia), y sin
-   * ninguna el usuario queda sin campaña: no ve ni crea contenido.
-   */
-  const handleCampaignsChange = (user: ProfileWithEmail, ids: string[]) => {
-    setUserCampaigns((prev) => ({ ...prev, [user.id]: ids }))
-  }
-
   // Deshacer (Ctrl+Z) del borrador: nombre, rol, permiso y campañas.
   const undoState = useMemo(() => ({ users, userCampaigns }), [users, userCampaigns])
   const { undo, canUndo } = useUndoHistory({
@@ -903,10 +892,6 @@ export default function UserList() {
     label: roleLabel[r],
     color: roleText[r],
   }))
-  const campaignOptions = (empty: string) => [
-    { value: '', label: empty },
-    ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-  ]
 
   // La tabla NO se colapsa en pantallas chicas: mantiene sus columnas a un ancho
   // legible y el contenedor hace scroll horizontal. Columnas fijas (no `auto`)
@@ -916,11 +901,14 @@ export default function UserList() {
     // 589px = 549 de antes + 40 del interruptor de "puede crear aprendices"
     // (solo aparece en filas de capacitador, pero la columna es fija para que
     // encabezado y filas queden alineados).
-    ? 'minmax(280px,1fr) 150px 210px 455px 48px'
+    // Sin columna de programa: se retiró del sitio (2026-09-15). Las personas
+    // se clasifican por país, área y CR; los equipos de contenido del staff se
+    // gestionan en la pantalla de programas (campaign_collaborators).
+    ? 'minmax(280px,1fr) 150px 455px 48px'
     // El capacitador también puede copiar credenciales de su gente: la columna
     // de acciones necesita espacio para ese botón.
     : 'minmax(280px,1fr) 150px 356px'
-  const tableMinWidth = isSuperAdmin ? 1195 : 806
+  const tableMinWidth = isSuperAdmin ? 969 : 806
 
   return (
     <div className="p-4 sm:p-8">
@@ -1223,14 +1211,6 @@ export default function UserList() {
               className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2.5 text-[14px] text-text outline-none focus:border-primary min-h-[44px]"
             />
           </div>
-          {(isSuperAdmin || campaigns.length > 1) && (
-            <Select
-              className="sm:w-56"
-              value={campaignFilter}
-              onChange={setCampaignFilter}
-              options={campaignOptions(t('admin.users.all_campaigns'))}
-            />
-          )}
           <Select
             className="sm:w-52"
             value={statusFilter}
@@ -1282,7 +1262,6 @@ export default function UserList() {
                 >
                   <span>{t('admin.users.col_user')}</span>
                   <span>{t('admin.users.col_role')}</span>
-                  {isSuperAdmin && <span>{t('admin.users.col_campaign')}</span>}
                   <span>{t('admin.users.col_actions')}</span>
                   {isSuperAdmin && <span />}
                 </div>
@@ -1513,27 +1492,6 @@ export default function UserList() {
                   >
                     {roleLabel[user.role]}
                   </span>
-                )}
-                {isSuperAdmin && (
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    {/* Uno o varios programas, sea quien sea la persona: el
-                        primero de la lista es la CASA (profiles.campaign_id) y
-                        el resto viven en campaign_collaborators. Se pinta
-                        siempre desde el borrador (`userCampaigns`), nunca desde
-                        `user.campaign_id`: leyendo del perfil la selección se
-                        deshacía sola al soltar el menú y parecía que la pantalla
-                        no dejaba asignar. */}
-                    <MultiSelect
-                      compact
-                      className="w-full min-w-0"
-                      values={userCampaigns[user.id] ?? []}
-                      onChange={(ids) => handleCampaignsChange(user, ids)}
-                      options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
-                      placeholder={i18n.t('admin.worlds.no_campaign')}
-                      summary={(n) => t('admin.users.campaigns_count', { count: n })}
-                      aria-label={t('admin.users.col_campaign')}
-                    />
-                  </div>
                 )}
                 {/* Cada acción explica QUÉ hace al pasar el mouse: los iconos
                     solos no se adivinan, y el `title` del navegador tarda un

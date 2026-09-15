@@ -272,6 +272,10 @@ export default function ChoiceSimulatorRun() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typing]);
 
+  // La petición de IA en vuelo. Sigue viva aunque el aprendiz salga de esta
+  // pantalla, y es de lo que cuelga el guardado del intento al desmontar.
+  const feedbackPromiseRef = useRef<Promise<AiFeedback | null> | null>(null);
+
   // Retroalimentación personalizada con IA (Claude) sobre las decisiones tomadas.
   useEffect(() => {
     if (phase !== 'result' || feedbackReqRef.current || !scenario) return;
@@ -280,12 +284,13 @@ export default function ChoiceSimulatorRun() {
       (m) => ({ from: m.speaker === 'agent' ? 'agent' : 'customer', text: m.message }) as const,
     );
     if (transcript.length === 0) {
+      feedbackPromiseRef.current = Promise.resolve(null);
       setFeedbackLoading(false);
       setFeedbackReady(true);
       return;
     }
     const pct = toScorePct(totalPoints, maxPoints);
-    choiceFeedback({
+    feedbackPromiseRef.current = choiceFeedback({
       language,
       scenario: {
         title: scenario.title[language],
@@ -295,10 +300,11 @@ export default function ChoiceSimulatorRun() {
       transcript,
       metrics: { scorePct: pct },
     })
-      .then((fb) => { if (mountedRef.current) { setAiFeedback(fb); setFeedbackError(null); } })
+      .then((fb) => { if (mountedRef.current) { setAiFeedback(fb); setFeedbackError(null); } return fb; })
       .catch((err) => {
         // IA no disponible → intento sin feedback, pero explicando el motivo en pantalla.
         if (mountedRef.current) setFeedbackError(err instanceof SimAiError ? err.kind : 'unknown');
+        return null;
       })
       .finally(() => { if (mountedRef.current) { setFeedbackLoading(false); setFeedbackReady(true); } });
   }, [phase, scenario, messages, maxPoints, totalPoints, language, feedbackAttempt]);
@@ -311,12 +317,15 @@ export default function ChoiceSimulatorRun() {
   }, []);
 
   // Persistir el intento en BD (auditable + cuenta para la certificación del curso).
-  // Espera a que la IA termine (o falle) para guardar el feedback junto al intento.
-  useEffect(() => {
-    if (phase !== 'result' || attemptSavedRef.current || !user?.id || !scenario || !feedbackReady) return;
-    attemptSavedRef.current = true;
+  // Espera a que la IA termine (o falle) para guardar el feedback junto al intento,
+  // pero NO depende de que la pantalla siga abierta: antes colgaba de
+  // `feedbackReady`, que solo se enciende montada, y quien volvía al curso antes
+  // de que la IA respondiera perdía el intento entero (caso Victor Estrella,
+  // Monitoreo, 2026-09-15: dos simulaciones hechas y 0 guardadas).
+  function recordAttempt(userId: string, fb: AiFeedback | null) {
+    if (!scenario) return;
     const pct = toScorePct(totalPoints, maxPoints);
-    saveSimulatorAttempt(user.id, {
+    saveSimulatorAttempt(userId, {
       courseId: simContext.courseId ?? null,
       campaignId: simContext.campaignId ?? null,
       scenarioSlug: scenario.id,
@@ -333,9 +342,26 @@ export default function ChoiceSimulatorRun() {
       // y con al menos la mitad de los puntos posibles.
       resolved: !earlyEnd && !stuckEnd && endType !== 'poor' && pct >= 50,
       durationSec: callSeconds,
-      aiFeedback,
+      aiFeedback: fb,
     }).catch(() => {});
-  }, [phase, user?.id, scenario, maxPoints, totalPoints, earlyEnd, stuckEnd, endType, callSeconds, feedbackReady, aiFeedback, simContext.courseId, simContext.campaignId]);
+  }
+  const persistRef = useRef<(fb: AiFeedback | null) => void>(() => {});
+  useEffect(() => {
+    persistRef.current = (fb) => {
+      if (phase !== 'result' || attemptSavedRef.current || !user?.id || !scenario) return;
+      attemptSavedRef.current = true;
+      recordAttempt(user.id, fb);
+    };
+  });
+  useEffect(() => {
+    if (feedbackReady) persistRef.current(aiFeedback);
+  }, [feedbackReady, aiFeedback]);
+  // Salió antes de que respondiera la IA: al terminar la petición se guarda con
+  // lo que haya llegado (o sin retroalimentación si falló).
+  useEffect(() => () => {
+    if (attemptSavedRef.current) return;
+    feedbackPromiseRef.current?.then((fb) => persistRef.current(fb));
+  }, []);
 
   const endCall = useCallback((node: ChoiceNode) => {
     setEndType(node.endType ?? 'poor');

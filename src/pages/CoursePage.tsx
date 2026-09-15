@@ -775,7 +775,7 @@ export default function CoursePage() {
               {t('courses.mandatory')}
             </span>
           )}
-          {[t(`courses.level_${course.level}`), course.category, course.campaign_name]
+          {[t(`courses.level_${course.level}`), course.category]
             .filter(Boolean)
             .map((chunk, i) => (
               <span key={String(chunk)} className="inline-flex items-center gap-1.5">

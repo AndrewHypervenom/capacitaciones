@@ -478,7 +478,6 @@ export default function CourseEditor() {
   const [unitNames, setUnitNames] = useState<Map<string, string>>(new Map())
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
   const [userSearch, setUserSearch] = useState('')
-  const [campaignSearch, setCampaignSearch] = useState('')
   // Borradores: id → obligatorio (solo entradas asignadas). Ausente = no asignado.
   const [draftCampaigns, setDraftCampaigns] = useState<Record<string, boolean>>({})
   const [draftUsers, setDraftUsers] = useState<Record<string, boolean>>({})
@@ -943,23 +942,6 @@ export default function CourseEditor() {
     }
     return out
   }, [campaignModules])
-
-  // El capacitador asigna el curso a CUALQUIERA de sus campañas (casa +
-  // colaboraciones), no solo a la casa: con varias campañas antes no podía
-  // asignar el curso a la campaña donde realmente vive el contenido, y sin fila
-  // en course_campaigns el curso no aparece en la vista de aprendiz.
-  const visibleCampaigns = useMemo(() => {
-    if (isSuperAdmin) return campaigns
-    const allowed = new Set(accessibleCampaigns.map((c) => c.id))
-    if (authCampaignId) allowed.add(authCampaignId)
-    return campaigns.filter((c) => allowed.has(c.id))
-  }, [campaigns, isSuperAdmin, accessibleCampaigns, authCampaignId])
-
-  const filteredCampaigns = useMemo(() => {
-    const q = fold(campaignSearch.trim())
-    if (!q) return visibleCampaigns
-    return visibleCampaigns.filter((c) => fold(c.name ?? '').includes(q))
-  }, [visibleCampaigns, campaignSearch])
 
   // El buscador mira nombre, correo (así se distingue a quien tiene el nombre
   // repetido, ver sync_profile_email) y dónde está: país, área y CR. Escribir
@@ -1849,19 +1831,6 @@ export default function CourseEditor() {
   }
 
   // ── Asignación: edición local (los cambios se persisten con "Guardar asignaciones") ──
-
-  const handleToggleCampaign = (campaignId: string) => {
-    setDraftCampaigns((prev) => {
-      const next = { ...prev }
-      if (campaignId in next) delete next[campaignId]
-      else next[campaignId] = false
-      return next
-    })
-  }
-
-  const handleCampaignMandatory = (campaignId: string, isMandatory: boolean) => {
-    setDraftCampaigns((prev) => ({ ...prev, [campaignId]: isMandatory }))
-  }
 
   const handleToggleUser = (userId: string) => {
     setDraftUsers((prev) => {
@@ -4007,84 +3976,16 @@ export default function CourseEditor() {
             />
           </div>
 
-          {/* Campañas — EN RETIRADA.
-              Sigue aquí porque es lo que hoy sostiene el acceso de los cursos que
-              todavía no tienen regla: quitarlo antes de tiempo dejaría a esa gente
-              sin nada. Pero se anuncia que se va, y en rojo, para que nadie
-              empiece a usarlo hoy y haya que deshacerlo mañana. Lo que queda
-              después es la regla de arriba más las personas puntuales. */}
-          <div>
-            <h2 className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-text mb-1">
-              <FolderOpen className="h-4 w-4 text-red-500/80" />
-              <span className="text-red-500/90">{t('admin.courses.assign_campaigns_title')}</span>
-              <span className="rounded-full border border-red-500/45 bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-500">
-                {t('admin.courses.assign_campaigns_going_away', 'Se va a quitar')}
-              </span>
-            </h2>
-            <p className="mb-3 rounded-xl border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-text-muted">
-              <span className="font-medium text-red-500/90">
-                {t('admin.courses.assign_campaigns_going_away_title')}
-              </span>{' '}
-              {t('admin.courses.assign_campaigns_going_away_body')}
+          {/* Programas — RETIRADO (2026-09-15). Ya no se asigna por programa, y
+              lo asignado así dejó de llegarle a la gente (getLearnerCourses no
+              lee course_campaigns). Queda solo el aviso, para quien venga a
+              buscar la sección de siempre y entienda qué pasó con su curso. */}
+          <div className="rounded-xl border border-red-500/30 bg-red-500/[0.06] px-3 py-2.5 text-[12px] text-text-muted">
+            <p className="flex items-center gap-2 font-medium text-red-500/90">
+              <FolderOpen className="h-4 w-4 shrink-0" />
+              {t('admin.courses.assign_campaigns_retired_title')}
             </p>
-            <p className="text-[12px] text-text-muted mb-3">
-              {form.visibility === 'catalog'
-                ? t('admin.courses.assign_campaigns_hint_public')
-                : t('admin.courses.assign_campaigns_hint')}
-            </p>
-            {visibleCampaigns.length > 1 && (
-              <div className="relative mb-3 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />
-                <input
-                  value={campaignSearch}
-                  onChange={(e) => setCampaignSearch(e.target.value)}
-                  placeholder={t('admin.courses.search_campaigns_ph')}
-                  className={cn(inputCls, 'pl-9')}
-                />
-              </div>
-            )}
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-              {filteredCampaigns.length === 0 ? (
-                <p className="text-[12px] text-text-subtle py-4 text-center">
-                  {t('admin.courses.no_campaigns')}
-                </p>
-              ) : (
-              filteredCampaigns.map((c) => {
-                const isAssigned = c.id in draftCampaigns
-                const isMandatory = draftCampaigns[c.id]
-                return (
-                  <GlassCard key={c.id} intensity="subtle" rounded="2xl" padding="none">
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isAssigned}
-                          onChange={() => handleToggleCampaign(c.id)}
-                          className="h-4 w-4 accent-[rgb(var(--primary))]"
-                        />
-                        <span className="text-[14px] text-text truncate">{c.name}</span>
-                      </label>
-                      {isAssigned && (
-                        <button
-                          onClick={() => handleCampaignMandatory(c.id, !isMandatory)}
-                          className={cn(
-                            'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors border',
-                            isMandatory
-                              ? 'bg-danger/10 border-danger/30 text-danger'
-                              : 'border-line text-text-muted hover:text-text',
-                          )}
-                        >
-                          {isMandatory
-                            ? t('admin.courses.mandatory')
-                            : t('admin.courses.optional')}
-                        </button>
-                      )}
-                    </div>
-                  </GlassCard>
-                )
-              })
-              )}
-            </div>
+            <p className="mt-1">{t('admin.courses.assign_campaigns_retired_body')}</p>
           </div>
 
           {/* Personas */}
@@ -4125,10 +4026,6 @@ export default function CourseEditor() {
                     p.area_id ? unitNames.get(p.area_id) : null,
                     p.operation_id ? unitNames.get(p.operation_id) : null,
                   ].filter(Boolean).join(' · ')
-                  // Las dos vías suman: marcar su campaña no reemplaza esta
-                  // casilla ni al revés. Se dice en la tarjeta para que nadie
-                  // destilde a una persona creyendo que ya sobra.
-                  const viaCampaign = !!p.campaign_id && p.campaign_id in draftCampaigns
                   return (
                     <GlassCard key={p.id} intensity="subtle" rounded="2xl" padding="none">
                       <div className="flex items-center gap-3 px-4 py-2.5">
@@ -4153,12 +4050,6 @@ export default function CourseEditor() {
                                 </span>
                               )}
                             </span>
-                            {viaCampaign && (
-                              <span className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                                <Check className="h-3 w-3" />
-                                {t('admin.courses.also_via_campaign')}
-                              </span>
-                            )}
                             {placeLabel && (
                               <span className="block text-[11px] text-text-subtle truncate">
                                 {placeLabel}

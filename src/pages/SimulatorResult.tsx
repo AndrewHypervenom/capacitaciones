@@ -88,6 +88,10 @@ export default function SimulatorResult() {
     nav('/dashboard', { replace: true });
   }, [valid, scenario, notFound, nav]);
 
+  // La petición de IA en vuelo. Sigue viva aunque el aprendiz salga de esta
+  // pantalla, y es de lo que cuelga el guardado del intento al desmontar.
+  const feedbackPromiseRef = useRef<Promise<AiFeedback | null> | null>(null);
+
   // Retroalimentación personalizada con IA (Claude) sobre la transcripción real.
   useEffect(() => {
     if (!valid || !scenario || !lastResult || !computed || feedbackReqRef.current) return;
@@ -96,11 +100,12 @@ export default function SimulatorResult() {
       .filter((m) => m.from === 'agent' || m.from === 'customer')
       .map((m) => ({ from: m.from === 'agent' ? 'agent' : 'customer', text: m.text }) as const);
     if (transcript.length === 0) {
+      feedbackPromiseRef.current = Promise.resolve(null);
       setFeedbackLoading(false);
       setFeedbackReady(true);
       return;
     }
-    callFeedback({
+    feedbackPromiseRef.current = callFeedback({
       language,
       scenario: {
         title: scenario.title[language],
@@ -115,10 +120,11 @@ export default function SimulatorResult() {
         resolved: computed.resolved,
       },
     })
-      .then((fb) => { if (mountedRef.current) { setAiFeedback(fb); setFeedbackError(null); } })
+      .then((fb) => { if (mountedRef.current) { setAiFeedback(fb); setFeedbackError(null); } return fb; })
       .catch((err) => {
         // IA no disponible → se guarda el intento sin feedback, pero se le dice al aprendiz por qué.
         if (mountedRef.current) setFeedbackError(err instanceof SimAiError ? err.kind : 'unknown');
+        return null;
       })
       .finally(() => { if (mountedRef.current) { setFeedbackLoading(false); setFeedbackReady(true); } });
   }, [valid, scenario, lastResult, computed, language, feedbackAttempt]);
@@ -130,11 +136,16 @@ export default function SimulatorResult() {
     setFeedbackAttempt((n) => n + 1);
   };
 
-  useEffect(() => {
-    if (!valid || !scenario || !lastResult || !computed || recordedRef.current) return;
-    // Espera a que la IA termine (o falle) para persistir el feedback junto al intento.
-    if (!feedbackReady) return;
-    recordedRef.current = true;
+  /*
+   * Guarda el intento. Espera a la IA para guardar su retroalimentación junto al
+   * puntaje, pero NO depende de que esta pantalla siga abierta: antes el guardado
+   * colgaba de `feedbackReady`, que solo se enciende con la pantalla montada, así
+   * que quien volvía al curso antes de que la IA respondiera (bastan 8 segundos)
+   * perdía el intento entero y el certificado seguía en 0/70 aunque hubiera
+   * aprobado (caso Victor Estrella, Monitoreo, 2026-09-15).
+   */
+  function recordAttempt(fb: AiFeedback | null) {
+    if (!scenario || !lastResult || !computed) return;
     // Progreso local (fuente de la UI del panel)
     addAttempt({
       id: `${scenario.id}-${lastResult.startedAt}`,
@@ -159,19 +170,39 @@ export default function SimulatorResult() {
         empathyPct: computed.empathyPct,
         resolved: computed.resolved,
         durationSec: computed.durationSec,
-        aiFeedback,
+        aiFeedback: fb,
       })
         .then(() => {
           // Refrescar estado de certificación del curso, si venimos de un curso
-          if (context?.courseId) {
-            return getCourseCertStatus(context.courseId).then(setCertStatus);
+          // y la pantalla sigue abierta (si ya salió, el curso lo lee al volver).
+          if (context?.courseId && mountedRef.current) {
+            return getCourseCertStatus(context.courseId).then((s) => {
+              if (mountedRef.current) setCertStatus(s);
+            });
           }
         })
         .catch(() => {
           /* no bloquear la UI */
         });
     }
-  }, [valid, scenario, lastResult, computed, feedbackReady, aiFeedback, addAttempt, user?.id, context]);
+  }
+  const persistRef = useRef<(fb: AiFeedback | null) => void>(() => {});
+  useEffect(() => {
+    persistRef.current = (fb) => {
+      if (!valid || !scenario || !lastResult || !computed || recordedRef.current) return;
+      recordedRef.current = true;
+      recordAttempt(fb);
+    };
+  });
+  useEffect(() => {
+    if (feedbackReady) persistRef.current(aiFeedback);
+  }, [feedbackReady, aiFeedback]);
+  // Salió antes de que respondiera la IA: al terminar la petición se guarda con
+  // lo que haya llegado (o sin retroalimentación si falló).
+  useEffect(() => () => {
+    if (recordedRef.current) return;
+    feedbackPromiseRef.current?.then((fb) => persistRef.current(fb));
+  }, []);
 
   if (!valid || !scenario || !computed) return null;
 

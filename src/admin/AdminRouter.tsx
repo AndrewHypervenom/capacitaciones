@@ -9,6 +9,7 @@ import { useHasNoCampaigns } from '@/hooks/useHasNoCampaigns'
 
 import { AdminNav } from './components/AdminNav'
 import { TestModeBanner } from './components/TestModeSwitch'
+import { ProgramRetiredBanner } from './components/ProgramRetiredBanner'
 import { CampaignWizard } from './components/CampaignWizard'
 import { Button } from '@/components/ui/Button'
 import { ViewPresenceChip } from '@/components/presence/ViewPresenceChip'
@@ -157,6 +158,9 @@ export default function AdminRouter() {
         {/* Mientras el modo pruebas esté encendido, el panel lo dice arriba de
             todo: sin esto es facilísimo exportar un Excel con data de prueba. */}
         <TestModeBanner />
+        {/* El programa se retiró del sitio: lo dice arriba de todo, en cada
+            pantalla del panel, hasta que la persona lo cierre. */}
+        <ProgramRetiredBanner />
         {/* Un único Suspense alrededor de las rutas. Dentro y no fuera del
             contenedor con scroll, para que la barra lateral y el aviso de modo
             pruebas no parpadeen al cambiar de pantalla. */}

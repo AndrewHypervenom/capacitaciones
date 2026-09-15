@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowDownAZ,
-  Building2,
   Check,
   ChevronDown,
   GraduationCap,
@@ -87,7 +86,6 @@ export default function Courses() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('smart');
-  const [campaign, setCampaign] = useState<string>(ANY);
   const [level, setLevel] = useState<string>(ANY);
   const [category, setCategory] = useState<string>(ANY);
   const [grouped, setGrouped] = useState(true);
@@ -111,12 +109,6 @@ export default function Courses() {
   }, []);
 
   /* ── Opciones de los filtros, sacadas de los cursos que hay de verdad ──── */
-  const campaigns = useMemo(() => {
-    const set = new Set<string>();
-    courses.forEach((c) => c.campaign_name && set.add(c.campaign_name));
-    return [...set].sort((a, b) => a.localeCompare(b, language, { sensitivity: 'base' }));
-  }, [courses, language]);
-
   const categories = useMemo(() => {
     const set = new Set<string>();
     courses.forEach((c) => c.category_name && set.add(c.category_name));
@@ -133,7 +125,6 @@ export default function Courses() {
   // un curso), vale "todas" en vez de dejar la pantalla vacía sin motivo. Se
   // resuelve al derivar, NO con un useEffect que llame a setState: el efecto
   // provoca un render extra y deja un parpadeo con la lista vacía.
-  const campaignSel = campaign !== ANY && !campaigns.includes(campaign) ? ANY : campaign;
   const categorySel = category !== ANY && !categories.includes(category) ? ANY : category;
   const levelSel = level !== ANY && !levels.includes(level) ? ANY : level;
 
@@ -145,15 +136,14 @@ export default function Courses() {
     const q = query.trim().toLowerCase();
     return courses.filter((c) => {
       if (q) {
-        const text = `${c.title_es} ${c.title_en ?? ''} ${c.title_pt ?? ''} ${c.description_es ?? ''} ${c.category ?? ''} ${c.campaign_name ?? ''}`.toLowerCase();
+        const text = `${c.title_es} ${c.title_en ?? ''} ${c.title_pt ?? ''} ${c.description_es ?? ''} ${c.category ?? ''} ${c.category_name ?? ''}`.toLowerCase();
         if (!text.includes(q)) return false;
       }
-      if (campaignSel !== ANY && c.campaign_name !== campaignSel) return false;
       if (levelSel !== ANY && c.level !== levelSel) return false;
       if (categorySel !== ANY && c.category_name !== categorySel) return false;
       return true;
     });
-  }, [courses, query, campaignSel, levelSel, categorySel]);
+  }, [courses, query, levelSel, categorySel]);
 
   const matchesFilter = useCallback(
     (c: LearnerCourse, f: Filter) => {
@@ -220,19 +210,19 @@ export default function Courses() {
   const myCourses = arrange(filtered.filter((c) => c.isAssigned));
   const exploreCourses = arrange(filtered.filter((c) => !c.isAssigned));
 
-  // Catálogo agrupado por campaña dueña: es la pregunta real de quien ve cursos
-  // de varias campañas ("¿esto de quién es?"). Sin useMemo a propósito: agrupar
-  // una lista ya calculada es barato.
+  // Catálogo agrupado por CATEGORÍA. Antes era por programa, que se retiró del
+  // sitio (2026-09-15): lo que era "programa" pasó a ser la categoría del curso.
+  // Sin useMemo a propósito: agrupar una lista ya calculada es barato.
   const exploreGroups = (() => {
     const map = new Map<string, LearnerCourse[]>();
     exploreCourses.forEach((c) => {
-      const key = c.campaign_name ?? '';
+      const key = c.category_name ?? '';
       const list = map.get(key);
       if (list) list.push(c);
       else map.set(key, [c]);
     });
     return [...map.entries()].sort((a, b) => {
-      // Los sin campaña, al final.
+      // Los sin categoría, al final.
       if (!a[0]) return 1;
       if (!b[0]) return -1;
       return a[0].localeCompare(b[0], language, { sensitivity: 'base' });
@@ -277,13 +267,11 @@ export default function Courses() {
 
   // Cuántos filtros "de segundo nivel" están puestos: lo único que necesita
   // saber el botón que abre el panel.
-  const advancedCount =
-    (campaignSel !== ANY ? 1 : 0) + (levelSel !== ANY ? 1 : 0) + (categorySel !== ANY ? 1 : 0);
+  const advancedCount = (levelSel !== ANY ? 1 : 0) + (categorySel !== ANY ? 1 : 0);
   const hasAny = advancedCount > 0 || filter !== 'all' || query.trim().length > 0;
 
   const clearAll = () => {
     setFilter('all');
-    setCampaign(ANY);
     setLevel(ANY);
     setCategory(ANY);
     setQuery('');
@@ -481,19 +469,6 @@ export default function Courses() {
                 className="overflow-hidden"
               >
                 <div className="grid grid-cols-1 gap-2 pt-3 pb-1 sm:grid-cols-2 lg:grid-cols-4">
-                  {campaigns.length > 1 && (
-                    <Select
-                      value={campaignSel}
-                      onChange={setCampaign}
-                      options={[
-                        { value: ANY, label: t('courses.filter_campaign_all') },
-                        ...campaigns.map((c) => ({ value: c, label: c })),
-                      ]}
-                      leadingIcon={<Building2 className="h-4 w-4 text-text-subtle" />}
-                      aria-label={t('courses.filter_campaign_label')}
-                      compact
-                    />
-                  )}
                   {levels.length > 1 && (
                     <Select
                       value={levelSel}
