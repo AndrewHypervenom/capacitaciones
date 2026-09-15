@@ -356,6 +356,12 @@ export default function Welcome() {
     t('welcome.land.f4_title'), t('welcome.land.f5_title'), t('welcome.land.f6_title'),
   ];
 
+  // Con sesión ya no se pinta la portada: el efecto de arriba redirige en este
+  // mismo ciclo, y montar todas sus animaciones solo para desmontarlas al
+  // instante disparaba un TypeError de framer-motion ("reading '0'"). Va
+  // después de todos los hooks para no romper su orden.
+  if (isAuthenticated && profile) return null;
+
   /* ── Renderizado ────────────────────────────────────────────────────── */
   return (
     <div className="relative min-h-screen bg-bg text-text transition-colors duration-200 overflow-x-hidden">

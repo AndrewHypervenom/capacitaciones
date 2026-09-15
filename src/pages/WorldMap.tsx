@@ -321,7 +321,10 @@ export default function WorldMap() {
   // o por un link viejo (sin ese estado) sigue devolviéndolo al dashboard.
   const fromCourse = locState?.from === 'course' && !!locState?.worldId
   useEffect(() => {
-    if (profile && !isStaff && !fromCourse) navigate('/', { replace: true })
+    // Directo a /dashboard y no a '/': la portada se montaba un instante solo para
+    // redirigir, y sus animaciones cortadas a medias lanzaban un TypeError de
+    // framer-motion ("reading '0'") que la QA veía de forma intermitente.
+    if (profile && !isStaff && !fromCourse) navigate('/dashboard', { replace: true })
   }, [profile, isStaff, navigate, fromCourse])
 
   /* Load */
