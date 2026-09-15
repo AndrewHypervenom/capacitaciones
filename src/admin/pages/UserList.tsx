@@ -41,8 +41,7 @@ import { getDefaultPassword } from '@/services/appSettings.service'
 import { setUsersActive } from '@/services/hrSync.service'
 import { logActivity } from '@/services/audit.service'
 import { checkEmailAvailable, type ExistingAccount } from '@/services/userEmail.service'
-import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
-import { COUNTRY_OPTIONS } from '@/lib/countries'
+import { OPERATION_COUNTRIES } from '@/lib/countries'
 import type { Profile, Campaign, OrgUnit } from '@/types/database'
 
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
@@ -176,7 +175,6 @@ export default function UserList() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [inviteRole, setInviteRole] = useState<Profile['role']>('learner')
-  const [inviteCampaign, setInviteCampaign] = useState('')
   // País opcional: si se deja vacío, la persona lo elige en su onboarding.
   const [inviteCountry, setInviteCountry] = useState('')
   const [countryIgnored, setCountryIgnored] = useState(false)
@@ -259,14 +257,15 @@ export default function UserList() {
   const showNoPermissionHint = !isSuperAdmin && !canCreateLearners
   // Sin campaña elegida el servidor rechaza el alta, así que el formulario la
   // exige antes de dejar crear.
-  // Un aprendiz sin programa no guarda progreso (user_progress se lee por
-  // campaign_id), así que también el superadmin tiene que elegirlo al crear uno.
-  const needsCampaign = !isSuperAdmin || inviteRole === 'learner'
-  const missingCampaign = needsCampaign && !inviteCampaign
+  // El programa ya no se elige al crear: con la migración a CR la audiencia la
+  // deciden país/área/CR. El servidor deja al aprendiz en Piloto, porque el
+  // progreso todavía exige campaign_id (ver create-user).
   // Y sin país la regla de audiencia no lo alcanza: no le aparece ningún curso
   // que no sea para «toda la organización».
   const needsCountry = inviteRole === 'learner'
-  const missingCountry = needsCountry && !inviteCountry
+  // Área y CR también: un aprendiz sin ellos queda "en el aire" — no le llegan
+  // los cursos de su área ni de su CR, ni sale al filtrar por ellos.
+  const missingCountry = needsCountry && (!inviteCountry || !inviteArea || !inviteOperation)
   const operationOptions = useMemo(
     () => (units ?? []).filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
     [units],
@@ -444,17 +443,12 @@ export default function UserList() {
   }
 
   /**
-   * Abre el formulario de alta arrancando en la campaña donde el panel está
-   * parado: un capacitador con varias campañas crea en la que está mirando, no
-   * en su casa. Sigue pudiendo cambiarla antes de crear.
+   * Abre el formulario de alta. El programa ya no se elige: pasó a ser CR.
    */
   const openInvite = () => {
     if (!isSuperAdmin) {
       // El capacitador no elige rol: siempre crea aprendices.
       setInviteRole('learner')
-      setInviteCampaign((current) =>
-        current || resolveCreationCampaignId(null, campaigns.map((c) => c.id)),
-      )
     }
     setInviteSuccess(false)
     setInviteError(null)
@@ -494,7 +488,7 @@ export default function UserList() {
   }
 
   const handleInvite = async () => {
-    if (!inviteEmail.trim() || missingCampaign || missingCountry) return
+    if (!inviteEmail.trim() || missingCountry) return
     setInviteLoading(true)
     setInviteError(null)
 
@@ -515,7 +509,6 @@ export default function UserList() {
             email: inviteEmail.trim(),
             name: inviteName.trim(),
             role: inviteRole,
-            campaignId: inviteCampaign || null,
             country: inviteCountry || null,
             operationId: inviteOperation || null,
             areaId: inviteArea || null,
@@ -1141,22 +1134,6 @@ export default function UserList() {
                 </div>
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
-                    {i18n.t('admin.users.col_campaign')}
-                    {needsCampaign && <span className="ml-0.5 text-[#10D451]">*</span>}
-                  </label>
-                  <Select
-                    value={inviteCampaign}
-                    onChange={setInviteCampaign}
-                    options={
-                      needsCampaign
-                        ? assignableCampaigns.map((c) => ({ value: c.id, label: c.name }))
-                        : campaignOptions(i18n.t('admin.worlds.no_campaign'))
-                    }
-                    placeholder={t('admin.users.pick_campaign')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
                     {i18n.t('profile.country')}
                     {needsCountry && <span className="ml-0.5 text-[#10D451]">*</span>}
                   </label>
@@ -1164,54 +1141,59 @@ export default function UserList() {
                     value={inviteCountry}
                     onChange={setInviteCountry}
                     placeholder={needsCountry ? t('admin.users.pick_country') : t('admin.users.country_optional')}
-                    searchable
                     options={[
                       ...(needsCountry ? [] : [{ value: '', label: t('admin.users.country_optional') }]),
-                      ...COUNTRY_OPTIONS,
+                      // Solo los países donde hay operación (los mismos del paso 1
+                      // de la audiencia del curso): otro país no casaría con ningún curso.
+                      ...[...OPERATION_COUNTRIES]
+                        .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+                        .map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` })),
                     ]}
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
                     {t('admin.users.area_label')}
+                    {needsCountry && <span className="ml-0.5 text-[#10D451]">*</span>}
                   </label>
                   <Select
                     value={inviteArea}
                     onChange={setInviteArea}
-                    placeholder={t('admin.users.area_optional')}
+                    placeholder={needsCountry ? t('admin.users.pick_area') : t('admin.users.area_optional')}
                     disabled={units === null}
-                    options={[{ value: '', label: t('admin.users.area_optional') }, ...areaOptions]}
+                    options={[
+                      ...(needsCountry ? [] : [{ value: '', label: t('admin.users.area_optional') }]),
+                      ...areaOptions,
+                    ]}
                   />
                 </div>
-                <div className="sm:col-span-2">
+                <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
                     {t('admin.users.cr_label')}
+                    {needsCountry && <span className="ml-0.5 text-[#10D451]">*</span>}
                   </label>
                   <Select
                     value={inviteOperation}
                     onChange={setInviteOperation}
-                    placeholder={t('admin.users.cr_optional')}
+                    placeholder={needsCountry ? t('admin.users.pick_cr') : t('admin.users.cr_optional')}
                     disabled={units === null}
                     searchable
                     searchPlaceholder={t('admin.users.cr_search')}
-                    options={[{ value: '', label: t('admin.users.cr_optional') }, ...operationOptions]}
+                    options={[
+                      ...(needsCountry ? [] : [{ value: '', label: t('admin.users.cr_optional') }]),
+                      ...operationOptions,
+                    ]}
                   />
                 </div>
               </div>
-              {missingCampaign && (
-                <p className="text-[12px] text-text-muted">{t('admin.users.pick_campaign_hint')}</p>
-              )}
               {missingCountry && (
                 <p className="text-[12px] text-text-muted">{t('admin.users.country_required_hint')}</p>
-              )}
-              {inviteRole === 'learner' && !missingCountry && !inviteOperation && !inviteArea && (
-                <p className="text-[12px] text-amber-500">{t('admin.users.units_missing_hint')}</p>
               )}
               {inviteError && <p className="text-red-500 text-[12px]">{inviteError}</p>}
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleInvite}
-                  disabled={inviteLoading || !inviteEmail || missingCampaign || missingCountry || emailCheck?.state === 'taken' || emailCheck?.state === 'checking'}
+                  disabled={inviteLoading || !inviteEmail || missingCountry || emailCheck?.state === 'taken' || emailCheck?.state === 'checking'}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
                   style={{ background: '#10D451' }}
                 >
