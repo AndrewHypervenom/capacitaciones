@@ -223,6 +223,8 @@ export default function AdminRouter() {
           <Route path="worlds/:id" element={<WorldDetail />} />
           <Route path="feedback" element={<Navigate to="/admin/progress?view=worlds" replace />} />
           <Route path="progress" element={<ProgressHub />} />
+          {/* Ruta desconocida del panel: sin esto se veía la barra y un área vacía. */}
+          <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
         </Suspense>
       </div>

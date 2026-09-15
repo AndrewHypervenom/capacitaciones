@@ -1418,6 +1418,8 @@ export default function CourseEditor() {
   // y un hook ahi rompe el orden de los hooks. Es una comparacion de tres
   // arreglos; memorizarla no ahorra nada y costaba una regla rota.
   const audienceIncomplete = assignLoaded && !audienceReadyToPublish(draftAudience)
+  /** La regla no alcanza a nadie: no se puede marcar obligatoria. */
+  const audienceReachesNobody = !audienceReadyToPublish(draftAudience)
 
   /**
    * Recarga el curso tras una decisión, para que el estado no quede a medias, y
@@ -3931,6 +3933,50 @@ export default function CourseEditor() {
               on={form.visibility === 'catalog'}
               onClick={() => handleSetVisibility(form.visibility === 'catalog' ? 'assigned' : 'catalog')}
               label={t('admin.courses.catalog_open_title', 'Además, abierto en el catálogo')}
+            />
+          </div>
+
+          {/* OBLIGATORIO.
+              `course_audiences.is_mandatory` existía y se guardaba desde el
+              principio, pero nunca tuvo interruptor: valía `false` siempre. Por
+              eso el KPI de "Cumplimiento obligatorio" solo contaba lo marcado a
+              mano en programas y personas — todo lo que llega por regla quedaba
+              fuera de la cifra que se audita.
+
+              Va DEBAJO del catálogo y no arriba a propósito: primero se decide a
+              quién le llega, y solo después si además es exigible. Marcarlo
+              antes de saber a quién alcanza es cómo se acaba con un curso
+              obligatorio para ochocientas personas sin querer.
+
+              Deshabilitado cuando la regla no alcanza a nadie: "obligatorio para
+              nadie" no significa nada y solo ensucia el cumplimiento. */}
+          <div className={cn(
+            'flex items-start gap-3 rounded-2xl border p-4',
+            draftAudience.isMandatory ? 'border-amber-500/45 bg-amber-500/[0.06]' : 'border-line',
+          )}>
+            <span className={cn(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+              draftAudience.isMandatory ? 'bg-amber-500/15 text-amber-500' : 'bg-subtle text-text-muted',
+            )}>
+              <ShieldCheck className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-text">
+                {t('admin.courses.mandatory_title', 'Formación obligatoria')}
+              </p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-text-muted">
+                {audienceReachesNobody
+                  ? t('admin.courses.mandatory_needs_rule', 'Primero define a quién le llega. Un curso obligatorio para nadie no significa nada.')
+                  : draftAudience.isMandatory
+                    ? t('admin.courses.mandatory_on', 'Cuenta en el cumplimiento obligatorio y se le marca como exigible a quien cumpla la regla de arriba.')
+                    : t('admin.courses.mandatory_off', 'Es formación opcional: se le ofrece a quien cumpla la regla, pero no cuenta como incumplimiento si no lo hace.')}
+              </p>
+            </div>
+            <Toggle
+              on={draftAudience.isMandatory}
+              disabled={audienceReachesNobody}
+              onClick={() => setDraftAudience({ ...draftAudience, isMandatory: !draftAudience.isMandatory })}
+              label={t('admin.courses.mandatory_title', 'Formación obligatoria')}
             />
           </div>
 

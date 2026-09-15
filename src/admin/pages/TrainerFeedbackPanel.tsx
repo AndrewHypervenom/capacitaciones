@@ -267,8 +267,12 @@ export const TrainerFeedbackPanel: React.FC = () => {
   useEffect(() => {
     const learnerId = path.learner?.id;
     if (!learnerId) return;
+    // Con un curso en la ruta solo se pide ese: la ficha no muestra los demás.
+    const courseId = path.course?.id;
     const ids = [...new Set(
-      attempts.filter((a) => a.user_id === learnerId && a.course_id).map((a) => a.course_id as string),
+      attempts
+        .filter((a) => a.user_id === learnerId && a.course_id && (!courseId || a.course_id === courseId))
+        .map((a) => a.course_id as string),
     )].filter((cid) => !courseDetails[`${learnerId}:${cid}`]);
     if (ids.length === 0) return;
 
@@ -283,7 +287,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
     }));
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path.learner?.id, attempts]);
+  }, [path.learner?.id, path.course?.id, attempts]);
 
   useEffect(() => {
     // En una entrega ya evaluada precargamos el comentario existente para poder
@@ -571,7 +575,15 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const personSummary = useMemo(() => {
     if (!path.learner) return null;
     const learnerId = path.learner.id;
-    const mine = pool.filter((a) => a.user_id === learnerId);
+    // Se respeta la ruta: si se bajó por campaña → curso, la ficha habla de ESE
+    // curso. Antes tomaba todas las entregas de la persona y el capacitador veía
+    // cursos que no estaba mirando. Por búsqueda global no hay curso en la ruta
+    // y sale su historia completa, que es lo que se busca ahí. El módulo NO
+    // acota: la ficha es el avance del curso entero, no de un módulo.
+    const mine = pool.filter((a) =>
+      a.user_id === learnerId &&
+      (!path.campaign || (a.campaign_id ?? NONE_KEY) === path.campaign.id) &&
+      (!path.course || (a.course_id ?? NONE_KEY) === path.course.id));
     if (mine.length === 0) return null;
 
     interface PMod {
@@ -683,7 +695,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
       totalTimeMs: allModules.reduce((s, m) => s + m.timeMs, 0),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool, path.learner, moduleTimes, courseDetails, i18n.language]);
+  }, [pool, path.learner, path.campaign, path.course, moduleTimes, courseDetails, i18n.language]);
 
   // ── Navegación por la jerarquía ──
   const enterNode = (node: HierNode) => {

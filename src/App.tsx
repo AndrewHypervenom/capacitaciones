@@ -36,6 +36,7 @@ const CourseSurvey = lazy(() => import('@/pages/CourseSurvey'));
 const ExamLanding = lazy(() => import('@/pages/ExamLanding'));
 const ExamRunner = lazy(() => import('@/pages/ExamRunner'));
 const ExamResult = lazy(() => import('@/pages/ExamResult'));
+const NotFound = lazy(() => import('@/pages/NotFound'));
 const PublicCertificate = lazy(() => import('@/pages/PublicCertificate'));
 const LiveQuizPlay = lazy(() => import('@/pages/LiveQuizPlay'));
 const MissionPlayer = lazy(() => import('@/pages/MissionPlayer'));
@@ -306,6 +307,8 @@ export default function App() {
         <Route path="/world" element={<WorldMap />} />
         {/* Admin CMS — solo accesible para admin/superadmin (AdminGuard dentro) */}
         <Route path="/admin/*" element={<AdminRouter />} />
+        {/* Sin comodín, cualquier enlace viejo dejaba la pantalla en negro. */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
       </Suspense>
       {/* Opiniones del sitio: vive en la raíz para estar en TODAS las vistas

@@ -14,6 +14,11 @@
     "world_error": "The world could not be created. Please try again."
   },
   "errors": {
+    "not_found": {
+      "title": "This page doesn't exist",
+      "description": "The link may be outdated or mistyped.",
+      "home": "Go home"
+    },
     "boundary": {
       "title": "Something went wrong",
       "description": "There was an error loading this view. Reload the page to continue.",
@@ -3005,7 +3010,11 @@
       "category_new": "New",
       "category_new_ph": "Category name",
       "category_created": "Category created",
-      "category_empty_catalog2": "No categories yet. Create the first one with \"New\"."
+      "category_empty_catalog2": "No categories yet. Create the first one with \"New\".",
+      "mandatory_title": "Mandatory training",
+      "mandatory_on": "Counts towards mandatory compliance and is marked as required for whoever matches the rule above.",
+      "mandatory_off": "Optional training: offered to whoever matches the rule, but not doing it is not a breach.",
+      "mandatory_needs_rule": "Define who it reaches first. A course that is mandatory for nobody means nothing."
     },
     "simulations": {
       "save": "Save",

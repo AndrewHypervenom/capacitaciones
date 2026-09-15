@@ -14,6 +14,11 @@
     "world_error": "Não foi possível criar o mundo. Tente novamente."
   },
   "errors": {
+    "not_found": {
+      "title": "Esta página não existe",
+      "description": "O link pode estar desatualizado ou digitado incorretamente.",
+      "home": "Ir para o início"
+    },
     "boundary": {
       "title": "Algo deu errado",
       "description": "Ocorreu um erro ao carregar esta tela. Recarregue a página para continuar.",
@@ -3005,7 +3010,11 @@
       "category_new": "Nova",
       "category_new_ph": "Nome da categoria",
       "category_created": "Categoria criada",
-      "category_empty_catalog2": "Ainda não há categorias. Crie a primeira com «Nova»."
+      "category_empty_catalog2": "Ainda não há categorias. Crie a primeira com «Nova».",
+      "mandatory_title": "Formação obrigatória",
+      "mandatory_on": "Conta no cumprimento obrigatório e é marcada como exigível para quem cumprir a regra acima.",
+      "mandatory_off": "É formação opcional: oferece-se a quem cumprir a regra, mas não fazê-la não conta como descumprimento.",
+      "mandatory_needs_rule": "Primeiro defina para quem vai. Um curso obrigatório para ninguém não significa nada."
     },
     "simulations": {
       "save": "Salvar",

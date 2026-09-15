@@ -142,24 +142,25 @@ export const saveActivityAttempt = async (attemptData: any) => {
  */
 export const getModuleFeedbackForUser = async (moduleId: string, userId: string) => {
   try {
-    console.log(`DEBUG: Consultando progreso en Supabase para el usuario: ${userId}`);
-    
-    const { data: progressRows, error } = await supabase
-      .from('user_progress')
-      .select('*')
-      .eq('user_id', userId); // Trae el progreso global del alumno
-      
-    if (error) throw error;
-    if (!progressRows || progressRows.length === 0) {
-      console.log("DEBUG: No se encontraron filas de progreso para este usuario.");
-      return { data: [], error: null };
-    }
+    const [{ data: progressRows, error }, { data: sectionRows }] = await Promise.all([
+      supabase.from('user_progress').select('attempts').eq('user_id', userId),
+      // Secciones del módulo: los intentos antiguos no guardaban module_id y
+      // solo se pueden ubicar por su sección.
+      supabase.from('module_sections').select('id').eq('module_id', moduleId),
+    ]);
 
-    // Extraemos todos los intentos del arreglo JSON del alumno de forma directa
-    const allAttempts = progressRows.flatMap(row => Array.isArray(row.attempts) ? row.attempts : []);
-    
-    console.log(`DEBUG: Conexión exitosa. Se enviaron ${allAttempts.length} intentos a la tarjeta lateral.`);
-    return { data: allAttempts, error: null };
+    if (error) throw error;
+    if (!progressRows || progressRows.length === 0) return { data: [], error: null };
+
+    // Los intentos viven en el JSON de progreso de la persona, mezclados de
+    // TODOS sus cursos. Antes se devolvían todos y el resumen del módulo
+    // mostraba actividades de otros cursos ("Plantilla sin módulo asociado").
+    const sectionIds = new Set((sectionRows ?? []).map((s) => s.id));
+    const allAttempts = progressRows.flatMap((row) => (Array.isArray(row.attempts) ? row.attempts : [])) as any[];
+    const moduleAttempts = allAttempts.filter((a) =>
+      a?.module_id ? a.module_id === moduleId : !!a?.section_id && sectionIds.has(a.section_id));
+
+    return { data: moduleAttempts, error: null };
   } catch (err) {
     console.error("Falló la conexión en getModuleFeedbackForUser:", err);
     return { data: [], error: err };
@@ -498,16 +499,23 @@ export const getMyTrainerFeedback = async (
     if (withFeedback.length === 0) return { data: [], error: null };
 
     const sectionIds = [...new Set(withFeedback.map((a: any) => a.section_id).filter(Boolean))];
-    const [sectionsRes, modulesRes] = await Promise.all([
-      sectionIds.length
-        ? supabase
-            .from('module_sections')
-            .select('id, module_id, heading_es, heading_en, heading_pt')
-            .in('id', sectionIds)
-        : Promise.resolve({ data: [] as any[] }),
-      supabase.from('modules').select('id, slug, title_es, title_en, title_pt'),
-    ]);
+    const sectionsRes = sectionIds.length
+      ? await supabase
+          .from('module_sections')
+          .select('id, module_id, heading_es, heading_en, heading_pt')
+          .in('id', sectionIds)
+      : { data: [] as any[] };
     const sections = sectionsRes.data ?? [];
+
+    // Solo los módulos que hacen falta para nombrar las retroalimentaciones:
+    // antes se traía la tabla de módulos entera en cada visita.
+    const moduleIds = [...new Set([
+      ...withFeedback.map((a: any) => a.module_id),
+      ...sections.map((s: any) => s.module_id),
+    ].filter(Boolean))];
+    const modulesRes = moduleIds.length
+      ? await supabase.from('modules').select('id, slug, title_es, title_en, title_pt').in('id', moduleIds)
+      : { data: [] as any[] };
     const modules = modulesRes.data ?? [];
 
     const items: StudentFeedbackItem[] = withFeedback.map((a: any) => {
