@@ -113,9 +113,16 @@ interface Props {
   value: AudienceRule
   onChange: (next: AudienceRule) => void
   disabled?: boolean
+  /**
+   * Cuántas personas hay marcadas en «Personas específicas», abajo en la misma
+   * pestaña. Sin este dato la tarjeta decía «Todavía a nadie» mientras el resto
+   * de la pantalla contaba nueve personas: la regla estaba vacía, sí, pero el
+   * curso SÍ le llegaba a alguien. La tarjeta habla del curso, no de la regla.
+   */
+  peopleCount?: number
 }
 
-export function AudienceRulePicker({ value, onChange, disabled }: Props) {
+export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 }: Props) {
   const { t } = useTranslation()
   const [orgId, setOrgId] = useState('')
   const [units, setUnits] = useState<OrgUnit[]>([])
@@ -325,9 +332,18 @@ export function AudienceRulePicker({ value, onChange, disabled }: Props) {
           {t('admin.courses.aud_reach_title', 'A quién le llega')}
         </h3>
         {vacia ? (
-          <p className="text-[12px] text-amber-500">
-            {t('admin.courses.aud_empty', 'Todavía a nadie. Marca al menos un país, una operación o un área — o elige toda la organización.')}
-          </p>
+          peopleCount > 0 ? (
+            /* Regla vacía PERO con personas marcadas: es el curso en prueba o el
+               que espera el visto bueno de la operación. No es un error, así que
+               no se pinta en ámbar. */
+            <p className="text-[12px] text-text-muted">
+              {t('admin.courses.aud_empty_but_people', { count: peopleCount })}
+            </p>
+          ) : (
+            <p className="text-[12px] text-amber-500">
+              {t('admin.courses.aud_empty', 'Todavía a nadie. Marca al menos un país, una operación o un área — o elige toda la organización.')}
+            </p>
+          )
         ) : (
           <>
             <p className="text-[12px] text-text-muted mb-1.5">{frase}</p>

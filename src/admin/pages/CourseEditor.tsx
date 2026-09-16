@@ -87,7 +87,6 @@ import {
   uploadCourseCover,
   COVER_MAX_BYTES,
   getCourseStats,
-  getLearnerCountsByCampaign,
   type CourseWithModules,
   type CourseCampaignRow,
   type CourseAssignmentRow,
@@ -499,9 +498,6 @@ export default function CourseEditor() {
   const [savedAudience, setSavedAudience] = useState<AudienceRule>(EMPTY_RULE)
   const [draftAudience, setDraftAudience] = useState<AudienceRule>(EMPTY_RULE)
   const [savingAssign, setSavingAssign] = useState(false)
-  // Aprendices por campaña: lo que la lista de personas NO muestra. Sin esto,
-  // "N personas con el curso asignado" parecía contradecir a "Matriculados".
-  const [learnersByCampaign, setLearnersByCampaign] = useState<Record<string, number>>({})
 
   // ── Evaluación (condiciones del certificado + simulador + resultados) ──
   const [cond, setCond] = useState<CertConditions>(DEFAULT_CERT_CONDITIONS)
@@ -873,36 +869,16 @@ export default function CourseEditor() {
     return () => { active = false }
   }, [courseId, isSuperAdmin, authCampaignId, accessibleCampaigns])
 
-  // Cuánta gente alcanza cada campaña marcada (se recalcula al marcar/desmarcar).
-  const draftCampaignIds = useMemo(() => Object.keys(draftCampaigns), [draftCampaigns])
-  useEffect(() => {
-    if (draftCampaignIds.length === 0) { setLearnersByCampaign({}); return }
-    getLearnerCountsByCampaign(draftCampaignIds)
-      .then(setLearnersByCampaign)
-      .catch(() => {})
-  }, [draftCampaignIds.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Alcance total estimado: asignaciones individuales + aprendices de las
-  // campañas marcadas. Las personas que ya tienen fila propia no se cuentan dos
-  // veces solo si están en `profiles` (la vista del capacitador es su campaña).
-  const audienceReach = useMemo(() => {
-    const direct = Object.keys(draftUsers)
-    const campaignLearners = draftCampaignIds.reduce(
-      (sum, id) => sum + (learnersByCampaign[id] ?? 0),
-      0,
-    )
-    // Descuento los individuales que ya vienen incluidos en una campaña marcada.
-    const overlap = direct.filter((uid) => {
-      const p = profiles.find((x) => x.id === uid)
-      return !!p && p.role === 'learner' && !!p.campaign_id && draftCampaignIds.includes(p.campaign_id)
-    }).length
-    return {
-      direct: direct.length,
-      campaigns: draftCampaignIds.length,
-      campaignLearners,
-      total: direct.length + campaignLearners - overlap,
-    }
-  }, [draftUsers, draftCampaignIds, learnersByCampaign, profiles])
+  // Alcance de esta pestaña: SOLO las personas marcadas una a una. La regla de
+  // país/área/CR tiene su propio contador arriba, y el programa YA NO ENTREGA
+  // NADA (2026-09-15). Sumar aquí a los aprendices de las campañas marcadas
+  // decía "le llega a 14" cuando le llegaba a 9 — y encima justo debajo de un
+  // "Todavía a nadie". Un número que contradice a otro en la misma pantalla
+  // hace dudar de los dos.
+  const audienceReach = useMemo(
+    () => ({ direct: Object.keys(draftUsers).length }),
+    [draftUsers],
+  )
 
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
@@ -948,17 +924,27 @@ export default function CourseEditor() {
   // "TUPY" deja solo a la gente de ese CR. El programa ya no: pasó a ser CR.
   const filteredProfiles = useMemo(() => {
     const q = fold(userSearch.trim())
-    if (!q) return profiles
     const countryName = new Map(COUNTRIES.map((c) => [c.code, c.name]))
-    return profiles.filter(
-      (p) =>
-        fold(p.display_name ?? '').includes(q) ||
-        fold(p.email ?? '').includes(q) ||
-        fold(countryName.get(p.country ?? '') ?? '').includes(q) ||
-        fold(unitNames.get(p.area_id ?? '') ?? '').includes(q) ||
-        fold(unitNames.get(p.operation_id ?? '') ?? '').includes(q),
+    const base = !q
+      ? profiles
+      : profiles.filter(
+          (p) =>
+            fold(p.display_name ?? '').includes(q) ||
+            fold(p.email ?? '').includes(q) ||
+            fold(countryName.get(p.country ?? '') ?? '').includes(q) ||
+            fold(unitNames.get(p.area_id ?? '') ?? '').includes(q) ||
+            fold(unitNames.get(p.operation_id ?? '') ?? '').includes(q),
+        )
+    // LAS MARCADAS, ARRIBA. Con ochocientos nombres en orden alfabético, saber
+    // a quiénes tiene asignado el curso obligaba a bajar por toda la lista
+    // buscando casillas encendidas: el editor decía "9 personas" y no había
+    // forma de ver cuáles. `sort` es estable, así que dentro de cada grupo se
+    // conserva el orden alfabético de siempre. Misma decisión que en el paso 3
+    // del CR (lo marcado se queda arriba).
+    return [...base].sort(
+      (a, b) => Number(b.id in draftUsers) - Number(a.id in draftUsers),
     )
-  }, [profiles, userSearch, unitNames])
+  }, [profiles, userSearch, unitNames, draftUsers])
 
   // ¿Hay cambios pendientes respecto a lo guardado en BD?
   const assignDirty = useMemo(() => {
@@ -2823,16 +2809,14 @@ export default function CourseEditor() {
           </div>
           {/* De dónde sale el número de matriculados: sin este desglose, la lista
               de asignaciones individuales parecía no cuadrar con el contador. */}
-          {(stats.campaign_reach > 0 || stats.staff_preview > 0) && (
+          {/* El desglose "N por programa" se quitó: el programa ya no entrega
+              cursos, así que ese número solo servía para contradecir a la lista
+              de personas. OJO: `stats.enrolled` lo calcula `get_course_stats` en
+              la base y TODAVÍA suma el programa — mientras no se cambie esa
+              función, el contador de arriba puede venir inflado. */}
+          {stats.staff_preview > 0 && (
             <p className="text-[11px] text-text-subtle mt-2">
-              {stats.campaign_reach > 0 &&
-                t('admin.courses.stats_breakdown', {
-                  direct: stats.direct_assigned,
-                  campaign: stats.campaign_reach,
-                })}
-              {stats.campaign_reach > 0 && stats.staff_preview > 0 && ' · '}
-              {stats.staff_preview > 0 &&
-                t('admin.courses.stats_staff_excluded', { n: stats.staff_preview })}
+              {t('admin.courses.stats_staff_excluded', { n: stats.staff_preview })}
             </p>
           )}
         </div>
@@ -3910,7 +3894,11 @@ export default function CourseEditor() {
             <p className="text-[12px] text-text-muted mb-3">
               {t('admin.courses.aud_rule_hint', 'Una regla sobre el país, la operación y el área de cada persona. Quien entre después a ese grupo lo recibe solo; quien salga deja de verlo.')}
             </p>
-            <AudienceRulePicker value={draftAudience} onChange={setDraftAudience} />
+            <AudienceRulePicker
+              value={draftAudience}
+              onChange={setDraftAudience}
+              peopleCount={assignedPeopleCount}
+            />
           </div>
 
           {/* El catálogo abierto, como añadido a la regla y no como pregunta
@@ -4104,28 +4092,22 @@ export default function CourseEditor() {
             )}
           </div>
 
-          {/* Alcance total — el contador de arriba solo cuenta asignaciones una a
-              una; quien recibe el curso por campaña no aparece en esa lista, y esa
-              es la diferencia contra "Matriculados". */}
-          {(audienceReach.direct > 0 || audienceReach.campaigns > 0 || form.visibility === 'catalog') && (
+          {/* Alcance de la pestaña: las personas marcadas una a una, más las dos
+              vías que NO son una lista de nombres (la regla de arriba y el
+              catálogo abierto), nombradas pero sin número para no sumar peras
+              con manzanas. */}
+          {(audienceReach.direct > 0 || form.visibility === 'catalog') && (
             <GlassCard intensity="subtle" rounded="2xl" className="px-4 py-3.5">
               <h3 className="flex items-center gap-2 text-[13px] font-semibold text-text mb-1.5">
                 <Users className="h-4 w-4 text-text-muted" />
                 {t('admin.courses.reach_title')}
               </h3>
               <p className="text-[20px] font-bold tabular-nums text-text leading-none mb-2">
-                {t('admin.courses.reach_people', { n: audienceReach.total })}
+                {t('admin.courses.reach_people', { n: audienceReach.direct })}
               </p>
               <ul className="space-y-1 text-[12px] text-text-muted">
                 <li>{t('admin.courses.reach_direct', { n: audienceReach.direct })}</li>
-                {audienceReach.campaigns > 0 && (
-                  <li>
-                    {t('admin.courses.reach_campaigns', {
-                      n: audienceReach.campaignLearners,
-                      c: audienceReach.campaigns,
-                    })}
-                  </li>
-                )}
+                {!audienceReachesNobody && <li>{t('admin.courses.reach_rule')}</li>}
                 {form.visibility === 'catalog' && <li>{t('admin.courses.reach_catalog')}</li>}
               </ul>
             </GlassCard>
