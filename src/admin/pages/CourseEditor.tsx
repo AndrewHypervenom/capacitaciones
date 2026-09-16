@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  ChevronRight,
   AlertTriangle,
   RefreshCw,
   Award,
@@ -93,7 +94,8 @@ import {
   type AudienceRule,
 } from '@/services/audiences.service'
 import { setUserIsClient } from '@/services/clients.service'
-import { AudienceRulePicker, normalizeRule, audienceReadyToPublish } from '@/admin/components/AudienceRulePicker'
+import { AudienceRulePicker, normalizeRule, audienceReadyToPublish, audienceSummary } from '@/admin/components/AudienceRulePicker'
+import { getAudiencePopulation, matchesAudience, ruleIsEmpty, isLearnerRole, type AudiencePerson } from '@/services/audiences.service'
 import { getOrganizations, getOrgUnits, createOrgUnit } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import { COUNTRIES } from '@/lib/countries'
@@ -472,8 +474,11 @@ export default function CourseEditor() {
      a nombre de alguien que no lo ve —ya pasó— y nadie se entera. */
   const [courseCampaigns, setCourseCampaigns] = useState<CourseCampaignRow[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  // Nombres de CR y área por id, para escribir en cada persona dónde está.
-  const [unitNames, setUnitNames] = useState<Map<string, string>>(new Map())
+  // Áreas y CR de la organización, para escribir en cada persona dónde está.
+  const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([])
+  // Todas las personas activas, para listar en «Alcance» a quién le llega por la regla.
+  const [audiencePeople, setAudiencePeople] = useState<AudiencePerson[]>([])
+  const unitNames = useMemo(() => new Map(orgUnits.map((x) => [x.id, x.name])), [orgUnits])
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
   const [userSearch, setUserSearch] = useState('')
   // Borradores: id → obligatorio (solo entradas asignadas). Ausente = no asignado.
@@ -829,8 +834,12 @@ export default function CourseEditor() {
     ) as string[]
     let active = true
     getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
-      .then((u) => { if (active) setUnitNames(new Map(u.map((x) => [x.id, x.name]))) })
+      .then((orgs) => {
+        const orgId = orgs[0]?.id
+        if (!orgId) return
+        getOrgUnits(orgId).then((u) => { if (active) setOrgUnits(u) }).catch(() => {})
+        getAudiencePopulation(orgId).then((p) => { if (active) setAudiencePeople(p) }).catch(() => {})
+      })
       .catch(() => {})
     if (isSuperAdmin) {
       supabase
@@ -878,6 +887,80 @@ export default function CourseEditor() {
     () => ({ direct: Object.keys(draftUsers).length }),
     [draftUsers],
   )
+
+  /* A QUIÉN LE LLEGA, CON NOMBRE: la regla de arriba más las marcadas a mano,
+   * sin repetir a nadie, en árbol PAÍS → área · CR → nombres. La tarjeta decía
+   * «17 personas» sin decir cuáles, y ni siquiera contaba a las de la regla: con
+   * «Colombia o México · CR: GOBIERNO LATAM» enseñaba 3 cuando eran 19. El país
+   * va una vez con su total; debajo, cada área · CR con el suyo. Lo más grande
+   * primero; los nombres, en orden alfabético.
+   * El cálculo es el mismo `matchesAudience` del selector, sobre el mismo censo. */
+  const reachTree = useMemo(() => {
+    type Entry = {
+      id: string; name: string; country: string | null; area_id: string | null
+      operation_id: string | null; is_client: boolean; client_name: string | null
+      staff: boolean; byRule: boolean; byHand: boolean
+    }
+    const reached = new Map<string, Entry>()
+    const personById = new Map(audiencePeople.map((x) => [x.id, x]))
+    const profileById = new Map(profiles.map((x) => [x.id, x]))
+    const add = (id: string, how: 'byRule' | 'byHand') => {
+      const cur = reached.get(id)
+      if (cur) { cur[how] = true; return }
+      const a = personById.get(id)
+      const p = profileById.get(id)
+      reached.set(id, {
+        id,
+        name: a?.display_name || p?.display_name || p?.email || t('admin.courses.reach_unknown_person'),
+        country: a?.country ?? p?.country ?? null,
+        area_id: a?.area_id ?? p?.area_id ?? null,
+        operation_id: a?.operation_id ?? p?.operation_id ?? null,
+        is_client: (a?.is_client ?? p?.is_client) === true,
+        client_name: p?.client_name ?? null,
+        staff: !isLearnerRole(a?.role ?? p?.role),
+        byRule: how === 'byRule',
+        byHand: how === 'byHand',
+      })
+    }
+    if (!ruleIsEmpty(draftAudience)) {
+      for (const person of audiencePeople) {
+        if (matchesAudience(draftAudience, person)) add(person.id, 'byRule')
+      }
+    }
+    for (const id of Object.keys(draftUsers)) add(id, 'byHand')
+
+    const countries = new Map<string, { label: string; groups: Map<string, Entry[]> }>()
+    for (const e of reached.values()) {
+      const country = COUNTRIES.find((c) => c.code === e.country)
+      const cKey = country?.code ?? '—'
+      const cLabel = country ? `${country.flag} ${country.name}` : t('admin.courses.reach_no_country')
+      const sub = [
+        e.is_client ? (e.client_name || t('admin.users.client_badge')) : null,
+        e.area_id ? unitNames.get(e.area_id) : null,
+        e.operation_id ? unitNames.get(e.operation_id) : null,
+      ].filter(Boolean).join(' · ')
+      const gLabel = sub || t('admin.courses.reach_no_area_cr')
+      const c = countries.get(cKey) ?? { label: cLabel, groups: new Map<string, Entry[]>() }
+      c.groups.set(gLabel, [...(c.groups.get(gLabel) ?? []), e])
+      countries.set(cKey, c)
+    }
+    const byLabel = (x: string, y: string) => x.localeCompare(y, 'es')
+    const tree = [...countries.entries()]
+      .map(([key, c]) => {
+        const groups = [...c.groups.entries()]
+          .map(([label, people]) => ({ label, people: people.sort((x, y) => byLabel(x.name, y.name)) }))
+          .sort((x, y) => y.people.length - x.people.length || byLabel(x.label, y.label))
+        return { key, label: c.label, total: groups.reduce((n, g) => n + g.people.length, 0), groups }
+      })
+      .sort((x, y) => y.total - x.total || byLabel(x.label, y.label))
+    const all = [...reached.values()]
+    return {
+      tree,
+      total: all.length,
+      byRule: all.filter((e) => e.byRule).length,
+      handOnly: all.filter((e) => e.byHand && !e.byRule).length,
+    }
+  }, [draftAudience, draftUsers, audiencePeople, profiles, unitNames, t])
 
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
@@ -4054,22 +4137,74 @@ export default function CourseEditor() {
             )}
           </div>
 
-          {/* Alcance de la pestaña: las personas marcadas una a una, más las dos
-              vías que NO son una lista de nombres (la regla de arriba y el
-              catálogo abierto), nombradas pero sin número para no sumar peras
-              con manzanas. */}
-          {(audienceReach.direct > 0 || form.visibility === 'catalog') && (
+          {/* Alcance de la pestaña: la regla de arriba y las personas marcadas a
+              mano, con nombre y sin repetir. El catálogo abierto se nombra pero
+              sin número: no es una lista de personas. */}
+          {(audienceReach.direct > 0 || form.visibility === 'catalog' || !audienceReachesNobody) && (
             <GlassCard intensity="subtle" rounded="2xl" className="px-4 py-3.5">
               <h3 className="flex items-center gap-2 text-[13px] font-semibold text-text mb-1.5">
                 <Users className="h-4 w-4 text-text-muted" />
                 {t('admin.courses.reach_title')}
               </h3>
               <p className="text-[20px] font-bold tabular-nums text-text leading-none mb-2">
-                {t('admin.courses.reach_people', { n: audienceReach.direct })}
+                {t('admin.courses.reach_people', { n: reachTree.total })}
               </p>
               <ul className="space-y-1 text-[12px] text-text-muted">
-                <li>{t('admin.courses.reach_direct', { n: audienceReach.direct })}</li>
-                {!audienceReachesNobody && <li>{t('admin.courses.reach_rule')}</li>}
+                {!audienceReachesNobody && (
+                  <li>
+                    {t('admin.courses.reach_by_rule', {
+                      n: reachTree.byRule,
+                      rule: audienceSummary(draftAudience, orgUnits, t),
+                    })}
+                  </li>
+                )}
+                {audienceReach.direct > 0 && (
+                  <li>{t('admin.courses.reach_hand_only', { n: reachTree.handOnly, total: audienceReach.direct })}</li>
+                )}
+              </ul>
+              {reachTree.tree.length > 0 && (
+                <div className="mt-3 space-y-3">
+                  {reachTree.tree.map((c) => (
+                    <div key={c.key}>
+                      <p className="flex items-center justify-between border-b border-line pb-1 text-[12px] font-semibold text-text">
+                        <span>{c.label}</span>
+                        <span className="tabular-nums text-text-muted">{c.total}</span>
+                      </p>
+                      <ul className="mt-1">
+                        {c.groups.map((g) => (
+                          <li key={g.label}>
+                            <details className="group">
+                              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-1.5 py-1 text-[12px] text-text-muted hover:bg-subtle hover:text-text [&::-webkit-details-marker]:hidden">
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-subtle transition-transform group-open:rotate-90" />
+                                <span className="min-w-0 flex-1 truncate">{g.label}</span>
+                                <span className="shrink-0 tabular-nums text-text-subtle">{g.people.length}</span>
+                              </summary>
+                              <ul className="mb-1 ml-[26px] border-l border-line pl-3">
+                                {g.people.map((e) => (
+                                  <li key={e.id} className="flex flex-wrap items-center gap-1.5 py-0.5 text-[12px] text-text">
+                                    {e.name}
+                                    {e.byHand && !e.byRule && (
+                                      <span className="rounded-full border border-line px-1.5 text-[10px] text-text-subtle">
+                                        {t('admin.courses.reach_tag_hand')}
+                                      </span>
+                                    )}
+                                    {e.staff && (
+                                      <span className="rounded-full border border-line px-1.5 text-[10px] text-text-subtle">
+                                        {t('admin.courses.reach_tag_staff')}
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <ul className="mt-2 space-y-1 text-[12px] text-text-muted">
                 {form.visibility === 'catalog' && <li>{t('admin.courses.reach_catalog')}</li>}
               </ul>
             </GlassCard>

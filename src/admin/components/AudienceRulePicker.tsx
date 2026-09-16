@@ -135,7 +135,7 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
   const [orgId, setOrgId] = useState('')
   const [units, setUnits] = useState<OrgUnit[]>([])
   const [reach, setReach] = useState<
-    { matched: number; total: number; clients: number } | null
+    { matched: number; staff: number; total: number; clients: number } | null
   >(null)
   const [counting, setCounting] = useState(false)
 
@@ -170,9 +170,10 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
   const operations = useMemo(() => units.filter((u) => u.kind === 'operation'), [units])
   const areas = useMemo(() => units.filter((u) => u.kind === 'area'), [units])
 
-  /* El censo de aprendices, para poder escribir al lado de cada opción a cuánta
-   * gente lleva. Es la diferencia entre elegir un CR de una lista de ochenta y
-   * ocho nombres y elegirlo sabiendo que tiene noventa y seis personas. */
+  /* El censo de personas activas (aprendices y equipo, que también lo reciben),
+   * para poder escribir al lado de cada opción a cuánta gente lleva. Es la
+   * diferencia entre elegir un CR de una lista de ochenta y ocho nombres y
+   * elegirlo sabiendo que tiene noventa y seis personas. */
   const [censo, setCenso] = useState<AudiencePerson[]>([])
   useEffect(() => {
     if (!orgId) return
@@ -222,11 +223,20 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
   const toggle = (key: 'countries' | 'operationIds' | 'areaIds', id: string) => {
     if (disabled) return
     const cur = value[key]
-    onChange({
+    const next: AudienceRule = {
       ...value,
       everyone: false,
       [key]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
-    })
+    }
+    /* Área y CR cuelgan del país: sin país sus pasos se apagan y ya no se pueden
+       desmarcar. Si se quedaran puestos, la regla seguiría mandando el curso a
+       ese CR —en todos los países— mientras la pantalla dice «elige primero el
+       país». Quitar el último país se lleva lo que dependía de él. */
+    if (key === 'countries' && next.countries.length === 0) {
+      next.areaIds = []
+      next.operationIds = []
+    }
+    onChange(next)
   }
 
   /** La regla leída en palabras. Es la frase que evita el malentendido. */
@@ -367,6 +377,14 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
                 })
               ) : '—'}
             </p>
+            {/* El equipo también lo recibe (la base no mira el rol), pero no es
+                un aprendiz: se dice aparte para que la cuenta cuadre con lo que
+                se ve en cada CR sin inflar «aprendices». */}
+            {reach && reach.staff > 0 && !counting && (
+              <p className="text-[12px] text-text-muted mt-1.5">
+                {t('admin.courses.aud_reach_staff', { count: reach.staff })}
+              </p>
+            )}
             {reach?.matched === 0 && !counting && (
               <p className="text-[12px] text-amber-500 mt-1.5">
                 {t('admin.courses.aud_reach_zero', 'Ahora mismo no hay nadie que cumpla la regla. Puede ser que falte clasificar a esa gente.')}

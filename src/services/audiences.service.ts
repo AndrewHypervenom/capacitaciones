@@ -192,6 +192,9 @@ export async function clearAudience(courseId: string): Promise<void> {
 }
 
 export interface AudiencePerson {
+  id: string
+  display_name: string | null
+  role: string | null
   country: string | null
   operation_id: string | null
   area_id: string | null
@@ -200,49 +203,74 @@ export interface AudiencePerson {
 }
 
 /**
- * Los tres datos de cada aprendiz con los que se resuelve cualquier regla.
+ * Todas las personas activas con los datos con los que se resuelve cualquier regla.
  *
- * Se pide UNA vez por organización y se cachea: son tres columnas de texto de
- * ochocientas filas, y el selector de audiencia las consulta con cada clic para
- * poder decir, al lado de cada opción, a cuánta gente lleva. Volver al servidor
- * por cada tecla convertiría esa ayuda en una espera.
+ * Se pide UNA vez por organización y se cachea: el selector de audiencia la
+ * consulta con cada clic para poder decir, al lado de cada opción, a cuánta
+ * gente lleva. Volver al servidor por cada tecla convertiría esa ayuda en una
+ * espera.
+ *
+ * TRES TRAMPAS QUE YA COSTARON UN NÚMERO FALSO (2026-09-16, GOBIERNO LATAM
+ * decía 11 y eran 19):
+ *   · `org_id` VACÍO. 51 aprendices activos no tienen organización, y
+ *     `audience_matches()` en la base NO mira la organización: a ellos el curso
+ *     sí les llega. Filtrar por `org_id = X` los borraba del conteo. Se aceptan
+ *     los de esa organización y los que no tienen ninguna.
+ *   · SOLO APRENDICES. La base le entrega el curso a quien cumpla la regla, sea
+ *     del rol que sea; capacitadores y admins también lo tienen. Se traen todos
+ *     y se cuentan aparte (`role`), para no mezclarlos con «aprendices».
+ *   · EL TOPE DE 1000 FILAS de PostgREST. Con 859 perfiles todavía no mordía,
+ *     pero el día que pase de mil el censo se cortaría callado. Se pide por páginas.
  */
 let poblacion = new Map<string, Promise<AudiencePerson[]>>()
+
+const PAGE = 1000
 
 export async function getAudiencePopulation(orgId: string): Promise<AudiencePerson[]> {
   if (!orgId) return []
   const hit = poblacion.get(orgId)
   if (hit) return hit
   const pending = (async () => {
-    const pedir = (cols: string) =>
+    const pedir = (cols: string, from: number) =>
       supabase
         .from('profiles')
         .select(cols)
-        .eq('org_id', orgId)
+        .or(`org_id.eq.${orgId},org_id.is.null`)
         .eq('is_active', true)
-        .eq('role', 'learner')
+        .order('id')
+        .range(from, from + PAGE - 1)
 
-    let { data, error } = await pedir('country, operation_id, area_id, is_client')
-    // Mientras el SQL de clientes no se haya corrido, `is_client` no existe y
-    // PostgREST tumba la consulta ENTERA (42703). Sin este reintento el censo
-    // llegaría vacío y el editor diría "0 personas" en todos los CR, que es
-    // mucho peor que no saber quién es cliente. Se reintenta sin la columna.
-    if (error && error.code === '42703') {
-      ;({ data, error } = await pedir('country, operation_id, area_id'))
+    let cols = 'id, display_name, role, country, operation_id, area_id, is_client'
+    const out: AudiencePerson[] = []
+    for (let from = 0; ; from += PAGE) {
+      let { data, error } = await pedir(cols, from)
+      // Mientras el SQL de clientes no se haya corrido, `is_client` no existe y
+      // PostgREST tumba la consulta ENTERA (42703). Sin este reintento el censo
+      // llegaría vacío y el editor diría "0 personas" en todos los CR, que es
+      // mucho peor que no saber quién es cliente. Se reintenta sin la columna.
+      if (error && error.code === '42703' && cols.includes('is_client')) {
+        cols = 'id, display_name, role, country, operation_id, area_id'
+        ;({ data, error } = await pedir(cols, from))
+      }
+      if (error) {
+        if (isMissingSchema(error)) return []
+        throw error
+      }
+      const rows = (data ?? []) as unknown as AudiencePerson[]
+      for (const p of rows) out.push({ ...p, is_client: p.is_client ?? false })
+      if (rows.length < PAGE) break
     }
-    if (error) {
-      if (isMissingSchema(error)) return []
-      throw error
-    }
-    return ((data ?? []) as unknown as AudiencePerson[]).map((p) => ({
-      ...p,
-      is_client: p.is_client ?? false,
-    }))
+    return out
   })()
   poblacion.set(orgId, pending)
   // Un fallo no se cachea: el siguiente intento tiene que poder funcionar.
   pending.catch(() => poblacion.delete(orgId))
   return pending
+}
+
+/** ¿Es aprendiz? Todo lo demás (capacitador, admin, RH…) es «del equipo». */
+export function isLearnerRole(role: string | null | undefined): boolean {
+  return (role ?? 'learner') === 'learner'
 }
 
 /** Tras una carga de nómina la gente cambió de CR: el censo hay que rehacerlo. */
@@ -260,16 +288,20 @@ export function invalidateAudiencePopulation(): void {
 export async function countAudience(
   orgId: string,
   rule: AudienceRule,
-): Promise<{ matched: number; total: number; clients: number } | null> {
+): Promise<{ matched: number; staff: number; total: number; clients: number } | null> {
   if (!orgId) return null
   const people = await getAudiencePopulation(orgId)
   const alcanzados = people.filter((p) => matchesAudience(rule, p))
+  const aprendices = alcanzados.filter((p) => isLearnerRole(p.role))
   return {
-    matched: alcanzados.length,
-    // El total son los de CASA. Los clientes no entran en el denominador: decir
-    // "12 de 830" cuando 8 de esos 12 son de un cliente mezcla dos poblaciones
-    // que no se comparan.
-    total: people.filter((p) => p.is_client !== true).length,
+    // Aprendices a los que llega. El equipo va aparte: también lo recibe, pero
+    // «12 de 786 aprendices» no puede contar a un capacitador.
+    matched: aprendices.length,
+    staff: alcanzados.length - aprendices.length,
+    // El total son los aprendices de CASA. Los clientes no entran en el
+    // denominador: decir "12 de 830" cuando 8 de esos 12 son de un cliente
+    // mezcla dos poblaciones que no se comparan.
+    total: people.filter((p) => isLearnerRole(p.role) && p.is_client !== true).length,
     // Cuántos de los alcanzados son de fuera. Es el número que hay que poder
     // ver ANTES de publicar cuando se abre un curso a clientes.
     clients: alcanzados.filter((p) => p.is_client === true).length,

@@ -274,7 +274,9 @@ export async function countPeopleByUnit(orgId: string): Promise<{
   const { data, error } = await supabase
     .from('profiles')
     .select('operation_id, area_id')
-    .eq('org_id', orgId)
+    // Los que no tienen organización también cuentan: la regla de audiencia no
+    // mira `org_id`, y 51 personas activas lo tienen vacío (ver audiences.service).
+    .or(`org_id.eq.${orgId},org_id.is.null`)
     .eq('is_active', true)
   if (error) {
     if (isMissingSchema(error)) return empty
