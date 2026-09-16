@@ -176,9 +176,9 @@ export const FAQ: FaqEntry[] = [
     strong: ['crear curso', 'create course', 'nuevo curso', 'criar curso', 'obligatorio', 'mandatory'],
     keywords: ['curso', 'course', 'agrupar', 'modulos', 'catalogo', 'catalog'],
     answer: {
-      es: 'Crea y edita cursos en [Cursos](/admin/courses). Un curso agrupa varios módulos, se asigna a programas o personas y puede ser obligatorio o de catálogo abierto.',
-      en: 'Create and edit courses in [Courses](/admin/courses). A course groups several modules, is assigned to campaigns or people, and can be mandatory or open-catalog.',
-      pt: 'Crie e edite cursos em [Cursos](/admin/courses). Um curso agrupa vários módulos, é atribuído a campanhas ou pessoas e pode ser obrigatório ou de catálogo aberto.',
+      es: 'Crea y edita cursos en [Cursos](/admin/courses). Un curso agrupa varios módulos, le llega a la gente por una regla de país, área y CR (o a personas específicas) y puede ser obligatorio o de catálogo abierto.',
+      en: 'Create and edit courses in [Courses](/admin/courses). A course groups several modules, reaches people through a country, area and CR rule (or specific people), and can be mandatory or open-catalog.',
+      pt: 'Crie e edite cursos em [Cursos](/admin/courses). Um curso agrupa vários módulos, chega às pessoas por uma regra de país, área e CR (ou a pessoas específicas) e pode ser obrigatório ou de catálogo aberto.',
     },
   },
   {
@@ -198,9 +198,9 @@ export const FAQ: FaqEntry[] = [
     strong: ['evaluaciones', 'evaluations', 'resultados', 'results', 'notas', 'calificaciones', 'estadisticas', 'statistics', 'estatisticas', 'simulador', 'simulator', 'llamadas', 'calls'],
     keywords: ['aprendices', 'ver', 'quizzes', 'simulaciones', 'simulations', 'desempeno', 'curso', 'course', 'promedio', 'certificados', 'empatia', 'checklist'],
     answer: {
-      es: 'En **Personas → Progreso** eliges una de tres vistas: **Progreso de Módulos**, **Progreso de Mundos** (avance gamificado) o **Progreso de Simulaciones** (puntaje, empatía, checklist, resolución y feedback de IA, con filtro por escenario). Abre [Progreso](/admin/progress). Progreso de Módulos tiene dos pestañas: **Panorama** —KPIs del programa (personas alcanzadas, participación, nota promedio, certificados, NPS y pendientes por evaluar) con secciones de Resumen, Personas, Cursos, **Examen final** y **Satisfacción**, matriz personas × cursos y exportación a Excel— y **Bandeja**, donde evalúas las entregas una a una. Las estadísticas por curso y los certificados viven ahí (antes eran la "Vista global").',
-      en: 'In **People → Progress** you pick one of three views: **Module Progress**, **World Progress** (gamified) or **Simulation Progress** (score, empathy, checklist, resolution and AI feedback, with a scenario filter). Open [Progress](/admin/progress). Module Progress has two tabs: **Overview** —program KPIs (people reached, participation, average score, certificates, NPS and pending reviews) with Summary, People, Courses, **Final exam** and **Satisfaction** sections, a people × courses matrix and Excel export— and **Inbox**, where you review submissions one by one. Per-course stats and certificates live there (this replaced the old "Global view").',
-      pt: 'Em **Pessoas → Progresso** você escolhe uma de três vistas: **Progresso de Módulos**, **Progresso de Mundos** (gamificado) ou **Progresso de Simulações** (pontuação, empatia, checklist, resolução e feedback de IA, com filtro por cenário). Abra [Progresso](/admin/progress). O Progresso de Módulos tem duas abas: **Panorama** —KPIs do programa (pessoas alcançadas, participação, nota média, certificados, NPS e pendentes de avaliação) com seções de Resumo, Pessoas, Cursos, **Prova final** e **Satisfação**, matriz pessoas × cursos e exportação para Excel— e **Caixa**, onde você avalia as entregas uma a uma. As estatísticas por curso e os certificados ficam ali (substituiu a antiga "Visão global").',
+      es: 'En **Personas → Progreso** eliges una de tres vistas: **Progreso de Módulos**, **Progreso de Mundos** (avance gamificado) o **Progreso de Simulaciones** (puntaje, empatía, checklist, resolución y feedback de IA, con filtro por escenario). Abre [Progreso](/admin/progress). Progreso de Módulos tiene dos pestañas: **Panorama** —KPIs del curso elegido (personas alcanzadas, participación, nota promedio, certificados, NPS y pendientes por evaluar) con secciones de Resumen, Personas, Cursos, **Examen final** y **Satisfacción**, matriz personas × cursos y exportación a Excel— y **Bandeja**, donde evalúas las entregas una a una. Las estadísticas por curso y los certificados viven ahí (antes eran la "Vista global").',
+      en: 'In **People → Progress** you pick one of three views: **Module Progress**, **World Progress** (gamified) or **Simulation Progress** (score, empathy, checklist, resolution and AI feedback, with a scenario filter). Open [Progress](/admin/progress). Module Progress has two tabs: **Overview** —KPIs for the chosen course (people reached, participation, average score, certificates, NPS and pending reviews) with Summary, People, Courses, **Final exam** and **Satisfaction** sections, a people × courses matrix and Excel export— and **Inbox**, where you review submissions one by one. Per-course stats and certificates live there (this replaced the old "Global view").',
+      pt: 'Em **Pessoas → Progresso** você escolhe uma de três vistas: **Progresso de Módulos**, **Progresso de Mundos** (gamificado) ou **Progresso de Simulações** (pontuação, empatia, checklist, resolução e feedback de IA, com filtro por cenário). Abra [Progresso](/admin/progress). O Progresso de Módulos tem duas abas: **Panorama** —KPIs do curso escolhido (pessoas alcançadas, participação, nota média, certificados, NPS e pendentes de avaliação) com seções de Resumo, Pessoas, Cursos, **Prova final** e **Satisfação**, matriz pessoas × cursos e exportação para Excel— e **Caixa**, onde você avalia as entregas uma a uma. As estatísticas por curso e os certificados ficam ali (substituiu a antiga "Visão global").',
     },
   },
   {
@@ -220,9 +220,9 @@ export const FAQ: FaqEntry[] = [
     strong: ['roles', 'permisos', 'permissions', 'superadmin', 'capacitador', 'papeis'],
     keywords: ['que roles', 'tipos de usuario', 'aprendiz', 'learner', 'admin'],
     answer: {
-      es: 'Hay 3 roles: **superadmin** (control total, incluidas programas y creación de usuarios), **capacitador** (gestiona su programa: contenido, aprendices y asignación de cursos) y **learner** (consume la capacitación).',
-      en: 'There are 3 roles: **superadmin** (full control, including campaigns and user creation), **capacitador/trainer** (manages their campaign: content, learners and course assignment) and **learner** (takes the training).',
-      pt: 'Há 3 funções: **superadmin** (controle total, incluindo campanhas e criação de usuários), **capacitador/instrutor** (gerencia sua campanha: conteúdo, aprendizes e atribuição de cursos) e **learner** (faz a capacitação).',
+      es: 'Hay 3 roles: **superadmin** (control total, incluidos los CR y la creación de usuarios), **capacitador** (crea y edita todo el contenido, y asigna cursos a su gente) y **learner** (consume la capacitación).',
+      en: 'There are 3 roles: **superadmin** (full control, including CRs and user creation), **capacitador/trainer** (creates and edits all content, and assigns courses to people) and **learner** (takes the training).',
+      pt: 'Há 3 funções: **superadmin** (controle total, incluindo os CR e a criação de usuários), **capacitador/instrutor** (cria e edita todo o conteúdo e atribui cursos às pessoas) e **learner** (faz a capacitação).',
     },
   },
   // ─── Aprendiz: evaluación, certificación y opinión ─────────
@@ -365,9 +365,9 @@ export const FAQ: FaqEntry[] = [
     strong: ['biblioteca de modulos', 'reutilizar modulo', 'copiar modulo', 'mover modulo'],
     keywords: ['curso', 'otra campana', 'duplicar', 'agregar'],
     answer: {
-      es: 'En el curso → pestaña **Módulos** → **Biblioteca de módulos**: ahí reutilizas módulos de tu programa o de otras. **Mover** traslada el mismo módulo (deja de estar donde estaba) y **Copiar** crea una copia independiente que puedes editar sin tocar el original.',
-      en: 'In the course → **Modules** tab → **Module library**: reuse modules from your campaign or others. **Move** relocates the same module (it leaves its previous place) and **Copy** creates an independent copy you can edit without touching the original.',
-      pt: 'No curso → aba **Módulos** → **Biblioteca de módulos**: reaproveite módulos da sua campanha ou de outras. **Mover** transfere o mesmo módulo (sai de onde estava) e **Copiar** cria uma cópia independente, editável sem mexer no original.',
+      es: 'En el curso → pestaña **Módulos** → **Biblioteca de módulos**: ahí reutilizas cualquier módulo del sitio. **Mover** traslada el mismo módulo (deja de estar donde estaba) y **Copiar** crea una copia independiente que puedes editar sin tocar el original.',
+      en: 'In the course → **Modules** tab → **Module library**: reuse any module on the site. **Move** relocates the same module (it leaves its previous place) and **Copy** creates an independent copy you can edit without touching the original.',
+      pt: 'No curso → aba **Módulos** → **Biblioteca de módulos**: reaproveite qualquer módulo do site. **Mover** transfere o mesmo módulo (sai de onde estava) e **Copiar** cria uma cópia independente, editável sem mexer no original.',
     },
   },
   {

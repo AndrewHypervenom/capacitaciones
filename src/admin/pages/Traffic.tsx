@@ -10,7 +10,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
 import { useWorkspacePeers } from '@/hooks/usePresence'
 import { usePresenceStore, shortName } from '@/stores/presenceStore'
-import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import {
   summarizeLivePeers, fetchTrafficHistory, EMPTY_HISTORY,
   type TrafficHistory, type ConcurrencyPoint,
@@ -22,6 +21,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/motion'
 import { cn } from '@/lib/cn'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
 
 // ─── Rangos ──────────────────────────────────────────────────────────
 // El tamaño de la franja va pegado al rango. "Hoy" va en franjas de 5 minutos
@@ -108,11 +108,18 @@ export default function Traffic() {
 
   // ── Histórico
   const [preset, setPreset] = useState<Preset>('7d')
-  const [campaignId, setCampaignId] = useState<string>('all')
+  // CR de las personas (el programa se retiró del sitio).
+  const [operationId, setOperationId] = useState<string>('all')
+  const [crOptions, setCrOptions] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id, 'operation') : []))
+      .then((list) => setCrOptions(list.map((u) => ({ id: u.id, name: u.name }))))
+      .catch(() => setCrOptions([]))
+  }, [])
   const [role, setRole] = useState<string>('all')
   const [history, setHistory] = useState<TrafficHistory>(EMPTY_HISTORY)
   const [loading, setLoading] = useState(true)
-  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
   // Contador que fuerza la recarga. En "Hoy" la franja en curso se está
   // llenando ahora mismo: sin esto el pico del momento queda congelado en
   // pantalla hasta que alguien toque un filtro.
@@ -125,17 +132,6 @@ export default function Traffic() {
   }, [preset])
 
   useEffect(() => {
-    if (!profile) return
-    getAccessibleCampaigns({
-      isSuperAdmin: true,
-      homeCampaignId: profile.campaign_id ?? null,
-      userId: profile.id,
-    })
-      .then((cs) => setCampaigns(cs.map((c) => ({ id: c.id, name: c.name }))))
-      .catch(() => { /* el filtro se queda en "todas" */ })
-  }, [profile])
-
-  useEffect(() => {
     let alive = true
     // El refresco automático no debe parpadear la pantalla entera: solo la
     // primera carga de cada combinación de filtros muestra el spinner.
@@ -144,14 +140,15 @@ export default function Traffic() {
     const bucket = PRESETS.find((p) => p.key === preset)!.bucket
     fetchTrafficHistory({
       from, to, bucketMinutes: bucket,
-      campaignId: campaignId === 'all' ? null : campaignId,
+      campaignId: null,
+      operationId: operationId === 'all' ? null : operationId,
       role: role === 'all' ? null : role,
     })
       .then((d) => { if (alive) setHistory(d) })
       .catch((e) => { console.error('[traffic]', e); if (alive) setHistory(EMPTY_HISTORY) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [preset, campaignId, role, tick])
+  }, [preset, operationId, role, tick])
 
   // La ruta ya lo bloquea; esto es el segundo cerrojo por si alguien llega
   // aquí desde un enlace viejo.
@@ -306,11 +303,11 @@ export default function Traffic() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Select
                 className="sm:w-auto sm:min-w-[220px]"
-                value={campaignId}
-                onChange={(v) => { setCampaignId(v); setTick(0) }}
+                value={operationId}
+                onChange={(v) => { setOperationId(v); setTick(0) }}
                 options={[
-                  { value: 'all', label: t('admin.traffic.filter_all_campaigns') },
-                  ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+                  { value: 'all', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
+                  ...crOptions.map((c) => ({ value: c.id, label: c.name })),
                 ]}
               />
               <Select
@@ -333,6 +330,11 @@ export default function Traffic() {
             </div>
           ) : (
             <>
+              {history.crNotInstalled && operationId !== 'all' && (
+                <p className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3.5 py-2.5 text-[12px] text-amber-600 dark:text-amber-400">
+                  {t('admin.traffic.cr_filter_pending', 'El filtro por CR todavía no está activo en la base: estas cifras son de todo el sitio.')}
+                </p>
+              )}
               {/* KPIs */}
               <Stagger as="section" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5" gap={0.06}>
                 <Kpi icon={Users} color="#10D451" label={t('admin.traffic.kpi_users')} hint={t('admin.traffic.kpi_users_hint')}
@@ -366,7 +368,7 @@ export default function Traffic() {
                 )}
               </FadeIn>
 
-              {/* Vistas + campañas */}
+              {/* Vistas + CR */}
               <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
                 <RankCard
                   title={t('admin.traffic.top_views')} icon={Eye}
@@ -382,13 +384,15 @@ export default function Traffic() {
                   }))}
                 />
                 <RankCard
-                  title={t('admin.traffic.by_campaign')} icon={Building2}
-                  empty={t('admin.traffic.no_data')}
-                  hint={t('admin.traffic.by_campaign_hint')}
-                  valueHint={t('admin.traffic.by_campaign_value_hint')}
-                  rows={history.byCampaign.map((c) => ({
-                    key: c.campaignId ?? 'none',
-                    label: c.campaignName ?? t('admin.traffic.no_campaign'),
+                  title={t('admin.traffic.by_operation', 'Por CR')} icon={Building2}
+                  empty={history.crNotInstalled
+                    ? t('admin.traffic.cr_not_installed', 'Falta correr el SQL del tráfico por CR.')
+                    : t('admin.traffic.no_data')}
+                  hint={t('admin.traffic.by_operation_hint', 'Personas distintas de cada CR que usaron el sitio en el rango. Ordenado por personas.')}
+                  valueHint={t('admin.traffic.by_operation_value_hint', 'Personas distintas')}
+                  rows={history.byOperation.map((c) => ({
+                    key: c.operationId ?? 'none',
+                    label: c.operationName ?? t('admin.progress_overview.no_cr', 'Sin CR asignado'),
                     sub: t('admin.traffic.campaign_sub', { views: fmtInt(c.views), time: fmtDuration(c.activeMs) }),
                     value: fmtInt(c.users),
                     weight: c.users,
@@ -414,7 +418,7 @@ export default function Traffic() {
                           <div className="text-[13.5px] text-text truncate">{u.displayName ?? '—'}</div>
                           <div className="text-[11.5px] text-text-muted truncate">
                             {u.role ? t(`roles.${u.role}`, u.role) : '—'}
-                            {u.campaignName ? ` · ${u.campaignName}` : ''}
+                            {u.operationName ? ` · ${u.operationName}` : ''}
                           </div>
                         </div>
                         <div className="text-right shrink-0">

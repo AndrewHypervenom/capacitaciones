@@ -112,7 +112,6 @@ export default function ChoiceSimEditor() {
   // parte de la campaña "casa": creando desde la campaña B, el escenario se
   // guardaba en la casa A.
   const [campaignId, setCampaignId] = useState('')
-  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
 
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -188,7 +187,6 @@ export default function ChoiceSimEditor() {
       userId: user?.id ?? null,
     })
       .then((data) => {
-        setCampaigns(data)
         if (!isNew) return
         const ids = data.map((c) => c.id)
         setCampaignId((prev) =>
@@ -485,16 +483,6 @@ export default function ChoiceSimEditor() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <GlassCard className="p-5 space-y-4">
             <h3 className="text-sm font-semibold text-text">{t('admin.simulations.config_title')}</h3>
-            {campaigns.length > 1 && (
-              <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
-                <FilterDropdown
-                  value={campaignId}
-                  onChange={setCampaignId}
-                  options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
-                />
-              </div>
-            )}
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.difficulty_level')}</label>
               <FilterDropdown

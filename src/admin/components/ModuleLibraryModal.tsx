@@ -56,7 +56,6 @@ export function ModuleLibraryModal({
   courseId,
   courseTitle,
   modules,
-  campaignNames = {},
   canMoveAny = false,
   onClose,
   onChanged,
@@ -318,9 +317,6 @@ export function ModuleLibraryModal({
                                 </span>
                                 {!mod.is_published && (
                                   <NeonBadge color="neutral">{t('admin.courses.draft')}</NeonBadge>
-                                )}
-                                {mod.campaign_id !== campaignId && campaignNames[mod.campaign_id] && (
-                                  <NeonBadge color="cyan">{campaignNames[mod.campaign_id]}</NeonBadge>
                                 )}
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-subtle">

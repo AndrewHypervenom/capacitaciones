@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, Layers, Loader2, Plus, Search, Trash2, Users } from 'lucide-react'
+import { Building2, FlaskConical, Layers, Loader2, Plus, Search, Trash2, Users } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { fold } from '@/lib/normalize'
 import { toast } from '@/stores/toastStore'
@@ -16,7 +16,7 @@ import { SaveDock } from '@/admin/components/SaveDock'
 import { usePageDraft } from '@/admin/hooks/usePageDraft'
 import {
   countCoursesByCategory, countPeopleByUnit, createOrgUnit, getAllOrgUnits,
-  getOrganizations, renameOrgUnit, deleteOrgUnit,
+  getOrganizations, renameOrgUnit, deleteOrgUnit, setOrgUnitTest,
 } from '@/services/org.service'
 import type { Organization, OrgUnit, OrgUnitKind } from '@/types/database'
 
@@ -128,6 +128,33 @@ export default function OrgUnits() {
   useEffect(() => {
     void reload()
   }, [reload])
+
+  /* ─── CR de pruebas ─────────────────────────────────────────────────────
+     Reemplaza al «programa de prueba». Es una ORDEN (como crear o eliminar):
+     cambia al momento qué gente cuenta en todos los reportes. */
+  const toggleTest = async (u: OrgUnit) => {
+    const next = !u.is_test
+    const ok = await confirm({
+      title: next
+        ? t('admin.units.mark_test_title', '¿Marcar «{{name}}» como CR de pruebas?', { name: u.name })
+        : t('admin.units.unmark_test_title', '¿Quitar la marca de pruebas a «{{name}}»?', { name: u.name }),
+      description: next
+        ? t('admin.units.mark_test_desc', 'Su gente y su progreso dejan de contar en KPIs, reportes y Excel. Solo se ven con el Modo pruebas encendido.')
+        : t('admin.units.unmark_test_desc', 'Su gente vuelve a contar en KPIs, reportes y Excel.'),
+      confirmLabel: next ? t('admin.units.mark_test', 'Marcar como pruebas') : t('admin.units.unmark_test', 'Quitar marca'),
+      tone: 'default',
+    })
+    if (!ok) return
+    try {
+      await setOrgUnitTest(u.id, next)
+      setUnits((prev) => prev.map((x) => (x.id === u.id ? { ...x, is_test: next } : x)))
+      toast.success(next
+        ? t('admin.units.marked_test', '«{{name}}» es ahora un CR de pruebas', { name: u.name })
+        : t('admin.units.unmarked_test', '«{{name}}» vuelve a contar en los reportes', { name: u.name }))
+    } catch (e) {
+      toast.error(t('admin.units.test_error', 'No se pudo cambiar la marca de pruebas'), (e as Error).message)
+    }
+  }
 
   /* ─── Borrador de nombres ───────────────────────────────────────────── */
 
@@ -423,6 +450,13 @@ export default function OrgUnits() {
                     </span>
                   </Tooltip>
                 )}
+                {u.kind === 'operation' && u.is_test && (
+                  <Tooltip label={t('admin.units.test_badge_hint', 'CR de pruebas: su gente no cuenta en KPIs, reportes ni Excel mientras el Modo pruebas esté apagado.')} maxWidth={280}>
+                    <span className="cursor-help whitespace-nowrap rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                      {t('admin.units.test_badge', 'Pruebas')}
+                    </span>
+                  </Tooltip>
+                )}
                 <span className="text-sm text-text-muted tabular-nums whitespace-nowrap">
                   {u.kind === 'category'
                     ? t('admin.units.course_count', '{{count}} curso', { count: usados })
@@ -432,6 +466,23 @@ export default function OrgUnits() {
                     exacto de la base de Talento Humano: una unidad archivada
                     seguía en la lista obligando a preguntarse si cuenta.
                     Se apaga cuando alguien la usa — ahí el mensaje dice cuántos. */}
+                {isSuperAdmin && u.kind === 'operation' && (
+                  <Tooltip
+                    label={u.is_test
+                      ? t('admin.units.unmark_test_hint', 'Quitar la marca de pruebas: su gente vuelve a contar en los reportes.')
+                      : t('admin.units.mark_test_hint', 'Marcar como CR de pruebas: su gente deja de contar en KPIs, reportes y Excel.')}
+                    maxWidth={280}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void toggleTest(u)}
+                      className={u.is_test ? 'text-amber-500' : 'hover:text-amber-500'}
+                    >
+                      <FlaskConical className="w-4 h-4" />
+                    </Button>
+                  </Tooltip>
+                )}
                 {puedeEditar(u.kind) && (
                   <Tooltip
                     label={usados > 0

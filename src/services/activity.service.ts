@@ -218,11 +218,29 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
 
     // Perfiles: solo los de quienes tienen progreso (la RLS ya limita el alcance
     // del capacitador a su campaña).
-    const profiles = await fetchByIds<{ id: string; display_name: string | null; role: string }>(
-      'profiles',
-      'id, display_name, role',
-      progressRows.map((row) => row.user_id),
-    );
+    //
+    // PAÍS / ÁREA / CR viajan con cada intento porque son el eje con el que hoy
+    // se reparte la formación (antes era el programa, que se retiró del sitio).
+    // El panel agrupa por ellos, así que si no vinieran aquí habría que pedir
+    // los perfiles otra vez desde la pantalla.
+    const profileIds = progressRows.map((row) => row.user_id);
+    type ProfileRow = {
+      id: string; display_name: string | null; role: string;
+      country?: string | null; operation_id?: string | null; area_id?: string | null;
+    };
+    let profiles: ProfileRow[];
+    try {
+      profiles = await fetchByIds<ProfileRow>(
+        'profiles',
+        'id, display_name, role, country, operation_id, area_id',
+        profileIds,
+      );
+    } catch (e) {
+      // 42703 = la columna todavía no existe en este despliegue. Sin este
+      // reintento el panel entero se caería por un eje que es opcional.
+      if ((e as { code?: string } | null)?.code !== '42703') throw e;
+      profiles = await fetchByIds<ProfileRow>('profiles', 'id, display_name, role', profileIds);
+    }
     const profileById = new Map(profiles.map((p) => [p.id, p]));
 
     // El panel del capacitador nunca debe mostrar resultados de un superadmin.
@@ -328,9 +346,16 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
           id: attempt.id || crypto.randomUUID(),
           user_id: row.user_id,
           section_id: attempt.section_id || null,
-          // Jerarquía para el panel: Campaña → Curso → Módulo → Aprendiz.
+          // Programa de inscripción. Se retiró como vía de entrega y ya no
+          // ordena el panel, pero el dato se conserva: los reportes históricos
+          // y la RLS siguen colgando de él.
           campaign_id: campaignId,
           campaign_name: campaignName,
+          // Jerarquía viva del panel: CR → Curso → Módulo → Aprendiz, con país
+          // y área como recortes. Son datos de la PERSONA, no del contenido.
+          learner_country: studentProfile?.country ?? null,
+          learner_area_id: studentProfile?.area_id ?? null,
+          learner_operation_id: studentProfile?.operation_id ?? null,
           course_id: courseId,
           course_title: rowText(courseData) || null,
           course_slug: courseData?.slug || null,

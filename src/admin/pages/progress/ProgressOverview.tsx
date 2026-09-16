@@ -34,6 +34,8 @@ import { StatStrip } from './ProgressChrome';
 import { CourseProgressDrawer } from './CourseProgressDrawer';
 import { pickLang } from '@/lib/contentLang';
 import { getOrganizations, getOrgUnits } from '@/services/org.service';
+import { supabase } from '@/lib/supabase';
+import { shouldHideTestData } from '@/stores/testModeStore';
 
 /** Miles separados. Un "2015" a secas se lee mal al lado de un porcentaje. */
 const fmt = (n: number | null | undefined) =>
@@ -54,10 +56,10 @@ type Tab = 'summary' | 'people' | 'courses' | 'certificates' | 'exam' | 'survey'
 type Focus = 'none' | 'started' | 'idle' | 'certified' | 'pending' | 'risk' | 'mandatory' | 'overdue';
 type RangeKey = '7' | '30' | '90' | 'all';
 type PeopleSort =
-  | 'name' | 'campaign' | 'assigned' | 'mandatory' | 'syllabus' | 'started' | 'completed'
+  | 'name' | 'cr' | 'assigned' | 'mandatory' | 'syllabus' | 'started' | 'completed'
   | 'certified' | 'score' | 'time' | 'last' | 'pending' | 'overdue';
 type CourseSort = 'title' | 'assigned' | 'started' | 'completed' | 'certified' | 'overdue' | 'score' | 'nps' | 'last';
-type CertSort = 'person' | 'course' | 'campaign' | 'score' | 'date';
+type CertSort = 'person' | 'course' | 'cr' | 'score' | 'date';
 
 const RANGE_DAYS: Record<RangeKey, number | null> = { '7': 7, '30': 30, '90': 90, all: null };
 
@@ -125,7 +127,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const { isSuperAdmin } = useAuth();
   const lang = (useUserStore((s) => s.language) ?? 'es') as 'es' | 'en' | 'pt';
 
-  const [campaign, setCampaign] = useState<string>('all');
   const [course, setCourse] = useState<string>('all');
   /* CR y área: los ejes con los que ahora se reparte la formación, y los que
      acotan lo que este tablero tiene que leer. */
@@ -133,16 +134,47 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const [area, setArea] = useState<string>('all');
   const [units, setUnits] = useState<OrgUnit[]>([]);
 
+  /* Nombre de un CR o de un área. `null` cuando la persona no tiene ninguno:
+     quien lo pinta decide cómo decirlo, y todos lo dicen en ámbar porque a esa
+     persona no le llega ningún curso por regla. */
+  const unitById = useMemo(() => new Map(units.map((u) => [u.id, u.name])), [units]);
+  const unitName = useCallback(
+    (id: string | null | undefined): string | null => (id ? unitById.get(id) ?? null : null),
+    [unitById],
+  );
+
   /**
-   * Hasta que no se elige un CR, un área o un curso, NO se consulta nada.
+   * El CURSO es obligatorio: hasta que no se elige uno, NO se consulta nada.
    *
-   * El tablero lee dieciocho tablas de un tirón. Hacerlo al abrir la pantalla es
-   * trabajo que casi siempre se tira: nadie entra aquí a mirar "todo", se entra
-   * a mirar UN CR, UN área o UN curso. El programa no cuenta como alcance a
-   * propósito — es el eje que se está jubilando, y dejar que sirviera de
-   * atajo mantendría viva justo la costumbre que se quiere quitar.
+   * Sin curso, cada fila suma todos los cursos de la persona y "certificado"
+   * convive con "30% del temario" sin que se entienda de qué. Con un CR o un
+   * área solos la gente se perdía. CR y área quedan como recortes opcionales
+   * DENTRO del curso elegido.
    */
-  const scopeChosen = operation !== 'all' || area !== 'all' || course !== 'all';
+  const scopeChosen = course !== 'all';
+
+  /* Lista de cursos para el selector, pedida de entrada: el tablero entero
+     depende de elegir uno, así que no puede salir de los datos del tablero. */
+  const [catalog, setCatalog] = useState<{ id: string; title: string }[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const hideTest = shouldHideTestData(isSuperAdmin);
+    void Promise.all([
+      supabase.from('courses').select('id, title_es, title_en, title_pt, campaign_id').is('deleted_at', null),
+      hideTest ? supabase.from('campaigns').select('id').eq('is_test', true) : Promise.resolve({ data: [], error: null }),
+    ]).then(([coursesRes, testRes]) => {
+      if (!alive) return;
+      if (coursesRes.error) { setCatalog([]); return; }
+      const testIds = new Set(((testRes.error ? [] : testRes.data) ?? []).map((c: { id: string }) => c.id));
+      setCatalog(
+        (coursesRes.data ?? [])
+          .filter((c) => !c.campaign_id || !testIds.has(c.campaign_id))
+          .map((c) => ({ id: c.id, title: pickLang(c.title_es, c.title_en, c.title_pt, lang) }))
+          .sort((a, b) => a.title.localeCompare(b.title)),
+      );
+    });
+    return () => { alive = false; };
+  }, [isSuperAdmin, lang]);
 
   /* El catálogo SÍ se pide de entrada: son noventa y cinco filas de dos
      columnas, y es precisamente lo que hay que poder elegir para que se cargue
@@ -158,7 +190,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
 
   const data = useProgramData(lang, !isSuperAdmin, scopeChosen);
   const {
-    loading, error, people, courses, cells, campaigns, activity, certificates, certificatesKnown,
+    loading, error, people, courses, cells, activity, certificates, certificatesKnown,
     assignmentsKnown, journeyKnown, modulesByCourse, doneModules, study, loadStudyTime, surveys, loadSurveys,
     exams, loadExams, reload,
   } = data;
@@ -185,70 +217,22 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const rangeDays = RANGE_DAYS[range];
   const since = rangeDays === null ? null : Date.now() - rangeDays * 86_400_000;
 
-  /* ── Alcance: campaña + rol + ventana de tiempo ───────────────────────── */
+  /* ── Alcance: CR / área + curso + rol + ventana de tiempo ─────────────── */
 
   /**
-   * Los cursos DE la campaña: los suyos y los que se le asignaron entera.
-   * Se calcula antes que la gente porque es lo que define quién cuenta.
-   */
-  const campaignOwnCourseIds = useMemo(() => {
-    if (campaign === 'all') return null;
-    const ids = new Set<string>();
-    for (const c of courses) {
-      if (c.campaignId === campaign || c.campaignsAssigned.includes(campaign)) ids.add(c.id);
-    }
-    return ids;
-  }, [campaign, courses]);
-
-  /**
-   * La gente de la campaña.
-   *
-   * NO es solo "quien tiene esta campaña en su perfil". Filtrar por
-   * `profiles.campaign_id` dejaba fuera a todo el que está INSCRITO en un curso
-   * de la campaña viniendo de otra (que es lo normal con el catálogo
-   * compartido), y por eso la campaña salía vacía aunque tuviera gente
-   * avanzando en sus cursos. Cuentan las dos cosas: los de casa y los inscritos.
-   */
-  const campaignPeopleIds = useMemo(() => {
-    if (campaignOwnCourseIds === null) return null;
-    const ids = new Set(people.filter((p) => p.campaignId === campaign).map((p) => p.id));
-    for (const cell of cells) {
-      if (cell.assigned && campaignOwnCourseIds.has(cell.courseId)) ids.add(cell.userId);
-    }
-    return ids;
-  }, [campaign, people, cells, campaignOwnCourseIds]);
-
-  /**
-   * Cursos del alcance: los de la campaña, más los que su gente de casa tenga
-   * asignados de OTRAS campañas — ese progreso también es de esta campaña, y
-   * mirar solo `campaign_id` lo dejaba fuera del tablero.
-   */
-  const campaignCourseIds = useMemo(() => {
-    if (campaignOwnCourseIds === null) return null;
-    // La gente de casa, sin los cortes de cargo/país: filtrar por un cargo no
-    // debe cambiar cuáles son los cursos de la campaña.
-    const members = new Set(people.filter((p) => p.campaignId === campaign).map((p) => p.id));
-    const ids = new Set(campaignOwnCourseIds);
-    for (const cell of cells) if (cell.assigned && members.has(cell.userId)) ids.add(cell.courseId);
-    return ids;
-  }, [campaign, people, cells, campaignOwnCourseIds]);
-
-  /**
-   * Los cursos que se pueden elegir en el filtro: los del alcance de la
-   * campaña, SIN aplicar el filtro de curso (si no, elegir uno vaciaría la
-   * lista y no habría cómo volver a cambiarlo).
+   * Los cursos que se pueden elegir en el filtro, SIN aplicar el filtro de
+   * curso (si no, elegir uno vaciaría la lista y no habría cómo volver a
+   * cambiarlo).
    */
   const courseOptions = useMemo(
-    () => (campaignCourseIds === null ? courses : courses.filter((c) => campaignCourseIds.has(c.id)))
-      .slice()
-      .sort((a, b) => a.title.localeCompare(b.title)),
-    [courses, campaignCourseIds],
+    () => courses.slice().sort((a, b) => a.title.localeCompare(b.title)),
+    [courses],
   );
 
   /**
-   * Curso elegido, ya validado contra el alcance actual: cambiar de campaña no
-   * puede dejar seleccionado un curso que esa campaña no tiene (se leería como
-   * "no hay nadie" en vez de "ese curso no es de aquí").
+   * Curso elegido, ya validado contra la lista: si el curso deja de estar
+   * (despublicado, borrado) no puede quedar seleccionado — se leería como
+   * "no hay nadie" en vez de "ese curso ya no está".
    */
   const activeCourse = useMemo(
     () => (course !== 'all' && !courseOptions.some((c) => c.id === course) ? 'all' : course),
@@ -278,7 +262,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const scopedPeople = useMemo(() => {
     return people.filter((p) => {
       if (onlyLearners && p.role !== 'learner') return false;
-      if (campaignPeopleIds !== null && !campaignPeopleIds.has(p.id)) return false;
       if (coursePeopleIds !== null && !coursePeopleIds.has(p.id)) return false;
       // Cargo y país salen del perfil; "sin dato" es un valor más y se puede
       // filtrar por él (suele ser el primer hallazgo: gente sin cargo).
@@ -290,20 +273,13 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       if (area !== 'all' && p.areaId !== area) return false;
       return true;
     });
-  }, [people, onlyLearners, campaignPeopleIds, coursePeopleIds, job, country, operation, area]);
+  }, [people, onlyLearners, coursePeopleIds, job, country, operation, area]);
 
   /** Opciones de los cortes, sacadas de la gente que hay (no de un catálogo). */
   const jobOptions = useMemo(() => segmentOptions(people, (p) => p.jobTitle), [people]);
   const countryOptions = useMemo(() => segmentOptions(people, (p) => p.country), [people]);
 
   const peopleIds = useMemo(() => new Set(scopedPeople.map((p) => p.id)), [scopedPeople]);
-
-  /** Cuántos de los que se ven vienen de otra campaña (inscritos, no de casa). */
-  const guestCount = useMemo(
-    () => (campaign === 'all' ? 0 : scopedPeople.filter((p) => p.campaignId !== campaign).length),
-    [scopedPeople, campaign],
-  );
-
 
   const scopedActivity = useMemo(
     () => activity.filter((a) =>
@@ -506,7 +482,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     const agg = new Map<string, { assigned: number; direct: number; started: number; completed: number; certified: number; pending: number; overdue: number; last: number | null; sum: number; n: number }>();
     for (const cell of scopedCells) {
       const a = agg.get(cell.courseId) ?? { assigned: 0, direct: 0, started: 0, completed: 0, certified: 0, pending: 0, overdue: 0, last: null, sum: 0, n: 0 };
-      if (cell.assigned) { a.assigned++; if (!cell.viaCampaign) a.direct++; }
+      if (cell.assigned) { a.assigned++; if (!cell.viaRule) a.direct++; }
       if (cell.overdue) a.overdue++;
       if (cell.started) a.started++;
       if (cell.certifiedAt) a.certified++;
@@ -557,7 +533,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     const val = (p: ProgramPerson): string | number => {
       switch (peopleSort.key) {
         case 'name': return p.name.toLowerCase();
-        case 'campaign': return (p.campaignName ?? '').toLowerCase();
+        case 'cr': return (unitName(p.operationId) ?? '').toLowerCase();
         case 'assigned': return p.assigned;
         case 'mandatory': return p.mandatory > 0 ? p.mandatoryDone / p.mandatory : -1;
         case 'syllabus': return p.modulesTotal > 0 ? p.modulesDone / p.modulesTotal : -1;
@@ -578,7 +554,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       return ((va as number) - (vb as number)) * dir;
     });
     return list;
-  }, [rows, focus, query, peopleSort]);
+  }, [rows, focus, query, peopleSort, unitName]);
 
   const visibleCourses = useMemo(() => {
     const q = fold(query);
@@ -608,7 +584,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   /* ── Certificados emitidos, uno por fila ──────────────────────────────
      La lista de diplomas es la prueba que se pide fuera del equipo ("¿quién se
      certificó?"), y hasta ahora solo existía como un número en un KPI. Sale del
-     mismo alcance que el resto del tablero (`scopedCerts`: programa, curso,
+     mismo alcance que el resto del tablero (`scopedCerts`: CR, área, curso,
      cargo, país y rango ya aplicados), así que lo que se ve aquí cuadra con lo
      que dice la tarjeta de arriba. */
   const certRows = useMemo(() => {
@@ -641,11 +617,9 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           country: person?.country ?? null,
           courseTitle: courseRow?.title ?? c.courseId,
           courseIcon: courseRow?.icon ?? null,
-          /* El programa DUEÑO del curso, que es por el que se clasifica un
-             certificado; el de la persona va debajo solo cuando no coinciden
-             (curso compartido), porque si no se lee como un error. */
-          programName: courseRow?.campaignName ?? null,
-          personProgram: person?.campaignName ?? null,
+          /* El CR de la persona: el eje con el que hoy se reparte la
+             formación y por el que se pregunta "¿quién se certificó?". */
+          crName: unitName(person?.operationId),
           missing,
         };
       })
@@ -660,7 +634,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       switch (certSort.key) {
         case 'person': return r.personName.toLowerCase();
         case 'course': return r.courseTitle.toLowerCase();
-        case 'campaign': return (r.programName ?? '').toLowerCase();
+        case 'cr': return (r.crName ?? '').toLowerCase();
         case 'score': return r.score ?? -1;
         case 'date':
         default: return r.issuedAt;
@@ -671,7 +645,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       if (typeof va === 'string' && typeof vb === 'string') return va.localeCompare(vb) * dir;
       return ((va as number) - (vb as number)) * dir;
     });
-  }, [scopedCerts, rows, courses, modulesByCourse, doneModules, query, certSort]);
+  }, [scopedCerts, rows, courses, modulesByCourse, doneModules, query, certSort, unitName]);
 
   /** Certificados que ya no cubren el temario completo del curso. */
   const outdatedCerts = useMemo(() => certRows.filter((r) => r.missing > 0).length, [certRows]);
@@ -788,7 +762,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const L = {
     person: t('admin.progress_overview.col_person', 'Persona'),
     email: t('admin.progress_overview.col_email', 'Correo'),
-    campaignCol: t('admin.progress_overview.col_campaign', 'Programa'),
     role: t('admin.progress_overview.col_role', 'Rol'),
     assigned: t('admin.progress_overview.col_assigned', 'Asignados'),
     started: t('admin.progress_overview.col_started', 'Iniciados'),
@@ -812,6 +785,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     comment: t('admin.progress_overview.col_comment', 'Comentario'),
     jobCol: t('admin.progress_overview.col_job', 'Cargo'),
     countryCol: t('admin.progress_overview.col_country', 'País'),
+    // Los dos ejes con los que hoy se clasifica a una PERSONA. El programa se
+    // queda en las hojas de contenido, donde sigue siendo el dueño del curso.
+    crCol: t('admin.progress_overview.col_cr', 'CR'),
+    areaCol: t('admin.progress_overview.col_area', 'Área'),
     mandatory: t('admin.progress_overview.col_mandatory_total', 'Obligatorios asignados'),
     mandatoryDone: t('admin.progress_overview.col_mandatory_done', 'Obligatorios terminados'),
     syllabus: t('admin.progress_overview.col_syllabus_pct', 'Avance del temario (%)'),
@@ -828,9 +805,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     rows: visiblePeople.map<SheetRow>((p) => ({
       [L.person]: p.name,
       [L.email]: p.email ?? '',
-      [L.campaignCol]: p.campaignName ?? '',
-      [L.jobCol]: p.jobTitle ?? '',
       [L.countryCol]: countryLabel(p.country) ?? '',
+      [L.areaCol]: unitName(p.areaId) ?? '',
+      [L.crCol]: unitName(p.operationId) ?? '',
+      [L.jobCol]: p.jobTitle ?? '',
       [L.role]: t(`roles.${p.role}`, p.role),
       [L.assigned]: p.assigned,
       [L.mandatory]: p.mandatory,
@@ -853,7 +831,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       const n = npsFromHistogram(byCourse[c.id]?.q2_hist);
       return {
         [L.course]: c.title,
-        [L.campaignCol]: c.campaignName ?? '',
         [L.published]: c.published ? L.yes : L.no,
         [L.mandatoryCol]: c.mandatory ? L.yes : L.no,
         [L.modulesCol]: c.modules,
@@ -874,7 +851,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const matrixSheet = (): Sheet => {
     // Matriz persona × curso: una columna por curso con el estado de la celda.
     // Es la hoja que el negocio cruza con su propia nómina.
-    const headers = [L.person, L.email, L.campaignCol, ...visibleCourses.map((c) => c.title)];
+    const headers = [L.person, L.email, L.countryCol, L.areaCol, L.crCol, ...visibleCourses.map((c) => c.title)];
     const cellByKey = new Map(scopedCells.map((c) => [`${c.userId}|${c.courseId}`, c]));
     const stateOf = (userId: string, courseId: string): string => {
       const cell = cellByKey.get(`${userId}|${courseId}`);
@@ -890,7 +867,9 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         const row: SheetRow = {
           [L.person]: p.name,
           [L.email]: p.email ?? '',
-          [L.campaignCol]: p.campaignName ?? '',
+          [L.countryCol]: countryLabel(p.country) ?? '',
+          [L.areaCol]: unitName(p.areaId) ?? '',
+          [L.crCol]: unitName(p.operationId) ?? '',
         };
         for (const c of visibleCourses) row[c.title] = stateOf(p.id, c.id);
         return row;
@@ -911,7 +890,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       [L.email]: r.email ?? '',
       [L.jobCol]: r.jobTitle ?? '',
       [L.countryCol]: countryLabel(r.country) ?? '',
-      [L.campaignCol]: r.programName ?? '',
+      [L.crCol]: r.crName ?? '',
       [L.course]: r.courseTitle,
       [L.score]: r.score,
       [L.date]: xlsDate(new Date(r.issuedAt).toISOString(), i18n.language),
@@ -944,7 +923,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     name: t('admin.progress_overview.sheet_exam', 'Examen final'),
     rows: summary.perCourse.map<SheetRow>((r) => ({
       [L.course]: r.course.title,
-      [L.campaignCol]: r.course.campaignName ?? '',
       [t('admin.progress_overview.exam_col_taken', 'Presentaron')]: r.taken,
       [t('admin.progress_overview.exam_col_passed', 'Aprobaron')]: r.passed,
       [t('admin.progress_overview.exam_col_pass', 'Aprobación')]: `${r.passRate}%`,
@@ -1090,7 +1068,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
               {t('admin.progress_overview.badge', 'Progreso · Panorama')}
             </div>
             <h1 className="text-[26px] font-bold tracking-tight text-text sm:text-[30px]">
-              {t('admin.progress_overview.title', 'Cómo va el programa')}
+              {t('admin.progress_overview.title', 'Cómo va la formación')}
             </h1>
             <p className="mt-1 max-w-2xl text-[13px] text-text-muted">
               {t('admin.progress_overview.subtitle', 'Alcance, participación, desempeño, certificación y satisfacción de los aprendices. Todo lo que ves aquí se puede descargar en Excel.')}
@@ -1197,21 +1175,27 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             />
           </div>
 
-          <div className="w-[190px]">
+          {/* CURSO, primero y obligatorio: es lo que enciende el tablero. Sin
+              él cada fila suma todos los cursos de la persona y no se entiende
+              de qué habla ninguna cifra. Mientras no se elija, va resaltado. */}
+          <div
+            className={cn(
+              'w-[230px] rounded-xl',
+              !scopeChosen && 'ring-2 ring-[rgb(var(--brand-green))] ring-offset-2 ring-offset-surface',
+            )}
+          >
             <Select
-              value={campaign}
-              onChange={setCampaign}
+              value={course}
+              onChange={setCourse}
               options={[
-                { value: 'all', label: t('admin.progress_overview.all_campaigns', 'Todos los programas') },
-                ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+                { value: 'all', label: t('admin.progress_overview.pick_course', 'Elige un curso (obligatorio)') },
+                ...(catalog ?? []).map((c) => ({ value: c.id, label: c.title })),
               ]}
             />
           </div>
 
-          {/* CR y ÁREA. Van delante del curso porque son el orden en el que se
-              piensa —dónde, qué tipo de gente, qué curso— y el mismo con el que
-              se define la audiencia de un curso. Cualquiera de los tres
-              enciende el tablero. */}
+          {/* CR y ÁREA: recortes opcionales dentro del curso elegido, en el
+              mismo orden con el que se define la audiencia de un curso. */}
           <div className="w-[190px]">
             <Select
               value={operation}
@@ -1232,24 +1216,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
               ]}
             />
           </div>
-
-          {/* Filtro por CURSO. El resto de columnas —temario, completados,
-              certificados— son sumas de todos los cursos asignados, así que
-              "certificado" y "30% de temario" conviven en la misma fila sin que
-              ninguno de los dos esté mal: son cursos distintos. Elegir uno es
-              lo que vuelve la fila legible. */}
-          {courseOptions.length > 1 && (
-            <div className="w-[210px]">
-              <Select
-                value={activeCourse}
-                onChange={setCourse}
-                options={[
-                  { value: 'all', label: t('admin.progress_overview.all_courses', 'Todos los cursos') },
-                  ...courseOptions.map((c) => ({ value: c.id, label: c.title })),
-                ]}
-              />
-            </div>
-          )}
 
           <div className="w-[165px]">
             <Select
@@ -1335,17 +1301,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
               {t('admin.progress_overview.range_note', 'La actividad y los certificados se cuentan dentro del rango')}
             </span>
           )}
-          {/* Gente de otras campañas inscrita en cursos de esta. Se dice, para
-              que nadie lea la tabla como "la plantilla del programa". */}
-          {guestCount > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-subtle/60 px-2.5 py-1 text-[11.5px] text-text-muted">
-              <Users className="h-3 w-3" />
-              {t('admin.progress_overview.guests_note', {
-                count: guestCount,
-                defaultValue: 'Incluye {{count}} personas de otros programas inscritas en sus cursos',
-              })}
-            </span>
-          )}
         </div>
       </Rise>
 
@@ -1358,10 +1313,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           <div className="rounded-2xl border border-line bg-subtle/40 px-6 py-14 text-center">
             <Filter className="mx-auto mb-3 h-8 w-8 text-text-subtle" />
             <p className="text-[15px] font-medium text-text">
-              {t('admin.progress_overview.pick_scope_title', 'Elige qué quieres mirar')}
+              {t('admin.progress_overview.pick_course_title', 'Primero elige un curso')}
             </p>
             <p className="mx-auto mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-text-muted">
-              {t('admin.progress_overview.pick_scope_body', 'Un CR, un área o un curso. El tablero se calcula sobre lo que elijas — así no se consulta el programa entero para mirar un equipo de doce personas.')}
+              {t('admin.progress_overview.pick_course_body', 'Todo el tablero habla de UN curso: quién lo tiene, cuánto lleva y quién se certificó. Después puedes recortar por CR, área, cargo o país.')}
             </p>
           </div>
         </Rise>
@@ -1559,14 +1514,15 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           study={study}
           onFocus={toggleFocus}
           onSegment={(axis, value) => {
-            // "Sin campaña" no es un valor que el selector de arriba sepa
+            // "Sin CR" no es un valor que el selector de arriba sepa
             // representar: se salta el filtro y solo se pasa a la lista.
-            if (axis === 'campaign') { if (value !== NO_VALUE) setCampaign(value); }
+            if (axis === 'cr') { if (value !== NO_VALUE) setOperation(value); }
             else if (axis === 'job') setJob(value);
             else setCountry(value);
             setTab('people');
           }}
           onOpenInbox={onOpenInbox}
+          unitName={unitName}
           onPerson={(id) => {
             const p = rows.find((x) => x.id === id);
             if (p) setDrawerPerson(p);
@@ -1587,6 +1543,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           study={study}
           onLoadStudy={loadStudyTime}
           onPerson={setDrawerPerson}
+          unitName={unitName}
           lang={i18n.language}
           never={never}
         />
@@ -1679,7 +1636,6 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             avatar_url: drawerPerson.avatarUrl,
             email: drawerPerson.email ?? undefined,
           } as unknown as Profile & { email?: string }}
-          campaignName={drawerPerson.campaignName}
           onClose={() => setDrawerPerson(null)}
         />
       )}
@@ -1690,8 +1646,9 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
 /* ══ Resumen ═══════════════════════════════════════════════════════════════ */
 
 function SummaryTab({
-  loading, kpi, pulse, courseRows, activity, people, study, onFocus, onSegment, onOpenInbox, onPerson, lang, never,
+  loading, kpi, pulse, courseRows, activity, people, study, onFocus, onSegment, onOpenInbox, onPerson, lang, never, unitName,
 }: {
+  unitName: (id: string | null | undefined) => string | null;
   loading: boolean;
   kpi: { total: number; started: number; idle: number; certified: number; completedCourses: number; pending: number; risk: number; avgScore: number | null; studyMs: number; participation: number; deliveries: number; certificates: number };
   pulse: { bucket: number[]; max: number; startMs: number };
@@ -1928,7 +1885,7 @@ function SummaryTab({
 
       {/* Desglose por cargo / país */}
       <Rise delay={0.16}>
-        <SegmentBreakdown people={people} onPick={onSegment} />
+        <SegmentBreakdown people={people} onPick={onSegment} unitName={unitName} />
       </Rise>
 
       {/* Actividad reciente */}
@@ -1957,7 +1914,7 @@ function SummaryTab({
             <EmptyState
               icon={<Hourglass className="h-6 w-6" />}
               title={t('admin.progress_overview.no_activity', 'Sin actividad en este rango')}
-              description={t('admin.progress_overview.no_activity_desc', 'Amplía el rango de fechas o cambia de programa.')}
+              description={t('admin.progress_overview.no_activity_desc', 'Amplía el rango de fechas o cambia de CR o curso.')}
             />
           ) : (
             <ul className="divide-y divide-line/70">
@@ -2015,30 +1972,31 @@ function SummaryTab({
    promedio esconde: "68% de participación" puede ser 95% en un cargo y 30% en
    otro, y son dos problemas distintos. */
 
-type SegmentAxis = 'campaign' | 'job' | 'country';
+type SegmentAxis = 'cr' | 'job' | 'country';
 
 function SegmentBreakdown({
-  people, onPick,
+  people, onPick, unitName,
 }: {
   people: ProgramPerson[];
+  unitName: (id: string | null | undefined) => string | null;
   onPick: (axis: SegmentAxis, value: string) => void;
 }) {
   const { t } = useTranslation();
-  // ¿Hay más de una campaña en el alcance? Con una sola, partir por campaña no
-  // compara nada: el eje se esconde y se arranca por cargo, como antes.
-  const multiCampaign = useMemo(
-    () => new Set(people.map((p) => p.campaignId ?? NO_VALUE)).size > 1,
+  // ¿Hay más de un CR en el alcance? Con uno solo, partir por CR no compara
+  // nada: el eje se esconde y se arranca por cargo.
+  const multiCr = useMemo(
+    () => new Set(people.map((p) => p.operationId ?? NO_VALUE)).size > 1,
     [people],
   );
-  const [axis, setAxis] = useState<SegmentAxis>('campaign');
-  const effAxis: SegmentAxis = axis === 'campaign' && !multiCampaign ? 'job' : axis;
+  const [axis, setAxis] = useState<SegmentAxis>('cr');
+  const effAxis: SegmentAxis = axis === 'cr' && !multiCr ? 'job' : axis;
 
   const groups = useMemo(() => {
     const map = new Map<string, { label: string; total: number; started: number; completed: number; certified: number; scoreSum: number; scored: number; modulesDone: number; modulesTotal: number; assigned: number }>();
     for (const p of people) {
-      const key = (effAxis === 'campaign' ? p.campaignId : effAxis === 'job' ? p.jobTitle : p.country) ?? NO_VALUE;
+      const key = (effAxis === 'cr' ? p.operationId : effAxis === 'job' ? p.jobTitle : p.country) ?? NO_VALUE;
       const g = map.get(key) ?? {
-        label: effAxis === 'campaign' ? (p.campaignName ?? '') : '',
+        label: effAxis === 'cr' ? (unitName(p.operationId) ?? '') : '',
         total: 0, started: 0, completed: 0, certified: 0, scoreSum: 0, scored: 0,
         modulesDone: 0, modulesTotal: 0, assigned: 0,
       };
@@ -2062,14 +2020,14 @@ function SegmentBreakdown({
         // Va DESPUÉS del spread a propósito: `g` trae su propio `label` (el
         // nombre crudo de la campaña) y antes lo pisaba.
         label: key === NO_VALUE
-          ? (effAxis === 'campaign'
-              ? t('admin.progress_overview.no_campaign', 'Sin programa')
+          ? (effAxis === 'cr'
+              ? t('admin.progress_overview.no_cr', 'Sin CR asignado')
               : effAxis === 'job'
                 ? t('admin.progress_overview.no_job', 'Sin cargo')
                 : t('admin.progress_overview.no_country', 'Sin país'))
           : effAxis === 'country'
             ? (countryLabel(key) ?? key)
-            : effAxis === 'campaign'
+            : effAxis === 'cr'
               ? (g.label || key)
               : key,
         participation: g.total > 0 ? Math.round((g.started / g.total) * 100) : 0,
@@ -2078,22 +2036,22 @@ function SegmentBreakdown({
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
-  }, [people, effAxis, t]);
+  }, [people, effAxis, t, unitName]);
 
   const maxTotal = Math.max(1, ...groups.map((g) => g.total));
 
   return (
     <SectionCard
       title={t('admin.progress_overview.segments_title', 'Cómo va cada grupo')}
-      subtitle={t('admin.progress_overview.segments_sub', 'El mismo alcance, partido por programa, cargo o país')}
+      subtitle={t('admin.progress_overview.segments_sub', 'El mismo alcance, partido por CR, cargo o país')}
       icon={<Users className="h-4 w-4" />}
       accent={VIOLET}
       className="h-full"
       action={
         <div className="flex items-center gap-1 rounded-xl border border-line bg-subtle/50 p-1">
           {([
-            ...(multiCampaign
-              ? [{ key: 'campaign' as const, label: t('admin.progress_overview.axis_campaign', 'Programa') }]
+            ...(multiCr
+              ? [{ key: 'cr' as const, label: t('admin.progress_overview.axis_cr', 'CR') }]
               : []),
             { key: 'job' as const, label: t('admin.progress_overview.axis_job', 'Cargo') },
             { key: 'country' as const, label: t('admin.progress_overview.axis_country', 'País') },
@@ -2132,8 +2090,8 @@ function SegmentBreakdown({
                     <span className="truncate text-[12.5px] font-medium text-text">{g.label}</span>
                   </Tooltip>
                   <span className="shrink-0 text-[11.5px] tabular-nums text-text-muted">
-                    {effAxis === 'campaign'
-                      ? t('admin.progress_overview.campaign_line', {
+                    {effAxis === 'cr'
+                      ? t('admin.progress_overview.cr_line', {
                           count: g.total,
                           progress: g.progress ?? 0,
                           certified: g.certified,
@@ -2146,14 +2104,14 @@ function SegmentBreakdown({
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Por campaña la barra mide el AVANCE del temario (0–100), no
+                  {/* Por CR la barra mide el AVANCE del temario (0–100), no
                       cuánta gente hay: la pregunta es cómo va, no cuántos son. */}
                   <span className="flex-1">
-                    {effAxis === 'campaign'
+                    {effAxis === 'cr'
                       ? <RankBar value={g.progress ?? 0} max={100} accent={VIOLET} delay={0.04 * i} />
                       : <RankBar value={g.total} max={maxTotal} accent={VIOLET} delay={0.04 * i} />}
                   </span>
-                  {effAxis === 'campaign' ? (
+                  {effAxis === 'cr' ? (
                     <span className="w-9 shrink-0 text-right text-[11px] font-bold tabular-nums text-text">
                       {g.progress === null ? '—' : `${g.progress}%`}
                     </span>
@@ -2193,7 +2151,7 @@ function SummaryLine({
 /* ══ Personas ══════════════════════════════════════════════════════════════ */
 
 function PeopleTab({
-  loading, people, total, query, sort, onSort, study, onLoadStudy, onPerson, lang, never,
+  loading, people, total, query, sort, onSort, study, onLoadStudy, onPerson, unitName, lang, never,
 }: {
   loading: boolean;
   people: ProgramPerson[];
@@ -2204,6 +2162,8 @@ function PeopleTab({
   study: { loading: boolean; loaded: boolean; partial: boolean; totalMs: number };
   onLoadStudy: () => void;
   onPerson: (p: ProgramPerson) => void;
+  /** Nombre del CR o del área a partir de su id (`null` si no tiene). */
+  unitName: (id: string | null | undefined) => string | null;
   lang: string;
   never: string;
 }) {
@@ -2256,7 +2216,7 @@ function PeopleTab({
         <EmptyState
           icon={<Users className="h-6 w-6" />}
           title={t('admin.progress_overview.no_people', 'Nadie coincide con este filtro')}
-          description={t('admin.progress_overview.no_people_desc', 'Prueba con otro programa, amplía el rango o limpia la búsqueda.')}
+          description={t('admin.progress_overview.no_people_desc', 'Prueba con otro CR o curso, amplía el rango o limpia la búsqueda.')}
         />
       ) : (
         <>
@@ -2265,8 +2225,8 @@ function PeopleTab({
               <thead>
                 <tr>
                   {th('name', t('admin.progress_overview.col_person', 'Persona'), 'left', undefined, 'w-[215px]')}
-                  {th('campaign', t('admin.progress_overview.col_campaign', 'Programa'), 'left', undefined, 'w-[150px]')}
-                  {th('assigned', t('admin.progress_overview.col_assigned', 'Asignados'), 'right', t('admin.progress_overview.help_assigned', 'Cursos que le tocan, por asignación directa o por su programa.'))}
+                  {th('cr', t('admin.progress_overview.col_cr', 'CR'), 'left', t('admin.progress_overview.help_cr', 'CR = centro de resultados: así llama Talento Humano a la operación donde trabaja la persona. Debajo, su país y su área. Esos tres datos son los que deciden qué cursos le llegan.'), 'w-[150px]')}
+                  {th('assigned', t('admin.progress_overview.col_assigned', 'Asignados'), 'right', t('admin.progress_overview.help_assigned', 'Cursos que le tocan, por asignación directa o por la regla país/área/CR.'))}
                   {th('mandatory', t('admin.progress_overview.col_mandatory', 'Obligatorios'), 'right', t('admin.progress_overview.help_mandatory', 'Cursos obligatorios terminados sobre los que le tocan. Es la cifra de cumplimiento que se audita.'))}
                   {th('syllabus', t('admin.progress_overview.col_syllabus', 'Temario'), 'right', t('admin.progress_overview.help_syllabus', 'Módulos completados sobre los de TODOS sus cursos asignados. Por eso alguien puede estar certificado en un curso y tener el temario al 30%: filtra por curso para verlo aislado.'))}
                   {th('completed', t('admin.progress_overview.col_completed', 'Completados'), 'right', t('admin.progress_overview.help_completed', 'Cursos con certificado, o con TODO el recorrido hecho: módulos, simuladores, mundo y examen final.'))}
@@ -2318,15 +2278,29 @@ function PeopleTab({
                         maxWidth={280}
                         delay={120}
                         className="min-w-0 w-full"
-                        label={[p.campaignName, p.jobTitle, countryLabel(p.country)].filter(Boolean).join(' · ') || '—'}
+                        label={[
+                          unitName(p.operationId) ?? t('admin.progress_overview.no_cr', 'Sin CR asignado'),
+                          unitName(p.areaId) ?? t('admin.progress_overview.no_area', 'Sin área'),
+                          countryLabel(p.country) ?? t('admin.progress_overview.no_country', 'Sin país'),
+                          p.jobTitle,
+                        ].filter(Boolean).join(' · ')}
                       >
                         <span className="block min-w-0">
-                          <span className="block truncate">{p.campaignName ?? '—'}</span>
-                          {(p.jobTitle || p.country) && (
-                            <span className="block truncate text-[11px] text-text-subtle">
-                              {[p.jobTitle, countryLabel(p.country)].filter(Boolean).join(' · ')}
-                            </span>
-                          )}
+                          {/* El CR manda: es el eje con el que hoy se reparte la
+                              formación. Cuando falta se dice en ámbar, porque a
+                              esa persona no le llega ningún curso por regla. */}
+                          <span className={cn(
+                            'block truncate',
+                            p.operationId ? '' : 'text-amber-600 dark:text-amber-400',
+                          )}>
+                            {unitName(p.operationId) ?? t('admin.progress_overview.no_cr', 'Sin CR asignado')}
+                          </span>
+                          <span className="block truncate text-[11px] text-text-subtle">
+                            {[
+                              countryLabel(p.country) ?? t('admin.progress_overview.no_country', 'Sin país'),
+                              unitName(p.areaId) ?? t('admin.progress_overview.no_area', 'Sin área'),
+                            ].join(' · ')}
+                          </span>
                         </span>
                       </Tooltip>
                     </td>
@@ -2494,9 +2468,9 @@ function CoursesTab({
                                 lo mismo si es un curso que le toca a toda la
                                 campaña o uno que se le dio a tres personas, y
                                 hasta ahora las dos cosas se veían igual. */}
-                            {c.campaignsAssigned.length > 0 ? (
+                            {c.byRule ? (
                               <StatusPill tone="green">
-                                {t('admin.progress_overview.reach_campaign', 'Todo el programa')}
+                                {t('admin.progress_overview.reach_rule', 'Por regla país/área/CR')}
                               </StatusPill>
                             ) : c.directAssigned > 0 ? (
                               <StatusPill tone="neutral">
@@ -2507,7 +2481,6 @@ function CoursesTab({
                                 {t('admin.progress_overview.reach_none', 'Sin asignar')}
                               </StatusPill>
                             )}
-                            {c.campaignName && <span className="min-w-0 truncate text-[10.5px] text-text-subtle">· {c.campaignName}</span>}
                           </div>
                         </div>
                       </div>
@@ -2518,9 +2491,9 @@ function CoursesTab({
                         delay={120}
                         maxWidth={280}
                         label={t('admin.progress_overview.assigned_breakdown', {
-                          campaign: c.assigned - c.directAssigned,
+                          rule: c.assigned - c.directAssigned,
                           direct: c.directAssigned,
-                          defaultValue: '{{campaign}} por su programa · {{direct}} una por una',
+                          defaultValue: '{{rule}} por la regla país/área/CR · {{direct}} una por una',
                         })}
                       >
                         <span>{c.assigned}</span>
@@ -2576,8 +2549,8 @@ export interface CertRowView {
   country: string | null;
   courseTitle: string;
   courseIcon: string | null;
-  programName: string | null;
-  personProgram: string | null;
+  /** CR de la persona (nombre), o null si no tiene. */
+  crName: string | null;
   missing: number;
 }
 
@@ -2677,7 +2650,7 @@ function CertificatesTab({
         <EmptyState
           icon={<Award className="h-6 w-6" />}
           title={t('admin.progress_overview.no_certs', 'Ningún certificado en este alcance')}
-          description={t('admin.progress_overview.no_certs_desc', 'Prueba con otro programa o curso, amplía el rango de fechas o limpia la búsqueda. Terminar el temario no emite el diploma: la persona tiene que pasar por la pantalla de certificación del curso.')}
+          description={t('admin.progress_overview.no_certs_desc', 'Prueba con otro CR o curso, amplía el rango de fechas o limpia la búsqueda. Terminar el temario no emite el diploma: la persona tiene que pasar por la pantalla de certificación del curso.')}
         />
       ) : (
         <>
@@ -2701,7 +2674,7 @@ function CertificatesTab({
                 <tr>
                   {th('person', t('admin.progress_overview.col_person', 'Persona'), 'left', undefined, 'w-[230px]')}
                   {th('course', t('admin.progress_overview.col_course', 'Curso'), 'left', t('admin.progress_overview.help_cert_course', 'El curso que acredita el diploma.'), 'w-[230px]')}
-                  {th('campaign', t('admin.progress_overview.col_program_owner', 'Programa'), 'left', t('admin.progress_overview.help_cert_program', 'El programa dueño del curso. Si la persona viene de otro, aparece debajo de su nombre.'), 'w-[160px]')}
+                  {th('cr', t('admin.progress_overview.col_cr', 'CR'), 'left', t('admin.progress_overview.help_cert_cr', 'El CR (centro de resultados) donde trabaja la persona.'), 'w-[160px]')}
                   {th('score', t('admin.progress_overview.col_score_short', 'Nota'), 'right', t('admin.progress_overview.help_cert_score', 'Con la que se emitió el certificado.'), 'w-[70px]')}
                   {th('date', t('admin.progress_overview.col_issued', 'Emitido'), 'right', t('admin.progress_overview.help_cert_issued', 'Fecha de emisión del diploma.'), 'w-[120px]')}
                   {/* No se ordena por código: es un identificador, no un dato
@@ -2788,20 +2761,7 @@ function CertificatesTab({
 
                     <td className="border-b border-line/60 px-2.5 py-2.5 text-text-muted">
                       <span className="block min-w-0">
-                        <span className="block truncate">{r.programName ?? '—'}</span>
-                        {/* Solo cuando la persona NO es del programa dueño: es un
-                            curso compartido, y esa diferencia explica por qué el
-                            certificado no aparece en los conteos de su campaña. */}
-                        {r.personProgram && r.personProgram !== r.programName && (
-                          <Tooltip
-                            maxWidth={280}
-                            label={t('admin.progress_overview.cert_guest_hint', 'La persona pertenece a otro programa: hizo un curso compartido.')}
-                          >
-                            <span className="block truncate text-[11px] text-text-subtle">
-                              {r.personProgram}
-                            </span>
-                          </Tooltip>
-                        )}
+                        <span className="block truncate">{r.crName ?? '—'}</span>
                       </span>
                     </td>
 
@@ -3269,7 +3229,7 @@ function SurveyTab({
     <div className="grid gap-4 lg:grid-cols-3">
       <Rise delay={0.02}>
         <SectionCard
-          title={t('admin.progress_overview.nps_title', 'NPS del programa')}
+          title={t('admin.progress_overview.nps_title', 'NPS de la formación')}
           subtitle={t('admin.progress_overview.nps_sub', 'Sobre la pregunta de experiencia general (0 a 10)')}
           icon={<HeartHandshake className="h-4 w-4" />}
           accent={MAGENTA}

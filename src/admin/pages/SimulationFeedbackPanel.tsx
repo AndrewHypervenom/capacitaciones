@@ -7,13 +7,15 @@ import {
 import { supabase } from '@/lib/supabase'
 import { getMyPeopleIds } from '@/services/org.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { getOrganizations, getOrgUnits } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
-import { PanelHeader, InsightBanner, StatStrip } from './progress/ProgressChrome'
+import { PanelHeader, InsightBanner, StatStrip, PickCourseFirst } from './progress/ProgressChrome'
+import { cn } from '@/lib/cn'
 import { pickLang } from '@/lib/contentLang'
 import { toUtcMs } from '@/lib/datetime'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -30,8 +32,10 @@ interface Profile {
   campaign_id: string | null
   is_active?: boolean | null
   role?: string | null
+  country?: string | null
   operation_id?: string | null
   area_id?: string | null
+  is_client?: boolean | null
 }
 
 interface AiFeedback { summary?: string; strengths?: string[]; improvements?: string[] }
@@ -91,11 +95,11 @@ const NO_COURSE = '__no_course__'
 interface LearnerBase {
   userId: string
   displayName: string
-  campaignId: string | null
-  campaignName: string
-  /** CR y área de la persona: los ejes con los que ahora se acota todo. */
+  /** País, CR y área de la persona: con ellos se decide si le llega el curso. */
+  country?: string | null
   operationId?: string | null
   areaId?: string | null
+  isClient?: boolean | null
   /**
    * Practicó contenido de este alcance pero NO está en la lista de gente del
    * capacitador (otra audiencia, cuenta dada de baja, o un perfil que la RLS no
@@ -237,14 +241,18 @@ export default function SimulationFeedbackPanel() {
   const [scenarioTitles, setScenarioTitles] = useState<Map<string, string>>(new Map())
   /** slug → de qué simulador viene. Decide si empatía y checklist son reales. */
   const [scenarioKinds, setScenarioKinds] = useState<Map<string, 'call' | 'choice'>>(new Map())
-  const [filterCampaign, setFilterCampaign] = useState('all')
   /* CR y área: los mismos cortes que el Panorama y que Mundos. Tres pantallas,
      un idioma. Se comparan por id, no por nombre. */
   const [filterOperation, setFilterOperation] = useState('all')
   const [filterArea, setFilterArea] = useState('all')
   const [units, setUnits] = useState<OrgUnit[]>([])
   const [filterScenario, setFilterScenario] = useState('all')
+  /* El CURSO es obligatorio: sin él no se muestra nada. Mismo criterio que
+     Módulos y Mundos, para que las tres vistas se usen igual. */
   const [filterCourse, setFilterCourse] = useState('all')
+  const courseChosen = filterCourse !== 'all'
+  /** A quién le llega el curso elegido: asignación individual + regla. */
+  const [reach, setReach] = useState<{ courseId: string; assigned: Set<string>; rule: AudienceRule | null; published: boolean } | null>(null)
   /** curso → título, para el filtro (solo los cursos que tienen intentos). */
   const [courseTitles, setCourseTitles] = useState<Map<string, string>>(new Map())
   const [search, setSearch] = useState('')
@@ -252,12 +260,6 @@ export default function SimulationFeedbackPanel() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'intentos', dir: 'desc' })
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
-
-  /** Campaña del PERFIL de cada aprendiz (respaldo del intento sin etiquetar). */
-  const learnerCampaign = useMemo(
-    () => new Map(learners.map((l) => [l.userId, l.campaignId])),
-    [learners],
-  )
 
   const statusLabel = useCallback(
     (s: LearnerStatus) => t(STATUS_META[s].labelKey, STATUS_META[s].fallback),
@@ -318,12 +320,12 @@ export default function SimulationFeedbackPanel() {
           return q
         })(),
         (() => {
-          let q = supabase.from('scenarios').select('slug,title_es,title_en,title_pt,campaign_id')
+          let q = supabase.from('scenarios').select('slug,title_es,title_en,title_pt,campaign_id,course_id').is('deleted_at', null)
           if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
         (() => {
-          let q = supabase.from('choice_scenarios').select('slug,title_es,campaign_id')
+          let q = supabase.from('choice_scenarios').select('slug,title_es,campaign_id,course_id').is('deleted_at', null)
           if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
@@ -350,7 +352,14 @@ export default function SimulationFeedbackPanel() {
       }
       // Títulos de los cursos que los intentos mencionan: es lo único que hace
       // falta para el filtro por curso, y así no se trae el catálogo entero.
-      const courseIds = [...new Set(attempts.map((a) => a.course_id).filter(Boolean))] as string[]
+      // Cursos: los que tienen simuladores y los que mencionan los intentos. Con
+      // el curso obligatorio, un curso con simulador y sin intentos todavía
+      // tiene que poder elegirse (es justo donde hay gente por empezar).
+      const scenarioCourseIds = [
+        ...((callRes.data ?? []) as Array<{ course_id: string | null }>),
+        ...((choiceRes.data ?? []) as Array<{ course_id: string | null }>),
+      ].map((r) => r.course_id)
+      const courseIds = [...new Set([...attempts.map((a) => a.course_id), ...scenarioCourseIds].filter(Boolean))] as string[]
       const courseMap = new Map<string, string>()
       if (courseIds.length > 0) {
         const { data: courseRows } = await supabase
@@ -378,7 +387,7 @@ export default function SimulationFeedbackPanel() {
       if (missingIds.length > 0) {
         const { data: extra } = await supabase
           .from('profiles')
-          .select('id,display_name,campaign_id,is_active,role')
+          .select('id,display_name,campaign_id,is_active,role,country,operation_id,area_id,is_client')
           .in('id', missingIds)
         rescued.push(...((extra ?? []) as Profile[]))
       }
@@ -386,20 +395,18 @@ export default function SimulationFeedbackPanel() {
 
       if (cancelled) return
       setCourseTitles(courseMap)
-      const campMap = new Map(camps.map((c) => [c.id, c.name]))
       setScenarioTitles(titles)
       setScenarioKinds(kinds)
       setCampaigns(camps)
       const nameOf = (p: Profile) => p.display_name ?? t('admin.sim_panel.no_name', 'Sin nombre')
-      const campaignNameOf = (id: string | null) => (id ? (campMap.get(id) ?? '—') : '—')
       setLearners([
         ...profiles.map((p) => ({
           userId: p.id,
           displayName: nameOf(p),
-          campaignId: p.campaign_id,
-          campaignName: campaignNameOf(p.campaign_id),
+          country: p.country ?? null,
           operationId: p.operation_id ?? null,
           areaId: p.area_id ?? null,
+          isClient: p.is_client ?? null,
         })),
         ...missingIds.map((id) => {
           const p = rescuedById.get(id)
@@ -407,9 +414,8 @@ export default function SimulationFeedbackPanel() {
             userId: id,
             displayName: p
               ? nameOf(p)
-              : t('admin.sim_panel.outsider_name', 'Aprendiz de otro programa'),
-            campaignId: p?.campaign_id ?? null,
-            campaignName: campaignNameOf(p?.campaign_id ?? null),
+              : t('admin.sim_panel.outsider_name', 'Persona fuera de tu alcance'),
+            country: p?.country ?? null,
             operationId: p?.operation_id ?? null,
             areaId: p?.area_id ?? null,
             outsider: true,
@@ -429,33 +435,37 @@ export default function SimulationFeedbackPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, scopedToCampaign, campaignId, user?.id, i18n.resolvedLanguage])
 
-  /**
-   * La campaña a la que pertenece un INTENTO. Es la del intento —dónde se
-   * practicó—, y solo si el intento no la trae se cae a la de su perfil.
-   *
-   * Esto era el bug: el panel filtraba por `r.campaignId`, la campaña del
-   * PERFIL de la persona. Pero `campaign_id` significa dos cosas distintas
-   * (programa en el contenido, audiencia en el perfil), así que quien practicaba
-   * un simulador de Bradescard estando en Piloto desaparecía del filtro: se
-   * veía "Todavía no hay simulaciones registradas" con los intentos guardados
-   * y bien etiquetados en la base.
-   */
-  const campaignOfAttempt = useCallback(
-    (a: SimAttempt): string | null => a.campaign_id ?? learnerCampaign.get(a.user_id) ?? null,
-    [learnerCampaign],
-  )
+  /* A quién le llega el curso elegido. El programa ya no entrega cursos: cuenta
+     quien lo tiene asignado y quien cumple su regla país/área/CR. Quien ya
+     practicó entra siempre, le toque hoy o no. */
+  useEffect(() => {
+    if (!courseChosen || filterCourse === NO_COURSE) return
+    let vivo = true
+    void Promise.all([
+      supabase.from('course_assignments').select('user_id').eq('course_id', filterCourse),
+      getAudience(filterCourse).catch(() => null),
+      supabase.from('courses').select('is_published').eq('id', filterCourse).maybeSingle(),
+    ]).then(([asg, rule, course]) => {
+      if (!vivo) return
+      setReach({
+        courseId: filterCourse,
+        assigned: new Set(((asg.data ?? []) as Array<{ user_id: string }>).map((a) => a.user_id)),
+        rule,
+        published: (course.data as { is_published?: boolean } | null)?.is_published === true,
+      })
+    })
+    return () => { vivo = false }
+  }, [courseChosen, filterCourse])
 
-  /** Intentos de la campaña elegida (base de los dos filtros que siguen). */
-  const campaignAttempts = useMemo(
-    () => (filterCampaign === 'all'
-      ? allAttempts
-      : allAttempts.filter((a) => campaignOfAttempt(a) === filterCampaign)),
-    [allAttempts, filterCampaign, campaignOfAttempt],
-  )
+  /** "Sin curso asociado" no tiene a quién llegarle: solo cuenta quien practicó. */
+  const reachReady = courseChosen && (filterCourse === NO_COURSE || reach?.courseId === filterCourse)
 
-  /** Cursos con intentos en la campaña elegida (más "sin curso", si los hay). */
+  const campaignAttempts = allAttempts
+  const unitName = useMemo(() => new Map(units.map((u) => [u.id, u.name])), [units])
+
+  /** Cursos con simulador o con intentos (más "sin curso", si los hay). */
   const courseOptions = useMemo(() => {
-    const ids = new Set<string>();
+    const ids = new Set<string>(courseTitles.keys());
     let loose = false
     for (const a of campaignAttempts) {
       if (a.course_id) ids.add(a.course_id); else loose = true
@@ -471,7 +481,7 @@ export default function SimulationFeedbackPanel() {
     return list
   }, [campaignAttempts, courseTitles, t])
 
-  /** Curso elegido, validado: cambiar de campaña no puede dejar uno que no está. */
+  /** Curso elegido, validado: uno que ya no está en la lista no puede quedar puesto. */
   const activeCourse = useMemo(
     () => (filterCourse !== 'all' && !courseOptions.some((c) => c.value === filterCourse) ? 'all' : filterCourse),
     [filterCourse, courseOptions],
@@ -479,13 +489,13 @@ export default function SimulationFeedbackPanel() {
 
   const courseAttempts = useMemo(
     () => (activeCourse === 'all'
-      ? campaignAttempts
+      ? []
       : campaignAttempts.filter((a) => (activeCourse === NO_COURSE ? !a.course_id : a.course_id === activeCourse))),
     [campaignAttempts, activeCourse],
   )
 
   // Opciones del filtro de escenario: los escenarios con intentos dentro de la
-  // campaña y el curso elegidos, ordenados por título.
+  // curso elegido, ordenados por título.
   const scenarioOptions = useMemo(() => {
     const slugs = new Set(courseAttempts.map((a) => a.scenario_slug))
     return [...slugs]
@@ -515,8 +525,8 @@ export default function SimulationFeedbackPanel() {
   /**
    * Quién se ve.
    *
-   * Su gente de casa MÁS quien haya practicado su contenido viniendo de otra
-   * campaña (el catálogo es compartido).
+   * La gente a la que le llega el curso elegido (asignada o por regla país/área/
+   * CR) MÁS quien haya practicado sus simuladores, le toque hoy o no.
    *
    * Antes, al afinar por curso o escenario, la lista se recortaba a quien ya
    * había practicado: justo la gente que falta —la que no ha entrado nunca al
@@ -537,9 +547,14 @@ export default function SimulationFeedbackPanel() {
       // El rescatado solo existe por sus intentos: fuera de ellos no es "gente
       // pendiente de practicar" y no debe engordar el total ni la participación.
       if (r.outsider) return false
-      return filterCampaign === 'all' || r.campaignId === filterCampaign
+      // Quien no practicó entra solo si el curso le llega: asignado o por regla.
+      if (!reach || reach.courseId !== activeCourse) return false
+      if (reach.assigned.has(r.userId)) return true
+      return !!reach.rule && reach.published && matchesAudience(reach.rule, {
+        country: r.country, operation_id: r.operationId, area_id: r.areaId, is_client: r.isClient,
+      })
     })
-  }, [rows, scopedAttempts, filterCampaign, filterOperation, filterArea])
+  }, [rows, scopedAttempts, reach, activeCourse, filterOperation, filterArea])
 
   const stats = useMemo(() => {
     const learners = scoped.length
@@ -634,13 +649,13 @@ export default function SimulationFeedbackPanel() {
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet1), 'Resumen por aprendiz')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet2), 'Detalle de intentos')
-      const campName = campaigns.find((c) => c.id === campaignId)?.name ?? 'General'
+      const courseName = courseTitles.get(activeCourse) ?? 'General'
       const date = new Date().toISOString().slice(0, 10)
-      XLSX.writeFile(wb, `simulaciones_${campName.replace(/\s+/g, '_')}_${date}.xlsx`)
+      XLSX.writeFile(wb, `simulaciones_${courseName.replace(/[^\p{L}\p{N}]+/gu, '_')}_${date}.xlsx`)
     } finally {
       setExporting(false)
     }
-  }, [tableRows, campaigns, campaignId, exporting, statusLabel, scenarioTitle, scenarioKinds, i18n.language])
+  }, [tableRows, courseTitles, activeCourse, exporting, statusLabel, scenarioTitle, scenarioKinds, i18n.language])
 
   const setSortKey = (key: SortKey) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }))
@@ -658,7 +673,6 @@ export default function SimulationFeedbackPanel() {
   }
 
   const statusChips: Array<LearnerStatus | 'all'> = ['all', ...STATUS_ORDER]
-  const multiCampaign = campaigns.length > 1
 
   return (
     <div className="p-4 sm:p-8">
@@ -680,56 +694,53 @@ export default function SimulationFeedbackPanel() {
         ) : undefined}
       />
 
-      {/* Filtros: CR y área SIEMPRE (son los cortes de todo el mundo), más
-          campaña, curso y escenario cuando aplican. */}
-      {(
-        <div className="flex flex-wrap gap-3 mb-5">
+      {/* Filtros. El CURSO va primero y es obligatorio —resaltado mientras no
+          se elige—, igual que en Módulos y Mundos. CR, área y escenario
+          recortan dentro del curso. */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className={cn('rounded-xl', !courseChosen && 'ring-2 ring-[rgb(var(--brand-green))] ring-offset-2 ring-offset-bg')}>
           <FilterDropdown
-            value={filterOperation === 'all' ? '' : filterOperation}
-            onChange={(v) => setFilterOperation(v || 'all')}
-            options={[
-              { value: '', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
-              ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
-            ]}
+            value={courseChosen ? filterCourse : ''}
+            onChange={(v) => { setFilterCourse(v || 'all'); setFilterScenario('all') }}
+            options={[{ value: '', label: t('admin.progress_overview.pick_course', 'Elige un curso (obligatorio)') }, ...courseOptions]}
             className="max-w-xs"
           />
-          <FilterDropdown
-            value={filterArea === 'all' ? '' : filterArea}
-            onChange={(v) => setFilterArea(v || 'all')}
-            options={[
-              { value: '', label: t('admin.progress_overview.all_areas', 'Todas las áreas') },
-              ...units.filter((u) => u.kind === 'area').map((u) => ({ value: u.id, label: u.name })),
-            ]}
-            className="max-w-xs"
-          />
-          {(isSuperAdmin || multiCampaign) && (
-            <FilterDropdown
-              value={filterCampaign === 'all' ? '' : filterCampaign}
-              onChange={(v) => { setFilterCampaign(v || 'all'); setFilterCourse('all'); setFilterScenario('all') }}
-              options={[{ value: '', label: t('common.all_campaigns') }, ...campaigns.map((c) => ({ value: c.id, label: c.name }))]}
-              className="max-w-xs"
-            />
-          )}
-          {courseOptions.length > 0 && (
-            <FilterDropdown
-              value={activeCourse === 'all' ? '' : activeCourse}
-              onChange={(v) => { setFilterCourse(v || 'all'); setFilterScenario('all') }}
-              options={[{ value: '', label: t('admin.sim_panel.all_courses', 'Todos los cursos') }, ...courseOptions]}
-              className="max-w-xs"
-            />
-          )}
-          {scenarioOptions.length > 0 && (
-            <FilterDropdown
-              value={filterScenario === 'all' ? '' : filterScenario}
-              onChange={(v) => setFilterScenario(v || 'all')}
-              options={[{ value: '', label: t('admin.sim_panel.all_scenarios', 'Todos los escenarios') }, ...scenarioOptions]}
-              className="max-w-xs"
-            />
-          )}
         </div>
-      )}
+        <FilterDropdown
+          value={filterOperation === 'all' ? '' : filterOperation}
+          onChange={(v) => setFilterOperation(v || 'all')}
+          options={[
+            { value: '', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
+            ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
+          ]}
+          className="max-w-xs"
+        />
+        <FilterDropdown
+          value={filterArea === 'all' ? '' : filterArea}
+          onChange={(v) => setFilterArea(v || 'all')}
+          options={[
+            { value: '', label: t('admin.progress_overview.all_areas', 'Todas las áreas') },
+            ...units.filter((u) => u.kind === 'area').map((u) => ({ value: u.id, label: u.name })),
+          ]}
+          className="max-w-xs"
+        />
+        {courseChosen && scenarioOptions.length > 1 && (
+          <FilterDropdown
+            value={filterScenario === 'all' ? '' : filterScenario}
+            onChange={(v) => setFilterScenario(v || 'all')}
+            options={[{ value: '', label: t('admin.sim_panel.all_scenarios', 'Todos los escenarios') }, ...scenarioOptions]}
+            className="max-w-xs"
+          />
+        )}
+      </div>
 
-      {loading ? (
+      {!loading && !courseChosen ? (
+        <PickCourseFirst
+          accent={SIM_ACCENT}
+          title={t('admin.progress_overview.pick_course_title', 'Primero elige un curso')}
+          body={t('admin.sim_panel.pick_course_body', 'Todo lo de abajo habla de UN curso: quién practicó sus simuladores, con qué nota y quién todavía no entra. Después puedes recortar por CR, área o escenario.')}
+        />
+      ) : loading || !reachReady ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
@@ -751,12 +762,12 @@ export default function SimulationFeedbackPanel() {
                 {t('admin.sim_panel.filtered_out', 'Ningún aprendiz con estos filtros')}
               </div>
               <div className="text-[13px] text-text-muted">
-                {t('admin.sim_panel.filtered_out_desc', { count: allAttempts.length, defaultValue: 'Hay {{count}} intentos registrados fuera de este alcance. Prueba con otro programa o curso, o quita los filtros.' })}
+                {t('admin.sim_panel.filtered_out_desc', { count: allAttempts.length, defaultValue: 'Hay {{count}} intentos registrados fuera de este alcance. Prueba con otro curso, CR o área, o quita los filtros.' })}
               </div>
-              {(filterCampaign !== 'all' || activeCourse !== 'all' || filterScenario !== 'all') && (
+              {(filterOperation !== 'all' || filterArea !== 'all' || filterScenario !== 'all') && (
                 <button
                   type="button"
-                  onClick={() => { setFilterCampaign('all'); setFilterCourse('all'); setFilterScenario('all') }}
+                  onClick={() => { setFilterOperation('all'); setFilterArea('all'); setFilterScenario('all') }}
                   className="mt-4 inline-flex items-center justify-center rounded-xl border border-line px-4 py-2 text-[12.5px] font-semibold text-text-muted transition-colors hover:text-text"
                 >
                   {t('admin.sim_panel.clear_filters', 'Quitar los filtros')}
@@ -913,10 +924,10 @@ export default function SimulationFeedbackPanel() {
                   <div className="min-w-[760px]">
                     <div
                       className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
-                      style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto auto 1fr auto auto auto' : '1.6fr auto auto 1fr auto auto auto' }}
+                      style={{ gridTemplateColumns: '1.4fr 1fr auto auto 1fr auto auto auto' }}
                     >
                       <SortTh label={t('admin.sim_panel.col_learner', 'Aprendiz')} col="name" sort={sort} onSort={setSortKey} />
-                      {multiCampaign && <span>{t('admin.worlds.campaign')}</span>}
+                      <span>{t('admin.progress_overview.col_cr', 'CR')}</span>
                       <SortTh label={t('admin.sim_panel.col_status', 'Estado')} col="estado" sort={sort} onSort={setSortKey} />
                       <SortTh
                         label={t('admin.sim_panel.col_attempts', 'Intentos')}
@@ -944,7 +955,7 @@ export default function SimulationFeedbackPanel() {
                           <div key={row.userId} style={atRisk ? { boxShadow: 'inset 3px 0 0 #ef4444' } : undefined}>
                             <div
                               className="grid gap-4 px-5 py-3.5 items-center cursor-pointer hover:bg-subtle/50 transition-colors"
-                              style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto auto 1fr auto auto auto' : '1.6fr auto auto 1fr auto auto auto' }}
+                              style={{ gridTemplateColumns: '1.4fr 1fr auto auto 1fr auto auto auto' }}
                               onClick={() => setExpandedUser((p) => (p === row.userId ? null : row.userId))}
                             >
                               <div className="flex items-center gap-3 min-w-0">
@@ -959,12 +970,14 @@ export default function SimulationFeedbackPanel() {
                                     <div className="text-[11px] text-text-subtle truncate">
                                       {row.staff
                                         ? t('admin.sim_panel.staff_hint', 'Del equipo, no es un aprendiz')
-                                        : t('admin.sim_panel.outsider_hint', 'Practicó tu contenido desde otro programa')}
+                                        : t('admin.sim_panel.outsider_hint', 'Practicó este curso, pero hoy no le llega')}
                                     </div>
                                   )}
                                 </div>
                               </div>
-                              {multiCampaign && <div className="text-[12px] text-text-muted truncate">{row.campaignName}</div>}
+                              <div className={cn('text-[12px] truncate', row.operationId ? 'text-text-muted' : 'text-amber-600 dark:text-amber-400')}>
+                                {(row.operationId && unitName.get(row.operationId)) || t('admin.progress_overview.no_cr', 'Sin CR asignado')}
+                              </div>
                               <StatusBadge status={row.status} label={statusLabel(row.status)} />
                               <div className="text-[13px] text-text tabular-nums"><span className="font-medium">{row.attemptsCount}</span><span className="text-text-muted"> · {row.scenariosCount} esc.</span></div>
                               <ScoreBar value={row.avgScore} />
@@ -998,12 +1011,14 @@ export default function SimulationFeedbackPanel() {
                             <div className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 bg-subtle text-[15px] font-medium text-text">{row.displayName.charAt(0).toUpperCase()}</div>
                             <div className="min-w-0">
                               <div className="text-[14px] font-medium text-text truncate">{row.displayName}</div>
-                              {multiCampaign && <div className="text-[11px] text-text-muted truncate">{row.campaignName}</div>}
+                              <div className="text-[11px] text-text-muted truncate">
+                                {(row.operationId && unitName.get(row.operationId)) || t('admin.progress_overview.no_cr', 'Sin CR asignado')}
+                              </div>
                               {row.outsider && (
                                 <div className="text-[11px] text-text-subtle truncate">
                                   {row.staff
                                     ? t('admin.sim_panel.staff_hint', 'Del equipo, no es un aprendiz')
-                                    : t('admin.sim_panel.outsider_hint', 'Practicó tu contenido desde otro programa')}
+                                    : t('admin.sim_panel.outsider_hint', 'Practicó este curso, pero hoy no le llega')}
                                 </div>
                               )}
                             </div>

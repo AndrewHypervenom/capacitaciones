@@ -59,7 +59,12 @@ export function useProgressSync() {
     // alguien que empieza —con sus candados—, y nada de lo que haga ahí toca su
     // progreso real ni el de nadie (ver src/lib/previewMode.ts).
     if (IS_LEARNER_PREVIEW) return
-    if (!user?.id || !campaignId) return
+    if (!user?.id) return
+    // ANTES de unir con la BD: si la caché del navegador es de otra persona, se
+    // vacía. Sin esto la unión aditiva le sumaba a quien entraba los módulos del
+    // anterior en el mismo puesto, y el espejo los grababa en su fila.
+    useProgressStore.getState().claimOwner(user.id)
+    if (!campaignId) return
     const key = `${user.id}:${campaignId}`
     let active = true
     getProgress(user.id, campaignId)

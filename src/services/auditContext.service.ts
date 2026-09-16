@@ -191,7 +191,7 @@ export async function getEntityContexts(
       : empty(),
   ])
 
-  const campaignName = new Map<string, string>([
+  const _campaignName = new Map<string, string>([
     ...campaigns.map((c) => [c.id, c.name] as const),
     ...rowsOf<{ id: string; name: string }>(extraCampaigns).map((c) => [c.id, c.name] as const),
   ])
@@ -209,8 +209,7 @@ export async function getEntityContexts(
     opts: { campaignId?: string | null; courseId?: string | null; worldId?: string | null; summary?: string } = {},
   ) => {
     const path: PathPart[] = []
-    const campId = opts.campaignId ?? (opts.courseId ? courseInfo.get(opts.courseId)?.campaign_id : undefined)
-    if (campId && campaignName.has(campId)) path.push({ kind: 'campaign', label: campaignName.get(campId)! })
+    // El programa ya no se enseña: la ruta empieza en el curso.
     if (opts.courseId && courseInfo.has(opts.courseId)) {
       path.push({ kind: 'course', label: courseInfo.get(opts.courseId)!.title, href: `/admin/courses/${opts.courseId}` })
     }
@@ -364,8 +363,8 @@ async function pathFor(campaignId?: string | null, courseId?: string | null): Pr
     campaignId ? supabase.from('campaigns').select('name').eq('id', campaignId).maybeSingle() : null,
     courseId ? supabase.from('courses').select('title_es, campaign_id').eq('id', courseId).maybeSingle() : null,
   ])
-  const campName = (camp?.data as { name?: string } | null)?.name
-  if (campName) path.push({ kind: 'campaign', label: campName })
+  // El programa ya no se enseña: la ruta empieza en el curso.
+  void camp
   const courseTitle = (course?.data as { title_es?: string } | null)?.title_es
   if (courseTitle && courseId) path.push({ kind: 'course', label: courseTitle, href: `/admin/courses/${courseId}` })
   return path

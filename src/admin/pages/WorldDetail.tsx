@@ -1402,8 +1402,6 @@ export default function WorldDetail() {
           editing={editingQuizFull}
           defaultCampaignId={world.campaign_id}
           worldId={world.id}
-          scopedToCampaign
-          campaigns={[]}
           crumb={i18n.t('admin.worlds.crumb_worlds', { name: world.name })}
           onClose={closeQuizEditor}
           onSaved={onQuizSaved}

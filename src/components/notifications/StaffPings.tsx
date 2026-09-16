@@ -319,7 +319,6 @@ function PingCard({
                 {t(`site_feedback.kind.${p.feedback_kind}.label`)}
               </span>
             )}
-            {p.campaign_name && <span className="truncate max-w-[140px]">· {p.campaign_name}</span>}
             <span>· {time}</span>
             <AnimatePresence>
               {count > 1 && (

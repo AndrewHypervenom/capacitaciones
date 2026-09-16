@@ -11,6 +11,7 @@ import { WorldModulePickerModal, type PickedModule } from '@/admin/components/Wo
 import { requestDeletion } from '@/services/audit.service'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
+import { useCrFilter } from '@/hooks/useCrFilter'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { toast } from '@/stores/toastStore'
 import { deletionToast } from '@/lib/deletionToast'
@@ -141,14 +142,16 @@ export default function Worlds() {
   // Nº de regiones por mundo, para mostrar en la tarjeta cuánto contenido tiene.
   const [regionCounts, setRegionCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
-  const [filterCampaign, setFilterCampaign] = useState<string>('all')
 
   const { isSuperAdmin, campaignId, user, loading: authLoading } = useAuth()
   // El capacitador ve/gestiona los mundos de sus campañas (casa + colaboraciones);
   // el superadmin ve todos.
   const scopedToCampaign = !isSuperAdmin
-  // Mostrar filtro/selector de campaña cuando el usuario abarca más de una.
-  const multiCampaign = campaigns.length > 1
+  /* Ya no hay programas en pantalla. El espacio interno donde se guarda un
+     mundo nuevo sale solo: el de su curso si tiene, si no el de casa. */
+  const creationCampaignId =
+    (campaignId && campaigns.some((c) => c.id === campaignId) ? campaignId : campaigns[0]?.id) ?? ''
+  const crFilter = useCrFilter(worlds.map((w) => w.course_id))
 
   // ── Modal de creación / edición del mundo (una sola pantalla) ──
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -217,7 +220,7 @@ export default function Worlds() {
   // ── Abrir / cerrar modal ──
   const openWizardNew = () => {
     setWizardMode('new')
-    setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
+    setForm({ ...emptyForm(), campaign_id: creationCampaignId })
     setEditingId(null)
     setPickedModules([])
     setPickedOpts(null)
@@ -262,7 +265,7 @@ export default function Worlds() {
   async function persistWorld(): Promise<World | null> {
     if (!form.name.trim()) return null
     // worlds.campaign_id es NOT NULL: el mundo siempre pertenece a una campaña.
-    const campaign = form.campaign_id || (scopedToCampaign ? (campaignId ?? '') : '')
+    const campaign = form.campaign_id || creationCampaignId
     if (!campaign) {
       toast.error(i18n.t('admin.worlds.toast_choose_campaign'))
       return null
@@ -373,7 +376,7 @@ export default function Worlds() {
     else console.error('Error toggling publish:', error)
   }
 
-  const filtered = worlds.filter(w => filterCampaign === 'all' || w.campaign_id === filterCampaign)
+  const filtered = worlds.filter(w => crFilter.passes(w.course_id))
 
   if (!authLoading && !loading && scopedToCampaign && campaigns.length === 0) {
     return (
@@ -410,15 +413,15 @@ export default function Worlds() {
           </div>
         </div>
         <p className="text-text-muted text-[13px] mb-8">
-          Crea mundos temáticos con sus regiones y niveles. Todo lo gamificado de tu campaña vive aquí.
+          Crea mundos temáticos con sus regiones y niveles. Todo lo gamificado de tus cursos vive aquí.
         </p>
 
-        {/* Filtro de campaña (cuando el usuario abarca más de una) */}
-        {!loading && multiCampaign && (
+        {/* Filtro por CR: los mundos de los cursos que le llegan a ese CR. */}
+        {!loading && crFilter.operations.length > 0 && (
           <FilterDropdown
-            value={filterCampaign === 'all' ? '' : filterCampaign}
-            onChange={v => setFilterCampaign(v || 'all')}
-            options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
+            value={crFilter.cr}
+            onChange={crFilter.setCr}
+            options={[{ value: '', label: i18n.t('admin.progress_overview.all_operations', 'Todos los CR') }, ...crFilter.operations.map(u => ({ value: u.id, label: u.name }))]}
             className="mb-5 max-w-xs"
           />
         )}
@@ -454,7 +457,6 @@ export default function Worlds() {
         ) : (
           <Stagger className="grid md:grid-cols-2 gap-4">
             {filtered.map(w => {
-              const campaignName = campaigns.find(c => c.id === w.campaign_id)?.name
               const courseName = rowText(courses.find(c => c.id === w.course_id))
               const isPublished = w.status === 'published'
               const nRegions = regionCounts[w.id] ?? 0
@@ -483,11 +485,6 @@ export default function Worlds() {
                         >
                           {isPublished ? 'Publicado' : 'Borrador'}
                         </span>
-                        {campaignName && (
-                          <span className="shrink-0 text-[10px] text-text-subtle px-2 py-0.5 rounded-full bg-subtle">
-                            {campaignName}
-                          </span>
-                        )}
                         {courseName && (
                           <span className="shrink-0 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium"
                             style={{ background: 'rgba(99,102,241,0.12)', color: '#6366F1' }}>
@@ -645,20 +642,6 @@ export default function Worlds() {
                     />
                   </div>
                 </div>
-                {multiCampaign && (
-                  <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')} <span className="text-danger">*</span></label>
-                    <Select
-                      value={form.campaign_id}
-                      onChange={v => setForm(f => ({ ...f, campaign_id: v }))}
-                      placeholder={i18n.t('admin.worlds.ph_campaign')}
-                      options={[
-                        { value: '', label: i18n.t('admin.worlds.ph_campaign') },
-                        ...campaigns.map(c => ({ value: c.id, label: c.name })),
-                      ]}
-                    />
-                  </div>
-                )}
                 {/* Enlace con un curso: la fuente de conocimiento del mundo. Opcional.
                     Se ocultan los cursos que ya tienen otro mundo (1 mundo por curso). */}
                 <div>
@@ -674,9 +657,7 @@ export default function Worlds() {
                       { value: '', label: i18n.t('admin.worlds.no_course', { defaultValue: 'Sin curso (mundo suelto)' }) },
                       ...courses
                         .filter(c =>
-                          // Solo cursos de la campaña elegida (si hay una) …
-                          (!form.campaign_id || c.campaign_id === form.campaign_id) &&
-                          // … y que no estén ya tomados por OTRO mundo.
+                          // Cursos que no estén ya tomados por OTRO mundo.
                           !worlds.some(w => w.course_id === c.id && w.id !== editingId),
                         )
                         .map(c => ({ value: c.id, label: rowText(c) })),
@@ -751,7 +732,7 @@ export default function Worlds() {
               </button>
               <button
                 onClick={submitWizard}
-                disabled={savingWorld || !form.name.trim() || (multiCampaign && !form.campaign_id)}
+                disabled={savingWorld || !form.name.trim()}
                 className="flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
                 style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.28)' }}
               >

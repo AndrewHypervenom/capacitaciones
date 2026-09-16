@@ -201,9 +201,11 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [roleDefault, setRoleDefault] = useState('learner')
   // País para las filas que no traen uno propio (o cuyo valor no se reconoce).
   const [countryDefault, setCountryDefault] = useState('')
-  const [campaignDefault, setCampaignDefault] = useState(() =>
-    isSuperAdmin ? '' : resolveCreationCampaignId(null, campaigns.map((c) => c.id)),
-  )
+  /* El programa se retiró del sitio: ya no se elige ni se enseña. Por dentro
+     el progreso todavía necesita un espacio (`campaign_id`), así que toda alta
+     cae sola en uno —el de casa del panel, o el primero accesible— y a quien
+     exista sin ninguno se le completa también en silencio. */
+  const [campaignDefault] = useState(() => resolveCreationCampaignId(null, campaigns.map((c) => c.id)))
 
   // El catálogo cerrado de operaciones y áreas, para casar lo que trae la
   // nómina. Si está vacío (nadie ha creado unidades todavía) las dos columnas
@@ -224,7 +226,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   // botón que no haría nada.
   const [fillUnsupported, setFillUnsupported] = useState(false)
   // Completar la campaña de quienes ya existen y no tienen ninguna.
-  const [fillCampaign, setFillCampaign] = useState(false)
+  const [fillCampaign, setFillCampaign] = useState(true)
   /* Actualizar el cargo de quien ya existe. Nace ENCENDIDO —al revés que
      `fillCampaign`— porque es justo para lo que se recarga la base maestra: la
      gente cambia de puesto y el perfil no deja corregirlo a mano. */
@@ -263,12 +265,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const campaignByName = useMemo(() => {
     const m = new Map<string, string>()
     for (const c of campaigns) m.set(c.name.trim().toLowerCase(), c.id)
-    return m
-  }, [campaigns])
-
-  const campaignNameById = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const c of campaigns) m.set(c.id, c.name)
     return m
   }, [campaigns])
 
@@ -550,12 +546,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     return c
   }, [rows])
 
-  // Cuántos de los que ya existen quedaron sin campaña: es el número que decide
-  // si vale la pena ofrecer el "completar campaña".
-  const fillable = useMemo(
-    () => rows.filter((r) => r.status === 'exists' && noCampaign.has(r.email)).length,
-    [rows, noCampaign],
-  )
   const toAssign = useMemo(() => rows.filter((r) => r.include && r.action === 'assign').length, [rows])
   /** Gente que ya existe y a la que el archivo le trae cargo. */
   const syncableJobs = useMemo(
@@ -758,7 +748,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
     setExcluded({})
     setExisting(new Set())
     setNoCampaign(new Set())
-    setFillCampaign(false)
+    setFillCampaign(true)
     setFillUnsupported(false)
     setCheckState('idle')
   }
@@ -1052,23 +1042,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                           />
                         </Field>
                       )}
-                      {campaigns.length > 0 && (
-                        <Field label={t('admin.users.bulk_campaign_all')} required={campaignRequired}>
-                          <Select
-                            compact
-                            value={campaignDefault}
-                            onChange={setCampaignDefault}
-                            placeholder={t('admin.users.pick_campaign')}
-                            options={[
-                              // El capacitador no puede dejarla vacía.
-                              ...(campaignRequired
-                                ? []
-                                : [{ value: '', label: t('admin.users.bulk_campaign_none') }]),
-                              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-                            ]}
-                          />
-                        </Field>
-                      )}
                     </div>
 
                     <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-text-muted">
@@ -1141,33 +1114,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                         </span>
                       </div>
 
-                      {/* Completar la campaña de los que ya existen. Solo
-                          aparece cuando de verdad hay a quién: gente con cuenta
-                          y sin ninguna campaña. Al que ya tiene una NO se le
-                          toca, y eso se dice aquí, no en una nota al pie. */}
-                      {fillable > 0 && (
-                        <div className="rounded-xl border border-[#10D451]/40 bg-[#10D451]/10 p-3">
-                          <label className="flex cursor-pointer items-start gap-2 text-[13px] text-text">
-                            <input
-                              type="checkbox"
-                              checked={fillCampaign}
-                              onChange={(e) => setFillCampaign(e.target.checked)}
-                              disabled={!campaignDefault}
-                              className="mt-0.5 h-4 w-4 accent-[#10D451]"
-                            />
-                            <span>
-                              {t('admin.users.bulk_fill_campaign', { n: fillable })}
-                              <span className="mt-0.5 block text-[12px] text-text-muted">
-                                {campaignDefault
-                                  ? t('admin.users.bulk_fill_campaign_hint', {
-                                      campaign: campaignNameById.get(campaignDefault) ?? '',
-                                    })
-                                  : t('admin.users.bulk_fill_campaign_pick')}
-                              </span>
-                            </span>
-                          </label>
-                        </div>
-                      )}
                       {/* Actualizar el cargo de quien ya existe. Es el motivo
                           por el que se recarga la base maestra: el cargo no se
                           puede editar en el perfil, así que este archivo es la
@@ -1215,9 +1161,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_name')}</th>
                                 {canChooseRole && (
                                   <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_role')}</th>
-                                )}
-                                {campaigns.length > 0 && (
-                                  <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_campaign')}</th>
                                 )}
                                 <th className="px-3 py-2 font-normal">{t('admin.users.bulk_col_country')}</th>
                                 {showOperation && (
@@ -1282,19 +1225,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                                   </td>
                                   {canChooseRole && (
                                     <td className="px-3 py-2 text-text-muted">{t(`roles.${r.role}`)}</td>
-                                  )}
-                                  {campaigns.length > 0 && (
-                                    <td className="max-w-[140px] truncate px-3 py-2 text-text-muted">
-                                      {r.campaignId ? (
-                                        campaignNameById.get(r.campaignId) ?? '—'
-                                      ) : campaignRequired ? (
-                                        <span className="text-amber-500">
-                                          {t('admin.users.bulk_campaign_missing')}
-                                        </span>
-                                      ) : (
-                                        t('admin.users.bulk_campaign_none')
-                                      )}
-                                    </td>
                                   )}
                                   <td className="max-w-[150px] truncate px-3 py-2 text-text-muted">
                                     {r.country ? (
@@ -1387,30 +1317,6 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
                             n: unclassified,
                             defaultValue: '{{n}} persona quedará sin operación o sin área. Se puede corregir después con otra carga.',
                           })}
-                        </p>
-                      )}
-
-                      {campaignRequired && !campaignDefault && (
-                        <p className="flex items-center gap-2 text-[12px] text-amber-500">
-                          <AlertTriangle className="h-4 w-4 shrink-0" />
-                          {t('admin.users.bulk_campaign_required')}
-                        </p>
-                      )}
-
-                      {/* El superadmin SÍ puede crear sin programa — a veces hace
-                          falta — pero no en silencio. Una carga de 700 aprendices
-                          apareció al día siguiente sin programa y sin progreso, y
-                          la única señal fue que nadie veía sus cursos. Avisa con el
-                          número exacto y no bloquea. */}
-                      {!campaignRequired && !campaignDefault && toCreate > 0 && (
-                        <p className="flex items-start gap-2 text-[12px] text-amber-500">
-                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                          <span>
-                            {t('admin.users.bulk_no_campaign_warn', { n: toCreate })}
-                            <span className="mt-0.5 block text-text-muted">
-                              {t('admin.users.bulk_no_campaign_hint')}
-                            </span>
-                          </span>
                         </p>
                       )}
 

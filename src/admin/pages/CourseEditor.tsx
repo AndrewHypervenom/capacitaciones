@@ -7,9 +7,7 @@ import {
   Award,
   ArrowDown,
   ArrowLeft,
-  ArrowLeftRight,
   UserCog,
-  TriangleAlert,
   ArrowUp,
   BookOpen,
   CalendarClock,
@@ -20,7 +18,6 @@ import {
   Combine,
   Copy,
   Eye,
-  FolderOpen,
   Globe,
   GraduationCap,
   HelpCircle,
@@ -75,7 +72,6 @@ import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
   updateCourse,
-  moveCourseToCampaign,
   removeModuleFromCourse,
   reorderCourseModules,
   getCourseCampaigns,
@@ -467,8 +463,6 @@ export default function CourseEditor() {
   // Campañas a las que ESTE usuario puede mover el curso (casa + colaboraciones;
   // superadmin: todas). A diferencia de `campaigns`, ya viene acotado a lo suyo.
   const [accessibleCampaigns, setAccessibleCampaigns] = useState<Campaign[]>([])
-  const [moveTargetId, setMoveTargetId] = useState('')
-  const [movingCampaign, setMovingCampaign] = useState(false)
   // Dueño del curso: solo el superadmin lo cambia. De `created_by` depende quién
   // puede administrar el curso, así que es una orden, no una preferencia.
   const [ownerTargetId, setOwnerTargetId] = useState('')
@@ -476,7 +470,6 @@ export default function CourseEditor() {
   /* Campañas del candidato a dueño. Cambiar `created_by` NO da acceso: quién
      puede abrir el curso lo decide la campaña. Sin esto se puede dejar un curso
      a nombre de alguien que no lo ve —ya pasó— y nadie se entera. */
-  const [ownerCampaigns, setOwnerCampaigns] = useState<Campaign[] | null>(null)
   const [courseCampaigns, setCourseCampaigns] = useState<CourseCampaignRow[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   // Nombres de CR y área por id, para escribir en cada persona dónde está.
@@ -1166,23 +1159,6 @@ export default function CourseEditor() {
     if (courseScenarioCount > 0 || cond.require_simulator) setSimOpen(true)
   }, [courseScenarioCount, cond.require_simulator])
 
-  /* A qué campañas llega quien va a heredar el curso. Va aquí arriba, con los
-     demás hooks, porque la tarjeta que lo usa vive después del early return. */
-  useEffect(() => {
-    if (!ownerTargetId) { setOwnerCampaigns(null); return }
-    const p = profiles.find((x) => x.id === ownerTargetId)
-    if (!p) { setOwnerCampaigns(null); return }
-    let alive = true
-    getAccessibleCampaigns({
-      isSuperAdmin: p.role === 'superadmin',
-      homeCampaignId: p.campaign_id ?? null,
-      userId: p.id,
-    })
-      .then((cs) => { if (alive) setOwnerCampaigns(cs) })
-      .catch(() => { if (alive) setOwnerCampaigns([]) })
-    return () => { alive = false }
-  }, [ownerTargetId, profiles])
-
   // Aprendices ya certificados a los que les falta ver contenido publicado
   // después de su certificado. Informativo: no invalida nada por sí solo.
   // OJO: van ANTES del early return de carga. Estaban después, así que el
@@ -1316,35 +1292,6 @@ export default function CourseEditor() {
     setPreviewOpen(true)
   }
 
-  // Mueve el curso (y todo su contenido: módulos, mundo, simuladores) a otra
-  // campaña. Resuelve el caso del capacitador que creó el curso en la campaña
-  // equivocada y no tenía cómo reubicarlo.
-  const handleMoveCampaign = async () => {
-    if (!moveTargetId || moveTargetId === course.campaign_id) return
-    const targetName = accessibleCampaigns.find((c) => c.id === moveTargetId)?.name ?? ''
-    const ok = await confirm({
-      title: t('admin.courses.move_campaign_title'),
-      description: t('admin.courses.move_campaign_confirm', { name: targetName }),
-      // Mover no borra: sin esto el botón salía rojo y decía "Eliminar".
-      confirmLabel: t('admin.courses.move_campaign_action'),
-      tone: 'default',
-    })
-    if (!ok) return
-    setMovingCampaign(true)
-    try {
-      await moveCourseToCampaign(course.id, moveTargetId)
-      invalidateModulesCache()
-      toast.success(t('admin.courses.move_campaign_ok', { name: targetName }))
-      setMoveTargetId('')
-      await reload()
-    } catch (e) {
-      console.error('[CourseEditor] handleMoveCampaign', e)
-      toast.error(t('admin.courses.move_campaign_error'), errMsg(e))
-    } finally {
-      setMovingCampaign(false)
-    }
-  }
-
   /* Candidatos a dueño: staff. `profiles` ya trae a todo el sitio cuando quien
      mira es superadmin, que es el único que ve esta tarjeta.
      Sin `useMemo` a propósito: esto vive después de un return temprano, donde un
@@ -1352,8 +1299,6 @@ export default function CourseEditor() {
      un coste que justifique moverlo arriba. */
   const ownerCandidates = profiles.filter((p) => p.role === 'capacitador' || p.role === 'superadmin')
   const ownerName = profiles.find((p) => p.id === course?.created_by)?.display_name ?? ''
-  const courseCampaignName = campaigns.find((c) => c.id === course?.campaign_id)?.name ?? ''
-  const ownerCampaignNames = (ownerCampaigns ?? []).map((c) => c.name).join(', ')
 
   const handleSetOwner = async () => {
     if (!ownerTargetId || ownerTargetId === course.created_by) return
@@ -1362,7 +1307,7 @@ export default function CourseEditor() {
       title: t('admin.courses.owner_title', 'Dueño del curso'),
       description: t('admin.courses.owner_confirm', {
         name,
-        defaultValue: '{{name}} pasará a administrar este curso. Quien lo tenía dejará de poder editarlo si no es su programa.',
+        defaultValue: '{{name}} pasará a administrar este curso.',
       }),
       confirmLabel: t('admin.courses.owner_action', 'Cambiar dueño'),
       tone: 'default',
@@ -2047,7 +1992,7 @@ export default function CourseEditor() {
           t('test_mode.mix_course_title', { defaultValue: 'Entornos separados' }),
           t('test_mode.mix_course', {
             defaultValue:
-              'Un curso de un programa de prueba solo se asigna a programas y personas de prueba (y al revés).',
+              'Un curso de prueba solo se asigna a personas de prueba (y al revés).',
           }),
         )
         return false
@@ -3472,77 +3417,9 @@ export default function CourseEditor() {
                 </Button>
               </div>
 
-              {/* Lo que faltaba: decir a qué campañas llega esa persona. Ser
-                  dueño no da acceso —eso lo decide la campaña—, así que sin
-                  este aviso se puede dejar un curso a nombre de quien no lo ve. */}
-              {ownerTargetId && ownerCampaigns && (
-                ownerCampaigns.some((c) => c.id === course.campaign_id) ? (
-                  <p className="text-[11.5px] leading-relaxed text-text-subtle">
-                    {t('admin.courses.owner_campaign_ok', {
-                      name: ownerCampaignNames,
-                      campaign: courseCampaignName,
-                      defaultValue: 'Lo verá en {{campaign}}. Sus programas: {{name}}.',
-                    })}
-                  </p>
-                ) : (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5">
-                    <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-amber-600">
-                      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span>
-                        {t('admin.courses.owner_campaign_warn', {
-                          campaign: courseCampaignName,
-                          list: ownerCampaignNames || t('admin.courses.owner_no_campaigns', 'ninguna'),
-                          defaultValue: 'No verá el curso: está en {{campaign}} y esa persona solo llega a {{list}}. Cámbialo igual y muévelo abajo, o dale acceso a ese programa en Usuarios.',
-                        })}
-                      </span>
-                    </p>
-                  </div>
-                )
-              )}
             </GlassCard>
           )}
 
-          {/* Mover el curso a otra campaña. Solo aparece si el usuario tiene más de
-              una campaña a la que moverlo (capacitador multi-campaña o superadmin). */}
-          {accessibleCampaigns.length > 1 && (
-            <GlassCard intensity="subtle" rounded="2xl" className="p-4 space-y-3">
-              <div className="flex items-start gap-2.5">
-                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-glass/8 text-text-muted">
-                  <ArrowLeftRight className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-[13px] font-semibold text-text">{t('admin.courses.move_campaign_title')}</h2>
-                  <p className="text-[11px] text-text-muted mt-0.5">{t('admin.courses.move_campaign_hint')}</p>
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <Select
-                    value={moveTargetId}
-                    onChange={setMoveTargetId}
-                    disabled={movingCampaign}
-                    placeholder={t('admin.courses.move_campaign_placeholder')}
-                    options={[
-                      { value: '', label: t('admin.courses.move_campaign_placeholder') },
-                      ...accessibleCampaigns
-                        .filter((c) => c.id !== course.campaign_id)
-                        .map((c) => ({ value: c.id, label: c.name })),
-                    ]}
-                  />
-                </div>
-                <Button
-                  variant="glass"
-                  size="sm"
-                  onClick={handleMoveCampaign}
-                  disabled={movingCampaign || !moveTargetId || moveTargetId === course.campaign_id}
-                  className="flex items-center gap-1.5 shrink-0"
-                >
-                  {movingCampaign ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
-                  {t('admin.courses.move_campaign_action')}
-                </Button>
-              </div>
-            </GlassCard>
-          )}
         </div>
       )}
 
@@ -3903,7 +3780,6 @@ export default function CourseEditor() {
           courseId={course.id}
           courseTitle={rowText(course)}
           modules={campaignModules}
-          campaignNames={Object.fromEntries(accessibleCampaigns.map((c) => [c.id, c.name]))}
           canMoveAny={isSuperAdmin}
           onClose={() => setLibraryOpen(false)}
           onChanged={async () => {
@@ -3974,7 +3850,7 @@ export default function CourseEditor() {
               <p className="text-[12px] text-text-muted leading-relaxed mt-0.5">
                 {form.visibility === 'catalog'
                   ? t('admin.courses.catalog_open_on', 'Cualquier aprendiz lo encuentra en el catálogo y se matricula por su cuenta, aunque la regla de arriba no lo incluya.')
-                  : t('admin.courses.catalog_open_off', 'Solo llega a quien cumpla la regla de arriba y a los programas y personas que asignes abajo.')}
+                  : t('admin.courses.catalog_open_off', 'Solo llega a quien cumpla la regla de arriba y a las personas que marques abajo.')}
               </p>
             </div>
             <Toggle
@@ -4026,18 +3902,6 @@ export default function CourseEditor() {
               onClick={() => setDraftAudience({ ...draftAudience, isMandatory: !draftAudience.isMandatory })}
               label={t('admin.courses.mandatory_title', 'Formación obligatoria')}
             />
-          </div>
-
-          {/* Programas — RETIRADO (2026-09-15). Ya no se asigna por programa, y
-              lo asignado así dejó de llegarle a la gente (getLearnerCourses no
-              lee course_campaigns). Queda solo el aviso, para quien venga a
-              buscar la sección de siempre y entienda qué pasó con su curso. */}
-          <div className="rounded-xl border border-red-500/30 bg-red-500/[0.06] px-3 py-2.5 text-[12px] text-text-muted">
-            <p className="flex items-center gap-2 font-medium text-red-500/90">
-              <FolderOpen className="h-4 w-4 shrink-0" />
-              {t('admin.courses.assign_campaigns_retired_title')}
-            </p>
-            <p className="mt-1">{t('admin.courses.assign_campaigns_retired_body')}</p>
           </div>
 
           {/* Personas */}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Search, Send, Share2, Sparkles, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -10,15 +10,12 @@ import {
   requestCoursePublication,
 } from '@/services/courseApprovals.service'
 import {
-  getCoursesForCampaign,
   getAllCourses,
   createCourse,
   updateCourse,
   deleteCourse,
-  getShareableCourses,
   type CourseWithModules,
   type AdminCourse,
-  type ShareableCourse,
 } from '@/services/courses.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { runCourseAiGeneration, COURSE_AI_CREATED_EVENT } from '@/services/courseAi.service'
@@ -28,10 +25,8 @@ import {
 } from '@/lib/documentExtract'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
-import { usePresenceStore } from '@/stores/presenceStore'
-import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { cn } from '@/lib/cn'
-import type { Campaign } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { FileDropZone } from '@/components/ui/FileDropZone'
 import { Modal } from '@/components/ui/Modal'
@@ -51,7 +46,6 @@ import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { Button } from '@/components/ui/Button'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
-import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { recompressSiteImages, type SiteImageProgress } from '@/services/mediaMaintenance'
@@ -92,17 +86,19 @@ export default function CourseList() {
     try { return localStorage.getItem(PREVIEW_HINT_KEY) === '1' } catch { return true }
   })
 
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // El superadmin arranca viendo TODOS los cursos (no una campaña suelta como
   // filtro). El resto arranca vacío y cae en su campaña al cargarlas: partir de
   // la campaña "casa" la dejaba fija aunque ya no fuera accesible.
   // Traducir TODO: cursos (con sus módulos, simuladores, mundos y examen) y los
   // módulos sueltos. Solo superadmin: es la operación de IA más cara del sitio.
   const [showTranslateAll, setShowTranslateAll] = useState(false)
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>(
-    isSuperAdmin ? ALL_CAMPAIGNS : '',
-  )
+  /* Ya no hay programas en pantalla: todos ven la lista entera (la base decide
+     qué filas le llegan a cada quien). El espacio donde se GUARDA un curso nuevo
+     se elige solo, por dentro, y nadie tiene que saber que existe. */
+  const selectedCampaignId = ALL_CAMPAIGNS
+  const [creationCampaignId, setCreationCampaignId] = useState<string>('')
+  /** CR: deja solo los cursos cuya regla le llega (o que van a todo el mundo). */
+  const [crFilter, setCrFilter] = useState('')
   const [courses, setCourses] = useState<AdminCourse[]>([])
   /** Regla de audiencia por curso: qué país / área / CR tiene definidos. */
   const [audiences, setAudiences] = useState<Map<string, AudienceRule>>(new Map())
@@ -127,16 +123,10 @@ export default function CourseList() {
   const [optProgress, setOptProgress] = useState<SiteImageProgress | null>(null)
 
   // Foco que manda la barra de presencia al pulsar a una persona.
-  const { focusId, focusCampaignId } = usePresenceFocus('course')
+  const { focusId } = usePresenceFocus('course')
   const focusRef = useRef<HTMLDivElement | null>(null)
 
-  // Catálogo compartido por otras campañas (matrícula viva)
-  const [view, setView] = useState<'mine' | 'shared'>('mine')
-  const [sharedCourses, setSharedCourses] = useState<ShareableCourse[]>([])
-  const [sharedLoading, setSharedLoading] = useState(false)
-  const [sharedSearch, setSharedSearch] = useState('')
-  const [sharedCampaignFilter, setSharedCampaignFilter] = useState<string>('')
-  const [enrollCourse, setEnrollCourse] = useState<ShareableCourse | null>(null)
+  const view = 'mine' as const
 
   // Modal de creación
   const [showCreate, setShowCreate] = useState(false)
@@ -232,9 +222,9 @@ export default function CourseList() {
   // modal de inmediato y el proceso continúa aunque el usuario navegue a otra vista.
   // El mundo (gamificación) NO se crea acá: es opcional y se arma aparte en Mundos.
   const handleAiCreate = () => {
-    if (!aiTitle.trim() || !aiDoc || !selectedCampaignId) return
+    if (!aiTitle.trim() || !aiDoc || !creationCampaignId) return
     const input = {
-      campaignId: selectedCampaignId,
+      campaignId: creationCampaignId,
       title: aiTitle.trim(),
       doc: aiDoc,
       manualMode: aiManualMode,
@@ -245,66 +235,28 @@ export default function CourseList() {
   }
 
   useEffect(() => {
-    // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
+    // Dónde se guarda lo que se crea: su espacio de casa si lo tiene, si no el
+    // primero al que tiene acceso. Es fontanería: no se enseña.
     getAccessibleCampaigns({
       isSuperAdmin,
       homeCampaignId: authCampaignId,
       userId: user?.id ?? null,
     })
       .then((data) => {
-        setCampaigns(data)
-        // Superadmin conserva "Todas"; el resto retoma la campaña donde venía
-        // trabajando, o su primera campaña accesible.
-        setSelectedCampaignId((prev) => {
-          if (prev) return prev
-          if (isSuperAdmin) return ALL_CAMPAIGNS
-          return resolveCreationCampaignId(null, data.map((c) => c.id))
-        })
+        const ids = data.map((c) => c.id)
+        setCreationCampaignId(
+          authCampaignId && ids.includes(authCampaignId)
+            ? authCampaignId
+            : resolveCreationCampaignId(null, ids),
+        )
       })
       .catch(() => {})
   }, [isSuperAdmin, authCampaignId, user?.id])
-
-  // La campaña que se está mirando es la que se usará al crear contenido.
-  // "Todas" no es una campaña: no fija contexto de creación.
-  const setActiveCampaignId = useCampaignScope((s) => s.setActiveCampaignId)
-  useEffect(() => {
-    if (!selectedCampaignId || selectedCampaignId === ALL_CAMPAIGNS) return
-    setActiveCampaignId(selectedCampaignId)
-  }, [selectedCampaignId, setActiveCampaignId])
-
-  /* Llegando desde Campañas: `?campaign=<id>` planta la vista en esa campaña.
-     No se abre ningún modal: aquí la persona elige si crea el curso a mano o
-     con IA. Se limpia la URL para no dejar el parámetro pegado. */
-  const deepLinkDone = useRef(false)
-  useEffect(() => {
-    if (deepLinkDone.current) return
-    const camp = searchParams.get('campaign')
-    if (!camp) return
-    deepLinkDone.current = true
-    setSelectedCampaignId(camp)
-    setSearchParams({}, { replace: true })
-  }, [searchParams, setSearchParams])
-
-  // Venimos siguiendo a alguien desde la barra de presencia: pararse en SU
-  // campaña y resaltar su curso, sin abrirlo.
-  useEffect(() => {
-    if (!focusCampaignId) return
-    if (campaigns.length > 0 && !campaigns.some((c) => c.id === focusCampaignId)) return
-    setSelectedCampaignId(focusCampaignId)
-  }, [focusCampaignId, campaigns])
 
   useEffect(() => {
     if (!focusId || loading) return
     focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [focusId, loading, courses])
-
-  // Publico qué campaña estoy mirando, para que quien me siga aterrice en ella.
-  // "Todas" (superadmin) no es una campaña: no hay nada que seguir.
-  const setViewCampaign = usePresenceStore((s) => s.setViewCampaign)
-  useEffect(() => {
-    setViewCampaign(selectedCampaignId === ALL_CAMPAIGNS ? null : selectedCampaignId || null)
-    return () => setViewCampaign(null)
-  }, [selectedCampaignId, setViewCampaign])
 
   useEffect(() => {
     getOrganizations()
@@ -318,12 +270,7 @@ export default function CourseList() {
     // Esqueleto solo la primera vez: los refrescos de fondo no deben parpadear.
     if (courses.length === 0) setLoading(true)
     setError(null)
-    const load = selectedCampaignId === ALL_CAMPAIGNS
-      ? getAllCourses()
-      : getCoursesForCampaign(selectedCampaignId).then((cs) =>
-          cs.map((c) => ({ ...c, campaign_name: null }) as AdminCourse),
-        )
-    load
+    getAllCourses()
       .then((cs) => {
         setCourses(cs)
         /* Las reglas, en una sola consulta para toda la lista. Es lo que
@@ -338,7 +285,7 @@ export default function CourseList() {
       .finally(() => setLoading(false))
     // `courses` solo decide el esqueleto; no puede volver a disparar la carga.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCampaignId, t, refreshKey])
+  }, [t, refreshKey])
 
   /**
    * Cuántos cursos siguen repartiéndose por programa.
@@ -357,40 +304,15 @@ export default function CourseList() {
   // cambió un curso o un módulo (los módulos cambian el conteo de la tarjeta).
   useFreshOnFocus(() => setRefreshKey((k) => k + 1), {
     topics: ['courses', 'modules'],
-    enabled: !!selectedCampaignId,
   })
 
   // Cuando una creación de curso con IA (en segundo plano) termina, refrescamos la
-  // lista si el curso pertenece a la campaña que estamos viendo.
+  // lista.
   useEffect(() => {
-    const onCreated = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { campaignId?: string } | undefined
-      if (selectedCampaignId === ALL_CAMPAIGNS || detail?.campaignId === selectedCampaignId) {
-        setRefreshKey((k) => k + 1)
-      }
-    }
+    const onCreated = () => setRefreshKey((k) => k + 1)
     window.addEventListener(COURSE_AI_CREATED_EVENT, onCreated)
     return () => window.removeEventListener(COURSE_AI_CREATED_EVENT, onCreated)
-  }, [selectedCampaignId])
-
-  useEffect(() => {
-    if (view !== 'shared' || !selectedCampaignId || selectedCampaignId === ALL_CAMPAIGNS) return
-    setSharedLoading(true)
-    getShareableCourses(selectedCampaignId)
-      .then(setSharedCourses)
-      .catch(() => setError(t('admin.courses.error_load')))
-      .finally(() => setSharedLoading(false))
-  }, [view, selectedCampaignId, t])
-
-  // Campañas dueñas presentes en el catálogo compartido (para el filtro)
-  const sharedCampaignOptions = useMemo(() => {
-    const names = new Map<string, string>()
-    for (const c of sharedCourses) {
-      if (c.campaign_name) names.set(c.campaign_name, c.campaign_name)
-    }
-    return [{ value: '', label: t('admin.courses.filter_all_campaigns') },
-      ...[...names.keys()].sort().map((n) => ({ value: n, label: n }))]
-  }, [sharedCourses, t])
+  }, [])
 
   const changeSort = (v: string) => {
     const next = (v === 'az' || v === 'za' ? v : 'default') as CourseSort
@@ -423,24 +345,20 @@ export default function CourseList() {
           audiences.get(c.id) ?? EMPTY_RULE,
         ))
       : courses
-    return sortByTitle(base)
-  }, [courses, sortByTitle, onlyUnmigrated, audiences])
-
-  const filteredShared = useMemo(() => {
-    const q = sharedSearch.trim().toLowerCase()
-    const list = sharedCourses.filter((c) => {
-      if (sharedCampaignFilter && c.campaign_name !== sharedCampaignFilter) return false
-      if (!q) return true
-      return `${rowText(c)} ${rowText(c, 'description')} ${c.category ?? ''}`.toLowerCase().includes(q)
-    })
-    return sortByTitle(list)
-  }, [sharedCourses, sharedSearch, sharedCampaignFilter, sortByTitle])
+    const byCr = crFilter
+      ? base.filter((c) => {
+          const rule = audiences.get(c.id)
+          return !!rule && (rule.everyone || rule.operationIds.includes(crFilter))
+        })
+      : base
+    return sortByTitle(byCr)
+  }, [courses, sortByTitle, onlyUnmigrated, audiences, crFilter])
 
   const handleCreate = async () => {
-    if (!newTitle.trim() || !selectedCampaignId) return
+    if (!newTitle.trim() || !creationCampaignId) return
     setCreating(true)
     try {
-      const course = await createCourse(selectedCampaignId, {
+      const course = await createCourse(creationCampaignId, {
         title_es: newTitle.trim(),
         description_es: newDescription.trim() ? newDescription : null,
       })
@@ -576,8 +494,7 @@ export default function CourseList() {
               variant="glass"
               className="flex items-center gap-1.5 w-full sm:w-auto"
               onClick={openAi}
-              disabled={selectedCampaignId === ALL_CAMPAIGNS}
-              title={selectedCampaignId === ALL_CAMPAIGNS ? t('admin.courses.pick_campaign_to_create') : undefined}
+              disabled={!creationCampaignId}
             >
               <span className="relative flex items-center">
                 <Sparkles className="h-3.5 w-3.5" />
@@ -589,8 +506,7 @@ export default function CourseList() {
               variant="neon"
               className="flex items-center gap-1.5 w-full sm:w-auto"
               onClick={() => setShowCreate(true)}
-              disabled={selectedCampaignId === ALL_CAMPAIGNS}
-              title={selectedCampaignId === ALL_CAMPAIGNS ? t('admin.courses.pick_campaign_to_create') : undefined}
+              disabled={!creationCampaignId}
             >
               <Plus className="h-3.5 w-3.5" />
               {t('admin.courses.new_course')}
@@ -599,49 +515,19 @@ export default function CourseList() {
         </div>
       </div>
 
-      {/* Selector de campaña. Superadmin: todas + "Todas". Capacitador: su campaña
-          casa + aquellas donde colabora (solo se muestra si hay más de una). */}
-      {campaigns.length > 1 && (
-        <div className="mb-6">
-          <FilterDropdown
-            value={selectedCampaignId}
-            onChange={(v) => {
-              // La vista de catálogo compartido necesita una campaña dueña concreta.
-              if (v === ALL_CAMPAIGNS) setView('mine')
-              setSelectedCampaignId(v)
-            }}
-            options={[
-              ...(isSuperAdmin
-                ? [{ value: ALL_CAMPAIGNS, label: t('admin.courses.filter_all_campaigns') }]
-                : []),
-              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-            ]}
-            className="max-w-xs"
-          />
-        </div>
-      )}
-
-      {/* Tabs: Mis cursos / Cursos compartidos. El orden vive aquí solo para la
-          pestaña propia; la de compartidos tiene el suyo junto a su buscador. */}
+      {/* Filtros: CR (cursos cuya regla le llega a ese CR, o que van a todo el
+          mundo) y orden. Ya no hay programas: el CR es el eje. */}
       <div className="mb-5 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-1 rounded-xl bg-subtle p-1 w-fit">
-          <button
-            onClick={() => setView('mine')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] ${view === 'mine' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
-          >
-            <GraduationCap className="h-4 w-4" />
-            {t('admin.courses.title')}
-          </button>
-          <button
-            onClick={() => setView('shared')}
-            disabled={selectedCampaignId === ALL_CAMPAIGNS}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors min-h-[40px] disabled:opacity-40 disabled:cursor-not-allowed ${view === 'shared' ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'}`}
-          >
-            <Share2 className="h-4 w-4" />
-            {t('admin.courses.tab_shared')}
-          </button>
-        </div>
-        {view === 'mine' && courses.length > 1 && (
+        <FilterDropdown
+          value={crFilter}
+          onChange={setCrFilter}
+          options={[
+            { value: '', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
+            ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
+          ]}
+          className="w-full sm:w-auto sm:min-w-[13rem]"
+        />
+        {courses.length > 1 && (
           <FilterDropdown
             value={sort}
             onChange={changeSort}
@@ -657,108 +543,6 @@ export default function CourseList() {
         <div className="mb-4 rounded-xl px-4 py-3 text-[13px] text-danger glass border-danger/20">
           {error}
         </div>
-      )}
-
-      {/* Catálogo compartido: inscribir a mis aprendices en cursos de otras campañas */}
-      {view === 'shared' && (
-        <div>
-          <p className="text-text-muted text-[13px] mb-4">{t('admin.courses.shared_hint')}</p>
-
-          {/* Buscador + filtro por campaña dueña */}
-          <div className="mb-4 flex flex-col sm:flex-row gap-2 sm:items-center">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />
-              <input
-                value={sharedSearch}
-                onChange={(e) => setSharedSearch(e.target.value)}
-                placeholder={t('admin.courses.search_shared_ph')}
-                className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2.5 text-[14px] text-text outline-none focus:border-primary"
-              />
-            </div>
-            {sharedCampaignOptions.length > 1 && (
-              <FilterDropdown
-                value={sharedCampaignFilter}
-                onChange={setSharedCampaignFilter}
-                options={sharedCampaignOptions}
-                className="max-w-xs"
-              />
-            )}
-            <FilterDropdown
-              value={sort}
-              onChange={changeSort}
-              options={sortOptions}
-              leadingIcon={<ArrowDownAZ className="h-4 w-4 text-text-subtle" />}
-              aria-label={t('admin.courses.sort_label')}
-              className="sm:max-w-[13rem]"
-            />
-          </div>
-
-          {sharedLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-44 rounded-2xl animate-pulse glass" />
-              ))}
-            </div>
-          ) : filteredShared.length === 0 ? (
-            <GlassCard intensity="subtle" padding="none" rounded="3xl" className="text-center p-6 sm:p-10 md:p-12">
-              <Share2 className="h-10 w-10 text-text-muted mx-auto mb-3" />
-              <p className="text-text-muted text-[14px]">{t('admin.courses.shared_empty')}</p>
-            </GlassCard>
-          ) : (
-            <FadeIn className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" y={16}>
-              {filteredShared.map((course) => (
-                <GlassCard key={course.id} intensity="subtle" rounded="2xl" padding="none" className="flex flex-col overflow-hidden transition-all duration-300 ease-apple hover:-translate-y-1 hover:shadow-card-hover">
-                  <div
-                    className={`relative ${COVER_BOX}`}
-                    style={{ background: courseHasCover(course) ? (course.cover_fit === 'contain' ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)` : undefined) : `linear-gradient(120deg, ${course.color}33, ${course.color}0D)` }}
-                  >
-                    <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
-                    <div className="absolute -bottom-5 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md" style={{ background: course.color }}>
-                      <GraduationCap className="h-5 w-5" />
-                    </div>
-                  </div>
-                  <div className="flex-1 px-4 pt-7 pb-3">
-                    <div className="text-[15px] font-semibold text-text truncate mb-1">{rowText(course)}</div>
-                    {rowText(course, 'description') && (
-                      <p className="text-[12px] text-text-muted line-clamp-2 mb-2">{stripMarkdown(rowText(course, 'description'))}</p>
-                    )}
-                    <div className="flex items-center gap-1.5 text-[12px] text-text-subtle">
-                      <BookOpen className="h-3.5 w-3.5" />
-                      {t('admin.courses.modules_count', { count: course.modules.length })}
-                    </div>
-                    <p className="text-[11px] text-text-subtle mt-1">
-                      {t('admin.courses.shared_from', { name: course.campaign_name ?? '—' })}
-                    </p>
-                  </div>
-                  <div className="px-3 pb-3 flex justify-end">
-                    <Button
-                      variant="neon"
-                      size="sm"
-                      className="flex items-center gap-1.5"
-                      onClick={() => setEnrollCourse(course)}
-                      disabled={!selectedCampaignId}
-                    >
-                      <UserPlus className="h-3.5 w-3.5" />
-                      {t('admin.courses.enroll_learners')}
-                    </Button>
-                  </div>
-                </GlassCard>
-              ))}
-            </FadeIn>
-          )}
-        </div>
-      )}
-
-      {/* Modal de inscripción de aprendices en un curso compartido */}
-      {enrollCourse && selectedCampaignId && (
-        <EnrollLearnersModal
-          course={{ id: enrollCourse.id, title_es: enrollCourse.title_es }}
-          campaignId={selectedCampaignId}
-          onClose={() => setEnrollCourse(null)}
-          onSaved={() => {
-            invalidateModulesCache()
-          }}
-        />
       )}
 
       {/* Lista */}
@@ -777,7 +561,7 @@ export default function CourseList() {
             variant="neon"
             className="flex items-center gap-1.5 mx-auto"
             onClick={() => setShowCreate(true)}
-            disabled={selectedCampaignId === ALL_CAMPAIGNS}
+            disabled={!creationCampaignId}
           >
             <Plus className="h-3.5 w-3.5" />
             {t('admin.courses.new_course')}
@@ -919,11 +703,6 @@ export default function CourseList() {
                       </Tooltip>
                     )
                   })()}
-                  {selectedCampaignId === ALL_CAMPAIGNS && course.campaign_name && (
-                    <span className="inline-flex items-center rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-subtle">
-                      {t('admin.courses.shared_from', { name: course.campaign_name })}
-                    </span>
-                  )}
                 </div>
               </div>
 
@@ -1162,16 +941,13 @@ export default function CourseList() {
         />
       )}
 
-      {/* Traducir TODO: la campaña seleccionada, o el sitio entero si se está
-          mirando "todas". El modal enseña qué falta antes de gastar nada. */}
+      {/* Traducir TODO el sitio. El modal enseña qué falta antes de gastar nada. */}
       {showTranslateAll && (
         <TranslationModal
           scope="site"
-          id={selectedCampaignId === ALL_CAMPAIGNS ? '' : selectedCampaignId}
-          title={selectedCampaignId === ALL_CAMPAIGNS
-            ? t('admin.translate.site_all_campaigns')
-            : (campaigns.find((c) => c.id === selectedCampaignId)?.name ?? t('admin.translate.site_all_campaigns'))}
-          campaignId={selectedCampaignId === ALL_CAMPAIGNS ? null : selectedCampaignId}
+          id=""
+          title={t('admin.translate.site_all_campaigns')}
+          campaignId={null}
           onClose={() => setShowTranslateAll(false)}
           onDone={() => setRefreshKey((k) => k + 1)}
         />

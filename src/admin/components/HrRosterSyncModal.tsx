@@ -26,6 +26,7 @@ import {
 import { getOrganizations, getAllOrgUnits, indexUnits, findUnit } from '@/services/org.service'
 import { Tooltip } from '@/components/ui/Tooltip'
 import type { Campaign, OrgUnit } from '@/types/database'
+import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 
 const NONE = -1
 const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
@@ -154,11 +155,12 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
     return m
   }, [campaigns])
 
-  const campaignNameById = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const c of campaigns) m.set(c.id, c.name)
-    return m
-  }, [campaigns])
+  /* El programa se retiró del sitio: ya no se elige ni se enseña. Por dentro
+     el progreso todavía necesita un espacio, así que toda alta cae sola en uno. */
+  const defaultCampaignId = useMemo(
+    () => resolveCreationCampaignId(null, campaigns.map((c) => c.id)) || null,
+    [campaigns],
+  )
 
   // Motivo que se guarda: lo que escriba el superadmin o, si lo deja en blanco,
   // el del periodo. Se calcula al aplicar en vez de sembrarse en el estado, así
@@ -352,9 +354,9 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
       include: decisions[e.key] ?? e.include,
       campaignId: campaignOverrides[e.key] !== undefined
         ? (campaignOverrides[e.key] || null)
-        : e.campaignId,
+        : (e.campaignId ?? defaultCampaignId),
     }))
-  }, [extracted, roster, statusKinds, missingStatusAs, campaignByName, decisions, campaignOverrides, unitLookup, unitNames, canUpdate])
+  }, [extracted, roster, statusKinds, missingStatusAs, campaignByName, decisions, campaignOverrides, unitLookup, unitNames, canUpdate, defaultCampaignId])
 
   /** Filas del archivo que corresponden a alguien que ya tiene cuenta. */
   const matchedCount = useMemo(() => entries.filter((e) => e.person).length, [entries])
@@ -363,11 +365,6 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
   const manyDeactivations = included.deactivate > CONFIRM_DEACTIVATIONS_OVER
   /** Bajas que el archivo propone y todavía nadie confirmó. */
   const pendingDeactivations = counts.deactivate - included.deactivate
-  /** Altas marcadas que nacerían sin campaña: entrarían sin contenido. */
-  const createsWithoutCampaign = useMemo(
-    () => entries.filter((e) => e.action === 'create' && e.include && !e.campaignId).length,
-    [entries],
-  )
   const hasIdentity = useMemo(
     () =>
       activeSheets.some(
@@ -412,17 +409,6 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
       for (const e of entries) {
         if (e.action !== action) continue
         next[e.key] = include
-      }
-      return next
-    })
-  }
-
-  /** Pone la misma campaña a todas las altas de un tirón. */
-  const applyCampaignToAllCreates = (campaignId: string) => {
-    setCampaignOverrides((prev) => {
-      const next = { ...prev }
-      for (const e of entries) {
-        if (e.action === 'create') next[e.key] = campaignId
       }
       return next
     })
@@ -489,7 +475,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
     const aoa: (string | number)[][] = [
       [
         'accion', 'motivo', 'hoja', 'fila', 'correo', 'ficha', 'nombre', 'cargo',
-        'cr', 'area', 'estado_archivo', 'campana', 'cruce', 'cambios', 'se_aplica',
+        'cr', 'area', 'estado_archivo', 'cruce', 'cambios', 'se_aplica',
       ],
       ...entries.map((e) => [
         t(`admin.hr.action_${e.action}`),
@@ -505,7 +491,6 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
         e.operation?.name ?? (e.operationRaw ? `${e.operationRaw} (?)` : ''),
         e.area?.name ?? (e.areaRaw ? `${e.areaRaw} (?)` : ''),
         e.status,
-        e.action === 'create' ? (e.campaignId ? campaignNameById.get(e.campaignId) ?? '' : '') : '',
         e.matchedBy ? t(`admin.hr.matched_${e.matchedBy}`) : '',
         e.changes.map((c) => `${t(`admin.hr.field_${c.field}`)}: ${c.fromLabel} → ${c.toLabel}`).join(' · '),
         // Una baja propuesta que quien mira no puede ejecutar sale marcada como
@@ -796,14 +781,6 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
                           options={columnOptions}
                         />
                       </Field>
-                      <Field label={t('admin.hr.map_campaign')}>
-                        <Select
-                          compact
-                          value={String(mapping.campaign)}
-                          onChange={(v) => setMapping({ ...mapping, campaign: Number(v) })}
-                          options={columnOptions}
-                        />
-                      </Field>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -1047,22 +1024,6 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
                       {tab === 'update' && (
                         <span className="text-text-subtle">{t('admin.hr.update_hint')}</span>
                       )}
-                      {/* Atajo para no elegir campaña 200 veces cuando todas van al mismo lado. */}
-                      {tab === 'create' && (
-                        <span className="ml-auto flex items-center gap-2">
-                          <span className="text-text-subtle">{t('admin.hr.set_campaign_all')}</span>
-                          <Select
-                            compact
-                            className="w-[200px]"
-                            value=""
-                            onChange={applyCampaignToAllCreates}
-                            options={[
-                              { value: '', label: t('admin.users.bulk_campaign_none') },
-                              ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-                            ]}
-                          />
-                        </span>
-                      )}
                     </div>
                   )}
 
@@ -1089,7 +1050,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
                             )}
                             <th className="px-3 py-2 font-normal">
                               {tab === 'create'
-                                ? t('admin.users.bulk_col_campaign')
+                                ? t('admin.users.bulk_col_operation', 'CR')
                                 : tab === 'update'
                                   ? t('admin.hr.col_changes')
                                   : t('admin.hr.col_why')}
@@ -1146,19 +1107,8 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
                                   </td>
                                 )}
                                 {e.action === 'create' ? (
-                                  <td className="px-3 py-1.5">
-                                    <Select
-                                      compact
-                                      className="w-[190px]"
-                                      value={e.campaignId ?? ''}
-                                      onChange={(v) =>
-                                        setCampaignOverrides((prev) => ({ ...prev, [e.key]: v }))
-                                      }
-                                      options={[
-                                        { value: '', label: t('admin.users.bulk_campaign_none') },
-                                        ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-                                      ]}
-                                    />
+                                  <td className={e.operation ? 'max-w-[190px] truncate px-3 py-2 text-text-muted' : 'max-w-[190px] truncate px-3 py-2 text-amber-500'}>
+                                    {e.operation?.name ?? (e.operationRaw ? `${e.operationRaw} (?)` : t('admin.progress_overview.no_cr', 'Sin CR asignado'))}
                                   </td>
                                 ) : e.changes.length > 0 ? (
                                   <td className="px-3 py-2">
@@ -1327,11 +1277,6 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
                   {pendingDeactivations > 0 && (
                     <p className="text-[12px] text-amber-500">
                       {t('admin.hr.pending_deactivations', { n: pendingDeactivations })}
-                    </p>
-                  )}
-                  {createsWithoutCampaign > 0 && (
-                    <p className="text-[12px] text-amber-500">
-                      {t('admin.hr.creates_without_campaign', { n: createsWithoutCampaign })}
                     </p>
                   )}
                 </div>

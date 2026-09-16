@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowRight, ChevronDown } from 'lucide-react'
+import { ArrowRight, ChevronDown, Search } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Tooltip } from '@/components/ui/Tooltip'
 
@@ -279,6 +279,26 @@ export function InsightBanner({
           <ArrowRight className="h-3.5 w-3.5" />
         </button>
       )}
+    </div>
+  )
+}
+
+/**
+ * Estado inicial de las vistas de Progreso (Módulos, Mundos, Simulaciones):
+ * falta elegir el CURSO, que es obligatorio en las tres. No es un "no hay
+ * datos" —eso haría pensar que algo falló—, es "todavía no me dijiste qué ver".
+ */
+export function PickCourseFirst({ accent, title, body }: { accent: string; title: string; body: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-line bg-subtle/40 px-6 py-14 text-center">
+      <div
+        className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"
+        style={{ background: tint(accent, 14), color: accent }}
+      >
+        <Search className="h-6 w-6" />
+      </div>
+      <p className="text-[15px] font-medium text-text">{title}</p>
+      <p className="mx-auto mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-text-muted">{body}</p>
     </div>
   )
 }

@@ -116,14 +116,14 @@ export function TransferContentModal({
             count: n,
             moved: relocated,
             campaign: campaignName,
-            defaultValue: '{{count}} elementos cambiaron de dueño. {{moved}} pasaron al programa {{campaign}}.',
+            defaultValue: '{{count}} elementos cambiaron de dueño.',
           })
         : t('admin.transfer.done_body', { count: n, defaultValue: '{{count}} elementos cambiaron de dueño.' })
 
       if (failed > 0) {
         toast.error(
           t('admin.transfer.partial_title', 'Transferido, pero sin mover todo'),
-          `${body} ${t('admin.transfer.partial_body', { count: failed, defaultValue: '{{count}} no se pudieron mover de programa.' })}`,
+          `${body} ${t('admin.transfer.partial_body', { count: failed, defaultValue: '{{count}} no se pudieron mover.' })}`,
         )
       } else {
         toast.success(t('admin.transfer.done_title', 'Contenido transferido'), body)
@@ -204,7 +204,7 @@ export function TransferContentModal({
               <p className="mt-2.5 text-[11.5px] leading-relaxed text-text-subtle">
                 {t('admin.transfer.loose_modules', {
                   count: looseModules,
-                  defaultValue: '{{count}} de esos módulos no pertenecen a ningún curso. Cambian de autor, pero quién puede abrirlos lo sigue decidiendo su programa: si hace falta, muévelos con "Mover a otro programa".',
+                  defaultValue: '{{count}} de esos módulos no pertenecen a ningún curso: cambian de autor, pero no le llegan a nadie hasta que se agreguen a un curso.',
                 })}
               </p>
             )}
@@ -229,7 +229,7 @@ export function TransferContentModal({
           {campaignOptions.length > 0 && (
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
-                {t('admin.transfer.to_campaign', 'Programa destino')}
+                {t('admin.transfer.to_campaign', 'Destino')}
               </label>
               <Select
                 value={campaign}

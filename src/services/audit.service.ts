@@ -114,6 +114,8 @@ export interface ActivityLogFilters {
   entityType?: EntityType
   action?: ActivityAction
   campaignId?: string
+  /** Solo lo hecho por estas personas (p. ej. la gente de un CR). */
+  actorIds?: string[]
   /** Texto libre: busca en la etiqueta de la entidad y en el nombre del actor. */
   search?: string
   /** ISO. Rango de fechas (inclusive). */
@@ -232,6 +234,8 @@ function applyFilters<T extends { eq: any; gte: any; lte: any; or: any }>(q: T, 
   if (f.entityType) out = out.eq('entity_type', f.entityType)
   if (f.action) out = out.eq('action', f.action)
   if (f.campaignId) out = out.eq('campaign_id', f.campaignId)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (f.actorIds) out = (out as any).in('actor_id', f.actorIds.length ? f.actorIds : ['00000000-0000-0000-0000-000000000000'])
   if (f.from) out = out.gte('created_at', f.from)
   if (f.to) out = out.lte('created_at', f.to)
   const s = f.search?.trim()

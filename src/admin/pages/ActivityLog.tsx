@@ -13,8 +13,10 @@ import { FadeIn, Stagger, StaggerItem } from '@/components/ui/motion'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
+import { supabase } from '@/lib/supabase'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
 import {
-  getActivityLog, getActivityPulse, getActivityActors, getCampaignOptions, getEntityActivity,
+  getActivityLog, getActivityPulse, getActivityActors, getEntityActivity,
   type ActivityLogRow, type ActivityAction, type EntityType, type ActivityPulse, type ActivityLogFilters,
 } from '@/services/audit.service'
 import {
@@ -233,7 +235,9 @@ export default function ActivityLog() {
 
   const [preset, setPreset] = useState<Preset>('30d')
   const [actorId, setActorId] = useState('all')
+  /** CR de quien hizo la acción (reemplaza al filtro por programa). */
   const [campaignId, setCampaignId] = useState('all')
+  const [crActorIds, setCrActorIds] = useState<string[] | null>(null)
   const [entityType, setEntityType] = useState<'all' | EntityType>('all')
   const [action, setAction] = useState<'all' | ActivityAction>('all')
   const [searchInput, setSearchInput] = useState('')
@@ -249,7 +253,10 @@ export default function ActivityLog() {
   // Opciones de filtro (una vez).
   useEffect(() => {
     getActivityActors().then(setActorOptions).catch((e) => console.error('activity actors error:', e))
-    getCampaignOptions().then(setCampaignOptions).catch((e) => console.error('campaign options error:', e))
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((units) => setCampaignOptions(units.filter((u) => u.kind === 'operation').map((u) => ({ id: u.id, name: u.name }))))
+      .catch((e) => console.error('CR options error:', e))
   }, [])
 
   // Buscar con "/" desde cualquier parte de la vista.
@@ -264,6 +271,15 @@ export default function ActivityLog() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Quién es del CR elegido: el filtro va por persona, no por contenido.
+  useEffect(() => {
+    if (campaignId === 'all') return
+    let alive = true
+    void supabase.from('profiles').select('id').eq('operation_id', campaignId)
+      .then(({ data }) => { if (alive) setCrActorIds(((data ?? []) as { id: string }[]).map((p) => p.id)) })
+    return () => { alive = false }
+  }, [campaignId])
+
   // Debounce de la búsqueda.
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 300)
@@ -272,12 +288,12 @@ export default function ActivityLog() {
 
   const filters: ActivityLogFilters = useMemo(() => ({
     actorId: actorId === 'all' ? undefined : actorId,
-    campaignId: campaignId === 'all' ? undefined : campaignId,
+    actorIds: campaignId === 'all' ? undefined : (crActorIds ?? []),
     entityType: entityType === 'all' ? undefined : entityType,
     action: action === 'all' ? undefined : action,
     search: search || undefined,
     ...rangeFor(preset),
-  }), [actorId, campaignId, entityType, action, search, preset])
+  }), [actorId, campaignId, crActorIds, entityType, action, search, preset])
 
   // Carga principal (feed + agregados).
   useEffect(() => {
@@ -479,7 +495,7 @@ export default function ActivityLog() {
               value={campaignId}
               onChange={setCampaignId}
               options={[
-                { value: 'all', label: t('admin.activity.filter_all_campaigns') },
+                { value: 'all', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
                 ...campaignOptions.map((c) => ({ value: c.id, label: c.name })),
               ]}
             />

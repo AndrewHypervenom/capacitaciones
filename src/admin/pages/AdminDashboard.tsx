@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
-import { getMyPeopleIds } from '@/services/org.service'
+import { getMyPeopleIds, getTestUnitIds } from '@/services/org.service'
 import { getAccessibleCampaigns, getTestCampaignIds } from '@/services/campaigns.service'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import { useAuth } from '@/hooks/useAuth'
@@ -53,10 +53,13 @@ export default function AdminDashboard() {
       // módulo y cada cuenta creada para probar. Con el Modo pruebas encendido
       // no se descuenta nada: ahí se quieren ver.
       const testIds = shouldHideTestData(isSuperAdmin) ? await getTestCampaignIds() : []
+      // La gente de un CR de pruebas tampoco cuenta. `or` con `is.null`: un
+      // `not in` a secas dejaría fuera también a quien no tiene CR.
+      const testUnits = shouldHideTestData(isSuperAdmin) ? await getTestUnitIds() : []
       const notTest = <T extends { not: (c: string, op: string, v: string) => T }>(q: T): T =>
         testIds.length ? q.not('campaign_id', 'in', `(${testIds.join(',')})`) : q
 
-      const [modsCount, scensCount, usersCount] = await Promise.all([
+      const [modsCount, scensCount, usersCount, crCount] = await Promise.all([
         isSuperAdmin
           ? notTest(supabase.from('modules').select('id', { count: 'exact', head: true }))
           : supabase.from('modules').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
@@ -68,16 +71,19 @@ export default function AdminDashboard() {
         // curso suelto, no plantilla. Sumarlos infla "personas" con cuentas que
         // no representan a nadie de la compañía.
         isSuperAdmin
-          ? notTest(supabase.from('profiles').select('id', { count: 'exact', head: true })).eq('is_client', false)
+          ? (() => {
+              const q = notTest(supabase.from('profiles').select('id', { count: 'exact', head: true })).eq('is_client', false)
+              return testUnits.length ? q.or(`operation_id.is.null,operation_id.not.in.(${testUnits.join(',')})`) : q
+            })()
           : (myPeople
               ? supabase.from('profiles').select('id', { count: 'exact', head: true }).in('id', myPeople.length ? myPeople : [''])
               : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope)
             ).neq('role', 'superadmin').eq('is_client', false),
+        // CR: el eje con el que hoy se reparte la formación (el programa se retiró).
+        supabase.from('org_units').select('id', { count: 'exact', head: true }).eq('kind', 'operation'),
       ])
       setStats({
-        // Las campañas ya vienen filtradas por `getAccessibleCampaigns`, así que
-        // para el superadmin también vale contar la lista que trajo.
-        campaigns: ids.length,
+        campaigns: crCount.count ?? 0,
         modules: modsCount.count ?? 0,
         scenarios: scensCount.count ?? 0,
         users: usersCount.count ?? 0,
@@ -88,7 +94,7 @@ export default function AdminDashboard() {
   }, [isSuperAdmin, campaignId, user?.id])
 
   const statCards = [
-    { label: t('admin.dashboard.stat_campaigns'), value: stats.campaigns, icon: FolderOpen, to: '/admin/campaigns', color: '#10D451' },
+    { label: t('admin.dashboard.stat_campaigns'), value: stats.campaigns, icon: FolderOpen, to: '/admin/units', color: '#10D451' },
     { label: t('admin.dashboard.stat_modules'), value: stats.modules, icon: BookOpen, to: '/admin/modules', color: '#10D451' },
     { label: t('admin.dashboard.stat_users'), value: stats.users, icon: Users, to: '/admin/users', color: '#B33D9E' },
   ]
@@ -113,7 +119,7 @@ export default function AdminDashboard() {
       cta: t('admin.dashboard.import_cta'),
     },
     {
-      to: '/admin/campaigns',
+      to: '/admin/units',
       icon: FolderOpen,
       iconColor: '#f59e0b',
       iconBg: 'rgba(245,158,11,0.10)',

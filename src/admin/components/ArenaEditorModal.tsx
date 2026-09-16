@@ -42,10 +42,6 @@ export interface ArenaQuiz {
   steps: QuizStep[]
 }
 
-interface Campaign {
-  id: string
-  name: string
-}
 
 interface QuizForm {
   title: string
@@ -134,14 +130,10 @@ export function normalizeArenaRow(row: Record<string, unknown>): ArenaQuiz {
 interface Props {
   /** Arena existente a editar; null para crear una nueva. */
   editing: ArenaQuiz | null
-  /** Campaña por defecto (se preselecciona al crear). */
+  /** Espacio interno donde se guarda al crear (el del mundo). No se enseña. */
   defaultCampaignId?: string | null
   /** Mundo al que pertenece la arena (null = arena suelta). */
   worldId?: string | null
-  /** Si el usuario está acotado a su campaña (capacitador). */
-  scopedToCampaign: boolean
-  /** Lista de campañas para el selector (solo superadmin). */
-  campaigns: Campaign[]
   /** Contexto opcional que se muestra como migaja arriba (ej. nombre del mundo). */
   crumb?: string
   onClose: () => void
@@ -156,8 +148,6 @@ export function ArenaEditorModal({
   editing,
   defaultCampaignId,
   worldId,
-  scopedToCampaign,
-  campaigns,
   crumb,
   onClose,
   onSaved,
@@ -372,21 +362,8 @@ export function ArenaEditorModal({
               />
             </div>
 
-            {/* Campaña + Theme type */}
-            <div className={scopedToCampaign ? '' : 'grid grid-cols-2 gap-3'}>
-              {!scopedToCampaign && (
-                <div>
-                  <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
-                  <Select
-                    value={form.campaign_id}
-                    onChange={v => setForm(f => ({ ...f, campaign_id: v }))}
-                    options={[
-                      { value: '', label: i18n.t('admin.worlds.no_campaign') },
-                      ...campaigns.map(c => ({ value: c.id, label: c.name })),
-                    ]}
-                  />
-                </div>
-              )}
+            {/* Tipo de tema */}
+            <div>
               <div>
                 <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.arena.theme_type')}</label>
                 <Select

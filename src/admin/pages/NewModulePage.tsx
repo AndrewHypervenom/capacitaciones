@@ -23,7 +23,6 @@ import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
-import type { Campaign } from '@/types/database'
 import { rowText, initialContentLang } from '@/lib/contentLang'
 
 // ─── Constants ────────────────────────────────────────────────
@@ -137,7 +136,6 @@ export default function NewModulePage() {
   // parte de la campaña "casa": creando desde la campaña B, el módulo se
   // guardaba en la casa A.
   const [campaignId, setCampaignId] = useState('')
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [courseId, setCourseId] = useState('')
   const [courses, setCourses] = useState<CourseWithModules[]>([])
   const [saving, setSaving] = useState(false)
@@ -151,7 +149,6 @@ export default function NewModulePage() {
       userId: user?.id ?? null,
     })
       .then((data) => {
-        setCampaigns(data)
         const ids = data.map((c) => c.id)
         setCampaignId((prev) =>
           prev && ids.includes(prev)
@@ -425,18 +422,7 @@ export default function NewModulePage() {
                 </div>
               </div>
 
-              {campaigns.length > 1 && (
-                <div>
-                  <label className="text-[12px] font-medium text-text-muted block mb-2">{t('admin.modules.new.campaign')}</label>
-                  <FilterDropdown
-                    value={campaignId}
-                    onChange={setCampaignId}
-                    options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
-                  />
-                </div>
-              )}
-
-              <div className={cn(campaigns.length > 1 && 'mt-5')}>
+              <div>
                 <label className="text-[12px] font-medium text-text-muted block mb-2">
                   Curso destino
                 </label>

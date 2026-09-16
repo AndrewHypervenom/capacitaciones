@@ -11,7 +11,6 @@ import { backdropDismiss } from '@/lib/backdropDismiss'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
-import { NeonBadge } from '@/components/ui/NeonBadge'
 import { EntityIcon } from '@/components/ui/EntityIcon'
 import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
@@ -77,7 +76,6 @@ export function WorldModulePickerModal({
   const [loading, setLoading] = useState(true)
   const [courses, setCourses] = useState<CourseRow[]>([])
   const [modules, setModules] = useState<ModuleRow[]>([])
-  const [campaignNames, setCampaignNames] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   // Orden de selección = orden de las regiones.
@@ -108,7 +106,6 @@ export function WorldModulePickerModal({
       }).catch(() => [])
       if (!active) return
       const ids = camps.map((c) => c.id)
-      setCampaignNames(Object.fromEntries(camps.map((c) => [c.id, c.name])))
 
       // El superadmin ve todo; el capacitador, lo de sus campañas (casa +
       // colaboraciones). La RLS ya lo acota, el filtro evita traer de más.
@@ -145,7 +142,6 @@ export function WorldModulePickerModal({
   }, [authLoading, isSuperAdmin, campaignId, user?.id])
 
   const excluded = useMemo(() => new Set(excludeModuleIds), [excludeModuleIds])
-  const multiCampaign = Object.keys(campaignNames).length > 1
 
   /** Módulos agrupados por curso, filtrados por la búsqueda. */
   const groups = useMemo(() => {
@@ -290,7 +286,7 @@ export function WorldModulePickerModal({
                   <p className="text-[13px] text-text-muted">
                     {search.trim()
                       ? i18n.t('admin.worlds.picker_empty_search', { defaultValue: 'Ningún módulo coincide con la búsqueda.' })
-                      : i18n.t('admin.worlds.picker_empty', { defaultValue: 'No hay módulos disponibles en tus programas.' })}
+                      : i18n.t('admin.worlds.picker_empty', { defaultValue: 'No hay módulos disponibles.' })}
                   </p>
                 </div>
               ) : (
@@ -314,9 +310,6 @@ export function WorldModulePickerModal({
                             <span className="shrink-0 text-[11px] text-text-subtle">
                               {i18n.t('admin.worlds.picker_group_count', { count: g.mods.length, defaultValue: `${g.mods.length} módulo(s)` })}
                             </span>
-                            {multiCampaign && g.campaignId && campaignNames[g.campaignId] && (
-                              <NeonBadge color="cyan">{campaignNames[g.campaignId]}</NeonBadge>
-                            )}
                           </button>
                           {usable.length > 0 && (
                             <button

@@ -720,7 +720,7 @@ export default function UserList() {
           t('admin.users.campaigns_save_error'),
           t('test_mode.mix_users', {
             defaultValue:
-              'No se pueden mezclar programas de prueba con programas reales en la misma persona. Déjale solo unas o solo otras.',
+              'No se pueden mezclar accesos de prueba con accesos reales en la misma persona.',
           }),
         )
         return false
@@ -1469,7 +1469,7 @@ export default function UserList() {
                             Sin esto el permiso solo se ve entrando al icono. */}
                         {isSuperAdmin && user.role === 'capacitador' && user.is_guest_author && (
                           <Tooltip
-                            label={t('admin.users.guest_author_hint', 'Autor temporal: prepara contenido en su programa, pero no asigna formación ni publica.')}
+                            label={t('admin.users.guest_author_hint', 'Autor temporal: prepara contenido, pero no asigna formación ni publica.')}
                             className="shrink-0"
                             maxWidth={260}
                           >
@@ -1722,7 +1722,7 @@ export default function UserList() {
                       label={
                         user.is_guest_author
                           ? t('admin.users.guest_author_on_hint', 'Es autor temporal: prepara contenido, pero no asigna formación ni publica. Toca para devolverle todo.')
-                          : t('admin.users.guest_author_off_hint', 'Marcar como autor temporal: podrá crear contenido en su programa, pero no asignar formación ni publicar.')
+                          : t('admin.users.guest_author_off_hint', 'Marcar como autor temporal: podrá crear contenido, pero no asignar formación ni publicar.')
                       }
                       className="shrink-0"
                       maxWidth={280}
@@ -1822,7 +1822,6 @@ export default function UserList() {
       {progressUser && (
         <UserProgressDrawer
           user={progressUser}
-          campaignName={campaigns.find((c) => c.id === progressUser.campaign_id)?.name ?? null}
           onClose={() => setProgressUser(null)}
         />
       )}
@@ -1869,7 +1868,6 @@ export default function UserList() {
         <TransferContentModal
           user={transferFor}
           candidates={users.filter((u) => u.role === 'capacitador' || u.role === 'superadmin')}
-          campaigns={campaigns.map((c) => ({ id: c.id, name: c.name }))}
           onClose={() => setTransferFor(null)}
           onDone={() => { /* el contenido cambió de dueño; la lista de gente no. */ }}
         />

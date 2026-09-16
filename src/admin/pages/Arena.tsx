@@ -8,7 +8,6 @@ import { stripMarkdown } from '@/components/ui/RichText'
 import { supabase } from '@/lib/supabase'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import type { Json } from '@/types/database'
-import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useUnsavedWork } from '@/hooks/useUnsavedWork'
@@ -134,7 +133,6 @@ export default function Arena() {
   const [saving, setSaving] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [form, setForm] = useState<QuizForm>(emptyForm())
-  const [filterCampaign, setFilterCampaign] = useState<string>('all')
   const [editingId, setEditingId] = useState<string | null>(null)
   /** Se incrementa para releer la lista (ver useFreshOnFocus más abajo). */
   const [refreshKey, setRefreshKey] = useState(0)
@@ -149,8 +147,10 @@ export default function Arena() {
   const { isSuperAdmin, campaignId, user, loading: authLoading } = useAuth()
   // El capacitador ve/gestiona sus campañas (casa + colaboraciones); el superadmin todas.
   const scopedToCampaign = !isSuperAdmin
-  // Mostrar filtro/selector de campaña cuando el usuario abarca más de una.
-  const multiCampaign = campaigns.length > 1
+  /* Ya no hay programas en pantalla. El espacio interno donde se guarda un
+     quiz nuevo sale solo (el de casa, o el primero con acceso). */
+  const creationCampaignId =
+    (campaignId && campaigns.some((c) => c.id === campaignId) ? campaignId : campaigns[0]?.id) ?? ''
 
   useEffect(() => {
     if (authLoading) return
@@ -194,7 +194,7 @@ export default function Arena() {
   })
 
   const openModal = () => {
-    setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
+    setForm({ ...emptyForm(), campaign_id: creationCampaignId })
     setEditingId(null)
     setIsModalOpen(true)
   }
@@ -309,7 +309,7 @@ export default function Arena() {
     const payload = {
       title: form.title.trim(),
       description: form.description.trim(),
-      campaign_id: form.campaign_id || null,
+      campaign_id: form.campaign_id || creationCampaignId || null,
       theme_icon: form.theme_icon || '⚔️',
       theme_color: form.theme_color,
       theme_type: form.theme_type,
@@ -346,9 +346,7 @@ export default function Arena() {
     setSaving(false)
   }
 
-  const filtered = quizzes.filter(
-    q => filterCampaign === 'all' || q.campaign_id === filterCampaign,
-  )
+  const filtered = quizzes
 
   if (!authLoading && !loading && scopedToCampaign && campaigns.length === 0) {
     return (
@@ -394,16 +392,6 @@ export default function Arena() {
           Crea quizzes gamificados con preguntas, opciones y XP por respuesta correcta
         </p>
 
-        {/* Filtro de campaña (cuando el usuario abarca más de una) */}
-        {!loading && multiCampaign && (
-          <FilterDropdown
-            value={filterCampaign === 'all' ? '' : filterCampaign}
-            onChange={v => setFilterCampaign(v || 'all')}
-            options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
-            className="mb-5 max-w-xs"
-          />
-        )}
-
         {/* Loading skeleton */}
         {loading ? (
           <div className="grid md:grid-cols-2 gap-4">
@@ -435,7 +423,6 @@ export default function Arena() {
         ) : (
           <div className="grid md:grid-cols-2 gap-4">
             {filtered.map(q => {
-              const campaignName = campaigns.find(c => c.id === q.campaign_id)?.name
               const isPublished = q.status === 'published'
               return (
                 <div
@@ -462,11 +449,6 @@ export default function Arena() {
                         >
                           {isPublished ? 'Publicado' : 'Borrador'}
                         </span>
-                        {campaignName && (
-                          <span className="shrink-0 text-[10px] text-text-subtle px-2 py-0.5 rounded-full bg-subtle">
-                            {campaignName}
-                          </span>
-                        )}
                       </div>
                       {q.description && (
                         <div className="text-[12px] text-text-muted leading-relaxed line-clamp-2 mb-2">
@@ -590,21 +572,8 @@ export default function Arena() {
                   />
                 </div>
 
-                {/* Campaña + Theme type */}
-                <div className={multiCampaign ? 'grid grid-cols-2 gap-3' : ''}>
-                  {multiCampaign && (
-                  <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
-                    <Select
-                      value={form.campaign_id}
-                      onChange={v => setForm(f => ({ ...f, campaign_id: v }))}
-                      options={[
-                        { value: '', label: i18n.t('admin.worlds.no_campaign') },
-                        ...campaigns.map(c => ({ value: c.id, label: c.name })),
-                      ]}
-                    />
-                  </div>
-                  )}
+                {/* Tipo de tema */}
+                <div>
                   <div>
                     <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.arena.theme_type')}</label>
                     <Select

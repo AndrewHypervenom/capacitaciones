@@ -17,7 +17,8 @@ import {
   SlidersHorizontal, ChevronDown, ArrowDownUp, Clock, Send, Sparkles,
   ClipboardCheck, Award, ChevronRight, GraduationCap, Gamepad2, Video, HelpCircle,
   ArrowLeft, Building2, BookOpen, Layers, Users, ChevronLeft, RotateCcw,
-  UserRound, TrendingUp, Zap, X, CornerDownLeft, Gauge,
+  UserRound, TrendingUp, Zap, X, CornerDownLeft, Gauge, Globe2, Network,
+  Info, ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { fold } from '@/lib/normalize';
@@ -27,6 +28,9 @@ import {
 } from './progress/ModulesChrome';
 import { AttemptAnswers } from './progress/AttemptAnswers';
 import { rowText } from '@/lib/contentLang'
+import { Tooltip } from '@/components/ui/Tooltip';
+import { getOrganizations, getOrgUnits } from '@/services/org.service';
+import { countryLabelWithFlag } from '@/lib/countries';
 
 const MIN_FEEDBACK_CHARS = 8;
 
@@ -46,9 +50,14 @@ interface PendingAttempt {
   user_id: string;
   section_id?: string | null;
   module_id?: string | null;
-  // Jerarquía Campaña → Curso → Módulo → Aprendiz.
+  // Programa de inscripción. Ya no ordena el panel (se retiró como vía de
+  // entrega), pero se conserva para no perder el dato histórico.
   campaign_id?: string | null;
   campaign_name?: string | null;
+  // Jerarquía viva: CR → Curso → Módulo → Aprendiz. País y área recortan.
+  learner_country?: string | null;
+  learner_area_id?: string | null;
+  learner_operation_id?: string | null;
   course_id?: string | null;
   course_title?: string | null;
   course_slug?: string | null;
@@ -75,16 +84,17 @@ type SortKey = 'recent' | 'score_desc' | 'score_asc' | 'name';
 
 /** Segmentos activos de la navegación jerárquica del panel. */
 interface NavPath {
-  campaign?: { id: string; name: string };
+  /** CR (centro de resultados = la operación). Sustituye al viejo "programa". */
+  cr?: { id: string; name: string };
   course?: { id: string; title: string };
   module?: { id: string; title: string };
   learner?: { id: string; name: string };
 }
 
-/** Clave centinela para agrupar intentos sin campaña/curso/módulo asignado. */
+/** Clave centinela para agrupar intentos sin CR/curso/módulo asignado. */
 const NONE_KEY = '__none__';
 
-type NavLevel = 'campaign' | 'course' | 'module' | 'learner' | 'attempt';
+type NavLevel = 'cr' | 'course' | 'module' | 'learner' | 'attempt';
 
 /** Un nodo de un nivel intermedio de la jerarquía (campaña/curso/módulo/aprendiz). */
 interface HierNode {
@@ -93,6 +103,8 @@ interface HierNode {
   pending: number;
   total: number;
   learners: Set<string>;
+  /** Países presentes bajo el nodo: un CR puede vivir en más de uno. */
+  countries: Set<string>;
   lastAt: number;
   /** Suma de notas para calcular el promedio del nodo. */
   scoreSum: number;
@@ -114,6 +126,10 @@ interface PersonHit {
   courses: number;
   modules: number;
   lastAt: number;
+  /** Dónde está mapeada: es lo que explica qué cursos le llegan. */
+  country: string | null;
+  areaId: string | null;
+  operationId: string | null;
 }
 
 export const TrainerFeedbackPanel: React.FC = () => {
@@ -151,7 +167,17 @@ export const TrainerFeedbackPanel: React.FC = () => {
   // contadores de pendientes). Se puede ver aparte o mezclada a voluntad.
   const [reviewFilter, setReviewFilter] = useState<string>('exclude');
   const [sortKey, setSortKey] = useState<SortKey>('recent');
-  // Navegación jerárquica: Campaña → Curso → Módulo → Aprendiz. El nivel actual se
+  // PAÍS y ÁREA: los dos recortes con los que hoy se reparte la formación. Van
+  // en cascada (el área solo ofrece las del país elegido) y en el mismo orden
+  // que la regla de audiencia del curso —país → área → CR—, para que el
+  // capacitador reconozca la misma escalera en las dos pantallas.
+  const [countryFilter, setCountryFilter] = useState<string>('all');
+  const [areaFilter, setAreaFilter] = useState<string>('all');
+  // Catálogo de CR y áreas (`org_units`), para pintar nombres donde solo hay
+  // uuid. Vacío mientras el SQL del catálogo no esté corrido: entonces se ve el
+  // identificador crudo y el panel sigue funcionando.
+  const [unitNames, setUnitNames] = useState<Map<string, string>>(new Map());
+  // Navegación jerárquica: CR → Curso → Módulo → Aprendiz. El nivel actual se
   // deduce de qué segmentos están puestos (ver `level`), pensado para no volcar
   // miles de entregas planas: se baja por niveles con contadores de pendientes.
   const [path, setPath] = useState<NavPath>({});
@@ -177,6 +203,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
     { value: 'only', label: t('admin.trainer_panel.filter_review_only', 'Solo repasos') },
     { value: 'all', label: t('admin.trainer_panel.filter_review_all', 'Entregas y repasos') },
   ];
+
+  /** Nombre del CR o del área; si el catálogo no cargó, se dice y no se miente. */
+  const unitName = (id: string | null | undefined): string | null =>
+    id ? unitNames.get(id) ?? t('admin.trainer_panel.unit_unknown', 'Unidad sin nombre') : null;
 
   const scoreOptions = [
     { value: 'all', label: t('admin.trainer_panel.filter_all') },
@@ -208,6 +238,17 @@ export const TrainerFeedbackPanel: React.FC = () => {
     t('admin.trainer_panel.tpl_keep_going'),
     t('admin.trainer_panel.tpl_needs_improvement'),
   ];
+
+  /* Catálogo de CR y áreas: dos columnas de noventa y pico filas. Se pide una
+     vez al abrir el panel; sin él los uuid no tendrían nombre. */
+  useEffect(() => {
+    let alive = true;
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((list) => { if (alive) setUnitNames(new Map(list.map((u) => [u.id, u.name]))); })
+      .catch(() => { /* Sin catálogo el panel sigue: se ve "Unidad sin nombre". */ });
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     // Guarda de cancelación + try/finally: si el panel se desmonta (cambio rápido
@@ -409,17 +450,24 @@ export const TrainerFeedbackPanel: React.FC = () => {
       const matchesType = typeFilter === 'all' || a.game_type === typeFilter;
       const matchesReview =
         reviewFilter === 'all' ? true : reviewFilter === 'only' ? !!a.is_review : !a.is_review;
-      return matchesScore && matchesType && matchesReview;
+      // País y área recortan por PERSONA. `NONE_KEY` es una opción de verdad:
+      // "sin país" y "sin área" son los dos casos que hay que poder encontrar,
+      // porque son los que a nadie le llegan cursos por regla.
+      const matchesCountry =
+        countryFilter === 'all' || (a.learner_country ?? NONE_KEY) === countryFilter;
+      const matchesArea =
+        areaFilter === 'all' || (a.learner_area_id ?? NONE_KEY) === areaFilter;
+      return matchesScore && matchesType && matchesReview && matchesCountry && matchesArea;
     });
-  }, [attempts, scoreFilter, typeFilter, reviewFilter]);
+  }, [attempts, scoreFilter, typeFilter, reviewFilter, countryFilter, areaFilter]);
 
   // Nivel actual de la navegación según los segmentos puestos. El aprendiz manda:
   // si hay una persona enfocada (por búsqueda global) mostramos TODAS sus entregas
   // aunque no se haya bajado por campaña → curso → módulo.
   const level: NavLevel = path.learner
     ? 'attempt'
-    : !path.campaign
-      ? 'campaign'
+    : !path.cr
+      ? 'cr'
       : !path.course
         ? 'course'
         : !path.module
@@ -431,12 +479,12 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
   // ¿El intento cae dentro del prefijo de navegación actual?
   const inPrefix = (a: PendingAttempt) =>
-    (!path.campaign || (a.campaign_id ?? NONE_KEY) === path.campaign.id) &&
+    (!path.cr || (a.learner_operation_id ?? NONE_KEY) === path.cr.id) &&
     (!path.course || (a.course_id ?? NONE_KEY) === path.course.id) &&
     (!path.module || (a.module_id ?? NONE_KEY) === path.module.id) &&
     (!path.learner || a.user_id === path.learner.id);
 
-  // Nodos del nivel intermedio actual (campaña/curso/módulo/aprendiz) con contadores.
+  // Nodos del nivel intermedio actual (CR/curso/módulo/aprendiz) con contadores.
   const nodes = useMemo<HierNode[]>(() => {
     if (level === 'attempt') return [];
     const scoped = pool.filter(inPrefix);
@@ -444,13 +492,16 @@ export const TrainerFeedbackPanel: React.FC = () => {
     for (const a of scoped) {
       let key: string;
       let name: string;
-      if (level === 'campaign') { key = a.campaign_id ?? NONE_KEY; name = a.campaign_name || t('admin.trainer_panel.no_campaign'); }
+      if (level === 'cr') {
+        key = a.learner_operation_id ?? NONE_KEY;
+        name = unitName(a.learner_operation_id) || t('admin.trainer_panel.no_cr', 'Sin CR asignado');
+      }
       else if (level === 'course') { key = a.course_id ?? NONE_KEY; name = a.course_title || t('admin.trainer_panel.no_course'); }
       else if (level === 'module') { key = a.module_id ?? NONE_KEY; name = rowText(a.module) || t('admin.trainer_panel.module_fallback'); }
       else { key = a.user_id; name = a.student?.name || t('admin.trainer_panel.student_fallback'); }
       let node = map.get(key);
       if (!node) {
-        node = { key, name, pending: 0, total: 0, learners: new Set(), lastAt: 0, scoreSum: 0, perfect: 0, passed: 0, failed: 0 };
+        node = { key, name, pending: 0, total: 0, learners: new Set(), countries: new Set(), lastAt: 0, scoreSum: 0, perfect: 0, passed: 0, failed: 0 };
         map.set(key, node);
       }
       node.total++;
@@ -460,6 +511,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
       else if (a.score >= 70) node.passed++;
       else node.failed++;
       node.learners.add(a.user_id);
+      if (a.learner_country) node.countries.add(a.learner_country);
       const at = new Date(a.started_at).getTime();
       if (at > node.lastAt) node.lastAt = at;
     }
@@ -470,7 +522,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
     arr.sort((a, b) => b.pending - a.pending || b.lastAt - a.lastAt || a.name.localeCompare(b.name));
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool, path, level, searchTerm, i18n.language]);
+  }, [pool, path, level, searchTerm, unitNames, i18n.language]);
 
   // Entregas del nivel hoja (aprendiz seleccionado): estado + búsqueda + orden.
   const leafAttempts = useMemo(() => {
@@ -521,6 +573,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
         hit = {
           id: a.user_id, name, email, total: 0, pending: 0, avg: 0,
           courses: 0, modules: 0, lastAt: 0,
+          country: a.learner_country ?? null,
+          areaId: a.learner_area_id ?? null,
+          operationId: a.learner_operation_id ?? null,
           courseIds: new Set(), moduleIds: new Set(),
         };
         map.set(a.user_id, hit);
@@ -575,14 +630,14 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const personSummary = useMemo(() => {
     if (!path.learner) return null;
     const learnerId = path.learner.id;
-    // Se respeta la ruta: si se bajó por campaña → curso, la ficha habla de ESE
+    // Se respeta la ruta: si se bajó por CR → curso, la ficha habla de ESE
     // curso. Antes tomaba todas las entregas de la persona y el capacitador veía
     // cursos que no estaba mirando. Por búsqueda global no hay curso en la ruta
     // y sale su historia completa, que es lo que se busca ahí. El módulo NO
     // acota: la ficha es el avance del curso entero, no de un módulo.
     const mine = pool.filter((a) =>
       a.user_id === learnerId &&
-      (!path.campaign || (a.campaign_id ?? NONE_KEY) === path.campaign.id) &&
+      (!path.cr || (a.learner_operation_id ?? NONE_KEY) === path.cr.id) &&
       (!path.course || (a.course_id ?? NONE_KEY) === path.course.id));
     if (mine.length === 0) return null;
 
@@ -676,9 +731,16 @@ export const TrainerFeedbackPanel: React.FC = () => {
 
     const allModules = courses.flatMap((c) => c.modules);
     const pending = mine.filter((a) => !a.is_evaluated).length;
+    // Dónde está mapeada la persona HOY: país → área → CR. Es lo que decide qué
+    // cursos le llegan, y hasta ahora la ficha no lo decía en ningún sitio: se
+    // veía el avance sin saber de dónde salía el contenido.
+    const ref = mine[0];
     return {
       name: path.learner.name,
       email: mine.find((a) => a.student?.email)?.student?.email ?? null,
+      country: ref.learner_country ?? null,
+      areaName: unitName(ref.learner_area_id),
+      crName: unitName(ref.learner_operation_id),
       total: mine.length,
       pending,
       evaluated: mine.length - pending,
@@ -695,11 +757,11 @@ export const TrainerFeedbackPanel: React.FC = () => {
       totalTimeMs: allModules.reduce((s, m) => s + m.timeMs, 0),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool, path.learner, path.campaign, path.course, moduleTimes, courseDetails, i18n.language]);
+  }, [pool, path.learner, path.cr, path.course, moduleTimes, courseDetails, unitNames, i18n.language]);
 
   // ── Navegación por la jerarquía ──
   const enterNode = (node: HierNode) => {
-    if (level === 'campaign') setPath((p) => ({ ...p, campaign: { id: node.key, name: node.name } }));
+    if (level === 'cr') setPath((p) => ({ ...p, cr: { id: node.key, name: node.name } }));
     else if (level === 'course') setPath((p) => ({ ...p, course: { id: node.key, title: node.name } }));
     else if (level === 'module') setPath((p) => ({ ...p, module: { id: node.key, title: node.name } }));
     else if (level === 'learner') setPath((p) => ({ ...p, learner: { id: node.key, name: node.name } }));
@@ -741,10 +803,10 @@ export const TrainerFeedbackPanel: React.FC = () => {
     setStatusFilter('all');
   };
 
-  // Retrocede a una profundidad del breadcrumb (0=raíz, 1=campaña … 4=aprendiz).
+  // Retrocede a una profundidad del breadcrumb (0=raíz, 1=CR … 4=aprendiz).
   const goToDepth = (depth: number) => {
     setPath((p) => ({
-      campaign: depth >= 1 ? p.campaign : undefined,
+      cr: depth >= 1 ? p.cr : undefined,
       course: depth >= 2 ? p.course : undefined,
       module: depth >= 3 ? p.module : undefined,
       learner: depth >= 4 ? p.learner : undefined,
@@ -753,6 +815,53 @@ export const TrainerFeedbackPanel: React.FC = () => {
     setSearchTerm('');
   };
 
+  /* Países y áreas EN CASCADA, sacados de la gente que de verdad tiene entregas.
+     Listar los 88 CR o los cuatro países del catálogo llenaría el desplegable de
+     opciones que no devuelven nada. El área se calcula ya recortada por el país
+     elegido: es el mismo orden país → área → CR de la regla del curso. */
+  const countryOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of attempts) {
+      const k = a.learner_country ?? NONE_KEY;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return [
+      { value: 'all', label: t('admin.trainer_panel.filter_country_all', 'Todos los países') },
+      ...[...counts.entries()]
+        .map(([value, n]) => ({
+          value,
+          label: value === NONE_KEY
+            ? `${t('admin.trainer_panel.no_country', 'Sin país')} (${n})`
+            : `${countryLabelWithFlag(value) ?? value} (${n})`,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempts, i18n.language]);
+
+  const areaOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of attempts) {
+      if (countryFilter !== 'all' && (a.learner_country ?? NONE_KEY) !== countryFilter) continue;
+      const k = a.learner_area_id ?? NONE_KEY;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return [
+      { value: 'all', label: t('admin.trainer_panel.filter_area_all', 'Todas las áreas') },
+      ...[...counts.entries()]
+        .map(([value, n]) => ({
+          value,
+          label: value === NONE_KEY
+            ? `${t('admin.trainer_panel.no_area', 'Sin área')} (${n})`
+            : `${unitName(value)} (${n})`,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempts, countryFilter, unitNames, i18n.language]);
+
+  const selectedCountryLabel = countryOptions.find((o) => o.value === countryFilter)?.label || '';
+  const selectedAreaLabel = areaOptions.find((o) => o.value === areaFilter)?.label || '';
   const selectedStatusLabel = statusOptions.find((opt) => opt.value === statusFilter)?.label || '';
   const selectedReviewLabel = reviewOptions.find((opt) => opt.value === reviewFilter)?.label || '';
   const selectedScoreLabel = scoreOptions.find((opt) => opt.value === scoreFilter)?.label || '';
@@ -764,6 +873,8 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const activeFilters: { key: string; label: string; reset: () => void }[] = [
     ...(level === 'attempt' && statusFilter !== 'pending'
       ? [{ key: 'status', label: selectedStatusLabel, reset: () => setStatusFilter('pending') }] : []),
+    ...(countryFilter !== 'all' ? [{ key: 'country', label: selectedCountryLabel, reset: () => setCountryFilter('all') }] : []),
+    ...(areaFilter !== 'all' ? [{ key: 'area', label: selectedAreaLabel, reset: () => setAreaFilter('all') }] : []),
     ...(scoreFilter !== 'all' ? [{ key: 'score', label: selectedScoreLabel, reset: () => setScoreFilter('all') }] : []),
     ...(typeFilter !== 'all' ? [{ key: 'type', label: selectedTypeLabel, reset: () => setTypeFilter('all') }] : []),
     ...(reviewFilter !== 'exclude' ? [{ key: 'review', label: selectedReviewLabel, reset: () => setReviewFilter('exclude') }] : []),
@@ -774,6 +885,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
   const resetFilters = () => {
     setStatusFilter('pending'); setScoreFilter('all'); setTypeFilter('all');
     setReviewFilter('exclude'); setSortKey('recent');
+    setCountryFilter('all'); setAreaFilter('all');
   };
 
 
@@ -854,11 +966,11 @@ export const TrainerFeedbackPanel: React.FC = () => {
           {/* Más aire en la cabecera de la columna: migas, buscador y filtros
               son tres cosas distintas y antes se leían como un bloque apretado. */}
           <div className="p-4 border-b border-line shrink-0 space-y-2.5" ref={filtersRef}>
-            {/* Migas de pan: Campañas › Campaña › Curso › Módulo › Aprendiz.
+            {/* Migas de pan: CR › CR concreto › Curso › Módulo › Persona.
                 El "subir un nivel" va como flecha a la izquierda de las migas:
                 una sola fila de navegación en vez de dos. */}
             <div className="flex items-center gap-1 flex-wrap text-[11px]">
-              {level !== 'campaign' && (
+              {level !== 'cr' && (
                 <button
                   type="button"
                   onClick={() => goToDepth(
@@ -879,7 +991,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                     depth: 0,
                   },
                 ];
-                if (path.campaign) crumbs.push({ label: path.campaign.name, depth: 1 });
+                if (path.cr) crumbs.push({ label: path.cr.name, depth: 1 });
                 if (path.course) crumbs.push({ label: path.course.title, depth: 2 });
                 if (path.module) crumbs.push({ label: path.module.title, depth: 3 });
                 if (path.learner) crumbs.push({ label: path.learner.name, depth: 4 });
@@ -916,7 +1028,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 ref={searchRef}
                 type="text"
                 placeholder={
-                  level === 'campaign' ? t('admin.trainer_panel.ph_search_any', 'Buscar persona, programa…')
+                  level === 'cr' ? t('admin.trainer_panel.ph_search_any', 'Buscar persona o CR…')
                     : level === 'course' ? t('admin.trainer_panel.ph_search_course')
                     : level === 'module' ? t('admin.trainer_panel.ph_search_module')
                     : level === 'learner' ? t('admin.trainer_panel.ph_search_learner')
@@ -1006,6 +1118,48 @@ export const TrainerFeedbackPanel: React.FC = () => {
                   transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <div className="grid grid-cols-2 gap-2 pt-1">
+                    {/* PAÍS → ÁREA: los dos recortes de PERSONAS, arriba del todo
+                        y en cascada, en el mismo orden con el que se define a
+                        quién le llega un curso. El tercer escalón —el CR— no es
+                        un filtro: es el primer nivel de la lista. */}
+                    <div className="col-span-2 flex items-center gap-1.5 pb-0.5">
+                      <span className="text-[9.5px] font-bold uppercase tracking-wider text-text-muted">
+                        {t('admin.trainer_panel.who_group', 'A quién miras')}
+                      </span>
+                      <Tooltip
+                        anchor="element"
+                        maxWidth={260}
+                        label={t(
+                          'admin.trainer_panel.who_group_help',
+                          'Las personas se clasifican por PAÍS → ÁREA → CR, igual que la regla que decide a quién le llega cada curso. Elige país y área para recortar; los CR que queden salen en la lista de abajo.',
+                        )}
+                      >
+                        <span className="grid h-4 w-4 place-items-center rounded-full text-text-muted/60">
+                          <Info className="h-3 w-3" />
+                        </span>
+                      </Tooltip>
+                    </div>
+                    <Dropdown
+                      open={openMenu === 'country'}
+                      onToggle={() => setOpenMenu(openMenu === 'country' ? null : 'country')}
+                      icon={<Globe2 className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                      label={selectedCountryLabel}
+                      options={countryOptions}
+                      selected={countryFilter}
+                      /* Cambiar de país deja sin sentido el área elegida
+                         (pertenecía al país anterior): se suelta aquí mismo. Si
+                         no, el panel se queda en cero sin explicar por qué. */
+                      onSelect={(v) => { setCountryFilter(v); setAreaFilter('all'); setOpenMenu(null); }}
+                    />
+                    <Dropdown
+                      open={openMenu === 'area'}
+                      onToggle={() => setOpenMenu(openMenu === 'area' ? null : 'area')}
+                      icon={<Network className="h-3.5 w-3.5 text-text-muted/60 absolute left-3" />}
+                      label={selectedAreaLabel}
+                      options={areaOptions}
+                      selected={areaFilter}
+                      onSelect={(v) => { setAreaFilter(v); setOpenMenu(null); }}
+                    />
                     {/* Estado y orden solo importan en el nivel hoja (lista de intentos) */}
                     {level === 'attempt' && (
                       <Dropdown
@@ -1068,14 +1222,33 @@ export const TrainerFeedbackPanel: React.FC = () => {
             </AnimatePresence>
           </div>
 
-          {/* Encabezado del nivel actual */}
-          <div className="px-4 py-2 shrink-0 flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-              {level === 'campaign' ? t('admin.trainer_panel.lvl_campaigns')
-                : level === 'course' ? t('admin.trainer_panel.lvl_courses')
-                : level === 'module' ? t('admin.trainer_panel.lvl_modules')
-                : level === 'learner' ? t('admin.trainer_panel.lvl_learners')
-                : t('admin.trainer_panel.lvl_activities')}
+          {/* Encabezado del nivel actual. Cada escalón dice, en una frase, QUÉ
+              se está mirando: sin eso la misma lista de tarjetas podía ser
+              operaciones, cursos o personas y solo se distinguía por el ícono. */}
+          <div className="px-4 py-2 shrink-0 flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                {level === 'cr' ? t('admin.trainer_panel.lvl_crs', 'CR (operaciones)')
+                  : level === 'course' ? t('admin.trainer_panel.lvl_courses')
+                  : level === 'module' ? t('admin.trainer_panel.lvl_modules')
+                  : level === 'learner' ? t('admin.trainer_panel.lvl_learners')
+                  : t('admin.trainer_panel.lvl_activities')}
+              </span>
+              <Tooltip
+                anchor="element"
+                maxWidth={260}
+                label={
+                  level === 'cr' ? t('admin.trainer_panel.help_lvl_crs', 'CR = centro de resultados: así llama Talento Humano a la operación donde trabaja la persona. Cada tarjeta agrupa a la gente de esa operación. Ábrela para ver sus cursos.')
+                    : level === 'course' ? t('admin.trainer_panel.help_lvl_courses', 'Los cursos en los que esta gente ha entregado algo. Ábrelo para ver sus módulos.')
+                    : level === 'module' ? t('admin.trainer_panel.help_lvl_modules', 'Los módulos del curso con entregas. Ábrelo para ver quién entregó.')
+                    : level === 'learner' ? t('admin.trainer_panel.help_lvl_learners', 'Las personas que entregaron aquí. Ábrelas para ver su ficha completa.')
+                    : t('admin.trainer_panel.help_lvl_activities', 'Cada tarjeta es UNA entrega: una actividad que esta persona resolvió. Ábrela para leer sus respuestas y darle retroalimentación.')
+                }
+              >
+                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-text-muted/50 hover:text-text-muted">
+                  <Info className="h-3 w-3" />
+                </span>
+              </Tooltip>
             </span>
             <span className="text-[10px] font-mono text-text-muted/70">
               {level === 'attempt' ? leafAttempts.length : nodes.length}
@@ -1137,6 +1310,16 @@ export const TrainerFeedbackPanel: React.FC = () => {
                               </span>
                             )}
                           </div>
+                          {/* Dónde está mapeada: país · área · CR. Antes aquí no
+                              había nada y dos homónimos de operaciones distintas
+                              se veían exactamente igual. */}
+                          <p className="mt-0.5 truncate text-[10px] text-text-muted/70">
+                            {[
+                              hit.country ? (countryLabelWithFlag(hit.country) ?? hit.country) : t('admin.trainer_panel.no_country', 'Sin país'),
+                              unitName(hit.areaId) ?? t('admin.trainer_panel.no_area', 'Sin área'),
+                              unitName(hit.operationId) ?? t('admin.trainer_panel.no_cr', 'Sin CR asignado'),
+                            ].join(' · ')}
+                          </p>
                           {/* Cursos · módulos · actividades: la respuesta directa a
                               "¿cuánto ha hecho esta persona?" sin abrir nada. */}
                           <div className="mt-1 flex items-center gap-2.5 text-[10.5px] text-text-muted/85">
@@ -1169,7 +1352,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 peopleMatches.length === 0 && <EmptyState attemptsEmpty={attempts.length === 0} t={t} />
               ) : (
                 nodes.map((node, i) => {
-                  const LevelIcon = level === 'campaign' ? Building2 : level === 'course' ? BookOpen : level === 'module' ? Layers : null;
+                  const LevelIcon = level === 'cr' ? Building2 : level === 'course' ? BookOpen : level === 'module' ? Layers : null;
                   const avg = node.total ? Math.round(node.scoreSum / node.total) : 0;
                   const donePct = node.total ? ((node.total - node.pending) / node.total) * 100 : 100;
                   return (
@@ -1228,6 +1411,16 @@ export const TrainerFeedbackPanel: React.FC = () => {
                               <Users className="w-3 h-3" />
                               {t('admin.trainer_panel.sub_learners', { count: node.learners.size })}
                             </span>
+                          )}
+                          {/* Un CR puede estar en más de un país (ASTRAZENECA vive
+                              en CO y AR): decirlo evita creer que son dos CR. */}
+                          {level === 'cr' && node.countries.size > 0 && (
+                            <>
+                              <span className="text-text-muted/50">·</span>
+                              <span className="truncate">
+                                {[...node.countries].map((c) => countryLabelWithFlag(c) ?? c).join(', ')}
+                              </span>
+                            </>
                           )}
                           <span className="text-text-muted/50">·</span>
                           <span className={cn('font-semibold tabular-nums', scoreTextTone(avg))}>{avg}%</span>
@@ -1614,42 +1807,143 @@ export const TrainerFeedbackPanel: React.FC = () => {
                         </span>
                       </div>
                     </div>
-                    <ScoreRing score={personSummary.avg} size={72} stroke={6} />
+                    <Tooltip
+                      anchor="element"
+                      maxWidth={240}
+                      label={t('admin.trainer_panel.help_person_ring', 'Su nota promedio: el promedio de todas las entregas que se ven en esta ficha. No es cuánto ha avanzado.')}
+                    >
+                      <span className="inline-flex flex-col items-center gap-1">
+                        <ScoreRing score={personSummary.avg} size={72} stroke={6} />
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-text-muted">
+                          {t('admin.trainer_panel.label_grade', 'Nota')}
+                        </span>
+                      </span>
+                    </Tooltip>
                   </div>
 
-                  {/* Las 4 cifras que responden "¿cuánto lleva?" de un vistazo */}
-                  <div className="relative mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {/* DÓNDE ESTÁ MAPEADA: país → área → CR, los tres datos que
+                      deciden qué cursos le llegan. Antes aquí salía el programa,
+                      que ya no entrega nada: mirar la ficha no explicaba de dónde
+                      venía su contenido. Cada chip dice lo que es al pasar por
+                      encima, y lo que falta se pinta en ámbar en vez de
+                      esconderse: un aprendiz sin CR no recibe cursos por regla. */}
+                  <div className="relative mt-4 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[9.5px] font-bold uppercase tracking-wider text-text-muted">
+                      {t('admin.trainer_panel.mapped_as', 'Está clasificado como')}
+                    </span>
+                    <AxisChip
+                      icon={<Globe2 className="h-3 w-3" />}
+                      value={personSummary.country ? (countryLabelWithFlag(personSummary.country) ?? personSummary.country) : null}
+                      missing={t('admin.trainer_panel.no_country', 'Sin país')}
+                      help={t('admin.trainer_panel.help_axis_country', 'PAÍS: el país de su operación. Es el primer escalón de la regla que reparte los cursos.')}
+                    />
+                    <ChevronRight className="h-3 w-3 shrink-0 text-text-muted/40" />
+                    <AxisChip
+                      icon={<Network className="h-3 w-3" />}
+                      value={personSummary.areaName}
+                      missing={t('admin.trainer_panel.no_area', 'Sin área')}
+                      help={t('admin.trainer_panel.help_axis_area', 'ÁREA: el departamento al que pertenece (Talento Humano, Operaciones…). Segundo escalón de la regla; es opcional.')}
+                    />
+                    <ChevronRight className="h-3 w-3 shrink-0 text-text-muted/40" />
+                    <AxisChip
+                      icon={<Building2 className="h-3 w-3" />}
+                      value={personSummary.crName}
+                      missing={t('admin.trainer_panel.no_cr', 'Sin CR asignado')}
+                      help={t('admin.trainer_panel.help_axis_cr', 'CR (centro de resultados): así llama Talento Humano a la operación donde trabaja. Es el escalón más fino de la regla.')}
+                    />
+                  </div>
+                  {(!personSummary.country || !personSummary.crName) && (
+                    <p className="relative mt-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-2.5 py-1.5 text-[10.5px] text-amber-600 dark:text-amber-400">
+                      {t(
+                        'admin.trainer_panel.unmapped_warning',
+                        'Le falta país o CR: mientras esté así, ningún curso le va a llegar por regla. Solo recibe lo que se le asigne persona por persona. Se arregla en Personas.',
+                      )}
+                    </p>
+                  )}
+
+                  {/* Las cifras de "¿cuánto lleva?".
+                      Antes eran cuatro y una de ellas mezclaba dos cosas: la
+                      tarjeta de Actividades enseñaba el avance (35/35) y debajo,
+                      en letra pequeña, los pendientes de evaluar (35). Dos
+                      medidas distintas en la misma tarjeta se leen como una sola
+                      y el capacitador concluía que el aprendiz iba mal. Ahora
+                      "lo que hizo él" y "lo que me falta a mí" son dos tarjetas
+                      separadas, y cada una dice qué es al pasar por encima. */}
+                  <div className="relative mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
                     <MiniStat
                       icon={<BookOpen className="h-3.5 w-3.5" />}
-                      label={t('admin.trainer_panel.lvl_courses')}
+                      label={t('admin.trainer_panel.stat_courses', 'Cursos')}
                       value={personSummary.coursesCount}
                       accent="rgb(var(--brand-green))"
+                      help={t('admin.trainer_panel.help_stat_courses', 'En cuántos cursos distintos ha hecho algo. No son los cursos que tiene asignados.')}
                     />
                     <MiniStat
                       icon={<Layers className="h-3.5 w-3.5" />}
-                      label={t('admin.trainer_panel.lvl_modules')}
-                      value={personSummary.modulesCount}
+                      label={t('admin.trainer_panel.stat_modules_done', 'Módulos terminados')}
+                      text={`${personSummary.modulesDone}/${personSummary.modulesCount}`}
                       accent="rgb(var(--brand-magenta))"
-                      note={t('admin.trainer_panel.n_completed', '{{count}} completados', { count: personSummary.modulesDone })}
+                      help={t('admin.trainer_panel.help_stat_modules', 'Módulos que cerró completos, de los módulos que ha tocado. Un módulo se cierra cuando termina todo lo que trae dentro.')}
+                    />
+                    <MiniStat
+                      icon={<ListChecks className="h-3.5 w-3.5" />}
+                      label={t('admin.trainer_panel.stat_acts_done', 'Actividades hechas')}
+                      text={`${personSummary.actDone}/${personSummary.actTotal}`}
+                      accent="#22c55e"
+                      help={t('admin.trainer_panel.help_stat_acts', 'Cuántas actividades resolvió de las que traen esos módulos. Esto es su AVANCE: nada que ver con la nota.')}
                     />
                     <MiniStat
                       icon={<ClipboardCheck className="h-3.5 w-3.5" />}
-                      label={t('admin.trainer_panel.lvl_activities')}
-                      text={`${personSummary.actDone}/${personSummary.actTotal}`}
+                      label={t('admin.trainer_panel.stat_to_review', 'Te faltan por evaluar')}
+                      value={personSummary.pending}
                       accent="#f59e0b"
-                      note={t('admin.trainer_panel.n_pending_short', '{{count}} por evaluar', { count: personSummary.pending })}
+                      note={personSummary.pending === 0
+                        ? t('admin.trainer_panel.all_reviewed', 'Todo evaluado')
+                        : undefined}
+                      help={t('admin.trainer_panel.help_stat_to_review', 'Entregas suyas que TÚ todavía no has comentado. Es trabajo tuyo, no un retraso del aprendiz: él ya las entregó.')}
                     />
                     <MiniStat
                       icon={<Clock className="h-3.5 w-3.5" />}
-                      label={t('admin.trainer_panel.module_time_label')}
+                      label={t('admin.trainer_panel.stat_time', 'Tiempo estudiando')}
                       text={personSummary.totalTimeMs > 0 ? formatElapsed(personSummary.totalTimeMs) : '—'}
                       accent="#3b82f6"
+                      help={t('admin.trainer_panel.help_stat_time', 'Tiempo real con el módulo abierto y en uso. El cronómetro se detiene si deja la pestaña.')}
                     />
                   </div>
                 </motion.div>
 
+                {/* Cómo se lee lo de abajo. Tres señales, una sola vez.
+                    La barra y el porcentaje conviven en cada renglón y miden
+                    cosas distintas; sin esta leyenda había que adivinarlo. */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-line bg-white/60 dark:bg-zinc-900/40 px-4 py-3">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                    <Info className="h-3.5 w-3.5" />
+                    {t('admin.trainer_panel.legend_title', 'Cómo se lee')}
+                  </span>
+                  <LegendItem
+                    swatch={<span className="h-1.5 w-7 rounded-full bg-green-500" />}
+                    label={t('admin.trainer_panel.legend_progress', 'La barra = cuánto hizo')}
+                    help={t('admin.trainer_panel.legend_progress_help', 'Actividades resueltas sobre las que el módulo trae. Llena = terminó el módulo.')}
+                  />
+                  <LegendItem
+                    swatch={<span className="text-[11px] font-bold text-green-500">78%</span>}
+                    label={t('admin.trainer_panel.legend_grade', 'El % = qué nota sacó')}
+                    help={t('admin.trainer_panel.legend_grade_help', 'Promedio de sus respuestas. Puede terminar el módulo entero y aun así sacar 60: barra llena, nota baja.')}
+                  />
+                  <LegendItem
+                    swatch={<span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400">3</span>}
+                    label={t('admin.trainer_panel.legend_pending', 'En ámbar = te toca a ti')}
+                    help={t('admin.trainer_panel.legend_pending_help', 'Entregas que esperan tu comentario. Que aparezcan no significa que el aprendiz vaya atrasado.')}
+                  />
+                </div>
+
                 {/* Avance curso por curso, con sus módulos dentro */}
                 <div className="space-y-3">
+                  <p className="px-1 text-[11px] text-text-muted">
+                    {t(
+                      'admin.trainer_panel.courses_intro',
+                      'Un bloque por CURSO. Dentro, un renglón por cada MÓDULO de ese curso.',
+                    )}
+                  </p>
                   {personSummary.courses.map((c, ci) => (
                     <motion.div
                       key={c.key}
@@ -1663,6 +1957,9 @@ export const TrainerFeedbackPanel: React.FC = () => {
                           <BookOpen className="h-4 w-4" />
                         </span>
                         <div className="min-w-0 flex-1">
+                          <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted/70">
+                            {t('admin.trainer_panel.label_course', 'Curso')}
+                          </p>
                           <h3 className="truncate text-[15px] font-bold text-text">{c.title}</h3>
                           <p className="mt-0.5 text-[11.5px] text-text-muted">
                             {t('admin.trainer_panel.sub_modules', { count: c.modules.length })}
@@ -1673,7 +1970,20 @@ export const TrainerFeedbackPanel: React.FC = () => {
                             {c.timeMs > 0 && ` · ${formatElapsed(c.timeMs)}`}
                           </p>
                         </div>
-                        <ScoreRing score={c.avg} size={44} stroke={4} />
+                        {/* El anillo se leía como "avance del curso" porque no
+                            decía qué era. Lleva su etiqueta debajo. */}
+                        <Tooltip
+                          anchor="element"
+                          maxWidth={240}
+                          label={t('admin.trainer_panel.help_course_ring', 'Nota promedio de este curso: el promedio de sus respuestas aquí. Un curso terminado del todo puede tener nota baja, y al revés.')}
+                        >
+                          <span className="inline-flex flex-col items-center gap-0.5">
+                            <ScoreRing score={c.avg} size={44} stroke={4} />
+                            <span className="text-[8.5px] font-bold uppercase tracking-wider text-text-muted">
+                              {t('admin.trainer_panel.label_grade', 'Nota')}
+                            </span>
+                          </span>
+                        </Tooltip>
                       </div>
 
                       <div className="mt-4 space-y-3">
@@ -1681,21 +1991,45 @@ export const TrainerFeedbackPanel: React.FC = () => {
                           const full = m.progTotal > 0 && m.progDone === m.progTotal;
                           const toReview = m.attempts - m.reviewed;
                           return (
-                            <div key={m.key}>
+                            <div key={m.key} className="rounded-xl border border-line/60 px-3 py-2.5">
                               <div className="flex items-baseline justify-between gap-3">
                                 <span className="flex min-w-0 items-center gap-1.5">
-                                  {m.completed && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />}
+                                  {m.completed ? (
+                                    <Tooltip
+                                      anchor="element"
+                                      maxWidth={230}
+                                      label={t('admin.trainer_panel.help_module_done', 'Módulo terminado: hizo todo lo que trae dentro.')}
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                                    </Tooltip>
+                                  ) : null}
                                   <span className="truncate text-[12.5px] font-medium text-text">{m.title}</span>
                                 </span>
-                                <span className={cn(
-                                  'shrink-0 text-[12px] font-bold tabular-nums',
-                                  m.avg == null ? 'text-text-muted/60' : scoreTextTone(m.avg),
-                                )}>
-                                  {m.avg == null ? '—' : `${m.avg}%`}
-                                </span>
+                                {/* La nota, dicha con su nombre. El número solo,
+                                    pegado a una barra llena, se leía como avance. */}
+                                <Tooltip
+                                  anchor="element"
+                                  maxWidth={240}
+                                  label={m.avg == null
+                                    ? t('admin.trainer_panel.help_no_grade', 'Todavía no hay nota: no entregó nada que se califique en este módulo (por ejemplo, solo lo leyó).')
+                                    : t('admin.trainer_panel.help_module_grade', 'Nota: qué tan bien lo hizo. La barra de abajo dice cuánto hizo. Son dos cosas distintas.')}
+                                >
+                                  <span className="shrink-0 whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-text-muted/70">
+                                    {t('admin.trainer_panel.label_grade', 'Nota')}{' '}
+                                    <span className={cn(
+                                      'text-[12px] tabular-nums',
+                                      m.avg == null ? 'text-text-muted/60' : scoreTextTone(m.avg),
+                                    )}>
+                                      {m.avg == null ? '—' : `${m.avg}%`}
+                                    </span>
+                                  </span>
+                                </Tooltip>
                               </div>
                               {/* La barra es el AVANCE: actividades resueltas del módulo. */}
                               <div className="mt-1.5 flex items-center gap-2">
+                                <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-text-muted/70">
+                                  {t('admin.trainer_panel.label_progress', 'Avance')}
+                                </span>
                                 <ProgressBar
                                   pct={m.progTotal > 0 ? (m.progDone / m.progTotal) * 100 : 0}
                                   accent={full ? '#22c55e' : '#f59e0b'}
@@ -1703,18 +2037,35 @@ export const TrainerFeedbackPanel: React.FC = () => {
                                   delay={0.06 + ci * 0.06 + i * 0.04}
                                 />
                                 <span className="shrink-0 text-[10px] tabular-nums text-text-muted/80">
-                                  {t('admin.trainer_panel.acts_done_short', '{{done}}/{{total}} act.', {
-                                    done: m.progDone, total: m.progTotal,
-                                  })}
+                                  {full
+                                    ? t('admin.trainer_panel.acts_all_done', 'Hizo las {{total}}', { total: m.progTotal })
+                                    : t('admin.trainer_panel.acts_done_of', 'Hizo {{done}} de {{total}}', {
+                                      done: m.progDone, total: m.progTotal,
+                                    })}
                                 </span>
                               </div>
-                              {/* La revisión va aparte y con su nombre: nunca es "avance". */}
+                              {/* La revisión va aparte, en ámbar y en primera
+                                  persona: es trabajo del capacitador, no un
+                                  retraso del aprendiz. Pegado bajo una barra
+                                  llena, "11 por evaluar" se leía como una falta. */}
                               {m.attempts > 0 && (
-                                <p className="mt-1 text-[10px] text-text-muted/70">
-                                  {toReview > 0
-                                    ? t('admin.trainer_panel.n_pending_short', '{{count}} por evaluar', { count: toReview })
-                                    : t('admin.trainer_panel.all_reviewed', 'Todo evaluado')}
-                                </p>
+                                toReview > 0 ? (
+                                  <Tooltip
+                                    anchor="element"
+                                    maxWidth={250}
+                                    label={t('admin.trainer_panel.help_to_review', 'El aprendiz ya las entregó; falta que tú las comentes. Ábrelas desde la lista de la izquierda.')}
+                                  >
+                                    <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                      <ClipboardCheck className="h-3 w-3" />
+                                      {t('admin.trainer_panel.you_review', 'Te faltan {{count}} por evaluar', { count: toReview })}
+                                    </span>
+                                  </Tooltip>
+                                ) : (
+                                  <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    {t('admin.trainer_panel.all_reviewed', 'Todo evaluado')}
+                                  </span>
+                                )
                               )}
                             </div>
                           );
@@ -1781,6 +2132,45 @@ const EmptyState: React.FC<{ attemptsEmpty: boolean; t: (k: string) => string }>
     </div>
   );
 
+/**
+ * Un escalón de la clasificación de la persona: país, área o CR.
+ *
+ * Lo que FALTA no se esconde, se pinta en ámbar: un aprendiz sin CR no recibe
+ * cursos por regla, y ese es justo el caso que hay que poder ver de un vistazo.
+ */
+const AxisChip: React.FC<{
+  icon: React.ReactNode;
+  value: string | null;
+  missing: string;
+  help: string;
+}> = ({ icon, value, missing, help }) => (
+  <Tooltip anchor="element" maxWidth={250} label={help}>
+    <span
+      className={cn(
+        'inline-flex max-w-[190px] items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-semibold',
+        value
+          ? 'border-line bg-zinc-100/80 dark:bg-zinc-800/60 text-text'
+          : 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+      )}
+    >
+      <span className="shrink-0 opacity-70">{icon}</span>
+      <span className="truncate">{value ?? missing}</span>
+    </span>
+  </Tooltip>
+);
+
+/** Una entrada de la leyenda: la señal tal cual se ve, y qué significa. */
+const LegendItem: React.FC<{ swatch: React.ReactNode; label: string; help: string }> = ({
+  swatch, label, help,
+}) => (
+  <Tooltip anchor="element" maxWidth={250} label={help}>
+    <span className="inline-flex items-center gap-2 text-[11px] text-text-muted">
+      <span className="inline-flex w-7 shrink-0 items-center justify-center">{swatch}</span>
+      <span>{label}</span>
+    </span>
+  </Tooltip>
+);
+
 /** Dato compacto de la ficha de persona: ícono + cifra grande + nota opcional.
  *  Acepta `value` (número, cuenta al aparecer) o `text` (ya formateado). */
 const MiniStat: React.FC<{
@@ -1791,17 +2181,27 @@ const MiniStat: React.FC<{
   suffix?: string;
   note?: string;
   accent: string;
-}> = ({ icon, label, value, text, suffix, note, accent }) => (
-  <div className="rounded-xl border border-line bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2.5">
-    <p className="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-wider text-text-muted">
-      <span style={{ color: accent }}>{icon}</span>
-      <span className="truncate">{label}</span>
-    </p>
-    <p className="mt-1 text-[20px] font-bold leading-none tabular-nums text-text">
-      {text ?? <CountUp value={value ?? 0} suffix={suffix} />}
-    </p>
-    {note && <p className="mt-1 truncate text-[10px] text-text-muted/80">{note}</p>}
-  </div>
+  /** Qué significa la cifra, en una frase. Todo número sin explicar se malinterpreta. */
+  help?: string;
+}> = ({ icon, label, value, text, suffix, note, accent, help }) => (
+  <Tooltip
+    anchor="element"
+    maxWidth={240}
+    disabled={!help}
+    label={help ?? ''}
+    className="w-full"
+  >
+    <div className="h-full w-full rounded-xl border border-line bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2.5 text-left">
+      <p className="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-wider text-text-muted">
+        <span style={{ color: accent }}>{icon}</span>
+        <span className="truncate">{label}</span>
+      </p>
+      <p className="mt-1 text-[20px] font-bold leading-none tabular-nums text-text">
+        {text ?? <CountUp value={value ?? 0} suffix={suffix} />}
+      </p>
+      {note && <p className="mt-1 truncate text-[10px] text-text-muted/80">{note}</p>}
+    </div>
+  </Tooltip>
 );
 
 interface DropdownProps {

@@ -23,6 +23,8 @@ import { getUserCourseDetailAdmin, type AdminCourseDetail } from '@/services/not
 import { getUserGamification, type GamificationSummary } from '@/services/progress.service'
 import type { Profile } from '@/types/database'
 import { rowText } from '@/lib/contentLang'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { countryLabelWithFlag } from '@/lib/countries'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = '#10D451'
@@ -30,8 +32,6 @@ const MAGENTA = '#B33D9E'
 
 interface UserProgressDrawerProps {
   user: Profile
-  /** Nombre de la campaña casa, para el encabezado (opcional). */
-  campaignName?: string | null
   onClose: () => void
 }
 
@@ -47,13 +47,17 @@ type DetailState = AdminCourseDetail | 'loading' | 'error'
  * las barras se llenen solas mientras se lee el encabezado, y el resto del
  * catálogo se pide solo al desplegarlo.
  */
-export function UserProgressDrawer({ user, campaignName, onClose }: UserProgressDrawerProps) {
+export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const reduce = useReducedMotion()
 
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
+  /* Nombres de CR y área. El encabezado enseñaba el PROGRAMA, que ya no
+     entrega cursos: quien mira la ficha necesita saber por qué le llega lo que
+     le llega, y eso hoy lo deciden país → área → CR. */
+  const [unitNames, setUnitNames] = useState<Map<string, string>>(new Map())
   const [courses, setCourses] = useState<AdminUserCourse[]>([])
   const [detail, setDetail] = useState<Record<string, DetailState>>({})
   const [game, setGame] = useState<GamificationSummary | null>(null)
@@ -83,6 +87,13 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
 
     // La gamificación es decorativa: si la RLS no la autoriza, no se pinta.
     getUserGamification(user.id).then((g) => alive && setGame(g)).catch(() => {})
+
+    // Catálogo de CR y áreas, para ponerle nombre a los uuid del encabezado.
+    // Sin él se enseña el país y los otros dos chips salen como "sin dato".
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then((list) => { if (alive) setUnitNames(new Map(list.map((u) => [u.id, u.name]))) })
+      .catch(() => {})
 
     return () => { alive = false }
   }, [user.id])
@@ -273,11 +284,40 @@ export function UserProgressDrawer({ user, campaignName, onClose }: UserProgress
               >
                 {roleLabel}
               </span>
-              {campaignName && (
-                <span className="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-medium text-text-muted">
-                  {campaignName}
-                </span>
-              )}
+              {/* PAÍS → ÁREA → CR, en ese orden: es la misma escalera con la
+                  que se decide a quién le llega cada curso. Lo que falta sale
+                  en ámbar, porque sin país o sin CR no le llega nada por regla. */}
+              {([
+                {
+                  key: 'country',
+                  text: countryLabelWithFlag(user.country) ?? null,
+                  missing: t('admin.users.no_country', 'Sin país'),
+                  help: t('admin.users.help_country', 'PAÍS: primer escalón de la regla que reparte los cursos.'),
+                },
+                {
+                  key: 'area',
+                  text: user.area_id ? unitNames.get(user.area_id) ?? null : null,
+                  missing: t('admin.users.no_area', 'Sin área'),
+                  help: t('admin.users.help_area', 'ÁREA: el departamento al que pertenece. Segundo escalón de la regla; es opcional.'),
+                },
+                {
+                  key: 'cr',
+                  text: user.operation_id ? unitNames.get(user.operation_id) ?? null : null,
+                  missing: t('admin.users.no_cr', 'Sin CR'),
+                  help: t('admin.users.help_cr', 'CR (centro de resultados): así llama Talento Humano a la operación donde trabaja. Es el escalón más fino de la regla.'),
+                },
+              ] as const).map((chip) => (
+                <Tooltip key={chip.key} anchor="element" maxWidth={250} label={chip.help}>
+                  <span className={cn(
+                    'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                    chip.text
+                      ? 'bg-subtle text-text-muted'
+                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+                  )}>
+                    {chip.text ?? chip.missing}
+                  </span>
+                </Tooltip>
+              ))}
               {game && game.streak > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
                   style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}
@@ -791,6 +831,10 @@ function CourseDetail({ dt, reduce }: { dt: AdminCourseDetail; reduce: boolean }
           <span aria-hidden className="absolute bottom-3 left-[13px] top-3 w-px bg-line" />
           {dt.modules.map((m, i) => {
             const attempted = m.sections.filter((s) => s.has_attempt).length
+            /* Marcado como hecho sin una sola actividad resuelta: no se pinta en
+               verde. Así se veía el progreso que se colaba de otra persona en un
+               puesto compartido — un check verde encima de «Pendiente» en todo. */
+            const unproven = m.completed && m.sections.length > 0 && attempted === 0
             const isOpen = openModule === m.id
             return (
               <motion.div
@@ -810,7 +854,15 @@ function CourseDetail({ dt, reduce }: { dt: AdminCourseDetail; reduce: boolean }
                   )}
                 >
                   <span className="relative z-[1] flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-full bg-surface">
-                    {m.completed ? (
+                    {unproven ? (
+                      <Tooltip
+                        anchor="element"
+                        maxWidth={280}
+                        label={t('admin.users.progress_unproven', 'Figura como terminado, pero no tiene ninguna actividad resuelta. No lo cuentes como hecho sin revisarlo: puede ser progreso de otra persona que usó el mismo equipo.')}
+                      >
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      </Tooltip>
+                    ) : m.completed ? (
                       <CheckCircle2 className="h-4 w-4" style={{ color: GREEN }} />
                     ) : (
                       <Circle className="h-4 w-4 text-text-subtle" />

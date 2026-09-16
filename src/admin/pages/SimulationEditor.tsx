@@ -4,13 +4,13 @@ import { backdropDismiss } from '@/lib/backdropDismiss'
 import {
   ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, PhoneIncoming, PhoneOutgoing, Play, Plus, Trash2, X,
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import {
   getScenarioAdmin, createScenario, updateScenario, type ScenarioRow,
 } from '@/services/scenarios.admin.service'
-import { getCoursesForCampaign } from '@/services/courses.service'
 import { type GeneratedDialogue, type GeneratedScenario } from '@/services/ai.service'
 import { useSimAiStore } from '@/stores/simAiStore'
 import { AIGeneratorPanel } from '@/admin/components/simulation/AIGeneratorPanel'
@@ -162,8 +162,7 @@ export default function SimulationEditor() {
   // parte de la campaña "casa": creando desde la campaña B, el simulador se
   // guardaba en la casa A.
   const [campaignId, setCampaignId] = useState('')
-  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
-  const [courses, setCourses] = useState<{ id: string; title_es: string }[]>([])
+  const [courses, setCourses] = useState<{ id: string; title_es: string; campaign_id: string | null }[]>([])
 
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -244,7 +243,6 @@ export default function SimulationEditor() {
       userId: user?.id ?? null,
     })
       .then((data) => {
-        setCampaigns(data)
         if (!isNew) return
         const ids = data.map((c) => c.id)
         setCampaignId((prev) =>
@@ -257,15 +255,18 @@ export default function SimulationEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin, authCampaignId, user?.id, isNew])
 
-  // Cursos de la campaña activa: permiten asignar el simulador a un curso desde aquí.
+  // TODOS los cursos: ya no hay programas que partan la lista. Al elegir un
+  // curso, el simulador se guarda en el mismo espacio interno que el curso.
   useEffect(() => {
-    if (!campaignId) { setCourses([]); return }
     let alive = true
-    getCoursesForCampaign(campaignId)
-      .then((rows) => { if (alive) setCourses(rows.map((c) => ({ id: c.id, title_es: c.title_es }))) })
-      .catch(() => { if (alive) setCourses([]) })
+    void supabase
+      .from('courses')
+      .select('id, title_es, campaign_id')
+      .is('deleted_at', null)
+      .order('title_es')
+      .then(({ data }) => { if (alive) setCourses((data ?? []) as { id: string; title_es: string; campaign_id: string | null }[]) })
     return () => { alive = false }
-  }, [campaignId])
+  }, [])
 
   // Guardia de versión: avisa si esta simulación cambió en la base (otra pestaña
   // o alguien del equipo) después de que se abrió aquí. Sin esto, la pestaña que
@@ -605,16 +606,6 @@ export default function SimulationEditor() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <GlassCard className="p-5 space-y-4">
             <h3 className="text-sm font-semibold text-text mb-3">{t('admin.simulations.config_title')}</h3>
-            {campaigns.length > 1 && (
-              <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.list.campaign')}</label>
-                <FilterDropdown
-                  value={campaignId}
-                  onChange={setCampaignId}
-                  options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
-                />
-              </div>
-            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.country')}</label>
@@ -693,7 +684,11 @@ export default function SimulationEditor() {
               <label className="text-xs text-text-muted mb-1 block">{t('admin.simulations.course')}</label>
               <FilterDropdown
                 value={meta.course_id ?? ''}
-                onChange={(v) => setMeta((m) => ({ ...m, course_id: v || null }))}
+                onChange={(v) => {
+                  setMeta((m) => ({ ...m, course_id: v || null }))
+                  const owner = courses.find((c) => c.id === v)?.campaign_id
+                  if (owner) setCampaignId(owner)
+                }}
                 options={[
                   { value: '', label: t('admin.simulations.course_none') },
                   ...courses.map((c) => ({ value: c.id, label: rowText(c) })),

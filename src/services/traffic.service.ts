@@ -108,6 +108,8 @@ export interface TrafficFilters {
   from: string
   to: string
   campaignId: string | null
+  /** CR (org_units.id) de las personas: reemplaza al filtro por programa. */
+  operationId: string | null
   role: string | null
   /** Minutos por punto de la curva de concurrencia. */
   bucketMinutes: number
@@ -157,6 +159,15 @@ export interface CampaignRow {
   activeMs: number
 }
 
+/** Tráfico partido por el CR de cada persona. */
+export interface OperationRow {
+  operationId: string | null
+  operationName: string | null
+  users: number
+  views: number
+  activeMs: number
+}
+
 export interface RoleRow {
   role: string
   users: number
@@ -170,6 +181,8 @@ export interface UserRow {
   avatarUrl: string | null
   role: string | null
   campaignName: string | null
+  /** CR de la persona (null si no tiene o si el SQL por CR no está corrido). */
+  operationName: string | null
   sessions: number
   views: number
   activeMs: number
@@ -181,10 +194,13 @@ export interface TrafficHistory {
   concurrency: ConcurrencyPoint[]
   topViews: ViewRow[]
   byCampaign: CampaignRow[]
+  byOperation: OperationRow[]
   byRole: RoleRow[]
   topUsers: UserRow[]
   /** true = el SQL todavía no se ha corrido; el panel lo dice en vez de fallar. */
   notInstalled: boolean
+  /** true = falta el SQL del filtro por CR: se muestra sin ese corte. */
+  crNotInstalled: boolean
 }
 
 const EMPTY_OVERVIEW: TrafficOverview = {
@@ -194,8 +210,8 @@ const EMPTY_OVERVIEW: TrafficOverview = {
 
 export const EMPTY_HISTORY: TrafficHistory = {
   overview: EMPTY_OVERVIEW,
-  concurrency: [], topViews: [], byCampaign: [], byRole: [], topUsers: [],
-  notInstalled: false,
+  concurrency: [], topViews: [], byCampaign: [], byOperation: [], byRole: [], topUsers: [],
+  notInstalled: false, crNotInstalled: false,
 }
 
 /** 42883 / PGRST202 = la función aún no existe (SQL pendiente de correr). */
@@ -212,23 +228,45 @@ type Rpc = { data: any; error: any }
  * unas pocas docenas de números.
  */
 export async function fetchTrafficHistory(f: TrafficFilters): Promise<TrafficHistory> {
+  const withCr = await loadHistory(f, true)
+  // Sin el SQL del CR (firma con p_operation) la base responde "función no
+  // encontrada": se repite como antes, sin el corte, y el panel lo avisa.
+  if (withCr.missingCr) {
+    const plain = await loadHistory({ ...f, operationId: null }, false)
+    return { ...plain.history, crNotInstalled: true }
+  }
+  return withCr.history
+}
+
+async function loadHistory(
+  f: TrafficFilters,
+  useCr: boolean,
+): Promise<{ history: TrafficHistory; missingCr: boolean }> {
   const common = { p_from: f.from, p_to: f.to }
   const campaign = { p_campaign: f.campaignId }
   const role = { p_role: f.role }
+  const op = useCr ? { p_operation: f.operationId } : {}
 
-  const [overview, concurrency, topViews, byCampaign, byRole, topUsers] = await Promise.all([
-    supabase.rpc('get_traffic_overview', { ...common, ...campaign, ...role }) as unknown as Promise<Rpc>,
-    supabase.rpc('get_traffic_concurrency', { ...common, ...campaign, ...role, p_bucket: f.bucketMinutes }) as unknown as Promise<Rpc>,
-    supabase.rpc('get_traffic_top_views', { ...common, ...campaign, ...role, p_limit: 15 }) as unknown as Promise<Rpc>,
+  const [overview, concurrency, topViews, byCampaign, byRole, topUsers, byOperation] = await Promise.all([
+    supabase.rpc('get_traffic_overview', { ...common, ...campaign, ...role, ...op }) as unknown as Promise<Rpc>,
+    supabase.rpc('get_traffic_concurrency', { ...common, ...campaign, ...role, ...op, p_bucket: f.bucketMinutes }) as unknown as Promise<Rpc>,
+    supabase.rpc('get_traffic_top_views', { ...common, ...campaign, ...role, ...op, p_limit: 15 }) as unknown as Promise<Rpc>,
     supabase.rpc('get_traffic_by_campaign', { ...common, ...role }) as unknown as Promise<Rpc>,
-    supabase.rpc('get_traffic_by_role', { ...common, ...campaign }) as unknown as Promise<Rpc>,
-    supabase.rpc('get_traffic_top_users', { ...common, ...campaign, ...role, p_limit: 10 }) as unknown as Promise<Rpc>,
+    supabase.rpc('get_traffic_by_role', { ...common, ...campaign, ...op }) as unknown as Promise<Rpc>,
+    supabase.rpc('get_traffic_top_users', { ...common, ...campaign, ...role, ...op, p_limit: 10 }) as unknown as Promise<Rpc>,
+    useCr
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? ((supabase.rpc as any)('get_traffic_by_operation', { ...common, ...role }) as Promise<Rpc>)
+      : Promise.resolve({ data: [], error: null } as Rpc),
   ])
 
-  if (isMissingFunction(overview.error)) {
-    return { ...EMPTY_HISTORY, notInstalled: true }
+  if (useCr && (isMissingFunction(overview.error) || isMissingFunction(byOperation.error))) {
+    return { history: EMPTY_HISTORY, missingCr: true }
   }
-  for (const r of [overview, concurrency, topViews, byCampaign, byRole, topUsers]) {
+  if (isMissingFunction(overview.error)) {
+    return { history: { ...EMPTY_HISTORY, notInstalled: true }, missingCr: false }
+  }
+  for (const r of [overview, concurrency, topViews, byCampaign, byRole, topUsers, byOperation]) {
     if (r.error && !isMissingFunction(r.error)) {
       console.warn('[traffic]', r.error.message)
     }
@@ -236,7 +274,7 @@ export async function fetchTrafficHistory(f: TrafficFilters): Promise<TrafficHis
 
   const o = (overview.data ?? {}) as Partial<TrafficOverview>
 
-  return {
+  const history: TrafficHistory = {
     overview: {
       users: Number(o.users ?? 0),
       prevUsers: Number(o.prevUsers ?? 0),
@@ -270,18 +308,25 @@ export async function fetchTrafficHistory(f: TrafficFilters): Promise<TrafficHis
       users: Number(r.users), views: Number(r.views), activeMs: Number(r.active_ms),
     })),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    byOperation: ((byOperation.data ?? []) as any[]).map((r) => ({
+      operationId: r.operation_id, operationName: r.operation_name,
+      users: Number(r.users), views: Number(r.views), activeMs: Number(r.active_ms),
+    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     byRole: ((byRole.data ?? []) as any[]).map((r) => ({
       role: r.role, users: Number(r.users), views: Number(r.views), activeMs: Number(r.active_ms),
     })),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     topUsers: ((topUsers.data ?? []) as any[]).map((r) => ({
       userId: r.user_id, displayName: r.display_name, avatarUrl: r.avatar_url,
-      role: r.user_role, campaignName: r.campaign_name,
+      role: r.user_role, campaignName: r.campaign_name, operationName: r.operation_name ?? null,
       sessions: Number(r.sessions), views: Number(r.views),
       activeMs: Number(r.active_ms), lastSeen: r.last_seen,
     })),
     notInstalled: false,
+    crNotInstalled: false,
   }
+  return { history, missingCr: false }
 }
 
 /** Borra el tráfico más viejo que `days`. Devuelve cuántas filas se fueron. */

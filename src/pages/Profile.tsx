@@ -122,13 +122,14 @@ export default function Profile() {
   }, [user?.id]);
 
   useEffect(() => {
-    const cid = profile?.campaign_id;
+    // El chip muestra el CR (el programa se retiró del sitio).
+    const cid = profile?.operation_id;
     if (!cid) return;
     let alive = true;
-    supabase.from('campaigns').select('name').eq('id', cid).maybeSingle()
+    supabase.from('org_units').select('name').eq('id', cid).maybeSingle()
       .then(({ data }) => { if (alive) setCampaignName(data?.name ?? null); });
     return () => { alive = false; };
-  }, [profile?.campaign_id]);
+  }, [profile?.operation_id]);
 
   const assigned = useMemo(() => courses.filter((c) => c.isAssigned), [courses]);
   const completedCourses = useMemo(

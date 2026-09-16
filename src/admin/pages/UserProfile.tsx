@@ -193,8 +193,9 @@ export default function UserProfile() {
       if (!alive) return
       setProfile(prof)
 
-      if (prof?.campaign_id) {
-        supabase.from('campaigns').select('name').eq('id', prof.campaign_id).maybeSingle()
+      // El chip muestra el CR (el programa se retiró del sitio).
+      if (prof?.operation_id) {
+        supabase.from('org_units').select('name').eq('id', prof.operation_id).maybeSingle()
           .then(({ data }) => alive && setCampaignName(data?.name ?? null))
       }
       // El correo sale de `profiles.email`, que un trigger mantiene al día con

@@ -112,13 +112,8 @@ export function AdminNav() {
          * rojo. Lo ve TODO el staff; editarlo sigue siendo del superadmin. */
         { to: '/admin/units', label: t('admin.nav.units', 'CR'), end: false,
           hint: t('admin.units.cr_equals_operation') },
-        /* Ya no hay "campañas" como concepto vivo: la entrada se queda Únicamente
-         * como la lista de lo que falta migrar, dicho en el nombre y en rojo. No
-         * se borra del menú porque esas campañas siguen siendo las dueñas del
-         * contenido — quitarla dejaría sin acceso a los cursos que cuelgan de
-         * ellas. Desaparecerá sola el día que no quede ninguna. */
-        { to: '/admin/campaigns', label: t('admin.nav.campaigns_legacy', 'Programas (a migrar)'),
-          end: false, legacy: true, hint: t('admin.campaigns.legacy_hint') },
+        /* Programas: retirados del sitio (2026-09-16). El contenido ya se ve en
+         * sus listas sin pasar por ellos; /admin/campaigns redirige a CR. */
         { to: '/admin/courses', label: t('admin.nav.courses', 'Cursos'), end: false },
         { to: '/admin/modules', label: t('admin.nav.modules', 'Módulos'), end: false }
       ]

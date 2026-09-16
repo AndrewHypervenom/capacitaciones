@@ -36,8 +36,8 @@ export function TestModeSwitch({ className }: { className?: string }) {
       maxWidth={260}
       label={
         enabled
-          ? t('admin.test_mode.tip_on', 'Estás viendo también los programas de prueba. Los reportes y Excel incluyen datos de prueba.')
-          : t('admin.test_mode.tip_off', 'Los programas de prueba están ocultas: nada de prueba entra en KPIs, reportes ni Excel.')
+          ? t('admin.test_mode.tip_on', 'Estás viendo también la gente de los CR de pruebas. Los reportes y Excel incluyen datos de prueba.')
+          : t('admin.test_mode.tip_off', 'La gente de los CR de pruebas está oculta: nada de prueba entra en KPIs, reportes ni Excel.')
       }
     >
       <div
@@ -90,7 +90,7 @@ export function TestModeBanner() {
     <div className="sticky top-0 z-30 flex items-center gap-2 border-b border-amber-500/25 bg-amber-500/12 px-4 py-1.5 text-[12px] text-amber-700 dark:text-amber-300 backdrop-blur">
       <FlaskConical className="h-3.5 w-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate">
-        {t('admin.test_mode.banner', 'Modo pruebas activo: estás viendo también los programas de prueba. Los reportes y Excel incluyen datos de prueba.')}
+        {t('admin.test_mode.banner', 'Modo pruebas activo: estás viendo también la gente de los CR de pruebas. Los reportes y Excel incluyen datos de prueba.')}
       </span>
       <button
         onClick={() => { setEnabled(false); setTimeout(() => window.location.reload(), 120) }}

@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getPendingAttempts } from '@/services/activity.service';
+import { getAllAudiences, matchesAudience } from '@/services/audiences.service';
+import { getTestUnitIds } from '@/services/org.service';
 import { getSurveyResults, type SurveyResults } from '@/services/survey.service';
 import { getExamResults } from '@/services/exams.admin.service';
 import type { ExamResultRow } from '@/types/exam';
@@ -23,7 +25,8 @@ import { buildCourseJourney, countPracticeDone, worldStage, type CourseJourney }
      · courses               → universo de cursos vivos (sin borrado suave)
      · course_assignments    → cursos asignados a una persona (con `assigned_at`,
                                desde donde se cuenta el plazo por días)
-     · course_campaigns      → cursos asignados a una campaña entera
+     · course_audiences      → la REGLA país/área/CR con la que le llega el
+                               curso a la gente (el programa ya no entrega nada)
      · courses (plazo)       → columnas deadline_* aparte, para que un curso sin
                                el SQL corrido no tumbe el resto del tablero
      · get_program_certificates() → certificados emitidos, con fecha y código
@@ -98,11 +101,11 @@ export interface ProgramCourse {
   /** Personas con el curso asignado. */
   assigned: number;
   /**
-   * Campañas a las que se les asignó el curso ENTERO (`course_campaigns`). Es lo
-   * que separa "esto le toca a todo el mundo" de "esto le toca a tres personas",
-   * y sin ese dato las dos cosas se leen igual en la tabla.
+   * ¿El curso tiene regla país/área/CR que le llegue a alguien? Es lo que separa
+   * "esto le toca a un grupo" de "esto le toca a tres personas", y sin ese dato
+   * las dos cosas se leen igual en la tabla.
    */
-  campaignsAssigned: string[];
+  byRule: boolean;
   /** De los asignados, cuántos lo tienen por asignación individual. */
   directAssigned: number;
   started: number;
@@ -120,8 +123,8 @@ export interface ProgramCell {
   userId: string;
   courseId: string;
   assigned: boolean;
-  /** Le llegó porque el curso está asignado a su campaña entera, no a ella. */
-  viaCampaign: boolean;
+  /** Le llegó por la regla país/área/CR del curso, no por asignación a ella. */
+  viaRule: boolean;
   /** La asignación es obligatoria (formación de cumplimiento), no voluntaria. */
   mandatory: boolean;
   started: boolean;
@@ -435,7 +438,7 @@ export function useProgramData(
         // Todo en paralelo y con `allSettled`: una dimensión sin permiso no
         // puede tumbar el tablero entero.
         const [
-          profilesRes, campaignsRes, coursesRes, assignRes, campAssignRes, certsRes,
+          profilesRes, campaignsRes, coursesRes, assignRes, audienceRes, certsRes,
           modulesRes, progressRes, attemptsRes, deadlineRes,
           callScnRes, choiceScnRes, simAttemptRes,
           worldRes, worldLevelRes, worldProgressRes,
@@ -461,9 +464,7 @@ export function useProgramData(
             fetchAll<{ course_id: string; user_id: string; is_mandatory: boolean; assigned_at: string | null }>(
               'course_assignments', 'course_id, user_id, is_mandatory, assigned_at',
             ),
-            fetchAll<{ course_id: string; campaign_id: string; is_mandatory: boolean; assigned_at: string | null }>(
-              'course_campaigns', 'course_id, campaign_id, is_mandatory, assigned_at',
-            ),
+            getAllAudiences(),
             // Por RPC, no contra la tabla: el alcance lo decide la base (ver
             // fetchCertificates). Es lo que devolvió al tablero los diplomas de
             // gente que sí se ve en todas las demás columnas.
@@ -539,6 +540,7 @@ export function useProgramData(
           .filter((c) => !c.deleted_at);
         // Ids de prueba a esconder. Si `is_test` todavía no existe en la base,
         // el conjunto queda vacío y el tablero se comporta como siempre.
+        const hiddenUnitIds = new Set(hideTest ? await getTestUnitIds() : []);
         const hiddenCampaignIds = new Set(
           hideTest ? campaignRaw.filter((c) => c.is_test === true).map((c) => c.id) : [],
         );
@@ -548,7 +550,7 @@ export function useProgramData(
         const courseRows = rowsOf(coursesRes)
           .filter((c) => !c.campaign_id || !hiddenCampaignIds.has(c.campaign_id));
         const assignRows = rowsOf(assignRes);
-        const campAssignRows = rowsOf(campAssignRes);
+        const audiences = audienceRes.status === 'fulfilled' ? audienceRes.value : new Map();
         const moduleRows = rowsOf(modulesRes);
         // `fetchAll` no devuelve `{data,error}`: se lee aparte.
         const progressRows =
@@ -575,7 +577,7 @@ export function useProgramData(
         // Ya no hay `{data,error}` que mirar: `fetchAll` lanza, así que un
         // rechazo es la única forma de "no pude leer".
         const noAssignData =
-          assignRes.status !== 'fulfilled' && campAssignRes.status !== 'fulfilled';
+          assignRes.status !== 'fulfilled' && audienceRes.status !== 'fulfilled';
         setAssignmentsKnown(!noAssignData);
 
         const campaignName = new Map(campaignRows.map((c) => [c.id, c.name]));
@@ -651,7 +653,7 @@ export function useProgramData(
             icon: c.icon,
             modules: modulesPerCourse.get(c.id) ?? 0,
             mandatory: false,
-            campaignsAssigned: [],
+            byRule: false,
             directAssigned: 0,
             assigned: 0, started: 0, completed: 0, certified: 0,
             avgScore: null, pendingReviews: 0, overdue: 0, lastActivity: null,
@@ -666,6 +668,8 @@ export function useProgramData(
           // Gente del entorno de pruebas: fuera de la tabla, de los KPIs y del
           // Excel mientras el Modo pruebas esté apagado.
           if (p.campaign_id && hiddenCampaignIds.has(p.campaign_id)) continue;
+          // … y la del CR de pruebas, que es el que reemplaza al programa.
+          if (p.operation_id && hiddenUnitIds.has(p.operation_id)) continue;
           personById.set(p.id, {
             id: p.id,
             name: p.display_name || emailOf.get(p.id) || p.id.slice(0, 8),
@@ -693,7 +697,7 @@ export function useProgramData(
           if (!cell) {
             const done = doneByUserCourse.get(`${userId}|${courseId}`)?.size ?? 0;
             cell = {
-              userId, courseId, assigned: false, viaCampaign: false, mandatory: false, started: false, score: null,
+              userId, courseId, assigned: false, viaRule: false, mandatory: false, started: false, score: null,
               attempts: 0, pending: 0,
               modulesDone: done,
               modulesTotal: modulesPerCourse.get(courseId) ?? 0,
@@ -721,26 +725,22 @@ export function useProgramData(
           if (a.is_mandatory) cell.mandatory = true;
           cell.assignedAt = earliestDate(cell.assignedAt, a.assigned_at);
         }
-        // Asignación por campaña: le toca a toda la gente de esa campaña.
-        const peopleByCampaign = new Map<string, string[]>();
-        for (const p of personById.values()) {
-          if (!p.campaignId) continue;
-          const list = peopleByCampaign.get(p.campaignId) ?? [];
-          list.push(p.id);
-          peopleByCampaign.set(p.campaignId, list);
-        }
-        for (const ca of campAssignRows) {
-          const course = courseById.get(ca.course_id);
-          if (!course) continue;
-          if (!course.campaignsAssigned.includes(ca.campaign_id)) {
-            course.campaignsAssigned.push(ca.campaign_id);
-          }
-          for (const uid of peopleByCampaign.get(ca.campaign_id) ?? []) {
-            const cell = cellOf(uid, ca.course_id);
+        // Asignación por REGLA país/área/CR: le toca a quien la cumpla. Es la
+        // única vía de entrega en bloque desde que se retiró el programa; contar
+        // `course_campaigns` aquí daba "asignado" a gente a la que el curso ya
+        // no le llega. Solo cursos publicados: un borrador no le llega a nadie.
+        for (const course of courseById.values()) {
+          const rule = audiences.get(course.id);
+          if (!rule || !course.published) continue;
+          for (const person of personById.values()) {
+            if (!matchesAudience(rule, {
+              country: person.country, operation_id: person.operationId, area_id: person.areaId,
+            })) continue;
+            course.byRule = true;
+            const cell = cellOf(person.id, course.id);
             cell.assigned = true;
-            cell.viaCampaign = true;
-            if (ca.is_mandatory) cell.mandatory = true;
-            cell.assignedAt = earliestDate(cell.assignedAt, ca.assigned_at);
+            cell.viaRule = true;
+            if (rule.isMandatory) cell.mandatory = true;
           }
         }
 
@@ -924,7 +924,7 @@ export function useProgramData(
           if (cell.assigned) {
             person.assigned++;
             course.assigned++;
-            if (!cell.viaCampaign) course.directAssigned++;
+            if (!cell.viaRule) course.directAssigned++;
           }
           if (rest.overdue) { person.overdue++; course.overdue++; }
           if (cell.mandatory) { person.mandatory++; course.mandatory = true; }

@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeftRight, BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Loader2, Monitor, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { BookOpen, ChevronRight, Eye, EyeOff, GraduationCap, Monitor, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
 import {
   getModulesRaw,
-  getModuleCampaignId,
   toggleModulePublished,
   deleteModule,
-  moveModuleToCampaign,
   type DbModuleRow,
 } from '@/services/modules.service'
-import { getCoursesForCampaign, type CourseWithModules } from '@/services/courses.service'
+import { getAllCourses, type CourseWithModules } from '@/services/courses.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { getAudiences, type AudienceRule } from '@/services/audiences.service'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
 import { toast } from '@/stores/toastStore'
 import { deletionToast } from '@/lib/deletionToast'
-import type { Campaign } from '@/types/database'
+import type { OrgUnit } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -25,14 +25,10 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { AiAuthoredBadge, AI_AUTHORED_TINT } from '@/admin/components/AiAuthoredBadge'
-import { Select } from '@/components/ui/Select'
-import { Modal } from '@/components/ui/Modal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
 import { ResourcePresence } from '@/components/presence/ResourcePresence'
 import { usePresenceFocus } from '@/hooks/usePresenceFocus'
-import { usePresenceStore } from '@/stores/presenceStore'
-import { useCampaignScope, resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { LearnerPreviewModal } from '@/admin/components/LearnerPreviewModal'
 import { rowText } from '@/lib/contentLang'
 
@@ -54,11 +50,13 @@ export default function ModuleList() {
     try { localStorage.setItem(PREVIEW_HINT_KEY, '1') } catch { /* modo privado */ }
   }
 
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  // Arranca vacío y se resuelve al cargar las campañas accesibles: partir de la
-  // campaña "casa" la dejaba fija aunque el capacitador ya no la tuviera.
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('')
-  const [selectedCampaignName, setSelectedCampaignName] = useState<string>('')
+  /* Ya no hay programas en pantalla: se listan TODOS los módulos a los que se
+     tiene acceso (la base decide cuáles). `campaignIds` es solo fontanería. */
+  const [campaignIds, setCampaignIds] = useState<string[] | null>(null)
+  /** CR: deja solo los cursos cuya regla le llega (o que van a todo el mundo). */
+  const [crFilter, setCrFilter] = useState('')
+  const [units, setUnits] = useState<OrgUnit[]>([])
+  const [audiences, setAudiences] = useState<Map<string, AudienceRule>>(new Map())
   const [modules, setModules] = useState<DbModuleRow[]>([])
   const [courses, setCourses] = useState<CourseWithModules[]>([])
   const [loading, setLoading] = useState(false)
@@ -66,69 +64,26 @@ export default function ModuleList() {
   /** Se incrementa para volver a leer la lista (ver useFreshOnFocus más abajo). */
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // Mover un módulo suelto a otra campaña (los módulos dentro de un curso se
-  // mueven con el curso). moveModule = módulo elegido; el resto es el diálogo.
   // Vista previa en modal: el módulo que se está mirando como aprendiz.
   const [previewModule, setPreviewModule] = useState<DbModuleRow | null>(null)
 
-  const [moveModule, setMoveModule] = useState<DbModuleRow | null>(null)
-  const [moveTargetId, setMoveTargetId] = useState('')
-  const [movingModule, setMovingModule] = useState(false)
-
   // Foco que manda la barra de presencia: la campaña y el módulo donde está la
   // persona que se pulsó.
-  const { focusId, focusCampaignId, peerName } = usePresenceFocus('module')
+  const { focusId } = usePresenceFocus('module')
 
-  // Superadmin: todas. Capacitador: su campaña casa + donde colabora (equipos).
   useEffect(() => {
     getAccessibleCampaigns({
       isSuperAdmin,
       homeCampaignId: authCampaignId,
       userId: user?.id ?? null,
     })
-      .then((data) => {
-        setCampaigns(data)
-        setSelectedCampaignId(
-          (prev) => prev || resolveCreationCampaignId(null, data.map((c) => c.id)),
-        )
-      })
-      .catch(() => {})
+      .then((data) => setCampaignIds(data.map((c) => c.id)))
+      .catch(() => setCampaignIds([]))
+    void getOrganizations()
+      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      .then(setUnits)
+      .catch(() => setUnits([]))
   }, [isSuperAdmin, authCampaignId, user?.id])
-
-  // La campaña que se está mirando es la que se usará al crear contenido.
-  const setActiveCampaignId = useCampaignScope((s) => s.setActiveCampaignId)
-  useEffect(() => {
-    if (selectedCampaignId) setActiveCampaignId(selectedCampaignId)
-  }, [selectedCampaignId, setActiveCampaignId])
-
-  // Si la presencia no trajo la campaña (hay vistas que no la publican), la
-  // resolvemos desde el módulo mismo. Sin esto la lista se queda en la campaña
-  // equivocada y el módulo señalado sencillamente "no aparece".
-  const [resolvedCampaignId, setResolvedCampaignId] = useState<string | null>(null)
-  useEffect(() => {
-    if (!focusId || focusCampaignId) return
-    let alive = true
-    getModuleCampaignId(focusId)
-      .then((id) => { if (alive) setResolvedCampaignId(id) })
-      .catch(() => {})
-    return () => { alive = false }
-  }, [focusId, focusCampaignId])
-
-  // Venimos siguiendo a alguien: plantarse en SU campaña. Solo si es una a la
-  // que tengo acceso — un capacitador no puede saltar a la campaña de otro.
-  const targetCampaignId = focusCampaignId ?? resolvedCampaignId
-  useEffect(() => {
-    if (!targetCampaignId) return
-    if (campaigns.length > 0 && !campaigns.some((c) => c.id === targetCampaignId)) return
-    setSelectedCampaignId(targetCampaignId)
-  }, [targetCampaignId, campaigns])
-
-  // Publico qué campaña estoy mirando, para que quien me siga aterrice en ella.
-  const setViewCampaign = usePresenceStore((s) => s.setViewCampaign)
-  useEffect(() => {
-    setViewCampaign(selectedCampaignId || null)
-    return () => setViewCampaign(null)
-  }, [selectedCampaignId, setViewCampaign])
 
   // Traer a la vista el módulo resaltado (la lista puede ser larga).
   const focusRef = useRef<HTMLDivElement | null>(null)
@@ -137,34 +92,30 @@ export default function ModuleList() {
     focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [focusId, loading, modules])
 
-  // Mantiene el nombre de la campaña seleccionada en sincronía.
   useEffect(() => {
-    setSelectedCampaignName(campaigns.find((c) => c.id === selectedCampaignId)?.name ?? '')
-  }, [campaigns, selectedCampaignId])
-
-  useEffect(() => {
-    if (!selectedCampaignId) return
+    if (!campaignIds) return
     // Esqueleto solo la primera vez: los refrescos de fondo no deben parpadear.
     if (modules.length === 0) setLoading(true)
     setError(null)
     Promise.all([
-      getModulesRaw(selectedCampaignId),
-      getCoursesForCampaign(selectedCampaignId).catch(() => [] as CourseWithModules[]),
+      Promise.all(campaignIds.map((id) => getModulesRaw(id))).then((lists) => lists.flat()),
+      getAllCourses().catch(() => [] as CourseWithModules[]),
     ])
       .then(([mods, crs]) => {
         setModules(mods)
         setCourses(crs)
+        getAudiences(crs.map((c) => c.id)).then(setAudiences).catch(() => setAudiences(new Map()))
       })
       .catch(() => setError(t('admin.modules.error_load')))
       .finally(() => setLoading(false))
     // `modules` solo decide el esqueleto; no puede volver a disparar la carga.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCampaignId, t, refreshKey])
+  }, [campaignIds, t, refreshKey])
 
   // Trae lo último al volver a esta pestaña o cuando otra guarda un módulo/curso.
   useFreshOnFocus(() => setRefreshKey((k) => k + 1), {
     topics: ['modules', 'courses'],
-    enabled: !!selectedCampaignId,
+    enabled: !!campaignIds,
   })
 
   const handleTogglePublished = async (mod: DbModuleRow) => {
@@ -195,27 +146,6 @@ export default function ModuleList() {
     }
   }
 
-  const handleMoveModule = async () => {
-    if (!moveModule || !moveTargetId || moveTargetId === selectedCampaignId) return
-    setMovingModule(true)
-    try {
-      await moveModuleToCampaign(moveModule.id, moveTargetId)
-      setModules((prev) => prev.filter((m) => m.id !== moveModule.id))
-      const targetName = campaigns.find((c) => c.id === moveTargetId)?.name ?? ''
-      toast.success(t('admin.modules.move_ok', { name: targetName }))
-      setMoveModule(null)
-      setMoveTargetId('')
-    } catch (e) {
-      toast.error(
-        t('admin.modules.move_error'),
-        e instanceof Error ? e.message : undefined,
-      )
-    } finally {
-      setMovingModule(false)
-    }
-  }
-
-
   // Agrupar módulos por curso para reflejar la jerarquía Campaña → Curso → Módulo.
   const { courseGroups, orphans } = useMemo(() => {
     const byCourse = new Map<string, DbModuleRow[]>()
@@ -240,10 +170,16 @@ export default function ModuleList() {
         ),
       }))
       .filter((g) => g.modules.length > 0)
-    return { courseGroups: groups, orphans: orphanList }
-  }, [modules, courses])
+      .filter((g) => {
+        if (!crFilter) return true
+        const rule = audiences.get(g.id)
+        return !!rule && (rule.everyone || rule.operationIds.includes(crFilter))
+      })
+    // Con un CR elegido, los sueltos no le llegan a nadie: no se listan.
+    return { courseGroups: groups, orphans: crFilter ? [] : orphanList }
+  }, [modules, courses, crFilter, audiences])
 
-  const renderModule = (mod: DbModuleRow, idx: number, movable = false) => (
+  const renderModule = (mod: DbModuleRow, idx: number) => (
     <GlassCard
       key={mod.id}
       intensity="subtle"
@@ -307,16 +243,6 @@ export default function ModuleList() {
             {mod.is_published ? t('admin.modules.unpublish') : t('admin.modules.publish')}
           </button>
 
-          {movable && campaigns.length > 1 && (
-            <button
-              onClick={() => { setMoveModule(mod); setMoveTargetId('') }}
-              className="min-h-[44px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text hover:bg-glass/8 transition-colors"
-            >
-              <ArrowLeftRight className="h-3.5 w-3.5" />
-              {t('admin.modules.move_action')}
-            </button>
-          )}
-
           <button
             onClick={() => handleDelete(mod)}
             className="min-h-[44px] flex items-center gap-1.5 px-2.5 rounded-lg text-[12px] font-medium text-text-subtle hover:text-danger hover:bg-danger/8 transition-colors"
@@ -357,15 +283,10 @@ export default function ModuleList() {
             <GradientHeading as="h1" variant="white" size="headline">
               {t('admin.modules.title')}
             </GradientHeading>
-            {selectedCampaignName && (
-              <p className="text-text-muted text-[13px] mt-1">
-                {t('admin.modules.campaign_label')} <span className="font-medium text-text">{selectedCampaignName}</span>
-              </p>
-            )}
           </div>
           <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
             <Link
-              to={`/admin/import${selectedCampaignId ? `?campaign=${selectedCampaignId}` : ''}`}
+              to="/admin/import"
               className="w-full sm:w-auto"
             >
               <Button variant="secondary" className="flex items-center gap-1.5 w-full sm:w-auto" title={t('admin.modules.import_ai_hint')}>
@@ -374,7 +295,7 @@ export default function ModuleList() {
               </Button>
             </Link>
             <Link
-              to={`/admin/modules/new${selectedCampaignId ? `?campaign=${selectedCampaignId}` : ''}`}
+              to="/admin/modules/new"
               className="w-full sm:w-auto"
             >
               <Button variant="neon" className="flex items-center gap-1.5 w-full sm:w-auto">
@@ -386,18 +307,16 @@ export default function ModuleList() {
         </div>
       </div>
 
-      {/* Selector de campaña (superadmin, o capacitador con varias campañas) */}
-      {campaigns.length > 1 && (
+      {/* Filtro por CR: los módulos de los cursos que le llegan a ese CR. */}
+      {units.some((u) => u.kind === 'operation') && (
         <div className="mb-6">
           <FilterDropdown
-            value={selectedCampaignId}
-            onChange={(v) => {
-              setSelectedCampaignId(v)
-              setSelectedCampaignName(
-                campaigns.find((c) => c.id === v)?.name ?? '',
-              )
-            }}
-            options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+            value={crFilter}
+            onChange={setCrFilter}
+            options={[
+              { value: '', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
+              ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
+            ]}
             className="max-w-xs"
           />
         </div>
@@ -423,7 +342,7 @@ export default function ModuleList() {
             <BookOpen className="h-10 w-10 text-text-muted mx-auto mb-3" />
             <p className="text-text-muted text-[14px] mb-2">{t('admin.modules.empty_title')}</p>
             <p className="text-text-subtle text-[12px] mb-6">{t('admin.modules.empty_hint')}</p>
-            <Link to={`/admin/modules/new${selectedCampaignId ? `?campaign=${selectedCampaignId}` : ''}`}>
+            <Link to="/admin/modules/new">
               <Button variant="neon" className="flex items-center gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
                 {t('admin.modules.create_first')}
@@ -462,7 +381,7 @@ export default function ModuleList() {
                   <span className="text-[11px] text-text-subtle shrink-0">{orphans.length}</span>
                 </div>
                 <div className="space-y-3">
-                  {orphans.map((mod, idx) => renderModule(mod, idx, true))}
+                  {orphans.map((mod, idx) => renderModule(mod, idx))}
                 </div>
               </div>
             )}
@@ -484,46 +403,6 @@ export default function ModuleList() {
         />
       )}
 
-      {/* Mover un módulo suelto a otra campaña */}
-      {moveModule && (
-        <Modal
-          onClose={() => setMoveModule(null)}
-          title={t('admin.modules.move_title')}
-          subtitle={t('admin.modules.move_hint', { title: rowText(moveModule) })}
-          icon={<ArrowLeftRight className="h-4 w-4" />}
-          dismissible={!movingModule}
-          footer={
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setMoveModule(null)} disabled={movingModule}>
-                {t('admin.modules.move_cancel')}
-              </Button>
-              <Button
-                variant="neon"
-                size="sm"
-                onClick={handleMoveModule}
-                disabled={movingModule || !moveTargetId}
-                className="flex items-center gap-1.5"
-              >
-                {movingModule ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
-                {t('admin.modules.move_action')}
-              </Button>
-            </>
-          }
-        >
-          <Select
-            value={moveTargetId}
-            onChange={setMoveTargetId}
-            disabled={movingModule}
-            placeholder={t('admin.modules.move_placeholder')}
-            options={[
-              { value: '', label: t('admin.modules.move_placeholder') },
-              ...campaigns
-                .filter((c) => c.id !== selectedCampaignId)
-                .map((c) => ({ value: c.id, label: c.name })),
-            ]}
-          />
-        </Modal>
-      )}
     </div>
   )
 }

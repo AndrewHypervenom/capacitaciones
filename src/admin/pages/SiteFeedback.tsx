@@ -751,7 +751,7 @@ export default function SiteFeedback() {
 
 /* ═══════════════════════ Lista ═══════════════════════ */
 
-function ListItem({ row: r, index, summary, selected, isSuperAdmin, viewerId, onSelect }: {
+function ListItem({ row: r, index, summary, selected, viewerId, onSelect }: {
   row: SiteFeedbackRow
   index: number
   summary: ThreadSummary
@@ -818,7 +818,6 @@ function ListItem({ row: r, index, summary, selected, isSuperAdmin, viewerId, on
           </p>
           <p className="mt-1 truncate text-[11px] text-text-muted">
             {r.display_name ?? t('admin.site_feedback.user_fallback', 'Usuario')}
-            {isSuperAdmin && r.campaign_name ? ` · ${r.campaign_name}` : ''}
             {' · '}{fmtDate(r.created_at)}
             {mood ? ` · ${mood.emoji}` : ''}
           </p>
@@ -1008,12 +1007,6 @@ function Detail({
               <span>{t(`site_feedback.kind.${r.kind}.label`)}</span>
               <span>·</span>
               <span className="truncate">{fmtFullDate(r.created_at)}</span>
-              {isSuperAdmin && r.campaign_name && (
-                <>
-                  <span>·</span>
-                  <span className="truncate">{r.campaign_name}</span>
-                </>
-              )}
             </p>
           </div>
 
@@ -1241,7 +1234,6 @@ function Detail({
                 <div className="mt-2.5 space-y-1.5">
                   <TechRow label={t('admin.site_feedback.d_path', 'Ruta')} value={r.page ?? '—'} mono />
                   <TechRow label={t('admin.site_feedback.d_lang', 'Idioma')} value={r.lang?.toUpperCase() ?? '—'} />
-                  <TechRow label={t('admin.site_feedback.d_campaign', 'Campaña')} value={r.campaign_name ?? '—'} />
                   <TechRow label={t('admin.site_feedback.d_id', 'ID')} value={r.id} mono />
                 </div>
                 {r.meta && Object.keys(r.meta).length > 0 && (

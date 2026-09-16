@@ -279,6 +279,10 @@ export interface Database {
            *  'manual' la creó alguien en /admin/units. Es lo que pinta en verde
            *  los CR nuevos mientras dura la transición. */
           origin: 'manual' | 'roster'
+          /** CR de pruebas: su gente no entra en KPIs, reportes ni Excel
+           *  mientras el Modo pruebas esté apagado. Reemplaza al programa de
+           *  prueba. Opcional hasta correr el SQL. */
+          is_test?: boolean | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null

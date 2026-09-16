@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users, AlertCircle, TrendingUp, TrendingDown, Trophy, Building2, Minus } from 'lucide-react'
+import { Loader2, Search, ChevronDown, ChevronRight, Bot, Coins, Cpu, Users, AlertCircle, TrendingUp, TrendingDown, Trophy, Minus } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 import { FadeIn, Stagger, StaggerItem, ease } from '@/components/ui/motion'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
@@ -237,17 +237,12 @@ export default function AiUsage() {
             )}
           </FadeIn>
 
-          {/* ── Quién consumió + Qué campaña ── */}
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+          {/* ── Quién consumió ── */}
+          <section className="grid grid-cols-1 gap-4 mb-5">
             <Leaderboard
               title={t('admin.ai_usage.top_users')} icon={Trophy}
               rows={data.topUsers} totalCost={data.kpis.costUsd}
               empty={t('admin.ai_usage.no_data')} ranked
-            />
-            <Leaderboard
-              title={t('admin.ai_usage.by_campaign')} icon={Building2}
-              rows={data.byCampaign} totalCost={data.kpis.costUsd}
-              empty={t('admin.ai_usage.no_data')}
             />
           </section>
 

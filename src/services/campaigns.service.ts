@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getTestUnitIds } from '@/services/org.service'
 import { chunk } from '@/lib/chunk'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import type { Campaign, CollaboratorProfile } from '@/types/database'
@@ -198,14 +199,20 @@ export async function assertSameTestScope(campaignIds: string[]): Promise<void> 
  * campaña `is_test`), salvo que el Modo pruebas esté encendido. Se usa donde el
  * superadmin lee perfiles sin acotar por campaña (p. ej. /admin/users).
  */
-export async function withoutTestPeople<T extends { campaign_id: string | null }>(
+export async function withoutTestPeople<T extends { campaign_id: string | null; operation_id?: string | null }>(
   rows: T[],
   isSuperAdmin: boolean,
 ): Promise<T[]> {
   if (!shouldHideTestData(isSuperAdmin)) return rows
-  const testIds = new Set(await getTestCampaignIds())
-  if (testIds.size === 0) return rows
-  return rows.filter((r) => !r.campaign_id || !testIds.has(r.campaign_id))
+  const [campIds, unitIds] = await Promise.all([getTestCampaignIds(), getTestUnitIds()])
+  const testCamps = new Set(campIds)
+  // El CR de pruebas es el que manda ahora; la marca vieja del programa se
+  // sigue respetando para no destapar de golpe lo que ya estaba aislado.
+  const testUnits = new Set(unitIds)
+  if (testCamps.size === 0 && testUnits.size === 0) return rows
+  return rows.filter((r) =>
+    !(r.campaign_id && testCamps.has(r.campaign_id)) &&
+    !(r.operation_id && testUnits.has(r.operation_id)))
 }
 
 /**

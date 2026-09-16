@@ -8,7 +8,6 @@ import { stripMarkdown } from '@/components/ui/RichText'
 import { supabase } from '@/lib/supabase'
 import { requestDeletion } from '@/services/audit.service'
 import type { Json } from '@/types/database'
-import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FadeIn } from '@/components/ui/motion'
@@ -108,7 +107,6 @@ export default function LearningMissions() {
   const [saving, setSaving] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [form, setForm] = useState<MissionForm>(emptyForm())
-  const [filterCampaign, setFilterCampaign] = useState<string>('all')
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
@@ -147,7 +145,7 @@ export default function LearningMissions() {
   }, [authLoading, scopedToCampaign, campaignId])
 
   const openModal = () => {
-    setForm({ ...emptyForm(), campaign_id: scopedToCampaign ? (campaignId ?? '') : '' })
+    setForm({ ...emptyForm(), campaign_id: campaignId ?? campaigns[0]?.id ?? '' })
     setIsModalOpen(true)
   }
 
@@ -199,7 +197,7 @@ export default function LearningMissions() {
       title: form.title.trim(),
       description: form.description.trim(),
       category: form.category || null,
-      campaign_id: form.campaign_id || null,
+      campaign_id: form.campaign_id || campaignId || campaigns[0]?.id || null,
       steps: form.steps.filter(s => s.title.trim()) as unknown as Json,
     }
 
@@ -276,16 +274,6 @@ export default function LearningMissions() {
           Diseña rutas de aprendizaje paso a paso con objetivos claros
         </p>
 
-        {/* Campaign filter — solo para superadmin */}
-        {!loading && campaigns.length > 0 && !scopedToCampaign && (
-          <FilterDropdown
-            value={filterCampaign === 'all' ? '' : filterCampaign}
-            onChange={v => setFilterCampaign(v || 'all')}
-            options={[{ value: '', label: t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
-            className="mb-5 max-w-xs"
-          />
-        )}
-
         {/* Loading skeleton */}
         {loading ? (
           <div className="grid md:grid-cols-2 gap-4">
@@ -318,8 +306,7 @@ export default function LearningMissions() {
         ) : (
           /* Mission cards grid */
           <FadeIn className="grid md:grid-cols-2 gap-4" y={16}>
-            {missions.filter(m => filterCampaign === 'all' || m.campaign_id === filterCampaign).map(m => {
-              const campaignName = campaigns.find(c => c.id === m.campaign_id)?.name
+            {missions.map(m => {
               return (
                 <div
                   key={m.id}
@@ -341,11 +328,6 @@ export default function LearningMissions() {
                           style={{ background: 'rgba(16,212,81,0.10)', color: '#10D451' }}
                         >
                           {m.category}
-                        </span>
-                      )}
-                      {campaignName && (
-                        <span className="shrink-0 text-[10px] text-text-subtle px-2 py-0.5 rounded-full bg-subtle">
-                          {campaignName}
                         </span>
                       )}
                     </div>
@@ -457,21 +439,6 @@ export default function LearningMissions() {
                     rows={3}
                   />
                 </div>
-
-                {/* Campaña — solo para superadmin */}
-                {campaigns.length > 0 && !scopedToCampaign && (
-                  <div>
-                    <label className="block text-[12px] font-medium text-text-muted mb-1.5">{i18n.t('admin.worlds.campaign')}</label>
-                    <Select
-                      value={form.campaign_id}
-                      onChange={v => setForm(f => ({ ...f, campaign_id: v }))}
-                      options={[
-                        { value: '', label: i18n.t('admin.worlds.no_campaign') },
-                        ...campaigns.map(c => ({ value: c.id, label: c.name })),
-                      ]}
-                    />
-                  </div>
-                )}
 
                 {/* Categoría */}
                 <div>

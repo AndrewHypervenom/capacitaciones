@@ -132,6 +132,21 @@ export async function getAudience(courseId: string): Promise<AudienceRule | null
   return data ? toRule(data as CourseAudience) : null
 }
 
+/**
+ * TODAS las reglas visibles, sin lista de ids: para los tableros que cruzan
+ * cada persona con cada curso (una URL con cientos de ids da 400).
+ */
+export async function getAllAudiences(): Promise<Map<string, AudienceRule>> {
+  const out = new Map<string, AudienceRule>()
+  const { data, error } = await supabase.from('course_audiences').select('*')
+  if (error) {
+    if (isMissingSchema(error)) return out
+    throw error
+  }
+  for (const row of (data ?? []) as CourseAudience[]) out.set(row.course_id, toRule(row))
+  return out
+}
+
 /** Las reglas de varios cursos de una vez, para pintar un listado. */
 export async function getAudiences(courseIds: string[]): Promise<Map<string, AudienceRule>> {
   const out = new Map<string, AudienceRule>()

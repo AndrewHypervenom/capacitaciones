@@ -5,7 +5,6 @@ import {
   Loader2, Zap, X, BarChart2, RefreshCw, Pencil, Users, Clock, AlertTriangle,
 } from 'lucide-react'
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion'
-import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { supabase } from '@/lib/supabase'
 import { toUtcMs } from '@/lib/datetime'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
@@ -103,7 +102,6 @@ export default function LiveQuizAdmin() {
   const [quizzes, setQuizzes] = useState<LiveQuiz[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loadingList, setLoadingList] = useState(true)
-  const [filterCampaign, setFilterCampaign] = useState<string>('all')
 
   // Formulario de creación / edición
   const [formTitle, setFormTitle] = useState('')
@@ -302,12 +300,11 @@ export default function LiveQuizAdmin() {
 
     const steps: Step[] = [
       { id: 'title', label: t('livequiz.step_title'), done: !badTitle, hint: t('livequiz.issue_title') },
-      {
-        id: 'campaign',
-        label: t('livequiz.step_campaign'),
-        done: !badCampaign,
-        hint: campaigns.length === 0 ? t('livequiz.issue_no_campaign') : t('livequiz.issue_campaign'),
-      },
+      // El espacio donde se guarda se elige solo; este paso solo aparece si la
+      // persona no tiene dónde guardar (sin permiso para crear contenido).
+      ...(badCampaign
+        ? [{ id: 'campaign', label: t('livequiz.step_campaign'), done: false, hint: t('livequiz.issue_no_campaign') }]
+        : []),
     ]
 
     formQuestions.forEach((q, i) => {
@@ -585,13 +582,7 @@ export default function LiveQuizAdmin() {
     )
 
   // ── Lista filtrada ──────────────────────────────────────────────────────────
-  const filteredQuizzes = filterCampaign === 'all'
-    ? quizzes
-    : quizzes.filter((q) => q.campaign_id === filterCampaign)
-
-  // Mostrar filtro/columna de campaña cuando el usuario abarca más de una
-  // (superadmin, o capacitador con campañas compartidas).
-  const showCampaignCol = campaigns.length > 1
+  const filteredQuizzes = quizzes
 
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
@@ -628,29 +619,6 @@ export default function LiveQuizAdmin() {
         </div>
       )}
 
-      {/* Filtro de campaña (cuando el usuario abarca más de una) */}
-      {showCampaignCol && (
-        <div className="flex gap-2 flex-wrap mb-5">
-          <button
-            onClick={() => setFilterCampaign('all')}
-            className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === 'all' ? 'text-[#10D451]' : 'bg-subtle text-text-muted hover:text-text'}`}
-            style={filterCampaign === 'all' ? { background: 'rgba(16,212,81,0.12)', border: '1px solid rgba(16,212,81,0.3)' } : {}}
-          >
-            {i18n.t('livequiz.filter_all')}
-          </button>
-          {campaigns.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setFilterCampaign(c.id)}
-              className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1 rounded-full text-[12px] transition-colors ${filterCampaign === c.id ? 'text-[#10D451]' : 'bg-subtle text-text-muted hover:text-text'}`}
-              style={filterCampaign === c.id ? { background: 'rgba(16,212,81,0.12)', border: '1px solid rgba(16,212,81,0.3)' } : {}}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-      )}
-
       {loadingList ? (
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 text-text-subtle animate-spin" /></div>
       ) : filteredQuizzes.length === 0 ? (
@@ -660,27 +628,22 @@ export default function LiveQuizAdmin() {
       ) : (
         <FadeIn className="rounded-2xl border border-line overflow-x-auto" y={14}>
         <div className="min-w-[720px]">
-          <div className={`grid ${showCampaignCol ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
+          <div className={`grid grid-cols-[1fr_auto_auto_auto] gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle`}>
             <span>{i18n.t('admin.livequiz.col_title')}</span>
-            {showCampaignCol && <span>{i18n.t('admin.worlds.campaign')}</span>}
             <span>PIN</span>
             <span>{i18n.t('admin.livequiz.col_status')}</span>
             <span />
           </div>
           {filteredQuizzes.map((q) => {
-            const campName = campaigns.find((c) => c.id === q.campaign_id)?.name
             return (
               <div
                 key={q.id}
-                className={`grid ${showCampaignCol ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-4 px-5 py-4 items-center border-t border-line transition-colors hover:bg-subtle/40`}
+                className={`grid grid-cols-[1fr_auto_auto_auto] gap-4 px-5 py-4 items-center border-t border-line transition-colors hover:bg-subtle/40`}
               >
                 <div>
                   <div className="text-[13px] text-text">{q.title}</div>
                   <div className="text-[11px] text-text-subtle">{q.questions.length} pregunta{q.questions.length !== 1 ? 's' : ''}</div>
                 </div>
-                {showCampaignCol && (
-                  <span className="text-[11px] text-text-muted truncate max-w-[120px]">{campName ?? '—'}</span>
-                )}
                 <span className="font-mono text-[13px] text-text-muted">{q.pin}</span>
                 <span className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${
                   q.status === 'lobby' ? 'bg-yellow-400/10 text-yellow-400' :
@@ -807,28 +770,8 @@ export default function LiveQuizAdmin() {
             <p className="text-[11px] text-red-400 mt-1.5">{i18n.t('livequiz.issue_title')}</p>
           )}
         </div>
-        {campaigns.length > 1 ? (
-          <div>
-            <FilterDropdown
-              value={formCampaign}
-              onChange={setFormCampaign}
-              options={[
-                { value: '', label: i18n.t('livequiz.select_campaign') },
-                ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-            {showIssues && check.badCampaign && (
-              <p className="text-[11px] text-red-400 mt-1.5">{i18n.t('livequiz.issue_campaign')}</p>
-            )}
-          </div>
-        ) : (
-          // Con una sola campaña no hay nada que elegir, pero sí que confirmar:
-          // el capacitador debe saber dónde va a quedar el quiz.
-          <p className="text-[11px] text-text-subtle">
-            {campaigns.length === 1
-              ? i18n.t('livequiz.create_target', { name: campaigns[0].name })
-              : i18n.t('livequiz.issue_no_campaign')}
-          </p>
+        {campaigns.length === 0 && (
+          <p className="text-[11px] text-text-subtle">{i18n.t('livequiz.issue_no_campaign')}</p>
         )}
 
         {/* Vigencia del código — solo al crear */}

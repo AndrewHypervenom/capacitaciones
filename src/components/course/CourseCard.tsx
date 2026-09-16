@@ -305,11 +305,10 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
                 es lo que le sirve para orientarse y filtrar. La campaña dueña es
                 información de gestión y desapareció de su vista: no le decía
                 nada y le hacía preguntarse a qué "programa" pertenecía.
-                Al staff sí se le sigue mostrando la campaña, porque para él es
-                el dato operativo (quién administra el curso).
+                Al staff tampoco: el programa se retiró del sitio (2026-09-16).
                 El Tooltip vive en un portal: el nombre completo no se recorta. */}
             {(() => {
-              const etiqueta = isStaff ? course.campaign_name : course.category_name
+              const etiqueta = course.category_name
               if (!etiqueta) return null
               if (isStaff && course.isAssigned) return null
               return (

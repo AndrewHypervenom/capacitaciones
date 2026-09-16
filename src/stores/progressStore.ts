@@ -233,6 +233,20 @@ export interface ProgressState {
   recheckBadges: (modules: (ModuleKey & { courseId?: string | null })[]) => string[];
   reset: () => void;
   /**
+   * De quién es esta caché. El localStorage es del NAVEGADOR, no de la persona:
+   * en un puesto compartido (call center) el que entraba después heredaba los
+   * módulos, el XP y las respuestas del anterior, y `useProgressSync` los
+   * espejaba a SU fila de `user_progress`. `null` = caché de dueño desconocido
+   * (anterior a este campo, o recién cerrada la sesión).
+   */
+  ownerId: string | null;
+  /**
+   * Se queda con la caché para `userId`. Si era de otra persona —o de nadie
+   * sabido— la vacía antes: lo que de verdad es suyo vuelve de la BD con
+   * `hydrateFromServer`. Devuelve true si tuvo que vaciarla.
+   */
+  claimOwner: (userId: string) => boolean;
+  /**
    * Rehidrata la caché local desde el espejo de BD (`user_progress`). Es SIEMPRE
    * aditiva: une módulos e insignias y toma el máximo de xp/racha, nunca borra.
    * Así, si el localStorage se pierde (otro navegador, otro equipo, limpieza de
@@ -425,6 +439,14 @@ export const useProgressStore = create<ProgressState>()(
       reviewXPToday: 0,
       courseReviewRound: {},
       courseReviewCount: {},
+      ownerId: null,
+
+      claimOwner: (userId) => {
+        if (get().ownerId === userId) return false;
+        get().reset();
+        set({ ownerId: userId });
+        return true;
+      },
 
       // Núcleo del motor: recorre las defs habilitadas y otorga las que cumplen.
       evaluateBadges: (metrics) => {
@@ -882,6 +904,9 @@ export const useProgressStore = create<ProgressState>()(
 
       mergeFromTab: (incoming) => {
         const s = get();
+        // Otra pestaña con OTRA persona (se cambió de cuenta allí): lo suyo no
+        // se suma aquí, o se reabriría la fuga entre puestos compartidos.
+        if (incoming.ownerId !== undefined && incoming.ownerId !== s.ownerId) return;
         const union = (a: string[] = [], b: string[] = []) => [...new Set([...a, ...b])];
         const maxOf = (a: number, b: number | undefined) => Math.max(a, b ?? 0);
 

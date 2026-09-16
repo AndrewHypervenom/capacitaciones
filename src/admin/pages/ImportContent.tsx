@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import i18n from '@/i18n'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -23,10 +23,8 @@ import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { Button } from '@/components/ui/Button'
 import { FileDropZone } from '@/components/ui/FileDropZone'
 import { OptionToggleRow } from '@/components/ui/OptionToggleRow'
-import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
-import type { Campaign } from '@/types/database'
 import { rowText } from '@/lib/contentLang'
 
 // El documento completo se convierte en UN solo módulo (no se divide en varios).
@@ -41,7 +39,6 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
   const [searchParams] = useSearchParams()
   const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
 
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // Se resuelve al cargar las campañas accesibles (URL → panel → primera). NO se
   // parte de la campaña "casa": creando desde la campaña B, el módulo se guardaba
   // en la casa A.
@@ -70,7 +67,6 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
       userId: user?.id ?? null,
     })
       .then((data) => {
-        setCampaigns(data)
         const ids = data.map((c) => c.id)
         setCampaignId((prev) =>
           prev && ids.includes(prev)
@@ -95,10 +91,6 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
       .catch(() => {})
   }, [courseId])
 
-  const campaignName = useMemo(
-    () => campaigns.find((c) => c.id === campaignId)?.name,
-    [campaigns, campaignId],
-  )
 
   const extractFile = async (file: File, manual: boolean) => {
     setError(null)
@@ -152,7 +144,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
       {!embedded && (
         <div className="mb-6 sm:mb-8">
           <Link
-            to={course ? `/admin/courses/${courseId}` : '/admin/campaigns'}
+            to={course ? `/admin/courses/${courseId}` : '/admin/modules'}
             className="inline-flex items-center gap-1.5 text-[12px] text-text-subtle hover:text-text transition-colors mb-4"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> {course ? i18n.t('admin.import.back_to_course') : i18n.t('admin.import.back_to_campaigns')}
@@ -174,23 +166,6 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
         <AiCreditsNotice className="mb-5" />
         <AiQuotaNotice className="mb-5" />
         <AiReviewNotice className="mb-5" />
-        {/* Campaña destino */}
-        {campaigns.length > 1 && (
-          <div className="mb-5">
-            <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
-              {i18n.t('admin.import.campaign_target')}
-            </label>
-            <FilterDropdown
-              value={campaignId}
-              onChange={setCampaignId}
-              options={[
-                { value: '', label: i18n.t('admin.import.select_campaign_dash') },
-                ...campaigns.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-          </div>
-        )}
-
         {/* Archivo */}
         <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
           {i18n.t('admin.import.source_document')}

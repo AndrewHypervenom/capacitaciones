@@ -173,6 +173,36 @@ export async function createOrgUnit(input: {
   return data as OrgUnit
 }
 
+// ─── CR de pruebas ────────────────────────────────────────────────────────
+// Reemplaza al «programa de prueba»: la gente de un CR marcado no cuenta en
+// KPIs, reportes ni Excel mientras el Modo pruebas esté apagado.
+
+let testUnitIdsCache: Promise<string[]> | null = null
+
+/** Ids de los CR de pruebas. Si la columna no existe todavía, ninguno. */
+export async function getTestUnitIds(): Promise<string[]> {
+  if (!testUnitIdsCache) {
+    testUnitIdsCache = (async () => {
+      try {
+        const { data, error } = await supabase.from('org_units').select('id').eq('is_test', true)
+        if (error) return []
+        return (data ?? []).map((r) => (r as { id: string }).id)
+      } catch {
+        return []
+      }
+    })()
+  }
+  return testUnitIdsCache
+}
+
+/** Marca o desmarca un CR como de pruebas. Es una orden: se aplica al momento. */
+export async function setOrgUnitTest(id: string, isTest: boolean): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from('org_units') as any).update({ is_test: isTest }).eq('id', id)
+  if (error) throw error
+  testUnitIdsCache = null
+}
+
 export async function renameOrgUnit(id: string, name: string): Promise<void> {
   const clean = name.trim()
   if (!clean) throw new Error('La unidad necesita un nombre.')

@@ -4,6 +4,8 @@ import { ChevronDown, ChevronRight, Download, Loader2, Search, Globe2, AlertTria
 import { supabase } from '@/lib/supabase'
 import { getMyPeopleIds, getOrganizations, getOrgUnits } from '@/services/org.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
+import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
+import { cn } from '@/lib/cn'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
@@ -11,7 +13,7 @@ import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
 import { pickLang } from '@/lib/contentLang'
 import StarDisplay from '@/components/StarDisplay'
-import { PanelHeader, InsightBanner, StatStrip } from './progress/ProgressChrome'
+import { PanelHeader, InsightBanner, StatStrip, PickCourseFirst } from './progress/ProgressChrome'
 import type { OrgUnit } from '@/types/database'
 
 const WORLD_ACCENT = 'rgb(var(--brand-green))'
@@ -26,8 +28,10 @@ interface Profile {
   display_name: string | null
   campaign_id: string | null
   is_active?: boolean | null
+  country?: string | null
   operation_id?: string | null
   area_id?: string | null
+  is_client?: boolean | null
 }
 interface Progress { user_id: string; level_id: string; world_id: string; score: number }
 interface Attempt { id: string; level_id: string; score: number; completed_at: string }
@@ -55,8 +59,7 @@ interface WorldStat {
   worldId: string
   worldName: string
   worldIcon: string
-  /** Campaña y curso DEL MUNDO (no de la persona): con eso filtran los selectores. */
-  campaignId: string | null
+  /** Curso DEL MUNDO (no de la persona): con eso filtran los selectores. */
   courseId: string | null
   completedLevels: number
   totalLevels: number
@@ -67,8 +70,6 @@ interface WorldStat {
 interface LearnerRow {
   userId: string
   displayName: string
-  campaignId: string | null
-  campaignName: string
   /** CR y área de la persona: los ejes con los que ahora se acota todo. */
   operationId: string | null
   areaId: string | null
@@ -97,18 +98,24 @@ export default function FeedbackPanel() {
   const scopedToCampaign = !isSuperAdmin
 
   const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState<LearnerRow[]>([])
+  /* Datos en bruto: las filas se arman en memoria para el CURSO elegido. */
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [progress, setProgress] = useState<Progress[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [worlds, setWorlds] = useState<World[]>([])
   const [levels, setLevels] = useState<WorldLevel[]>([])
-  const [filterCampaign, setFilterCampaign] = useState('all')
   /* CR y área: los mismos cortes que el Panorama, para que las tres vistas de
      Progreso se filtren igual. Se comparan por id, no por nombre. */
   const [filterOperation, setFilterOperation] = useState('all')
   const [filterArea, setFilterArea] = useState('all')
   const [units, setUnits] = useState<OrgUnit[]>([])
   const [filterWorld, setFilterWorld] = useState('all')
+  /* El CURSO es obligatorio: sin él no se muestra nada. Es el mismo criterio
+     del Panorama y de Simulaciones, para que las tres vistas se usen igual. */
   const [filterCourse, setFilterCourse] = useState('all')
+  const courseChosen = filterCourse !== 'all'
+  /** A quién le llega el curso elegido: asignación individual + regla. */
+  const [reach, setReach] = useState<{ courseId: string; assigned: Set<string>; rule: AudienceRule | null; published: boolean } | null>(null)
   /** curso → título, solo de los cursos que tienen mundos. */
   const [courseTitles, setCourseTitles] = useState<Map<string, string>>(new Map())
   const [search, setSearch] = useState('')
@@ -148,7 +155,7 @@ export default function FeedbackPanel() {
       }).catch(() => [] as Campaign[])
       const ids = accessible.map((c) => c.id)
       if (scopedToCampaign && ids.length === 0) {
-        if (!cancelled) { setCampaigns([]); setRows([]) }
+        if (!cancelled) { setCampaigns([]); setProfiles([]); setProgress([]) }
         return
       }
       const scope = ids.length ? ids : ['']
@@ -210,94 +217,14 @@ export default function FeedbackPanel() {
         }
       }
 
+      if (cancelled) return
       setCampaigns(camps)
       setWorlds(ws)
       setCourseTitles(courseMap)
       setLevels(lvls)
+      setProfiles(profiles)
+      setProgress(progress)
 
-      const campMap = new Map(camps.map(c => [c.id, c.name]))
-      const levelsByWorld = new Map<string, WorldLevel[]>()
-      lvls.forEach(l => {
-        const arr = levelsByWorld.get(l.world_id) ?? []
-        arr.push(l)
-        levelsByWorld.set(l.world_id, arr)
-      })
-      const levelMap = new Map(lvls.map(l => [l.id, l]))
-
-      const progressByUserWorld = new Map<string, Progress[]>()
-      progress.forEach(p => {
-        const key = `${p.user_id}|${p.world_id}`
-        const arr = progressByUserWorld.get(key) ?? []
-        arr.push(p)
-        progressByUserWorld.set(key, arr)
-      })
-
-      const result: LearnerRow[] = []
-
-      // Mundos en los que cada persona tiene progreso, sean o no de su campaña.
-      // Sin esto, quien juega un mundo de otra campaña —lo normal con el
-      // catálogo compartido— desaparecía del panel entero: el `continue` de
-      // abajo lo sacaba antes de mirarle el progreso.
-      const playedByUser = new Map<string, Set<string>>()
-      for (const pr of progress) {
-        const set = playedByUser.get(pr.user_id) ?? new Set<string>()
-        set.add(pr.world_id)
-        playedByUser.set(pr.user_id, set)
-      }
-
-      for (const profile of profiles) {
-        const played = playedByUser.get(profile.id) ?? new Set<string>()
-        const campaignWorlds = ws.filter(w => w.campaign_id === profile.campaign_id || played.has(w.id))
-        if (campaignWorlds.length === 0) continue
-
-        const worldStats: WorldStat[] = []
-        const allStars: number[] = []
-        const allScores: number[] = []
-        let totalCompleted = 0
-        let totalLevels = 0
-
-        for (const w of campaignWorlds) {
-          const wLevels = levelsByWorld.get(w.id) ?? []
-          const progs = progressByUserWorld.get(`${profile.id}|${w.id}`) ?? []
-          const starVals = progs.map(p => getStarsFromScore(p.score, levelMap.get(p.level_id)?.min_score_pct ?? null))
-          const scoreVals = progs.map(p => p.score)
-
-          allStars.push(...starVals)
-          allScores.push(...scoreVals)
-          totalCompleted += progs.length
-          totalLevels += wLevels.length
-
-          worldStats.push({
-            worldId: w.id,
-            worldName: w.name,
-            worldIcon: w.icon,
-            campaignId: w.campaign_id,
-            courseId: w.course_id,
-            completedLevels: progs.length,
-            totalLevels: wLevels.length,
-            avgStars: Math.round(avg(starVals) * 10) / 10,
-            avgScore: Math.round(avg(scoreVals)),
-          })
-        }
-
-        const avgScore = Math.round(avg(allScores))
-        result.push({
-          userId: profile.id,
-          displayName: profile.display_name ?? 'Sin nombre',
-          campaignId: profile.campaign_id,
-          campaignName: profile.campaign_id ? (campMap.get(profile.campaign_id) ?? '—') : '—',
-          operationId: profile.operation_id ?? null,
-          areaId: profile.area_id ?? null,
-          worlds: worldStats,
-          completedLevels: totalCompleted,
-          totalLevels,
-          avgStars: Math.round(avg(allStars) * 10) / 10,
-          avgScore,
-          status: computeStatus(totalCompleted, totalLevels, avgScore),
-        })
-      }
-
-      if (!cancelled) setRows(result)
       } catch (e) {
         if (!cancelled) console.error('FeedbackPanel load error:', e)
       } finally {
@@ -309,41 +236,124 @@ export default function FeedbackPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, scopedToCampaign, campaignId, user?.id])
 
-  // Ámbito: filtros de campaña/mundo (los superadmin). Alimenta KPIs, dona y conteos de chips.
+  /* A quién le llega el curso elegido. El programa ya no entrega cursos: cuenta
+     quien lo tiene asignado, quien cumple su regla país/área/CR y quien ya jugó
+     su mundo (aunque hoy no le toque, su progreso existe). */
+  useEffect(() => {
+    if (!courseChosen) return
+    let vivo = true
+    void Promise.all([
+      supabase.from('course_assignments').select('user_id').eq('course_id', filterCourse),
+      getAudience(filterCourse).catch(() => null),
+      supabase.from('courses').select('is_published').eq('id', filterCourse).maybeSingle(),
+    ]).then(([asg, rule, course]) => {
+      if (!vivo) return
+      setReach({
+        courseId: filterCourse,
+        assigned: new Set(((asg.data ?? []) as Array<{ user_id: string }>).map((a) => a.user_id)),
+        rule,
+        published: (course.data as { is_published?: boolean } | null)?.is_published === true,
+      })
+    })
+    return () => { vivo = false }
+  }, [courseChosen, filterCourse])
+
+  const reachReady = courseChosen && reach?.courseId === filterCourse
+
+  /** Una fila por persona alcanzada por el curso, con los mundos DE ese curso. */
+  const rows = useMemo<LearnerRow[]>(() => {
+    if (!reachReady || !reach) return []
+    const courseWorlds = worlds.filter(w => w.course_id === filterCourse)
+    if (courseWorlds.length === 0) return []
+    const worldIds = new Set(courseWorlds.map(w => w.id))
+    const levelsByWorld = new Map<string, WorldLevel[]>()
+    for (const l of levels) {
+      if (!worldIds.has(l.world_id)) continue
+      const arr = levelsByWorld.get(l.world_id) ?? []
+      arr.push(l)
+      levelsByWorld.set(l.world_id, arr)
+    }
+    const levelMap = new Map(levels.map(l => [l.id, l]))
+    const progressByUserWorld = new Map<string, Progress[]>()
+    for (const p of progress) {
+      if (!worldIds.has(p.world_id)) continue
+      const key = `${p.user_id}|${p.world_id}`
+      const arr = progressByUserWorld.get(key) ?? []
+      arr.push(p)
+      progressByUserWorld.set(key, arr)
+    }
+    const played = new Set(progress.filter(p => worldIds.has(p.world_id)).map(p => p.user_id))
+
+    const result: LearnerRow[] = []
+    for (const profile of profiles) {
+      const byRule = !!reach.rule && reach.published && matchesAudience(reach.rule, profile)
+      if (!reach.assigned.has(profile.id) && !byRule && !played.has(profile.id)) continue
+
+      const worldStats: WorldStat[] = []
+      const allStars: number[] = []
+      const allScores: number[] = []
+      let totalCompleted = 0
+      let totalLevels = 0
+      for (const w of courseWorlds) {
+        const wLevels = levelsByWorld.get(w.id) ?? []
+        const progs = progressByUserWorld.get(`${profile.id}|${w.id}`) ?? []
+        const starVals = progs.map(p => getStarsFromScore(p.score, levelMap.get(p.level_id)?.min_score_pct ?? null))
+        const scoreVals = progs.map(p => p.score)
+        allStars.push(...starVals)
+        allScores.push(...scoreVals)
+        totalCompleted += progs.length
+        totalLevels += wLevels.length
+        worldStats.push({
+          worldId: w.id,
+          worldName: w.name,
+          worldIcon: w.icon,
+          courseId: w.course_id,
+          completedLevels: progs.length,
+          totalLevels: wLevels.length,
+          avgStars: Math.round(avg(starVals) * 10) / 10,
+          avgScore: Math.round(avg(scoreVals)),
+        })
+      }
+      const avgScore = Math.round(avg(allScores))
+      result.push({
+        userId: profile.id,
+        displayName: profile.display_name ?? 'Sin nombre',
+        operationId: profile.operation_id ?? null,
+        areaId: profile.area_id ?? null,
+        worlds: worldStats,
+        completedLevels: totalCompleted,
+        totalLevels,
+        avgStars: Math.round(avg(allStars) * 10) / 10,
+        avgScore,
+        status: computeStatus(totalCompleted, totalLevels, avgScore),
+      })
+    }
+    return result
+  }, [reachReady, reach, worlds, levels, progress, profiles, filterCourse])
+
+  // Ámbito: curso (obligatorio) + mundo + CR/área. Alimenta KPIs, dona y chips.
   const scoped = useMemo(() => rows.filter(r => {
-    // La campaña de la PERSONA o la del mundo que jugó: `campaign_id` significa
-    // audiencia en el perfil y programa en el contenido, y mirar solo el perfil
-    // dejaba fuera a quien practicó contenido de esta campaña viniendo de otra.
-    if (filterCampaign !== 'all'
-      && r.campaignId !== filterCampaign
-      && !r.worlds.some(w => w.campaignId === filterCampaign && w.completedLevels > 0)) return false
-    if (filterCourse !== 'all' && !r.worlds.some(w => w.courseId === filterCourse)) return false
     if (filterWorld !== 'all' && !r.worlds.some(w => w.worldId === filterWorld)) return false
     if (filterOperation !== 'all' && r.operationId !== filterOperation) return false
     if (filterArea !== 'all' && r.areaId !== filterArea) return false
     return true
-  }), [rows, filterCampaign, filterCourse, filterWorld, filterOperation, filterArea])
+  }), [rows, filterWorld, filterOperation, filterArea])
 
-  /** Cursos que tienen mundos dentro del alcance de campaña actual. */
+  /** Cursos que tienen mundos. */
   const courseOptions = useMemo(() => {
     const ids = new Set<string>()
-    for (const w of worlds) {
-      if (filterCampaign !== 'all' && w.campaign_id !== filterCampaign) continue
-      if (w.course_id) ids.add(w.course_id)
-    }
+    for (const w of worlds) if (w.course_id) ids.add(w.course_id)
     return [...ids]
       .map(id => ({ value: id, label: courseTitles.get(id) ?? id }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [worlds, filterCampaign, courseTitles])
+  }, [worlds, courseTitles])
+
+  const unitName = useMemo(() => new Map(units.map(u => [u.id, u.name])), [units])
 
   /** Mundos que ofrece el selector: los del curso elegido, si hay uno. */
   const worldOptions = useMemo(
-    () => worlds.filter(w => {
-      if (filterCampaign !== 'all' && w.campaign_id !== filterCampaign) return false
-      if (filterCourse !== 'all' && w.course_id !== filterCourse) return false
-      return true
-    }),
-    [worlds, filterCampaign, filterCourse],
+    () => worlds.filter(w => w.course_id === filterCourse),
+    [worlds, filterCourse],
   )
 
   // KPIs + distribución por estado, derivados del ámbito.
@@ -479,13 +489,13 @@ export default function FeedbackPanel() {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet2), 'Detalle de intentos')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet3), 'Resumen por nivel')
 
-      const campName = campaigns.find(c => c.id === campaignId)?.name ?? 'General'
+      const courseName = courseTitles.get(filterCourse) ?? 'General'
       const date = new Date().toISOString().slice(0, 10)
-      XLSX.writeFile(wb, `progreso_${campName.replace(/\s+/g, '_')}_${date}.xlsx`)
+      XLSX.writeFile(wb, `progreso_mundos_${courseName.replace(/[^\p{L}\p{N}]+/gu, '_')}_${date}.xlsx`)
     } finally {
       setExporting(false)
     }
-  }, [tableRows, worlds, levels, campaigns, campaignId, exporting])
+  }, [tableRows, worlds, levels, courseTitles, filterCourse, exporting])
 
   const toggleUser = (userId: string) => {
     setExpandedUser(prev => (prev === userId ? null : userId))
@@ -533,8 +543,6 @@ export default function FeedbackPanel() {
 
   const levelMap = new Map(levels.map(l => [l.id, l]))
   const statusChips: Array<LearnerStatus | 'all'> = ['all', ...STATUS_ORDER]
-  // Mostrar filtro/columna de campaña cuando el usuario abarca más de una.
-  const multiCampaign = campaigns.length > 1
 
   return (
     <div className="p-4 sm:p-8">
@@ -556,58 +564,50 @@ export default function FeedbackPanel() {
         ) : undefined}
       />
 
-      {/* Filtros. La barra ya no cuelga de "abarca varias campañas": CR y área
-          son los cortes de todo el mundo, y esconderlos a quien tiene una sola
-          campaña le dejaba sin la única segmentación que ahora importa. */}
-      {(
-        <div className="flex flex-wrap gap-3 mb-5">
-          {(isSuperAdmin || multiCampaign) && (
+      {/* Filtros. El CURSO va primero y es obligatorio —resaltado mientras no
+          se elige—: sin él la tabla mezclaba mundos de cursos distintos y la
+          gente se perdía. CR, área y mundo recortan dentro del curso. */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className={cn('rounded-xl', !courseChosen && 'ring-2 ring-[rgb(var(--brand-green))] ring-offset-2 ring-offset-bg')}>
           <FilterDropdown
-            value={filterCampaign === 'all' ? '' : filterCampaign}
-            onChange={v => { setFilterCampaign(v || 'all'); setFilterCourse('all'); setFilterWorld('all') }}
-            options={[{ value: '', label: i18n.t('common.all_campaigns') }, ...campaigns.map(c => ({ value: c.id, label: c.name }))]}
-            className="max-w-xs"
-          />
-          )}
-          {/* CR y ÁREA: el mismo orden y los mismos nombres que en el Panorama
-              y que en la audiencia de un curso. Tres pantallas, un idioma. */}
-          <FilterDropdown
-            value={filterOperation === 'all' ? '' : filterOperation}
-            onChange={v => setFilterOperation(v || 'all')}
-            options={[
-              { value: '', label: i18n.t('admin.progress_overview.all_operations', 'Todos los CR') },
-              ...units.filter(u => u.kind === 'operation').map(u => ({ value: u.id, label: u.name })),
-            ]}
-            className="max-w-xs"
-          />
-          <FilterDropdown
-            value={filterArea === 'all' ? '' : filterArea}
-            onChange={v => setFilterArea(v || 'all')}
-            options={[
-              { value: '', label: i18n.t('admin.progress_overview.all_areas', 'Todas las áreas') },
-              ...units.filter(u => u.kind === 'area').map(u => ({ value: u.id, label: u.name })),
-            ]}
-            className="max-w-xs"
-          />
-          {courseOptions.length > 0 && (
-            <FilterDropdown
-              value={filterCourse === 'all' ? '' : filterCourse}
-              onChange={v => { setFilterCourse(v || 'all'); setFilterWorld('all') }}
-              options={[{ value: '', label: i18n.t('admin.worlds.all_courses', 'Todos los cursos') }, ...courseOptions]}
-              className="max-w-xs"
-            />
-          )}
-          <FilterDropdown
-            value={filterWorld === 'all' ? '' : filterWorld}
-            onChange={v => setFilterWorld(v || 'all')}
-            options={[{ value: '', label: 'Todos los mundos' }, ...worldOptions.map(w => ({ value: w.id, label: `${w.icon} ${w.name}` }))]}
+            value={courseChosen ? filterCourse : ''}
+            onChange={v => { setFilterCourse(v || 'all'); setFilterWorld('all') }}
+            options={[{ value: '', label: i18n.t('admin.progress_overview.pick_course', 'Elige un curso (obligatorio)') }, ...courseOptions]}
             className="max-w-xs"
           />
         </div>
-      )}
+        <FilterDropdown
+          value={filterOperation === 'all' ? '' : filterOperation}
+          onChange={v => setFilterOperation(v || 'all')}
+          options={[
+            { value: '', label: i18n.t('admin.progress_overview.all_operations', 'Todos los CR') },
+            ...units.filter(u => u.kind === 'operation').map(u => ({ value: u.id, label: u.name })),
+          ]}
+          className="max-w-xs"
+        />
+        <FilterDropdown
+          value={filterArea === 'all' ? '' : filterArea}
+          onChange={v => setFilterArea(v || 'all')}
+          options={[
+            { value: '', label: i18n.t('admin.progress_overview.all_areas', 'Todas las áreas') },
+            ...units.filter(u => u.kind === 'area').map(u => ({ value: u.id, label: u.name })),
+          ]}
+          className="max-w-xs"
+        />
+        {courseChosen && worldOptions.length > 1 && (
+          <FilterDropdown
+            value={filterWorld === 'all' ? '' : filterWorld}
+            onChange={v => setFilterWorld(v || 'all')}
+            options={[{ value: '', label: i18n.t('admin.feedback_panel.all_worlds', 'Todos los mundos') }, ...worldOptions.map(w => ({ value: w.id, label: `${w.icon} ${w.name}` }))]}
+            className="max-w-xs"
+          />
+        )}
+      </div>
 
       {/* Loading */}
-      {loading ? (
+      {!loading && !courseChosen ? (
+        <PickCourseFirst accent={WORLD_ACCENT} title={i18n.t('admin.progress_overview.pick_course_title', 'Primero elige un curso')} body={i18n.t('admin.feedback_panel.pick_course_body', 'Todo lo de abajo habla de UN curso: quién tiene su mundo, cuántos niveles lleva y con qué nota. Después puedes recortar por CR, área o mundo.')} />
+      ) : loading || !reachReady ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
@@ -777,10 +777,10 @@ export default function FeedbackPanel() {
                 {/* Header */}
                 <div
                   className="grid gap-4 px-5 py-3 text-[11px] uppercase tracking-wider text-text-muted bg-subtle"
-                  style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto 1.2fr auto auto auto' : '1.4fr auto 1.2fr auto auto auto' }}
+                  style={{ gridTemplateColumns: '1.4fr 1fr auto 1.2fr auto auto auto' }}
                 >
                   <SortTh label={i18n.t('admin.feedback_panel.col_learner')} col="name" sort={sort} onSort={setSortKey} />
-                  {multiCampaign && <span>{i18n.t('admin.worlds.campaign')}</span>}
+                  <span>{i18n.t('admin.progress_overview.col_cr', 'CR')}</span>
                   <SortTh label={i18n.t('admin.feedback_panel.col_status', 'Estado')} col="estado" sort={sort} onSort={setSortKey} />
                   <SortTh label={i18n.t('admin.feedback_panel.col_progress', 'Avance')} col="avance" sort={sort} onSort={setSortKey} />
                   <SortTh label={i18n.t('admin.feedback_panel.col_performance', 'Desempeño')} col="desempeno" sort={sort} onSort={setSortKey} />
@@ -796,7 +796,7 @@ export default function FeedbackPanel() {
                       <div key={row.userId} style={atRisk ? { boxShadow: 'inset 3px 0 0 #ef4444' } : undefined}>
                         <div
                           className="grid gap-4 px-5 py-3.5 items-center cursor-pointer hover:bg-subtle/50 transition-colors"
-                          style={{ gridTemplateColumns: multiCampaign ? '1.4fr 1fr auto 1.2fr auto auto auto' : '1.4fr auto 1.2fr auto auto auto' }}
+                          style={{ gridTemplateColumns: '1.4fr 1fr auto 1.2fr auto auto auto' }}
                           onClick={() => toggleUser(row.userId)}
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -805,9 +805,9 @@ export default function FeedbackPanel() {
                             </div>
                             <div className="text-[13px] text-text truncate">{row.displayName}</div>
                           </div>
-                          {multiCampaign && (
-                            <div className="text-[12px] text-text-muted truncate">{row.campaignName}</div>
-                          )}
+                          <div className={cn('text-[12px] truncate', row.operationId ? 'text-text-muted' : 'text-amber-600 dark:text-amber-400')}>
+                            {(row.operationId && unitName.get(row.operationId)) || i18n.t('admin.progress_overview.no_cr', 'Sin CR asignado')}
+                          </div>
                           <StatusBadge status={row.status} />
                           <ProgressBar completed={row.completedLevels} total={row.totalLevels} />
                           <div className="text-[13px] text-text tabular-nums font-medium">{row.avgScore}%</div>
@@ -861,9 +861,9 @@ export default function FeedbackPanel() {
                         </div>
                         <div className="min-w-0">
                           <div className="text-[14px] font-medium text-text truncate">{row.displayName}</div>
-                          {multiCampaign && (
-                            <div className="text-[11px] text-text-muted truncate">{row.campaignName}</div>
-                          )}
+                          <div className="text-[11px] text-text-muted truncate">
+                            {(row.operationId && unitName.get(row.operationId)) || i18n.t('admin.progress_overview.no_cr', 'Sin CR asignado')}
+                          </div>
                         </div>
                       </div>
                       {isOpen
