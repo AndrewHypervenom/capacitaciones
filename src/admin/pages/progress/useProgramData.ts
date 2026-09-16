@@ -451,8 +451,8 @@ export function useProgramData(
               id: string; display_name: string | null; role: string;
               campaign_id: string | null; avatar_url: string | null; created_at: string | null;
               job_title: string | null; country: string | null; email: string | null;
-              operation_id: string | null; area_id: string | null;
-            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country, email, operation_id, area_id'),
+              operation_id: string | null; area_id: string | null; is_client: boolean | null;
+            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country, email, operation_id, area_id, is_client'),
             supabase.from('campaigns').select('id, name, deleted_at, is_test').order('name'),
             fetchAll<{
               id: string; title_es: string; title_en: string | null; title_pt: string | null;
@@ -526,7 +526,13 @@ export function useProgramData(
             ? profilesRes.reason
             : new Error(String(profilesRes.reason));
         }
-        const profileRows = rowsOf(profilesRes);
+        // LOS CLIENTES NO ENTRAN EN NINGUNA CIFRA DE ESTE TABLERO.
+        // Son gente de paso —alguien de fuera al que se le dio un curso suelto
+        // para que conociera el sitio—, no plantilla: si cuentan, el
+        // cumplimiento, el avance medio y el total de personas hablan de una
+        // compañía que no es esta. Su progreso individual sigue existiendo y se
+        // ve en su ficha; lo que no hace es promediar con el de nadie.
+        const profileRows = rowsOf(profilesRes).filter((p) => p.is_client !== true);
         // Las campañas también se borran en suave: una eliminada no puede seguir
         // ofreciéndose como filtro ni ponerle nombre a una columna del Excel.
         const campaignRaw = ok<{ id: string; name: string; deleted_at: string | null; is_test?: boolean | null }>(campaignsRes as never)

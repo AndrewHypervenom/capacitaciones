@@ -64,12 +64,15 @@ export default function AdminDashboard() {
           ? notTest(supabase.from('scenarios').select('id', { count: 'exact', head: true }))
           : supabase.from('scenarios').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
         // El capacitador solo cuenta las personas de sus campañas y nunca a superadmins.
+        // Y NADIE cuenta a los clientes: es gente de paso a la que se le dio un
+        // curso suelto, no plantilla. Sumarlos infla "personas" con cuentas que
+        // no representan a nadie de la compañía.
         isSuperAdmin
-          ? notTest(supabase.from('profiles').select('id', { count: 'exact', head: true }))
+          ? notTest(supabase.from('profiles').select('id', { count: 'exact', head: true })).eq('is_client', false)
           : (myPeople
               ? supabase.from('profiles').select('id', { count: 'exact', head: true }).in('id', myPeople.length ? myPeople : [''])
               : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope)
-            ).neq('role', 'superadmin'),
+            ).neq('role', 'superadmin').eq('is_client', false),
       ])
       setStats({
         // Las campañas ya vienen filtradas por `getAccessibleCampaigns`, así que

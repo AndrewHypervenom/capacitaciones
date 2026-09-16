@@ -40,9 +40,14 @@ export function useLearnerCourses() {
   const { user, campaignId, loading: authLoading } = useAuth()
   // Rol REAL: dentro de la vista previa useAuth reporta 'learner' a propósito.
   const realRole = useAuthStore((s) => s.profile?.role ?? null)
+  // Persona de un cliente: no ve el catálogo abierto, solo lo que se le asignó.
+  // Entra en la clave de la caché porque el perfil llega DESPUÉS de la sesión:
+  // sin eso, la primera consulta (todavía sin saber que es cliente) se quedaría
+  // cacheada con el catálogo dentro.
+  const isClient = useAuthStore((s) => s.profile?.is_client === true)
   const preview =
     IS_LEARNER_PREVIEW && (realRole === 'superadmin' || realRole === 'capacitador')
-  const key = `${user?.id ?? ''}:${campaignId ?? ''}:${preview ? 'preview' : 'live'}`
+  const key = `${user?.id ?? ''}:${campaignId ?? ''}:${preview ? 'preview' : 'live'}:${isClient ? 'cli' : 'int'}`
   const [courses, setCourses] = useState<LearnerCourse[]>(() => cacheHit(key) ?? [])
   const [loading, setLoading] = useState(() => authLoading || !cacheHit(key))
   const [error, setError] = useState<Error | null>(null)
@@ -84,7 +89,7 @@ export function useLearnerCourses() {
       // descarta, en vez de sellar como fresco un resultado ya caducado.
       const epoch = readEpoch()
       setLoading(true)
-      getLearnerCourses(campaignId, user.id, { preview })
+      getLearnerCourses(campaignId, user.id, { preview, isClient })
         .then((data) => {
           if (seq !== reqRef.current) return
           cache = { key, epoch, data }
@@ -100,7 +105,7 @@ export function useLearnerCourses() {
           if (seq === reqRef.current) setLoading(false)
         })
     },
-    [key, user?.id, campaignId, preview, authLoading],
+    [key, user?.id, campaignId, preview, isClient, authLoading],
   )
 
   useEffect(() => {

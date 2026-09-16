@@ -2294,7 +2294,14 @@
       "bulk_no_campaign_warn": "{{n}} contas novas nasceriam SEM programa.",
       "bulk_no_campaign_hint": "Uma pessoa sem programa entra no site mas não vê cursos nem acumula progresso. Escolha um em «Programa para todos», ou terá de atribuí-lo depois uma a uma.",
       "delete_done": "{{name}} excluído",
-      "delete_error": "Não foi possível excluir"
+      "delete_error": "Não foi possível excluir",
+      "is_client_title": "É de um cliente",
+      "is_client_on": "Alguém de passagem: entra para conhecer o site com o curso específico que você atribuir abaixo. Não é da companhia, então nenhum curso chega a ela por regra de país, área ou CR —nem os de «toda a organização»—, não vê o catálogo e não conta para os indicadores.",
+      "is_client_off": "Funcionário da companhia. Recebe os cursos do seu país, da sua área e do seu CR, e o seu avanço conta para os indicadores.",
+      "client_name_ph": "Nome do cliente (ex. ACME)",
+      "client_badge": "Cliente",
+      "client_badge_tip": "Pessoa de um cliente ({{name}}): alguém de passagem. Só recebe os cursos atribuídos, não vê o catálogo e não conta para os indicadores.",
+      "client_ignored": "Pediu-se criar esta pessoa como cliente e o servidor não confirmou: entrou como funcionário interno e pode receber cursos de «toda a organização». É preciso reimplantar create-user e corrigir a ficha."
     },
     "hr": {
       "title": "Sincronizar com o RH",
@@ -3038,7 +3045,18 @@
       "mandatory_title": "Formação obrigatória",
       "mandatory_on": "Conta no cumprimento obrigatório e é marcada como exigível para quem cumprir a regra acima.",
       "mandatory_off": "É formação opcional: oferece-se a quem cumprir a regra, mas não fazê-la não conta como descumprimento.",
-      "mandatory_needs_rule": "Primeiro defina para quem vai. Um curso obrigatório para ninguém não significa nada."
+      "mandatory_needs_rule": "Primeiro defina para quem vai. Um curso obrigatório para ninguém não significa nada.",
+      "client_toggle_off_tip": "Funcionário da companhia. Pressione só se esta pessoa for de um cliente: alguém de passagem que entra para conhecer o site.",
+      "client_toggle_on_tip": "Pessoa de um cliente: alguém de passagem. Só recebe os cursos atribuídos, não vê o catálogo e não conta para os indicadores. Pressione para voltar a tratá-la como funcionário.",
+      "client_mark_title": "Marcar {{name}} como pessoa de um cliente?",
+      "client_mark_body": "Deixa de receber cursos por regra de país, área ou CR —incluídos os de «toda a organização»—, deixa de ver o catálogo e deixa de contar para os indicadores. Só verá os cursos atribuídos à mão. A mudança vale em todo o site, não só neste curso, e é salva na hora.",
+      "client_mark_confirm": "Sim, é de um cliente",
+      "client_unmark_title": "Voltar a tratar {{name}} como funcionário?",
+      "client_unmark_body": "Volta a receber os cursos do seu país, da sua área e do seu CR, volta a ver o catálogo e o seu avanço volta a contar para os indicadores. A mudança vale em todo o site e é salva na hora.",
+      "client_unmark_confirm": "Sim, é funcionário",
+      "client_marked": "Marcada como pessoa de um cliente",
+      "client_unmarked": "Volta a contar como funcionário",
+      "client_mark_error": "Não foi possível mudar a marca de cliente"
     },
     "simulations": {
       "save": "Salvar",

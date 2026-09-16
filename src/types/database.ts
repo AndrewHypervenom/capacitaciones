@@ -571,6 +571,11 @@ export interface Database {
           operation_ids: string[]
           area_ids: string[]
           is_mandatory: boolean
+          /** Los CLIENTES (`profiles.is_client`) quedan fuera de cualquier regla,
+           *  incluida «toda la organización», salvo que esto esté en `true`.
+           *  Por defecto `false`: un curso interno no se le escapa a nadie de
+           *  fuera por descuido. Ver src/services/audiences.service.ts. */
+          include_clients: boolean
           updated_by: string | null
           updated_at: string
         }
@@ -581,6 +586,7 @@ export interface Database {
           operation_ids?: string[]
           area_ids?: string[]
           is_mandatory?: boolean
+          include_clients?: boolean
           updated_by?: string | null
           updated_at?: string
         }
@@ -590,6 +596,7 @@ export interface Database {
           operation_ids?: string[]
           area_ids?: string[]
           is_mandatory?: boolean
+          include_clients?: boolean
           updated_by?: string | null
           updated_at?: string
         }
@@ -1286,6 +1293,22 @@ export interface Database {
            *  trabajo y lo publica. Es una marca sobre el capacitador, no un rol
            *  aparte: añadir un quinto rol obligaría a revisar cada política. */
           is_guest_author: boolean
+          /** Persona de FUERA de la compañía, y DE PASO: alguien de un cliente
+           *  que entra a conocer el sitio con un curso suelto que se le asigna.
+           *  No es plantilla, así que no cuenta para ningún indicador (queda
+           *  fuera del Panorama y del tablero).
+           *  Es una marca sobre el aprendiz, no un rol aparte —la
+           *  misma decisión que `is_guest_author`: un quinto rol obligaría a
+           *  revisar todas las políticas. Un cliente NO recibe nada por regla de
+           *  audiencia (ni siquiera «toda la organización») salvo que el curso
+           *  marque `course_audiences.include_clients`, y NO ve el catálogo
+           *  abierto. Solo lo da de alta el superadmin, RH o un capacitador con
+           *  `can_create_learners`. */
+          is_client: boolean
+          /** Nombre del cliente al que pertenece, tal como se escribe en el
+           *  contrato. Texto libre a propósito: no hay catálogo de clientes
+           *  todavía y una tabla más sin quién la mantenga se queda vacía. */
+          client_name: string | null
           /** Última nómina de Talento Humano en la que apareció la persona. */
           hr_last_seen_at: string | null
           created_at: string
@@ -1315,6 +1338,8 @@ export interface Database {
           can_create_learners?: boolean
           can_approve_courses?: boolean
           is_guest_author?: boolean
+          is_client?: boolean
+          client_name?: string | null
           hr_last_seen_at?: string | null
           created_at?: string
           updated_at?: string
@@ -1341,6 +1366,8 @@ export interface Database {
           can_create_learners?: boolean
           can_approve_courses?: boolean
           is_guest_author?: boolean
+          is_client?: boolean
+          client_name?: string | null
           hr_last_seen_at?: string | null
           updated_at?: string
         }

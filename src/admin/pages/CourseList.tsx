@@ -76,6 +76,7 @@ const COURSE_SORT_KEY = 'admin-courses-sort'
 /** Un curso sin fila en `course_audiences` se lee igual que uno con la regla vacía. */
 const EMPTY_RULE: AudienceRule = {
   everyone: false, countries: [], operationIds: [], areaIds: [], isMandatory: false,
+  includeClients: false,
 }
 
 export default function CourseList() {

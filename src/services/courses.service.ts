@@ -143,12 +143,12 @@ async function fetchCampaignNames(ids: string[]): Promise<Map<string, string>> {
 export async function getLearnerCourses(
   campaignId: string | null,
   userId: string,
-  opts: { preview?: boolean } = {},
+  opts: { preview?: boolean; isClient?: boolean } = {},
 ): Promise<LearnerCourse[]> {
   // `preview`: vista previa del staff dentro del modal del panel. Ve su curso
   // aunque esté en borrador y sin estar matriculado —así puede revisarlo ANTES
   // de publicarlo—; la RLS sigue mandando sobre qué cursos puede leer.
-  const { preview = false } = opts
+  const { preview = false, isClient = false } = opts
   const coursesQuery = supabase
     .from('courses')
     // Embed del nombre de la campaña dueña (FK directa courses.campaign_id).
@@ -201,6 +201,11 @@ export async function getLearnerCourses(
     // ofrecérselo que enseñarle un error. Sus cursos asignados no se tocan.
     .filter((c) => {
       if (preview || byUser.has(c.id) || byRule.has(c.id)) return true
+      // El CLIENTE no tiene catálogo. Es gente de fuera: solo ve lo que alguien
+      // de la casa le puso delante a propósito (asignado a mano, o un curso cuya
+      // regla marca «incluye clientes»). Ofrecerle el catálogo abierto sería
+      // enseñarle el contenido interno de la compañía en un buscador.
+      if (isClient) return false
       return c.visibility === 'catalog' && !viewerIsTest
     })
 

@@ -25,6 +25,13 @@ export function useAuth() {
     // nómina, lee progreso y analítica, y decide quién recibe qué formación;
     // no crea ni edita cursos, módulos, mundos ni simulaciones.
     isRh: role === 'rh',
+    // Persona de un CLIENTE: aprendiz de fuera y DE PASO —entra a conocer el
+    // sitio con un curso suelto que se le asigna—. No es un rol, es una marca
+    // sobre el aprendiz, como `is_guest_author`. Cambia tres cosas: no le llega
+    // nada por regla de audiencia, no ve el catálogo abierto y no cuenta para
+    // los indicadores. Lo dan de alta el superadmin o un capacitador con
+    // permiso de altas.
+    isClient: profile?.is_client === true,
     // Dar de alta aprendices NO viene con el rol de capacitador: el superadmin
     // lo concede persona por persona. Sin el permiso, el panel no ofrece los
     // botones de alta (y las Edge Functions rechazan igual a quien insista).

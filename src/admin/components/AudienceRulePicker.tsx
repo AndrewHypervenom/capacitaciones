@@ -38,6 +38,13 @@ import type { OrgUnit } from '@/types/database'
  *
  * Degradación: sin unidades en el catálogo, los ejes de operación y área no se
  * pintan. Un selector vacío no ayuda; parece que la función está rota.
+ *
+ * LOS CLIENTES NO SE DECIDEN AQUÍ. A la gente de fuera se le asigna el curso a
+ * mano, abajo, en «Personas específicas»: es alguien de paso, no una audiencia.
+ * `course_audiences.include_clients` existe en la base y el servicio lo lee y lo
+ * guarda, pero ninguna pantalla lo enciende —queda en `false`— porque abrir un
+ * curso a TODOS los clientes de golpe no es un caso que haya hoy. El día que lo
+ * sea, el interruptor vuelve aquí y la regla ya lo respeta.
  */
 
 /**
@@ -106,6 +113,7 @@ export function normalizeRule(r: AudienceRule) {
     operationIds: [...r.operationIds].sort(),
     areaIds: [...r.areaIds].sort(),
     isMandatory: r.isMandatory,
+    includeClients: r.includeClients,
   }
 }
 
@@ -126,7 +134,9 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
   const { t } = useTranslation()
   const [orgId, setOrgId] = useState('')
   const [units, setUnits] = useState<OrgUnit[]>([])
-  const [reach, setReach] = useState<{ matched: number; total: number } | null>(null)
+  const [reach, setReach] = useState<
+    { matched: number; total: number; clients: number } | null
+  >(null)
   const [counting, setCounting] = useState(false)
 
   useEffect(() => {
@@ -185,6 +195,7 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
         everyone: false,
         countries: [], operationIds: [], areaIds: [],
         isMandatory: value.isMandatory,
+        includeClients: value.includeClients,
         ...previa,
         [eje]: [id],
       } as AudienceRule
@@ -196,7 +207,7 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
       cr: (id: string) =>
         contar({ countries: value.countries, areaIds: value.areaIds }, 'operationIds', id),
     }
-  }, [censo, value.countries, value.areaIds, value.isMandatory])
+  }, [censo, value.countries, value.areaIds, value.isMandatory, value.includeClients])
 
   // Solo los países donde hay operación. Si una regla vieja trae otro país, se
   // pinta igual: esconderlo haría desaparecer de la vista una condición que

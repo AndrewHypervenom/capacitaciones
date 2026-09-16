@@ -2294,7 +2294,14 @@
       "bulk_no_campaign_warn": "{{n}} new accounts would be created with NO programme.",
       "bulk_no_campaign_hint": "Someone without a programme can sign in but sees no courses and records no progress. Pick one under \"Programme for all\", or you will have to assign it one by one later.",
       "delete_done": "{{name}} deleted",
-      "delete_error": "Could not delete"
+      "delete_error": "Could not delete",
+      "is_client_title": "Belongs to a client",
+      "is_client_on": "Someone passing through: they come to try the site with the specific course you assign below. Not company staff, so no course reaches them by country, area or CR rule —not even “the whole organization”—, they cannot see the catalog, and they do not count towards the KPIs.",
+      "is_client_off": "Company employee. Receives the courses for their country, area and CR, and their progress counts towards the KPIs.",
+      "client_name_ph": "Client name (e.g. ACME)",
+      "client_badge": "Client",
+      "client_badge_tip": "Client user ({{name}}): someone passing through. Only receives assigned courses, cannot see the catalog, and does not count towards the KPIs.",
+      "client_ignored": "This person was created as a client user but the server did not confirm it: they were created as internal staff and may receive “whole organization” courses. Redeploy create-user and fix their profile."
     },
     "hr": {
       "title": "Sync with HR",
@@ -3038,7 +3045,18 @@
       "mandatory_title": "Mandatory training",
       "mandatory_on": "Counts towards mandatory compliance and is marked as required for whoever matches the rule above.",
       "mandatory_off": "Optional training: offered to whoever matches the rule, but not doing it is not a breach.",
-      "mandatory_needs_rule": "Define who it reaches first. A course that is mandatory for nobody means nothing."
+      "mandatory_needs_rule": "Define who it reaches first. A course that is mandatory for nobody means nothing.",
+      "client_toggle_off_tip": "Company employee. Only press this if the person belongs to a client: someone passing through to see the site.",
+      "client_toggle_on_tip": "Client user: someone passing through. Only receives assigned courses, cannot see the catalog and does not count towards the KPIs. Press to treat them as an employee again.",
+      "client_mark_title": "Mark {{name}} as a client user?",
+      "client_mark_body": "They stop receiving courses by country, area or CR rule —including “the whole organization”—, stop seeing the catalog and stop counting towards the KPIs. They will only see courses assigned by hand. This applies across the whole site, not just this course, and is saved immediately.",
+      "client_mark_confirm": "Yes, they belong to a client",
+      "client_unmark_title": "Treat {{name}} as an employee again?",
+      "client_unmark_body": "They go back to receiving the courses for their country, area and CR, to seeing the catalog, and their progress counts towards the KPIs again. This applies across the whole site and is saved immediately.",
+      "client_unmark_confirm": "Yes, they are an employee",
+      "client_marked": "Marked as a client user",
+      "client_unmarked": "Counts as an employee again",
+      "client_mark_error": "Could not change the client mark"
     },
     "simulations": {
       "save": "Save",

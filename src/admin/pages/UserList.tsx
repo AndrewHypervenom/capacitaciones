@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine, Briefcase } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
@@ -29,6 +29,7 @@ import {
 import { Avatar } from '@/components/ui/Avatar'
 import { FadeIn } from '@/components/ui/motion'
 import { Select } from '@/components/ui/Select'
+import { Toggle } from '@/components/ui/Toggle'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { UserCourseResetModal } from '@/admin/components/UserCourseResetModal'
 import { UserProgressDrawer } from '@/admin/components/UserProgressDrawer'
@@ -40,7 +41,7 @@ import { getDefaultPassword } from '@/services/appSettings.service'
 import { setUsersActive } from '@/services/hrSync.service'
 import { logActivity } from '@/services/audit.service'
 import { checkEmailAvailable, type ExistingAccount } from '@/services/userEmail.service'
-import { OPERATION_COUNTRIES } from '@/lib/countries'
+import { COUNTRIES, OPERATION_COUNTRIES } from '@/lib/countries'
 import type { Profile, Campaign, OrgUnit } from '@/types/database'
 
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
@@ -110,6 +111,11 @@ function diasRestantes(expiresAt: string | null): number | null {
 
 export default function UserList() {
   const { isSuperAdmin, isRh, canCreateLearners, campaignId, user: authUser } = useAuth()
+  /* Cargar CLIENTES es un permiso más estrecho que cargar aprendices: el
+   * superadmin, y el capacitador al que se le concedió el alta. RH queda fuera
+   * a propósito —su fuente de verdad es la nómina, y un cliente no está en la
+   * nómina—. El servidor comprueba lo mismo (`callerScope.canCreateClients`). */
+  const canCreateClients = isSuperAdmin || (canCreateLearners && !isRh)
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -176,11 +182,20 @@ export default function UserList() {
   // País opcional: si se deja vacío, la persona lo elige en su onboarding.
   const [inviteCountry, setInviteCountry] = useState('')
   const [countryIgnored, setCountryIgnored] = useState(false)
+  /** Se pidió crear un cliente y el servidor no lo confirmó (despliegue viejo). */
+  const [clientIgnored, setClientIgnored] = useState(false)
   // CR y área: con el país deciden a quién le llega un curso (regla de
   // audiencia país → área → CR). Una cuenta sin ellos entra sin los cursos de su
   // operación y no sale en los filtros de progreso por CR/área.
   const [inviteOperation, setInviteOperation] = useState('')
   const [inviteArea, setInviteArea] = useState('')
+  /* Alta de CLIENTE: gente de FUERA de la compañía. No es un rol, es una marca
+   * sobre el aprendiz. Cambia el formulario entero —no tiene área ni CR, porque
+   * no pertenece a la estructura interna— y sobre todo cambia lo que recibe:
+   * ningún curso le llega por regla salvo que el curso diga «incluye clientes»,
+   * y no ve el catálogo abierto. */
+  const [inviteIsClient, setInviteIsClient] = useState(false)
+  const [inviteClientName, setInviteClientName] = useState('')
   const [units, setUnits] = useState<OrgUnit[] | null>(null)
   const [unitsIgnored, setUnitsIgnored] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -260,10 +275,16 @@ export default function UserList() {
   // progreso todavía exige campaign_id (ver create-user).
   // Y sin país la regla de audiencia no lo alcanza: no le aparece ningún curso
   // que no sea para «toda la organización».
-  const needsCountry = inviteRole === 'learner'
+  // Al CLIENTE no se le exige nada de esto: área y CR son la estructura interna
+  // y él no está en ella. Pedírselos obligaría a inventarle un CR, y un CR
+  // inventado acaba metiéndolo en la audiencia de un curso interno — justo lo
+  // que esta función viene a impedir.
+  const needsCountry = inviteRole === 'learner' && !inviteIsClient
   // Área y CR también: un aprendiz sin ellos queda "en el aire" — no le llegan
   // los cursos de su área ni de su CR, ni sale al filtrar por ellos.
   const missingCountry = needsCountry && (!inviteCountry || !inviteArea || !inviteOperation)
+  /** Un cliente sin nombre de cliente no se distingue del siguiente. */
+  const missingClientName = inviteIsClient && !inviteClientName.trim()
   const operationOptions = useMemo(
     () => (units ?? []).filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
     [units],
@@ -486,7 +507,7 @@ export default function UserList() {
   }
 
   const handleInvite = async () => {
-    if (!inviteEmail.trim() || missingCountry) return
+    if (!inviteEmail.trim() || missingCountry || missingClientName) return
     setInviteLoading(true)
     setInviteError(null)
 
@@ -508,8 +529,10 @@ export default function UserList() {
             name: inviteName.trim(),
             role: inviteRole,
             country: inviteCountry || null,
-            operationId: inviteOperation || null,
-            areaId: inviteArea || null,
+            operationId: inviteIsClient ? null : inviteOperation || null,
+            areaId: inviteIsClient ? null : inviteArea || null,
+            isClient: inviteIsClient,
+            clientName: inviteIsClient ? inviteClientName.trim() : null,
           }),
         },
       )
@@ -530,15 +553,21 @@ export default function UserList() {
       // es anterior a este soporte. Mejor decirlo que dar por hecho que se guardó.
       setCountryIgnored(!!inviteCountry && json.country !== inviteCountry)
       setUnitsIgnored(
-        (!!inviteOperation && json.operationId !== inviteOperation) ||
-        (!!inviteArea && json.areaId !== inviteArea),
+        (!inviteIsClient && !!inviteOperation && json.operationId !== inviteOperation) ||
+        (!inviteIsClient && !!inviteArea && json.areaId !== inviteArea),
       )
+      // Si se pidió un cliente y el servidor no lo confirma, el despliegue de la
+      // Edge Function es anterior a este soporte y la persona entró como
+      // empleado interno: le llegarían los cursos de «toda la organización».
+      // Es el fallo silencioso que hay que poder ver.
+      setClientIgnored(inviteIsClient && json.isClient !== true)
       // Hay una persona más en el censo con el que el editor de cursos cuenta
       // a cuánta gente le llega cada CR.
       invalidateAudiencePopulation()
       setInviteSuccess(true)
       setInviteEmail('')
       setInviteName('')
+      setInviteClientName('')
 
       await refreshData()
     } catch (err: unknown) {
@@ -1039,6 +1068,13 @@ export default function UserList() {
                   {t('admin.users.units_ignored')}
                 </p>
               )}
+              {/* Se pidió un cliente y entró como empleado interno: hay que
+                  decirlo, porque la diferencia es qué contenido va a ver. */}
+              {clientIgnored && (
+                <p className="text-[12px] text-red-500 mt-2">
+                  {t('admin.users.client_ignored')}
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-3">
                 <button
                   onClick={() => copyCreds('__new__', createdEmail, createdPassword)}
@@ -1095,6 +1131,47 @@ export default function UserList() {
                   <p className="mt-1.5 text-[11.5px] text-red-500">{emailCheck.message}</p>
                 )}
               </div>
+              {/* ¿ES DE UN CLIENTE?
+                  Va arriba del todo porque cambia el resto del formulario: un
+                  cliente no tiene área ni CR, y su país no se limita a los
+                  cuatro con operación. Solo lo ofrece el panel a quien de verdad
+                  puede (superadmin o capacitador con permiso de altas); el
+                  servidor lo vuelve a comprobar, que es donde manda. */}
+              {canCreateClients && inviteRole === 'learner' && (
+                <div className={cn(
+                  'flex items-start gap-3 rounded-xl border p-3',
+                  inviteIsClient ? 'border-sky-500/45 bg-sky-500/[0.06]' : 'border-line',
+                )}>
+                  <span className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                    inviteIsClient ? 'bg-sky-500/12 text-sky-500' : 'bg-subtle text-text-muted',
+                  )}>
+                    <Briefcase className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold text-text">{t('admin.users.is_client_title')}</p>
+                    <p className="text-[12px] text-text-muted leading-relaxed mt-0.5">
+                      {inviteIsClient
+                        ? t('admin.users.is_client_on')
+                        : t('admin.users.is_client_off')}
+                    </p>
+                    {inviteIsClient && (
+                      <input
+                        type="text"
+                        placeholder={t('admin.users.client_name_ph')}
+                        value={inviteClientName}
+                        onChange={(e) => setInviteClientName(e.target.value)}
+                        className="mt-2.5 w-full rounded-xl px-3 py-2 text-[13px] text-text bg-subtle border border-line outline-none min-h-[40px]"
+                      />
+                    )}
+                  </div>
+                  <Toggle
+                    on={inviteIsClient}
+                    onClick={() => setInviteIsClient((v) => !v)}
+                    label={t('admin.users.is_client_title')}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">Rol</label>
@@ -1129,16 +1206,25 @@ export default function UserList() {
                     value={inviteCountry}
                     onChange={setInviteCountry}
                     placeholder={needsCountry ? t('admin.users.pick_country') : t('admin.users.country_optional')}
+                    searchable={inviteIsClient}
                     options={[
                       ...(needsCountry ? [] : [{ value: '', label: t('admin.users.country_optional') }]),
                       // Solo los países donde hay operación (los mismos del paso 1
                       // de la audiencia del curso): otro país no casaría con ningún curso.
-                      ...[...OPERATION_COUNTRIES]
+                      // Al CLIENTE sí se le ofrece la lista entera: es de fuera y
+                      // puede estar donde sea, y su país no decide ninguna audiencia.
+                      ...[...(inviteIsClient ? COUNTRIES : OPERATION_COUNTRIES)]
                         .sort((a, b) => a.name.localeCompare(b.name, 'es'))
                         .map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` })),
                     ]}
                   />
                 </div>
+                {/* Área y CR son la estructura INTERNA: el cliente no está en
+                    ella, así que no se le piden. Un CR inventado para pasar el
+                    formulario es lo que acabaría metiéndolo en la audiencia de un
+                    curso de la casa. */}
+                {!inviteIsClient && (
+                <>
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
                     {t('admin.users.area_label')}
@@ -1173,6 +1259,8 @@ export default function UserList() {
                     ]}
                   />
                 </div>
+                </>
+                )}
               </div>
               {missingCountry && (
                 <p className="text-[12px] text-text-muted">{t('admin.users.country_required_hint')}</p>
@@ -1181,7 +1269,7 @@ export default function UserList() {
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleInvite}
-                  disabled={inviteLoading || !inviteEmail || missingCountry || emailCheck?.state === 'taken' || emailCheck?.state === 'checking'}
+                  disabled={inviteLoading || !inviteEmail || missingCountry || missingClientName || emailCheck?.state === 'taken' || emailCheck?.state === 'checking'}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black disabled:opacity-50 min-h-[44px]"
                   style={{ background: '#10D451' }}
                 >
@@ -1353,6 +1441,27 @@ export default function UserList() {
                             >
                               <Fingerprint className="h-3 w-3" />
                               {passkeys[user.id].count}
+                            </span>
+                          </Tooltip>
+                        )}
+                        {/* CLIENTE. Se marca en la lista porque de un vistazo
+                            no hay forma de distinguirlo de un empleado, y lo que
+                            ve uno y otro no es lo mismo: al cliente no le llega
+                            nada por regla ni ve el catálogo. */}
+                        {user.is_client && (
+                          <Tooltip
+                            label={t('admin.users.client_badge_tip', {
+                              name: user.client_name ?? '—',
+                            })}
+                            className="shrink-0"
+                            maxWidth={260}
+                          >
+                            <span
+                              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{ background: 'rgba(14,165,233,0.14)', color: '#0284c7' }}
+                            >
+                              <Briefcase className="h-3 w-3" />
+                              {user.client_name || t('admin.users.client_badge')}
                             </span>
                           </Tooltip>
                         )}

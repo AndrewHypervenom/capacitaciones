@@ -32,6 +32,15 @@ export interface AudienceRule {
   operationIds: string[]
   areaIds: string[]
   isMandatory: boolean
+  /**
+   * ¿La regla alcanza también a los CLIENTES (gente de fuera de la compañía)?
+   *
+   * Apagado por defecto y por encima de todo lo demás: «toda la organización»
+   * quiere decir toda la ORGANIZACIÓN, no todo el mundo que tiene cuenta. Un
+   * curso interno marcado para todos no puede acabar en la pantalla de un
+   * cliente por descuido — ese es justo el caso que hay que hacer imposible.
+   */
+  includeClients: boolean
 }
 
 export const EMPTY_RULE: AudienceRule = {
@@ -40,6 +49,7 @@ export const EMPTY_RULE: AudienceRule = {
   operationIds: [],
   areaIds: [],
   isMandatory: false,
+  includeClients: false,
 }
 
 function isMissingSchema(error: { code?: string; message?: string } | null): boolean {
@@ -60,10 +70,19 @@ function toRule(row: CourseAudience): AudienceRule {
     operationIds: row.operation_ids ?? [],
     areaIds: row.area_ids ?? [],
     isMandatory: row.is_mandatory,
+    // Si la columna todavía no existe (SQL sin correr) llega `undefined`, que
+    // se lee como "no incluye clientes": se cierra, no se abre.
+    includeClients: row.include_clients === true,
   }
 }
 
-/** ¿La regla no dice nada todavía? Entonces no le llega a nadie. */
+/**
+ * ¿La regla no dice nada todavía? Entonces no le llega a nadie.
+ *
+ * `includeClients` no cuenta como contenido: es un PERMISO sobre los ejes de
+ * abajo, no un eje. Marcarlo solo, sin país ni «toda la organización», no le
+ * llega a ningún cliente tampoco — igual que no le llega a ningún empleado.
+ */
 export function ruleIsEmpty(r: AudienceRule): boolean {
   return (
     !r.everyone &&
@@ -81,8 +100,16 @@ export function ruleIsEmpty(r: AudienceRule): boolean {
  */
 export function matchesAudience(
   rule: AudienceRule,
-  person: { country?: string | null; operation_id?: string | null; area_id?: string | null },
+  person: {
+    country?: string | null
+    operation_id?: string | null
+    area_id?: string | null
+    is_client?: boolean | null
+  },
 ): boolean {
+  // Los clientes van ANTES que todo lo demás, incluido `everyone`: son gente de
+  // fuera, y el contenido interno solo les llega si alguien lo dijo a propósito.
+  if (person.is_client === true && !rule.includeClients) return false
   if (rule.everyone) return true
   if (ruleIsEmpty(rule)) return false
   if (rule.countries.length > 0 && !rule.countries.includes(person.country ?? '')) return false
@@ -134,6 +161,7 @@ export async function saveAudience(courseId: string, rule: AudienceRule): Promis
       operation_ids: rule.everyone ? [] : rule.operationIds,
       area_ids: rule.everyone ? [] : rule.areaIds,
       is_mandatory: rule.isMandatory,
+      include_clients: rule.includeClients,
       updated_by: auth.user?.id ?? null,
       updated_at: new Date().toISOString(),
     },
@@ -152,6 +180,8 @@ export interface AudiencePerson {
   country: string | null
   operation_id: string | null
   area_id: string | null
+  /** Gente de fuera: no la alcanza ninguna regla salvo que el curso lo diga. */
+  is_client: boolean | null
 }
 
 /**
@@ -169,17 +199,30 @@ export async function getAudiencePopulation(orgId: string): Promise<AudiencePers
   const hit = poblacion.get(orgId)
   if (hit) return hit
   const pending = (async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('country, operation_id, area_id')
-      .eq('org_id', orgId)
-      .eq('is_active', true)
-      .eq('role', 'learner')
+    const pedir = (cols: string) =>
+      supabase
+        .from('profiles')
+        .select(cols)
+        .eq('org_id', orgId)
+        .eq('is_active', true)
+        .eq('role', 'learner')
+
+    let { data, error } = await pedir('country, operation_id, area_id, is_client')
+    // Mientras el SQL de clientes no se haya corrido, `is_client` no existe y
+    // PostgREST tumba la consulta ENTERA (42703). Sin este reintento el censo
+    // llegaría vacío y el editor diría "0 personas" en todos los CR, que es
+    // mucho peor que no saber quién es cliente. Se reintenta sin la columna.
+    if (error && error.code === '42703') {
+      ;({ data, error } = await pedir('country, operation_id, area_id'))
+    }
     if (error) {
       if (isMissingSchema(error)) return []
       throw error
     }
-    return (data ?? []) as AudiencePerson[]
+    return ((data ?? []) as unknown as AudiencePerson[]).map((p) => ({
+      ...p,
+      is_client: p.is_client ?? false,
+    }))
   })()
   poblacion.set(orgId, pending)
   // Un fallo no se cachea: el siguiente intento tiene que poder funcionar.
@@ -202,13 +245,27 @@ export function invalidateAudiencePopulation(): void {
 export async function countAudience(
   orgId: string,
   rule: AudienceRule,
-): Promise<{ matched: number; total: number } | null> {
+): Promise<{ matched: number; total: number; clients: number } | null> {
   if (!orgId) return null
   const people = await getAudiencePopulation(orgId)
+  const alcanzados = people.filter((p) => matchesAudience(rule, p))
   return {
-    matched: people.filter((p) => matchesAudience(rule, p)).length,
-    total: people.length,
+    matched: alcanzados.length,
+    // El total son los de CASA. Los clientes no entran en el denominador: decir
+    // "12 de 830" cuando 8 de esos 12 son de un cliente mezcla dos poblaciones
+    // que no se comparan.
+    total: people.filter((p) => p.is_client !== true).length,
+    // Cuántos de los alcanzados son de fuera. Es el número que hay que poder
+    // ver ANTES de publicar cuando se abre un curso a clientes.
+    clients: alcanzados.filter((p) => p.is_client === true).length,
   }
+}
+
+/** Cuántos clientes activos hay en la organización (para explicar el interruptor). */
+export async function countClients(orgId: string): Promise<number> {
+  if (!orgId) return 0
+  const people = await getAudiencePopulation(orgId)
+  return people.filter((p) => p.is_client === true).length
 }
 
 /**

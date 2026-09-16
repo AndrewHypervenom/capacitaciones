@@ -93,9 +93,10 @@ import {
   type CourseStats,
 } from '@/services/courses.service'
 import {
-  EMPTY_RULE, getAudience, saveAudience,
+  EMPTY_RULE, getAudience, saveAudience, invalidateAudiencePopulation,
   type AudienceRule,
 } from '@/services/audiences.service'
+import { setUserIsClient } from '@/services/clients.service'
 import { AudienceRulePicker, normalizeRule, audienceReadyToPublish } from '@/admin/components/AudienceRulePicker'
 import { getOrganizations, getOrgUnits, createOrgUnit } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
@@ -361,7 +362,12 @@ export default function CourseEditor() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
-  const { isSuperAdmin, canApproveCourses, isGuestAuthor, campaignId: authCampaignId, user } = useAuth()
+  const { isSuperAdmin, isRh, canCreateLearners, canApproveCourses, isGuestAuthor, campaignId: authCampaignId, user } = useAuth()
+  /* Marcar a alguien como cliente es el mismo permiso que darlo de alta: el
+   * superadmin, y el capacitador al que se le concedió. Lo impone el trigger
+   * `guard_is_client` en la base; aquí solo se evita ofrecer un botón que va a
+   * ser rechazado. */
+  const canMarkClients = isSuperAdmin || (canCreateLearners && !isRh)
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   const [loading, setLoading] = useState(true)
@@ -933,7 +939,10 @@ export default function CourseEditor() {
             fold(p.email ?? '').includes(q) ||
             fold(countryName.get(p.country ?? '') ?? '').includes(q) ||
             fold(unitNames.get(p.area_id ?? '') ?? '').includes(q) ||
-            fold(unitNames.get(p.operation_id ?? '') ?? '').includes(q),
+            fold(unitNames.get(p.operation_id ?? '') ?? '').includes(q) ||
+            // Por el nombre del cliente: "ACME" deja solo a su gente. Es la
+            // única forma de agrupar a los de fuera, que no tienen área ni CR.
+            fold(p.client_name ?? '').includes(q),
         )
     // LAS MARCADAS, ARRIBA. Con ochocientos nombres en orden alfabético, saber
     // a quiénes tiene asignado el curso obligaba a bajar por toda la lista
@@ -1835,6 +1844,51 @@ export default function CourseEditor() {
       else next[userId] = false
       return next
     })
+  }
+
+  /**
+   * Marcar a esta persona como CLIENTE, desde la misma fila donde se le asigna
+   * el curso.
+   *
+   * Está aquí porque es aquí donde se confunde: «Personas específicas» es la
+   * vía por la que un cliente recibe formación, pero marcar a alguien a mano NO
+   * lo convierte en cliente — la mayoría de los asignados son empleados de la
+   * casa. Sin un control explícito al lado de opcional/obligatorio, las dos
+   * cosas se leen igual.
+   *
+   * ESCRIBE AL INSTANTE, a contramano del borrador y el SaveDock del resto de
+   * la pestaña: no es una propiedad de este curso sino de la PERSONA, y cambia
+   * lo que recibe en todo el sitio. Meterla en el borrador del curso haría que
+   * «descartar cambios» pareciera deshacerla, y no lo haría.
+   */
+  const handleToggleClient = async (p: Profile) => {
+    const next = p.is_client !== true
+    const ok = await confirm({
+      title: next
+        ? t('admin.courses.client_mark_title', { name: p.display_name ?? '' })
+        : t('admin.courses.client_unmark_title', { name: p.display_name ?? '' }),
+      description: next
+        ? t('admin.courses.client_mark_body')
+        : t('admin.courses.client_unmark_body'),
+      confirmLabel: next
+        ? t('admin.courses.client_mark_confirm')
+        : t('admin.courses.client_unmark_confirm'),
+    })
+    if (!ok) return
+    // Optimista: la insignia cambia al instante y se revierte si la base dice
+    // que no (un capacitador sin el permiso recibe 42501 del trigger).
+    setProfiles((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_client: next } : x)))
+    try {
+      await setUserIsClient(p.id, next)
+      invalidateAudiencePopulation()
+      toast.success(next ? t('admin.courses.client_marked') : t('admin.courses.client_unmarked'))
+    } catch (err) {
+      setProfiles((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_client: !next } : x)))
+      toast.error(
+        t('admin.courses.client_mark_error'),
+        err instanceof Error ? err.message : undefined,
+      )
+    }
   }
 
   const handleUserMandatory = (userId: string, isMandatory: boolean) => {
@@ -4030,6 +4084,8 @@ export default function CourseEditor() {
                   const country = COUNTRIES.find((c) => c.code === p.country)
                   const placeLabel = [
                     country ? `${country.flag} ${country.name}` : null,
+                    // El cliente no tiene área ni CR: en su lugar va de dónde es.
+                    p.is_client ? (p.client_name || t('admin.users.client_badge')) : null,
                     p.area_id ? unitNames.get(p.area_id) : null,
                     p.operation_id ? unitNames.get(p.operation_id) : null,
                   ].filter(Boolean).join(' · ')
@@ -4056,6 +4112,18 @@ export default function CourseEditor() {
                                   {t(`roles.${p.role}`)}
                                 </span>
                               )}
+                              {/* Marcar al de fuera aquí es lo que evita el error
+                                  que esta pantalla hace fácil: marcar de corrido
+                                  a media lista y colarle a un cliente el curso
+                                  interno de al lado. */}
+                              {p.is_client && (
+                                <span
+                                  className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+                                  style={{ background: 'rgba(14,165,233,0.14)', color: '#0284c7' }}
+                                >
+                                  {t('admin.users.client_badge')}
+                                </span>
+                              )}
                             </span>
                             {placeLabel && (
                               <span className="block text-[11px] text-text-subtle truncate">
@@ -4078,6 +4146,36 @@ export default function CourseEditor() {
                               ? t('admin.courses.mandatory')
                               : t('admin.courses.optional')}
                           </button>
+                        )}
+                        {/* CLIENTE, al lado de opcional/obligatorio.
+                            Asignar a alguien a mano NO lo convierte en cliente:
+                            la mayoría de los que se marcan aquí son gente de la
+                            casa. Sin este botón las dos cosas se leen igual, y
+                            el que ya estaba asignado parecería de fuera.
+                            Apagado ⇒ empleado; encendido ⇒ alguien de paso que
+                            solo recibe lo que se le asigne. */}
+                        {canMarkClients && p.role === 'learner' && (
+                          <Tooltip
+                            label={p.is_client
+                              ? t('admin.courses.client_toggle_on_tip')
+                              : t('admin.courses.client_toggle_off_tip')}
+                            className="shrink-0"
+                            maxWidth={280}
+                          >
+                            <button
+                              onClick={() => handleToggleClient(p)}
+                              aria-pressed={p.is_client === true}
+                              className={cn(
+                                'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors border',
+                                p.is_client
+                                  ? 'border-sky-500/40 text-sky-500'
+                                  : 'border-line text-text-subtle hover:text-text',
+                              )}
+                              style={p.is_client ? { background: 'rgba(14,165,233,0.10)' } : undefined}
+                            >
+                              {t('admin.users.client_badge')}
+                            </button>
+                          </Tooltip>
                         )}
                       </div>
                     </GlassCard>
