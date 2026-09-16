@@ -169,7 +169,12 @@ export interface SyncEntry {
    * Solo se aplica a las altas: a quien ya tiene cuenta no se le pisa el perfil.
    */
   country: string
-  matchedBy: 'national_id' | 'email' | 'name_job' | null
+  /**
+   * `twin_account`: una SEGUNDA cuenta de alguien de la base (mismo nombre
+   * exacto, otro correo). La fila ya se usó con la cuenta principal; a esta solo
+   * se le copia dónde está —país, área y CR— para que no quede sin clasificar.
+   */
+  matchedBy: 'national_id' | 'email' | 'name_job' | 'twin_account' | null
   /** Cuenta existente que corresponde a esta fila. */
   person?: RosterPerson
   reason?: SyncReason
@@ -630,6 +635,28 @@ export function diffNovelties({
     if (p.display_name && p.job_title) byNameJob.set(nj, [...(byNameJob.get(nj) ?? []), p])
   }
 
+  /**
+   * Qué se le corrige a una cuenta ya casada con su fila.
+   *
+   * Con identidad CONFIRMADA (dos señales de cuatro) se corrige todo. Sin ella
+   * —casó por correo o ficha, pero el nombre del sitio está incompleto o mal
+   * escrito ("isabela", "Ramírez" contra "RAMIRESZ")— solo se copia DÓNDE ESTÁ:
+   * país, área y CR. Nombre, cargo, ficha y correo piden las dos señales; la
+   * ubicación no, porque dejarla vacía saca a la persona de toda regla de
+   * audiencia, y la llave con la que casó (correo o ficha exactos) ya es fuerte.
+   * El choque de identidad se descarta antes de llegar aquí.
+   */
+  const changesFor = (identity: IdentityCheck, row: ExtractedRow, matched: RosterPerson): FieldChange[] => {
+    const all = computeChanges(
+      { email: row.email.trim().toLowerCase(), name: row.name, nationalId: row.nationalId,
+        nationalIdRaw: row.nationalIdRaw, jobTitleRaw: row.jobTitleRaw, country: row.country },
+      matched,
+      { operation: findUnit(units?.operations, row.operationRaw), area: findUnit(units?.areas, row.areaRaw) },
+      unitNames,
+    )
+    return identity.confident ? all : all.filter((c) => LOCATION_FIELDS.includes(c.field))
+  }
+
   const entries: SyncEntry[] = []
   /** Filas ya vistas (cédula o correo) para detectar repetidos en el archivo. */
   const seenKeys = new Set<string>()
@@ -712,6 +739,28 @@ export function diffNovelties({
           ? { ...base, action: 'deactivate', matchedBy, person: matched, reason: 'retired_in_file', include: false }
           : { ...base, action: 'skipped', matchedBy, person: matched, reason: 'already_inactive', include: false },
       )
+      /* SUS DATOS SE ACTUALIZAN IGUAL, aparte de la baja. Antes una fila
+       * «retirado» solo proponía apagar la cuenta: si nadie confirmaba la baja
+       * —y nacen sin marcar— la persona seguía activa y SIN país, área ni CR,
+       * fuera de toda regla de audiencia. 64 personas quedaron así (2026-09-16).
+       * Van como una corrección más, marcada, en su propia entrada: decidir la
+       * baja y completar la ficha son dos decisiones distintas.
+       * El correo NO se mueve: a quien se fue no se le cambia la cuenta de ingreso. */
+      if (allowUpdates) {
+        const identity = checkIdentity(
+          { email, name: row.name, nationalId: nid, jobTitleRaw: row.jobTitleRaw },
+          matched,
+        )
+        if (!identity.conflict) {
+          const changes = changesFor(identity, row, matched).filter((c) => c.field !== 'email')
+          if (changes.length > 0) {
+            entries.push({
+              ...base, key: `${key}:datos`, action: 'update', matchedBy, person: matched,
+              identity, changes, include: true,
+            })
+          }
+        }
+      }
       return
     }
 
@@ -747,16 +796,7 @@ export function diffNovelties({
         return
       }
 
-      const changes =
-        allowUpdates && identity.confident
-          ? computeChanges(
-              { email, name: row.name, nationalId: nid, nationalIdRaw: row.nationalIdRaw,
-                jobTitleRaw: row.jobTitleRaw, country: row.country },
-              matched,
-              { operation, area },
-              unitNames,
-            )
-          : []
+      const changes = allowUpdates ? changesFor(identity, row, matched) : []
 
       if (!matched.is_active) {
         entries.push({ ...base, action: 'reactivate', matchedBy, person: matched, identity, changes, include: true })
@@ -766,9 +806,13 @@ export function diffNovelties({
         changes.length > 0
           ? {
               ...base, action: 'update', matchedBy, person: matched, identity, changes,
-              /* Un nombre que no casa se revisa a mano: nace sin marcar aunque
-               * haya confianza por otras dos columnas. */
-              include: !identity.nameMismatch,
+              /* Nace MARCADA aunque el nombre no case del todo: `confident` ya
+               * exige dos señales de cuatro (ficha y correo, casi siempre), y el
+               * choque de verdad —nombres sin una palabra en común— se bloqueó
+               * arriba. Sin marcar, «Zamundio» contra «ZAMUDIO» dejaba a la
+               * persona sin área ni CR carga tras carga. El nombre del sitio se
+               * sigue enseñando en ámbar al lado, para quien quiera desmarcarla. */
+              include: true,
             }
           : { ...base, action: 'unchanged', matchedBy, person: matched, identity, include: true },
       )
@@ -784,7 +828,84 @@ export function diffNovelties({
     )
   })
 
+  if (allowUpdates) entries.push(...twinAccountEntries(fileRows, roster, entries, units, unitNames))
+
   return entries
+}
+
+/** Dónde está la persona. Lo único que se copia sin identidad confirmada. */
+const LOCATION_FIELDS: ProfileField[] = ['country', 'operation_id', 'area_id']
+
+/**
+ * SEGUNDAS CUENTAS: gente con dos cuentas (la de @positivosmais y otra de
+ * @learningai, o un correo mal tecleado) y una sola fila en la base. La fila se
+ * casa con una de las dos y la otra se quedaba sin país, área ni CR para
+ * siempre: fuera de las reglas de audiencia y de los paneles por CR.
+ *
+ * Se casa SOLO por nombre completo idéntico (sin tildes ni mayúsculas), y solo
+ * si ese nombre sale una vez en el archivo: dos homónimos son justo el caso en
+ * que copiar datos a la cuenta equivocada no se nota nunca. Y solo se copia
+ * DÓNDE ESTÁ la persona —país, área, CR—: nunca el correo, la ficha, el nombre
+ * ni el cargo, que son de la cuenta principal.
+ */
+function twinAccountEntries(
+  fileRows: ExtractedRow[],
+  roster: RosterPerson[],
+  entries: SyncEntry[],
+  units: UnitLookup | undefined,
+  unitNames: Map<string, OrgUnit> | undefined,
+): SyncEntry[] {
+  const usados = new Set(entries.map((e) => e.person?.id).filter(Boolean))
+  const clave = (v: string) => fold(v).replace(/\s+/g, ' ').trim()
+  const filasPorNombre = new Map<string, ExtractedRow[]>()
+  for (const r of fileRows) {
+    const k = clave(r.name)
+    if (k.split(' ').length < 2) continue
+    filasPorNombre.set(k, [...(filasPorNombre.get(k) ?? []), r])
+  }
+
+  const out: SyncEntry[] = []
+  for (const person of roster) {
+    if (usados.has(person.id)) continue
+    const filas = filasPorNombre.get(clave(person.display_name ?? '')) ?? []
+    if (filas.length !== 1) continue
+    const row = filas[0]
+    const operation = findUnit(units?.operations, row.operationRaw)
+    const area = findUnit(units?.areas, row.areaRaw)
+    const changes = computeChanges(
+      { email: '', name: '', nationalId: '', nationalIdRaw: '', jobTitleRaw: '', country: row.country },
+      person,
+      { operation, area },
+      unitNames,
+    ).filter((c) => LOCATION_FIELDS.includes(c.field))
+    if (changes.length === 0) continue
+    out.push({
+      key: `twin:${person.id}`,
+      action: 'update',
+      sourceLine: row.sourceLine,
+      sheet: row.sheet,
+      // El correo de ESTA cuenta, no el de la fila: es lo que distingue en
+      // pantalla la segunda cuenta de la principal.
+      email: (person.email ?? '').trim().toLowerCase(),
+      name: row.name.trim(),
+      nationalId: '',
+      nationalIdRaw: '',
+      status: row.status,
+      country: row.country,
+      jobTitleRaw: row.jobTitleRaw,
+      operationRaw: row.operationRaw,
+      areaRaw: row.areaRaw,
+      operation,
+      area,
+      campaignRaw: '',
+      campaignId: null,
+      matchedBy: 'twin_account',
+      person,
+      changes,
+      include: true,
+    })
+  }
+  return out
 }
 
 export function countByAction(entries: SyncEntry[], onlyIncluded = false): SyncCounts {

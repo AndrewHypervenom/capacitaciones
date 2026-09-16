@@ -2406,6 +2406,7 @@
       "field_area_id": "Área",
       "field_needs_auth": "(tambien el ingreso)",
       "matched_name_job": "Nombre y cargo",
+      "matched_twin_account": "Segunda cuenta (mismo nombre)",
       "reason_identity_conflict": "El correo es de otra persona",
       "name_in_site": "En el sitio: {{name}}",
       "conflicts_title": "{{n}} filas con el correo de otra persona",

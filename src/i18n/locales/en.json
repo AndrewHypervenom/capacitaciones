@@ -2406,6 +2406,7 @@
       "field_area_id": "Area",
       "field_needs_auth": "(sign-in too)",
       "matched_name_job": "Name and job title",
+      "matched_twin_account": "Second account (same name)",
       "reason_identity_conflict": "That email belongs to someone else",
       "name_in_site": "On the site: {{name}}",
       "conflicts_title": "{{n}} rows whose email belongs to someone else",
