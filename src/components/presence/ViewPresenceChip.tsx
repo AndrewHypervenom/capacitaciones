@@ -13,6 +13,11 @@ import {
 import { PresenceStack, whereLabel } from './PresenceStack'
 import { cn } from '@/lib/cn'
 
+/* Cuánto se ve el nombre al llegar alguien antes de quedar solo en avatares.
+ * Con el texto a la vista la píldora medía ~340 px y tapaba el contenido de
+ * abajo a la izquierda (tarjetas, el alcance del curso…) sin forma de achicarla. */
+const ANNOUNCE_MS = 6000
+
 const initial = (name: string) => (name || '?').charAt(0).toUpperCase()
 
 /** "ahora" / "hace 45 s" / "hace 3 min" — compacto para la fila. */
@@ -69,6 +74,17 @@ export function ViewPresenceChip() {
   const [open, setOpen] = useState(false)
   const focus = usePresenceStore((s) => s.focus)
 
+  // Quién está: al cambiar la gente, el nombre se anuncia unos segundos y luego
+  // la píldora se encoge a los avatares. `quietKey` guarda el grupo que ya se
+  // anunció; mientras no coincida con el actual, se ve el texto.
+  const peersKey = peers.map((p) => p.user_id).sort().join(',')
+  const [quietKey, setQuietKey] = useState<string | null>(null)
+  useEffect(() => {
+    if (!peersKey) return
+    const id = setTimeout(() => setQuietKey(peersKey), ANNOUNCE_MS)
+    return () => clearTimeout(id)
+  }, [peersKey])
+
   // Llegué siguiendo a alguien que está en la vista entera (no en un ítem):
   // aquí no hay nada que resaltar, así que el aviso se ABRE SOLO una vez… pero
   // sin quedar clavado: el usuario puede colapsarlo con el chevron cuando quiera.
@@ -99,6 +115,8 @@ export function ViewPresenceChip() {
   if (peers.length === 0) return null
 
   const count = peers.length
+  const summary = t('presence.in_this_view', { count, name: peers[0]?.name })
+  const showLabel = open || quietKey !== peersKey
 
   const roleLabel = (role?: string) =>
     role === 'superadmin'
@@ -137,6 +155,8 @@ export function ViewPresenceChip() {
           'rounded-2xl bg-surface/95 backdrop-blur-xl border border-glass-border/12 overflow-hidden',
           'ring-1 ring-black/[0.04] dark:ring-white/[0.06] shadow-xl',
           'max-w-[min(20rem,calc(100vw-2rem))]',
+          // Abierto, el detalle necesita su ancho; cerrado, mide lo que mide.
+          open && 'w-[min(20rem,calc(100vw-2rem))]',
         )}
       >
         {followingView && expanded && (
@@ -153,24 +173,33 @@ export function ViewPresenceChip() {
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={expanded}
-          className="group w-full flex items-center gap-2.5 px-3 py-2.5 text-left cursor-pointer transition-colors hover:bg-glass/6"
+          aria-label={summary}
+          className={cn(
+            'group w-full flex items-center text-left cursor-pointer transition-colors hover:bg-glass/6',
+            showLabel ? 'gap-2.5 px-3 py-2.5' : 'gap-2 px-2.5 py-2',
+          )}
         >
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-neon-green opacity-60 animate-ping" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-neon-green shadow-[0_0_6px_rgba(16,212,81,0.7)]" />
           </span>
           <PresenceStack peers={peers} size={24} max={4} showActivity={false} />
-          <span className="text-[11px] font-medium text-text-muted whitespace-nowrap truncate min-w-0">
-            {/* El plural i18next ya resuelve: con una persona la nombra; con
-                muchas cuenta a secas ("N personas más aquí"), sin alargar. */}
-            {t('presence.in_this_view', { count, name: peers[0]?.name })}
-          </span>
+          {/* El plural i18next ya resuelve: con una persona la nombra; con
+              muchas cuenta a secas ("N personas más aquí"), sin alargar.
+              Pasado el anuncio se esconde: quedan los avatares, y al pulsar se
+              abre el detalle con nombres. */}
+          {showLabel && (
+            <span className="text-[11px] font-medium text-text-muted whitespace-nowrap truncate min-w-0">
+              {summary}
+            </span>
+          )}
           {/* Apunta en el sentido de la acción: colapsado el panel crece hacia
               arriba (↑ = abrir); expandido se contrae hacia abajo (↓ = cerrar). */}
           <ChevronUp
             className={cn(
               'ml-auto h-3.5 w-3.5 shrink-0 text-text-subtle transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
               expanded && 'rotate-180',
+              !showLabel && 'hidden',
             )}
           />
         </button>
