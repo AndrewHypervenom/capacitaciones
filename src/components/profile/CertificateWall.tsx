@@ -14,6 +14,7 @@ import { EntityIcon } from '@/components/ui/EntityIcon';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { backdropDismiss } from '@/lib/backdropDismiss';
 import { pickLang } from '@/lib/contentLang';
+import { printableCertCode } from '@/lib/certCode';
 
 /* ────────────────────────────────────────────────────────────────────────
    Vitrina de certificados: los certificados se tratan como logros, no como
@@ -303,7 +304,7 @@ function CertificateViewer({
                 scoreValue={cert.score}
                 issuedOn={fmtDate(cert.issuedAt, lang)}
                 durationMin={durationMin}
-                certId={(cert.certId || cert.courseId).slice(0, 16).toUpperCase()}
+                certId={printableCertCode(cert.certId || cert.courseId)}
                 verifyUrl={shareUrl ?? undefined}
                 lang={lang}
               />

@@ -18,6 +18,7 @@ import { Reveal } from '@/components/ui/Reveal';
 import { useProgressStore } from '@/stores/progressStore';
 import { CertificateSheet } from '@/components/certificate/CertificateSheet';
 import { CertificateFrame, downloadCertificatePdf } from '@/components/certificate/CertificateFrame';
+import { printableCertCode } from '@/lib/certCode';
 import { pickLang } from '@/lib/contentLang';
 
 function pickText(es: string | null, en: string | null, pt: string | null, lang: string): string {
@@ -338,7 +339,7 @@ export default function Certificate() {
   // cifra que el aprendiz vio en el catálogo antes de inscribirse.
   const durationMin = (course?.modules ?? []).reduce((acc, m) => acc + (m.duration_min || 0), 0);
   const certIdSource = trainerMode ? learner?.cert_id : status?.cert_id;
-  const certId = (certIdSource ?? `${viewName}-${Date.now()}`).slice(0, 16).toUpperCase();
+  const certId = printableCertCode(certIdSource ?? `${viewName}-${Date.now()}`);
 
   const handleDownload = async () => {
     if (!certRef.current || downloading) return;

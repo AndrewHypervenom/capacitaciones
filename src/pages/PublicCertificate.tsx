@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { readCertSharePreview } from '@/lib/certSharePreview';
+import { printableCertCode } from '@/lib/certCode';
 import { CertificateSheet } from '@/components/certificate/CertificateSheet';
 import { CertificateFrame, downloadCertificatePdf } from '@/components/certificate/CertificateFrame';
 import {
@@ -320,6 +321,19 @@ export default function PublicCertificate() {
     }
   };
 
+  // `?download=1` (botón de descarga de la lista de certificados): en cuanto el
+  // diploma está pintado se descarga solo. Se espera un momento a que carguen
+  // el logo y el QR; si no, el PDF sale sin ellos. Una sola vez por visita.
+  const autoDownloaded = useRef(false);
+  const wantsDownload = params.get('download') === '1';
+  useEffect(() => {
+    if (!wantsDownload || autoDownloaded.current || loading || !cert || certId === 'preview') return;
+    autoDownloaded.current = true;
+    const id = window.setTimeout(() => { void handleDownload(); }, 1200);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsDownload, loading, cert, certId]);
+
   if (loading) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-bg">
@@ -357,9 +371,14 @@ export default function PublicCertificate() {
               ? t('public_certificate.preview_missing_hint')
               : t('public_certificate.not_found_hint')}
           </p>
-          <Link to="/">
-            <Button variant="secondary" size="md">{t('public_certificate.go_home')}</Button>
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Link to="/verify">
+              <Button variant="primary" size="md">{t('verify_lookup.try_other')}</Button>
+            </Link>
+            <Link to="/">
+              <Button variant="secondary" size="md">{t('public_certificate.go_home')}</Button>
+            </Link>
+          </div>
         </motion.div>
       </div>
     );
@@ -368,7 +387,7 @@ export default function PublicCertificate() {
   const courseTitle = pickText(cert.title_es, cert.title_en, cert.title_pt, lang);
   const issuedOn = formatDate(new Date(cert.issued_at), lang);
   const showScore = cert.score > 0;
-  const displayCertId = cert.cert_id.slice(0, 16).toUpperCase();
+  const displayCertId = printableCertCode(cert.cert_id);
   const linkedInShareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
 
   const modules = syllabus?.modules ?? [];
@@ -749,7 +768,7 @@ export default function PublicCertificate() {
               línea" sin explicar dónde era una promesa que nadie podía cumplir. */}
           <div className="mt-4 flex justify-center">
             <Tooltip
-              label={t('public_certificate.code_tooltip', { url: `${verifyBase}/verify/` })}
+              label={t('public_certificate.code_tooltip', { url: `${verifyBase}/verify` })}
               maxWidth={320}
               anchor="element"
               describedBy

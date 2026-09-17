@@ -39,6 +39,7 @@ const SimulationList = lazy(() => import('./pages/SimulationList'))
 const SimulationEditor = lazy(() => import('./pages/SimulationEditor'))
 const ChoiceSimEditor = lazy(() => import('./pages/ChoiceSimEditor'))
 const ProgressHub = lazy(() => import('./pages/ProgressHub'))
+const CertificatesAccess = lazy(() => import('./pages/CertificatesAccess'))
 const LearningMissions = lazy(() => import('./pages/LearningMissions'))
 const Worlds = lazy(() => import('./pages/Worlds'))
 const WorldDetail = lazy(() => import('./pages/WorldDetail'))
@@ -223,6 +224,7 @@ export default function AdminRouter() {
           <Route path="worlds/:id" element={<WorldDetail />} />
           <Route path="feedback" element={<Navigate to="/admin/progress?view=worlds" replace />} />
           <Route path="progress" element={<ProgressHub />} />
+          <Route path="certificates" element={<CertificatesAccess />} />
           {/* Ruta desconocida del panel: sin esto se veía la barra y un área vacía. */}
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>

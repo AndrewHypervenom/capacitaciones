@@ -12,6 +12,7 @@ import {
   Menu,
   MessageSquare,
   MessageSquarePlus,
+  ShieldCheck,
   X,
   Zap,
 } from 'lucide-react';
@@ -438,6 +439,17 @@ export default function LearnerDashboard() {
           >
             <MessageSquarePlus className="h-4 w-4 shrink-0 text-text-subtle" />
             {t('nav.suggestions', 'Sugerencias')}
+          </Link>
+
+          {/* Validar un certificado por su código (el propio o el de otra
+              persona): la misma página pública que abre el QR del diploma. */}
+          <Link
+            to="/verify"
+            onClick={closeMenu}
+            className="flex items-center gap-3 rounded-full px-4 py-2.5 text-[13px] font-medium text-text-muted transition-colors hover:bg-subtle hover:text-text"
+          >
+            <ShieldCheck className="h-4 w-4 shrink-0 text-text-subtle" />
+            {t('verify_lookup.footer_link')}
           </Link>
         </nav>
 

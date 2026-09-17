@@ -300,6 +300,39 @@ export async function getPublicCertificate(certId: string): Promise<PublicCertif
 }
 
 /**
+ * Encuentra un certificado a partir de lo que la persona tenga a mano: el
+ * CÓDIGO impreso en el diploma (16 caracteres, con o sin guiones), el
+ * identificador completo o el enlace entero de verificación.
+ *
+ * El diploma imprime solo el principio del identificador y `/verify/:certId`
+ * exige el identificador completo: con el papel en la mano no había forma de
+ * validar nada. El RPC `find_certificate_by_code` resuelve el código corto
+ * (exige 12+ caracteres y una sola coincidencia, así no se puede adivinar).
+ *
+ * Devuelve el identificador completo, o null si no corresponde a ninguno.
+ */
+export async function findCertificateId(input: string): Promise<string | null> {
+  let raw = input.trim()
+  if (!raw) return null
+  // Enlace pegado: nos quedamos con lo que va después de /verify/.
+  const fromUrl = raw.match(/\/verify\/([^/?#\s]+)/i)
+  if (fromUrl) raw = decodeURIComponent(fromUrl[1])
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.rpc as any)('find_certificate_by_code', { p_code: raw })
+  if (!error && typeof data === 'string' && data) return data
+
+  // Sin el SQL todavía (o sin coincidencia por código corto): el identificador
+  // completo sigue sirviendo tal cual.
+  try {
+    const cert = await getPublicCertificate(raw)
+    return cert ? cert.cert_id || raw : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Pénsum del certificado: el programa y, módulo a módulo, qué aprendió la
  * persona (objetivos), qué se lleva (conclusiones clave) y qué temas cubrió.
  * Es lo que ve quien escanea el QR del diploma o abre el enlace compartido —

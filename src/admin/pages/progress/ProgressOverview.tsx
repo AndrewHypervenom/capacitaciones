@@ -1,6 +1,7 @@
 // src/admin/pages/progress/ProgressOverview.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users, UserCheck, Award, Gauge, HeartHandshake, ClipboardCheck, Download,
   Search, RefreshCw, Sparkles, TrendingUp, Clock, Layers, GraduationCap,
@@ -195,7 +196,10 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     exams, loadExams, reload,
   } = data;
 
-  const [tab, setTab] = useState<Tab>('summary');
+  // `?section=certificates` llega desde Admin → Certificados: abre esa pestaña.
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() =>
+    searchParams.get('section') === 'certificates' ? 'certificates' : 'summary');
   const [range, setRange] = useState<RangeKey>('all');
   const [onlyLearners, setOnlyLearners] = useState(true);
   const [job, setJob] = useState<string>('all');
@@ -2785,6 +2789,20 @@ function CertificatesTab({
                             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-subtle hover:text-text"
                           >
                             <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={t('admin.progress_overview.cert_download', 'Descargar PDF')}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // La página pública del certificado lo genera y lo
+                              // descarga sola: un clic, sin buscar el botón allá.
+                              window.open(`/verify/${encodeURIComponent(r.certId)}?download=1`, '_blank', 'noopener');
+                            }}
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-subtle hover:text-text"
+                          >
+                            <Download className="h-3.5 w-3.5" />
                           </button>
                         </Tooltip>
                         <Tooltip label={t('admin.progress_overview.cert_open', 'Abrir el diploma')}>

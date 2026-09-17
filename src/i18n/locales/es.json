@@ -966,7 +966,7 @@
     "not_found_hint": "El enlace no corresponde a ningún certificado emitido. Verifica el código o solicita el enlace correcto.",
     "authenticity": "Este certificado es auténtico y fue emitido por LearningAI Academy. Esta página es su verificación en línea.",
     "code_label": "Código",
-    "code_tooltip": "Cada certificado tiene su propio código, y ese código es el final de la dirección de su página: {{url}}CÓDIGO. Si el código no corresponde a un certificado emitido, no se abre ninguna página.",
+    "code_tooltip": "Cada certificado tiene su propio código. Para comprobarlo, escríbelo en {{url}} o escanea el QR del diploma.",
     "go_home": "Ir al inicio",
     "completed_program": "completó el curso",
     "about_eyebrow": "El curso",
@@ -1481,7 +1481,8 @@
       "site_feedback": "Opiniones",
       "publish_approvals": "Publicaciones",
       "units": "CR",
-      "campaigns_legacy": "Programas (a migrar)"
+      "campaigns_legacy": "Programas (a migrar)",
+      "certificates": "Certificados"
     },
     "entity_types": {
       "campaigns": "Programa",
@@ -4010,7 +4011,8 @@
       "help_cert_cr": "El CR (centro de resultados) donde trabaja la persona.",
       "pick_course": "Elige un curso (obligatorio)",
       "pick_course_title": "Primero elige un curso",
-      "pick_course_body": "Todo el tablero habla de UN curso: quién lo tiene, cuánto lleva y quién se certificó. Después puedes recortar por CR, área, cargo o país."
+      "pick_course_body": "Todo el tablero habla de UN curso: quién lo tiene, cuánto lleva y quién se certificó. Después puedes recortar por CR, área, cargo o país.",
+      "cert_download": "Descargar PDF"
     },
     "feedback_panel": {
       "title": "Progreso de Aprendices",
@@ -5865,6 +5867,16 @@
       "test_badge": "Pruebas",
       "unmark_test_hint": "Quitar la marca de pruebas: su gente vuelve a contar en los reportes.",
       "mark_test_hint": "Marcar como CR de pruebas: su gente deja de contar en KPIs, reportes y Excel."
+    },
+    "certificates_access": {
+      "title": "Certificados",
+      "subtitle": "Valida un código o descarga los diplomas emitidos.",
+      "validate_title": "Validar un código",
+      "public_hint": "Cualquier persona, sin cuenta, puede validar en:",
+      "copy": "Copiar",
+      "open": "Abrir",
+      "list_title": "Ver todos los certificados emitidos",
+      "list_body": "Buscar por persona, curso o código, filtrar por CR y descargar cada PDF con un clic."
     }
   },
   "themes": {
@@ -7140,5 +7152,23 @@
     "mix_users": "No se pueden mezclar accesos de prueba con accesos reales en la misma persona.",
     "mix_course_title": "Entornos separados",
     "mix_course": "Un curso de prueba solo se asigna a personas de prueba (y al revés)."
+  },
+  "verify_lookup": {
+    "title": "Validar un certificado",
+    "subtitle": "Comprueba que un diploma de LearningAI es auténtico, de quién es y qué curso acredita.",
+    "label": "Código del certificado",
+    "placeholder": "Ej. 3F9A2C1B-7D4E-4A",
+    "hint": "Es el código que aparece en el diploma. También puedes pegar el enlace completo.",
+    "submit": "Validar",
+    "not_found": "No encontramos ningún certificado con ese código. Revisa que esté completo, tal como aparece en el diploma.",
+    "try_other": "Validar otro código",
+    "footer_link": "Validar un certificado",
+    "public_copied": "Enlace copiado",
+    "step1_title": "Escribe el código",
+    "step1_body": "O escanea el QR del diploma con el teléfono: lleva al mismo lugar.",
+    "step2_title": "Comprueba los datos",
+    "step2_body": "Verás a nombre de quién está, el curso, la fecha y lo que aprendió.",
+    "step3_title": "Descárgalo",
+    "step3_body": "Desde esa misma página se descarga el PDF del diploma."
   }
 }

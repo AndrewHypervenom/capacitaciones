@@ -966,7 +966,7 @@
     "not_found_hint": "This link does not match any issued certificate. Check the code or request the correct link.",
     "authenticity": "This certificate is authentic and was issued by LearningAI Academy. This page is its online verification.",
     "code_label": "Code",
-    "code_tooltip": "Every certificate has its own code, and that code is the end of its page address: {{url}}CODE. If the code doesn't match an issued certificate, no page opens.",
+    "code_tooltip": "Every certificate has its own code. To check it, enter it at {{url}} or scan the diploma QR.",
     "go_home": "Go home",
     "completed_program": "completed the course",
     "about_eyebrow": "The course",
@@ -1481,7 +1481,8 @@
       "site_feedback": "Feedback",
       "publish_approvals": "Publishing",
       "units": "CR",
-      "campaigns_legacy": "Programmes (to migrate)"
+      "campaigns_legacy": "Programmes (to migrate)",
+      "certificates": "Certificates"
     },
     "entity_types": {
       "campaigns": "Program",
@@ -4010,7 +4011,8 @@
       "help_cert_cr": "The CR (results center) where the person works.",
       "pick_course": "Pick a course (required)",
       "pick_course_title": "First, pick a course",
-      "pick_course_body": "The whole dashboard is about ONE course: who has it, how far they are and who got certified. Then you can narrow it down by CR, area, job title or country."
+      "pick_course_body": "The whole dashboard is about ONE course: who has it, how far they are and who got certified. Then you can narrow it down by CR, area, job title or country.",
+      "cert_download": "Download PDF"
     },
     "feedback_panel": {
       "title": "Learner Progress",
@@ -5865,6 +5867,16 @@
       "test_badge": "Test",
       "unmark_test_hint": "Remove the test mark: its people count in reports again.",
       "mark_test_hint": "Mark as test CR: its people stop counting in KPIs, reports and Excel."
+    },
+    "certificates_access": {
+      "title": "Certificates",
+      "subtitle": "Verify a code or download issued diplomas.",
+      "validate_title": "Verify a code",
+      "public_hint": "Anyone, without an account, can verify at:",
+      "copy": "Copy",
+      "open": "Open",
+      "list_title": "See all issued certificates",
+      "list_body": "Search by person, course or code, filter by CR and download each PDF in one click."
     }
   },
   "themes": {
@@ -7140,5 +7152,23 @@
     "mix_users": "Test and real access can't be mixed on the same person.",
     "mix_course_title": "Separate environments",
     "mix_course": "A test course can only be assigned to test people (and vice versa)."
+  },
+  "verify_lookup": {
+    "title": "Verify a certificate",
+    "subtitle": "Check that a LearningAI diploma is authentic, who it belongs to and which course it certifies.",
+    "label": "Certificate code",
+    "placeholder": "e.g. 3F9A2C1B-7D4E-4A",
+    "hint": "It is the code printed on the diploma. You can also paste the full link.",
+    "submit": "Verify",
+    "not_found": "No certificate matches that code. Make sure it is complete, exactly as printed on the diploma.",
+    "try_other": "Verify another code",
+    "footer_link": "Verify a certificate",
+    "public_copied": "Link copied",
+    "step1_title": "Enter the code",
+    "step1_body": "Or scan the diploma QR with your phone: it goes to the same place.",
+    "step2_title": "Check the details",
+    "step2_body": "You will see who it belongs to, the course, the date and what they learned.",
+    "step3_title": "Download it",
+    "step3_body": "The diploma PDF can be downloaded from that same page."
   }
 }

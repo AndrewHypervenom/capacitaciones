@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, ArrowLeft, Eye, EyeOff, Loader2, BookOpen, Sparkles, Gamepad2,
-  Radio, BarChart3, Globe, Check, Trophy, Phone, MailCheck, KeyRound,
+  Radio, BarChart3, Globe, Check, Trophy, Phone, MailCheck, KeyRound, ShieldCheck,
 } from 'lucide-react';
 import {
   motion, AnimatePresence, useScroll, useTransform, useInView, animate,
@@ -450,6 +450,16 @@ export default function Welcome() {
           >
             {t('welcome.land.cta_secondary')}
           </button>
+          {/* Validar un diploma: arriba y a la vista, sin cuenta. En el
+              teléfono queda solo el icono para no apretar la barra. */}
+          <a
+            href="/verify"
+            aria-label={t('verify_lookup.footer_link')}
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-apple-gray transition-colors hover:text-text sm:px-3"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('verify_lookup.footer_link')}</span>
+          </a>
           <LanguageSwitcher />
           <ThemeToggle />
           <button
@@ -822,9 +832,16 @@ export default function Welcome() {
             <img src="/logo.jpg" alt="LearningAI" className="h-6 w-6 rounded-md" />
             <span className="font-semibold text-[14px] text-text">LearningAI</span>
           </div>
-          <span className="text-[12px]" style={{ color: 'rgb(var(--text-muted))' }}>
-            {t('welcome.land.footer_rights')} · © {new Date().getFullYear()}
-          </span>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            {/* Quien recibe un diploma (un reclutador, un cliente) valida el
+                código aquí, sin cuenta. */}
+            <a href="/verify" className="text-[12px] font-medium text-text-muted transition-colors hover:text-text">
+              {t('verify_lookup.footer_link')}
+            </a>
+            <span className="text-[12px]" style={{ color: 'rgb(var(--text-muted))' }}>
+              {t('welcome.land.footer_rights')} · © {new Date().getFullYear()}
+            </span>
+          </div>
         </div>
       </footer>
 

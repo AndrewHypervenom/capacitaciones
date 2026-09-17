@@ -38,6 +38,7 @@ const ExamRunner = lazy(() => import('@/pages/ExamRunner'));
 const ExamResult = lazy(() => import('@/pages/ExamResult'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const PublicCertificate = lazy(() => import('@/pages/PublicCertificate'));
+const VerifyCertificate = lazy(() => import('@/pages/VerifyCertificate'));
 const LiveQuizPlay = lazy(() => import('@/pages/LiveQuizPlay'));
 const MissionPlayer = lazy(() => import('@/pages/MissionPlayer'));
 const ArenaHub = lazy(() => import('@/pages/ArenaHub'));
@@ -300,6 +301,7 @@ export default function App() {
             el capacitador está editando: la vista previa no puede ser una
             maqueta aparte o dejaría de coincidir con lo que ve quien abre el
             enlace. Ningún cert_id emitido puede llamarse así. */}
+        <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/verify/:certId" element={<PublicCertificate />} />
         <Route path="/mission/:id" element={<MissionPlayer />} />
         <Route path="/arena" element={<ArenaHub />} />

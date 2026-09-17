@@ -99,6 +99,9 @@ export function AdminNav() {
       title: "",
       items: [
         { to: '/admin', label: t('admin.nav.panel', 'Panel'), end: true },
+        // Fuera de los grupos plegables: arrancan cerrados y aquí nadie lo
+        // encontraba. Validar y descargar certificados se hace a diario.
+        { to: '/admin/certificates', label: t('admin.nav.certificates', 'Certificados'), end: false },
       ]
     },
     {
