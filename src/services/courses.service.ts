@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getMyAudienceCourses } from '@/services/audiences.service'
+import { getMyAudienceCourses, type MyAudienceCourse } from '@/services/audiences.service'
 import { COVER_MAX_PX, optimizeImage } from '@/lib/imageOptimize'
 import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
@@ -53,6 +53,14 @@ export interface LearnerCourse extends CourseWithModules {
   isMandatory: boolean
   /** Se auto-inscribió él mismo (puede salir del curso). */
   selfEnrolled: boolean
+  /**
+   * ¿Va en el INICIO del aprendiz? (2026-09-17) Lo que le llega solo de forma
+   * amplia —catálogo abierto o regla solo por país— NO: vive en el catálogo de
+   * /courses. Sí va si es obligatorio, si se le asignó a mano, si se inscribió
+   * él mismo o si la regla apunta a su área o CR. Que no esté en el inicio no le
+   * quita el acceso: `isAssigned` sigue diciendo si el curso es suyo.
+   */
+  onHome: boolean
   /** Nombre de la campaña dueña. Es información de GESTIÓN: solo la ve el
    *  staff. El aprendiz ve la categoría. */
   campaign_name: string | null
@@ -172,7 +180,7 @@ export async function getLearnerCourses(
     // asignar; convive con campañas y asignaciones directas mientras queden
     // cursos repartidos a la vieja usanza. Si el SQL de la fase 4 no se ha
     // corrido, devuelve vacío y todo se comporta igual que antes.
-    getMyAudienceCourses().catch(() => new Map<string, boolean>()),
+    getMyAudienceCourses().catch(() => new Map<string, MyAudienceCourse>()),
   ])
 
   if (coursesRes.error) throw coursesRes.error
@@ -220,11 +228,14 @@ export async function getLearnerCourses(
 
   return rows.map((c) => {
     const ca = byUser.get(c.id)
+    const rule = byRule.get(c.id)
+    const isMandatory = (ca?.is_mandatory ?? false) || (rule?.isMandatory ?? false)
     return {
       ...c,
       modules: preview ? c.modules : c.modules.filter((m) => m.is_published),
-      isAssigned: !!ca || byRule.has(c.id),
-      isMandatory: (ca?.is_mandatory ?? false) || (byRule.get(c.id) ?? false),
+      isAssigned: !!ca || !!rule,
+      isMandatory,
+      onHome: isMandatory || !!ca || (rule?.isTargeted ?? false),
       // Auto-inscrito: existe asignación directa creada por él mismo.
       selfEnrolled: !!ca && ca.assigned_by === userId,
       // Manda la más antigua: el plazo se cuenta desde que de verdad lo tuvo,

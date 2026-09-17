@@ -207,8 +207,14 @@ export default function Courses() {
     return sortByStatus(list);
   };
 
-  const myCourses = arrange(filtered.filter((c) => c.isAssigned));
-  const exploreCourses = arrange(filtered.filter((c) => !c.isAssigned));
+  // «Mis cursos» es lo mismo que el inicio: lo obligatorio, lo dirigido a su
+  // área/CR, lo asignado a mano y lo ya empezado. Lo que le llega solo por
+  // catálogo o por una regla solo de país va al catálogo, aunque tenga acceso.
+  const isMine = (c: LearnerCourse) =>
+    c.isAssigned &&
+    (c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0);
+  const myCourses = arrange(filtered.filter(isMine));
+  const exploreCourses = arrange(filtered.filter((c) => !isMine(c)));
 
   // Catálogo agrupado por CATEGORÍA. Antes era por programa, que se retiró del
   // sitio (2026-09-15): lo que era "programa" pasó a ser la categoría del curso.
@@ -233,7 +239,9 @@ export default function Courses() {
 
   /* ── Resumen del avance: una sola línea, sin tablero de KPIs ─────────── */
   const stats = useMemo(() => {
-    const assigned = courses.filter((c) => c.isAssigned);
+    const assigned = courses.filter(
+      (c) => c.isAssigned && (c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0),
+    );
     let completed = 0;
     let mandatoryPending = 0;
     assigned.forEach((c) => {

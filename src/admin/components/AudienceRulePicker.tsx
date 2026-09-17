@@ -246,11 +246,15 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
 
   return (
     <div className="space-y-4">
-      {/* Toda la organización: el caso de las categorías de la casa */}
+      {/* «Toda la organización» ya NO se ofrece (2026-09-17): confundía y los
+          capacitadores no la usaban; un curso para todos se hace marcando los
+          países. Solo se pinta si una regla vieja la trae encendida, para que se
+          pueda ver y APAGAR: esconderla dejaría una condición vigente invisible. */}
+      {value.everyone && (
       <button
         type="button"
         disabled={disabled}
-        onClick={() => onChange({ ...value, everyone: !value.everyone, countries: [], operationIds: [], areaIds: [] })}
+        onClick={() => onChange({ ...value, everyone: false, countries: [], operationIds: [], areaIds: [] })}
         className={cn(
           'w-full text-left rounded-2xl border p-4 transition-colors',
           value.everyone
@@ -266,9 +270,10 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
           </span>
         </div>
         <p className="text-[12px] text-text-muted leading-relaxed">
-          {t('admin.courses.aud_everyone_desc', 'Se le asigna a todos los aprendices, sin condiciones. Es el caso de Avanza +, Sé y comparto o S+ Lidera.')}
+          {t('admin.courses.aud_everyone_legacy', 'Esta opción ya no se ofrece porque confundía. Apágala y elige los países en el paso 1.')}
         </p>
       </button>
+      )}
 
       {!value.everyone && (
         <>

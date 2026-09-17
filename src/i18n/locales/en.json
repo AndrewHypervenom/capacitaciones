@@ -3056,6 +3056,7 @@
       "aud_operation_help": "Narrows it further. Tick an area and only its CRs stay here. Tick none and it reaches them all.",
       "aud_country_help": "Required, unless the course goes to the whole organisation. The number shows how many learners each one reaches.",
       "aud_everyone_desc": "Reaches every learner in all three countries, no conditions. This is the case for soft skills, Avanza +, Sé y comparto or S+ Lidera. For a single country, do not tick this: use step 1.",
+      "aud_everyone_legacy": "This option is no longer offered because it was confusing. Turn it off and pick the countries in step 1: the course will keep reaching the same people.",
       "aud_search": "Search among {{n}}…",
       "aud_no_match": "Nothing matches the search.",
       "aud_how_title": "How this rule reads",

@@ -2378,6 +2378,14 @@ export interface Database {
           is_mandatory: boolean
         }[]
       }
+      get_my_audience_courses_detail: {
+        Args: Record<string, never>
+        Returns: {
+          course_id: string
+          is_mandatory: boolean
+          is_targeted: boolean
+        }[]
+      }
       get_course_recert_status: {
         Args: { p_course_id: string }
         Returns: {

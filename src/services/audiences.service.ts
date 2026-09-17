@@ -327,15 +327,35 @@ export async function countClients(orgId: string): Promise<number> {
  * cada curso es información de gestión, y el aprendiz no tiene por qué poder
  * leer las reglas de todos los cursos para saber cuáles son los suyos.
  */
-export async function getMyAudienceCourses(): Promise<Map<string, boolean>> {
-  const out = new Map<string, boolean>()
+export interface MyAudienceCourse {
+  isMandatory: boolean
+  /**
+   * ¿La regla apunta a ÁREA o CR? Una regla solo por país (o la vieja «toda la
+   * organización») es amplia: le da acceso, pero el curso vive en el catálogo y
+   * no en el inicio del aprendiz, salvo que sea obligatorio.
+   */
+  isTargeted: boolean
+}
+
+export async function getMyAudienceCourses(): Promise<Map<string, MyAudienceCourse>> {
+  const out = new Map<string, MyAudienceCourse>()
+  const detail = await supabase.rpc('get_my_audience_courses_detail')
+  if (!detail.error) {
+    for (const r of detail.data ?? []) {
+      out.set(r.course_id, { isMandatory: r.is_mandatory, isTargeted: r.is_targeted })
+    }
+    return out
+  }
+  if (!isMissingSchema(detail.error)) throw detail.error
+  // SQL 40 sin correr: el RPC viejo no dice cómo es la regla. Se trata todo como
+  // dirigido, que es exactamente como se comportaba antes.
   const { data, error } = await supabase.rpc('get_my_audience_courses')
   if (error) {
     if (isMissingSchema(error)) return out
     throw error
   }
   for (const r of data ?? []) {
-    out.set(r.course_id, r.is_mandatory)
+    out.set(r.course_id, { isMandatory: r.is_mandatory, isTargeted: true })
   }
   return out
 }

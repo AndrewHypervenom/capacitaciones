@@ -96,14 +96,6 @@ export default function LearnerDashboard() {
   // Los cursos abiertos "para todo el mundo" no se mezclan aquí: se exploran en
   // /courses, para que el aprendiz no crea que debe hacer cursos que no son suyos.
   const dashboardCourses = useMemo(() => courses.filter((c) => c.isAssigned), [courses]);
-  // Los obligatorios primero; el resto conserva el orden que trae el servicio.
-  const sortedDashboardCourses = useMemo(
-    () =>
-      [...dashboardCourses].sort((a, b) =>
-        a.isMandatory === b.isMandatory ? 0 : a.isMandatory ? -1 : 1,
-      ),
-    [dashboardCourses],
-  );
   const assignedCourseIds = useMemo(
     () => new Set(dashboardCourses.map((c) => c.id)),
     [dashboardCourses],
@@ -137,6 +129,28 @@ export default function LearnerDashboard() {
   const reconcileModuleKeys = useProgressStore((s) => s.reconcileModuleKeys);
   const isModuleDone = useModuleDone();
   const recordWorldProgress = useProgressStore((s) => s.recordWorldProgress);
+
+  // Lo que SE VE en el inicio es más estrecho que lo asignado (2026-09-17): un
+  // curso que le llega solo por catálogo o por una regla solo de país vive en
+  // /courses, salvo que sea obligatorio (`onHome`). Si ya lo empezó se queda
+  // aquí: sacarle de la vista algo a medias le haría perder el hilo. Logros y
+  // mundo siguen contando sobre `dashboardCourses`, que es el acceso real.
+  const homeCourses = useMemo(
+    () =>
+      dashboardCourses.filter(
+        (c) => c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0,
+      ),
+    [dashboardCourses, isModuleDone, journeys],
+  );
+  // Los obligatorios primero; el resto conserva el orden que trae el servicio.
+  const sortedDashboardCourses = useMemo(
+    () =>
+      [...homeCourses].sort((a, b) =>
+        a.isMandatory === b.isMandatory ? 0 : a.isMandatory ? -1 : 1,
+      ),
+    [homeCourses],
+  );
+  const homeCourseIds = useMemo(() => new Set(homeCourses.map((c) => c.id)), [homeCourses]);
 
   // Definiciones vivas (editables por el superadmin); caen a los defaults de
   // fábrica si la BD aún no cargó. Solo las habilitadas cuentan y se muestran.
@@ -249,7 +263,9 @@ export default function LearnerDashboard() {
   const coursesDone = courseStatus.finished.length;
   const coursePct = coursesTotal > 0 ? coursesDone / coursesTotal : 0;
 
-  const pending = modules.filter((m) => !isModuleDone({ uuid: m.uuid, slug: m.slug }));
+  const pending = modules.filter(
+    (m) => homeCourseIds.has(m.courseId) && !isModuleDone({ uuid: m.uuid, slug: m.slug }),
+  );
   const remainingMinutes = pending.reduce((acc, m) => acc + m.duration, 0);
   const nextModule = pending[0];
 
@@ -603,7 +619,7 @@ export default function LearnerDashboard() {
                 <h2 className="text-[19px] font-semibold tracking-tight text-text transition-colors group-hover:text-primary">
                   {t('dashboard.courses_title')}
                 </h2>
-                <span className="text-[13px] tabular-nums text-text-subtle">{dashboardCourses.length}</span>
+                <span className="text-[13px] tabular-nums text-text-subtle">{homeCourses.length}</span>
                 <ArrowRight className="h-3.5 w-3.5 self-center text-text-subtle transition-transform duration-500 ease-apple group-hover:translate-x-1" />
               </Link>
               <p className="mt-0.5 text-[13px] text-text-muted">
@@ -611,7 +627,7 @@ export default function LearnerDashboard() {
               </p>
             </FadeIn>
 
-            {dashboardCourses.length === 0 && (
+            {homeCourses.length === 0 && (
               <div className="mb-5 rounded-3xl border border-line bg-surface p-10 text-center text-[13.5px] text-text-muted">
                 {t('dashboard.courses_empty')}
               </div>

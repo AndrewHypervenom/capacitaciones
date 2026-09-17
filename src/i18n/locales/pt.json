@@ -3056,6 +3056,7 @@
       "aud_operation_help": "Estreita ainda mais. Ao marcar uma área, aqui ficam só os CR dela. Sem nenhum marcado, vai para todos.",
       "aud_country_help": "Obrigatório, a não ser que o curso vá para toda a organização. O número diz a quantos aprendizes cada um chega.",
       "aud_everyone_desc": "Chega a todos os aprendizes dos três países, sem condições. É o caso das habilidades comportamentais, Avanza +, Sé y comparto ou S+ Lidera. Para um só país, não marque isto: use o passo 1.",
+      "aud_everyone_legacy": "Esta opção não é mais oferecida porque confundia. Desligue-a e escolha os países no passo 1: o curso continuará chegando às mesmas pessoas.",
       "aud_search": "Buscar entre {{n}}…",
       "aud_no_match": "Nada coincide com a busca.",
       "aud_how_title": "Como se lê esta regra",
