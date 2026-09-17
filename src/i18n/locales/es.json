@@ -999,6 +999,9 @@
     "toggle_label": "Apariencia"
   },
   "common": {
+    "select_search": "Buscar…",
+    "select_did_you_mean": "¿Quisiste decir…?",
+    "select_no_results": "Nada coincide con «{{query}}»",
     "clear": "Limpiar",
     "done": "Listo",
     "rich": {

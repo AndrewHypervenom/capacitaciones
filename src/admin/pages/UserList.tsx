@@ -1222,7 +1222,6 @@ export default function UserList() {
                     value={inviteCountry}
                     onChange={setInviteCountry}
                     placeholder={needsCountry ? t('admin.users.pick_country') : t('admin.users.country_optional')}
-                    searchable={inviteIsClient}
                     options={[
                       ...(needsCountry ? [] : [{ value: '', label: t('admin.users.country_optional') }]),
                       // Solo los países donde hay operación (los mismos del paso 1

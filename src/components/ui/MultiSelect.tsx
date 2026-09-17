@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check } from 'lucide-react'
+import { ChevronDown, Check, Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
-import type { SelectOption } from '@/components/ui/Select'
+import { HighlightedLabel, SEARCH_MIN_OPTIONS, type SelectOption } from '@/components/ui/Select'
+import { prepareText, smartSearch } from '@/lib/smartSearch'
 
 export interface MultiSelectProps {
   values: string[]
@@ -16,6 +18,8 @@ export interface MultiSelectProps {
   compact?: boolean
   disabled?: boolean
   'aria-label'?: string
+  /** Igual que en Select: sin indicarlo, sale desde SEARCH_MIN_OPTIONS opciones. */
+  searchable?: boolean
 }
 
 /** Alto ideal del menú (16rem, como el max-h-64 de antes). */
@@ -47,11 +51,32 @@ export function MultiSelect({
   compact,
   disabled,
   'aria-label': ariaLabel,
+  searchable,
 }: MultiSelectProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
+  const [query, setQuery] = useState('')
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  const showSearch = searchable ?? options.length >= SEARCH_MIN_OPTIONS
+  const prepared = useMemo(() => options.map((o) => prepareText(o.label)), [options])
+  const q = showSearch ? query.trim() : ''
+  const result = useMemo(() => smartSearch(options, prepared, q), [options, prepared, q])
+  const suggesting = !!q && result.hits.length === 0 && result.suggestions.length > 0
+  const visible = suggesting ? result.suggestions : result.hits
+
+  useEffect(() => {
+    if (open && showSearch) searchRef.current?.focus()
+  }, [open, showSearch])
+
+  const openPanel = (initialQuery = '') => {
+    setQuery(initialQuery)
+    setOpen(true)
+    setActiveIdx(0)
+  }
   const [pos, setPos] = useState<PanelPos>({ top: 0, left: 0, width: 0, openUp: false, maxH: PANEL_MAX_H })
 
   const measure = useCallback(() => {
@@ -99,14 +124,18 @@ export function MultiSelect({
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return
+    const printable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' '
     if (!open) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+      if (printable && showSearch) {
         e.preventDefault()
-        setOpen(true)
-        setActiveIdx(0)
+        openPanel(e.key)
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        openPanel()
       }
       return
     }
+    if (!visible.length && e.key !== 'Escape') return
     if (e.key === 'Escape') {
       e.preventDefault()
       setOpen(false)
@@ -115,19 +144,19 @@ export function MultiSelect({
       e.preventDefault()
       setActiveIdx((i) => {
         let n = i
-        do { n = (n + 1) % options.length } while (options[n]?.disabled && n !== i)
+        do { n = (n + 1) % visible.length } while (visible[n]?.disabled && n !== i)
         return n
       })
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActiveIdx((i) => {
         let n = i
-        do { n = (n - 1 + options.length) % options.length } while (options[n]?.disabled && n !== i)
+        do { n = (n - 1 + visible.length) % visible.length } while (visible[n]?.disabled && n !== i)
         return n
       })
-    } else if (e.key === 'Enter' || e.key === ' ') {
+    } else if (e.key === 'Enter' || (e.key === ' ' && !showSearch)) {
       e.preventDefault()
-      const opt = options[activeIdx]
+      const opt = visible[activeIdx]
       if (opt && !opt.disabled) toggle(opt.value)
     }
   }
@@ -149,7 +178,7 @@ export function MultiSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => (open ? setOpen(false) : (setOpen(true), setActiveIdx(0)))}
+        onClick={() => (open ? setOpen(false) : openPanel())}
         onKeyDown={onKeyDown}
         className={cn(
           'flex items-center justify-between w-full border transition-colors',
@@ -179,14 +208,40 @@ export function MultiSelect({
               top: pos.openUp ? undefined : pos.top,
               bottom: pos.openUp ? window.innerHeight - pos.top + 6 : undefined,
               left: pos.left,
-              width: 'max-content',
+              width: showSearch ? Math.min(360, Math.max(pos.width, 260), window.innerWidth - 24) : 'max-content',
               minWidth: pos.width,
               maxWidth: Math.min(360, window.innerWidth - 24),
               maxHeight: pos.maxH,
               zIndex: 9999,
             }}
           >
-            {options.map((opt, idx) => {
+            {showSearch && (
+              <div className="sticky top-0 z-10 bg-surface px-2 pb-1">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-subtle" />
+                  <input
+                    ref={searchRef}
+                    value={query}
+                    onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
+                    onKeyDown={onKeyDown}
+                    placeholder={t('common.select_search', 'Buscar…')}
+                    aria-label={t('common.select_search', 'Buscar…')}
+                    className="w-full rounded-lg border border-line bg-bg py-1.5 pl-8 pr-2.5 text-[13px] text-text outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+            )}
+            {suggesting && (
+              <div className="px-3.5 pt-1.5 pb-1 text-[11.5px] text-text-subtle">
+                {t('common.select_did_you_mean', '¿Quisiste decir…?')}
+              </div>
+            )}
+            {showSearch && q && visible.length === 0 && (
+              <div className="px-3.5 py-2 text-[12.5px] text-text-subtle">
+                {t('common.select_no_results', { query: q, defaultValue: 'Nada coincide con «{{query}}»' })}
+              </div>
+            )}
+            {visible.map((opt, idx) => {
               const isSelected = values.includes(opt.value)
               return (
                 <button
@@ -212,7 +267,11 @@ export function MultiSelect({
                   >
                     {isSelected && <Check className="h-3 w-3 text-black" />}
                   </span>
-                  <span className="truncate flex-1">{opt.label}</span>
+                  <span className="truncate flex-1">
+                    {suggesting ? opt.label : (
+                      <HighlightedLabel label={opt.label} prepared={prepared[options.indexOf(opt)]} query={q} />
+                    )}
+                  </span>
                 </button>
               )
             })}

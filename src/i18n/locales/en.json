@@ -999,6 +999,9 @@
     "toggle_label": "Appearance"
   },
   "common": {
+    "select_search": "Search…",
+    "select_did_you_mean": "Did you mean…?",
+    "select_no_results": "Nothing matches “{{query}}”",
     "clear": "Clear",
     "done": "Done",
     "rich": {

@@ -2,14 +2,16 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check } from 'lucide-react'
+import { ChevronDown, Check, Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
-import { fold } from '@/lib/normalize'
+import { highlightRanges, prepareText, smartSearch, type PreparedText } from '@/lib/smartSearch'
 
 export interface SelectOption {
   value: string
@@ -37,9 +39,34 @@ export interface SelectProps {
   id?: string
   name?: string
   'aria-label'?: string
-  /** Buscador arriba del menú (sin tildes). Para listas largas, como los CR. */
+  /**
+   * Buscador arriba del menú. Sin indicarlo sale solo cuando la lista tiene
+   * SEARCH_MIN_OPTIONS opciones o más; `true` lo fuerza y `false` lo quita.
+   */
   searchable?: boolean
   searchPlaceholder?: string
+}
+
+/**
+ * Desde cuántas opciones sale el buscador solo. Por debajo (Sí/No, A-Z/Z-A,
+ * los 3 países) un campo de texto estorba más de lo que ayuda: se ve todo de un
+ * vistazo, y aun así se puede saltar a una opción tecleando su inicial.
+ */
+export const SEARCH_MIN_OPTIONS = 6
+
+/** Pinta en negrita lo que casó con la búsqueda. */
+export function HighlightedLabel({ label, prepared, query }: { label: string; prepared: PreparedText; query: string }) {
+  const ranges = query ? highlightRanges(prepared, query) : []
+  if (ranges.length === 0) return <>{label}</>
+  const parts: ReactNode[] = []
+  let at = 0
+  ranges.forEach(([a, b], i) => {
+    if (a > at) parts.push(label.slice(at, a))
+    parts.push(<mark key={i} className="bg-transparent font-semibold text-text">{label.slice(a, b)}</mark>)
+    at = b
+  })
+  if (at < label.length) parts.push(label.slice(at))
+  return <>{parts}</>
 }
 
 /** Alto ideal del menú (16rem, como el max-h-64 de antes). */
@@ -76,6 +103,7 @@ export function Select({
   searchable,
   searchPlaceholder,
 }: SelectProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
   const [query, setQuery] = useState('')
@@ -83,12 +111,26 @@ export function Select({
   const panelRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const q = searchable ? fold(query.trim()) : ''
-  const visible = q ? options.filter(o => fold(o.label).includes(q)) : options
+  const showSearch = searchable ?? options.length >= SEARCH_MIN_OPTIONS
+  const prepared = useMemo(() => options.map(o => prepareText(o.label)), [options])
+  const q = showSearch ? query.trim() : ''
+  const result = useMemo(() => smartSearch(options, prepared, q), [options, prepared, q])
+  // Sin aciertos, los parecidos por error de dedo ocupan su lugar.
+  const suggesting = !!q && result.hits.length === 0 && result.suggestions.length > 0
+  const visible = suggesting ? result.suggestions : result.hits
+  const preparedOf = (opt: SelectOption) => prepared[options.indexOf(opt)]
 
   useEffect(() => {
-    if (open && searchable) searchRef.current?.focus()
-  }, [open, searchable])
+    if (open && showSearch) searchRef.current?.focus()
+  }, [open, showSearch])
+
+  // Con flechas en una lista larga, la opción activa no se sale de la vista.
+  useEffect(() => {
+    if (!open || activeIdx < 0) return
+    panelRef.current
+      ?.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeIdx])
   const [pos, setPos] = useState<PanelPos>({ top: 0, left: 0, width: 0, openUp: false, maxH: PANEL_MAX_H })
 
   const measure = useCallback(() => {
@@ -138,14 +180,33 @@ export function Select({
     btnRef.current?.focus()
   }
 
-  const openAt = (idx: number) => {
-    setQuery('')
+  const openAt = (idx: number, initialQuery = '') => {
+    setQuery(initialQuery)
     setOpen(true)
     setActiveIdx(idx)
   }
 
+  /** Primera opción habilitada cuya palabra inicial empieza por `ch`. */
+  const jumpTo = (ch: string) => {
+    const c = prepareText(ch).folded
+    return options.findIndex((o, i) => !o.disabled && prepared[i].words[0]?.startsWith(c))
+  }
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return
+    const printable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' '
+    if (!open && printable) {
+      // Escribir sobre el select cerrado ya es buscar, como en uno nativo.
+      e.preventDefault()
+      if (showSearch) openAt(0, e.key)
+      else openAt(Math.max(0, jumpTo(e.key)))
+      return
+    }
+    if (open && printable && !showSearch) {
+      const idx = jumpTo(e.key)
+      if (idx >= 0) setActiveIdx(idx)
+      return
+    }
     if (!open) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
@@ -172,7 +233,7 @@ export function Select({
         do { n = (n - 1 + visible.length) % visible.length } while (visible[n]?.disabled && n !== i)
         return n
       })
-    } else if (e.key === 'Enter' || (e.key === ' ' && !searchable)) {
+    } else if (e.key === 'Enter' || (e.key === ' ' && !showSearch)) {
       // Con buscador, el espacio se escribe: "IBM UPS" lleva uno.
       e.preventDefault()
       const opt = visible[activeIdx]
@@ -236,27 +297,40 @@ export function Select({
               top: pos.openUp ? undefined : pos.top,
               bottom: pos.openUp ? window.innerHeight - pos.top + 6 : undefined,
               left: pos.left,
-              width: 'max-content',
+              // Con buscador, ancho fijo: si siguiera al contenido, el panel
+              // se encogería y ensancharía con cada letra.
+              width: showSearch ? Math.min(360, Math.max(pos.width, 260), window.innerWidth - 24) : 'max-content',
               minWidth: pos.width,
               maxWidth: Math.min(360, window.innerWidth - 24),
               maxHeight: pos.maxH,
               zIndex: 9999,
             }}
           >
-            {searchable && (
+            {showSearch && (
               <div className="sticky top-0 z-10 bg-surface px-2 pb-1">
-                <input
-                  ref={searchRef}
-                  value={query}
-                  onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
-                  onKeyDown={onKeyDown}
-                  placeholder={searchPlaceholder}
-                  className="w-full rounded-lg border border-line bg-bg px-2.5 py-1.5 text-[13px] text-text outline-none focus:border-primary"
-                />
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-subtle" />
+                  <input
+                    ref={searchRef}
+                    value={query}
+                    onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
+                    onKeyDown={onKeyDown}
+                    placeholder={searchPlaceholder ?? t('common.select_search', 'Buscar…')}
+                    aria-label={searchPlaceholder ?? t('common.select_search', 'Buscar…')}
+                    className="w-full rounded-lg border border-line bg-bg py-1.5 pl-8 pr-2.5 text-[13px] text-text outline-none focus:border-primary"
+                  />
+                </div>
               </div>
             )}
-            {searchable && visible.length === 0 && (
-              <div className="px-3.5 py-2 text-[12px] text-text-subtle">—</div>
+            {suggesting && (
+              <div className="px-3.5 pt-1.5 pb-1 text-[11.5px] text-text-subtle">
+                {t('common.select_did_you_mean', '¿Quisiste decir…?')}
+              </div>
+            )}
+            {showSearch && q && visible.length === 0 && (
+              <div className="px-3.5 py-2 text-[12.5px] text-text-subtle">
+                {t('common.select_no_results', { query: q, defaultValue: 'Nada coincide con «{{query}}»' })}
+              </div>
             )}
             {visible.map((opt, idx) => {
               const isSelected = opt.value === value
@@ -265,6 +339,7 @@ export function Select({
                   key={opt.value}
                   type="button"
                   role="option"
+                  data-idx={idx}
                   aria-selected={isSelected}
                   disabled={opt.disabled}
                   onMouseEnter={() => setActiveIdx(idx)}
@@ -282,7 +357,9 @@ export function Select({
                       style={{ background: opt.color }}
                     />
                   )}
-                  <span className="truncate flex-1">{opt.label}</span>
+                  <span className="truncate flex-1">
+                    {suggesting ? opt.label : <HighlightedLabel label={opt.label} prepared={preparedOf(opt)} query={q} />}
+                  </span>
                   {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-brand-green" />}
                 </button>
               )
