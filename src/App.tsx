@@ -25,6 +25,7 @@ import ModulePage from '@/pages/ModulePage';
 // un módulo. El `Suspense` que las cubre está más abajo; si un chunk falla por
 // un despliegue nuevo, el ErrorBoundary global ya recarga (ver main.tsx).
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
+const DeviceCheck = lazy(() => import('@/pages/DeviceCheck'));
 const MyFeedback = lazy(() => import('@/pages/MyFeedback'));
 const MySuggestions = lazy(() => import('@/pages/MySuggestions'));
 const Profile = lazy(() => import('@/pages/Profile'));
@@ -268,6 +269,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
+        {/* Diagnóstico de «solo desde el computador»: qué ve el sitio de este
+            aparato. Sin sesión, porque se abre desde el celular para probar. */}
+        <Route path="/device" element={<DeviceCheck />} />
         {/* Restablecer contraseña desde el enlace del correo — sin sesión previa */}
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route element={<AppShell requireAuth />}>
