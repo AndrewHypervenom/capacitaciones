@@ -5870,13 +5870,23 @@
     },
     "certificates_access": {
       "title": "Certificados",
-      "subtitle": "Valide um código ou baixe os diplomas emitidos.",
-      "validate_title": "Validar um código",
-      "public_hint": "Qualquer pessoa, sem conta, pode validar em:",
-      "copy": "Copiar",
-      "open": "Abrir",
-      "list_title": "Ver todos os certificados emitidos",
-      "list_body": "Buscar por pessoa, curso ou código, filtrar por CR e baixar cada PDF com um clique."
+      "subtitle": "Encontre a pessoa e baixe ou compartilhe o diploma.",
+      "public_hint": "Para alguém de fora (sem conta), a página de validação é",
+      "copy": "Copiar link",
+      "search_ph": "Nome, e-mail, documento, curso ou código",
+      "loading": "Carregando certificados…",
+      "results_one": "{{count}} certificado · {{people}} pessoa(s)",
+      "results_other": "{{count}} certificados · {{people}} pessoa(s)",
+      "recent": "Últimos emitidos ({{total}} no total: digite acima para buscar)",
+      "load_error": "Não foi possível carregar os certificados.",
+      "none_title": "Nada corresponde ao que você digitou",
+      "none_body": "Confira a grafia do nome, ou tente o e-mail ou o documento. Se for um código de diploma, você pode validá-lo aqui mesmo.",
+      "check_code": "Validar este código",
+      "view": "Ver",
+      "download": "PDF",
+      "copy_hint": "Link para qualquer pessoa conferir o certificado, sem conta.",
+      "link_copied": "Link copiado",
+      "more": "Ver mais {{count}}"
     }
   },
   "themes": {

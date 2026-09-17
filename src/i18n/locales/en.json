@@ -5870,13 +5870,23 @@
     },
     "certificates_access": {
       "title": "Certificates",
-      "subtitle": "Verify a code or download issued diplomas.",
-      "validate_title": "Verify a code",
-      "public_hint": "Anyone, without an account, can verify at:",
-      "copy": "Copy",
-      "open": "Open",
-      "list_title": "See all issued certificates",
-      "list_body": "Search by person, course or code, filter by CR and download each PDF in one click."
+      "subtitle": "Find the person and download or share their diploma.",
+      "public_hint": "For someone outside (no account), the verification page is",
+      "copy": "Copy link",
+      "search_ph": "Name, email, ID number, course or code",
+      "loading": "Loading certificates…",
+      "results_one": "{{count}} certificate · {{people}} person(s)",
+      "results_other": "{{count}} certificates · {{people}} person(s)",
+      "recent": "Latest issued ({{total}} in total: type above to search)",
+      "load_error": "Certificates could not be loaded.",
+      "none_title": "Nothing matches what you typed",
+      "none_body": "Check the spelling of the name, or try the email or ID number. If it is a diploma code, you can verify it right here.",
+      "check_code": "Verify this code",
+      "view": "View",
+      "download": "PDF",
+      "copy_hint": "Link anyone can use to check the certificate, no account needed.",
+      "link_copied": "Link copied",
+      "more": "Show {{count}} more"
     }
   },
   "themes": {
