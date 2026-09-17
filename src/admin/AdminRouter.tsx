@@ -56,6 +56,7 @@ const SiteFeedback = lazy(() => import('./pages/SiteFeedback'))
 
 import { usePendingPublicationsSync } from '@/stores/pendingPublicationsStore'
 import { HelpWidget } from '@/components/help/HelpWidget'
+import { useDeadlineAlertKick } from '@/hooks/useDeadlineAlertKick'
 
 /**
  * Lo que se ve mientras llega el archivo de una pantalla.
@@ -86,6 +87,10 @@ export default function AdminRouter() {
   // Cuenta los cursos en cola mientras el panel esté abierto, para el globo del
   // menú y la tarjeta del tablero. Solo pide si quien mira puede aprobar.
   usePendingPublicationsSync(canApproveCourses)
+
+  // Avisos de plazo de las inducciones: mientras no haya pg_cron, la tarea
+  // diaria la dispara el primer miembro del equipo que entra al panel.
+  useDeadlineAlertKick()
   const location = useLocation()
   const profile = useAuthStore((s) => s.profile)
   const { t } = useTranslation()

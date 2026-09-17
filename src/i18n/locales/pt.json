@@ -279,6 +279,27 @@
       "rejected_title": "Seu curso foi devolvido",
       "rejected_body": "“{{course}}” voltou a rascunho.",
       "revoked_title": "Seu curso foi retirado do ar"
+    },
+    "deadline": {
+      "soon_title_one": "Falta 1 dia",
+      "soon_title_other": "Faltam {{count}} dias",
+      "soon_body": "«{{course}}» vence em {{date}}.",
+      "today_title": "Hoje é o último dia",
+      "today_body": "«{{course}}» vence hoje, {{date}}.",
+      "overdue_title": "O prazo passou",
+      "overdue_body": "«{{course}}» venceu em {{date}}."
+    },
+    "onboarding_overdue": {
+      "title_one": "1 pessoa com a integração vencida",
+      "title_other": "{{count}} pessoas com a integração vencida",
+      "body": "{{who}} e outras seguem sem concluir a integração, fora do prazo.",
+      "body_plain": "Há pessoas com a integração fora do prazo. Confira em Progresso."
+    },
+    "deadline_overdue": {
+      "title_one": "1 pessoa com o prazo vencido",
+      "title_other": "{{count}} pessoas com o prazo vencido",
+      "body": "{{who}} e o restante passaram da data de entrega sem terminar o curso.",
+      "body_plain": "Há pessoas fora do prazo. Confira em Progresso."
     }
   },
   "dashboard": {
@@ -2806,8 +2827,14 @@
       "draft_notice_title": "Este curso está em rascunho",
       "draft_notice_desc": "Enquanto estiver em rascunho, nenhum aprendiz o verá, mesmo que seja público ou atribuído. Publique-o para que chegue.",
       "search_users_ph": "Buscar por nome…",
+      "search_people_ph": "Buscar por nome, documento, e-mail, cargo, país, área ou CR…",
       "search_campaigns_ph": "Buscar programa por nome…",
       "no_users": "Nenhuma pessoa encontrada.",
+      "people_found_one": "1 de {{total}} pessoas",
+      "people_found_other": "{{count}} de {{total}} pessoas",
+      "people_total_one": "1 pessoa",
+      "people_total_other": "{{count}} pessoas",
+      "no_users_for_query": "Ninguém corresponde a «{{query}}». Tente o sobrenome, o documento ou o e-mail.",
       "no_campaigns": "Nenhum programa encontrada.",
       "mandatory": "Obrigatório",
       "optional": "Opcional",
@@ -3221,7 +3248,13 @@
       "onboarding_off": "Ative se fizer parte da integração de pessoas novas: enquanto não o concluírem, não verão outros cursos nem o catálogo.",
       "onboarding_step_1": "Atribua à pessoa nova (regra ou manualmente).",
       "onboarding_step_2": "Ela vê apenas seus cursos de onboarding.",
-      "onboarding_step_3": "Ao concluí-los, o catálogo é liberado."
+      "onboarding_step_3": "Ao concluí-los, o catálogo é liberado.",
+      "onboarding_needs_deadline": "Uma integração sem prazo nunca vence: a pessoa poderia passar meses sem ver o catálogo e ninguém perceberia.",
+      "onboarding_set_15d": "Definir 15 dias",
+      "deadline_onboarding_note": "É uma integração: até concluí-la, esta pessoa não vê nenhum outro curso. O prazo diz até quando ela tem.",
+      "deadline_onboarding_blocks": "Ao vencer, a integração é fechada e ela fica sem nada para fazer: verá a quem pedir a prorrogação, e você (e o RH) recebem o aviso.",
+      "deadline_onboarding_warns": "Ao vencer, apenas se avisa: ela ainda pode concluir a integração atrasada, e você (e o RH) recebem o aviso de que está fora do prazo.",
+      "deadline_days_onboarding_from": "Conta a partir da atribuição. Para quem recebe por regra de país, área ou CR, a partir de quando entrou na empresa ou da última vez que você mexeu na regra (o que for mais recente)."
     },
     "simulations": {
       "save": "Salvar",
@@ -7326,6 +7359,22 @@
     "catalog_locked_subtitle": "Primeiro a integração: ao concluí-la você pode se inscrever nos outros cursos.",
     "course_locked_title": "Primeiro, seu onboarding",
     "course_locked_body": "Este curso abre quando você concluir sua integração. Você fez {{done}} de {{total}}.",
-    "go_onboarding": "Continuar meu onboarding"
+    "go_onboarding": "Continuar meu onboarding",
+    "title_closed": "Sua integração venceu e foi fechada",
+    "body_closed": "Você não pode continuá-la nem passar aos outros cursos até que ampliem seu prazo.",
+    "deadline_ok": "Vence em {{date}}",
+    "deadline_soon_one": "Falta 1 dia: vence em {{date}}",
+    "deadline_soon_other": "Faltam {{count}} dias: vence em {{date}}",
+    "deadline_today": "Vence hoje, {{date}}",
+    "deadline_overdue": "Venceu em {{date}}. Você ainda pode concluí-la, mas já está fora do prazo.",
+    "deadline_closed": "Venceu em {{date}} e o curso foi fechado.",
+    "deadline_closed_nodate": "O prazo venceu e o curso foi fechado.",
+    "ask_extension": "Peça uma prorrogação ao seu instrutor ou ao RH. Você também pode falar conosco pelo botão de ajuda, no canto inferior direito.",
+    "course_locked_body_closed": "Este curso abre quando você concluir sua integração, e sua integração venceu. Peça uma prorrogação para continuar.",
+    "toast_soon_title_one": "Falta 1 dia para «{{course}}»",
+    "toast_soon_title_other": "Faltam {{count}} dias para «{{course}}»",
+    "toast_today_title": "«{{course}}» vence hoje",
+    "toast_overdue_title": "«{{course}}» está fora do prazo",
+    "toast_closed_title": "«{{course}}» foi fechado por prazo vencido"
   }
 }

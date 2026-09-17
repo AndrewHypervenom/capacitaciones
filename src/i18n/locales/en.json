@@ -279,6 +279,27 @@
       "rejected_title": "Your course was sent back",
       "rejected_body": "“{{course}}” went back to draft.",
       "revoked_title": "Your course was taken down"
+    },
+    "deadline": {
+      "soon_title_one": "1 day left",
+      "soon_title_other": "{{count}} days left",
+      "soon_body": "\"{{course}}\" is due {{date}}.",
+      "today_title": "Today is the last day",
+      "today_body": "\"{{course}}\" is due today, {{date}}.",
+      "overdue_title": "You missed the deadline",
+      "overdue_body": "\"{{course}}\" was due {{date}}."
+    },
+    "onboarding_overdue": {
+      "title_one": "1 person past their onboarding deadline",
+      "title_other": "{{count}} people past their onboarding deadline",
+      "body": "{{who}} and others still have onboarding unfinished and past due.",
+      "body_plain": "Some people are past their onboarding deadline. Check it in Progress."
+    },
+    "deadline_overdue": {
+      "title_one": "1 person past the deadline",
+      "title_other": "{{count}} people past the deadline",
+      "body": "{{who}} and the rest missed the due date without finishing the course.",
+      "body_plain": "Some people are past their deadline. Check it in Progress."
     }
   },
   "dashboard": {
@@ -2806,8 +2827,14 @@
       "draft_notice_title": "This course is a draft",
       "draft_notice_desc": "While it's a draft no learner will see it, even if it's public or assigned. Publish it so it reaches them.",
       "search_users_ph": "Search by name…",
+      "search_people_ph": "Search by name, ID number, email, job title, country, area or CR…",
       "search_campaigns_ph": "Search program by name…",
       "no_users": "No people found.",
+      "people_found_one": "1 of {{total}} people",
+      "people_found_other": "{{count}} of {{total}} people",
+      "people_total_one": "1 person",
+      "people_total_other": "{{count}} people",
+      "no_users_for_query": "Nobody matches “{{query}}”. Try the last name, the ID number or the email.",
       "no_campaigns": "No programs found.",
       "mandatory": "Mandatory",
       "optional": "Optional",
@@ -3221,7 +3248,13 @@
       "onboarding_off": "Turn it on if it is part of new-hire onboarding: until they finish it, they will not see other courses or the catalog.",
       "onboarding_step_1": "Assign it to the new person (rule or by hand).",
       "onboarding_step_2": "They only see their onboarding courses.",
-      "onboarding_step_3": "When they finish, the catalog opens."
+      "onboarding_step_3": "When they finish, the catalog opens.",
+      "onboarding_needs_deadline": "Onboarding with no deadline never expires: someone could go months without seeing the catalog and nobody would notice.",
+      "onboarding_set_15d": "Set 15 days",
+      "deadline_onboarding_note": "This is onboarding: until they finish it, this person sees no other course. The deadline says how long they have.",
+      "deadline_onboarding_blocks": "When it expires, their onboarding closes and they have nothing left to do: they will see who to ask for an extension, and you (and HR) get the alert.",
+      "deadline_onboarding_warns": "When it expires they are only warned: they can still finish onboarding late, and you (and HR) get the alert that they are past due.",
+      "deadline_days_onboarding_from": "Counted from the moment it is assigned. For people reached by a country, area or CR rule, from when they joined or the last time you touched the rule — whichever is more recent."
     },
     "simulations": {
       "save": "Save",
@@ -7326,6 +7359,22 @@
     "catalog_locked_subtitle": "Onboarding comes first: once it is done you can enroll in other courses.",
     "course_locked_title": "Onboarding first",
     "course_locked_body": "This course opens when you finish your onboarding. You have done {{done}} of {{total}}.",
-    "go_onboarding": "Continue my onboarding"
+    "go_onboarding": "Continue my onboarding",
+    "title_closed": "Your onboarding expired and closed",
+    "body_closed": "You cannot continue it or move on to other courses until someone extends your deadline.",
+    "deadline_ok": "Due {{date}}",
+    "deadline_soon_one": "1 day left: due {{date}}",
+    "deadline_soon_other": "{{count}} days left: due {{date}}",
+    "deadline_today": "Due today, {{date}}",
+    "deadline_overdue": "It was due {{date}}. You can still finish it, but it is late.",
+    "deadline_closed": "It was due {{date}} and the course closed.",
+    "deadline_closed_nodate": "The deadline passed and the course closed.",
+    "ask_extension": "Ask your trainer or HR for an extension. You can also reach us with the help button, bottom right.",
+    "course_locked_body_closed": "This course opens when you finish your onboarding, and your onboarding expired. Ask for an extension to continue.",
+    "toast_soon_title_one": "1 day left for \"{{course}}\"",
+    "toast_soon_title_other": "{{count}} days left for \"{{course}}\"",
+    "toast_today_title": "\"{{course}}\" is due today",
+    "toast_overdue_title": "\"{{course}}\" is past its deadline",
+    "toast_closed_title": "\"{{course}}\" closed: deadline passed"
   }
 }

@@ -2,6 +2,7 @@ import type { CourseJourney } from '@/lib/courseJourney'
 import type { ModuleKey } from '@/stores/progressStore'
 import { courseProgress } from '@/components/course/CourseCard'
 import type { LearnerCourse } from '@/services/courses.service'
+import { deadlineInfo, type DeadlineInfo } from '@/lib/courseDeadline'
 
 /**
  * La compuerta del onboarding, en UN solo sitio.
@@ -32,6 +33,21 @@ export interface OnboardingGate {
   settled: boolean
   /** Ids de los cursos de onboarding, para filtrar rápido. */
   ids: Set<string>
+  /**
+   * El plazo MÁS APRETADO entre los cursos de onboarding que le faltan (el que
+   * vence antes). Null si ninguno tiene plazo o no se puede fechar.
+   */
+  deadline: DeadlineInfo | null
+  /** Curso al que pertenece ese plazo (a dónde mandarlo). */
+  deadlineCourse: LearnerCourse | null
+  /** Se le pasó el plazo de alguna inducción pendiente. */
+  overdue: boolean
+  /**
+   * …y además ese curso se cierra al vencer: no puede terminarlo ni salir de la
+   * inducción. Es un callejón sin salida a propósito —el plazo se puso para que
+   * lo fuera— así que la pantalla tiene que decirle a quién pedirle ampliación.
+   */
+  blocked: boolean
 }
 
 export function onboardingGate(
@@ -46,6 +62,21 @@ export function onboardingGate(
     (c) => !(trusted && courseProgress(c, isModuleDone, journeys[c.id]).completed),
   )
   const done = mine.length - pending.length
+
+  // El plazo que manda es el que vence antes; un curso sin fecha no compite.
+  let deadline: DeadlineInfo | null = null
+  let deadlineCourse: LearnerCourse | null = null
+  let blocked = false
+  for (const c of pending) {
+    const info = deadlineInfo(c, { assignedAt: c.assignedAt, completed: false })
+    if (info.blocked) blocked = true
+    if (info.dueMs === null) continue
+    if (deadline === null || deadline.dueMs === null || info.dueMs < deadline.dueMs) {
+      deadline = info
+      deadlineCourse = c
+    }
+  }
+
   return {
     active: mine.length > 0 && done < mine.length,
     courses: mine,
@@ -54,5 +85,9 @@ export function onboardingGate(
     done,
     total: mine.length,
     ids: new Set(mine.map((c) => c.id)),
+    deadline,
+    deadlineCourse,
+    overdue: deadline?.state === 'overdue' || blocked,
+    blocked,
   }
 }

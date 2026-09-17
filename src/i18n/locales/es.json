@@ -279,6 +279,27 @@
       "rejected_title": "Te devolvieron el curso",
       "rejected_body": "“{{course}}” volvió a borrador.",
       "revoked_title": "Bajaron tu curso"
+    },
+    "deadline": {
+      "soon_title_one": "Te queda 1 día",
+      "soon_title_other": "Te quedan {{count}} días",
+      "soon_body": "«{{course}}» vence el {{date}}.",
+      "today_title": "Hoy es el último día",
+      "today_body": "«{{course}}» vence hoy, {{date}}.",
+      "overdue_title": "Se te pasó el plazo",
+      "overdue_body": "«{{course}}» venció el {{date}}."
+    },
+    "onboarding_overdue": {
+      "title_one": "1 persona con la inducción vencida",
+      "title_other": "{{count}} personas con la inducción vencida",
+      "body": "{{who}} y el resto siguen sin terminar su onboarding fuera de plazo.",
+      "body_plain": "Hay gente con el onboarding fuera de plazo. Revísalo en Progreso."
+    },
+    "deadline_overdue": {
+      "title_one": "1 persona con el plazo vencido",
+      "title_other": "{{count}} personas con el plazo vencido",
+      "body": "A {{who}} y al resto se les pasó la fecha de entrega sin terminar el curso.",
+      "body_plain": "Hay gente fuera de plazo. Revísalo en Progreso."
     }
   },
   "dashboard": {
@@ -2806,8 +2827,14 @@
       "draft_notice_title": "Este curso está en borrador",
       "draft_notice_desc": "Mientras esté en borrador no lo verá ningún aprendiz, aunque sea público o esté asignado. Publícalo para que llegue.",
       "search_users_ph": "Buscar por nombre…",
+      "search_people_ph": "Buscar por nombre, cédula, correo, cargo, país, área o CR…",
       "search_campaigns_ph": "Buscar programa por nombre…",
       "no_users": "No se encontraron personas.",
+      "people_found_one": "1 de {{total}} personas",
+      "people_found_other": "{{count}} de {{total}} personas",
+      "people_total_one": "1 persona",
+      "people_total_other": "{{count}} personas",
+      "no_users_for_query": "Nadie coincide con «{{query}}». Prueba con el apellido, la cédula o el correo.",
       "no_campaigns": "No se encontraron programas.",
       "mandatory": "Obligatorio",
       "optional": "Opcional",
@@ -3221,7 +3248,13 @@
       "onboarding_off": "Actívalo si es parte de la inducción de la gente nueva: mientras no lo terminen, no verán otros cursos ni el catálogo.",
       "onboarding_step_1": "Asígnalo a la persona nueva (regla o a mano).",
       "onboarding_step_2": "Solo ve sus cursos de onboarding.",
-      "onboarding_step_3": "Al terminarlos se le abre el catálogo."
+      "onboarding_step_3": "Al terminarlos se le abre el catálogo.",
+      "onboarding_needs_deadline": "Una inducción sin plazo nunca vence: la persona podría quedarse meses sin ver el catálogo y nadie se enteraría.",
+      "onboarding_set_15d": "Poner 15 días",
+      "deadline_onboarding_note": "Es una inducción: hasta que la termine, esta persona no ve ningún otro curso. El plazo dice hasta cuándo tiene.",
+      "deadline_onboarding_blocks": "Al vencer se le cierra la inducción y se queda sin nada que hacer: verá a quién pedirle la ampliación y tú (y RH) recibirán el aviso.",
+      "deadline_onboarding_warns": "Al vencer solo se le avisa: sigue pudiendo terminar la inducción tarde, y tú (y RH) reciben el aviso de que va fuera de plazo.",
+      "deadline_days_onboarding_from": "Se cuenta desde que se le asigna. A quien le llega por regla de país, área o CR, desde que entró a la empresa o desde la última vez que tocaste la regla (lo que sea más reciente)."
     },
     "simulations": {
       "save": "Guardar",
@@ -7326,6 +7359,22 @@
     "catalog_locked_subtitle": "Primero tu inducción: al terminarla puedes inscribirte en los demás cursos.",
     "course_locked_title": "Primero, tu onboarding",
     "course_locked_body": "Este curso se abre cuando termines tu inducción. Llevas {{done}} de {{total}}.",
-    "go_onboarding": "Seguir mi onboarding"
+    "go_onboarding": "Seguir mi onboarding",
+    "title_closed": "Tu inducción venció y se cerró",
+    "body_closed": "No puedes seguir con ella ni pasar al resto de cursos hasta que te amplíen el plazo.",
+    "deadline_ok": "Vence el {{date}}",
+    "deadline_soon_one": "Te queda 1 día: vence el {{date}}",
+    "deadline_soon_other": "Te quedan {{count}} días: vence el {{date}}",
+    "deadline_today": "Vence hoy, {{date}}",
+    "deadline_overdue": "Venció el {{date}}. Puedes terminarla, pero ya va fuera de plazo.",
+    "deadline_closed": "Venció el {{date}} y el curso se cerró.",
+    "deadline_closed_nodate": "El plazo venció y el curso se cerró.",
+    "ask_extension": "Pídele una ampliación a tu capacitador o a Talento Humano. También puedes escribirnos con el botón de ayuda, abajo a la derecha.",
+    "course_locked_body_closed": "Este curso se abre cuando termines tu inducción, y tu inducción venció. Pide una ampliación para poder continuar.",
+    "toast_soon_title_one": "Te queda 1 día para «{{course}}»",
+    "toast_soon_title_other": "Te quedan {{count}} días para «{{course}}»",
+    "toast_today_title": "Hoy vence «{{course}}»",
+    "toast_overdue_title": "«{{course}}» está fuera de plazo",
+    "toast_closed_title": "«{{course}}» se cerró por plazo vencido"
   }
 }

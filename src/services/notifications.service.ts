@@ -33,6 +33,16 @@ export interface ResetPayload {
   /** Módulos que el ajuste deja HECHOS (UUID y slug, como el progreso local). */
   complete_module_ids?: string[]
   complete_module_slugs?: string[]
+  /** Plazo de un curso (kind 'course_deadline'): en qué momento va. */
+  stage?: 'soon' | 'today' | 'overdue'
+  onboarding?: boolean
+  course_slug?: string | null
+  due_at?: string | null
+  days_left?: number
+  /** Resumen diario al equipo (kind 'onboarding_overdue'). Cubre cualquier
+   *  curso con plazo; `onboarding` viene en false si hay cursos normales. */
+  courses?: string[]
+  who?: string[]
   course_id?: string | null
   course_title?: string | null
   module_title?: string | null

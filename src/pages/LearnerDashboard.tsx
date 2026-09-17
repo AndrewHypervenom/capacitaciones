@@ -50,6 +50,7 @@ import { CourseGrid, courseProgress, pickCourseText } from '@/components/course/
 import { useCourseJourneys } from '@/hooks/useCourseJourneys';
 import { onboardingGate } from '@/lib/onboarding';
 import { OnboardingBanner, LockedCatalogCard } from '@/components/course/OnboardingGate';
+import { useDeadlineToasts } from '@/hooks/useDeadlineToasts';
 import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
@@ -97,6 +98,10 @@ export default function LearnerDashboard() {
     () => onboardingGate(courses, journeys, isModuleDone, { loaded: journeysLoaded, failed: journeysFailed }),
     [courses, journeys, isModuleDone, journeysLoaded, journeysFailed],
   );
+
+  // Aviso en pantalla cuando el plazo de la inducción aprieta (la campana lo
+  // recibe aparte, de la tarea diaria del servidor).
+  useDeadlineToasts(gate);
 
   // Universo de módulos que cuenta para certificación, simulador e insignias:
   // los módulos de los cursos asignados (a la persona o a su campaña), no los

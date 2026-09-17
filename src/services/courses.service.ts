@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getMyAudienceCourses, type MyAudienceCourse } from '@/services/audiences.service'
+import { getMyAudienceCourses, getMyAudienceRuleDates, type MyAudienceCourse } from '@/services/audiences.service'
 import { COVER_MAX_PX, optimizeImage } from '@/lib/imageOptimize'
 import type { CertConditions, Course } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
@@ -169,7 +169,7 @@ export async function getLearnerCourses(
   // programa dejó de llegar a propósito: la migración no avanzaba mientras el
   // camino viejo siguiera funcionando. Las filas siguen en la base (el progreso
   // no se toca); simplemente no se leen aquí.
-  const [coursesRes, caRes, testIds, byRule] = await Promise.all([
+  const [coursesRes, caRes, testIds, byRule, ruleDates] = await Promise.all([
     preview ? coursesQuery : coursesQuery.eq('is_published', true),
     supabase
       .from('course_assignments')
@@ -181,6 +181,9 @@ export async function getLearnerCourses(
     // cursos repartidos a la vieja usanza. Si el SQL de la fase 4 no se ha
     // corrido, devuelve vacío y todo se comporta igual que antes.
     getMyAudienceCourses().catch(() => new Map<string, MyAudienceCourse>()),
+    // Desde cuándo le llega por regla: el punto de partida del plazo por días
+    // para quien no tiene asignación a mano (ver SQL 42).
+    getMyAudienceRuleDates().catch(() => new Map<string, string>()),
   ])
 
   if (coursesRes.error) throw coursesRes.error
@@ -240,7 +243,15 @@ export async function getLearnerCourses(
       selfEnrolled: !!ca && ca.assigned_by === userId,
       // Manda la más antigua: el plazo se cuenta desde que de verdad lo tuvo,
       // no desde la última vez que alguien volvió a asignárselo.
-      assignedAt: earliest(ca?.assigned_at, null),
+      // Manda la más antigua entre su asignación a mano y la fecha desde la
+      // que le llega por regla: el plazo cuenta desde que de verdad lo tuvo.
+      // Solo en la INDUCCIÓN: fechar por regla a los demás cursos pondría de
+      // golpe "fuera de plazo" a gente que hoy no lo está (p. ej. un curso de 15
+      // días cuya regla se tocó hace meses). Ver SQL 42.
+      assignedAt: earliest(
+        ca?.assigned_at,
+        rule && c.is_onboarding ? ruleDates.get(c.id) ?? null : null,
+      ),
       campaign_name: c.campaigns?.name ?? names.get(c.campaign_id) ?? null,
       // La del catálogo manda; si el curso todavía no se ha migrado, vale la
       // categoría vieja en texto. Así el filtro del aprendiz no pierde nada

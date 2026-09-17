@@ -337,6 +337,30 @@ export interface MyAudienceCourse {
   isTargeted: boolean
 }
 
+/**
+ * Desde cuándo tiene la persona cada curso que le llega POR REGLA (RPC del SQL
+ * 42). Es lo que permite fechar el plazo "N días desde la asignación" de quien
+ * no tiene asignación a mano: la gente nueva recibe su inducción por la regla de
+ * país/área/CR, no a dedo. Cuenta desde lo más tardío entre que entró la persona
+ * y la última vez que se tocó la regla.
+ *
+ * Si el SQL 42 no se ha corrido devuelve un mapa vacío: esos cursos se quedan
+ * sin fecha, exactamente como antes.
+ */
+export async function getMyAudienceRuleDates(): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_my_audience_rule_dates')
+  if (error) {
+    if (isMissingSchema(error)) return out
+    throw error
+  }
+  for (const r of (data ?? []) as Array<{ course_id: string; rule_at: string | null }>) {
+    if (r.rule_at) out.set(r.course_id, r.rule_at)
+  }
+  return out
+}
+
 export async function getMyAudienceCourses(): Promise<Map<string, MyAudienceCourse>> {
   const out = new Map<string, MyAudienceCourse>()
   const detail = await supabase.rpc('get_my_audience_courses_detail')

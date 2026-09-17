@@ -8,7 +8,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/stores/toastStore'
 import { cn } from '@/lib/cn'
-import { fold } from '@/lib/normalize'
+import { prepareText, smartSearch } from '@/lib/smartSearch'
 import {
   getCampaignLearners,
   getCourseAssignments,
@@ -87,15 +87,18 @@ export function EnrollLearnersModal({ course, campaignId, onClose, onSaved }: En
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // `fold` y no `toLowerCase`: nadie escribe "Rocío" con tilde al buscar. Y se
-  // mira también el correo, que es como se distingue a los homónimos.
+  /* El mismo buscador tolerante de los desplegables y de «Personas
+     específicas» (ver smartSearch.ts): sin tildes, palabras en cualquier orden
+     —"ana lopez" encuentra a «Ana María López»—, iniciales y errores de dedo.
+     Se mira también el correo, que es como se distingue a los homónimos. */
+  const searchText = useMemo(
+    () => learners.map((l) => prepareText(`${l.display_name ?? ''} ${l.email ?? ''}`.trim())),
+    [learners],
+  )
   const filtered = useMemo(() => {
-    const q = fold(search)
-    if (!q) return learners
-    return learners.filter(
-      (l) => fold(l.display_name ?? '').includes(q) || fold(l.email ?? '').includes(q),
-    )
-  }, [learners, search])
+    const { hits, suggestions } = smartSearch(learners, searchText, search, 8)
+    return hits.length > 0 || !search.trim() ? hits : suggestions
+  }, [learners, searchText, search])
 
   const dirty = useMemo(() => {
     const base = new Map(assignments.map((a) => [a.user_id, a.is_mandatory]))

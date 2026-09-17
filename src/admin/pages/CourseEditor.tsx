@@ -141,7 +141,7 @@ import { Button } from '@/components/ui/Button'
 import { PulseHint } from '@/components/ui/motion'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { cn } from '@/lib/cn'
-import { fold } from '@/lib/normalize'
+import { prepareText, smartSearch } from '@/lib/smartSearch'
 import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useUnsavedWork } from '@/hooks/useUnsavedWork'
@@ -153,6 +153,36 @@ import { useUndoHistory, type PanelUndo, type RegisterUndo } from '@/hooks/useUn
 import { SaveDock, DirtyDot } from '@/admin/components/SaveDock'
 import { fingerprint } from '@/lib/fingerprint'
 import { rowText, initialContentLang } from '@/lib/contentLang'
+
+/**
+ * La lista de personas, COMPLETA, pedida por páginas.
+ *
+ * La API corta la respuesta en 1000 filas. Con la plantilla entera por encima
+ * de ese número, los últimos nombres del alfabeto no llegaban nunca al
+ * navegador: el buscador de «Personas específicas» respondía «No se encontraron
+ * personas» de gente que sí existe, que es la peor respuesta posible — parece
+ * que el dato no está. Se pide página a página hasta que una viene incompleta.
+ *
+ * Va con `order` SIEMPRE (también sobre el RPC): sin un orden estable, dos
+ * páginas pueden traer a la misma persona y dejarse a otra fuera.
+ */
+const PROFILE_PAGE = 1000
+
+async function fetchAllProfilePages(
+  page: (from: number, to: number) => PromiseLike<{ data: Profile[] | null; error: { code?: string } | null }>,
+): Promise<{ rows: Profile[]; error: { code?: string } | null }> {
+  const rows: Profile[] = []
+  for (let from = 0; ; from += PROFILE_PAGE) {
+    const { data, error } = await page(from, from + PROFILE_PAGE - 1)
+    if (error) return { rows, error }
+    const batch = data ?? []
+    rows.push(...batch)
+    if (batch.length < PROFILE_PAGE) return { rows, error: null }
+    // Cinturón: nunca más de 20 páginas, para que un orden inestable no
+    // acabe en un bucle infinito de peticiones.
+    if (from / PROFILE_PAGE >= 19) return { rows, error: null }
+  }
+}
 
 type Tab = 'info' | 'modules' | 'assign' | 'evaluation' | 'exam' | 'cert' | 'survey'
 
@@ -846,11 +876,14 @@ export default function CourseEditor() {
       })
       .catch(() => {})
     if (isSuperAdmin) {
-      supabase
-        .from('profiles')
-        .select('*')
-        .order('display_name')
-        .then(({ data }) => { if (active) setProfiles((data ?? []) as Profile[]) })
+      fetchAllProfilePages((from, to) =>
+        supabase
+          .from('profiles')
+          .select('*')
+          .order('display_name')
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: Profile[] | null; error: { code?: string } | null }>,
+      ).then(({ rows }) => { if (active) setProfiles(rows) })
       return () => { active = false }
     }
     // AQUÍ NO va "mi gente" (get_my_people_ids), y no es un olvido: sería
@@ -864,20 +897,27 @@ export default function CourseEditor() {
     // `get_assignable_learners` (SQL 33) devuelve a todos los aprendices
     // activos; la RLS de course_assignments deja escribir a quien gestiona el
     // curso. Sin el SQL corrido se cae al filtro de siempre.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(supabase.rpc as any)('get_assignable_learners').then(
-      async ({ data, error }: { data: Profile[] | null; error: { code?: string } | null }) => {
-        if (!active) return
-        if (!error) { setProfiles(data ?? []); return }
-        const { data: legacy } = await supabase
+    fetchAllProfilePages((from, to) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.rpc as any)('get_assignable_learners')
+        .order('display_name')
+        .order('id')
+        .range(from, to),
+    ).then(async ({ rows, error }) => {
+      if (!active) return
+      if (!error) { setProfiles(rows); return }
+      const { rows: legacy } = await fetchAllProfilePages((from, to) =>
+        supabase
           .from('profiles')
           .select('*')
           .eq('role', 'learner')
           .in('campaign_id', ids.length ? ids : [''])
           .order('display_name')
-        if (active) setProfiles((legacy ?? []) as Profile[])
-      },
-    )
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: Profile[] | null; error: { code?: string } | null }>,
+      )
+      if (active) setProfiles(legacy)
+    })
     return () => { active = false }
   }, [courseId, isSuperAdmin, authCampaignId, accessibleCampaigns])
 
@@ -1005,35 +1045,60 @@ export default function CourseEditor() {
     return out
   }, [campaignModules])
 
-  // El buscador mira nombre, correo (así se distingue a quien tiene el nombre
-  // repetido, ver sync_profile_email) y dónde está: país, área y CR. Escribir
-  // "TUPY" deja solo a la gente de ese CR. El programa ya no: pasó a ser CR.
-  const filteredProfiles = useMemo(() => {
-    const q = fold(userSearch.trim())
+  /* Texto por el que se encuentra a cada persona, preparado UNA vez (no en
+     cada tecla): nombre, correo (así se distingue a quien tiene el nombre
+     repetido, ver sync_profile_email), cédula, cargo y dónde está —país, área,
+     CR— más el cliente, que es la única forma de agrupar a los de fuera.
+     Escribir "TUPY" deja solo a la gente de ese CR. */
+  const profileSearchText = useMemo(() => {
     const countryName = new Map(COUNTRIES.map((c) => [c.code, c.name]))
-    const base = !q
-      ? profiles
-      : profiles.filter(
-          (p) =>
-            fold(p.display_name ?? '').includes(q) ||
-            fold(p.email ?? '').includes(q) ||
-            fold(countryName.get(p.country ?? '') ?? '').includes(q) ||
-            fold(unitNames.get(p.area_id ?? '') ?? '').includes(q) ||
-            fold(unitNames.get(p.operation_id ?? '') ?? '').includes(q) ||
-            // Por el nombre del cliente: "ACME" deja solo a su gente. Es la
-            // única forma de agrupar a los de fuera, que no tienen área ni CR.
-            fold(p.client_name ?? '').includes(q),
-        )
-    // LAS MARCADAS, ARRIBA. Con ochocientos nombres en orden alfabético, saber
-    // a quiénes tiene asignado el curso obligaba a bajar por toda la lista
-    // buscando casillas encendidas: el editor decía "9 personas" y no había
-    // forma de ver cuáles. `sort` es estable, así que dentro de cada grupo se
-    // conserva el orden alfabético de siempre. Misma decisión que en el paso 3
-    // del CR (lo marcado se queda arriba).
+    return profiles.map((p) => prepareText([
+      p.display_name ?? '',
+      p.email ?? '',
+      p.national_id ?? '',
+      p.job_title ?? '',
+      countryName.get(p.country ?? '') ?? '',
+      unitNames.get(p.area_id ?? '') ?? '',
+      unitNames.get(p.operation_id ?? '') ?? '',
+      p.client_name ?? '',
+    ].filter(Boolean).join(' · ')))
+  }, [profiles, unitNames])
+
+  /* El MISMO buscador tolerante de los desplegables (ver smartSearch.ts), y no
+     un `includes` a secas como antes.
+     Lo que antes no salía y ahora sí:
+       · palabras en cualquier orden y salteadas … "adriana cruzaley" encuentra
+         a «Adriana Neri Cruzaley» (con `includes` no casaba: el texto buscado
+         tiene que estar seguido)
+       · pedazos del principio ................... "adr cruz"
+       · iniciales ............................... "anc"
+       · errores de dedo ......................... "cruzalei", "mexcio" salen
+         como SUGERENCIA cuando no hay ningún acierto
+     Así un vacío casi nunca es un vacío. */
+  const userSearchResult = useMemo(
+    () => smartSearch(profiles, profileSearchText, userSearch, 8),
+    [profiles, profileSearchText, userSearch],
+  )
+  /* Sin aciertos pero con parecidos: se enseñan bajo «¿Quisiste decir…?». No se
+     mezclan con los aciertos, para que una lista filtrada nunca traiga ruido. */
+  const userSearchSuggesting =
+    !!userSearch.trim() && userSearchResult.hits.length === 0 && userSearchResult.suggestions.length > 0
+
+  const filteredProfiles = useMemo(() => {
+    const base = userSearchSuggesting ? userSearchResult.suggestions : userSearchResult.hits
+    // BUSCANDO manda lo más parecido: subir lo marcado por encima del nombre
+    // que se acaba de escribir sería esconder justo lo que se está buscando.
+    if (userSearch.trim()) return base
+    // SIN BUSCAR, LAS MARCADAS ARRIBA. Con ochocientos nombres en orden
+    // alfabético, saber a quiénes tiene asignado el curso obligaba a bajar por
+    // toda la lista buscando casillas encendidas: el editor decía "9 personas"
+    // y no había forma de ver cuáles. `sort` es estable, así que dentro de cada
+    // grupo se conserva el orden alfabético de siempre. Misma decisión que en
+    // el paso 3 del CR (lo marcado se queda arriba).
     return [...base].sort(
       (a, b) => Number(b.id in draftUsers) - Number(a.id in draftUsers),
     )
-  }, [profiles, userSearch, unitNames, draftUsers])
+  }, [userSearchResult, userSearchSuggesting, userSearch, draftUsers])
 
   // ¿Hay cambios pendientes respecto a lo guardado en BD?
   const assignDirty = useMemo(() => {
@@ -3335,6 +3400,22 @@ export default function CourseEditor() {
                     label={t('admin.courses.onboarding_title')}
                   />
                 </div>
+                {form.is_onboarding && form.deadline_mode === 'none' && (
+                  <div className="mt-3 flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2.5 sm:flex-row sm:items-center">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                    <p className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-text-muted">
+                      {t('admin.courses.onboarding_needs_deadline')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, deadline_mode: 'days', deadline_days: 15, deadline_blocks: false })}
+                      className="shrink-0 rounded-lg border border-amber-500/40 px-2.5 py-1 text-[11.5px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
+                    >
+                      {t('admin.courses.onboarding_set_15d')}
+                    </button>
+                  </div>
+                )}
+
                 {form.is_onboarding && (
                   <ol className="mt-3 grid gap-2 border-t border-line/70 pt-3 sm:grid-cols-3">
                     {(['onboarding_step_1', 'onboarding_step_2', 'onboarding_step_3'] as const).map((k, i) => (
@@ -3386,6 +3467,14 @@ export default function CourseEditor() {
                   <p className="text-[12px] text-text-muted mt-1 leading-relaxed">
                     {t('admin.courses.deadline_hint')}
                   </p>
+                  {/* Onboarding y plazo son la misma decisión: aquí se dice qué
+                      significa el plazo CUANDO el curso encierra a la persona. */}
+                  {form.is_onboarding && (
+                    <p className="mt-2 inline-flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11.5px] leading-relaxed text-primary">
+                      <Rocket className="mt-px h-3.5 w-3.5 shrink-0" />
+                      {t('admin.courses.deadline_onboarding_note')}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -3426,6 +3515,11 @@ export default function CourseEditor() {
                   <span className="text-[12px] text-text-muted">
                     {t('admin.courses.deadline_days_label')}
                   </span>
+                  {form.is_onboarding && (
+                    <p className="w-full text-[11.5px] leading-relaxed text-text-subtle">
+                      {t('admin.courses.deadline_days_onboarding_from')}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -3507,6 +3601,23 @@ export default function CourseEditor() {
                         : 'admin.courses.deadline_blocks_off_hint',
                     )}
                   </p>
+                  {form.is_onboarding && (
+                    <p className={cn(
+                      'mt-2 flex items-start gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] leading-relaxed',
+                      form.deadline_blocks
+                        ? 'bg-danger/10 text-danger'
+                        : 'bg-glass/8 text-text-muted',
+                    )}>
+                      {form.deadline_blocks
+                        ? <Lock className="mt-px h-3.5 w-3.5 shrink-0" />
+                        : <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />}
+                      {t(
+                        form.deadline_blocks
+                          ? 'admin.courses.deadline_onboarding_blocks'
+                          : 'admin.courses.deadline_onboarding_warns',
+                      )}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -4069,20 +4180,60 @@ export default function CourseEditor() {
               </p>
             )}
 
-            <div className="relative mb-3 max-w-sm">
+            <div className="relative mb-2 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />
               <input
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
-                placeholder={t('admin.courses.search_users_ph')}
-                className={cn(inputCls, 'pl-9')}
+                placeholder={t('admin.courses.search_people_ph')}
+                className={cn(inputCls, 'pl-9', userSearch ? 'pr-9' : '')}
               />
+              {/* Borrar lo buscado sin tener que seleccionar y suprimir: media
+                  lista escondida detrás de un filtro olvidado es como se marca
+                  "a nadie" creyendo haber revisado a todo el mundo. */}
+              {userSearch && (
+                <button
+                  type="button"
+                  onClick={() => setUserSearch('')}
+                  aria-label={t('common.clear', 'Limpiar')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-text-subtle hover:text-text"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
+            {/* Cuántas personas hay debajo: con el buscador tolerante, «3 de
+                812» dice de un vistazo si hace falta afinar lo escrito. */}
+            <p className="mb-3 text-[11.5px] text-text-subtle">
+              {userSearch.trim()
+                ? t('admin.courses.people_found', {
+                    count: filteredProfiles.length,
+                    total: profiles.length,
+                    defaultValue: '{{count}} de {{total}} personas',
+                  })
+                : t('admin.courses.people_total', {
+                    count: profiles.length,
+                    defaultValue: '{{count}} personas',
+                  })}
+            </p>
+
             <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+              {/* Nada casa, pero hay parecidos: un error de dedo no deja la
+                  lista en blanco. */}
+              {userSearchSuggesting && (
+                <p className="px-1 pb-0.5 text-[11.5px] text-text-subtle">
+                  {t('common.select_did_you_mean', '¿Quisiste decir…?')}
+                </p>
+              )}
               {filteredProfiles.length === 0 ? (
                 <p className="text-[12px] text-text-subtle py-4 text-center">
-                  {t('admin.courses.no_users')}
+                  {userSearch.trim()
+                    ? t('admin.courses.no_users_for_query', {
+                        query: userSearch.trim(),
+                        defaultValue: 'Nadie coincide con «{{query}}». Prueba con el apellido, la cédula o el correo.',
+                      })
+                    : t('admin.courses.no_users')}
                 </p>
               ) : (
                 filteredProfiles.map((p) => {

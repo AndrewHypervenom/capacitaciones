@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useAnimation } from 'framer-motion'
 import {
   Bell, BellRing, RotateCcw, Check, CheckCheck, MessageSquare, Inbox,
   LifeBuoy, Megaphone, Settings2, Volume2, VolumeX, Play, ShieldCheck,
+  CalendarClock, AlertTriangle,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
@@ -305,7 +306,15 @@ export function NotificationBell({ className }: { className?: string }) {
                           // aprobadores y la decisión vuelve a quien la pidió.
                           const isPublishReq = n.kind === 'course_publish_request'
                           const isPublishRes = n.kind === 'course_publish_resolved'
-                          const Icon = isHelp
+                          // Plazo del curso: al aprendiz, con su curso a un clic.
+                          const isDeadline = n.kind === 'course_deadline'
+                          // Resumen al equipo de quién va fuera de plazo.
+                          const isOverdue = n.kind === 'onboarding_overdue'
+                          const Icon = isDeadline
+                            ? CalendarClock
+                            : isOverdue
+                              ? AlertTriangle
+                              : isHelp
                             ? LifeBuoy
                             : isSiteFeedback
                               ? Megaphone
@@ -337,6 +346,17 @@ export function NotificationBell({ className }: { className?: string }) {
                                   // la bandeja donde se atiende.
                                   // La solicitud lleva a la bandeja de
                                   // aprobación; la decisión, al curso.
+                                  if (isDeadline || isOverdue) {
+                                    setOpen(false)
+                                    navigate(
+                                      isOverdue
+                                        ? '/admin/progress'
+                                        : n.payload?.course_slug
+                                          ? `/courses/${n.payload.course_slug}`
+                                          : '/courses',
+                                    )
+                                    return
+                                  }
                                   if (isPublishReq || isPublishRes) {
                                     setOpen(false)
                                     navigate(
@@ -382,7 +402,9 @@ export function NotificationBell({ className }: { className?: string }) {
                                 <span
                                   className={cn(
                                     'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                                    isHelp
+                                    isDeadline || isOverdue
+                                      ? 'bg-danger/12 text-danger'
+                                      : isHelp
                                       ? 'bg-neon-green/12 text-neon-green'
                                       : isSiteFeedback
                                         ? 'bg-neon-violet/12 text-neon-violet'

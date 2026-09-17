@@ -94,6 +94,45 @@ export function notificationText(n: AppNotification): { title: string; body: str
     }
   }
 
+  // El plazo del curso aprieta o ya venció (tarea diaria del servidor).
+  if (n.kind === 'course_deadline') {
+    const stage = p.stage === 'overdue' || p.stage === 'today' ? p.stage : 'soon'
+    const date = p.due_at
+      ? new Date(p.due_at).toLocaleDateString(i18n.language, {
+          day: 'numeric', month: 'long', year: 'numeric',
+        })
+      : '—'
+    return {
+      // El contador solo tiene sentido en «faltan N días»: pasarlo en los
+      // otros dos haría que i18next buscara un plural que no existe.
+      title: stage === 'soon'
+        ? t('notifications.deadline.soon_title', { count: p.days_left ?? 0 })
+        : t(`notifications.deadline.${stage}_title`),
+      body: stage === 'soon'
+        ? t('notifications.deadline.soon_body', { course: course || '—', date, count: p.days_left ?? 0 })
+        : t(`notifications.deadline.${stage}_body`, { course: course || '—', date }),
+    }
+  }
+
+  /* Resumen al equipo: a quién se le pasó el plazo.
+     El `kind` sigue llamándose 'onboarding_overdue' por los avisos que ya
+     estaban mandados (renombrarlo los dejaría sin texto), pero desde el SQL 44
+     la tarea cubre CUALQUIER curso con plazo, no solo la inducción. El payload
+     trae `onboarding` en false cuando hay cursos normales en el resumen: decir
+     "inducción vencida" de un curso que no lo es manda al equipo a buscar por
+     donde no es. */
+  if (n.kind === 'onboarding_overdue') {
+    const who = (p.who ?? []).filter(Boolean)
+    const count = Number(p.count) > 0 ? Number(p.count) : who.length
+    const group = p.onboarding === false ? 'deadline_overdue' : 'onboarding_overdue'
+    return {
+      title: t(`notifications.${group}.title`, { count }),
+      body: who.length > 0
+        ? t(`notifications.${group}.body`, { who: who.join(', '), count })
+        : t(`notifications.${group}.body_plain`, { count }),
+    }
+  }
+
   // Un superadmin dejó el curso en un punto concreto (pruebas).
   if (p.adjust) {
     return {
