@@ -293,13 +293,17 @@
       "title_one": "1 persona con la inducción vencida",
       "title_other": "{{count}} personas con la inducción vencida",
       "body": "{{who}} y el resto siguen sin terminar su onboarding fuera de plazo.",
-      "body_plain": "Hay gente con el onboarding fuera de plazo. Revísalo en Progreso."
+      "body_plain": "Hay gente con el onboarding fuera de plazo. Revísalo en Progreso.",
+      "body_course": "En «{{courses}}»: {{who}} y el resto siguen sin terminar su inducción fuera de plazo.",
+      "body_plain_course": "Hay gente con la inducción vencida en «{{courses}}». Revísalo en Progreso."
     },
     "deadline_overdue": {
       "title_one": "1 persona con el plazo vencido",
       "title_other": "{{count}} personas con el plazo vencido",
       "body": "A {{who}} y al resto se les pasó la fecha de entrega sin terminar el curso.",
-      "body_plain": "Hay gente fuera de plazo. Revísalo en Progreso."
+      "body_plain": "Hay gente fuera de plazo. Revísalo en Progreso.",
+      "body_course": "En «{{courses}}»: a {{who}} y al resto se les pasó la fecha sin terminar el curso.",
+      "body_plain_course": "Hay gente fuera de plazo en «{{courses}}». Revísalo en Progreso."
     }
   },
   "dashboard": {

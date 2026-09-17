@@ -125,11 +125,18 @@ export function notificationText(n: AppNotification): { title: string; body: str
     const who = (p.who ?? []).filter(Boolean)
     const count = Number(p.count) > 0 ? Number(p.count) : who.length
     const group = p.onboarding === false ? 'deadline_overdue' : 'onboarding_overdue'
+    // DE QUÉ CURSO es lo primero que pregunta quien recibe esto: sin el nombre,
+    // el aviso manda a buscar entre todos los cursos con plazo. El payload
+    // siempre lo trae (`courses`); los avisos viejos que no, caen al texto sin
+    // curso en vez de quedarse en blanco.
+    const courses = (p.courses ?? []).filter(Boolean)
+    const list = courses.join(' · ')
+    const suffix = courses.length > 0 ? '_course' : ''
     return {
       title: t(`notifications.${group}.title`, { count }),
       body: who.length > 0
-        ? t(`notifications.${group}.body`, { who: who.join(', '), count })
-        : t(`notifications.${group}.body_plain`, { count }),
+        ? t(`notifications.${group}.body${suffix}`, { who: who.join(', '), count, courses: list })
+        : t(`notifications.${group}.body_plain${suffix}`, { count, courses: list }),
     }
   }
 

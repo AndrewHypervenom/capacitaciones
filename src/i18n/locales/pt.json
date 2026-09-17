@@ -293,13 +293,17 @@
       "title_one": "1 pessoa com a integração vencida",
       "title_other": "{{count}} pessoas com a integração vencida",
       "body": "{{who}} e outras seguem sem concluir a integração, fora do prazo.",
-      "body_plain": "Há pessoas com a integração fora do prazo. Confira em Progresso."
+      "body_plain": "Há pessoas com a integração fora do prazo. Confira em Progresso.",
+      "body_course": "Em «{{courses}}»: {{who}} e outras seguem sem concluir a integração, fora do prazo.",
+      "body_plain_course": "Há pessoas com a integração vencida em «{{courses}}». Confira em Progresso."
     },
     "deadline_overdue": {
       "title_one": "1 pessoa com o prazo vencido",
       "title_other": "{{count}} pessoas com o prazo vencido",
       "body": "{{who}} e o restante passaram da data de entrega sem terminar o curso.",
-      "body_plain": "Há pessoas fora do prazo. Confira em Progresso."
+      "body_plain": "Há pessoas fora do prazo. Confira em Progresso.",
+      "body_course": "Em «{{courses}}»: {{who}} e outras perderam a data sem concluir o curso.",
+      "body_plain_course": "Há pessoas fora do prazo em «{{courses}}». Confira em Progresso."
     }
   },
   "dashboard": {

@@ -293,13 +293,17 @@
       "title_one": "1 person past their onboarding deadline",
       "title_other": "{{count}} people past their onboarding deadline",
       "body": "{{who}} and others still have onboarding unfinished and past due.",
-      "body_plain": "Some people are past their onboarding deadline. Check it in Progress."
+      "body_plain": "Some people are past their onboarding deadline. Check it in Progress.",
+      "body_course": "In \"{{courses}}\": {{who}} and others still have their onboarding unfinished and past due.",
+      "body_plain_course": "Some people are past their onboarding deadline in \"{{courses}}\". Check it in Progress."
     },
     "deadline_overdue": {
       "title_one": "1 person past the deadline",
       "title_other": "{{count}} people past the deadline",
       "body": "{{who}} and the rest missed the due date without finishing the course.",
-      "body_plain": "Some people are past their deadline. Check it in Progress."
+      "body_plain": "Some people are past their deadline. Check it in Progress.",
+      "body_course": "In \"{{courses}}\": {{who}} and others missed the due date without finishing the course.",
+      "body_plain_course": "Some people are past the deadline in \"{{courses}}\". Check it in Progress."
     }
   },
   "dashboard": {
