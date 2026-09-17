@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine, Briefcase } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
-import { fold } from '@/lib/normalize'
-import { getMyPeopleIds, getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import {
+  getPeoplePage,
+  countClients,
+  invalidatePeopleCache,
+  getContentOwners,
+  PEOPLE_PAGE_SIZE,
+  type PeopleScope,
+} from '@/services/people.service'
 import { invalidateAudiencePopulation } from '@/services/audiences.service'
 import { cn } from '@/lib/cn'
 import { SaveDock } from '@/admin/components/SaveDock'
@@ -20,10 +27,7 @@ import { passkeyCounts } from '@/services/passkeys.service'
 import {
   getAccessibleCampaigns,
   getAssignableCampaigns,
-  getCampaignIdsByUser,
-  setUserCampaigns as saveUserCampaigns,
   isCampaignWriteDenied,
-  withoutTestPeople,
   isTestScopeError,
 } from '@/services/campaigns.service'
 import { Avatar } from '@/components/ui/Avatar'
@@ -50,6 +54,22 @@ const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
 /** `profiles.email` ya existe en el tipo; el alias se conserva por claridad y
  *  porque la columna puede venir vacía si el SQL del correo no se ha corrido. */
 type ProfileWithEmail = Profile
+
+/** Lo que se edita como borrador en esta pantalla (y guarda la barra del pie). */
+type EditableFields = Pick<
+  Profile,
+  'display_name' | 'role' | 'can_create_learners' | 'is_guest_author' | 'can_approve_courses'
+>
+
+function pickEditable(u: EditableFields): EditableFields {
+  return {
+    display_name: u.display_name,
+    role: u.role,
+    can_create_learners: u.can_create_learners,
+    is_guest_author: u.is_guest_author,
+    can_approve_courses: u.can_approve_courses,
+  }
+}
 
 /**
  * Traduce "A user with this email address has already been registered" a algo
@@ -152,18 +172,32 @@ export default function UserList() {
   // Contraseña predeterminada para usuarios nuevos (ajuste global de superadmin).
   const [pwdOpen, setPwdOpen] = useState(false)
   const [defaultPwdOn, setDefaultPwdOn] = useState(false)
+  /* PERSONAS o CLIENTES. Los clientes van aparte: son gente de fuera y de paso,
+   * y mezclados con la plantilla estorban para encontrar a alguien. Solo los ve
+   * quien puede darlos de alta (superadmin o capacitador con permiso de altas). */
+  const [tab, setTab] = useState<PeopleScope>('people')
   const [search, setSearch] = useState('')
+  // Lo que se le manda a la base: la búsqueda espera a que se deje de escribir.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   // Las cuentas dadas de baja no estorban el día a día: se ven si se piden.
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active')
-  const [users, setUsers] = useState<ProfileWithEmail[]>([])
-  /* Lo que hay en la base. Editar aquí es borrador: nombre, rol, permiso de
-     altas y campañas se acumulan en la barra del pie y se guardan de una vez.
-     Dar de baja o eliminar NO son ediciones (son órdenes) y siguen al momento. */
-  const [savedUsers, setSavedUsers] = useState<ProfileWithEmail[]>([])
-  // Campañas de cada usuario: casa + colaboraciones. El capacitador puede tener
-  // varias (equipos compartidos), así que no basta con profiles.campaign_id.
-  const [userCampaigns, setUserCampaigns] = useState<Record<string, string[]>>({})
-  const [savedUserCampaigns, setSavedUserCampaigns] = useState<Record<string, string[]>>({})
+  const [roleFilter, setRoleFilter] = useState<Profile['role'] | ''>('')
+  /* UNA PÁGINA, no la base entera. Antes se pedían los 860 perfiles de golpe y
+   * se pintaban todos con su foto; ahora llegan de a PEOPLE_PAGE_SIZE y la
+   * búsqueda la resuelve la base. `pageRows` es SIEMPRE lo guardado. */
+  const [pageRows, setPageRows] = useState<ProfileWithEmail[]>([])
+  const [page, setPage] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [fetching, setFetching] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [clientsTotal, setClientsTotal] = useState<number | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
+  /* Editar aquí es borrador: nombre, rol y permisos se acumulan en la barra del
+     pie y se guardan de una vez. Van por persona y no dentro de la página, para
+     que cambiar de página o buscar a otra no los tire. Dar de baja o eliminar
+     NO son ediciones (son órdenes) y siguen al momento. */
+  const [draft, setDraft] = useState<Record<string, EditableFields>>({})
+  const [baseline, setBaseline] = useState<Record<string, EditableFields>>({})
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   // Campañas a las que se puede ASIGNAR a alguien recién creado. Para el
   // capacitador habilitado son TODAS (no solo las suyas): da de alta gente que
@@ -225,35 +259,11 @@ export default function UserList() {
   const [optimizing, setOptimizing] = useState(false)
   const [optProgress, setOptProgress] = useState<RecompressProgress | null>(null)
 
-  const filteredUsers = useMemo(() => {
-    // Búsqueda insensible a tildes: nadie escribe "Rocío" con tilde.
-    const q = fold(search)
-    return users.filter((u) => {
-      // El correo vive en `auth.users`, pero `profiles.email` lo copia (trigger
-      // `sync_profile_email`). Si ese SQL aún no se corrió, `u.email` viene
-      // vacío y queda el respaldo de la credencial temporal — que el trigger
-      // borra al onboardear, así que solo sirve para pendientes.
-      const matchesQuery =
-        !q ||
-        fold(u.display_name ?? '').includes(q) ||
-        fold(u.email ?? '').includes(q) ||
-        fold(tempCreds[u.id]?.email ?? '').includes(q) ||
-        u.id.toLowerCase().includes(q)
-      // Filtra por pertenencia real (casa o colaboración), no solo por la casa:
-      // si no, un capacitador con campaña casa A no aparecería al filtrar por B
-      // aunque trabaje en B.
-      const matchesCampaign =
-        true
-      // `is_active` puede venir undefined si el SQL de altas/bajas aún no se
-      // corrió: sin la columna, todas las cuentas cuentan como activas.
-      const active = u.is_active !== false
-      const matchesStatus =
-        statusFilter === 'all' || (statusFilter === 'active' ? active : !active)
-      return matchesQuery && matchesCampaign && matchesStatus
-    })
-  }, [users, search, statusFilter, tempCreds])
-
-  const inactiveCount = useMemo(() => users.filter((u) => u.is_active === false).length, [users])
+  // Lo que se pinta: la fila guardada con lo editado encima.
+  const users = useMemo(
+    () => pageRows.map((u) => (draft[u.id] ? { ...u, ...draft[u.id] } : u)),
+    [pageRows, draft],
+  )
 
   // El capacitador da de alta aprendices (nada más) en sus propias campañas, y
   // SOLO si el superadmin lo habilitó: el permiso se concede uno por uno, no
@@ -296,8 +306,6 @@ export default function UserList() {
 
   useEffect(() => {
     async function load() {
-      // El capacitador ve las personas de sus campañas (casa + colaboraciones) y
-      // NUNCA a los superadmin; el superadmin ve a todos.
       const camps = await getAccessibleCampaigns({
         isSuperAdmin,
         homeCampaignId: campaignId,
@@ -317,44 +325,78 @@ export default function UserList() {
       })
         .then(setAssignableCampaigns)
         .catch(() => setAssignableCampaigns(camps))
-
-      let profilesQuery = supabase.from('profiles').select('*').order('created_at')
-      if (!isSuperAdmin) {
-        // "Mi gente" ya no es "los de mi campaña": son los aprendices alcanzados
-        // por mis cursos más el staff de mis campañas. Lo resuelve la base, que
-        // es la misma respuesta que usa la RLS — dos definiciones distintas
-        // producirían filas visibles que luego no se pueden abrir.
-        const people = await getMyPeopleIds()
-        const ids = camps.map((c) => c.id)
-        profilesQuery = (people
-          ? profilesQuery.in('id', people.length ? people : [''])
-          // Sin el RPC (SQL sin correr) se cae al filtro de siempre: es más
-          // estrecho, nunca más ancho.
-          : profilesQuery.in('campaign_id', ids.length ? ids : ['']))
-          .neq('role', 'superadmin')
-      }
-      const [profiles, creds] = await Promise.all([
-        profilesQuery,
-        // La RLS decide qué filas llegan: el superadmin las ve todas y el
-        // capacitador solo las de la gente de sus campañas.
-        supabase.from('user_temp_credentials').select('user_id, email, temp_password, expires_at'),
-      ])
-      // La gente del entorno de pruebas no aparece mientras el Modo pruebas
-      // esté apagado (el superadmin lee TODOS los perfiles, sin acotar).
-      const rows = await withoutTestPeople(profiles.data ?? [], isSuperAdmin)
-      setUsers(rows)
-      setSavedUsers(rows)
-      const byUser = await getCampaignIdsByUser(rows)
-      setUserCampaigns(byUser)
-      setSavedUserCampaigns(byUser)
-      setTempCreds(mapCreds(creds.data))
-      setLoading(false)
-      // Quién entra con huella. Va después de pintar la lista y en una sola
-      // consulta agregada: es un adorno informativo, no debe retrasar nada.
-      passkeyCounts(rows.map((r) => r.id)).then(setPasskeys).catch(() => {})
     }
     load()
   }, [isSuperAdmin, isRh, campaignId, authUser?.id])
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(id)
+  }, [search])
+
+  /* Solo gana la última petición: escribir rápido o pasar de página dos veces
+   * lanza varias, y la que llega tarde no puede pisar a la más nueva. */
+  const requestRef = useRef(0)
+
+  useEffect(() => {
+    const req = ++requestRef.current
+    ;(async () => {
+      setFetching(true)
+      setLoadError(null)
+      try {
+        // El alcance lo decide la base con la misma respuesta que usa la RLS
+        // («mi gente»): el capacitador nunca ve a un superadmin, y la gente del
+        // entorno de pruebas no sale con el Modo pruebas apagado.
+        const result = await getPeoplePage({
+          scope: tab,
+          search: debouncedSearch,
+          status: statusFilter,
+          role: tab === 'clients' ? '' : roleFilter,
+          page,
+          isSuperAdmin,
+          homeCampaignId: campaignId,
+        })
+        if (req !== requestRef.current) return
+        // Se quedó en una página que ya no existe (se dio de baja o se borró a
+        // alguien y la última quedó vacía): se vuelve a la anterior.
+        if (!result.rows.length && page > 0) {
+          setPage((p) => Math.max(0, p - 1))
+          return
+        }
+        setPageRows(result.rows)
+        setTotal(result.total)
+        setLoading(false)
+        setFetching(false)
+        const ids = result.rows.map((r) => r.id)
+        if (!ids.length) {
+          setTempCreds({})
+          setPasskeys({})
+          return
+        }
+        // Credenciales y huellas SOLO de las filas a la vista: en una página
+        // caben de sobra en la URL, y no retrasan la lista.
+        supabase
+          .from('user_temp_credentials')
+          .select('user_id, email, temp_password, expires_at')
+          .in('user_id', ids)
+          .then(({ data }) => { if (req === requestRef.current) setTempCreds(mapCreds(data)) })
+        passkeyCounts(ids)
+          .then((p) => { if (req === requestRef.current) setPasskeys(p) })
+          .catch(() => {})
+      } catch (err) {
+        if (req !== requestRef.current) return
+        setLoadError((err as Error).message)
+        setLoading(false)
+        setFetching(false)
+      }
+    })()
+  }, [tab, debouncedSearch, statusFilter, roleFilter, page, isSuperAdmin, campaignId, reloadTick])
+
+  // Contador de la pestaña Clientes: una consulta de una fila, no la lista.
+  useEffect(() => {
+    if (!canCreateClients) return
+    countClients(isSuperAdmin).then(setClientsTotal).catch(() => setClientsTotal(null))
+  }, [canCreateClients, isSuperAdmin, reloadTick])
 
   // Estado del ajuste global, para avisar en el encabezado con qué contraseña
   // nacerán los usuarios nuevos. Solo el superadmin lo administra.
@@ -365,30 +407,30 @@ export default function UserList() {
       .catch(() => setDefaultPwdOn(false))
   }, [isSuperAdmin])
 
+  /** Vuelve a pedir la página a la vista (tras un alta, una carga o un reset). */
   const refreshData = async () => {
-    // Mismo alcance que la carga inicial: el capacitador ve solo su gente y
-    // nunca a los superadmin (si no, tras crear un usuario la lista se le
-    // ensancharía sola con lo que la RLS deje pasar).
-    let profilesQuery = supabase.from('profiles').select('*').order('created_at')
-    if (!isSuperAdmin) {
-      const people = await getMyPeopleIds()
-      const ids = campaigns.map((c) => c.id)
-      profilesQuery = (people
-        ? profilesQuery.in('id', people.length ? people : [''])
-        : profilesQuery.in('campaign_id', ids.length ? ids : ['']))
-        .neq('role', 'superadmin')
-    }
-    const [{ data: updated }, { data: creds }] = await Promise.all([
-      profilesQuery,
-      supabase.from('user_temp_credentials').select('user_id, email, temp_password, expires_at'),
-    ])
-    const rows = await withoutTestPeople(updated ?? [], isSuperAdmin)
-    setUsers(rows)
-    setSavedUsers(rows)
-    const byUser = await getCampaignIdsByUser(rows)
-    setUserCampaigns(byUser)
-    setSavedUserCampaigns(byUser)
-    setTempCreds(mapCreds(creds))
+    invalidatePeopleCache()
+    setReloadTick((n) => n + 1)
+  }
+
+  /**
+   * Refleja algo que YA está en la base (baja, correo, guardado) sin volver a
+   * pedir la página. Toca también la línea base del borrador, para que no
+   * cuente como una edición pendiente.
+   */
+  const patchSaved = (userId: string, patch: Partial<ProfileWithEmail>) => {
+    setPageRows((list) => list.map((u) => (u.id === userId ? { ...u, ...patch } : u)))
+    setBaseline((prev) =>
+      prev[userId] ? { ...prev, [userId]: pickEditable({ ...prev[userId], ...patch } as ProfileWithEmail) } : prev,
+    )
+  }
+
+  /** Apunta una edición en el borrador de una persona (la guarda la barra del pie). */
+  const editUser = (userId: string, patch: Partial<EditableFields>) => {
+    const saved = pageRows.find((u) => u.id === userId)
+    if (!saved) return
+    setBaseline((prev) => (prev[userId] ? prev : { ...prev, [userId]: pickEditable(saved) }))
+    setDraft((prev) => ({ ...prev, [userId]: { ...(prev[userId] ?? pickEditable(saved)), ...patch } }))
   }
 
   const handleRecompress = async () => {
@@ -454,21 +496,21 @@ export default function UserList() {
    * contar como una edición pendiente en la barra de guardado.
    */
   const applyNewEmail = (userId: string, email: string) => {
-    const setEmail = (list: ProfileWithEmail[]) =>
-      list.map((u) => (u.id === userId ? { ...u, email } : u))
-    setUsers(setEmail)
-    setSavedUsers(setEmail)
+    patchSaved(userId, { email })
     setTempCreds((prev) => (prev[userId] ? { ...prev, [userId]: { ...prev[userId], email } } : prev))
   }
 
   /**
    * Abre el formulario de alta. El programa ya no se elige: pasó a ser CR.
    */
-  const openInvite = () => {
-    if (!isSuperAdmin) {
-      // El capacitador no elige rol: siempre crea aprendices.
+  const openInvite = (asClient = false) => {
+    if (!isSuperAdmin || asClient) {
+      // El capacitador no elige rol: siempre crea aprendices. Y un cliente
+      // siempre es aprendiz.
       setInviteRole('learner')
     }
+    // Desde la pestaña Clientes el alta arranca ya marcada como cliente.
+    setInviteIsClient(asClient && canCreateClients)
     setInviteSuccess(false)
     setInviteError(null)
     setInviting(true)
@@ -584,7 +626,7 @@ export default function UserList() {
 
   const handleSaveName = (userId: string) => {
     const name = editName.trim()
-    setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, display_name: name || null } : u))
+    editUser(userId, { display_name: name || null })
     setEditingId(null)
   }
 
@@ -592,17 +634,14 @@ export default function UserList() {
     // Al dejar de ser capacitador se retiran los permisos concedidos a mano
     // (altas y aprobación de cursos): si mañana vuelve a serlo, no debe
     // recuperarlos solo por un permiso viejo colgado.
-    const patch = newRole === 'capacitador'
-      ? { role: newRole }
-      : { role: newRole, can_create_learners: false, can_approve_courses: false, is_guest_author: false }
-    setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, ...patch } : u))
+    editUser(
+      userId,
+      newRole === 'capacitador'
+        ? { role: newRole }
+        : { role: newRole, can_create_learners: false, can_approve_courses: false, is_guest_author: false },
+    )
   }
 
-  /**
-   * Concede (o retira) a un capacitador el permiso de dar de alta aprendices en
-   * sus campañas. Solo el superadmin lo mueve: la interfaz lo esconde y un
-   * trigger en la base impide que nadie más lo cambie por su cuenta.
-   */
   /**
    * Marca a un capacitador como AUTOR TEMPORAL: prepara contenido en su
    * programa pero no reparte formación ni publica. Es para el gerente o el
@@ -610,13 +649,16 @@ export default function UserList() {
    * planta se desmarca y recupera todo, sin perder lo que creó.
    */
   const handleToggleGuestAuthor = (user: ProfileWithEmail) => {
-    const next = user.is_guest_author !== true
-    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, is_guest_author: next } : u)))
+    editUser(user.id, { is_guest_author: user.is_guest_author !== true })
   }
 
+  /**
+   * Concede (o retira) a un capacitador el permiso de dar de alta aprendices en
+   * sus campañas. Solo el superadmin lo mueve: la interfaz lo esconde y un
+   * trigger en la base impide que nadie más lo cambie por su cuenta.
+   */
   const handleToggleCanCreate = (user: ProfileWithEmail) => {
-    const next = user.can_create_learners !== true
-    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_create_learners: next } : u)))
+    editUser(user.id, { can_create_learners: user.can_create_learners !== true })
   }
 
   /**
@@ -626,76 +668,42 @@ export default function UserList() {
    * respalda (courses_publication_guard + los RPC de aprobación).
    */
   const handleToggleCanApprove = (user: ProfileWithEmail) => {
-    const next = user.can_approve_courses !== true
-    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, can_approve_courses: next } : u)))
+    editUser(user.id, { can_approve_courses: user.can_approve_courses !== true })
   }
 
-  // Deshacer (Ctrl+Z) del borrador: nombre, rol, permiso y campañas.
-  const undoState = useMemo(() => ({ users, userCampaigns }), [users, userCampaigns])
+  // Deshacer (Ctrl+Z) del borrador: nombre, rol y permisos. Cargar otra página
+  // no toca el borrador, así que no crea pasos fantasma.
   const { undo, canUndo } = useUndoHistory({
-    state: undoState,
-    apply: useCallback(
-      (snap: { users: ProfileWithEmail[]; userCampaigns: Record<string, string[]> }) => {
-        setUsers(snap.users)
-        setUserCampaigns(snap.userCampaigns)
-      },
-      [],
-    ),
+    state: draft,
+    apply: useCallback((snap: Record<string, EditableFields>) => setDraft(snap), []),
     enabled: !loading,
   })
 
-  /* ── Lo que está sin guardar ── */
-  const dirtyUsers = users.filter((u) => {
-    const before = savedUsers.find((x) => x.id === u.id)
+  /* ── Lo que está sin guardar (en cualquier página) ── */
+  const dirtyIds = Object.keys(draft).filter((id) => {
+    const before = baseline[id]
+    const now = draft[id]
     if (!before) return false
     return (
-      before.display_name !== u.display_name ||
-      before.role !== u.role ||
-      before.can_create_learners !== u.can_create_learners ||
-      before.is_guest_author !== u.is_guest_author ||
-      before.can_approve_courses !== u.can_approve_courses
+      before.display_name !== now.display_name ||
+      before.role !== now.role ||
+      before.can_create_learners !== now.can_create_learners ||
+      before.is_guest_author !== now.is_guest_author ||
+      before.can_approve_courses !== now.can_approve_courses
     )
   })
-  const dirtyCampaignUsers = users.filter((u) => {
-    const before = savedUserCampaigns[u.id] ?? []
-    const now = userCampaigns[u.id] ?? []
-    return JSON.stringify([...before].sort()) !== JSON.stringify([...now].sort())
-  })
-  const pendingCount = new Set([
-    ...dirtyUsers.map((u) => u.id),
-    ...dirtyCampaignUsers.map((u) => u.id),
-  ]).size
+  const pendingCount = dirtyIds.length
 
   const saveUsers = async (): Promise<boolean> => {
     try {
-      for (const u of dirtyUsers) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({
-            display_name: u.display_name,
-            role: u.role,
-            can_create_learners: u.can_create_learners,
-            is_guest_author: u.is_guest_author,
-            can_approve_courses: u.can_approve_courses,
-          })
-          .eq('id', u.id)
+      for (const id of dirtyIds) {
+        const { error } = await supabase.from('profiles').update(draft[id]).eq('id', id)
         if (error) throw error
       }
-      // La campaña "de casa" la decide el servidor, así que el resultado se
-      // aplica sobre una sola lista final: si no, la línea base se quedaría con
-      // la versión de antes y la barra volvería a decir que hay algo pendiente.
-      let after = users
-      for (const u of dirtyCampaignUsers) {
-        const home = await saveUserCampaigns(
-          u.id,
-          userCampaigns[u.id] ?? [],
-          u.campaign_id ?? null,
-        )
-        after = after.map((x) => (x.id === u.id ? { ...x, campaign_id: home } : x))
-      }
-      setUsers(after)
-      setSavedUsers(after)
-      setSavedUserCampaigns(userCampaigns)
+      const saved = draft
+      setPageRows((list) => list.map((u) => (saved[u.id] ? { ...u, ...saved[u.id] } : u)))
+      setDraft({})
+      setBaseline({})
       toast.success(t('admin.users.saved_all', { defaultValue: 'Cambios guardados' }))
       return true
     } catch (err) {
@@ -833,10 +841,7 @@ export default function UserList() {
       if (updated === 0) {
         throw new Error(skipReason(skipped[0]?.reason))
       }
-      const setActive = (list: ProfileWithEmail[]) =>
-        list.map((u) => (u.id === user.id ? { ...u, is_active: !deactivating } : u))
-      setUsers(setActive)
-      setSavedUsers(setActive)
+      patchSaved(user.id, { is_active: !deactivating })
       toast.success(
         deactivating
           ? t('admin.users.deactivate_done', { name })
@@ -854,6 +859,13 @@ export default function UserList() {
    * staff: un aprendiz no crea contenido que haya que heredar.
    */
   const [transferFor, setTransferFor] = useState<ProfileWithEmail | null>(null)
+  /* Quién puede heredar el contenido. Ya no sale de la lista (solo hay una
+   * página a la vista): se pide aparte, y solo al abrir el traspaso. */
+  const [contentOwners, setContentOwners] = useState<{ id: string; display_name: string | null }[]>([])
+  useEffect(() => {
+    if (!transferFor) return
+    getContentOwners().then(setContentOwners).catch(() => setContentOwners([]))
+  }, [transferFor])
 
   const handleDelete = async (user: ProfileWithEmail) => {
     const ok = await confirm({
@@ -878,8 +890,10 @@ export default function UserList() {
       )
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error al eliminar usuario')
-      setUsers((prev) => prev.filter((u) => u.id !== userId))
-      setSavedUsers((prev) => prev.filter((u) => u.id !== userId))
+      setDraft(({ [userId]: _gone, ...rest }) => rest)
+      setBaseline(({ [userId]: _gone, ...rest }) => rest)
+      // La página se vuelve a pedir: sube la siguiente persona y el total cambia.
+      refreshData()
       toast.success(t('admin.users.delete_done', { name: user.display_name ?? user.email ?? '' }))
     } catch (err) {
       /* Con el aviso del sitio, no con `alert()`: el nativo bloquea la pestaña,
@@ -1010,12 +1024,14 @@ export default function UserList() {
                 {t('admin.users.bulk_import')}
               </button>
               <button
-                onClick={openInvite}
+                onClick={() => openInvite(tab === 'clients')}
                 className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]"
                 style={{ background: '#10D451' }}
               >
                 <UserPlus className="h-4 w-4" />
-                {isSuperAdmin ? t('admin.users.create_user') : t('admin.users.create_learner')}
+                {tab === 'clients'
+                  ? t('admin.users.create_client')
+                  : isSuperAdmin ? t('admin.users.create_user') : t('admin.users.create_learner')}
               </button>
             </>
           )}
@@ -1288,29 +1304,81 @@ export default function UserList() {
         </div>
       )}
 
+      {/* Personas / Clientes. La pestaña solo existe para quien puede dar de
+          alta clientes; el resto ve la lista de siempre, sin clientes. */}
+      {canCreateClients && (
+        <div role="tablist" className="mb-3 inline-flex rounded-xl border border-line p-1">
+          {(['people', 'clients'] as const).map((s) => (
+            <button
+              key={s}
+              role="tab"
+              aria-selected={tab === s}
+              onClick={() => {
+                if (tab === s) return
+                setTab(s)
+                setPage(0)
+                setEditingId(null)
+              }}
+              className={cn(
+                'flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors',
+                tab === s ? 'bg-primary/15 text-primary' : 'text-text-muted hover:text-text',
+              )}
+            >
+              {s === 'people' ? <Users className="h-4 w-4" /> : <Briefcase className="h-4 w-4" />}
+              {s === 'people' ? t('admin.users.tab_people') : t('admin.users.tab_clients')}
+              {s === 'clients' && clientsTotal !== null && (
+                <span className="rounded-md bg-subtle px-1.5 py-0.5 text-[11px] tabular-nums text-text-muted">
+                  {clientsTotal}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'clients' && (
+        <p className="mb-3 text-[12.5px] text-text-muted">{t('admin.users.clients_intro')}</p>
+      )}
+
       {!loading && (
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />
+            {fetching
+              ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle animate-spin" />
+              : <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-subtle" />}
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('admin.users.search_ph')}
-              className="w-full rounded-xl border border-line bg-surface pl-9 pr-3 py-2.5 text-[14px] text-text outline-none focus:border-primary min-h-[44px]"
+              onChange={(e) => { setSearch(e.target.value); setPage(0) }}
+              placeholder={tab === 'clients' ? t('admin.users.search_clients_ph') : t('admin.users.search_ph')}
+              className="w-full rounded-xl border border-line bg-surface pl-9 pr-9 py-2.5 text-[14px] text-text outline-none focus:border-primary min-h-[44px]"
             />
+            {search && (
+              <button
+                onClick={() => { setSearch(''); setPage(0) }}
+                aria-label={t('admin.users.search_clear')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
+          {tab === 'people' && (
+            <Select
+              className="sm:w-48"
+              value={roleFilter}
+              onChange={(v) => { setRoleFilter(v as typeof roleFilter); setPage(0) }}
+              options={[
+                { value: '', label: t('admin.users.filter_role_all') },
+                ...roleOptions.filter((o) => isSuperAdmin || o.value !== 'superadmin'),
+              ]}
+            />
+          )}
           <Select
             className="sm:w-52"
             value={statusFilter}
-            onChange={(v) => setStatusFilter(v as typeof statusFilter)}
+            onChange={(v) => { setStatusFilter(v as typeof statusFilter); setPage(0) }}
             options={[
               { value: 'active', label: t('admin.users.filter_active') },
-              {
-                value: 'inactive',
-                label: inactiveCount > 0
-                  ? t('admin.users.filter_inactive_n', { n: inactiveCount })
-                  : t('admin.users.filter_inactive'),
-              },
+              { value: 'inactive', label: t('admin.users.filter_inactive') },
               { value: 'all', label: t('admin.users.filter_all') },
             ]}
           />
@@ -1321,8 +1389,20 @@ export default function UserList() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 text-text-subtle animate-spin" />
         </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-5 text-center">
+          <p className="text-[13px] text-red-500">{t('admin.users.load_error')}</p>
+          <p className="mt-1 text-[11.5px] text-text-muted break-all">{loadError}</p>
+          <button
+            onClick={refreshData}
+            className="mt-3 inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-subtle px-3 text-[12.5px] font-medium text-text"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            {t('admin.users.retry')}
+          </button>
+        </div>
       ) : (
-        <FadeIn y={14}>
+        <FadeIn y={14} className={cn('transition-opacity', fetching && 'opacity-60')}>
           {/* Barra de scroll horizontal + encabezado FIJOS arriba: al bajar por
               la lista siguen a la vista, así el scroll de arriba se puede usar
               siempre y las columnas nunca quedan sin título. El encabezado vive
@@ -1349,7 +1429,7 @@ export default function UserList() {
                   style={{ gridTemplateColumns: gridCols }}
                 >
                   <span>{t('admin.users.col_user')}</span>
-                  <span>{t('admin.users.col_role')}</span>
+                  <span>{tab === 'clients' ? t('admin.users.col_client') : t('admin.users.col_role')}</span>
                   <span>{t('admin.users.col_actions')}</span>
                   {isSuperAdmin && <span />}
                 </div>
@@ -1363,7 +1443,7 @@ export default function UserList() {
           >
           <div style={{ minWidth: tableMinWidth }}>
           <div className="divide-y divide-line">
-            {filteredUsers.map((user) => (
+            {users.map((user) => (
               <div key={user.id} className="grid gap-4 px-5 py-3.5 items-center transition-colors hover:bg-subtle/40"
                 style={{ gridTemplateColumns: gridCols }}
               >
@@ -1585,7 +1665,23 @@ export default function UserList() {
                     )}
                   </div>
                 </div>
-                {isSuperAdmin ? (
+                {tab === 'clients' ? (
+                  /* En Clientes el rol no dice nada (siempre es aprendiz): lo
+                     útil es de qué cliente viene, de dónde y desde cuándo está. */
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1 text-[12.5px] font-medium text-text min-w-0">
+                      <Briefcase className="h-3.5 w-3.5 shrink-0 text-sky-500" />
+                      <span className="truncate">{user.client_name || t('admin.users.client_no_name')}</span>
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-text-muted">
+                      {(() => {
+                        const c = COUNTRIES.find((x) => x.code === user.country)
+                        return c ? `${c.flag} ${c.name} · ` : ''
+                      })()}
+                      {t('admin.users.client_since', { date: new Date(user.created_at).toLocaleDateString() })}
+                    </div>
+                  </div>
+                ) : isSuperAdmin ? (
                   <Select
                     compact
                     tinted
@@ -1808,14 +1904,55 @@ export default function UserList() {
                 )}
               </div>
             ))}
-            {filteredUsers.length === 0 && (
+            {users.length === 0 && !fetching && (
               <div className="py-12 text-center text-text-muted text-[14px]">
-                {users.length === 0 ? t('admin.users.empty') : t('admin.users.no_results')}
+                {debouncedSearch || roleFilter || statusFilter !== 'active'
+                  ? t('admin.users.no_results')
+                  : tab === 'clients' ? t('admin.users.clients_empty') : t('admin.users.empty')}
               </div>
             )}
           </div>
           </div>
           </div>
+          {/* Paginación. Se muestra aunque haya una sola página: el total es
+              lo que dice cuánta gente coincide con la búsqueda. */}
+          {total > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[12.5px] text-text-muted tabular-nums">
+                {t('admin.users.page_range', {
+                  from: page * PEOPLE_PAGE_SIZE + 1,
+                  to: Math.min(total, (page + 1) * PEOPLE_PAGE_SIZE),
+                  count: total,
+                })}
+              </span>
+              {total > PEOPLE_PAGE_SIZE && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0 || fetching}
+                    className="flex min-h-[40px] items-center gap-1 rounded-lg border border-line px-3 text-[12.5px] font-medium text-text disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    {t('common.previous')}
+                  </button>
+                  <span className="px-2 text-[12.5px] text-text-muted tabular-nums">
+                    {t('admin.users.page_of', {
+                      page: page + 1,
+                      pages: Math.ceil(total / PEOPLE_PAGE_SIZE),
+                    })}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={(page + 1) * PEOPLE_PAGE_SIZE >= total || fetching}
+                    className="flex min-h-[40px] items-center gap-1 rounded-lg border border-line px-3 text-[12.5px] font-medium text-text disabled:opacity-40"
+                  >
+                    {t('common.next')}
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </FadeIn>
       )}
 
@@ -1867,7 +2004,7 @@ export default function UserList() {
       {transferFor && (
         <TransferContentModal
           user={transferFor}
-          candidates={users.filter((u) => u.role === 'capacitador' || u.role === 'superadmin')}
+          candidates={contentOwners}
           onClose={() => setTransferFor(null)}
           onDone={() => { /* el contenido cambió de dueño; la lista de gente no. */ }}
         />

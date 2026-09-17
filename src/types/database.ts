@@ -2333,6 +2333,28 @@ export interface Database {
         Returns: string[]
       }
       /**
+       * Una página de /admin/users (SQL 39). Mismo alcance que la lista de
+       * siempre (superadmin todo; capacitador y RH, «mi gente»), búsqueda sin
+       * tildes en la base y el total para paginar. `clients` solo lo puede
+       * pedir el superadmin o un capacitador con permiso de altas.
+       */
+      admin_people_page: {
+        Args: {
+          p_scope: string
+          p_search: string
+          p_status: string
+          p_role: string | null
+          p_exclude_campaigns: string[]
+          p_exclude_units: string[]
+          p_limit: number
+          p_offset: number
+        }
+        Returns: {
+          profile: Database['public']['Tables']['profiles']['Row']
+          total_count: number
+        }[]
+      }
+      /**
        * Los certificados emitidos de "mi gente" (mismo alcance que
        * get_my_people_ids). El Panorama de progreso los lee por aquí y no de
        * `certifications`: la RLS de esa tabla razona por `campaign_id` y le
