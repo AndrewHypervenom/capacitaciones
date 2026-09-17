@@ -48,6 +48,8 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { CourseGrid, courseProgress, pickCourseText } from '@/components/course/CourseCard';
 import { useCourseJourneys } from '@/hooks/useCourseJourneys';
+import { onboardingGate } from '@/lib/onboarding';
+import { OnboardingBanner, LockedCatalogCard } from '@/components/course/OnboardingGate';
 import { cn } from '@/lib/cn';
 
 const SECTION_IDS = ['inicio', 'cursos', 'recursos', 'logros'];
@@ -86,8 +88,15 @@ export default function LearnerDashboard() {
   const { courses, loading: coursesLoading } = useLearnerCourses();
   // Mismo recorrido que el catálogo y la página del curso: módulos, prácticas,
   // mundo y examen. Ver src/hooks/useCourseJourneys.ts.
-  const { journeys } = useCourseJourneys(courses);
+  const { journeys, loaded: journeysLoaded, failed: journeysFailed } = useCourseJourneys(courses);
   const { user, avatarUrl } = useAuth();
+  const isModuleDone = useModuleDone();
+  // Onboarding sin terminar: el inicio solo enseña esos cursos y el catálogo
+  // sale con candado. Ver src/lib/onboarding.ts.
+  const gate = useMemo(
+    () => onboardingGate(courses, journeys, isModuleDone, { loaded: journeysLoaded, failed: journeysFailed }),
+    [courses, journeys, isModuleDone, journeysLoaded, journeysFailed],
+  );
 
   // Universo de módulos que cuenta para certificación, simulador e insignias:
   // los módulos de los cursos asignados (a la persona o a su campaña), no los
@@ -95,7 +104,10 @@ export default function LearnerDashboard() {
   // El panel principal solo muestra cursos asignados (a la campaña o al aprendiz).
   // Los cursos abiertos "para todo el mundo" no se mezclan aquí: se exploran en
   // /courses, para que el aprendiz no crea que debe hacer cursos que no son suyos.
-  const dashboardCourses = useMemo(() => courses.filter((c) => c.isAssigned), [courses]);
+  const dashboardCourses = useMemo(
+    () => (gate.active ? gate.courses : courses.filter((c) => c.isAssigned)),
+    [courses, gate.active, gate.courses],
+  );
   const assignedCourseIds = useMemo(
     () => new Set(dashboardCourses.map((c) => c.id)),
     [dashboardCourses],
@@ -127,7 +139,6 @@ export default function LearnerDashboard() {
   const badges = useProgressStore((s) => s.badges);
   const recheckBadges = useProgressStore((s) => s.recheckBadges);
   const reconcileModuleKeys = useProgressStore((s) => s.reconcileModuleKeys);
-  const isModuleDone = useModuleDone();
   const recordWorldProgress = useProgressStore((s) => s.recordWorldProgress);
 
   // Lo que SE VE en el inicio es más estrecho que lo asignado (2026-09-17): un
@@ -137,10 +148,12 @@ export default function LearnerDashboard() {
   // mundo siguen contando sobre `dashboardCourses`, que es el acceso real.
   const homeCourses = useMemo(
     () =>
-      dashboardCourses.filter(
-        (c) => c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0,
-      ),
-    [dashboardCourses, isModuleDone, journeys],
+      gate.active
+        ? dashboardCourses
+        : dashboardCourses.filter(
+            (c) => c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0,
+          ),
+    [dashboardCourses, isModuleDone, journeys, gate.active],
   );
   // Los obligatorios primero; el resto conserva el orden que trae el servicio.
   const sortedDashboardCourses = useMemo(
@@ -296,8 +309,9 @@ export default function LearnerDashboard() {
 
   // Scroll-spy: resalta en el sidebar la sección visible
   const [activeSection, setActiveSection] = useState('inicio');
+  const pageLoading = coursesLoading || !gate.settled;
   useEffect(() => {
-    if (coursesLoading) return;
+    if (pageLoading) return;
     const sections = SECTION_IDS
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => el !== null);
@@ -317,7 +331,7 @@ export default function LearnerDashboard() {
     );
     sections.forEach((s) => observer.observe(s));
     return () => observer.disconnect();
-  }, [coursesLoading]);
+  }, [pageLoading]);
 
   const handleLogout = async () => {
     reset();
@@ -325,7 +339,7 @@ export default function LearnerDashboard() {
     navigate('/login', { replace: true });
   };
 
-  if (coursesLoading) {
+  if (pageLoading) {
     return (
       <div className="mx-auto max-w-5xl px-5 pb-24 pt-12">
         <div className="space-y-8">
@@ -602,6 +616,8 @@ export default function LearnerDashboard() {
             )}
           </FadeIn>
 
+          {gate.active && <OnboardingBanner gate={gate} reduce={reduce} className="mb-12 md:mb-16" />}
+
           {/* Día de XP multiplicado: va arriba del todo porque cambia QUÉ
               conviene hacer hoy. Si no hay evento vigente ni próximo, no pinta
               nada (el componente devuelve null). */}
@@ -637,6 +653,9 @@ export default function LearnerDashboard() {
               reduce={reduce}
               journeys={journeys}
               trailing={
+                gate.active ? (
+                  <LockedCatalogCard gate={gate} />
+                ) : (
                 <MotionLink
                   to="/courses"
                   whileHover={reduce ? undefined : { y: -5 }}
@@ -657,6 +676,7 @@ export default function LearnerDashboard() {
                     <ArrowRight className="h-3.5 w-3.5 transition-transform duration-500 ease-apple group-hover:translate-x-1" />
                   </span>
                 </MotionLink>
+                )
               }
             />
           </section>

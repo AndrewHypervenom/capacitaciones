@@ -43,6 +43,9 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { cn } from '@/lib/cn';
 import { pickLang } from '@/lib/contentLang';
 import { buildCourseJourney, type JourneyStageKey } from '@/lib/courseJourney';
+import { onboardingGate } from '@/lib/onboarding';
+import { useCourseJourneys } from '@/hooks/useCourseJourneys';
+import { OnboardingCourseLock } from '@/components/course/OnboardingGate';
 
 /** Curva corporativa, la misma del catálogo y del kit de motion. */
 const ease = [0.16, 1, 0.3, 1] as const;
@@ -153,6 +156,15 @@ export default function CoursePage() {
   const [enrollBusy, setEnrollBusy] = useState(false);
 
   const course = useMemo(() => courses.find((c) => c.slug === slug), [courses, slug]);
+
+  // Onboarding sin terminar: un curso que no es de inducción no se abre ni
+  // entrando por el enlace directo. El staff (fuera de la vista previa) no pasa
+  // por la compuerta: revisa cursos, no los cursa.
+  const { journeys: allJourneys, loaded: journeysLoaded, failed: journeysFailed } = useCourseJourneys(courses);
+  const gate = useMemo(
+    () => onboardingGate(courses, allJourneys, isModuleDone, { loaded: journeysLoaded, failed: journeysFailed }),
+    [courses, allJourneys, isModuleDone, journeysLoaded, journeysFailed],
+  );
 
   // Presencia: publico en qué curso estoy (modo 'view', ver ModulePage).
   useViewingPresence(
@@ -434,6 +446,11 @@ export default function CoursePage() {
         </div>
       </div>
     );
+  }
+
+  if (course && gate.active && !gate.ids.has(course.id) && !isAdminOrCapacitador) {
+    if (!gate.settled) return <div className="mx-auto h-64 max-w-4xl px-5 pt-24"><div className="h-full rounded-3xl bg-subtle skeleton-shine" /></div>;
+    return <OnboardingCourseLock gate={gate} />;
   }
 
   if (!course) {

@@ -94,6 +94,14 @@ export function notificationText(n: AppNotification): { title: string; body: str
     }
   }
 
+  // Un superadmin dejó el curso en un punto concreto (pruebas).
+  if (p.adjust) {
+    return {
+      title: t('notifications.reset.adjust_title'),
+      body: t('notifications.reset.adjust_body', { course, where: p.stop_label ?? '—' }),
+    }
+  }
+
   switch (n.scope) {
     case 'module':
       return {

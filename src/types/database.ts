@@ -387,6 +387,9 @@ export interface Database {
            *  autor temporal cree en su propio espacio y aun así categorice su
            *  curso donde corresponde. */
           category_id: string | null
+          /** Curso de inducción (SQL 41): mientras la persona tenga uno asignado
+           *  sin terminar, solo ve esos. Sin la columna llega undefined = no. */
+          is_onboarding?: boolean
           slug: string
           title_es: string
           title_en: string | null
@@ -476,6 +479,7 @@ export interface Database {
         Update: {
           campaign_id?: string
           category_id?: string | null
+          is_onboarding?: boolean
           slug?: string
           title_es?: string
           title_en?: string | null

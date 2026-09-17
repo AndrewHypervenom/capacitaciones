@@ -24,7 +24,8 @@ export type BlockType =
   | 'cards'
   | 'stat'
   | 'hotspot'
-  | 'pdf';
+  | 'pdf'
+  | 'pronunciation';
 
 // ─── Shared primitives ─────────────────────────────────────────
 
@@ -351,6 +352,39 @@ export interface PdfBlock {
   required?: boolean;
 }
 
+/** Una frase para practicar en voz alta. `text` va en el idioma que se estudia
+ *  (no por idioma del sitio): es lo que se pronuncia. Lo demás es ayuda y sí
+ *  sigue el idioma de quien aprende. */
+export interface PronunciationPhrase {
+  text: string;
+  /** Transcripción fonética (AFI), opcional. */
+  ipa?: string;
+  /** Qué significa, en el idioma del sitio. */
+  translation?: ML;
+  /** Consejo de pronunciación para hispanohablantes / lusohablantes. */
+  tip?: ML;
+}
+
+/**
+ * Práctica de pronunciación. La voz modelo es la del navegador (voz de hombre
+ * cuando el equipo tiene una) y la grabación se reconoce también en el
+ * navegador: no sube audio a ningún lado ni gasta IA por intento.
+ */
+export interface PronunciationBlock {
+  type: 'pronunciation';
+  /** Idioma que se estudia, en formato BCP-47 ("en-US", "fr-FR"). */
+  lang: string;
+  title?: ML;
+  phrases: PronunciationPhrase[];
+  /**
+   * Cómo se muestran las frases: `list` una debajo de otra, `grid` en dos
+   * columnas, `steps` una a la vez con flechas. Sin valor = `grid`.
+   */
+  layout?: PronunciationLayout;
+}
+
+export type PronunciationLayout = 'list' | 'grid' | 'steps';
+
 // ─── Union type ─────────────────────────────────────────────────
 
 export type ContentBlock =
@@ -375,7 +409,8 @@ export type ContentBlock =
   | CardsBlock
   | StatBlock
   | HotspotImageBlock
-  | PdfBlock;
+  | PdfBlock
+  | PronunciationBlock;
 
 // ─── Block with runtime ID (for editor) ────────────────────────
 
@@ -463,6 +498,8 @@ export function emptyBlock(type: BlockType): ContentBlock {
       return { type, url: '', points: [] };
     case 'pdf':
       return { type, url: '', title: emptyML(), required: true };
+    case 'pronunciation':
+      return { type, lang: 'en-US', layout: 'grid', title: emptyML(), phrases: [{ text: '', translation: emptyML(), tip: emptyML() }] };
   }
 }
 
@@ -501,4 +538,5 @@ export const BLOCK_REGISTRY: BlockMeta[] = [
   { type: 'stat',        label: 'Datos',          description: 'Métricas con números destacados',  icon: '📊',  group: 'interactive' },
   { type: 'hotspot',     label: 'Imagen interactiva', description: 'Imagen con puntos clicables',  icon: '📍',  group: 'media' },
   { type: 'pdf',         label: 'Documento PDF',  description: 'PDF para revisar, con visor y descarga', icon: '📄',  group: 'media' },
+  { type: 'pronunciation', label: 'Pronunciación', description: 'Escuchar una frase y repetirla en voz alta', icon: '🎙', group: 'interactive' },
 ];

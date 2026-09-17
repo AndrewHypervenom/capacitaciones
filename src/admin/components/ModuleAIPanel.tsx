@@ -5,18 +5,23 @@ import {
   ChevronDown,
   ChevronUp,
   Languages,
+  Mic,
   RotateCcw,
   Sparkles,
   Wand2,
   X,
 } from 'lucide-react'
 import { GenerationProgress, ASSIST_STEPS } from '@/admin/components/GenerationProgress'
-import { moduleAiAssist, type CacheUsage } from '@/services/ai.service'
+import { moduleAiAssist, type CacheUsage, type PronunciationPlan } from '@/services/ai.service'
+import type { ContentBlock } from '@/types/blocks'
+import { blockPlainText } from '@/lib/blockPlainText'
+import { PronunciationPlanCard, type PronunciationInsert } from '@/admin/components/PronunciationPlanCard'
 import type { VideoMarkerRaw } from '@/services/modules.service'
 import { Button } from '@/components/ui/Button'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { cn } from '@/lib/cn'
+import { Tooltip } from '@/components/ui/Tooltip'
 import i18n from '@/i18n'
 
 type Lang = 'es' | 'en' | 'pt'
@@ -44,6 +49,17 @@ export interface ModuleAIPanelProps {
   onApplyImprovement: (lang: Lang, fields: Record<string, string>, changes: string[]) => void
   onApplyMarkerTranslation?: (lang: Lang, updatedMarkers: VideoMarkerRaw[]) => void
   onCacheUsage?: (usage: CacheUsage) => void
+  /**
+   * Práctica de pronunciación (solo secciones con bloques). La IA mira si la
+   * sección enseña un idioma y propone dónde insertar bloques para repetir en
+   * voz alta; el capacitador elige cuáles entran.
+   */
+  pronunciation?: {
+    blocks: ContentBlock[]
+    /** Inserta y devuelve los ids de los bloques nuevos, para poder deshacer. */
+    onInsert: (items: PronunciationInsert[]) => string[]
+    onRemove: (ids: string[]) => void
+  }
 }
 
 function detectSourceLang(content: Record<string, Record<Lang, string>>): Lang {
@@ -179,12 +195,15 @@ function ImprovementCard({
 const MKR = '__mkr_'
 
 export function ModuleAIPanel({
-  type, content, activeLang, moduleTitle, markers, onApplyTranslation, onApplyImprovement, onApplyMarkerTranslation, onCacheUsage,
+  type, content, activeLang, moduleTitle, markers, onApplyTranslation, onApplyImprovement, onApplyMarkerTranslation, onCacheUsage, pronunciation,
 }: ModuleAIPanelProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [currentAction, setCurrentAction] = useState<'translate' | 'improve' | null>(null)
+  const [currentAction, setCurrentAction] = useState<'translate' | 'improve' | 'pronunciation_plan' | null>(null)
+  const [pronunciationPlan, setPronunciationPlan] = useState<PronunciationPlan | null>(null)
+  // Última inserción: se puede deshacer hasta que se pida otra cosa a la IA.
+  const [lastInsert, setLastInsert] = useState<{ ids: string[]; plan: PronunciationPlan } | null>(null)
   const [translationResult, setTranslationResult] = useState<Record<string, Record<string, string>> | null>(null)
   const [improvementResult, setImprovementResult] = useState<{ improved: Record<string, string>; changes: string[] } | null>(null)
   const [appliedLangs, setAppliedLangs] = useState<Set<Lang>>(new Set())
@@ -199,7 +218,46 @@ export function ModuleAIPanel({
   const improveLang = activeLang
   const hasContentInActive = Object.values(content).some(v => v[improveLang]?.trim())
   const hasContent = Object.values(content).some(v => v[sourceLang]?.trim())
-  if (!hasContent) return null
+  const hasBlockText = !!pronunciation?.blocks.some(b => blockPlainText(b, activeLang).trim())
+  if (!hasContent && !hasBlockText) return null
+
+  const runPronunciationPlan = async () => {
+    if (!pronunciation) return
+    setLoading(true)
+    setError(null)
+    setCurrentAction('pronunciation_plan')
+    setTranslationResult(null)
+    setImprovementResult(null)
+    setPronunciationPlan(null)
+    setLastInsert(null)
+    try {
+      const res = await moduleAiAssist({
+        action: 'pronunciation_plan',
+        contentType: type,
+        sourceLang: activeLang,
+        fields: {},
+        moduleTitle,
+        language: activeLang,
+        pronunciation: {
+          sectionHeading: content.heading?.[activeLang] || content.heading?.[sourceLang] || undefined,
+          sectionBody: content.body?.[activeLang] || content.body?.[sourceLang] || undefined,
+          blocks: pronunciation.blocks.map((b, index) => ({ index, type: b.type, text: blockPlainText(b, activeLang) })),
+        },
+      })
+      onCacheUsage?.(res.usage)
+      const d = res.data as unknown as PronunciationPlan
+      // Sin este campo respondió una versión de la función que no conoce la
+      // acción (la trata como «mejorar» vacío): no es un "no es de idiomas".
+      if (typeof d?.is_language_content !== 'boolean') {
+        throw new Error(i18n.t('admin.modules.ai_panel.pron_outdated_function'))
+      }
+      setPronunciationPlan({ ...d, suggestions: Array.isArray(d.suggestions) ? d.suggestions : [] })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const buildFields = (lang: Lang) => {
     const sectionFields = Object.fromEntries(Object.entries(content).map(([k, v]) => [k, v[lang] ?? '']))
@@ -229,6 +287,8 @@ export function ModuleAIPanel({
     setCurrentAction(a)
     setTranslationResult(null)
     setImprovementResult(null)
+    setPronunciationPlan(null)
+    setLastInsert(null)
     setAppliedLangs(new Set())
     const lang = a === 'improve' ? improveLang : sourceLang
     try {
@@ -346,26 +406,39 @@ export function ModuleAIPanel({
           <GenerationProgress
             steps={ASSIST_STEPS}
             active={loading}
-            title={currentAction === 'translate' ? i18n.t('admin.modules.ai_panel.translating') : i18n.t('admin.modules.ai_panel.improving')}
+            title={currentAction === 'translate'
+              ? i18n.t('admin.modules.ai_panel.translating')
+              : currentAction === 'pronunciation_plan'
+                ? i18n.t('admin.modules.ai_panel.pron_analyzing')
+                : i18n.t('admin.modules.ai_panel.improving')}
           />
 
-          {!loading && !translationResult && !improvementResult && (
+          {!loading && !translationResult && !improvementResult && !pronunciationPlan && (
             <div className="flex gap-2 flex-wrap">
-              <button
+              {hasContent && <button
                 onClick={() => runAction('translate')}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-glass-border/20 glass hover:border-brand-violet/30 hover:bg-brand-violet/5 text-text-muted hover:text-text transition-all"
               >
                 <Languages className="h-3.5 w-3.5" />
                 {translateLabel}
-              </button>
-              <button
+              </button>}
+              {hasContent && <button
                 onClick={() => runAction('improve')}
                 disabled={!hasContentInActive}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-glass-border/20 glass hover:border-brand-violet/30 hover:bg-brand-violet/5 text-text-muted hover:text-text transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Wand2 className="h-3.5 w-3.5" />
                 {i18n.t('admin.modules.ai_panel.improve_in', { lang: LANG_NAMES[improveLang] })}
-              </button>
+              </button>}
+              {pronunciation && (
+                <button
+                  onClick={runPronunciationPlan}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-glass-border/20 glass hover:border-neon-magenta/30 hover:bg-neon-magenta/5 text-text-muted hover:text-text transition-all"
+                >
+                  <Mic className="h-3.5 w-3.5" />
+                  {i18n.t('admin.modules.ai_panel.pron_button')}
+                </button>
+              )}
             </div>
           )}
 
@@ -386,6 +459,54 @@ export function ModuleAIPanel({
               >
                 <RotateCcw className="h-3 w-3" /> {i18n.t('admin.modules.ai_panel.regenerate_translation')}
               </button>
+            </div>
+          )}
+
+          {pronunciationPlan && pronunciation && !loading && (
+            <PronunciationPlanCard
+              plan={pronunciationPlan}
+              blocks={pronunciation.blocks}
+              lang={activeLang}
+              onInsert={(items) => {
+                const ids = pronunciation.onInsert(items)
+                setLastInsert({ ids, plan: pronunciationPlan })
+                setPronunciationPlan(null)
+                setCurrentAction(null)
+              }}
+              onDiscard={() => { setPronunciationPlan(null); setCurrentAction(null) }}
+              onRegenerate={runPronunciationPlan}
+            />
+          )}
+
+          {lastInsert && pronunciation && !loading && !pronunciationPlan && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neon-green/25 bg-neon-green/8 px-3 py-2">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-neon-green" />
+              <span className="flex-1 min-w-0 text-[11.5px] text-text">
+                {i18n.t('admin.modules.ai_panel.pron_inserted', { count: lastInsert.ids.length })}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  pronunciation.onRemove(lastInsert.ids)
+                  // Vuelve la propuesta tal cual, para ajustar la selección e insertar de nuevo.
+                  setPronunciationPlan(lastInsert.plan)
+                  setCurrentAction('pronunciation_plan')
+                  setLastInsert(null)
+                }}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-text hover:bg-glass/10 transition-colors"
+              >
+                <RotateCcw className="h-3 w-3" /> {i18n.t('admin.modules.ai_panel.pron_undo_insert')}
+              </button>
+              <Tooltip label={i18n.t('common.close')}>
+                <button
+                  type="button"
+                  onClick={() => setLastInsert(null)}
+                  aria-label={i18n.t('common.close')}
+                  className="p-0.5 text-text-muted hover:text-text transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
             </div>
           )}
 

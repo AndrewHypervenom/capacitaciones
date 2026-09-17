@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import {
   X, Loader2, Award, BookOpen, ChevronDown, Globe, PhoneCall,
   CheckCircle2, Circle, Flame, Sparkles, Search, IdCard, BarChart3,
-  ListChecks, GraduationCap, ArrowUpRight, AlertTriangle,
+  ListChecks, GraduationCap, ArrowUpRight, AlertTriangle, Crosshair,
 } from 'lucide-react'
 
 import { Avatar } from '@/components/ui/Avatar'
@@ -25,6 +25,8 @@ import type { Profile } from '@/types/database'
 import { rowText } from '@/lib/contentLang'
 import { getOrganizations, getOrgUnits } from '@/services/org.service'
 import { countryLabelWithFlag } from '@/lib/countries'
+import { useAuthStore } from '@/stores/authStore'
+import { ProgressPositionModal } from '@/admin/components/ProgressPositionModal'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = '#10D451'
@@ -68,6 +70,12 @@ export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [tab, setTab] = useState<'assigned' | 'catalog'>('assigned')
   const [query, setQuery] = useState('')
+  // Ajustar avance (pruebas): solo el superadmin REAL. El RPC lo vuelve a exigir.
+  const isSuperadmin = useAuthStore((s) => s.profile?.role === 'superadmin')
+  const [adjusting, setAdjusting] = useState<AdminUserCourse | null>(null)
+  /** Cursos con avance puesto a mano: `course_id` → fecha del último ajuste. */
+  const [adjustedAt, setAdjustedAt] = useState<Record<string, string>>({})
+  const [adjustTick, setAdjustTick] = useState(0)
 
   /* ── Carga inicial ───────────────────────────────────────────────────── */
   useEffect(() => {
@@ -120,9 +128,27 @@ export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
     return () => { alive = false }
   }, [courses, user.id])
 
+  /* ── Cursos con avance ajustado a mano (sin la tabla todavía: nada) ────── */
+  useEffect(() => {
+    if (!isSuperadmin) return
+    let alive = true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    void (supabase as any)
+      .from('progress_adjustments')
+      .select('course_id, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }: { data: Array<{ course_id: string; created_at: string }> | null; error: unknown }) => {
+        if (!alive || error || !data) return
+        setAdjustedAt(Object.fromEntries(data.map((r) => [r.course_id, r.created_at])))
+      })
+    return () => { alive = false }
+  }, [user.id, isSuperadmin, adjustTick])
+
   /* ── Cerrar con Escape + bloquear el scroll de fondo ──────────────────── */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    // Con el modal de ajuste abierto, Escape es SUYO: no cierra también la ficha.
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !adjusting && onClose()
     window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -130,7 +156,7 @@ export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [onClose])
+  }, [onClose, adjusting])
 
   const loadDetail = async (courseId: string) => {
     setDetail((d) => ({ ...d, [courseId]: 'loading' }))
@@ -459,6 +485,8 @@ export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
                       completedLabel={fmtDate(c.completed_at)}
                       certifiedLabel={fmtDate(certifiedAt[c.course_id] ?? null)}
                       reduce={reduce}
+                      adjustedLabel={fmtDate(adjustedAt[c.course_id] ?? null)}
+                      onAdjust={isSuperadmin ? () => setAdjusting(c) : undefined}
                     />
                   ))}
                 </div>
@@ -498,6 +526,8 @@ export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
                     completedLabel={fmtDate(c.completed_at)}
                     certifiedLabel={fmtDate(certifiedAt[c.course_id] ?? null)}
                     reduce={reduce}
+                    adjustedLabel={fmtDate(adjustedAt[c.course_id] ?? null)}
+                    onAdjust={isSuperadmin ? () => setAdjusting(c) : undefined}
                   />
                 ))}
               </div>
@@ -543,6 +573,22 @@ export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" {...backdropDismiss(onClose)} />
         {panel}
       </motion.div>
+      {adjusting && (
+        <ProgressPositionModal
+          key={adjusting.course_id}
+          userId={user.id}
+          userName={name}
+          courseId={adjusting.course_id}
+          courseTitle={rowText(adjusting)}
+          onClose={() => setAdjusting(null)}
+          onDone={() => {
+            void loadDetail(adjusting.course_id)
+            setAdjustTick((n) => n + 1)
+            // El estado del curso (certificado, puntaje) también pudo cambiar.
+            getUserCoursesAdmin(user.id).then(setCourses).catch(() => {})
+          }}
+        />
+      )}
     </AnimatePresence>,
     document.body,
   )
@@ -617,7 +663,7 @@ function Empty({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 /* ── Tarjeta de curso, desplegable ───────────────────────────────────────── */
 function CourseCard({
-  course: c, detail: dt, open, onToggle, completedLabel, certifiedLabel, reduce,
+  course: c, detail: dt, open, onToggle, completedLabel, certifiedLabel, reduce, adjustedLabel, onAdjust,
 }: {
   course: AdminUserCourse
   detail: DetailState | undefined
@@ -627,6 +673,10 @@ function CourseCard({
   /** Fecha de emisión del certificado, ya formateada (o null). */
   certifiedLabel: string | null
   reduce: boolean
+  /** Fecha del último ajuste manual de avance (o null). */
+  adjustedLabel: string | null
+  /** Solo superadmin: abre «¿Dónde dejamos a esta persona?». */
+  onAdjust?: () => void
 }) {
   const { t } = useTranslation()
   const ready = dt && dt !== 'loading' && dt !== 'error' ? dt : null
@@ -681,6 +731,12 @@ function CourseCard({
             )}
             {c.certified && (
               <Award className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-label={t('admin.users.certified_badge')} />
+            )}
+            {adjustedLabel && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                <Crosshair className="h-2.5 w-2.5" />
+                {t('admin.users.adjusted_badge')}
+              </span>
             )}
           </span>
 
@@ -763,6 +819,29 @@ function CourseCard({
             className="overflow-hidden"
           >
             <div className="border-t border-line px-4 py-3">
+              {onAdjust && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border border-dashed border-primary/35 bg-primary/[0.04] px-3 py-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
+                    <Crosshair className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12px] font-semibold text-text">{t('admin.users.adjust_cta')}</span>
+                    <span className="block text-[11px] leading-snug text-text-muted">
+                      {adjustedLabel
+                        ? t('admin.users.adjust_cta_hint_done', { date: adjustedLabel })
+                        : t('admin.users.adjust_cta_hint')}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onAdjust}
+                    className="shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-black transition-transform hover:scale-[1.03]"
+                    style={{ background: GREEN }}
+                  >
+                    {t('admin.users.adjust_open')}
+                  </button>
+                </div>
+              )}
               {/* Por qué está certificado con módulos pendientes. Va VISIBLE, no
                   en un tooltip: es justo la pregunta que el capacitador iba a
                   hacer, y la respuesta tiene fecha. */}
@@ -795,7 +874,7 @@ function CourseCard({
               ) : dt === 'error' ? (
                 <p className="py-3 text-center text-[12px] text-text-muted">{t('admin.users.reset_error')}</p>
               ) : (
-                <CourseDetail dt={dt} reduce={reduce} />
+                <CourseDetail dt={dt} reduce={reduce} adjusted={!!adjustedLabel} />
               )}
             </div>
           </motion.div>
@@ -806,7 +885,7 @@ function CourseCard({
 }
 
 /** Módulos, actividades, mundo y simulador de un curso. */
-function CourseDetail({ dt, reduce }: { dt: AdminCourseDetail; reduce: boolean }) {
+function CourseDetail({ dt, reduce, adjusted }: { dt: AdminCourseDetail; reduce: boolean; adjusted: boolean }) {
   const { t } = useTranslation()
   const [openModule, setOpenModule] = useState<string | null>(null)
 
@@ -834,7 +913,8 @@ function CourseDetail({ dt, reduce }: { dt: AdminCourseDetail; reduce: boolean }
             /* Marcado como hecho sin una sola actividad resuelta: no se pinta en
                verde. Así se veía el progreso que se colaba de otra persona en un
                puesto compartido — un check verde encima de «Pendiente» en todo. */
-            const unproven = m.completed && m.sections.length > 0 && attempted === 0
+            // Con el avance puesto a mano por un superadmin no hay nada sospechoso.
+            const unproven = !adjusted && m.completed && m.sections.length > 0 && attempted === 0
             const isOpen = openModule === m.id
             return (
               <motion.div

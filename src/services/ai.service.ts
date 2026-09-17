@@ -1124,7 +1124,7 @@ export async function analyzeDocument(opts: {
 }
 
 export interface AssistRequest {
-  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum'
+  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum' | 'pronunciation_plan'
   contentType: 'section' | 'meta'
   sourceLang: string
   targetLangs?: string[]
@@ -1162,6 +1162,27 @@ export interface AssistRequest {
       sections: Array<{ heading_es: string; excerpt_es: string }>
     }>
   }
+  /** Idioma de la interfaz: en qué idioma redacta la IA el texto nuevo. */
+  language?: string
+  /** Práctica de pronunciación: la sección con sus bloques numerados. */
+  pronunciation?: {
+    sectionHeading?: string
+    sectionBody?: string
+    blocks: Array<{ index: number; type: string; text: string }>
+  }
+}
+
+/** Lo que devuelve la IA al buscar dónde practicar pronunciación. */
+export interface PronunciationPlan {
+  is_language_content: boolean
+  reason?: string
+  target_lang?: string
+  suggestions: Array<{
+    after_index: number
+    title: string
+    why?: string
+    phrases: Array<{ text: string; ipa?: string; translation?: string; tip?: string }>
+  }>
 }
 
 export async function moduleAiAssist(opts: AssistRequest): Promise<{ data: Record<string, unknown>; usage: CacheUsage }> {

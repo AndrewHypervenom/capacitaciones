@@ -5,7 +5,7 @@ import {
   Type, AlignLeft, AlignCenter, AlignRight, WrapText, List, Image as ImageIcon, Video, Lightbulb,
   HelpCircle, CreditCard, ChevronDown as AccIcon, Layers, Code,
   Quote, Minus, Columns, Clock, Table, LayoutGrid, BarChart3, MapPin,
-  FileText, Upload, Loader2,
+  FileText, Upload, Loader2, Mic, Volume2, Rows3, Columns2, GalleryHorizontal,
 } from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -16,6 +16,7 @@ import {
   type BlockWithId,
   type ContentBlock,
   type BlockType,
+  type PronunciationLayout,
   emptyBlock,
 } from '@/types/blocks';
 import { BlockInsertMenu } from './BlockInsertMenu';
@@ -39,6 +40,7 @@ import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import i18n from '@/i18n';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import { toast } from '@/stores/toastStore';
+import { PRONUNCIATION_LANGS, speak } from '@/lib/speech';
 
 // Helper imperativo para confirmar borrados dentro de los sub-editores de bloques.
 const confirmRemove = (titleKey: string, descKey: string) =>
@@ -1642,12 +1644,146 @@ function HotspotEditor({
 
 // ─── Block icon + label mapping ────────────────────────────────
 
+const PRON_LAYOUTS: Array<{ value: PronunciationLayout; Icon: React.ComponentType<{ className?: string }> }> = [
+  { value: 'list', Icon: Rows3 },
+  { value: 'grid', Icon: Columns2 },
+  { value: 'steps', Icon: GalleryHorizontal },
+];
+
+// ─── Pronunciación ─────────────────────────────────────────────
+// La frase va en el idioma que se estudia (un solo texto); significado y
+// consejo siguen la pestaña de idioma del sitio, como el resto de bloques.
+function PronunciationEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'pronunciation' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
+  const empty = { es: '', en: '', pt: '' };
+  const setPhrase = (i: number, patch: Partial<(typeof block.phrases)[number]>) =>
+    onChange({ ...block, phrases: block.phrases.map((p, k) => (k === i ? { ...p, ...patch } : p)) });
+
+  const removePhrase = async (i: number) => {
+    const p = block.phrases[i];
+    if (p.text.trim() && !(await confirmRemove('admin.modules.be.pron_remove_title', 'admin.modules.be.pron_remove_desc'))) return;
+    onChange({ ...block, phrases: block.phrases.filter((_, k) => k !== i) });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-[1fr_220px]">
+        <input
+          type="text"
+          value={block.title?.[lang] ?? ''}
+          onChange={(e) => onChange({ ...block, title: { ...(block.title ?? empty), [lang]: e.target.value } })}
+          placeholder={i18n.t('admin.modules.be.pron_title_ph', { lang })}
+          className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
+        />
+        <Select
+          value={block.lang}
+          onChange={(v) => onChange({ ...block, lang: v })}
+          options={PRONUNCIATION_LANGS}
+          compact
+        />
+      </div>
+
+      {/* Cómo lo verá quien aprende: lista, dos columnas o una frase a la vez. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
+          {i18n.t('admin.modules.be.pron_layout')}
+        </span>
+        <div className="inline-flex rounded-xl border border-glass-border/15 p-0.5">
+          {PRON_LAYOUTS.map(({ value, Icon }) => {
+            const active = (block.layout ?? 'grid') === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onChange({ ...block, layout: value })}
+                aria-pressed={active}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors',
+                  active ? 'bg-neon-green/10 text-neon-green' : 'text-text-muted hover:text-text',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {i18n.t(`admin.modules.be.pron_layout_${value}`)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {block.phrases.map((p, i) => (
+        <div key={i} className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={p.text}
+              onChange={(e) => setPhrase(i, { text: e.target.value })}
+              placeholder={i18n.t('admin.modules.be.pron_phrase_ph')}
+              lang={block.lang}
+              className="flex-1 min-w-0 bg-transparent text-[14px] font-medium text-text placeholder:text-text-subtle outline-none"
+            />
+            <Tooltip label={i18n.t('admin.modules.be.pron_preview')}>
+              <button
+                type="button"
+                onClick={() => void speak(p.text, block.lang)}
+                disabled={!p.text.trim()}
+                aria-label={i18n.t('admin.modules.be.pron_preview')}
+                className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-text-muted hover:text-neon-green hover:bg-neon-green/8 disabled:opacity-40"
+              >
+                <Volume2 className="h-4 w-4" />
+              </button>
+            </Tooltip>
+            <Tooltip label={i18n.t('admin.modules.be.pron_remove_title')}>
+              <button
+                type="button"
+                onClick={() => void removePhrase(i)}
+                disabled={block.phrases.length <= 1}
+                aria-label={i18n.t('admin.modules.be.pron_remove_title')}
+                className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-text-muted hover:text-danger hover:bg-danger/8 disabled:opacity-40"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </Tooltip>
+          </div>
+          <input
+            type="text"
+            value={p.ipa ?? ''}
+            onChange={(e) => setPhrase(i, { ipa: e.target.value })}
+            placeholder={i18n.t('admin.modules.be.pron_ipa_ph')}
+            className="w-full bg-transparent font-mono text-[12.5px] text-text-muted placeholder:text-text-subtle outline-none"
+          />
+          <input
+            type="text"
+            value={p.translation?.[lang] ?? ''}
+            onChange={(e) => setPhrase(i, { translation: { ...(p.translation ?? empty), [lang]: e.target.value } })}
+            placeholder={i18n.t('admin.modules.be.pron_translation_ph', { lang })}
+            className="w-full bg-transparent text-[12.5px] text-text-muted placeholder:text-text-subtle outline-none"
+          />
+          <input
+            type="text"
+            value={p.tip?.[lang] ?? ''}
+            onChange={(e) => setPhrase(i, { tip: { ...(p.tip ?? empty), [lang]: e.target.value } })}
+            placeholder={i18n.t('admin.modules.be.pron_tip_ph', { lang })}
+            className="w-full bg-transparent text-[12.5px] italic text-text-muted placeholder:text-text-subtle outline-none"
+          />
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => onChange({ ...block, phrases: [...block.phrases, { text: '', translation: { ...empty }, tip: { ...empty } }] })}
+        className="flex items-center gap-1.5 text-[12px] text-text-muted hover:text-text transition-colors"
+      >
+        <Plus className="h-3.5 w-3.5" /> {i18n.t('admin.modules.be.pron_add_phrase')}
+      </button>
+    </div>
+  );
+}
+
 const BLOCK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   paragraph: AlignLeft, heading: Type, list: List, image: ImageIcon, video: Video,
   callout: Lightbulb, quiz: HelpCircle, flashcard: CreditCard, accordion: AccIcon,
   tabs: Layers, code: Code, quote: Quote, divider: Minus, columns: Columns,
   timeline: Clock, comparison: Table, cards: LayoutGrid, stat: BarChart3, hotspot: MapPin,
-  'game-sort': List, 'game-classify': LayoutGrid, pdf: FileText,
+  'game-sort': List, 'game-classify': LayoutGrid, pdf: FileText, pronunciation: Mic,
 };
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -1657,6 +1793,7 @@ const BLOCK_LABELS: Record<string, string> = {
   code: 'Código', quote: 'Cita', divider: 'Divisor', columns: 'Columnas',
   cards: 'Tarjetas', stat: 'Datos', hotspot: 'Imagen interactiva',
   'game-sort': 'Ordenar Procesos', 'game-classify': 'Clasificar Casos', pdf: 'Documento PDF',
+  pronunciation: 'Pronunciación',
 };
 
 // ─── Single block row ──────────────────────────────────────────
@@ -1718,6 +1855,7 @@ function BlockRow({
       case 'stat':        return <StatEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'hotspot':     return <HotspotEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'pdf':         return <PdfEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
+      case 'pronunciation': return <PronunciationEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'columns':     return <ColumnsEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'code':        return <CodeEditorBlock block={b} onChange={onUpdate} />;
       case 'quote':       return <QuoteEditorBlock block={b} onChange={onUpdate} lang={lang} />;

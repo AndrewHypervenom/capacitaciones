@@ -22,6 +22,7 @@ import { CardsBlockRenderer } from './CardsBlock';
 import { StatBlockRenderer } from './StatBlock';
 import { HotspotImageBlockRenderer } from './HotspotImageBlock';
 import { PdfBlockRenderer } from './PdfBlock';
+import { PronunciationBlockRenderer } from './PronunciationBlock';
 import { InteractiveVideoModule } from '@/components/modules/InteractiveVideoModule';
 
 /**
@@ -386,6 +387,9 @@ function BlockContent({ block, language, userId, moduleId, sectionId, blockIndex
         />
       );
 
+    case 'pronunciation':
+      return <PronunciationBlockRenderer block={block} language={language} />;
+
     default:
       return null;
   }
@@ -404,6 +408,7 @@ function blockSpacing(type: ContentBlock['type']): string {
     case 'cards':
     case 'stat':
     case 'hotspot':
+    case 'pronunciation':
     case 'columns':      return 'mt-8';
     case 'divider':      return 'my-6';
     case 'code':         return 'mt-6';

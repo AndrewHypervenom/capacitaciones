@@ -912,6 +912,32 @@ function SectionEditorPanel({
           if (fields.body !== undefined) setBody(p => ({ ...p, [l]: fields.body }))
           if (fields.callout !== undefined) setCallout(p => ({ ...p, [l]: fields.callout }))
         }}
+        pronunciation={{
+          blocks: contentBlocks.map((b) => b.data),
+          onInsert: (items) => {
+            // Se insertan de atrás hacia adelante para que cada índice siga
+            // apuntando al bloque que eligió la IA.
+            const next = [...contentBlocks]
+            const ids: string[] = []
+            ;[...items]
+              .sort((a, b) => b.afterIndex - a.afterIndex)
+              .forEach(({ afterIndex, block }) => {
+                const id = nextLocalBlockId()
+                ids.push(id)
+                next.splice(afterIndex + 1, 0, { id, data: block })
+              })
+            setBlocks(isGameSection
+              ? [...blocks.filter((b) => GAME_BLOCK_TYPES.has(b.data.type)), ...next]
+              : next)
+            return ids
+          },
+          // Deshacer la inserción: se quitan por id, así sobrevive a lo que el
+          // capacitador haya tocado entre medias en otros bloques.
+          onRemove: (ids) => {
+            const drop = new Set(ids)
+            setBlocks((prev) => prev.filter((b) => !drop.has(b.id)))
+          },
+        }}
       />
 
       {/* ── CONTENIDO ── */}

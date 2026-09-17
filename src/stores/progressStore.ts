@@ -292,6 +292,9 @@ export interface ResetLocalPayload {
   scenario_slugs?: string[];
   clear_world?: boolean;
   course_id?: string | null;
+  /** Ajuste de avance del superadmin: módulos que quedan HECHOS. */
+  complete_module_ids?: string[];
+  complete_module_slugs?: string[];
 }
 
 function todayISO(): string {
@@ -1045,6 +1048,18 @@ export const useProgressStore = create<ProgressState>()(
         // contadores de mundo (máximos para logros), para no dejar rastros del 100%.
         if (payload.clear_world && payload.course_id != null) {
           patch.certifiedCourseIds = s.certifiedCourseIds.filter((id) => id !== payload.course_id);
+        }
+
+        // Ajuste de avance: además de borrar, deja marcados los módulos que el
+        // superadmin puso como hechos. Se suman DESPUÉS de quitar, para que un
+        // módulo en las dos listas (no debería pasar) acabe hecho.
+        if (payload.complete_module_ids?.length || payload.complete_module_slugs?.length) {
+          const ids = new Set(patch.completedModuleIds ?? s.completedModuleIds);
+          const slugs = new Set(patch.completedModules ?? s.completedModules);
+          for (const id of payload.complete_module_ids ?? []) ids.add(id);
+          for (const slug of payload.complete_module_slugs ?? []) slugs.add(slug);
+          patch.completedModuleIds = [...ids];
+          patch.completedModules = [...slugs];
         }
 
         if (Object.keys(patch).length > 0) set(patch);

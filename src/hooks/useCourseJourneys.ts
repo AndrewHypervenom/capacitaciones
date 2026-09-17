@@ -27,6 +27,8 @@ export function useCourseJourneys(courses: LearnerCourse[]): {
   journeys: Record<string, CourseJourney>
   /** Ya llegaron las etapas que no son módulos (antes de esto el % va corto de datos). */
   loaded: boolean
+  /** La lectura en lote falló: el recorrido se quedó en solo-módulos. */
+  failed: boolean
 } {
   const { user } = useAuth()
   const isModuleDone = useModuleDone()
@@ -42,10 +44,11 @@ export function useCourseJourneys(courses: LearnerCourse[]): {
     () => (cache?.key === cacheKey ? cache.data : {}),
   )
   const [loaded, setLoaded] = useState(() => cache?.key === cacheKey)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    if (!user?.id || courseKey === '') { setExtras({}); setLoaded(false); return }
-    if (cache?.key === cacheKey) { setExtras(cache.data); setLoaded(true); return }
+    if (!user?.id || courseKey === '') { setExtras({}); setLoaded(false); setFailed(false); return }
+    if (cache?.key === cacheKey) { setExtras(cache.data); setLoaded(true); setFailed(false); return }
     let active = true
     getCourseJourneyExtras(courseKey.split(','), user.id)
       .then((data) => {
@@ -53,11 +56,12 @@ export function useCourseJourneys(courses: LearnerCourse[]): {
         if (!active) return
         setExtras(data)
         setLoaded(true)
+        setFailed(false)
       })
       // Un fallo de lectura NO significa "este curso no tiene nada más": deja
       // el recorrido en solo-módulos, que es lo que se veía antes, en vez de
       // dejar la tarjeta sin porcentaje.
-      .catch(() => { if (active) { setExtras({}); setLoaded(false) } })
+      .catch(() => { if (active) { setExtras({}); setLoaded(false); setFailed(true) } })
     return () => { active = false }
   }, [cacheKey, courseKey, user?.id])
 
@@ -80,7 +84,7 @@ export function useCourseJourneys(courses: LearnerCourse[]): {
     return out
   }, [courses, extras, isModuleDone])
 
-  return { journeys, loaded }
+  return { journeys, loaded, failed }
 }
 
 /** Descarta la tanda cacheada (tras asignar cursos, practicar, jugar el mundo). */

@@ -26,6 +26,13 @@ export interface ResetPayload {
   scenario_slugs?: string[]
   /** Reiniciar contadores locales de mundo (solo reset de curso). */
   clear_world?: boolean
+  /** Ajuste de avance del superadmin (no un simple reset): trae qué marcar. */
+  adjust?: boolean
+  /** Dónde quedó la persona: "Módulo 3 · …", "Curso completo". */
+  stop_label?: string | null
+  /** Módulos que el ajuste deja HECHOS (UUID y slug, como el progreso local). */
+  complete_module_ids?: string[]
+  complete_module_slugs?: string[]
   course_id?: string | null
   course_title?: string | null
   module_title?: string | null
@@ -289,4 +296,80 @@ export async function getUserCourseDetailAdmin(
     sim_done: false,
     modules: [],
   }) as unknown as AdminCourseDetail
+}
+
+// ─── Superadmin: dejar a una persona en un punto exacto de un curso ─────────
+
+export interface CourseStepsTitle {
+  title_es: string
+  title_en: string | null
+  title_pt: string | null
+}
+
+export interface AdminCourseSteps {
+  modules: Array<CourseStepsTitle & { id: string; slug: string; done: boolean }>
+  practice: Array<CourseStepsTitle & { slug: string; kind: 'call' | 'choice'; done: boolean }>
+  world: { id: string; name: string; name_en: string | null; name_pt: string | null; levels: number; done: boolean } | null
+  exam: (CourseStepsTitle & { id: string; done: boolean }) | null
+  last_adjustment: {
+    at: string
+    label: string | null
+    done_steps: number
+    total_steps: number
+    by_name: string | null
+  } | null
+}
+
+/** El recorrido del curso paso a paso, con lo que esa persona ya tiene hecho. */
+export async function getUserCourseStepsAdmin(userId: string, courseId: string): Promise<AdminCourseSteps> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_user_course_steps_admin', {
+    p_user_id: userId,
+    p_course_id: courseId,
+  })
+  if (error) throw error
+  const d = (data ?? {}) as Partial<AdminCourseSteps>
+  return {
+    modules: d.modules ?? [],
+    practice: d.practice ?? [],
+    world: d.world ?? null,
+    exam: d.exam ?? null,
+    last_adjustment: d.last_adjustment ?? null,
+  }
+}
+
+export interface CourseProgressTarget {
+  doneModuleIds: string[]
+  doneScenarioSlugs: string[]
+  worldDone: boolean
+  examDone: boolean
+  /** "Módulo 3 · Atención al cliente", "Curso completo"… queda en el rastro. */
+  stopLabel: string
+  doneSteps: number
+  totalSteps: number
+}
+
+/**
+ * Deja el curso de la persona EXACTAMENTE así: lo marcado queda hecho y todo lo
+ * demás se borra (intentos, mundo, examen y, si ya no está completo, el
+ * certificado). Solo superadmin; el RPC avisa al navegador del aprendiz.
+ */
+export async function setUserCourseProgressAdmin(
+  userId: string,
+  courseId: string,
+  target: CourseProgressTarget,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc('set_user_course_progress_admin', {
+    p_user_id: userId,
+    p_course_id: courseId,
+    p_done_module_ids: target.doneModuleIds,
+    p_done_scenario_slugs: target.doneScenarioSlugs,
+    p_world_done: target.worldDone,
+    p_exam_done: target.examDone,
+    p_stop_label: target.stopLabel,
+    p_done_steps: target.doneSteps,
+    p_total_steps: target.totalSteps,
+  })
+  if (error) throw error
 }

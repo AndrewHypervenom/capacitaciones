@@ -368,6 +368,8 @@ export default function CourseEditor() {
   const canMarkClients = isSuperAdmin || (canCreateLearners && !isRh)
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
+  // ¿Ya existe `courses.is_onboarding` (SQL 41)? `select *` solo la trae si existe.
+  const onboardingReady = !!course && 'is_onboarding' in course
   const [loading, setLoading] = useState(true)
 
   // La pestaña abierta vive en la URL (`?tab=modules`). Antes era estado suelto
@@ -431,6 +433,7 @@ export default function CourseEditor() {
     visibility: 'assigned' as 'assigned' | 'catalog',
     category_id: null as string | null,
     is_shareable: false,
+    is_onboarding: false,
     cover_fit: 'cover' as 'cover' | 'contain',
     // Límite de tiempo para terminarlo (ver src/lib/courseDeadline.ts).
     deadline_mode: 'none' as DeadlineMode,
@@ -612,6 +615,7 @@ export default function CourseEditor() {
       visibility: c.visibility,
       category_id: c.category_id ?? null,
       is_shareable: c.is_shareable ?? false,
+      is_onboarding: c.is_onboarding ?? false,
       cover_fit: c.cover_fit ?? 'cover',
       // Si el SQL del plazo todavía no se corrió, las columnas llegan
       // `undefined` y el curso se comporta como si no tuviera límite.
@@ -1339,6 +1343,9 @@ export default function CourseEditor() {
         visibility: form.visibility,
         category_id: form.category_id,
         is_shareable: form.is_shareable,
+        // Solo si la columna existe (SQL 41): mandarla antes de correrlo
+        // tumbaría el guardado entero de la ficha.
+        ...(onboardingReady ? { is_onboarding: form.is_onboarding } : {}),
         cover_fit: form.cover_fit,
         // El plazo se guarda coherente: las columnas del modo que NO está
         // activo se limpian, para que apagar y volver a encender no reviva una
@@ -3288,6 +3295,60 @@ export default function CourseEditor() {
                 </p>
               )}
             </div>
+
+            {/* ── Curso de onboarding ───────────────────────────────────────
+                Mientras la persona tenga un curso de inducción sin terminar,
+                solo ve esos; al acabarlos se le abre lo demás y el catálogo.
+                Se oculta hasta que exista la columna (SQL 41). */}
+            {onboardingReady && (
+              <div
+                className={cn(
+                  'rounded-2xl border p-4 transition-colors',
+                  form.is_onboarding ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/20' : 'border-line',
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                      form.is_onboarding ? 'bg-primary/15 text-primary' : 'bg-glass/10 text-text-muted',
+                    )}
+                  >
+                    <Rocket className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13px] font-semibold text-text">
+                        {t('admin.courses.onboarding_title')}
+                      </span>
+                      {form.is_onboarding && (
+                        <NeonBadge color="green" dot>{t('admin.courses.onboarding_badge')}</NeonBadge>
+                      )}
+                    </span>
+                    <p className="mt-1 text-[12px] leading-relaxed text-text-muted">
+                      {form.is_onboarding ? t('admin.courses.onboarding_on') : t('admin.courses.onboarding_off')}
+                    </p>
+                  </div>
+                  <Toggle
+                    on={form.is_onboarding}
+                    onClick={() => setForm({ ...form, is_onboarding: !form.is_onboarding })}
+                    label={t('admin.courses.onboarding_title')}
+                  />
+                </div>
+                {form.is_onboarding && (
+                  <ol className="mt-3 grid gap-2 border-t border-line/70 pt-3 sm:grid-cols-3">
+                    {(['onboarding_step_1', 'onboarding_step_2', 'onboarding_step_3'] as const).map((k, i) => (
+                      <li key={k} className="flex items-start gap-2 text-[11.5px] leading-snug text-text-muted">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/12 text-[10px] font-bold text-primary">
+                          {i + 1}
+                        </span>
+                        {t(`admin.courses.${k}`)}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
 
             {/* ── Límite de tiempo ──────────────────────────────────────────
                 Tres modos excluyentes: sin plazo, N días desde que se le

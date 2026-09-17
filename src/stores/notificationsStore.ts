@@ -6,6 +6,7 @@ import {
   type AppNotification,
 } from '@/services/notifications.service'
 import { useProgressStore } from '@/stores/progressStore'
+import { invalidateCourseJourneysCache } from '@/hooks/useCourseJourneys'
 
 // Ids de notificaciones de reset ya APLICADAS a la caché local (para no volver a
 // limpiar ni a avisar en cada carga). Vive en localStorage, aparte del store.
@@ -96,7 +97,13 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
       applied.add(n.id)
       newlyApplied.push(n)
     }
-    if (newlyApplied.length > 0) saveApplied(applied)
+    if (newlyApplied.length > 0) {
+      saveApplied(applied)
+      // Prácticas, mundo y examen se leen de la base en lote y se cachean: tras
+      // un reset o un ajuste esa lectura ya no vale (p. ej. el onboarding pasa
+      // a estar terminado y hay que abrir el catálogo).
+      invalidateCourseJourneysCache()
+    }
 
     set({
       items,

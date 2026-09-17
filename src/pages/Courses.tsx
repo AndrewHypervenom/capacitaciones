@@ -24,6 +24,8 @@ import { Select } from '@/components/ui/Select';
 import { CourseGrid, courseProgress, ease, pickCourseText as pickText } from '@/components/course/CourseCard';
 import { useCourseJourneys } from '@/hooks/useCourseJourneys';
 import { cn } from '@/lib/cn';
+import { onboardingGate } from '@/lib/onboarding';
+import { OnboardingBanner, LockedCatalogCard } from '@/components/course/OnboardingGate';
 
 export { courseProgress };
 
@@ -77,11 +79,18 @@ export default function Courses() {
   const reduce = useReducedMotion();
   const language = useUserStore((s) => s.language);
   const isModuleDone = useModuleDone();
-  const { courses, loading, reload } = useLearnerCourses();
+  const { courses: allCourses, loading, reload } = useLearnerCourses();
   // Recorrido completo (módulos + prácticas + mundo + examen) de todos los
   // cursos de una vez: sin esto la tarjeta diría 100% donde la página del curso
   // dice 90%. Ver src/hooks/useCourseJourneys.ts.
-  const { journeys } = useCourseJourneys(courses);
+  const { journeys, loaded: journeysLoaded, failed: journeysFailed } = useCourseJourneys(allCourses);
+  // Onboarding sin terminar: la página entera trabaja SOLO con esos cursos —
+  // buscador, filtros, contadores y avance— y el catálogo sale con candado.
+  const gate = useMemo(
+    () => onboardingGate(allCourses, journeys, isModuleDone, { loaded: journeysLoaded, failed: journeysFailed }),
+    [allCourses, journeys, isModuleDone, journeysLoaded, journeysFailed],
+  );
+  const courses = gate.active ? gate.courses : allCourses;
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -211,8 +220,9 @@ export default function Courses() {
   // área/CR, lo asignado a mano y lo ya empezado. Lo que le llega solo por
   // catálogo o por una regla solo de país va al catálogo, aunque tenga acceso.
   const isMine = (c: LearnerCourse) =>
-    c.isAssigned &&
-    (c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0);
+    gate.active ||
+    (c.isAssigned &&
+      (c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0));
   const myCourses = arrange(filtered.filter(isMine));
   const exploreCourses = arrange(filtered.filter((c) => !isMine(c)));
 
@@ -239,9 +249,11 @@ export default function Courses() {
 
   /* ── Resumen del avance: una sola línea, sin tablero de KPIs ─────────── */
   const stats = useMemo(() => {
-    const assigned = courses.filter(
-      (c) => c.isAssigned && (c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0),
-    );
+    const assigned = gate.active
+      ? courses
+      : courses.filter(
+          (c) => c.isAssigned && (c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0),
+        );
     let completed = 0;
     let mandatoryPending = 0;
     assigned.forEach((c) => {
@@ -255,7 +267,7 @@ export default function Courses() {
       mandatoryPending,
       pct: assigned.length > 0 ? completed / assigned.length : 0,
     };
-  }, [courses, isModuleDone, journeys]);
+  }, [courses, isModuleDone, journeys, gate.active]);
 
   const filters: Array<{ id: Filter; label: string }> = [
     { id: 'all', label: t('courses.filter_all') },
@@ -288,7 +300,7 @@ export default function Courses() {
   const hasAdvanced = levels.length > 1 || categories.length > 1;
 
   /* ── Cargando ───────────────────────────────────────────────────────────── */
-  if (loading) {
+  if (loading || !gate.settled) {
     return (
       <div className="mx-auto max-w-6xl px-4 pt-12 pb-24 sm:px-8 sm:pt-16">
         <div className="space-y-10">
@@ -335,7 +347,9 @@ export default function Courses() {
           {t('courses.subtitle')}
         </p>
 
-        {stats.assigned > 0 && (
+        {gate.active && <OnboardingBanner gate={gate} reduce={reduce} className="mt-8 max-w-2xl" />}
+
+        {!gate.active && stats.assigned > 0 && (
           <div className="mt-8 max-w-sm">
             <div className="mb-2 flex items-baseline justify-between gap-4 text-[13px]">
               <span className="text-text-muted">
@@ -591,6 +605,20 @@ export default function Courses() {
               </motion.section>
             )}
           </AnimatePresence>
+
+          {/* ── Catálogo con candado mientras dure el onboarding ────────────── */}
+          {gate.active && (
+            <section>
+              <SectionHead
+                title={t('courses.explore')}
+                subtitle={t('onboarding_gate.catalog_locked_subtitle')}
+                count={0}
+              />
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <LockedCatalogCard gate={gate} />
+              </div>
+            </section>
+          )}
 
           {/* ── Explorar catálogo ──────────────────────────────────────────── */}
           <AnimatePresence initial={false}>
