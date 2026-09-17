@@ -5886,7 +5886,9 @@
       "download": "PDF",
       "copy_hint": "Link anyone can use to check the certificate, no account needed.",
       "link_copied": "Link copied",
-      "more": "Show {{count}} more"
+      "more": "Show {{count}} more",
+      "list_title": "Open in Progress › Modules",
+      "list_body": "The full table as before: CR, course and date filters, outdated certificates and Excel."
     }
   },
   "themes": {

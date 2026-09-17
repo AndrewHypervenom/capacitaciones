@@ -5886,7 +5886,9 @@
       "download": "PDF",
       "copy_hint": "Enlace para que cualquiera compruebe el certificado, sin cuenta.",
       "link_copied": "Enlace copiado",
-      "more": "Ver {{count}} más"
+      "more": "Ver {{count}} más",
+      "list_title": "Ver en Progreso › Módulos",
+      "list_body": "La tabla completa de siempre: filtros por CR, curso y fechas, certificados desactualizados y Excel."
     }
   },
   "themes": {

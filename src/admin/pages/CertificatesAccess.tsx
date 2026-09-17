@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Award, Copy, Download, ExternalLink, Loader2, Search, ShieldCheck, X } from 'lucide-react'
+import { ArrowRight, Award, Copy, Download, ExternalLink, Loader2, Search, ShieldCheck, Table2, X } from 'lucide-react'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { PersonAvatar } from '@/admin/pages/progress/OverviewChrome'
@@ -108,6 +109,22 @@ export default function CertificatesAccess() {
         {t('admin.certificates_access.title')}
       </GradientHeading>
       <p className="mt-1 text-[13px] text-text-muted">{t('admin.certificates_access.subtitle')}</p>
+
+      {/* El flujo de siempre, arriba y a la vista: Progreso → Módulos → pestaña
+          Certificados, con la tabla completa, filtros y el Excel. */}
+      <Link
+        to="/admin/progress?view=modules&section=certificates"
+        className="group mt-5 flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 transition-colors hover:border-primary/40"
+      >
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Table2 className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-semibold text-text">{t('admin.certificates_access.list_title')}</span>
+          <span className="mt-0.5 block text-[12px] text-text-muted">{t('admin.certificates_access.list_body')}</span>
+        </span>
+        <ArrowRight className="h-4 w-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-1" />
+      </Link>
 
       {/* La casilla: lo único que hay que entender de esta pantalla. */}
       <div className="relative mt-6">
