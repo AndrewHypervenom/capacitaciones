@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, Search, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -55,6 +55,10 @@ import { toast } from '@/stores/toastStore'
 import { deletionToast } from '@/lib/deletionToast'
 import { rowText } from '@/lib/contentLang'
 import { TranslationModal } from '@/admin/components/TranslationModal'
+import { CourseReachTable } from '@/admin/components/CourseReachTable'
+import { reachesFilter, useCourseReach } from '@/admin/components/courseReach'
+import { OPERATION_COUNTRIES } from '@/lib/countries'
+import { fold } from '@/lib/normalize'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
@@ -66,6 +70,10 @@ const PREVIEW_HINT_KEY = 'course-preview-hint-seen'
 // primero); las otras dos son alfabéticas por título.
 type CourseSort = 'default' | 'az' | 'za'
 const COURSE_SORT_KEY = 'admin-courses-sort'
+
+// Cómo se ve la lista: tarjetas, o la tabla de «a quién le llega cada curso».
+type CourseLayout = 'cards' | 'reach'
+const COURSE_LAYOUT_KEY = 'admin-courses-layout'
 
 /** Un curso sin fila en `course_audiences` se lee igual que uno con la regla vacía. */
 const EMPTY_RULE: AudienceRule = {
@@ -97,13 +105,19 @@ export default function CourseList() {
      se elige solo, por dentro, y nadie tiene que saber que existe. */
   const selectedCampaignId = ALL_CAMPAIGNS
   const [creationCampaignId, setCreationCampaignId] = useState<string>('')
-  /** CR: deja solo los cursos cuya regla le llega (o que van a todo el mundo). */
+  /* Buscador y filtros, COMUNES a tarjetas y tabla. País, área y CR responden
+     «¿qué le llega a alguien de…?» con la semántica de la regla: un curso solo
+     por país sigue saliendo al elegir un CR de ese país, porque le llega. */
+  const [search, setSearch] = useState('')
+  const [countryFilter, setCountryFilter] = useState('')
+  const [areaFilter, setAreaFilter] = useState('')
   const [crFilter, setCrFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all')
   const [courses, setCourses] = useState<AdminCourse[]>([])
   /** Regla de audiencia por curso: qué país / área / CR tiene definidos. */
   const [audiences, setAudiences] = useState<Map<string, AudienceRule>>(new Map())
-  /** Filtro de la migración: solo los que todavía no tienen regla. */
-  const [onlyUnmigrated, setOnlyUnmigrated] = useState(false)
+  /** Del aviso de arriba: deja solo los publicados que no le llegan a nadie. */
+  const [onlyNobody, setOnlyNobody] = useState(false)
   /** El catálogo de CR y áreas, para escribir la regla con nombres. */
   const [units, setUnits] = useState<OrgUnit[]>([])
   // El orden elegido se recuerda: quien trabaja alfabéticamente no quiere
@@ -114,6 +128,13 @@ export default function CourseList() {
       return saved === 'az' || saved === 'za' ? saved : 'default'
     } catch { return 'default' }
   })
+  const [layout, setLayout] = useState<CourseLayout>(() => {
+    try { return localStorage.getItem(COURSE_LAYOUT_KEY) === 'reach' ? 'reach' : 'cards' } catch { return 'cards' }
+  })
+  const changeLayout = (next: CourseLayout) => {
+    setLayout(next)
+    try { localStorage.setItem(COURSE_LAYOUT_KEY, next) } catch { /* modo privado */ }
+  }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Se incrementa para forzar recarga de la lista (p. ej. cuando una creación con
@@ -287,17 +308,20 @@ export default function CourseList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, refreshKey])
 
+  /** A cuánta gente le llega cada curso (por regla y a mano). Lo leen las
+   *  tarjetas, el aviso y la tabla: una sola fuente, un solo número. */
+  const reach = useCourseReach(courses, audiences, isSuperAdmin, refreshKey)
+
   /**
-   * Cuántos cursos siguen repartiéndose por programa.
-   *
-   * Es el contador de la migración, y es el único número que dice cuánto falta.
-   * Solo cuenta los PUBLICADOS: un borrador sin regla no le está fallando a
-   * nadie todavía, y meterlo en la cuenta haría que el trabajo pareciera más
-   * grande de lo que es.
+   * Publicados que de verdad no le llegan a NADIE: sin regla y sin personas
+   * marcadas a mano. Antes contaba «sin regla» a secas y metía cursos con 22
+   * personas asignadas a mano: el aviso decía 7 y la tabla 2.
+   * Solo el superadmin ve todas las asignaciones; para los demás el 0 no es
+   * fiable, así que el aviso no sale.
    */
-  const sinRegla = useMemo(
-    () => courses.filter((c) => c.is_published && ruleIsEmpty(audiences.get(c.id) ?? EMPTY_RULE)).length,
-    [courses, audiences],
+  const nobodyPublished = useMemo(
+    () => courses.filter((c) => c.is_published && reach.get(c.id)?.group === 'nobody').length,
+    [courses, reach],
   )
 
   // Trae lo último cuando se vuelve a esta pestaña o cuando otra avisa que
@@ -339,20 +363,25 @@ export default function CourseList() {
     }
   }, [sort])
 
+  const filtersOn = !!(search.trim() || countryFilter || areaFilter || crFilter || statusFilter !== 'all' || onlyNobody)
+
+  const clearFilters = () => {
+    setSearch(''); setCountryFilter(''); setAreaFilter(''); setCrFilter('')
+    setStatusFilter('all'); setOnlyNobody(false)
+  }
+
   const visibleCourses = useMemo(() => {
-    const base = onlyUnmigrated
-      ? courses.filter((c) => c.is_published && ruleIsEmpty(
-          audiences.get(c.id) ?? EMPTY_RULE,
-        ))
-      : courses
-    const byCr = crFilter
-      ? base.filter((c) => {
-          const rule = audiences.get(c.id)
-          return !!rule && (rule.everyone || rule.operationIds.includes(crFilter))
-        })
-      : base
-    return sortByTitle(byCr)
-  }, [courses, sortByTitle, onlyUnmigrated, audiences, crFilter])
+    const q = fold(search)
+    const f = { country: countryFilter, area: areaFilter, cr: crFilter }
+    return sortByTitle(
+      courses.filter((c) => {
+        if (statusFilter !== 'all' && (statusFilter === 'published') !== c.is_published) return false
+        if (q && !fold(rowText(c)).includes(q)) return false
+        if (onlyNobody && !(c.is_published && reach.get(c.id)?.group === 'nobody')) return false
+        return reachesFilter(audiences.get(c.id) ?? EMPTY_RULE, f)
+      }),
+    )
+  }, [courses, sortByTitle, search, statusFilter, countryFilter, areaFilter, crFilter, onlyNobody, audiences, reach])
 
   const handleCreate = async () => {
     if (!newTitle.trim() || !creationCampaignId) return
@@ -515,18 +544,26 @@ export default function CourseList() {
         </div>
       </div>
 
-      {/* Filtros: CR (cursos cuya regla le llega a ese CR, o que van a todo el
-          mundo) y orden. Ya no hay programas: el CR es el eje. */}
-      <div className="mb-5 flex flex-col sm:flex-row sm:items-center gap-3">
-        <FilterDropdown
-          value={crFilter}
-          onChange={setCrFilter}
-          options={[
-            { value: '', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
-            ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
-          ]}
-          className="w-full sm:w-auto sm:min-w-[13rem]"
-        />
+      {/* Vista (tarjetas / a quién le llega) y orden, y debajo el buscador con
+          los filtros. Son los mismos para las dos vistas: cambiar de vista no
+          pierde lo que buscabas. */}
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div role="tablist" className="inline-flex shrink-0 self-start rounded-xl border border-line p-1">
+          {(['cards', 'reach'] as const).map((l) => (
+            <button
+              key={l}
+              role="tab"
+              aria-selected={layout === l}
+              onClick={() => changeLayout(l)}
+              className={cn(
+                'min-h-[36px] rounded-lg px-3 text-[13px] font-medium transition-colors',
+                layout === l ? 'bg-primary/15 text-primary' : 'text-text-muted hover:text-text',
+              )}
+            >
+              {t(l === 'cards' ? 'admin.courses.layout_cards' : 'admin.courses.layout_reach')}
+            </button>
+          ))}
+        </div>
         {courses.length > 1 && (
           <FilterDropdown
             value={sort}
@@ -536,6 +573,67 @@ export default function CourseList() {
             aria-label={t('admin.courses.sort_label')}
             className="w-full sm:w-auto sm:ml-auto sm:min-w-[13rem]"
           />
+        )}
+      </div>
+
+      <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
+        <div className="relative sm:col-span-2 lg:col-span-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('admin.courses.reach_search_ph')}
+            aria-label={t('admin.courses.reach_search_ph')}
+            className="min-h-[44px] w-full rounded-xl border border-line bg-surface py-2.5 pl-9 pr-3 text-[14px] text-text outline-none focus:border-primary"
+          />
+        </div>
+        <FilterDropdown
+          value={countryFilter}
+          onChange={setCountryFilter}
+          options={[
+            { value: '', label: t('admin.courses.reach_any_country') },
+            ...OPERATION_COUNTRIES.map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` })),
+          ]}
+        />
+        <FilterDropdown
+          value={areaFilter}
+          onChange={setAreaFilter}
+          searchable
+          options={[
+            { value: '', label: t('admin.courses.reach_any_area') },
+            ...units.filter((u) => u.kind === 'area').map((u) => ({ value: u.id, label: u.name })),
+          ]}
+        />
+        <FilterDropdown
+          value={crFilter}
+          onChange={setCrFilter}
+          searchable
+          options={[
+            { value: '', label: t('admin.courses.reach_any_cr') },
+            ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
+          ]}
+        />
+        <FilterDropdown
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as typeof statusFilter)}
+          options={[
+            { value: 'all', label: t('admin.courses.reach_status_all') },
+            { value: 'published', label: t('admin.courses.published') },
+            { value: 'draft', label: t('admin.courses.draft') },
+          ]}
+        />
+      </div>
+
+      {/* Qué se está viendo, en palabras, y cómo volver a verlo todo. */}
+      <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-text-muted">
+        <span className="tabular-nums">
+          {t('admin.courses.showing_count', { count: visibleCourses.length, total: courses.length })}
+        </span>
+        {(countryFilter || areaFilter || crFilter) && <span>{t('admin.courses.reach_filter_hint')}</span>}
+        {filtersOn && (
+          <button onClick={clearFilters} className="font-medium text-primary hover:underline">
+            {t('admin.courses.clear_filters')}
+          </button>
         )}
       </div>
 
@@ -569,33 +667,33 @@ export default function CourseList() {
         </GlassCard>
       ) : (
         <>
-        {/* El contador de la migración.
-            Vive aquí y no en una pantalla aparte porque es donde el capacitador
-            ya está: el trabajo es "abre tus cursos y di a quién le llegan", así
-            que el recordatorio tiene que estar encima de sus cursos. Se apaga
-            solo cuando no queda ninguno — un aviso que hay que acordarse de
-            quitar a mano se queda para siempre. */}
-        {sinRegla > 0 && (
+        {/* Publicados que no le llegan a nadie: ni regla ni personas a mano.
+            Mismo número que el grupo «Sin asignar a nadie» de la tabla. Se
+            apaga solo cuando no queda ninguno. */}
+        {isSuperAdmin && nobodyPublished > 0 && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/[0.07] px-4 py-3">
             <div className="min-w-0">
               <p className="text-[13px] font-medium text-amber-500">
-                {t('admin.courses.migrate_title', { count: sinRegla })}
+                {t('admin.courses.nobody_title', { count: nobodyPublished })}
               </p>
               <p className="mt-0.5 text-[12px] text-text-muted">
-                {t('admin.courses.migrate_body')}
+                {t('admin.courses.nobody_body')}
               </p>
             </div>
             <Button
-              variant={onlyUnmigrated ? 'neon' : 'ghost'}
+              variant={onlyNobody ? 'neon' : 'ghost'}
               className="shrink-0"
-              onClick={() => setOnlyUnmigrated((v) => !v)}
+              onClick={() => setOnlyNobody((v) => !v)}
             >
-              {onlyUnmigrated
-                ? t('admin.courses.migrate_show_all', 'Ver todos')
-                : t('admin.courses.migrate_filter', 'Ver solo esos')}
+              {onlyNobody ? t('admin.courses.migrate_show_all') : t('admin.courses.migrate_filter')}
             </Button>
           </div>
         )}
+        {layout === 'reach' ? (
+          <CourseReachTable courses={visibleCourses} reach={reach} units={units} />
+        ) : visibleCourses.length === 0 ? (
+          <p className="py-10 text-center text-[13px] text-text-muted">{t('admin.courses.reach_empty')}</p>
+        ) : <>
         <FadeIn className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" y={16}>
           {visibleCourses.map((course) => (
             <GlassCard
@@ -682,23 +780,43 @@ export default function CourseList() {
                       curso: o dice "Colombia · Área: Operativa · CR: CLARO
                       MILLA", o dice en rojo que todavía reparte por programa. */}
                   {(() => {
+                    const r = reach.get(course.id)
                     const regla = audiences.get(course.id)
-                    const vacia = !regla || ruleIsEmpty(regla)
-                    if (vacia) {
+                    const personas = (n: number | null | undefined) =>
+                      n == null ? '' : ` · ${t('admin.courses.people_count', { count: n })}`
+                    if (!regla || ruleIsEmpty(regla)) {
+                      // Sin regla puede ser «a mano» (válido) o «a nadie» (el
+                      // problema). Antes las dos salían en rojo como «Sin regla».
+                      const nadie = r?.group === 'nobody'
                       return (
-                        <Tooltip label={t('admin.courses.no_rule_hint')} maxWidth={300}>
-                          <span className="inline-flex cursor-help items-center gap-1 rounded-full border border-red-500/45 bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-500">
+                        <Tooltip
+                          label={nadie ? t('admin.courses.chip_nobody_hint') : t('admin.courses.chip_by_hand_hint')}
+                          maxWidth={300}
+                        >
+                          <span
+                            className={cn(
+                              'inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium',
+                              nadie
+                                ? 'border-amber-500/45 bg-amber-500/10 text-amber-500'
+                                : 'border-line bg-glass/8 text-text-muted',
+                            )}
+                          >
                             <Users className="h-3 w-3" />
-                            {t('admin.courses.no_rule_badge', 'Sin regla')}
+                            {nadie
+                              ? t('admin.courses.chip_nobody')
+                              : `${t('admin.courses.chip_by_hand')}${personas(r?.byHand)}`}
                           </span>
                         </Tooltip>
                       )
                     }
+                    const resumen = audienceSummary(regla, units, t)
+                    const total = r?.byRule == null ? null : r.byRule + (r.byHand ?? 0)
                     return (
-                      <Tooltip label={audienceSummary(regla, units, t)} maxWidth={320}>
+                      <Tooltip label={`${resumen}${personas(total)}`} maxWidth={320}>
                         <span className="inline-flex max-w-[260px] cursor-help items-center gap-1 rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-muted">
                           <Users className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{audienceSummary(regla, units, t)}</span>
+                          <span className="truncate">{resumen}</span>
+                          {total != null && <span className="shrink-0 tabular-nums text-text-subtle">· {total}</span>}
                         </span>
                       </Tooltip>
                     )
@@ -771,6 +889,7 @@ export default function CourseList() {
             </GlassCard>
           ))}
         </FadeIn>
+        </>}
         </>
       ))}
 

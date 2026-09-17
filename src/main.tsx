@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './styles/globals.css';
+import { polyfillCountryFlagEmojis } from 'country-flag-emoji-polyfill';
+import flagsFontUrl from 'country-flag-emoji-polyfill/dist/TwemojiCountryFlags.woff2?url';
 import i18n, { ensureLanguage } from './i18n';
 import App from './App';
 import { ErrorBoundary, reloadForNewVersion } from '@/components/ui/ErrorBoundary';
@@ -11,6 +13,13 @@ import { ErrorBoundary, reloadForNewVersion } from '@/components/ui/ErrorBoundar
 window.addEventListener('vite:preloadError', (event) => {
   if (reloadForNewVersion()) event.preventDefault();
 });
+
+// Windows no trae dibujos para los emojis de bandera: donde Mac y el teléfono
+// pintan 🇨🇴, Chrome en Windows escribe «CO». Solo en esos navegadores se carga
+// una fuente con las banderas (servida desde el propio sitio, no un CDN) y va
+// primera en la pila de `tailwind.config.ts`. Su unicode-range cubre solo las
+// letras de bandera: el resto del texto y de los emojis no cambia.
+polyfillCountryFlagEmojis('Twemoji Country Flags', flagsFontUrl);
 
 (function applyInitialTheme() {
   try {

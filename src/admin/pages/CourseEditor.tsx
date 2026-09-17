@@ -4120,7 +4120,7 @@ export default function CourseEditor() {
                               )}
                               style={p.is_client ? { background: 'rgba(14,165,233,0.10)' } : undefined}
                             >
-                              {t('admin.users.client_badge')}
+                              {p.is_client ? t('admin.courses.client_toggle_on_label') : t('admin.courses.client_toggle_off_label')}
                             </button>
                           </Tooltip>
                         )}

@@ -7,6 +7,8 @@ export default {
     extend: {
       fontFamily: {
         sans: [
+          // Solo pinta banderas (ver src/main.tsx); lo demás cae en Inter.
+          '"Twemoji Country Flags"',
           '"Inter Variable"',
           '-apple-system',
           'BlinkMacSystemFont',

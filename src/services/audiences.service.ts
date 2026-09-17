@@ -105,11 +105,18 @@ export function matchesAudience(
     operation_id?: string | null
     area_id?: string | null
     is_client?: boolean | null
+    role?: string | null
   },
 ): boolean {
   // Los clientes van ANTES que todo lo demás, incluido `everyone`: son gente de
   // fuera, y el contenido interno solo les llega si alguien lo dijo a propósito.
   if (person.is_client === true && !rule.includeClients) return false
+  // Un APRENDIZ sin área NI CR no está en ningún grupo: no viene de la base de
+  // Talento Humano (que siempre trae los dos) ni del alta, que los exige. Es una
+  // cuenta de prueba o de paso, y recibe SOLO lo que se le asigne a mano. Sin
+  // esto, una regla «solo por país» le entregaba todo el contenido de Colombia a
+  // quien se creó para ver un único curso. El staff no entra en este corte.
+  if (isLearnerRole(person.role) && !person.area_id && !person.operation_id) return false
   if (rule.everyone) return true
   if (ruleIsEmpty(rule)) return false
   if (rule.countries.length > 0 && !rule.countries.includes(person.country ?? '')) return false
