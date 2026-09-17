@@ -30,6 +30,7 @@ import {
   type ReinforcementStudyRow,
 } from '@/services/reinforcementStudy.service';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
+import { useDesktopOnlyLock } from '@/components/course/DesktopOnlyLock';
 import {
   REINFORCEMENT_STUDY_EVENT,
   isStudyDone,
@@ -153,6 +154,10 @@ export default function ExamLanding() {
 
   const { courses, loading: coursesLoading } = useLearnerCourses();
   const course = useMemo(() => courses.find((c) => c.id === courseId), [courses, courseId]);
+
+  // Curso «solo desde el computador»: el examen es la entrada más delicada
+  // —se presenta una vez— así que también se cierra aquí.
+  const deviceLock = useDesktopOnlyLock(course);
 
   const [state, setState] = useState<ExamState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -371,6 +376,8 @@ export default function ExamLanding() {
       </div>
     );
   }
+
+  if (deviceLock) return deviceLock;
 
   /* ── Sin examen ── */
   if (!state) {

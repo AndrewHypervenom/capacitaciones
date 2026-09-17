@@ -492,6 +492,8 @@
     "deadline_due_on": "Fecha límite: {{date}}",
     "deadline_blocked_hint": "el curso está cerrado; pídele a tu capacitador que amplíe el plazo",
     "deadline_module_locked_hint": "Cerrado: se venció el plazo del curso",
+    "desktop_only_note": "Solo desde el computador",
+    "desktop_only_blocked": "Ábrelo desde un computador",
     "legacy_notice_title": "¿Ya realizaste este curso en Sinergy?",
     "legacy_notice_lead": "Como este curso fue migrado de Sinergy a Learning AI, si ya cuentas con el certificado de finalización, no es necesario que lo realices nuevamente.",
     "legacy_notice_send": "Envíanos tu certificado a",
@@ -3246,6 +3248,11 @@
       "client_marked": "Marcada como persona de un cliente",
       "client_unmarked": "Vuelve a contar como empleado",
       "client_mark_error": "No se pudo cambiar la marca de cliente",
+      "desktop_only_title": "Solo desde el computador",
+      "desktop_only_badge": "Solo PC",
+      "desktop_only_on": "Quien lo abra desde una tableta o un celular verá una explicación en vez del contenido. Vale para el curso, sus módulos y el examen final.",
+      "desktop_only_off": "Actívalo si el contenido necesita pantalla grande o teclado: tablas anchas, simuladores, o material que se trabaja en el puesto.",
+      "desktop_only_hint": "Asegúrate de que esta gente tenga computador: quien solo tenga celular no podrá hacer el curso, ni aunque sea obligatorio.",
       "onboarding_title": "Curso de onboarding",
       "onboarding_badge": "Inducción",
       "onboarding_on": "Quien lo tenga asignado solo verá sus cursos de onboarding hasta terminarlos. Después se le abren el catálogo y el resto.",
@@ -7352,6 +7359,13 @@
     "step2_body": "Verás a nombre de quién está, el curso, la fecha y lo que aprendió.",
     "step3_title": "Descárgalo",
     "step3_body": "Desde esa misma página se descarga el PDF del diploma."
+  },
+  "desktop_only": {
+    "title": "Este curso se ve solo desde el computador",
+    "body_phone": "No es un error del celular: este curso se dejó así a propósito porque su contenido no se puede hacer bien en una pantalla pequeña.",
+    "body_tablet": "No es un error de la tableta: este curso se dejó así a propósito porque su contenido necesita la pantalla y el teclado de un computador.",
+    "hint": "Entra desde un computador con el mismo usuario y contraseña. Tu avance te está esperando ahí mismo.",
+    "staff_bypass": "Verlo de todas formas"
   },
   "onboarding_gate": {
     "eyebrow": "Tu onboarding",

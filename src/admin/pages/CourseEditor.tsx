@@ -95,6 +95,7 @@ import {
 } from '@/services/audiences.service'
 import { setUserIsClient } from '@/services/clients.service'
 import { AudienceRulePicker, normalizeRule, audienceReadyToPublish, audienceSummary } from '@/admin/components/AudienceRulePicker'
+import { scrollToCard } from '@/lib/scrollToCard'
 import { getAudiencePopulation, matchesAudience, ruleIsEmpty, isLearnerRole, type AudiencePerson } from '@/services/audiences.service'
 import { getOrganizations, getOrgUnits, createOrgUnit } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
@@ -400,6 +401,9 @@ export default function CourseEditor() {
   const [course, setCourse] = useState<CourseWithModules | null>(null)
   // ¿Ya existe `courses.is_onboarding` (SQL 41)? `select *` solo la trae si existe.
   const onboardingReady = !!course && 'is_onboarding' in course
+  // Igual con `courses.desktop_only` (SQL 45): sin la columna, el interruptor
+  // ni se ofrece y el curso se ve en cualquier aparato, como siempre.
+  const desktopOnlyReady = !!course && 'desktop_only' in course
   const [loading, setLoading] = useState(true)
 
   // La pestaña abierta vive en la URL (`?tab=modules`). Antes era estado suelto
@@ -419,6 +423,15 @@ export default function CourseEditor() {
     else params.set('tab', next)
     setSearchParams(params, { replace: true })
   }
+
+  /* ── Llegar directo a una parte de la ficha (?focus=deadline) ───────────
+     El aviso de "21 personas con el plazo vencido" abre el curso por aquí:
+     cae en Información, baja hasta el límite de tiempo y lo resalta un par de
+     segundos. Sin eso, el aviso te deja en una ficha larga a buscar a mano la
+     tarjeta de la que te está hablando. El parámetro se quita de la URL en
+     cuanto se usa: recargar no debe volver a hacer el viaje. */
+  const deadlineRef = useRef<HTMLDivElement>(null)
+  const [flashDeadline, setFlashDeadline] = useState(false)
 
   // Presencia colaborativa: coeditores que tienen abierto este curso. Publicamos
   // también la pestaña abierta para que se vea el punto exacto donde están.
@@ -464,6 +477,7 @@ export default function CourseEditor() {
     category_id: null as string | null,
     is_shareable: false,
     is_onboarding: false,
+    desktop_only: false,
     cover_fit: 'cover' as 'cover' | 'contain',
     // Límite de tiempo para terminarlo (ver src/lib/courseDeadline.ts).
     deadline_mode: 'none' as DeadlineMode,
@@ -646,6 +660,7 @@ export default function CourseEditor() {
       category_id: c.category_id ?? null,
       is_shareable: c.is_shareable ?? false,
       is_onboarding: c.is_onboarding ?? false,
+      desktop_only: c.desktop_only ?? false,
       cover_fit: c.cover_fit ?? 'cover',
       // Si el SQL del plazo todavía no se corrió, las columnas llegan
       // `undefined` y el curso se comporta como si no tuviera límite.
@@ -1169,6 +1184,24 @@ export default function CourseEditor() {
   // guardar se las llevaba sin decir nada.
   useUnsavedFlag(assignDirty, t(TAB_LABEL_KEY.assign))
 
+  useEffect(() => {
+    if (loading || !course || searchParams.get('focus') !== 'deadline') return
+    setTabState('info')
+    const params = new URLSearchParams(searchParams)
+    params.delete('focus')
+    setSearchParams(params, { replace: true })
+    // El panel scrollea dentro de su propio contenedor y la ficha sigue
+    // creciendo un rato tras pintarse: de eso se encarga scrollToCard, que
+    // espera a que la tarjeta exista y reajusta la posición un par de veces.
+    const cancel = scrollToCard(() => deadlineRef.current)
+    setFlashDeadline(true)
+    const off = window.setTimeout(() => setFlashDeadline(false), 3200)
+    return () => {
+      cancel()
+      window.clearTimeout(off)
+    }
+  }, [loading, course, searchParams, setSearchParams])
+
   // ¿Qué parte del editor tiene cambios? Alimenta la barra única de guardado y
   // el punto de las pestañas.
   const infoDirty = useMemo(
@@ -1411,6 +1444,7 @@ export default function CourseEditor() {
         // Solo si la columna existe (SQL 41): mandarla antes de correrlo
         // tumbaría el guardado entero de la ficha.
         ...(onboardingReady ? { is_onboarding: form.is_onboarding } : {}),
+        ...(desktopOnlyReady ? { desktop_only: form.desktop_only } : {}),
         cover_fit: form.cover_fit,
         // El plazo se guarda coherente: las columnas del modo que NO está
         // activo se limpian, para que apagar y volver a encender no reviva una
@@ -3431,17 +3465,72 @@ export default function CourseEditor() {
               </div>
             )}
 
+            {/* ── Solo desde el computador ──────────────────────────────────
+                Hay cursos que en un celular no se pueden hacer bien (tablas
+                anchas, simuladores con teclado, material que se trabaja en el
+                puesto). Marcado esto, quien entre desde tableta o celular ve la
+                explicación en vez del contenido —en el curso, en los módulos y
+                en el examen—. Se oculta hasta que exista la columna (SQL 45). */}
+            {desktopOnlyReady && (
+              <div
+                className={cn(
+                  'rounded-2xl border p-4 transition-colors',
+                  form.desktop_only ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/20' : 'border-line',
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                      form.desktop_only ? 'bg-primary/15 text-primary' : 'bg-glass/10 text-text-muted',
+                    )}
+                  >
+                    <Monitor className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13px] font-semibold text-text">
+                        {t('admin.courses.desktop_only_title')}
+                      </span>
+                      {form.desktop_only && (
+                        <NeonBadge color="green" dot>{t('admin.courses.desktop_only_badge')}</NeonBadge>
+                      )}
+                    </span>
+                    <p className="mt-1 text-[12px] leading-relaxed text-text-muted">
+                      {form.desktop_only
+                        ? t('admin.courses.desktop_only_on')
+                        : t('admin.courses.desktop_only_off')}
+                    </p>
+                  </div>
+                  <Toggle
+                    on={form.desktop_only}
+                    onClick={() => setForm({ ...form, desktop_only: !form.desktop_only })}
+                    label={t('admin.courses.desktop_only_title')}
+                  />
+                </div>
+                {form.desktop_only && (
+                  <p className="mt-3 flex items-start gap-1.5 border-t border-line/70 pt-3 text-[11.5px] leading-relaxed text-text-muted">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px text-amber-500" />
+                    {t('admin.courses.desktop_only_hint')}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* ── Límite de tiempo ──────────────────────────────────────────
                 Tres modos excluyentes: sin plazo, N días desde que se le
                 asigna a cada persona, o una fecha única para todos. El
                 interruptor de abajo decide si al vencer solo se avisa o el
                 curso se cierra. */}
             <div
+              ref={deadlineRef}
               className={cn(
-                'rounded-2xl border p-4 transition-colors',
+                'rounded-2xl border p-4 transition-all duration-500',
                 form.deadline_mode !== 'none'
                   ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/20'
                   : 'border-line',
+                // Resalte al llegar desde el aviso: dos segundos y se apaga.
+                flashDeadline && 'border-primary ring-2 ring-primary/60 shadow-[0_0_0_6px_rgba(16,212,81,0.12)]',
               )}
             >
               <div className="flex items-start gap-3">
@@ -3451,7 +3540,7 @@ export default function CourseEditor() {
                     form.deadline_mode !== 'none' ? 'bg-primary/15 text-primary' : 'bg-glass/10 text-text-muted',
                   )}
                 >
-                  <CalendarClock className="h-4 w-4" />
+                  <CalendarClock className={cn('h-4 w-4', flashDeadline && 'animate-pulse')} />
                 </span>
                 <div className="flex-1 min-w-0">
                   <Tooltip

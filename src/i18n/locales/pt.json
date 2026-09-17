@@ -492,6 +492,8 @@
     "deadline_due_on": "Prazo final: {{date}}",
     "deadline_blocked_hint": "o curso está fechado; peça ao seu instrutor para ampliar o prazo",
     "deadline_module_locked_hint": "Fechado: o prazo do curso venceu",
+    "desktop_only_note": "Só pelo computador",
+    "desktop_only_blocked": "Abra pelo computador",
     "legacy_notice_title": "Você já fez este curso no Sinergy?",
     "legacy_notice_lead": "Como este curso foi migrado do Sinergy para o Learning AI, se você já tem o certificado de conclusão, não precisa fazê-lo de novo.",
     "legacy_notice_send": "Envie seu certificado para",
@@ -3246,6 +3248,11 @@
       "client_marked": "Marcada como pessoa de um cliente",
       "client_unmarked": "Volta a contar como funcionário",
       "client_mark_error": "Não foi possível mudar a marca de cliente",
+      "desktop_only_title": "Só pelo computador",
+      "desktop_only_badge": "Só PC",
+      "desktop_only_on": "Quem abrir de um tablet ou celular verá uma explicação no lugar do conteúdo. Vale para o curso, seus módulos e a prova final.",
+      "desktop_only_off": "Ative se o conteúdo precisa de tela grande ou teclado: tabelas largas, simuladores, ou material trabalhado no posto.",
+      "desktop_only_hint": "Confirme que essas pessoas têm computador: quem só tem celular não vai conseguir fazer o curso, nem se for obrigatório.",
       "onboarding_title": "Curso de onboarding",
       "onboarding_badge": "Integração",
       "onboarding_on": "Quem o tiver atribuído verá apenas seus cursos de onboarding até concluí-los. Depois, o catálogo e o resto são liberados.",
@@ -7352,6 +7359,13 @@
     "step2_body": "Você verá em nome de quem está, o curso, a data e o que aprendeu.",
     "step3_title": "Baixe",
     "step3_body": "Nessa mesma página é possível baixar o PDF do diploma."
+  },
+  "desktop_only": {
+    "title": "Este curso abre só pelo computador",
+    "body_phone": "Não é erro do celular: o curso foi configurado assim de propósito, porque o conteúdo não dá para fazer bem numa tela pequena.",
+    "body_tablet": "Não é erro do tablet: o curso foi configurado assim de propósito, porque o conteúdo precisa da tela e do teclado de um computador.",
+    "hint": "Entre por um computador com o mesmo usuário e senha. Seu progresso está esperando lá.",
+    "staff_bypass": "Ver mesmo assim"
   },
   "onboarding_gate": {
     "eyebrow": "Seu onboarding",

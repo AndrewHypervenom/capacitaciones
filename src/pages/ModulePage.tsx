@@ -20,6 +20,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useModules } from '@/hooks/useModules';
 import { useLearnerCourses } from '@/hooks/useLearnerCourses';
+import { useDesktopOnlyLock } from '@/components/course/DesktopOnlyLock';
 import { useViewingPresence } from '@/hooks/usePresence';
 import {
   useProgressStore,
@@ -177,7 +178,7 @@ export default function ModulePage() {
   // Antes esta pantalla descargaba el cuerpo de todos los módulos visibles —para
   // un superadmin, el de toda la plataforma— para mostrar uno.
   const { modules, loading: listLoading } = useModules({ lite: true });
-  const { courses } = useLearnerCourses();
+  const { courses, loading: coursesLoading } = useLearnerCourses();
 
   // Quién PUEDE abrir este módulo se sigue decidiendo con la lista visible,
   // exactamente igual que antes: si no está ahí, es "Módulo no encontrado". La
@@ -231,6 +232,9 @@ export default function ModulePage() {
     () => (module?.courseId ? courses.find((c) => c.id === module.courseId) : undefined),
     [courses, module?.courseId],
   );
+  // Curso «solo desde el computador»: el módulo es una entrada más al curso —su
+  // URL circula suelta por chat— así que la puerta también se cierra aquí.
+  const deviceLock = useDesktopOnlyLock(backCourse);
   const backTo = backCourse ? `/courses/${backCourse.slug}` : '/dashboard';
   const backLabel = backCourse ? t('module.back_to_course') : t('module.back');
   // Los hermanos de navegación son los módulos del mismo curso (ordenados por
@@ -751,7 +755,11 @@ export default function ModulePage() {
     }
   };
 
-  if (loading) return <ModulePageSkeleton />;
+  // El curso llega con la lista del aprendiz: mientras no esté no se sabe si el
+  // módulo es de un curso cerrado, y no se pinta nada (si no, asomaría medio
+  // segundo en el celular justo lo que se quería tapar).
+  if (loading || (module?.courseId && coursesLoading)) return <ModulePageSkeleton />;
+  if (deviceLock) return deviceLock;
   if (!module) return <div className="text-center pt-20 text-text-muted">{t('module.not_found')}</div>;
 
   const handleComplete = async () => {

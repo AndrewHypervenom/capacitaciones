@@ -492,6 +492,8 @@
     "deadline_due_on": "Due date: {{date}}",
     "deadline_blocked_hint": "the course is closed; ask your trainer to extend the deadline",
     "deadline_module_locked_hint": "Closed: the course deadline has passed",
+    "desktop_only_note": "Desktop only",
+    "desktop_only_blocked": "Open it on a computer",
     "legacy_notice_title": "Did you already take this course in Sinergy?",
     "legacy_notice_lead": "This course was migrated from Sinergy to Learning AI, so if you already hold its completion certificate, you don't need to take it again.",
     "legacy_notice_send": "Send us your certificate at",
@@ -3246,6 +3248,11 @@
       "client_marked": "Marked as a client user",
       "client_unmarked": "Counts as an employee again",
       "client_mark_error": "Could not change the client mark",
+      "desktop_only_title": "Desktop only",
+      "desktop_only_badge": "Desktop",
+      "desktop_only_on": "Anyone opening it from a tablet or a phone sees an explanation instead of the content. It covers the course, its modules and the final exam.",
+      "desktop_only_off": "Turn it on when the content needs a big screen or a keyboard: wide tables, simulators, or material worked through at the desk.",
+      "desktop_only_hint": "Make sure these people have a computer: anyone with only a phone won't be able to take the course, not even if it's mandatory.",
       "onboarding_title": "Onboarding course",
       "onboarding_badge": "Onboarding",
       "onboarding_on": "Anyone assigned to it will only see their onboarding courses until they finish them. Then the catalog and everything else opens.",
@@ -7352,6 +7359,13 @@
     "step2_body": "You will see who it belongs to, the course, the date and what they learned.",
     "step3_title": "Download it",
     "step3_body": "The diploma PDF can be downloaded from that same page."
+  },
+  "desktop_only": {
+    "title": "This course opens on a computer only",
+    "body_phone": "Nothing is broken: the course was set up this way on purpose, because its content can't be done properly on a small screen.",
+    "body_tablet": "Nothing is broken: the course was set up this way on purpose, because its content needs a computer's screen and keyboard.",
+    "hint": "Sign in from a computer with the same username and password. Your progress is waiting for you there.",
+    "staff_bypass": "Open it anyway"
   },
   "onboarding_gate": {
     "eyebrow": "Your onboarding",

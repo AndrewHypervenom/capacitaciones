@@ -2,7 +2,7 @@ import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue } from 'framer-motion';
-import { Building2, CalendarClock, CheckCircle2, GraduationCap, Loader2, Lock, Plus } from 'lucide-react';
+import { Building2, CalendarClock, CheckCircle2, GraduationCap, Loader2, Lock, Monitor, Plus } from 'lucide-react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useUserStore } from '@/stores/userStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -15,6 +15,8 @@ import { stripMarkdown } from '@/components/ui/RichText';
 import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
 import { cn } from '@/lib/cn';
 import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
+import { blockedByDevice } from '@/lib/device';
+import { useDeviceKind } from '@/hooks/useDeviceKind';
 import { pickLang } from '@/lib/contentLang';
 import type { CourseJourney } from '@/lib/courseJourney';
 
@@ -127,6 +129,11 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
   const realRole = useAuthStore((s) => s.profile?.role);
   const isStaff = realRole === 'superadmin' || realRole === 'capacitador';
   const isModuleDone = useModuleDone();
+  // Curso «solo desde el computador»: se avisa en la tarjeta, no al entrar. Si
+  // ya está en el celular, la nota se vuelve advertencia: así no abre el curso
+  // para encontrarse con una puerta cerrada.
+  const deviceKind = useDeviceKind();
+  const deviceBlocked = blockedByDevice(course, deviceKind);
   const { total, done, pct, completed } = courseProgress(course, isModuleDone, journey);
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
   const [enrolling, setEnrolling] = useState(false);
@@ -343,6 +350,18 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
               ) : (
                 <span>{deadlineText}</span>
               )}
+            </div>
+          )}
+
+          {course.desktop_only === true && (
+            <div
+              className={cn(
+                'mb-2.5 inline-flex items-center gap-1.5 text-[11.5px] font-medium',
+                deviceBlocked ? 'text-amber-600 dark:text-amber-400' : 'text-text-subtle',
+              )}
+            >
+              <Monitor className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {deviceBlocked ? t('courses.desktop_only_blocked') : t('courses.desktop_only_note')}
             </div>
           )}
 

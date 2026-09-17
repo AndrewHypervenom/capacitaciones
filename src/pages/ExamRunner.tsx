@@ -37,6 +37,8 @@ import type { ExamAttemptSession } from '@/types/exam';
 import { toast } from '@/stores/toastStore';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { RichTextInline } from '@/components/ui/RichText';
+import { useLearnerCourses } from '@/hooks/useLearnerCourses';
+import { useDesktopOnlyLock } from '@/components/course/DesktopOnlyLock';
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss';
 import { cn } from '@/lib/cn';
 
@@ -66,6 +68,13 @@ export default function ExamRunner() {
   // no debe costar una segunda vuelta al servidor.
   const preloaded = (location.state as { session?: ExamAttemptSession } | null)?.session ?? null;
 
+  // Curso «solo desde el computador». Se mira ANTES de retomar el intento: a
+  // /exam/:id/run se puede llegar por URL pegada, sin pasar por la antesala, y
+  // abrir un intento desde el celular gastaría una oportunidad del examen.
+  const { courses, loading: coursesLoading } = useLearnerCourses();
+  const course = useMemo(() => courses.find((c) => c.id === courseId), [courses, courseId]);
+  const deviceLock = useDesktopOnlyLock(course);
+
   const [session, setSession] = useState<ExamAttemptSession | null>(preloaded);
   const [loading, setLoading] = useState(!preloaded);
   const [idx, setIdx] = useState(0);
@@ -88,7 +97,7 @@ export default function ExamRunner() {
   /* Recarga directa de /exam/:id/run (sin pasar por la antesala): se retoma el
      intento abierto. Sin esto, refrescar la página tiraba el examen. */
   useEffect(() => {
-    if (session || !courseId) return;
+    if (session || !courseId || deviceLock) return;
     let active = true;
     startExamAttempt(courseId)
       .then((s) => {
@@ -104,7 +113,7 @@ export default function ExamRunner() {
     return () => {
       active = false;
     };
-  }, [session, courseId, navigate]);
+  }, [session, courseId, navigate, deviceLock]);
 
   /* Cuántas respuestas pide cada pregunta. Se pide una sola vez por intento y
      es best-effort: si no llega, la pantalla se comporta como antes. */
@@ -326,6 +335,8 @@ export default function ExamRunner() {
     return () => window.removeEventListener('keydown', onKey);
   }, [current, total, reviewOpen, submitting]);
 
+  if (deviceLock) return deviceLock;
+  if (coursesLoading && !session) return <div className="grid min-h-[60vh] place-items-center" />;
   if (loading || !session || !current) {
     return (
       <div className="grid min-h-[60vh] place-items-center">

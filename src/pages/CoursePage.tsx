@@ -26,6 +26,7 @@ import { useViewingPresence } from '@/hooks/usePresence';
 import { selfEnroll, unenrollSelf } from '@/services/courses.service';
 import { getScenariosForCourse } from '@/services/scenarios.service';
 import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
+import { useDesktopOnlyLock } from '@/components/course/DesktopOnlyLock';
 import { getChoiceScenariosForCourse } from '@/services/choiceScenarios.service';
 import type { CourseChoiceScenario } from '@/services/choiceScenarios.service';
 import { getCourseAttempts, getCourseCertStatus } from '@/services/certification.service';
@@ -402,6 +403,10 @@ export default function CoursePage() {
   // Límite de tiempo del curso. Va aquí arriba —antes del `return` de carga—
   // porque los módulos se cierran con él: si el plazo venció y el curso está
   // configurado para bloquear, no queda nada por empezar.
+  // Curso «solo desde el computador»: la puerta se resuelve arriba (es un hook)
+  // y se cierra abajo, antes de pintar nada del curso.
+  const deviceLock = useDesktopOnlyLock(course);
+
   const deadline = useMemo(() => {
     if (!course) return deadlineInfo(null);
     const allDone =
@@ -447,6 +452,8 @@ export default function CoursePage() {
       </div>
     );
   }
+
+  if (deviceLock) return deviceLock;
 
   if (course && gate.active && !gate.ids.has(course.id) && !isAdminOrCapacitador) {
     if (!gate.settled) return <div className="mx-auto h-64 max-w-4xl px-5 pt-24"><div className="h-full rounded-3xl bg-subtle skeleton-shine" /></div>;

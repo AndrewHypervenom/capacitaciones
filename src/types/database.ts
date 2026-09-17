@@ -390,6 +390,10 @@ export interface Database {
           /** Curso de inducción (SQL 41): mientras la persona tenga uno asignado
            *  sin terminar, solo ve esos. Sin la columna llega undefined = no. */
           is_onboarding?: boolean
+          /** Solo se puede ver desde un computador (SQL 45): en tableta o
+           *  celular el curso se cierra con una explicación. Sin la columna
+           *  llega undefined = se ve en todas partes. */
+          desktop_only?: boolean
           slug: string
           title_es: string
           title_en: string | null
@@ -453,6 +457,7 @@ export interface Database {
           level?: 'basico' | 'medio' | 'avanzado'
           visibility?: 'assigned' | 'catalog'
           is_published?: boolean
+          desktop_only?: boolean
           sort_order?: number
           is_shareable?: boolean
           copied_from?: string | null
@@ -497,6 +502,7 @@ export interface Database {
           level?: 'basico' | 'medio' | 'avanzado'
           visibility?: 'assigned' | 'catalog'
           is_published?: boolean
+          desktop_only?: boolean
           sort_order?: number
           is_shareable?: boolean
           cert_conditions?: CertConditions

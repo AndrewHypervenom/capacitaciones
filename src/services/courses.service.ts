@@ -462,6 +462,28 @@ export async function getAllCourses(): Promise<AdminCourse[]> {
     .map((c) => ({ ...sortCourseModules(c), campaign_name: c.campaigns?.name ?? null }))
 }
 
+/**
+ * El curso que se llama así, para los avisos que solo guardan el NOMBRE.
+ *
+ * El resumen de plazos vencidos que recibe el equipo lista cursos por título
+ * (no por id), y desde la campana hay que poder abrir ese curso. Buscar por
+ * título es de segunda: si algún día el aviso guarda el id, esto sobra. Devuelve
+ * null si no lo encuentra o si hay dos con el mismo nombre —mandar al curso
+ * equivocado sería peor que no mandar a ninguno—.
+ */
+export async function findCourseIdByTitle(title: string): Promise<string | null> {
+  const clean = title.trim()
+  if (!clean) return null
+  const { data, error } = await supabase
+    .from('courses')
+    .select('id')
+    .eq('title_es', clean)
+    .is('deleted_at', null)
+    .limit(2)
+  if (error || !data || data.length !== 1) return null
+  return data[0].id
+}
+
 export async function getCourseById(courseId: string): Promise<CourseWithModules | null> {
   const { data, error } = await supabase
     .from('courses')

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { notificationText } from '@/lib/notificationText'
+import { findCourseIdByTitle } from '@/services/courses.service'
 import {
   useNotificationPrefs,
   mutedMinutesLeft,
@@ -348,13 +349,26 @@ export function NotificationBell({ className }: { className?: string }) {
                                   // aprobación; la decisión, al curso.
                                   if (isDeadline || isOverdue) {
                                     setOpen(false)
-                                    navigate(
-                                      isOverdue
-                                        ? '/admin/progress'
-                                        : n.payload?.course_slug
+                                    if (!isOverdue) {
+                                      navigate(
+                                        n.payload?.course_slug
                                           ? `/courses/${n.payload.course_slug}`
                                           : '/courses',
-                                    )
+                                      )
+                                      return
+                                    }
+                                    // Resumen al equipo: si es UN curso, se abre
+                                    // su ficha en el plazo —que es lo que hay que
+                                    // mirar o cambiar—; con varios no hay a cuál
+                                    // llevar, así que va al Progreso.
+                                    const names = (n.payload?.courses ?? []).filter(Boolean)
+                                    if (names.length !== 1) {
+                                      navigate('/admin/progress')
+                                      return
+                                    }
+                                    void findCourseIdByTitle(names[0]).then((id) => {
+                                      navigate(id ? `/admin/courses/${id}?focus=deadline` : '/admin/progress')
+                                    })
                                     return
                                   }
                                   if (isPublishReq || isPublishRes) {
