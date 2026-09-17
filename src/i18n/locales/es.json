@@ -7364,8 +7364,7 @@
     "title": "Este curso se ve solo desde el computador",
     "body_phone": "No es un error del celular: este curso se dejó así a propósito porque su contenido no se puede hacer bien en una pantalla pequeña.",
     "body_tablet": "No es un error de la tableta: este curso se dejó así a propósito porque su contenido necesita la pantalla y el teclado de un computador.",
-    "hint": "Entra desde un computador con el mismo usuario y contraseña. Tu avance te está esperando ahí mismo.",
-    "staff_bypass": "Verlo de todas formas"
+    "hint": "Entra desde un computador con el mismo usuario y contraseña. Tu avance te está esperando ahí mismo."
   },
   "onboarding_gate": {
     "eyebrow": "Tu onboarding",

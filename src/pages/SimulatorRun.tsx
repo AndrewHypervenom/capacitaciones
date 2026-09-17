@@ -6,6 +6,7 @@ import { Mic, MicOff, PauseCircle, PhoneForwarded, PhoneOff, PlayCircle, Loader2
 import { getScenario, type Scenario } from '@/data/scenarios';
 import { getScenarioBySlug } from '@/services/scenarios.service';
 import { useScenarios } from '@/hooks/useScenarios';
+import { useDesktopOnlyLockForScenario } from '@/components/course/DesktopOnlyLock';
 import { useUserStore } from '@/stores/userStore';
 import { useSimStore } from '@/stores/simStore';
 import { applyTurn, endSim, startSim, stepSim, type SimState } from '@/lib/simulator';
@@ -27,6 +28,8 @@ export default function SimulatorRun() {
   const language = useUserStore((s) => s.language);
   const { active, setActive, setLastResult, setContext } = useSimStore();
   const { scenarios: dbScenarios, loading: scenariosLoading } = useScenarios();
+
+  const deviceLock = useDesktopOnlyLockForScenario('scenarios', id);
 
   // Contexto de curso (si se entró desde la página del curso).
   useEffect(() => {
@@ -120,6 +123,10 @@ export default function SimulatorRun() {
       if (transferTimeoutRef.current) clearTimeout(transferTimeoutRef.current);
     };
   }, []);
+
+  // La simulación es otra puerta al curso: si su curso es «solo desde el
+  // computador», tampoco se abre desde el celular (ver lib/device).
+  if (deviceLock) return deviceLock;
 
   if (notFound && !scenario) {
     return (

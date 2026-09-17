@@ -11,6 +11,7 @@ import { AiFeedbackCard } from '@/components/simulator/AiFeedbackCard';
 import { RichText } from '@/components/ui/RichText';
 import { unloopScenario, deferEndings, collapseEndings } from '@/lib/scenarioFlow';
 import { useAuth } from '@/hooks/useAuth';
+import { useDesktopOnlyLockForScenario } from '@/components/course/DesktopOnlyLock';
 import { useUserStore } from '@/stores/userStore';
 import { shuffleArray } from '@/lib/quizShuffle';
 import type { Language } from '@/stores/userStore';
@@ -183,6 +184,10 @@ export default function ChoiceSimulatorRun() {
     campaignId?: string;
     returnTo?: string;
   };
+
+  // Otra puerta al curso: si el curso dueño es «solo desde el computador», la
+  // simulación tampoco se abre desde el celular (ver lib/device).
+  const deviceLock = useDesktopOnlyLockForScenario('choice_scenarios', id);
 
   const [scenario, setScenario] = useState<ChoiceScenario | null>(null);
   const [phase, setPhase] = useState<Phase>('intro');
@@ -535,6 +540,8 @@ export default function ChoiceSimulatorRun() {
 
   const getLevelLabel = (level: string) =>
     t(`simulator.choice.level_${level === 'basico' ? 'basic' : level === 'medio' ? 'medium' : 'advanced'}`);
+
+  if (deviceLock) return deviceLock;
 
   if (!scenario) {
     return (

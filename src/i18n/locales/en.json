@@ -7364,8 +7364,7 @@
     "title": "This course opens on a computer only",
     "body_phone": "Nothing is broken: the course was set up this way on purpose, because its content can't be done properly on a small screen.",
     "body_tablet": "Nothing is broken: the course was set up this way on purpose, because its content needs a computer's screen and keyboard.",
-    "hint": "Sign in from a computer with the same username and password. Your progress is waiting for you there.",
-    "staff_bypass": "Open it anyway"
+    "hint": "Sign in from a computer with the same username and password. Your progress is waiting for you there."
   },
   "onboarding_gate": {
     "eyebrow": "Your onboarding",

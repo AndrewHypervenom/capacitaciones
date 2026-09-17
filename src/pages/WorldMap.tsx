@@ -4,6 +4,8 @@ import { motion, useReducedMotion, animate } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useLearnerCourses } from '@/hooks/useLearnerCourses'
+import { useDesktopOnlyLock } from '@/components/course/DesktopOnlyLock'
 import { getStarsFromScore, getStarsDisplay } from '@/lib/scoring'
 import StarDisplay from '@/components/StarDisplay'
 import { useProgressStore } from '@/stores/progressStore'
@@ -268,6 +270,14 @@ export default function WorldMap() {
   }
 
   const [world, setWorld]             = useState<World | null>(null)
+  // El mundo es otra puerta al curso: si su curso es «solo desde el
+  // computador», tampoco se abre desde el celular (ver lib/device).
+  const { courses: myCourses } = useLearnerCourses()
+  const worldCourse = useMemo(
+    () => (world?.course_id ? myCourses.find((c) => c.id === world.course_id) : undefined),
+    [myCourses, world?.course_id],
+  )
+  const deviceLock = useDesktopOnlyLock(worldCourse)
   const [regions, setRegions]         = useState<Region[]>([])
   const [levels, setLevels]           = useState<Level[]>([])
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set())
@@ -488,6 +498,8 @@ export default function WorldMap() {
     if (!completedIds.has(level.id)) return 0
     return getStarsFromScore(scoreMap.get(level.id) ?? 0, level.min_score_pct)
   }
+
+  if (deviceLock) return deviceLock
 
   /* ── Loading ── */
   if (loading) return (
