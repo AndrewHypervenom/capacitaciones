@@ -192,7 +192,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const data = useProgramData(lang, !isSuperAdmin, scopeChosen);
   const {
     loading, error, people, courses, cells, activity, certificates, certificatesKnown,
-    assignmentsKnown, journeyKnown, modulesByCourse, doneModules, study, loadStudyTime, surveys, loadSurveys,
+    assignmentsKnown, journeyKnown, modulesByCourse, doneModules, study, studyByUserCourse, loadStudyTime, surveys, loadSurveys,
     exams, loadExams, reload,
   } = data;
 
@@ -288,9 +288,13 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   const scopedActivity = useMemo(
     () => activity.filter((a) =>
       peopleIds.has(a.userId) &&
-      (!a.courseId || courseIds.has(a.courseId)) &&
+      // Con UN curso elegido, la entrega tiene que ser de ese curso. Las que no
+      // dicen a qué curso pertenecen (módulo suelto de biblioteca) solo cuentan
+      // en la vista de todos los cursos: antes se colaban y el curso de
+      // portugués mostraba notas hechas en otro.
+      (a.courseId ? courseIds.has(a.courseId) : activeCourse === 'all') &&
       (since === null || a.at >= since)),
-    [activity, peopleIds, courseIds, since],
+    [activity, peopleIds, courseIds, since, activeCourse],
   );
 
   const scopedCells = useMemo(
@@ -359,9 +363,14 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         overdue: agg?.overdue ?? 0,
         lastActivity: agg?.last ?? p.lastActivity,
         avgScore: s && s.n > 0 ? Math.round(s.sum / s.n) : null,
+        // `p.studyMs` es el total de la persona en todo el sitio. Con un curso
+        // elegido se cuenta solo el tiempo en los módulos de ese curso.
+        studyMs: activeCourse === 'all'
+          ? p.studyMs
+          : [...courseIds].reduce((sum, id) => sum + (studyByUserCourse[p.id]?.[id] ?? 0), 0),
       } as ProgramPerson;
     });
-  }, [scopedPeople, scopedCells, scopedActivity]);
+  }, [scopedPeople, scopedCells, scopedActivity, activeCourse, courseIds, studyByUserCourse]);
 
   /* ── KPIs ─────────────────────────────────────────────────────────────── */
 

@@ -259,6 +259,12 @@ export interface ProgramData {
   doneModules: Record<string, string[]>;
   /** Tiempo de estudio: estado de la carga diferida. */
   study: { loading: boolean; loaded: boolean; partial: boolean; totalMs: number };
+  /**
+   * Tiempo de estudio por persona y curso (`userId → courseId → ms`). Es lo que
+   * hay que sumar cuando el tablero se filtra por UN curso: `studyMs` de la
+   * persona es su total en todo el sitio.
+   */
+  studyByUserCourse: Record<string, Record<string, number>>;
   loadStudyTime: () => void;
   /**
    * Encuestas: estado de la carga diferida (una llamada por curso).
@@ -1036,6 +1042,21 @@ export function useProgramData(
     return { studyMs: map, studyTotalMs: total };
   }, [studyRows, liveModuleIds]);
 
+  const studyByUserCourse = useMemo(() => {
+    const courseOfModule = new Map<string, string>();
+    for (const [courseId, mods] of Object.entries(modulesByCourse)) {
+      for (const m of mods) courseOfModule.set(m.id, courseId);
+    }
+    const out: Record<string, Record<string, number>> = {};
+    for (const r of studyRows) {
+      const courseId = courseOfModule.get(r.module_id);
+      if (!courseId) continue;
+      const byCourse = (out[r.user_id] ??= {});
+      byCourse[courseId] = (byCourse[courseId] ?? 0) + (Number(r.elapsed_ms) || 0);
+    }
+    return out;
+  }, [studyRows, modulesByCourse]);
+
   /* ── Encuestas (diferido) ───────────────────────────────────────────────
      Una llamada por curso, de a 5, y solo de los cursos visibles. Si el SQL de
      la encuesta no está corrido, cada llamada devuelve resultados vacíos y el
@@ -1116,6 +1137,7 @@ export function useProgramData(
     modulesByCourse,
     doneModules,
     study: { ...study, totalMs: studyTotalMs },
+    studyByUserCourse,
     loadStudyTime,
     surveys: { ...surveyState, byCourse: surveyMap },
     loadSurveys,
