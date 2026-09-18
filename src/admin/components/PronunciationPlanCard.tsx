@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { CheckCircle2, Eye, EyeOff, Mic, RotateCcw, Volume2, X } from 'lucide-react'
 import type { ContentBlock, PronunciationBlock } from '@/types/blocks'
+import { buildPronunciationBlock } from '@/lib/pronunciationBlock'
 import type { PronunciationPlan } from '@/services/ai.service'
-import { PRONUNCIATION_LANGS, speak } from '@/lib/speech'
+import { PRONUNCIATION_LANGS, normalizePronLang, speak } from '@/lib/speech'
 import { Button } from '@/components/ui/Button'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { PronunciationBlockRenderer } from '@/components/modules/blocks/PronunciationBlock'
@@ -19,19 +20,6 @@ export interface PronunciationInsert {
   block: PronunciationBlock
 }
 
-/** El bloque tal cual se insertaría. La vista previa y la inserción usan el mismo. */
-function buildBlock(s: Suggestion, targetLang: string, lang: Lang): PronunciationBlock {
-  const ml = (text?: string) => ({ es: '', en: '', pt: '', [lang]: text ?? '' }) as Record<Lang, string>
-  return {
-    type: 'pronunciation',
-    lang: targetLang,
-    title: ml(s.title),
-    phrases: (s.phrases ?? [])
-      .filter((p) => p.text?.trim())
-      .map((p) => ({ text: p.text.trim(), ipa: p.ipa?.trim() || undefined, translation: ml(p.translation), tip: ml(p.tip) })),
-  }
-}
-
 export function PronunciationPlanCard({
   plan, blocks, lang, onInsert, onDiscard, onRegenerate,
 }: {
@@ -43,10 +31,10 @@ export function PronunciationPlanCard({
   onRegenerate: () => void
 }) {
   const suggestions = plan.is_language_content ? plan.suggestions ?? [] : []
-  const target = plan.target_lang || 'en-US'
+  const target = normalizePronLang(plan.target_lang || 'en-US')
   const [chosen, setChosen] = useState<Set<number>>(() => new Set(suggestions.map((_, i) => i)))
   const [previewing, setPreviewing] = useState<Set<number>>(() => new Set())
-  const langLabel = PRONUNCIATION_LANGS.find((l) => l.value === plan.target_lang)?.label ?? plan.target_lang
+  const langLabel = PRONUNCIATION_LANGS.find((l) => l.value === target)?.label ?? target
 
   const flip = (set: React.Dispatch<React.SetStateAction<Set<number>>>, i: number) => set((prev) => {
     const next = new Set(prev)
@@ -70,7 +58,7 @@ export function PronunciationPlanCard({
     suggestions
       .map((s, i) => ({ s, i }))
       .filter(({ i }) => chosen.has(i))
-      .map(({ s }) => ({ afterIndex: afterIndex(s), block: buildBlock(s, target, lang) }))
+      .map(({ s }) => ({ afterIndex: afterIndex(s), block: buildPronunciationBlock(s, target, lang) }))
       .filter((x) => x.block.phrases.length > 0),
   )
 
@@ -145,7 +133,7 @@ export function PronunciationPlanCard({
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
                   {i18n.t('admin.modules.ai_panel.pron_preview_label')}
                 </p>
-                <PronunciationBlockRenderer block={buildBlock(s, target, lang)} language={lang} />
+                <PronunciationBlockRenderer block={buildPronunciationBlock(s, target, lang)} language={lang} />
               </div>
             ) : (
               <ul className={cn('pl-5 space-y-0.5', !on && 'opacity-60')}>

@@ -394,6 +394,10 @@ export interface Database {
            *  celular el curso se cierra con una explicación. Sin la columna
            *  llega undefined = se ve en todas partes. */
           desktop_only?: boolean
+          /** Curso de idiomas (SQL 46): BCP-47 del idioma que se estudia
+           *  ("pt-BR", "en-US"). Null = no es de idiomas. Solo lo cambia el
+           *  superadmin. Sin la columna llega undefined. */
+          language_target?: string | null
           slug: string
           title_es: string
           title_en: string | null
@@ -458,6 +462,7 @@ export interface Database {
           visibility?: 'assigned' | 'catalog'
           is_published?: boolean
           desktop_only?: boolean
+          language_target?: string | null
           sort_order?: number
           is_shareable?: boolean
           copied_from?: string | null
@@ -503,6 +508,7 @@ export interface Database {
           visibility?: 'assigned' | 'catalog'
           is_published?: boolean
           desktop_only?: boolean
+          language_target?: string | null
           sort_order?: number
           is_shareable?: boolean
           cert_conditions?: CertConditions

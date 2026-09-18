@@ -788,7 +788,10 @@ export default function WorldMap() {
                   )}
 
                   {/* Main node */}
-                  <motion.div
+                  <motion.button
+                    type="button"
+                    aria-label={level.name}
+                    disabled={!(available || done)}
                     className={available ? 'node-avail' : ''}
                     style={{
                       width:size, height:size, borderRadius:'50%',
@@ -842,7 +845,7 @@ export default function WorldMap() {
                         <StarDisplay value={getStarsDisplay(scoreMap.get(level.id) ?? 0)} size={12} />
                       </div>
                     )}
-                  </motion.div>
+                  </motion.button>
 
                   {/* Label — se permite hasta 2 líneas para no cortar nombres largos */}
                   <div style={{

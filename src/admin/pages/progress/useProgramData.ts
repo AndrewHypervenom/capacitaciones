@@ -415,11 +415,17 @@ export function useProgramData(
   const studyStarted = useRef(false);
   const surveysRun = useRef<Promise<Record<string, SurveyResults>> | null>(null);
   const examsRun = useRef<Promise<Record<string, ExamResultRow[]>> | null>(null);
+  const surveysScope = useRef('');
+  const examsScope = useRef('');
+  const surveysVersion = useRef(0);
+  const examsVersion = useRef(0);
 
   const reload = useCallback(() => {
     studyStarted.current = false;
     surveysRun.current = null;
     examsRun.current = null;
+    surveysVersion.current++;
+    examsVersion.current++;
     setStudy({ loading: false, loaded: false, partial: false });
     setSurveyState({ loading: false, loaded: false });
     setExamState({ loading: false, loaded: false });
@@ -1062,8 +1068,11 @@ export function useProgramData(
      la encuesta no está corrido, cada llamada devuelve resultados vacíos y el
      panel lo dice sin romperse. */
   const loadSurveys = useCallback((courseIds: string[]) => {
-    if (surveysRun.current) return surveysRun.current;
+    const scope = [...new Set(courseIds)].sort().join(',');
+    if (surveysRun.current && surveysScope.current === scope) return surveysRun.current;
     if (courseIds.length === 0) return Promise.resolve({});
+    surveysScope.current = scope;
+    const version = ++surveysVersion.current;
     setSurveyState({ loading: true, loaded: false });
     const run = (async () => {
       const out: Record<string, SurveyResults> = {};
@@ -1076,6 +1085,7 @@ export function useProgramData(
         }
       };
       await Promise.all(Array.from({ length: Math.min(5, queue.length) }, worker));
+      if (surveysVersion.current !== version) return out;
       setSurveyMap(out);
       setSurveyState({ loading: false, loaded: true });
       return out;
@@ -1089,8 +1099,11 @@ export function useProgramData(
      intentos, su mejor nota y los dominios en los que falló. Si el curso no
      tiene examen (o el SQL no está corrido) devuelve lista vacía. */
   const loadExams = useCallback((courseIds: string[]) => {
-    if (examsRun.current) return examsRun.current;
+    const scope = [...new Set(courseIds)].sort().join(',');
+    if (examsRun.current && examsScope.current === scope) return examsRun.current;
     if (courseIds.length === 0) return Promise.resolve({});
+    examsScope.current = scope;
+    const version = ++examsVersion.current;
     setExamState({ loading: true, loaded: false });
     const run = (async () => {
       const out: Record<string, ExamResultRow[]> = {};
@@ -1108,6 +1121,7 @@ export function useProgramData(
         }
       };
       await Promise.all(Array.from({ length: Math.min(5, queue.length) }, worker));
+      if (examsVersion.current !== version) return out;
       setExamMap(out);
       setExamState({ loading: false, loaded: true });
       return out;

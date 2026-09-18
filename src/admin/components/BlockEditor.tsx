@@ -40,7 +40,7 @@ import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import i18n from '@/i18n';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import { toast } from '@/stores/toastStore';
-import { PRONUNCIATION_LANGS, speak } from '@/lib/speech';
+import { PRONUNCIATION_LANGS, normalizePronLang, speak } from '@/lib/speech';
 
 // Helper imperativo para confirmar borrados dentro de los sub-editores de bloques.
 const confirmRemove = (titleKey: string, descKey: string) =>
@@ -1675,7 +1675,7 @@ function PronunciationEditor({ block, onChange, lang }: { block: ContentBlock & 
           className="w-full glass rounded-xl px-3 py-2 text-[13px] text-text placeholder:text-text-subtle outline-none"
         />
         <Select
-          value={block.lang}
+          value={normalizePronLang(block.lang)}
           onChange={(v) => onChange({ ...block, lang: v })}
           options={PRONUNCIATION_LANGS}
           compact

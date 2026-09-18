@@ -6,7 +6,7 @@ import type { PronunciationBlock, PronunciationPhrase } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import {
   SPEECH_RATES, listenOnce, recognitionSupported, scorePronunciation, speak, speechSupported, stopSpeaking,
-  voiceInfoFor, type ListenError, type PronunciationResult, type SpeechRate, type VoiceInfo,
+  voiceInfoFor, type ListenError, type PronunciationResult, type SpeechRate, type VoiceInfo, normalizePronLang,
 } from '@/lib/speech';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { cn } from '@/lib/cn';
@@ -401,7 +401,7 @@ export function PronunciationBlockRenderer({ block, language }: Props) {
     <PhraseCard
       phrase={phrases[i]}
       number={i + 1}
-      lang={block.lang}
+      lang={normalizePronLang(block.lang)}
       language={language}
       canListen={canListen}
       speaking={speakingIdx === i}
@@ -443,7 +443,7 @@ export function PronunciationBlockRenderer({ block, language }: Props) {
 
       {canSpeak && voice && !voice.sameRegion && (
         <p className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[12px] text-text-muted">
-          {t('module.blocks.pronunciation.wrong_region', { want: block.lang, got: voice.lang, name: voice.name })}
+          {t('module.blocks.pronunciation.wrong_region', { want: normalizePronLang(block.lang), got: voice.lang, name: voice.name })}
         </p>
       )}
 

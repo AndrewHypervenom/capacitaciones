@@ -3265,7 +3265,12 @@
       "deadline_onboarding_note": "É uma integração: até concluí-la, esta pessoa não vê nenhum outro curso. O prazo diz até quando ela tem.",
       "deadline_onboarding_blocks": "Ao vencer, a integração é fechada e ela fica sem nada para fazer: verá a quem pedir a prorrogação, e você (e o RH) recebem o aviso.",
       "deadline_onboarding_warns": "Ao vencer, apenas se avisa: ela ainda pode concluir a integração atrasada, e você (e o RH) recebem o aviso de que está fora do prazo.",
-      "deadline_days_onboarding_from": "Conta a partir da atribuição. Para quem recebe por regra de país, área ou CR, a partir de quando entrou na empresa ou da última vez que você mexeu na regra (o que for mais recente)."
+      "deadline_days_onboarding_from": "Conta a partir da atribuição. Para quem recebe por regra de país, área ou CR, a partir de quando entrou na empresa ou da última vez que você mexeu na regra (o que for mais recente).",
+      "language_title": "Curso de idiomas",
+      "language_on": "Cada módulo mostra «Pronúncia do módulo»: a IA lê o módulo inteiro e decide em quais seções, e em que ponto delas, vale a pena praticar em voz alta.",
+      "language_off": "Ative se o curso ensina um idioma. Assim a prática de pronúncia pode ser pedida para o módulo inteiro e não seção por seção.",
+      "language_studied": "Idioma estudado",
+      "language_superadmin_only": "só o superadmin altera"
     },
     "simulations": {
       "save": "Salvar",
@@ -3941,6 +3946,7 @@
       "survey_courses_title": "Satisfação por curso",
       "survey_courses_sub": "Só aparecem os cursos com respostas",
       "survey_empty": "Ainda não há pesquisas respondidas",
+      "survey_unavailable": "Resultados indisponíveis. Você não tem acesso ou a consulta falhou; isso não significa que não haja respostas.",
       "survey_empty_desc": "A pesquisa é respondida ao encerrar o curso, logo antes do certificado. Assim que chegar a primeira resposta, o NPS aparece aqui.",
       "comments_title": "O que escreveram",
       "comments_sub": "Comentários anônimos da pesquisa de encerramento",
@@ -5210,7 +5216,33 @@
       "ed_legacy_desc": "Esta seção guarda o texto (e callout/mídia) fora do sistema de blocos, por isso não dá para excluir partes soltas. Converta e cada parágrafo, callout e imagem vira um bloco que você pode mover, duplicar ou excluir separadamente.",
       "ed_legacy_convert": "Converter em blocos",
       "ed_legacy_done": "Conteúdo convertido em blocos: revise e salve",
-      "ed_game_blocks_hint": "Blocos adicionais desta seção (o jogo é configurado acima)."
+      "ed_game_blocks_hint": "Blocos adicionais desta seção (o jogo é configurado acima).",
+      "pron_module": {
+        "button": "Pronúncia do módulo",
+        "button_hint": "A IA revisa todas as seções e sugere onde praticar pronúncia",
+        "title": "Prática de pronúncia do módulo",
+        "subtitle_one": "{{lang}} · {{count}} seção",
+        "subtitle_other": "{{lang}} · {{count}} seções",
+        "intro": "A IA lê o módulo inteiro em {{lang}} e escolhe os pontos onde praticar em voz alta rende mais. Você decide quais entram.",
+        "how_1": "Só sugere prática onde aparecem palavras, expressões ou diálogos novos; pula boas-vindas, instruções e encerramentos.",
+        "how_2": "No máximo uma prática por seção, logo depois do bloco que apresenta as frases, sem repetir frases entre seções.",
+        "how_3": "O que você marcar é salvo direto em cada seção. Dá para desfazer ao terminar.",
+        "analyze": "Analisar o módulo",
+        "analyzing": "Lendo o módulo inteiro para posicionar a prática…",
+        "section_n": "Seção {{n}} · {{name}}",
+        "nothing": "A IA não encontrou neste módulo material para praticar em voz alta. Se você acha que há, analise de novo.",
+        "inserted_one": "{{count}} prática foi inserida em {{sections}} seção. Já está salvo.",
+        "inserted_other": "{{count}} práticas foram inseridas em {{sections}} seções. Já está salvo.",
+        "undone": "Pronto, as seções voltaram a ficar como estavam.",
+        "skipped_one": "{{count}} prática não foi inserida porque a seção mudou nesse meio-tempo. Analise de novo para posicioná-la.",
+        "skipped_other": "{{count}} práticas não foram inseridas porque as seções mudaram nesse meio-tempo. Analise de novo para posicioná-las.",
+        "no_permission": "Você não tem permissão para alterar as seções deste módulo.",
+        "quota_label": "Pronúncia do módulo: {{module}}",
+        "quota_exceeded": "Você já usou sua cota de IA de hoje. Peça ao superadmin para ampliá-la.",
+        "save_first_title": "Primeiro salvamos o que você está editando",
+        "save_first_body": "A prática é inserida direto nas seções. Salvamos suas alterações e depois abrimos a análise.",
+        "save_first_confirm": "Salvar e continuar"
+      }
     },
     "chat_logs": {
       "title": "Chat de ajuda",

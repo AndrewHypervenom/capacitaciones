@@ -1045,6 +1045,22 @@ export async function upsertSection(section: {
   return data as { id: string }
 }
 
+/**
+ * Reemplaza SOLO los bloques de una sección. Lo usa la práctica de
+ * pronunciación del módulo completo, que toca varias secciones a la vez sin
+ * pasar por el panel de cada una. Si RLS no deja escribir, el update no falla:
+ * devuelve cero filas, por eso se pide el id de vuelta y se comprueba.
+ */
+export async function setSectionBlocks(sectionId: string, blocks: ContentBlock[]): Promise<void> {
+  const { data, error } = await supabase
+    .from('module_sections')
+    .update({ blocks_data: (blocks.length ? blocks : null) as import('@/types/database').Json | null })
+    .eq('id', sectionId)
+    .select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('NO_ROWS_UPDATED')
+}
+
 export async function deleteSection(sectionId: string) {
   const { error } = await supabase.from('module_sections').delete().eq('id', sectionId)
   if (error) throw error

@@ -3265,7 +3265,12 @@
       "deadline_onboarding_note": "This is onboarding: until they finish it, this person sees no other course. The deadline says how long they have.",
       "deadline_onboarding_blocks": "When it expires, their onboarding closes and they have nothing left to do: they will see who to ask for an extension, and you (and HR) get the alert.",
       "deadline_onboarding_warns": "When it expires they are only warned: they can still finish onboarding late, and you (and HR) get the alert that they are past due.",
-      "deadline_days_onboarding_from": "Counted from the moment it is assigned. For people reached by a country, area or CR rule, from when they joined or the last time you touched the rule — whichever is more recent."
+      "deadline_days_onboarding_from": "Counted from the moment it is assigned. For people reached by a country, area or CR rule, from when they joined or the last time you touched the rule — whichever is more recent.",
+      "language_title": "Language course",
+      "language_on": "Every module shows \"Module pronunciation\": the AI reads the whole module and decides in which sections, and where in them, speaking practice pays off.",
+      "language_off": "Turn it on if the course teaches a language. Pronunciation practice can then be requested for the whole module instead of section by section.",
+      "language_studied": "Language studied",
+      "language_superadmin_only": "only the superadmin can change it"
     },
     "simulations": {
       "save": "Save",
@@ -3941,6 +3946,7 @@
       "survey_courses_title": "Satisfaction per course",
       "survey_courses_sub": "Only courses with answers are listed",
       "survey_empty": "No surveys answered yet",
+      "survey_unavailable": "Results unavailable. You do not have access or the query failed; this does not mean there are no responses.",
       "survey_empty_desc": "The survey is answered when closing the course, right before the certificate. As soon as the first answer arrives, the NPS shows up here.",
       "comments_title": "What they wrote",
       "comments_sub": "Anonymous comments from the closing survey",
@@ -5210,7 +5216,33 @@
       "ed_legacy_desc": "This section stores its text (and callout/media) outside the block system, so individual pieces can't be deleted. Convert it and every paragraph, callout and image becomes a block you can move, duplicate or delete on its own.",
       "ed_legacy_convert": "Convert to blocks",
       "ed_legacy_done": "Content converted to blocks: review and save",
-      "ed_game_blocks_hint": "Extra blocks for this section (the game itself is configured above)."
+      "ed_game_blocks_hint": "Extra blocks for this section (the game itself is configured above).",
+      "pron_module": {
+        "button": "Module pronunciation",
+        "button_hint": "The AI reviews every section and suggests where to practice pronunciation",
+        "title": "Module pronunciation practice",
+        "subtitle_one": "{{lang}} · {{count}} section",
+        "subtitle_other": "{{lang}} · {{count}} sections",
+        "intro": "The AI reads the whole module in {{lang}} and picks the spots where speaking out loud pays off most. You decide which ones go in.",
+        "how_1": "It only suggests practice where new words, expressions or dialogues are introduced; it skips welcomes, instructions and wrap-ups.",
+        "how_2": "At most one practice per section, right after the block that introduces the phrases, without repeating phrases across sections.",
+        "how_3": "What you check is saved straight into each section. You can undo it when it finishes.",
+        "analyze": "Analyze the module",
+        "analyzing": "Reading the whole module to place the practice…",
+        "section_n": "Section {{n}} · {{name}}",
+        "nothing": "The AI found nothing in this module to practice out loud. If you think there is, analyze again.",
+        "inserted_one": "{{count}} practice was added to {{sections}} section. It is already saved.",
+        "inserted_other": "{{count}} practices were added to {{sections}} sections. They are already saved.",
+        "undone": "Done, the sections are back to how they were.",
+        "skipped_one": "{{count}} practice was not added because its section changed in the meantime. Analyze again to place it.",
+        "skipped_other": "{{count}} practices were not added because their sections changed in the meantime. Analyze again to place them.",
+        "no_permission": "You don't have permission to change this module's sections.",
+        "quota_label": "Module pronunciation: {{module}}",
+        "quota_exceeded": "You've used today's AI quota. Ask the superadmin to raise it.",
+        "save_first_title": "First, what you're editing gets saved",
+        "save_first_body": "The practice is inserted straight into the sections. We'll save your changes and then open the analysis.",
+        "save_first_confirm": "Save and continue"
+      }
     },
     "chat_logs": {
       "title": "Help chat",

@@ -93,6 +93,7 @@ export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
  * acepta cualquiera del idioma.
  */
 export function pickMaleVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesisVoice | null {
+  lang = normalizePronLang(lang)
   const rank = (list: SpeechSynthesisVoice[]) => [...list].sort((a, b) => quality(b) - quality(a))[0] ?? null
   const exact = voices.filter((v) => matchesLang(v, lang, true))
   const base = voices.filter((v) => matchesLang(v, lang, false))
@@ -112,6 +113,7 @@ export interface VoiceInfo {
 
 /** Qué voz va a sonar para este idioma, para poder avisar si no es la de la región. */
 export async function voiceInfoFor(lang: string): Promise<VoiceInfo | null> {
+  lang = normalizePronLang(lang)
   const voice = pickMaleVoice(await loadVoices(), lang)
   if (!voice) return null
   return { name: voice.name, lang: voice.lang, sameRegion: matchesLang(voice, lang, true) }
@@ -147,6 +149,7 @@ function withTail(text: string): string {
 
 export async function speak(text: string, lang: string, opts: { rate?: number; onEnd?: () => void } = {}): Promise<boolean> {
   if (!speechSupported() || !text.trim()) return false
+  lang = normalizePronLang(lang)
   const voices = await loadVoices()
   const synth = window.speechSynthesis
   stopKeepAlive()
@@ -226,7 +229,7 @@ export function listenOnce(
     return { stop: () => {} }
   }
   const rec = new Ctor()
-  rec.lang = lang
+  rec.lang = normalizePronLang(lang)
   rec.interimResults = false
   rec.continuous = false
   rec.maxAlternatives = 5
@@ -351,7 +354,6 @@ export const PRONUNCIATION_LANGS: Array<{ value: string; label: string }> = [
   { value: 'es-CO', label: 'Español (Colombia)' },
   { value: 'es-ES', label: 'Español (España)' },
   { value: 'pt-BR', label: 'Português (Brasil)' },
-  { value: 'pt-PT', label: 'Português (Portugal)' },
   { value: 'fr-FR', label: 'Français' },
   { value: 'de-DE', label: 'Deutsch' },
   { value: 'it-IT', label: 'Italiano' },
@@ -359,3 +361,12 @@ export const PRONUNCIATION_LANGS: Array<{ value: string; label: string }> = [
   { value: 'zh-CN', label: '中文 (普通话)' },
   { value: 'ko-KR', label: '한국어' },
 ]
+
+/**
+ * El portugués que se enseña es SIEMPRE el de Brasil (decisión del usuario,
+ * 2026-09-18). Cualquier "pt", "pt-PT" o variante —de un bloque viejo, de la
+ * IA o escrito a mano— se lee como pt-BR: voz, reconocimiento y selector.
+ */
+export function normalizePronLang(lang: string): string {
+  return /^pt(-|_|$)/i.test(lang.trim()) ? 'pt-BR' : lang
+}

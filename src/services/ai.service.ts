@@ -1124,7 +1124,7 @@ export async function analyzeDocument(opts: {
 }
 
 export interface AssistRequest {
-  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum' | 'pronunciation_plan'
+  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum' | 'pronunciation_plan' | 'pronunciation_module_plan'
   contentType: 'section' | 'meta'
   sourceLang: string
   targetLangs?: string[]
@@ -1169,6 +1169,21 @@ export interface AssistRequest {
     sectionHeading?: string
     sectionBody?: string
     blocks: Array<{ index: number; type: string; text: string }>
+    /** Idioma que se estudia (BCP-47) si el curso está marcado como de idiomas. */
+    targetLang?: string
+  }
+  /**
+   * Práctica de pronunciación sobre el módulo entero (cursos de idiomas): todas
+   * las secciones con sus bloques numerados, para que la IA elija los puntos.
+   */
+  pronunciationModule?: {
+    targetLang: string
+    sections: Array<{
+      index: number
+      heading?: string
+      body?: string
+      blocks: Array<{ index: number; type: string; text: string }>
+    }>
   }
 }
 
@@ -1183,6 +1198,11 @@ export interface PronunciationPlan {
     why?: string
     phrases: Array<{ text: string; ipa?: string; translation?: string; tip?: string }>
   }>
+}
+
+/** Lo mismo sobre el módulo entero: cada práctica dice además en qué sección va. */
+export interface ModulePronunciationPlan extends Omit<PronunciationPlan, 'suggestions'> {
+  suggestions: Array<PronunciationPlan['suggestions'][number] & { section_index: number }>
 }
 
 export async function moduleAiAssist(opts: AssistRequest): Promise<{ data: Record<string, unknown>; usage: CacheUsage }> {

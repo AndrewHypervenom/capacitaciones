@@ -880,7 +880,11 @@ export function SurveyPanel({
           </button>
         </div>
 
-        {!results || results.total === 0 ? (
+        {results?.unavailable ? (
+          <p role="status" className="rounded-xl border border-line p-6 text-[13px] text-text-muted">
+            {t('admin.progress_overview.survey_unavailable', 'Resultados no disponibles. No tienes acceso o no se pudieron consultar; esto no significa que no haya respuestas.')}
+          </p>
+        ) : !results || results.total === 0 ? (
           <div className="rounded-xl border border-dashed border-line p-8 text-center">
             <p className="text-[13px] text-text-muted">{t('admin.courses.survey.no_answers')}</p>
           </div>

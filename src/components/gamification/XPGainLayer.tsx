@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { forwardRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -33,7 +33,7 @@ const REASON_ICON: Record<XPReason, typeof Sparkles> = {
 /** Cuánto vive una burbuja en pantalla. */
 const LIFETIME_MS = 2200;
 
-function Bubble({ gain }: { gain: XPGain }) {
+const Bubble = forwardRef<HTMLDivElement, { gain: XPGain }>(function Bubble({ gain }, ref) {
   const { t } = useTranslation();
   const reduce = useReducedMotion();
   const dismiss = useXPFeedStore((s) => s.dismiss);
@@ -47,6 +47,7 @@ function Bubble({ gain }: { gain: XPGain }) {
 
   return (
     <motion.div
+      ref={ref}
       layout
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.8 }}
       animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
@@ -105,7 +106,7 @@ function Bubble({ gain }: { gain: XPGain }) {
       )}
     </motion.div>
   );
-}
+});
 
 export function XPGainLayer() {
   const gains = useXPFeedStore((s) => s.gains);

@@ -686,12 +686,12 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
   }, [tab, loadStudyTime]);
 
   useEffect(() => {
-    if (tab === 'survey' && courses.length > 0) void loadSurveys(courses.map((c) => c.id));
-  }, [tab, courses, loadSurveys]);
+    if (tab === 'survey' && scopedCourses.length > 0) void loadSurveys(scopedCourses.map((c) => c.id));
+  }, [tab, scopedCourses, loadSurveys]);
 
   useEffect(() => {
-    if (tab === 'exam' && courses.length > 0) void loadExams(courses.map((c) => c.id));
-  }, [tab, courses, loadExams]);
+    if (tab === 'exam' && scopedCourses.length > 0) void loadExams(scopedCourses.map((c) => c.id));
+  }, [tab, scopedCourses, loadExams]);
 
   /* ── Examen final: agregados del alcance ──────────────────────────────── */
 
@@ -958,7 +958,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     const rowsOut: SheetRow[] = [];
     for (const c of visibleCourses) {
       const res = byCourse[c.id];
-      if (!res) continue;
+      if (!res || res.unavailable) continue;
       const n = npsFromHistogram(res.q2_hist);
       rowsOut.push({
         [L.course]: c.title,
@@ -997,7 +997,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       // haber pasado por ahí las trae ahora: un informe con hojas vacías se lee
       // como "no hubo datos", que sería mentira. Si ya están, esto no cuesta
       // nada — el cargador devuelve la misma promesa ya resuelta.
-      const courseIds = courses.map((c) => c.id);
+      const courseIds = scopedCourses.map((c) => c.id);
       const needsExam = kind === 'exam' || kind === 'all';
       // La hoja de Cursos también trae NPS y respuestas, así que necesita la
       // encuesta aunque no sea la hoja de satisfacción.
@@ -3251,6 +3251,14 @@ function SurveyTab({
     () => courses.filter((c) => (byCourse[c.id]?.total ?? 0) > 0),
     [courses, byCourse],
   );
+
+  if (!loading && loaded && courses.some(c => byCourse[c.id]?.unavailable)) {
+    return (
+      <p role="status" className="rounded-2xl border border-line p-6 text-[13px] text-text-muted">
+        {t('admin.progress_overview.survey_unavailable', 'Resultados no disponibles. No tienes acceso o no se pudieron consultar; esto no significa que no haya respuestas.')}
+      </p>
+    );
+  }
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">

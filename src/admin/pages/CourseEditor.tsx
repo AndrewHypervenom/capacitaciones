@@ -31,6 +31,7 @@ import {
   Lock,
   Map as MapIcon,
   MessageSquareHeart,
+  Mic,
   Monitor,
   PhoneCall,
   Plus,
@@ -135,6 +136,8 @@ import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/Cour
 import { LegacyCourseNoticeModal } from '@/components/course/LegacyCourseNotice'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
+import { PRONUNCIATION_LANGS, normalizePronLang } from '@/lib/speech'
+import { fold } from '@/lib/normalize'
 import { Select } from '@/components/ui/Select'
 import { NumberField } from '@/components/ui/NumberField'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -386,6 +389,19 @@ function SimPlacementPicker({
   )
 }
 
+/**
+ * Al marcar un curso como de idiomas se propone el idioma por el título
+ * («Bora Falar Português» → pt-BR). Es solo el valor inicial: el selector manda.
+ */
+function guessLanguageTarget(form: { title_es: string; title_en: string; title_pt: string }): string {
+  const title = fold(`${form.title_es} ${form.title_en} ${form.title_pt}`)
+  if (/portugu|falar/.test(title)) return 'pt-BR'
+  if (/franc|french/.test(title)) return 'fr-FR'
+  if (/aleman|german|deutsch/.test(title)) return 'de-DE'
+  if (/italian/.test(title)) return 'it-IT'
+  return 'en-US'
+}
+
 export default function CourseEditor() {
   const { courseId } = useParams<{ courseId: string }>()
   const { t } = useTranslation()
@@ -404,6 +420,8 @@ export default function CourseEditor() {
   // Igual con `courses.desktop_only` (SQL 45): sin la columna, el interruptor
   // ni se ofrece y el curso se ve en cualquier aparato, como siempre.
   const desktopOnlyReady = !!course && 'desktop_only' in course
+  // Y con `courses.language_target` (SQL 46): sin la columna no se ofrece.
+  const languageReady = !!course && 'language_target' in course
   const [loading, setLoading] = useState(true)
 
   // La pestaña abierta vive en la URL (`?tab=modules`). Antes era estado suelto
@@ -478,6 +496,7 @@ export default function CourseEditor() {
     is_shareable: false,
     is_onboarding: false,
     desktop_only: false,
+    language_target: null as string | null,
     cover_fit: 'cover' as 'cover' | 'contain',
     // Límite de tiempo para terminarlo (ver src/lib/courseDeadline.ts).
     deadline_mode: 'none' as DeadlineMode,
@@ -661,6 +680,7 @@ export default function CourseEditor() {
       is_shareable: c.is_shareable ?? false,
       is_onboarding: c.is_onboarding ?? false,
       desktop_only: c.desktop_only ?? false,
+      language_target: c.language_target ? normalizePronLang(c.language_target) : null,
       cover_fit: c.cover_fit ?? 'cover',
       // Si el SQL del plazo todavía no se corrió, las columnas llegan
       // `undefined` y el curso se comporta como si no tuviera límite.
@@ -763,12 +783,18 @@ export default function CourseEditor() {
       .catch(() => setAccessibleCampaigns([]))
   }, [isSuperAdmin, authCampaignId, user?.id])
 
-  // Métricas agregadas del curso (el RPC autoriza solo al dueño/superadmin;
-  // si no está autorizado o falla, simplemente no se muestra el panel).
+  // El RPC reserva estas métricas al dueño/superadmin, aunque otros miembros
+  // del equipo puedan abrir el editor. No consultar antes de conocer al dueño.
   useEffect(() => {
-    if (!courseId) return
-    getCourseStats(courseId).then(setStats).catch(() => setStats(null))
-  }, [courseId])
+    setStats(null)
+    if (!courseId || course?.id !== courseId || !user?.id) return
+    if (!isSuperAdmin && course.created_by !== user.id) return
+    let active = true
+    getCourseStats(courseId)
+      .then((value) => { if (active) setStats(value) })
+      .catch(() => { if (active) setStats(null) })
+    return () => { active = false }
+  }, [courseId, course?.id, course?.created_by, user?.id, isSuperAdmin])
 
   // Estado del mundo (juego) del curso, para mostrarlo en la barra de publicación:
   // si no existe (hay que crearlo), si está en borrador o si ya está publicado.
@@ -1445,6 +1471,9 @@ export default function CourseEditor() {
         // tumbaría el guardado entero de la ficha.
         ...(onboardingReady ? { is_onboarding: form.is_onboarding } : {}),
         ...(desktopOnlyReady ? { desktop_only: form.desktop_only } : {}),
+        // Solo el superadmin la manda: a los demás la base se la ignoraría
+        // igual (trigger guard_course_language_target).
+        ...(languageReady && isSuperAdmin ? { language_target: form.language_target } : {}),
         cover_fit: form.cover_fit,
         // El plazo se guarda coherente: las columnas del modo que NO está
         // activo se limpian, para que apagar y volver a encender no reviva una
@@ -3513,6 +3542,74 @@ export default function CourseEditor() {
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px text-amber-500" />
                     {t('admin.courses.desktop_only_hint')}
                   </p>
+                )}
+              </div>
+            )}
+
+            {/* ── Curso de idiomas ──────────────────────────────────────────
+                Lo marca SOLO el superadmin. Con él, el editor de cada módulo
+                ofrece la práctica de pronunciación sobre el módulo entero y la
+                IA ya no adivina el idioma (ni la variante: pt-BR, no pt-PT).
+                Los demás lo ven, sin poder cambiarlo. Se oculta sin el SQL 46. */}
+            {languageReady && (isSuperAdmin || form.language_target) && (
+              <div
+                className={cn(
+                  'rounded-2xl border p-4 transition-colors',
+                  form.language_target ? 'border-primary/50 bg-primary/6 ring-1 ring-primary/20' : 'border-line',
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                      form.language_target ? 'bg-primary/15 text-primary' : 'bg-glass/10 text-text-muted',
+                    )}
+                  >
+                    <Mic className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13px] font-semibold text-text">
+                        {t('admin.courses.language_title')}
+                      </span>
+                      {form.language_target && (
+                        <NeonBadge color="green" dot>
+                          {PRONUNCIATION_LANGS.find((l) => l.value === form.language_target)?.label ?? form.language_target}
+                        </NeonBadge>
+                      )}
+                    </span>
+                    <p className="mt-1 text-[12px] leading-relaxed text-text-muted">
+                      {form.language_target ? t('admin.courses.language_on') : t('admin.courses.language_off')}
+                    </p>
+                  </div>
+                  {isSuperAdmin && (
+                    <Toggle
+                      on={!!form.language_target}
+                      onClick={() => setForm({ ...form, language_target: form.language_target ? null : guessLanguageTarget(form) })}
+                      label={t('admin.courses.language_title')}
+                    />
+                  )}
+                </div>
+                {form.language_target && (
+                  <div className="mt-3 flex flex-col gap-2 border-t border-line/70 pt-3 sm:flex-row sm:items-center">
+                    <span className="shrink-0 text-[12px] font-medium text-text-muted">
+                      {t('admin.courses.language_studied')}
+                    </span>
+                    {isSuperAdmin ? (
+                      <Select
+                        className="min-w-[200px] flex-1"
+                        value={form.language_target}
+                        onChange={(v) => setForm({ ...form, language_target: v })}
+                        options={PRONUNCIATION_LANGS.map((l) => ({ value: l.value, label: l.label }))}
+                      />
+                    ) : (
+                      <span className="text-[12px] text-text">
+                        {PRONUNCIATION_LANGS.find((l) => l.value === form.language_target)?.label ?? form.language_target}
+                        {' · '}
+                        <span className="text-text-subtle">{t('admin.courses.language_superadmin_only')}</span>
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             )}

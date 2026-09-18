@@ -59,6 +59,11 @@ export interface ModuleAIPanelProps {
     /** Inserta y devuelve los ids de los bloques nuevos, para poder deshacer. */
     onInsert: (items: PronunciationInsert[]) => string[]
     onRemove: (ids: string[]) => void
+    /**
+     * Curso marcado como de idiomas: el idioma que se estudia ya está dicho
+     * (BCP-47), así la IA no lo adivina ni elige pt-PT para un curso pt-BR.
+     */
+    targetLang?: string
   }
 }
 
@@ -242,6 +247,7 @@ export function ModuleAIPanel({
           sectionHeading: content.heading?.[activeLang] || content.heading?.[sourceLang] || undefined,
           sectionBody: content.body?.[activeLang] || content.body?.[sourceLang] || undefined,
           blocks: pronunciation.blocks.map((b, index) => ({ index, type: b.type, text: blockPlainText(b, activeLang) })),
+          targetLang: pronunciation.targetLang,
         },
       })
       onCacheUsage?.(res.usage)
@@ -251,7 +257,12 @@ export function ModuleAIPanel({
       if (typeof d?.is_language_content !== 'boolean') {
         throw new Error(i18n.t('admin.modules.ai_panel.pron_outdated_function'))
       }
-      setPronunciationPlan({ ...d, suggestions: Array.isArray(d.suggestions) ? d.suggestions : [] })
+      setPronunciationPlan({
+        ...d,
+        // Con el curso marcado, el idioma lo fijó el superadmin: manda sobre lo que diga la IA.
+        ...(pronunciation.targetLang ? { target_lang: pronunciation.targetLang } : {}),
+        suggestions: Array.isArray(d.suggestions) ? d.suggestions : [],
+      })
     } catch (e) {
       setError((e as Error).message)
     } finally {

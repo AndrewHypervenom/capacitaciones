@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
+import { useAuthStore } from '@/stores/authStore'
+import { getAccessibleCampaigns } from '@/services/campaigns.service'
 
 /* ────────────────────────────────────────────────────────────────────────────
    Encuesta de satisfacción del curso
@@ -334,6 +336,8 @@ export interface SurveyComment {
 }
 
 export interface SurveyResults {
+  /** Sin permiso o sin lectura: no equivale a una encuesta con cero respuestas. */
+  unavailable?: boolean
   total: number
   total_fresh: number
   total_retro: number
@@ -377,16 +381,28 @@ const EMPTY_RESULTS: SurveyResults = {
  */
 export async function getSurveyResults(courseId: string): Promise<SurveyResults> {
   try {
+    const { profile, session } = useAuthStore.getState()
+    if (!profile || !session) return { ...EMPTY_RESULTS, unavailable: true }
+    if (profile.role !== 'superadmin') {
+      const [{ data: course, error }, campaigns] = await Promise.all([
+        supabase.from('courses').select('created_by,campaign_id').eq('id', courseId).maybeSingle(),
+        getAccessibleCampaigns({ isSuperAdmin: false, homeCampaignId: profile.campaign_id, userId: session.user.id }),
+      ])
+      if (error) throw error
+      // Leer un curso del catálogo no concede acceso a sus opiniones privadas.
+      if (!course || (course.created_by !== session.user.id && !campaigns.some(c => c.id === course.campaign_id))) {
+        return { ...EMPTY_RESULTS, unavailable: true }
+      }
+    }
     const { data, error } = await supabase.rpc('get_course_survey_results', {
       p_course_id: courseId,
     })
     if (error) {
-      if (isMissingRpc(error)) return EMPTY_RESULTS
       throw error
     }
     return { ...EMPTY_RESULTS, ...(data as Partial<SurveyResults> | null) }
   } catch {
-    return EMPTY_RESULTS
+    return { ...EMPTY_RESULTS, unavailable: true }
   }
 }
 

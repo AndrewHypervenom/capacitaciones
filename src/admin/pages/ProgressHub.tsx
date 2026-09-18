@@ -130,7 +130,7 @@ function ViewTabs({ current, onSelect, onBack, modulesTab, onModulesTab }: {
 }) {
   const { t } = useTranslation()
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b border-line bg-bg/85 backdrop-blur shrink-0">
+    <div className="sticky top-0 z-20 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b border-line bg-bg/85 backdrop-blur shrink-0">
       <button
         onClick={onBack}
         title={t('admin.progress_hub.back', 'Cambiar vista')}
@@ -138,7 +138,7 @@ function ViewTabs({ current, onSelect, onBack, modulesTab, onModulesTab }: {
       >
         <LayoutGrid className="h-4 w-4" />
       </button>
-      <div className="flex items-center gap-1 rounded-2xl border border-line bg-subtle/50 p-1 overflow-x-auto">
+      <div className="flex min-w-0 flex-1 sm:flex-none items-center gap-1 rounded-2xl border border-line bg-subtle/50 p-1 overflow-x-auto">
         {VIEW_TABS.map((tab) => {
           const active = tab.key === current
           const Icon = tab.icon
@@ -147,12 +147,12 @@ function ViewTabs({ current, onSelect, onBack, modulesTab, onModulesTab }: {
               key={tab.key}
               onClick={() => !active && onSelect(tab.key)}
               className={cn(
-                'inline-flex items-center gap-2 rounded-xl px-3 sm:px-4 py-1.5 text-[12.5px] font-semibold whitespace-nowrap transition-all',
+                'inline-flex flex-1 sm:flex-none justify-center items-center gap-2 rounded-xl px-2 sm:px-4 py-1.5 text-[12px] sm:text-[12.5px] font-semibold whitespace-nowrap transition-all',
                 active ? 'bg-surface shadow-sm text-text' : 'text-text-muted hover:text-text',
               )}
               style={active ? { color: tab.accent } : undefined}
             >
-              <Icon className="h-4 w-4" style={active ? { color: tab.accent } : undefined} />
+              <Icon className="hidden sm:block h-4 w-4" style={active ? { color: tab.accent } : undefined} />
               {t(tab.labelKey, tab.fallback)}
             </button>
           )
@@ -162,7 +162,7 @@ function ViewTabs({ current, onSelect, onBack, modulesTab, onModulesTab }: {
       {/* Solo en Módulos: tablero vs. bandeja. Vive aquí arriba, junto al resto
           de la navegación, para que no sea un control más dentro del panel. */}
       {current === 'modules' && modulesTab && onModulesTab && (
-        <div className="ml-auto flex items-center gap-1 rounded-2xl border border-line bg-subtle/50 p-1">
+        <div className="ml-auto flex w-full sm:w-auto justify-end sm:justify-start items-center gap-1 rounded-2xl border border-line bg-subtle/50 p-1">
           {([
             { key: 'overview' as const, Icon: BarChart3, label: t('admin.progress_hub.tab_overview', 'Panorama') },
             { key: 'inbox' as const, Icon: Inbox, label: t('admin.progress_hub.tab_inbox', 'Bandeja') },

@@ -6,7 +6,6 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getMyPeopleIds } from '@/services/org.service'
-import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
@@ -23,7 +22,6 @@ import { Tooltip } from '@/components/ui/Tooltip'
 const SIM_ACCENT = 'rgb(var(--brand-cyan, 6 182 212))'
 
 // ── Tipos de datos ───────────────────────────────────────────
-interface Campaign { id: string; name: string }
 /* Tipo local reducido: la vista pide `select('*')` pero solo usa unos pocos
    campos, y declararlos aquí evita arrastrar el Row entero de la base. */
 interface Profile {
@@ -230,13 +228,11 @@ function daysAgo(ms: number): number {
 
 export default function SimulationFeedbackPanel() {
   const { t, i18n } = useTranslation()
-  const { isSuperAdmin, isCapacitador, campaignId, user, loading: authLoading } = useAuth()
-  const scopedToCampaign = !isSuperAdmin
+  const { isSuperAdmin, isCapacitador, user, loading: authLoading } = useAuth()
 
   const [loading, setLoading] = useState(true)
   const [learners, setLearners] = useState<LearnerBase[]>([])
   const [allAttempts, setAllAttempts] = useState<SimAttempt[]>([])
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   /** slug → título legible del escenario (llamada u opción). */
   const [scenarioTitles, setScenarioTitles] = useState<Map<string, string>>(new Map())
   /** slug → de qué simulador viene. Decide si empatía y checklist son reales. */
@@ -286,54 +282,36 @@ export default function SimulationFeedbackPanel() {
     async function load() {
       setLoading(true)
       try {
-      const accessible = await getAccessibleCampaigns({
-        isSuperAdmin,
-        homeCampaignId: campaignId,
-        userId: user?.id ?? null,
-      }).catch(() => [] as Campaign[])
-      const ids = accessible.map((c) => c.id)
-      if (scopedToCampaign && ids.length === 0) {
-        if (!cancelled) { setCampaigns([]); setLearners([]); setAllAttempts([]) }
-        return
-      }
-      const scope = ids.length ? ids : ['']
-
-      const myPeople = scopedToCampaign ? await getMyPeopleIds().catch(() => null) : null
+      // La RLS resuelve el alcance actual por curso; las campañas antiguas
+      // no son un requisito para consultar contenido ni intentos autorizados.
+      const myPeople = !isSuperAdmin ? await getMyPeopleIds() : null
 
       const [profileRes, attemptRes, callRes, choiceRes] = await Promise.all([
         (() => {
           // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
           // baja se filtran en memoria para no depender de la columna).
           let q = supabase.from('profiles').select('*').eq('role', 'learner')
-          if (scopedToCampaign) {
-            q = myPeople
-              ? q.in('id', myPeople.length ? myPeople : [''])
-              : q.in('campaign_id', scope)
-          }
+          if (myPeople !== null) q = q.in('id', myPeople.length ? myPeople : ['00000000-0000-0000-0000-000000000000'])
           return q
         })(),
         (() => {
-          let q = supabase
+          const q = supabase
             .from('simulator_attempts')
             .select('id,user_id,course_id,campaign_id,scenario_slug,score,checklist_pct,empathy_pct,resolved,duration_sec,ai_feedback,created_at')
-          if (scopedToCampaign) q = q.in('campaign_id', scope)
           return q
         })(),
         (() => {
-          let q = supabase.from('scenarios').select('slug,title_es,title_en,title_pt,campaign_id,course_id').is('deleted_at', null)
-          if (scopedToCampaign) q = q.in('campaign_id', scope)
+          const q = supabase.from('scenarios').select('slug,title_es,title_en,title_pt,campaign_id,course_id').is('deleted_at', null)
           return q
         })(),
         (() => {
-          let q = supabase.from('choice_scenarios').select('slug,title_es,campaign_id,course_id').is('deleted_at', null)
-          if (scopedToCampaign) q = q.in('campaign_id', scope)
+          const q = supabase.from('choice_scenarios').select('slug,title_es,campaign_id,course_id').is('deleted_at', null)
           return q
         })(),
       ])
 
       if (attemptRes.error) console.error('simulator_attempts query error:', attemptRes.error)
 
-      const camps = accessible as Campaign[]
       // El capacitador ve a su gente vigente; las bajas quedan para el superadmin.
       const profiles = hideInactiveUnlessSuperAdmin((profileRes.data ?? []) as Profile[], isSuperAdmin)
       const attempts = (attemptRes.data ?? []) as SimAttempt[]
@@ -397,7 +375,6 @@ export default function SimulationFeedbackPanel() {
       setCourseTitles(courseMap)
       setScenarioTitles(titles)
       setScenarioKinds(kinds)
-      setCampaigns(camps)
       const nameOf = (p: Profile) => p.display_name ?? t('admin.sim_panel.no_name', 'Sin nombre')
       setLearners([
         ...profiles.map((p) => ({
@@ -433,7 +410,7 @@ export default function SimulationFeedbackPanel() {
     load()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, scopedToCampaign, campaignId, user?.id, i18n.resolvedLanguage])
+  }, [authLoading, isSuperAdmin, user?.id, i18n.resolvedLanguage])
 
   /* A quién le llega el curso elegido. El programa ya no entrega cursos: cuenta
      quien lo tiene asignado y quien cumple su regla país/área/CR. Quien ya
@@ -659,18 +636,6 @@ export default function SimulationFeedbackPanel() {
 
   const setSortKey = (key: SortKey) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }))
-
-  if (!authLoading && !loading && scopedToCampaign && campaigns.length === 0) {
-    return (
-      <div className="p-4 sm:p-8">
-        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{t('admin.sim_panel.title', 'Progreso de Simulaciones')}</h1>
-        <div className="mt-8 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center" style={{ background: 'rgba(239,68,68,0.04)', border: '1px dashed rgba(239,68,68,0.20)' }}>
-          <div className="text-[15px] font-medium text-text mb-2">{t('admin.worlds.no_campaign_title')}</div>
-          <div className="text-[13px] text-text-muted">{t('admin.worlds.no_campaign_desc')}</div>
-        </div>
-      </div>
-    )
-  }
 
   const statusChips: Array<LearnerStatus | 'all'> = ['all', ...STATUS_ORDER]
 

@@ -15,6 +15,7 @@ import {
   Layers,
   Lightbulb,
   Loader2,
+  Mic,
   Menu,
   Monitor,
   Plus,
@@ -83,6 +84,7 @@ import { QUIZ_SOUND_THEMES, playQuizSound } from '@/lib/sound'
 import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
+import { ModulePronunciationModal } from '@/admin/components/ModulePronunciationModal'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { isUntranslated } from '@/services/translation.service'
@@ -290,6 +292,8 @@ interface SectionEditorPanelProps {
   section: DbSectionRow
   campaignId: string
   moduleTitle?: string
+  /** BCP-47 del idioma que se estudia si el curso es de idiomas; si no, null. */
+  languageTarget?: string | null
   onSaved: (updated: DbSectionRow) => void
   /** Qué campos se apartaron de lo cargado (vacío = nada que guardar). */
   onDirty: (fields: string[]) => void
@@ -378,6 +382,7 @@ function SectionEditorPanel({
   section,
   campaignId,
   moduleTitle,
+  languageTarget,
   onSaved,
   onDirty,
   onRegisterSave,
@@ -914,6 +919,7 @@ function SectionEditorPanel({
         }}
         pronunciation={{
           blocks: contentBlocks.map((b) => b.data),
+          targetLang: languageTarget ?? undefined,
           onInsert: (items) => {
             // Se insertan de atrás hacia adelante para que cada índice siga
             // apuntando al bloque que eligió la IA.
@@ -1622,6 +1628,24 @@ export default function ModuleEditor() {
   }, [mod?.course_id])
   const canTranslate = mod?.course_id ? course?.published === true : !!mod?.is_published
 
+  // Curso de idiomas (`courses.language_target`, lo marca el superadmin): abre
+  // la práctica de pronunciación sobre el módulo entero. Consulta aparte a
+  // propósito: si el SQL no se ha corrido, la columna no existe y esta lectura
+  // falla sola sin llevarse el título del curso de arriba.
+  const [languageTarget, setLanguageTarget] = useState<string | null>(null)
+  const [pronModuleOpen, setPronModuleOpen] = useState(false)
+  useEffect(() => {
+    const courseId = mod?.course_id
+    if (!courseId) { setLanguageTarget(null); return }
+    let active = true
+    supabase.from('courses').select('language_target').eq('id', courseId).maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return
+        setLanguageTarget(error ? null : ((data as { language_target?: string | null } | null)?.language_target ?? null))
+      })
+    return () => { active = false }
+  }, [mod?.course_id])
+
   // Presencia colaborativa: anuncio en qué módulo Y en qué sección estoy, y
   // obtengo la lista de coeditores que lo tienen abierto ahora mismo. La sección
   // es el dato que de verdad evita choques: dos personas en el mismo módulo pero
@@ -2017,6 +2041,25 @@ export default function ModuleEditor() {
     })
   })()
 
+  // La práctica del módulo escribe directo en varias secciones: con algo a medio
+  // escribir, primero se guarda (si no, al recargar se perdería o se pisaría).
+  const handleOpenPronModule = async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: t('admin.modules.pron_module.save_first_title'),
+        description: t('admin.modules.pron_module.save_first_body'),
+        confirmLabel: t('admin.modules.pron_module.save_first_confirm'),
+      })
+      if (!ok) return
+      try {
+        if (!(await saveCurrentPanel())) return
+      } catch {
+        return
+      }
+    }
+    setPronModuleOpen(true)
+  }
+
   const handleSelectSection = (id: string | null) => {
     setSelectedSectionId(id)
     setFocusedSectionId(id)
@@ -2236,6 +2279,16 @@ export default function ModuleEditor() {
                 : <Monitor className="h-3.5 w-3.5" />}
               <span className="hidden sm:inline">{t('admin.preview.button')}</span>
             </Button>
+            {/* Curso de idiomas: la IA reparte la práctica de pronunciación por
+                todo el módulo, en vez de pedirla sección por sección. */}
+            {languageTarget && (
+              <Tooltip label={t('admin.modules.pron_module.button_hint')} anchor="element">
+                <Button variant="glass" size="sm" onClick={() => { void handleOpenPronModule() }}>
+                  <Mic className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t('admin.modules.pron_module.button')}</span>
+                </Button>
+              </Tooltip>
+            )}
             {/* Traducir a EN/PT: el módulo nace en español y se traduce cuando
                 el capacitador lo da por terminado (ahorro de IA). "Terminado" =
                 el curso ya está publicado; hasta entonces el botón se bloquea. */}
@@ -2309,6 +2362,7 @@ export default function ModuleEditor() {
                 section={sections.find((s) => s.id === selectedSectionId)!}
                 campaignId={mod.campaign_id}
                 moduleTitle={rowText(mod)}
+                languageTarget={languageTarget}
                 onSaved={handleSectionSaved}
                 onDirty={registerDirty}
                 onRegisterSave={(fn) => { saveFnRef.current = fn }}
@@ -2362,6 +2416,21 @@ export default function ModuleEditor() {
         // numeran desde 1 y chocarían con la última sección.
         startOrder={Math.max(-1, ...sections.map((s) => s.sort_order)) + 1}
       />
+
+      {pronModuleOpen && languageTarget && (
+        <ModulePronunciationModal
+          moduleId={mod.id}
+          moduleTitle={rowText(mod)}
+          campaignId={mod.campaign_id}
+          targetLang={languageTarget}
+          sections={sections}
+          onClose={() => setPronModuleOpen(false)}
+          onApplied={() => {
+            invalidateModulesCache()
+            reloadModule()
+          }}
+        />
+      )}
 
       {translateOpen && (
         <TranslationModal

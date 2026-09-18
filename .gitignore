@@ -13,6 +13,7 @@ supabase
 *.docx
 *.pdf
 *.doc
+*.png
 
 .env
 
@@ -27,3 +28,7 @@ qa/
 skills-lock.json
 docs/
 Captura.png
+
+E2E-REPORT.md
+
+/e2e

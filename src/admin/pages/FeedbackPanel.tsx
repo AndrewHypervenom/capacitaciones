@@ -3,7 +3,6 @@ import i18n from '@/i18n'
 import { ChevronDown, ChevronRight, Download, Loader2, Search, Globe2, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getMyPeopleIds, getOrganizations, getOrgUnits } from '@/services/org.service'
-import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/hooks/useAuth'
@@ -18,7 +17,6 @@ import type { OrgUnit } from '@/types/database'
 
 const WORLD_ACCENT = 'rgb(var(--brand-green))'
 
-interface Campaign { id: string; name: string }
 interface World { id: string; name: string; icon: string; campaign_id: string | null; course_id: string | null }
 interface WorldLevel { id: string; name: string; world_id: string; order_index: number; min_score_pct: number | null }
 /* Tipo local reducido: esta vista pide `select('*')` pero solo usa un puñado de
@@ -93,15 +91,12 @@ function computeStatus(completed: number, total: number, avgScore: number): Lear
 }
 
 export default function FeedbackPanel() {
-  const { isSuperAdmin, isCapacitador, campaignId, user, loading: authLoading } = useAuth()
-  // El capacitador ve el progreso de sus campañas (casa + colaboraciones); el superadmin todas.
-  const scopedToCampaign = !isSuperAdmin
+  const { isSuperAdmin, isCapacitador, user, loading: authLoading } = useAuth()
 
   const [loading, setLoading] = useState(true)
   /* Datos en bruto: las filas se arman en memoria para el CURSO elegido. */
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [progress, setProgress] = useState<Progress[]>([])
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [worlds, setWorlds] = useState<World[]>([])
   const [levels, setLevels] = useState<WorldLevel[]>([])
   /* CR y área: los mismos cortes que el Panorama, para que las tres vistas de
@@ -147,56 +142,27 @@ export default function FeedbackPanel() {
     async function load() {
       setLoading(true)
       try {
-      // Campañas accesibles (superadmin: todas; capacitador: casa + colaboraciones).
-      const accessible = await getAccessibleCampaigns({
-        isSuperAdmin,
-        homeCampaignId: campaignId,
-        userId: user?.id ?? null,
-      }).catch(() => [] as Campaign[])
-      const ids = accessible.map((c) => c.id)
-      if (scopedToCampaign && ids.length === 0) {
-        if (!cancelled) { setCampaigns([]); setProfiles([]); setProgress([]) }
-        return
-      }
-      const scope = ids.length ? ids : ['']
+      // El acceso lo decide la RLS, igual que en el catálogo y en Módulos.
+      // Una campaña retirada no puede ocultar cursos y avances autorizados.
+      const myPeople = !isSuperAdmin ? await getMyPeopleIds() : null
 
-      // Quién es "mi gente" ahora: los aprendices alcanzados por mis cursos.
-      // `null` = el RPC todavía no existe → se cae al filtro por campaña.
-      const myPeople = scopedToCampaign ? await getMyPeopleIds().catch(() => null) : null
-
-      const [campRes, worldRes, levelRes, profileRes, progressRes] = await Promise.all([
-        Promise.resolve({ data: accessible }),
-        (() => {
-          let q = supabase.from('worlds').select('id,name,icon,campaign_id,course_id')
-          if (scopedToCampaign) q = q.in('campaign_id', scope)
-          return q
-        })(),
+      const [worldRes, levelRes, profileRes, progressRes] = await Promise.all([
+        supabase.from('worlds').select('id,name,icon,campaign_id,course_id'),
         supabase.from('world_levels').select('id,name,world_id,order_index,min_score_pct').order('order_index'),
         (() => {
           // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
           // baja se filtran en memoria para no depender de la columna).
           let q = supabase.from('profiles').select('*').eq('role', 'learner')
-          // Mi gente = los aprendices alcanzados por mis cursos (ver
-          // get_my_people_ids). `myPeople` es null si el SQL no se ha corrido:
-          // entonces se cae al filtro por campaña de siempre.
-          if (scopedToCampaign) {
-            q = myPeople
-              ? q.in('id', myPeople.length ? myPeople : [''])
-              : q.in('campaign_id', scope)
-          }
+          // Sin RPC, la RLS sigue acotando los perfiles visibles.
+          if (myPeople !== null) q = q.in('id', myPeople.length ? myPeople : ['00000000-0000-0000-0000-000000000000'])
           return q
         })(),
-        (() => {
-          let q = supabase.from('world_progress').select('user_id,level_id,world_id,score').eq('completed', true)
-          if (scopedToCampaign) q = q.in('campaign_id', scope)
-          return q
-        })(),
+        supabase.from('world_progress').select('user_id,level_id,world_id,score').eq('completed', true),
       ])
 
       if (progressRes.error) console.error('world_progress query error:', progressRes.error)
       if (profileRes.error) console.error('profiles query error:', profileRes.error)
 
-      const camps = (campRes.data ?? []) as Campaign[]
       const ws = (worldRes.data ?? []) as World[]
       const lvls = (levelRes.data ?? []) as WorldLevel[]
       // El capacitador ve a su gente vigente; las bajas quedan para el superadmin.
@@ -218,7 +184,6 @@ export default function FeedbackPanel() {
       }
 
       if (cancelled) return
-      setCampaigns(camps)
       setWorlds(ws)
       setCourseTitles(courseMap)
       setLevels(lvls)
@@ -234,7 +199,7 @@ export default function FeedbackPanel() {
     load()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, scopedToCampaign, campaignId, user?.id])
+  }, [authLoading, isSuperAdmin, user?.id, i18n.resolvedLanguage])
 
   /* A quién le llega el curso elegido. El programa ya no entrega cursos: cuenta
      quien lo tiene asignado, quien cumple su regla país/área/CR y quien ya jugó
@@ -524,21 +489,6 @@ export default function FeedbackPanel() {
     setSort(prev => prev.key === key
       ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
       : { key, dir: 'desc' })
-  }
-
-  if (!authLoading && !loading && scopedToCampaign && campaigns.length === 0) {
-    return (
-      <div className="p-4 sm:p-8">
-        <h1 className="text-[20px] sm:text-[24px] font-bold text-text mb-1">{i18n.t('admin.feedback_panel.title')}</h1>
-        <div
-          className="mt-8 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center"
-          style={{ background: 'rgba(239,68,68,0.04)', border: '1px dashed rgba(239,68,68,0.20)' }}
-        >
-          <div className="text-[15px] font-medium text-text mb-2">{i18n.t('admin.worlds.no_campaign_title')}</div>
-          <div className="text-[13px] text-text-muted">{i18n.t('admin.worlds.no_campaign_desc')}</div>
-        </div>
-      </div>
-    )
   }
 
   const levelMap = new Map(levels.map(l => [l.id, l]))
