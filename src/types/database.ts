@@ -665,6 +665,7 @@ export interface Database {
           key_takeaways_en: string[] | null
           key_takeaways_pt: string[] | null
           sound_theme: string | null
+          vocabulary: Json | null
           is_published: boolean
           /** Módulo del que se clonó este (deep-copy). NULL = original. */
           copied_from: string | null
@@ -697,6 +698,7 @@ export interface Database {
           key_takeaways_en?: string[] | null
           key_takeaways_pt?: string[] | null
           sound_theme?: string | null
+          vocabulary?: Json | null
           is_published?: boolean
           copied_from?: string | null
           ai_generated?: boolean
@@ -725,6 +727,7 @@ export interface Database {
           key_takeaways_en?: string[] | null
           key_takeaways_pt?: string[] | null
           sound_theme?: string | null
+          vocabulary?: Json | null
           is_published?: boolean
           copied_from?: string | null
           ai_generated?: boolean

@@ -8,7 +8,6 @@ import {
   type GeneratedModule,
 } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
-import { addModuleToCourse } from '@/services/courses.service'
 import { consumeAiOperation, isQuotaExceeded, refundAiOperation } from '@/services/aiQuota.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { cropCaptures, suggestModuleSectionRange, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
@@ -23,7 +22,8 @@ export interface ModuleAiInput {
   doc: ExtractedDocument
   manualMode: boolean
   /** Si el módulo debe adjuntarse a un curso al terminar. */
-  course?: { id: string; nextOrder: number } | null
+  /** Curso donde nace el módulo. Obligatorio: no hay módulos sueltos. */
+  course: { id: string; nextOrder: number }
 }
 
 /**
@@ -142,12 +142,12 @@ export function runModuleAiGeneration(input: ModuleAiInput): void {
         : outline.metadata
       const generated: GeneratedModule = { metadata, sections }
 
-      // 3) Guardar el módulo (borrador) y, si viene de un curso, adjuntarlo.
+      // 3) Guardar el módulo (borrador) ya dentro de su curso.
       bgTask.update(taskId, { detail: i18n.t('admin.import.step_saving') })
-      const moduleId = await saveGeneratedModule(campaignId, generated, images)
-      if (input.course) {
-        try { await addModuleToCourse(input.course.id, moduleId, input.course.nextOrder) } catch { /* módulo queda creado igual */ }
-      }
+      const moduleId = await saveGeneratedModule(campaignId, generated, images, {
+        id: input.course.id,
+        sortOrder: input.course.nextOrder,
+      })
       invalidateModulesCache()
 
       const action = {

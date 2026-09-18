@@ -88,6 +88,8 @@ export interface LearningModule {
   keyTakeaways: Record<Language, string[]>;
   /** Tema de sonido de los quizzes ('chime' | 'arcade' | 'soft' | 'off'). */
   soundTheme?: string;
+  /** Curso de idiomas: palabras que se pueden oír y consultar al pasar por encima. */
+  vocabulary?: import('@/types/blocks').ModuleVocabulary | null;
   sections: ModuleSection[];
 }
 

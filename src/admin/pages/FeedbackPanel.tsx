@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import i18n from '@/i18n'
 import { ChevronDown, ChevronRight, Download, Loader2, Search, Globe2, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { readAllPages } from '@/services/readAllPages'
 import { getMyPeopleIds, getOrganizations, getOrgUnits } from '@/services/org.service'
 import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
 import { cn } from '@/lib/cn'
@@ -33,6 +34,7 @@ interface Profile {
 }
 interface Progress { user_id: string; level_id: string; world_id: string; score: number }
 interface Attempt { id: string; level_id: string; score: number; completed_at: string }
+interface WorldAttempt extends Attempt { user_id: string; world_id: string }
 
 // Aprendiz que empezó pero no ha terminado y con promedio por debajo de este score → "en riesgo".
 const RISK_SCORE = 60
@@ -76,6 +78,7 @@ interface LearnerRow {
   totalLevels: number
   avgStars: number
   avgScore: number
+  started: boolean
   status: LearnerStatus
 }
 
@@ -83,8 +86,8 @@ type SortKey = 'name' | 'estado' | 'avance' | 'desempeno' | 'estrellas'
 
 const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0)
 
-function computeStatus(completed: number, total: number, avgScore: number): LearnerStatus {
-  if (completed === 0) return 'not_started'
+function computeStatus(completed: number, total: number, avgScore: number, started: boolean): LearnerStatus {
+  if (!started) return 'not_started'
   if (total > 0 && completed >= total) return 'completed'
   if (avgScore < RISK_SCORE) return 'at_risk'
   return 'in_progress'
@@ -94,9 +97,11 @@ export default function FeedbackPanel() {
   const { isSuperAdmin, isCapacitador, user, loading: authLoading } = useAuth()
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   /* Datos en bruto: las filas se arman en memoria para el CURSO elegido. */
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [progress, setProgress] = useState<Progress[]>([])
+  const [worldAttempts, setWorldAttempts] = useState<WorldAttempt[]>([])
   const [worlds, setWorlds] = useState<World[]>([])
   const [levels, setLevels] = useState<WorldLevel[]>([])
   /* CR y área: los mismos cortes que el Panorama, para que las tres vistas de
@@ -141,23 +146,25 @@ export default function FeedbackPanel() {
 
     async function load() {
       setLoading(true)
+      setLoadError(false)
       try {
       // El acceso lo decide la RLS, igual que en el catálogo y en Módulos.
       // Una campaña retirada no puede ocultar cursos y avances autorizados.
       const myPeople = !isSuperAdmin ? await getMyPeopleIds() : null
 
-      const [worldRes, levelRes, profileRes, progressRes] = await Promise.all([
-        supabase.from('worlds').select('id,name,icon,campaign_id,course_id'),
-        supabase.from('world_levels').select('id,name,world_id,order_index,min_score_pct').order('order_index'),
-        (() => {
+      const [worldRes, levelRes, profileRes, progressRes, attemptsRes] = await Promise.all([
+        readAllPages((from, to) => supabase.from('worlds').select('id,name,icon,campaign_id,course_id').order('id').range(from, to)),
+        readAllPages((from, to) => supabase.from('world_levels').select('id,name,world_id,order_index,min_score_pct').order('order_index').order('id').range(from, to)),
+        readAllPages((from, to) => {
           // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
           // baja se filtran en memoria para no depender de la columna).
           let q = supabase.from('profiles').select('*').eq('role', 'learner')
           // Sin RPC, la RLS sigue acotando los perfiles visibles.
           if (myPeople !== null) q = q.in('id', myPeople.length ? myPeople : ['00000000-0000-0000-0000-000000000000'])
-          return q
-        })(),
-        supabase.from('world_progress').select('user_id,level_id,world_id,score').eq('completed', true),
+          return q.order('id').range(from, to)
+        }),
+        readAllPages((from, to) => supabase.from('world_progress').select('user_id,level_id,world_id,score').eq('completed', true).order('user_id').order('world_id').order('level_id').range(from, to)),
+        readAllPages((from, to) => supabase.from('world_level_attempts').select('id,user_id,level_id,world_id,score,completed_at').order('id').range(from, to)),
       ])
 
       if (progressRes.error) console.error('world_progress query error:', progressRes.error)
@@ -189,9 +196,10 @@ export default function FeedbackPanel() {
       setLevels(lvls)
       setProfiles(profiles)
       setProgress(progress)
+      setWorldAttempts(attemptsRes.data)
 
       } catch (e) {
-        if (!cancelled) console.error('FeedbackPanel load error:', e)
+        if (!cancelled) { setLoadError(true); console.error('FeedbackPanel load error:', e) }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -208,18 +216,19 @@ export default function FeedbackPanel() {
     if (!courseChosen) return
     let vivo = true
     void Promise.all([
-      supabase.from('course_assignments').select('user_id').eq('course_id', filterCourse),
-      getAudience(filterCourse).catch(() => null),
+      readAllPages((from, to) => supabase.from('course_assignments').select('user_id').eq('course_id', filterCourse).order('user_id').range(from, to)),
+      getAudience(filterCourse),
       supabase.from('courses').select('is_published').eq('id', filterCourse).maybeSingle(),
     ]).then(([asg, rule, course]) => {
       if (!vivo) return
+      if (asg.error || course.error) throw asg.error || course.error
       setReach({
         courseId: filterCourse,
         assigned: new Set(((asg.data ?? []) as Array<{ user_id: string }>).map((a) => a.user_id)),
         rule,
         published: (course.data as { is_published?: boolean } | null)?.is_published === true,
       })
-    })
+    }).catch(e => { if (vivo) { setLoadError(true); console.error('FeedbackPanel reach error:', e) } })
     return () => { vivo = false }
   }, [courseChosen, filterCourse])
 
@@ -228,7 +237,7 @@ export default function FeedbackPanel() {
   /** Una fila por persona alcanzada por el curso, con los mundos DE ese curso. */
   const rows = useMemo<LearnerRow[]>(() => {
     if (!reachReady || !reach) return []
-    const courseWorlds = worlds.filter(w => w.course_id === filterCourse)
+    const courseWorlds = worlds.filter(w => w.course_id === filterCourse && (filterWorld === 'all' || w.id === filterWorld))
     if (courseWorlds.length === 0) return []
     const worldIds = new Set(courseWorlds.map(w => w.id))
     const levelsByWorld = new Map<string, WorldLevel[]>()
@@ -240,14 +249,36 @@ export default function FeedbackPanel() {
     }
     const levelMap = new Map(levels.map(l => [l.id, l]))
     const progressByUserWorld = new Map<string, Progress[]>()
+    const uniqueProgress = new Map<string, Progress>()
     for (const p of progress) {
-      if (!worldIds.has(p.world_id)) continue
+      if (!worldIds.has(p.world_id) || levelMap.get(p.level_id)?.world_id !== p.world_id) continue
+      const key = `${p.user_id}|${p.world_id}|${p.level_id}`
+      const previous = uniqueProgress.get(key)
+      if (!previous || p.score > previous.score) uniqueProgress.set(key, p)
+    }
+    for (const p of uniqueProgress.values()) {
       const key = `${p.user_id}|${p.world_id}`
       const arr = progressByUserWorld.get(key) ?? []
       arr.push(p)
       progressByUserWorld.set(key, arr)
     }
-    const played = new Set(progress.filter(p => worldIds.has(p.world_id)).map(p => p.user_id))
+    // Los intentos fallidos no generan world_progress. También son actividad;
+    // se toma el mejor de cada nivel para no inflar promedios con reintentos.
+    const bestLevels = new Map(uniqueProgress)
+    for (const a of worldAttempts) {
+      if (!worldIds.has(a.world_id) || levelMap.get(a.level_id)?.world_id !== a.world_id) continue
+      const key = `${a.user_id}|${a.world_id}|${a.level_id}`
+      const previous = bestLevels.get(key)
+      if (!previous || a.score > previous.score) bestLevels.set(key, a)
+    }
+    const scoresByUserWorld = new Map<string, Progress[]>()
+    for (const p of bestLevels.values()) {
+      const key = `${p.user_id}|${p.world_id}`
+      const values = scoresByUserWorld.get(key) ?? []
+      values.push(p)
+      scoresByUserWorld.set(key, values)
+    }
+    const played = new Set([...bestLevels.values()].map(p => p.user_id))
 
     const result: LearnerRow[] = []
     for (const profile of profiles) {
@@ -262,8 +293,9 @@ export default function FeedbackPanel() {
       for (const w of courseWorlds) {
         const wLevels = levelsByWorld.get(w.id) ?? []
         const progs = progressByUserWorld.get(`${profile.id}|${w.id}`) ?? []
-        const starVals = progs.map(p => getStarsFromScore(p.score, levelMap.get(p.level_id)?.min_score_pct ?? null))
-        const scoreVals = progs.map(p => p.score)
+        const scored = scoresByUserWorld.get(`${profile.id}|${w.id}`) ?? []
+        const starVals = scored.map(p => getStarsFromScore(p.score, levelMap.get(p.level_id)?.min_score_pct ?? null))
+        const scoreVals = scored.map(p => p.score)
         allStars.push(...starVals)
         allScores.push(...scoreVals)
         totalCompleted += progs.length
@@ -290,11 +322,12 @@ export default function FeedbackPanel() {
         totalLevels,
         avgStars: Math.round(avg(allStars) * 10) / 10,
         avgScore,
-        status: computeStatus(totalCompleted, totalLevels, avgScore),
+        started: allScores.length > 0,
+        status: computeStatus(totalCompleted, totalLevels, avgScore, allScores.length > 0),
       })
     }
     return result
-  }, [reachReady, reach, worlds, levels, progress, profiles, filterCourse])
+  }, [reachReady, reach, worlds, levels, progress, worldAttempts, profiles, filterCourse, filterWorld])
 
   // Ámbito: curso (obligatorio) + mundo + CR/área. Alimenta KPIs, dona y chips.
   const scoped = useMemo(() => rows.filter(r => {
@@ -333,7 +366,7 @@ export default function FeedbackPanel() {
     for (const r of scoped) {
       totalCompleted += r.completedLevels
       totalLevels += r.totalLevels
-      if (r.completedLevels > 0) { scores.push(r.avgScore); starsPerLearner.push(r.avgStars) }
+      if (r.started) { scores.push(r.avgScore); starsPerLearner.push(r.avgStars) }
       statusCounts[r.status]++
     }
 
@@ -386,12 +419,12 @@ export default function FeedbackPanel() {
       const userIds = [...new Set(tableRows.map(r => r.userId))]
       const worldIds = [...new Set(worldRows.map(w => w.worldId))]
 
-      const { data: allAttempts } = await supabase
+      const { data: allAttempts } = await readAllPages((from, to) => supabase
         .from('world_level_attempts')
         .select('id,user_id,level_id,world_id,score,completed_at')
         .in('user_id', userIds)
         .in('world_id', worldIds)
-        .order('completed_at', { ascending: false })
+        .order('completed_at', { ascending: false }).order('id').range(from, to))
 
       const profileMap = new Map(tableRows.map(r => [r.userId, r.displayName]))
       const worldNameMap = new Map(worlds.map(w => [w.id, w.name]))
@@ -491,6 +524,7 @@ export default function FeedbackPanel() {
       : { key, dir: 'desc' })
   }
 
+  if (loadError) return <p role="alert" className="p-6 text-text-muted">{i18n.t('admin.progress_overview.stats_unavailable')}</p>
   const levelMap = new Map(levels.map(l => [l.id, l]))
   const statusChips: Array<LearnerStatus | 'all'> = ['all', ...STATUS_ORDER]
 
@@ -626,7 +660,7 @@ export default function FeedbackPanel() {
               {
                 key: 'stars',
                 label: i18n.t('admin.feedback_panel.kpi_avg_stars', 'Estrellas promedio'),
-                value: `${stats.avgStars.toFixed(1)} / 3`,
+                value: `${stats.avgStars.toFixed(1)} / 5`,
                 accent: '#f59e0b',
                 hint: i18n.t('admin.feedback_panel.kpi_stars_hint', 'Calidad con la que superan los niveles, no solo si los superan.'),
               },

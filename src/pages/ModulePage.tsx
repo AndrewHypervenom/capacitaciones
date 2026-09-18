@@ -49,6 +49,7 @@ import { setQuizSoundTheme } from '@/lib/sound';
 import type { ContentBlock } from '@/types/blocks';
 import type { LearningModule, ModuleSection, SectionMedia } from '@/data/modules';
 import { getModuleById } from '@/services/modules.service';
+import { LanguageLens } from '@/components/modules/LanguageLens';
 import { ModulePageSkeleton } from '@/components/ui/Skeleton';
 import { BlockRenderer } from '@/components/modules/blocks/BlockRenderer';
 import { toast } from '@/stores/toastStore';
@@ -1190,6 +1191,9 @@ export default function ModulePage() {
             </aside>
           )}
 
+          {/* Curso de idiomas: las palabras del vocabulario del módulo se pueden
+              oír y consultar al pasar por encima, estén en el bloque que estén. */}
+          <LanguageLens vocabulary={module.vocabulary} language={language} className="min-w-0">
           <article className="space-y-20 min-w-0">
             {module.sections.map((s: ModuleSection, i: number) => {
               const quizIdx = quizIndexMap[i];
@@ -1304,6 +1308,7 @@ export default function ModulePage() {
 
             {moduleFooter}
           </article>
+          </LanguageLens>
         </div>
         )}
       </div>

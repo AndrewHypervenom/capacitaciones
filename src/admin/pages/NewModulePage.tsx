@@ -10,7 +10,6 @@ import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
 import { createModule } from '@/services/modules.service'
 import ImportContent from '@/admin/pages/ImportContent'
 import {
-  addModuleToCourse,
   getCoursesForCampaign,
   getCourseById,
   type CourseWithModules,
@@ -188,26 +187,14 @@ export default function NewModulePage() {
       .catch(() => setCourses([]))
   }, [campaignId])
 
-  const attachToCourse = async (moduleId: string) => {
-    if (!courseId) return
-    try {
-      const target = courses.find((c) => c.id === courseId)
-      const maxOrder = target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0
-      await addModuleToCourse(courseId, moduleId, maxOrder + 1)
-      // El mundo (gamificación) se crea y configura aparte, en la sección Mundos.
-      // Adjuntar un módulo no genera ni sincroniza nada de mundos.
-    } catch {
-      /* si falla el adjuntar, el módulo igual queda creado (suelto) */
-    }
+  // Un módulo nace SIEMPRE dentro de un curso (2026-09-18): ya no hay
+  // «Sin curso». Va al final del curso elegido.
+  const nextCourseOrder = () => {
+    const target = courses.find((c) => c.id === courseId)
+    return (target ? Math.max(0, ...target.modules.map((m) => m.course_sort_order)) : 0) + 1
   }
 
-  // Crea/adjunta y abre el editor. Compartido por modo manual e IA.
-  const handleCreated = async (moduleId: string) => {
-    await attachToCourse(moduleId)
-    navigate(`/admin/modules/${moduleId}`)
-  }
-
-  const canCreate = title.es.trim().length > 0 && campaignId
+  const canCreate = title.es.trim().length > 0 && !!campaignId && !!courseId
   const adjustDuration = (delta: number) =>
     setDuration((prev) => Math.min(240, Math.max(5, prev + delta)))
 
@@ -228,8 +215,8 @@ export default function NewModulePage() {
         subtitle_es: subtitle.es.trim() ? subtitle.es : null,
         subtitle_en: subtitle.en.trim() ? subtitle.en : null,
         subtitle_pt: subtitle.pt.trim() ? subtitle.pt : null,
-      })
-      await handleCreated(id)
+      }, { id: courseId, sortOrder: nextCourseOrder() })
+      navigate(`/admin/modules/${id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('admin.modules.new.toast_create_error'))
       setSaving(false)
@@ -426,16 +413,22 @@ export default function NewModulePage() {
                 <label className="text-[12px] font-medium text-text-muted block mb-2">
                   Curso destino
                 </label>
-                <FilterDropdown
-                  value={courseId}
-                  onChange={setCourseId}
-                  options={[
-                    { value: '', label: '— Sin curso (Plan general) —' },
-                    ...courses.map((c) => ({ value: c.id, label: rowText(c) })),
-                  ]}
-                />
+                {courses.length > 0 ? (
+                  <FilterDropdown
+                    value={courseId}
+                    onChange={setCourseId}
+                    options={[
+                      ...(courseId ? [] : [{ value: '', label: t('admin.courses.pick_course') }]),
+                      ...courses.map((c) => ({ value: c.id, label: rowText(c) })),
+                    ]}
+                  />
+                ) : (
+                  <p className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[12px] text-text-muted">
+                    {t('admin.courses.no_courses_yet')}
+                  </p>
+                )}
                 <p className="text-[11px] text-text-subtle mt-1.5">
-                  El módulo se agregará a este curso. Puedes cambiarlo luego desde el curso.
+                  {t('admin.courses.module_needs_course')}
                 </p>
               </div>
             </GlassCard>

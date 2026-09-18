@@ -170,12 +170,10 @@ export const getModuleFeedbackForUser = async (moduleId: string, userId: string)
 // 3. FUNCIONES DEL FORMADOR (ADMIN/CAPACITADOR)
 // ==========================================
 /**
- * Techo de filas de progreso que se traen de una vez. No es paginación real (el
- * panel arma el árbol Campaña→Curso→Módulo→Aprendiz en memoria y necesita el
- * conjunto completo para agrupar), sino una red de seguridad: si la tabla crece
- * mucho, esto falla de forma visible en vez de intentar bajarla entera.
+ * Tamaño de página. El árbol y las estadísticas necesitan el conjunto completo:
+ * limitar la lectura a las últimas 500 filas descartaba actividad sin avisar.
  */
-const MAX_PROGRESS_ROWS = 500;
+const PROGRESS_PAGE_SIZE = 500;
 
 /** Trae filas por id en tandas, para no armar una URL kilométrica con .in(). */
 const fetchByIds = async <T>(
@@ -205,13 +203,21 @@ export const getPendingAttempts = async (opts?: { excludeSuperadmins?: boolean }
     // descargas que no dependían de cuántas evaluaciones hubiera que revisar,
     // sino del tamaño total del sitio. Ahora: solo las columnas que se usan, y
     // de las tablas de apoyo solo las filas que los intentos mencionan.
-    const { data: progressRows, error: progressError } = await supabase
-      .from('user_progress')
+    const readPage = (from: number) => supabase.from('user_progress')
       .select('id, user_id, campaign_id, attempts, updated_at')
-      .order('updated_at', { ascending: false })
-      .limit(MAX_PROGRESS_ROWS);
-
-    if (progressError) throw progressError;
+      .order('updated_at', { ascending: false }).order('id')
+      .range(from, from + PROGRESS_PAGE_SIZE - 1);
+    const first = await readPage(0);
+    if (first.error) throw first.error;
+    const progressRows = [...(first.data ?? [])];
+    let batchLength = progressRows.length;
+    while (batchLength === PROGRESS_PAGE_SIZE) {
+      const next = await readPage(progressRows.length);
+      if (next.error) throw next.error;
+      const batch = next.data ?? [];
+      progressRows.push(...batch);
+      batchLength = batch.length;
+    }
     if (!progressRows || progressRows.length === 0) {
       return { data: [], error: null };
     }

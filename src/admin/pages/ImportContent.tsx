@@ -14,7 +14,8 @@ import {
   type ExtractedDocument, type ExtractStage,
 } from '@/lib/documentExtract'
 import { runModuleAiGeneration } from '@/services/moduleAi.service'
-import { getCourseById, type CourseWithModules } from '@/services/courses.service'
+import { getCourseById, getCoursesForCampaign, type CourseWithModules } from '@/services/courses.service'
+import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
@@ -91,6 +92,21 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
       .catch(() => {})
   }, [courseId])
 
+  // Sin curso en la URL hay que elegir uno: un módulo ya no puede nacer suelto
+  // (2026-09-18). Se ofrecen los cursos del programa donde se va a crear.
+  const [courses, setCourses] = useState<CourseWithModules[]>([])
+  const [pickedCourseId, setPickedCourseId] = useState('')
+  useEffect(() => {
+    if (courseId || !campaignId) return
+    getCoursesForCampaign(campaignId)
+      .then((cs) => {
+        setCourses(cs)
+        setPickedCourseId((prev) => (cs.some((c) => c.id === prev) ? prev : ''))
+      })
+      .catch(() => setCourses([]))
+  }, [campaignId, courseId])
+  const targetCourse = course ?? courses.find((c) => c.id === pickedCourseId) ?? null
+
 
   const extractFile = async (file: File, manual: boolean) => {
     setError(null)
@@ -124,18 +140,18 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
   // Dispara la generación EN SEGUNDO PLANO y devuelve el control de inmediato:
   // el avance (y el botón Cancelar) viven en el indicador global de tareas.
   const handleGenerate = () => {
-    if (!doc || !campaignId) return
-    const nextOrder = course ? Math.max(0, ...course.modules.map((m) => m.course_sort_order)) + 1 : 1
+    if (!doc || !campaignId || !targetCourse) return
+    const nextOrder = Math.max(0, ...targetCourse.modules.map((m) => m.course_sort_order)) + 1
     runModuleAiGeneration({
       campaignId,
       instructions,
       doc,
       manualMode,
-      course: course ? { id: course.id, nextOrder } : null,
+      course: { id: targetCourse.id, nextOrder },
     })
     toast.success(i18n.t('admin.import.bg_started'))
-    // Volvemos al curso/lista; el módulo aparecerá cuando termine (aviso + acción).
-    navigate(course ? `/admin/courses/${courseId}` : '/admin/modules')
+    // Volvemos al curso; el módulo aparecerá ahí cuando termine (aviso + acción).
+    navigate(`/admin/courses/${targetCourse.id}`)
   }
 
   return (
@@ -298,6 +314,30 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
         )}
       </AnimatePresence>
 
+      {/* ── Curso destino (solo si no se llegó desde un curso) ── */}
+      {!course && (
+        <GlassCard intensity="subtle" padding="none" rounded="2xl" className="p-4 sm:p-6 mb-4">
+          <label className="text-[11px] uppercase tracking-widest text-text-subtle font-medium mb-2 block">
+            {i18n.t('admin.import.target_course')}
+          </label>
+          {courses.length > 0 ? (
+            <FilterDropdown
+              value={pickedCourseId}
+              onChange={setPickedCourseId}
+              options={[
+                ...(pickedCourseId ? [] : [{ value: '', label: i18n.t('admin.courses.pick_course') }]),
+                ...courses.map((c) => ({ value: c.id, label: rowText(c) })),
+              ]}
+            />
+          ) : (
+            <p className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[12px] text-text-muted">
+              {i18n.t('admin.courses.no_courses_yet')}
+            </p>
+          )}
+          <p className="text-[11px] text-text-subtle mt-1.5">{i18n.t('admin.courses.module_needs_course')}</p>
+        </GlassCard>
+      )}
+
       {/* ── Acción: generar (en segundo plano) ── */}
       <p className="flex items-center gap-1.5 text-[11px] text-text-subtle mb-3">
         <Sparkles className="h-3 w-3 shrink-0" />
@@ -307,7 +347,7 @@ export default function ImportContent({ embedded = false }: { embedded?: boolean
         <Button
           variant="neon"
           size="md"
-          disabled={!doc || !campaignId || extracting}
+          disabled={!doc || !campaignId || !targetCourse || extracting}
           onClick={handleGenerate}
           className="min-w-[200px] flex items-center justify-center gap-2"
         >

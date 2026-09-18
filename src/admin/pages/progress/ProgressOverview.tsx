@@ -335,7 +335,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       if (cell.mandatory) agg.mandatory++;
       if (cell.overdue) agg.overdue++;
       agg.modulesDone += cell.modulesDone;
-      if (cell.assigned) agg.modulesTotal += cell.modulesTotal;
+      if (cell.assigned || cell.started) agg.modulesTotal += cell.modulesTotal;
       agg.pending += cell.pending;
       if (cell.lastAt && (!agg.last || cell.lastAt > agg.last)) agg.last = cell.lastAt;
       byUser.set(cell.userId, agg);
@@ -392,9 +392,12 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     const pending = reached.reduce((s, p) => s + p.pendingReviews, 0);
     // "En riesgo": participó, pero su promedio no alcanza el mínimo de aprobación.
     const risk = reached.filter((p) => p.started > 0 && p.avgScore !== null && p.avgScore < 70).length;
-    const scored = reached.filter((p) => p.avgScore !== null);
-    const avgScore = scored.length
-      ? Math.round(scored.reduce((s, p) => s + (p.avgScore ?? 0), 0) / scored.length)
+    // La etiqueta dice "sobre N entregas": cada entrega pesa una vez.
+    // Promediar medias por persona daba más peso a quien hizo menos actividades.
+    const reachedIds = new Set(reached.map(p => p.id));
+    const deliveries = scopedActivity.filter(a => reachedIds.has(a.userId));
+    const avgScore = deliveries.length
+      ? Math.round(deliveries.reduce((sum, a) => sum + a.score, 0) / deliveries.length)
       : null;
     const studyMs = study.loaded ? reached.reduce((s, p) => s + p.studyMs, 0) : 0;
 
@@ -452,7 +455,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
       deliveries: scopedActivity.length,
       certificates: scopedCerts.length,
     };
-  }, [rows, study.loaded, scopedActivity.length, scopedCerts.length, assignmentsKnown]);
+  }, [rows, study.loaded, scopedActivity, scopedCerts.length, assignmentsKnown]);
 
   /* ── Tendencia: el mismo periodo, inmediatamente antes ─────────────────
      Un número sin comparación no se reporta, se mira. Solo tiene sentido con
@@ -1423,12 +1426,12 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             {
               key: 'compliance',
               label: t('admin.progress_overview.kpi_compliance', 'Cumplimiento obligatorio'),
-              value: kpi.compliance === null ? '—' : `${kpi.compliance}%`,
+              value: !journeyKnown || kpi.compliance === null ? '—' : `${kpi.compliance}%`,
               accent: '#f97316',
               active: focus === 'mandatory',
               onClick: kpi.mandatoryTotal > 0 ? () => toggleFocus('mandatory') : undefined,
               hint: !journeyKnown
-                ? t('admin.progress_overview.kpi_journey_unknown', 'Solo se pudo medir el temario: sin simuladores, mundo ni examen, esta cifra puede salir alta')
+                ? t('admin.progress_overview.stats_unavailable')
                 : kpi.mandatoryTotal > 0
                   ? t('admin.progress_overview.kpi_compliance_hint', { done: kpi.mandatoryDone, total: kpi.mandatoryTotal, defaultValue: '{{done}} de {{total}} asignaciones obligatorias terminadas' })
                   : t('admin.progress_overview.kpi_compliance_none', 'Ningún curso está marcado como obligatorio todavía'),

@@ -37,6 +37,11 @@ export interface PendingSurgery {
   undo: () => Promise<void>
   /** Confirma: migra el progreso y consuma los borrados. Devuelve a cuánta gente afectó. */
   finalize: () => Promise<number>
+  /**
+   * Módulos que siguen en el curso durante la ventana de Deshacer pero ya no
+   * cuentan (el absorbido de una unión): el editor los oculta de la lista.
+   */
+  hiddenModuleIds?: string[]
 }
 
 export interface SurgeryImpact {
@@ -506,11 +511,13 @@ export async function mergeModules(opts: MergeOptions): Promise<PendingSurgery> 
       : {}),
   })
 
-  // 4) El absorbido sale del curso y deja de estar publicado — vacío y visible
-  //    sería un módulo de 0 secciones en la ruta del aprendiz.
+  // 4) El absorbido deja de estar publicado — vacío y visible sería un módulo de
+  //    0 secciones en la ruta del aprendiz. NO sale del curso: un módulo ya no
+  //    puede quedar suelto (2026-09-18), y si la página se cerraba antes de
+  //    `finalize()` quedaba suelto para siempre. Se va al final del orden (el
+  //    editor lo oculta con `hiddenModuleIds`) y `finalize()` lo elimina.
   await updateModuleRow(absorbed.id, {
-    course_id: null,
-    course_sort_order: 0,
+    course_sort_order: 100000 + (absorbed.course_sort_order ?? 0),
     is_published: false,
   })
 
@@ -521,6 +528,7 @@ export async function mergeModules(opts: MergeOptions): Promise<PendingSurgery> 
       .from('modules')
       .select('id, course_sort_order')
       .eq('course_id', absorbed.course_id)
+      .neq('id', absorbed.id)
       .gt('course_sort_order', absorbed.course_sort_order ?? 0)
     for (const s of (siblings ?? []) as Array<{ id: string; course_sort_order: number }>) {
       closed.push(s)
@@ -556,7 +564,6 @@ export async function mergeModules(opts: MergeOptions): Promise<PendingSurgery> 
         key_takeaways_es: keep.key_takeaways_es ?? [],
       })
       await updateModuleRow(absorbed.id, {
-        course_id: absorbed.course_id ?? null,
         course_sort_order: absorbed.course_sort_order ?? 0,
         is_published: absorbed.is_published,
       })
@@ -576,6 +583,7 @@ export async function mergeModules(opts: MergeOptions): Promise<PendingSurgery> 
       await deleteModule(absorbed.id)
       return affected
     },
+    hiddenModuleIds: [absorbed.id],
   }
 }
 
@@ -631,6 +639,7 @@ export async function mergeManyModules(opts: {
       for (const s of steps) affected = Math.max(affected, await s.finalize())
       return affected
     },
+    hiddenModuleIds: steps.flatMap((s) => s.hiddenModuleIds ?? []),
   }
 }
 

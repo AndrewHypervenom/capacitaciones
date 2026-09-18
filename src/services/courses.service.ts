@@ -666,14 +666,6 @@ export async function addModuleToCourse(
   if (error) throw error
 }
 
-export async function removeModuleFromCourse(moduleId: string): Promise<void> {
-  const { error } = await supabase
-    .from('modules')
-    .update({ course_id: null, course_sort_order: 0 })
-    .eq('id', moduleId)
-  if (error) throw error
-}
-
 export async function reorderCourseModules(
   ordered: Array<{ id: string; course_sort_order: number }>,
 ): Promise<void> {

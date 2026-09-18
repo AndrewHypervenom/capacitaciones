@@ -5,6 +5,7 @@ import {
   AlignLeft,
   AlignRight,
   ArrowLeft,
+  BookA,
   BookOpen,
   Columns2,
   Eye,
@@ -85,6 +86,7 @@ import { BlockEditor } from '@/admin/components/BlockEditor'
 import { SortGameEditor } from '@/components/modules/blocks/SortGameEditor'
 import { ModuleAIPanel } from '@/admin/components/ModuleAIPanel'
 import { ModulePronunciationModal } from '@/admin/components/ModulePronunciationModal'
+import { ModuleVocabularyModal } from '@/admin/components/ModuleVocabularyModal'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { isUntranslated } from '@/services/translation.service'
@@ -1634,6 +1636,7 @@ export default function ModuleEditor() {
   // falla sola sin llevarse el título del curso de arriba.
   const [languageTarget, setLanguageTarget] = useState<string | null>(null)
   const [pronModuleOpen, setPronModuleOpen] = useState(false)
+  const [vocabOpen, setVocabOpen] = useState(false)
   useEffect(() => {
     const courseId = mod?.course_id
     if (!courseId) { setLanguageTarget(null); return }
@@ -2289,6 +2292,21 @@ export default function ModuleEditor() {
                 </Button>
               </Tooltip>
             )}
+            {/* Curso de idiomas: palabras que quien aprende puede oír y
+                consultar al pasar el ratón por encima, en todo el módulo. */}
+            {languageTarget && (
+              <Tooltip label={t('admin.modules.vocab.button_hint')} anchor="element">
+                <Button variant="glass" size="sm" onClick={() => setVocabOpen(true)}>
+                  <BookA className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t('admin.modules.vocab.button')}</span>
+                  {Array.isArray((mod.vocabulary as { terms?: unknown[] } | null | undefined)?.terms) && (
+                    <span className="rounded-full bg-neon-green/12 px-1.5 text-[10px] font-bold tabular-nums text-neon-green">
+                      {(mod.vocabulary as { terms: unknown[] }).terms.length}
+                    </span>
+                  )}
+                </Button>
+              </Tooltip>
+            )}
             {/* Traducir a EN/PT: el módulo nace en español y se traduce cuando
                 el capacitador lo da por terminado (ahorro de IA). "Terminado" =
                 el curso ya está publicado; hasta entonces el botón se bloquea. */}
@@ -2426,6 +2444,22 @@ export default function ModuleEditor() {
           sections={sections}
           onClose={() => setPronModuleOpen(false)}
           onApplied={() => {
+            invalidateModulesCache()
+            reloadModule()
+          }}
+        />
+      )}
+
+      {vocabOpen && languageTarget && (
+        <ModuleVocabularyModal
+          moduleId={mod.id}
+          moduleTitle={rowText(mod)}
+          campaignId={mod.campaign_id}
+          targetLang={languageTarget}
+          sections={sections}
+          current={mod.vocabulary}
+          onClose={() => setVocabOpen(false)}
+          onSaved={() => {
             invalidateModulesCache()
             reloadModule()
           }}

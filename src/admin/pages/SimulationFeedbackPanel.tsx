@@ -5,6 +5,7 @@ import {
   HeartHandshake, Clock, CheckCircle2, XCircle, Sparkles, PhoneCall, AlertTriangle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { readAllPages } from '@/services/readAllPages'
 import { getMyPeopleIds } from '@/services/org.service'
 import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
 import { useAuth } from '@/hooks/useAuth'
@@ -192,7 +193,9 @@ function aggregate(base: LearnerBase, attempts: SimAttempt[], kinds: Map<string,
     avgChecklist: soft.length ? Math.round(avg(soft.map((a) => a.checklist_pct))) : null,
     softCount: soft.length,
     resolvedRate: count ? Math.round((list.filter((a) => a.resolved).length / count) * 100) : 0,
-    status: computeStatus(count, bestScore, list.some((a) => a.resolved)),
+    // Puntaje alto y resolución deben pertenecer al MISMO intento. Un 100%
+    // abortado y un 20% resuelto no equivalen a una ejecución dominada.
+    status: computeStatus(count, bestScore, list.some((a) => a.resolved && a.score >= PASS_SCORE)),
     lastAt: list.length ? (toUtcMs(list[0].created_at) ?? 0) : 0,
   }
 }
@@ -231,6 +234,7 @@ export default function SimulationFeedbackPanel() {
   const { isSuperAdmin, isCapacitador, user, loading: authLoading } = useAuth()
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [learners, setLearners] = useState<LearnerBase[]>([])
   const [allAttempts, setAllAttempts] = useState<SimAttempt[]>([])
   /** slug → título legible del escenario (llamada u opción). */
@@ -281,33 +285,34 @@ export default function SimulationFeedbackPanel() {
 
     async function load() {
       setLoading(true)
+      setLoadError(false)
       try {
       // La RLS resuelve el alcance actual por curso; las campañas antiguas
       // no son un requisito para consultar contenido ni intentos autorizados.
       const myPeople = !isSuperAdmin ? await getMyPeopleIds() : null
 
       const [profileRes, attemptRes, callRes, choiceRes] = await Promise.all([
-        (() => {
+        readAllPages((from, to) => {
           // `*` a propósito: ver src/lib/activeUsers.ts (las cuentas dadas de
           // baja se filtran en memoria para no depender de la columna).
           let q = supabase.from('profiles').select('*').eq('role', 'learner')
           if (myPeople !== null) q = q.in('id', myPeople.length ? myPeople : ['00000000-0000-0000-0000-000000000000'])
-          return q
-        })(),
-        (() => {
+          return q.order('id').range(from, to)
+        }),
+        readAllPages((from, to) => {
           const q = supabase
             .from('simulator_attempts')
             .select('id,user_id,course_id,campaign_id,scenario_slug,score,checklist_pct,empathy_pct,resolved,duration_sec,ai_feedback,created_at')
-          return q
-        })(),
-        (() => {
+          return q.order('id').range(from, to)
+        }),
+        readAllPages((from, to) => {
           const q = supabase.from('scenarios').select('slug,title_es,title_en,title_pt,campaign_id,course_id').is('deleted_at', null)
-          return q
-        })(),
-        (() => {
+          return q.order('slug').range(from, to)
+        }),
+        readAllPages((from, to) => {
           const q = supabase.from('choice_scenarios').select('slug,title_es,campaign_id,course_id').is('deleted_at', null)
-          return q
-        })(),
+          return q.order('slug').range(from, to)
+        }),
       ])
 
       if (attemptRes.error) console.error('simulator_attempts query error:', attemptRes.error)
@@ -402,7 +407,7 @@ export default function SimulationFeedbackPanel() {
       ])
       setAllAttempts(attempts)
       } catch (e) {
-        if (!cancelled) console.error('SimulationFeedbackPanel load error:', e)
+        if (!cancelled) { setLoadError(true); console.error('SimulationFeedbackPanel load error:', e) }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -419,18 +424,19 @@ export default function SimulationFeedbackPanel() {
     if (!courseChosen || filterCourse === NO_COURSE) return
     let vivo = true
     void Promise.all([
-      supabase.from('course_assignments').select('user_id').eq('course_id', filterCourse),
-      getAudience(filterCourse).catch(() => null),
+      readAllPages((from, to) => supabase.from('course_assignments').select('user_id').eq('course_id', filterCourse).order('user_id').range(from, to)),
+      getAudience(filterCourse),
       supabase.from('courses').select('is_published').eq('id', filterCourse).maybeSingle(),
     ]).then(([asg, rule, course]) => {
       if (!vivo) return
+      if (asg.error || course.error) throw asg.error || course.error
       setReach({
         courseId: filterCourse,
         assigned: new Set(((asg.data ?? []) as Array<{ user_id: string }>).map((a) => a.user_id)),
         rule,
         published: (course.data as { is_published?: boolean } | null)?.is_published === true,
       })
-    })
+    }).catch(e => { if (vivo) { setLoadError(true); console.error('SimulationFeedbackPanel reach error:', e) } })
     return () => { vivo = false }
   }, [courseChosen, filterCourse])
 
@@ -546,7 +552,9 @@ export default function SimulationFeedbackPanel() {
       learners,
       totalAttempts,
       desempeno: Math.round(avg(withAttempts.map((r) => r.avgScore))),
-      resolucion: Math.round(avg(withAttempts.map((r) => r.resolvedRate))),
+      resolucion: totalAttempts > 0
+        ? Math.round(scoped.reduce((sum, r) => sum + r.attempts.filter(a => a.resolved).length, 0) / totalAttempts * 100)
+        : 0,
       // Promedio solo sobre quien las tiene medidas; si nadie, no hay KPI que dar.
       empatia: (() => {
         const vals = withAttempts.map((r) => r.avgEmpathy).filter((v): v is number => v !== null)
@@ -637,6 +645,7 @@ export default function SimulationFeedbackPanel() {
   const setSortKey = (key: SortKey) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }))
 
+  if (loadError) return <p role="alert" className="p-6 text-text-muted">{t('admin.progress_overview.stats_unavailable')}</p>
   const statusChips: Array<LearnerStatus | 'all'> = ['all', ...STATUS_ORDER]
 
   return (

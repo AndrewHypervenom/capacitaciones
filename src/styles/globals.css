@@ -503,3 +503,18 @@ body.protected-content [contenteditable='true'] {
     display: none !important;
   }
 }
+
+/* Lupa de idioma (cursos de idiomas): las palabras del vocabulario del módulo
+   se marcan con la API de resaltado del navegador, sin tocar el DOM de React.
+   Subrayado punteado discreto; la que está abierta se ilumina entera. */
+::highlight(lang-lens) {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: rgb(var(--neon-green) / 0.6);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+}
+::highlight(lang-lens-active) {
+  background-color: rgb(var(--neon-green) / 0.14);
+  color: rgb(var(--neon-green));
+}

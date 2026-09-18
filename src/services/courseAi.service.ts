@@ -8,7 +8,7 @@ import {
   type GeneratedModule,
 } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
-import { createCourse, addModuleToCourse } from '@/services/courses.service'
+import { createCourse } from '@/services/courses.service'
 import { consumeAiOperation, isQuotaExceeded, refundAiOperation } from '@/services/aiQuota.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { cropCaptures, suggestModuleSectionRange, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
@@ -146,8 +146,7 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
       bgTask.update(taskId, { detail: i18n.t('admin.courses.ai_step_course') })
       const titleToSave = incomplete ? `${description} (${i18n.t('bgtask.incomplete_badge')})` : description
       const course = await createCourse(campaignId, { title_es: titleToSave, description_es: null })
-      const moduleId = await saveGeneratedModule(campaignId, generated, images)
-      await addModuleToCourse(course.id, moduleId, 1)
+      await saveGeneratedModule(campaignId, generated, images, { id: course.id, sortOrder: 1 })
       invalidateModulesCache()
 
       const action = {

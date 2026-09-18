@@ -385,6 +385,28 @@ export interface PronunciationBlock {
 
 export type PronunciationLayout = 'list' | 'grid' | 'steps';
 
+/**
+ * Una palabra o expresión del idioma que se estudia, tal como aparece en el
+ * módulo. Con ella la «lupa de idioma» la subraya en cualquier parte del
+ * contenido y, al pasar por encima, muestra su pronunciación y significado.
+ */
+export interface VocabTerm {
+  text: string;
+  /** Transcripción AFI, sin barras. */
+  ipa?: string;
+  /** Qué significa en el módulo, en el idioma del sitio. */
+  meaning?: ML;
+  /** Clase de palabra corta ("verbo", "saludo"…), en el idioma del sitio. */
+  kind?: ML;
+}
+
+/** Vocabulario de un módulo de un curso de idiomas (`modules.vocabulary`). */
+export interface ModuleVocabulary {
+  /** Idioma que se estudia (BCP-47): la voz que pronuncia las palabras. */
+  lang: string;
+  terms: VocabTerm[];
+}
+
 // ─── Union type ─────────────────────────────────────────────────
 
 export type ContentBlock =

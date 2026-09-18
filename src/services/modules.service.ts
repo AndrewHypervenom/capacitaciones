@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { LearningModule, ModuleSection, SectionQuiz, VideoMarker, VideoQuizMarker } from '@/data/modules'
-import type { ContentBlock } from '@/types/blocks'
+import type { ContentBlock, ModuleVocabulary, VocabTerm } from '@/types/blocks'
 import type { GeneratedModule } from '@/services/ai.service'
 import { requestDeletion, type DeletionResult } from '@/services/audit.service'
 import { isMediaUrlSharedInCourse } from '@/services/mediaDuplicates.service'
@@ -175,6 +175,8 @@ export interface DbModuleRow {
   key_takeaways_en: string[] | null
   key_takeaways_pt: string[] | null
   sound_theme: string | null
+  /** Vocabulario del curso de idiomas. Opcional: `undefined` mientras no se corra el SQL 48. */
+  vocabulary?: import('@/types/database').Json | null
   is_published: boolean
   /** Módulo del que se clonó este (deep-copy). NULL = original. Ver cloneModule. */
   copied_from?: string | null
@@ -235,6 +237,34 @@ export interface DbQuizRow {
   explanation_pt: string | null
 }
 
+/**
+ * Lee `modules.vocabulary` sin confiar en su forma: viene de la base (y antes,
+ * de la IA). Lo que no sea una lista de términos con texto se descarta.
+ */
+export function parseVocabulary(raw: unknown): ModuleVocabulary | null {
+  if (!raw || typeof raw !== 'object') return null
+  const v = raw as { lang?: unknown; terms?: unknown }
+  if (typeof v.lang !== 'string' || !Array.isArray(v.terms)) return null
+  const terms = v.terms.filter(
+    (t): t is VocabTerm => !!t && typeof t === 'object' && typeof (t as VocabTerm).text === 'string' && !!(t as VocabTerm).text.trim(),
+  )
+  return terms.length ? { lang: v.lang, terms } : null
+}
+
+/**
+ * Guarda (o borra, con `null`) el vocabulario del módulo. Va directo a la base,
+ * igual que la práctica del módulo entero: no pasa por el SaveDock.
+ */
+export async function saveModuleVocabulary(moduleId: string, vocabulary: ModuleVocabulary | null): Promise<void> {
+  const { data, error } = await supabase
+    .from('modules')
+    .update({ vocabulary: vocabulary as unknown as import('@/types/database').Json | null })
+    .eq('id', moduleId)
+    .select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('NO_ROWS_UPDATED')
+}
+
 function dbRowToLearningModule(
   row: {
     id: string
@@ -258,6 +288,7 @@ function dbRowToLearningModule(
     key_takeaways_en: string[] | null
     key_takeaways_pt: string[] | null
     sound_theme?: string | null
+    vocabulary?: unknown
     module_sections: Array<{
       id: string
       sort_order: number
@@ -419,6 +450,8 @@ function dbRowToLearningModule(
       pt: pickList(rr, 'key_takeaways', 'pt'),
     },
     soundTheme: row.sound_theme ?? 'chime',
+    // Sin el SQL 48 la columna no viene y el módulo sigue como siempre.
+    vocabulary: parseVocabulary(row.vocabulary),
     sections,
   }
 }
@@ -733,7 +766,14 @@ export async function createModule(
     subtitle_en?: string | null
     subtitle_pt?: string | null
   },
+  /**
+   * Curso al que pertenece. Obligatorio: un módulo ya no puede existir suelto
+   * (2026-09-18). Va en el mismo insert —no en un paso aparte— para que la
+   * base (trigger `guard_module_course`, SQL 49) nunca vea un módulo sin curso.
+   */
+  course: { id: string; sortOrder: number },
 ): Promise<{ id: string }> {
+  if (!course?.id) throw new Error('MODULE_NEEDS_COURSE')
   const { data: maxRow } = await supabase
     .from('modules')
     .select('sort_order')
@@ -747,6 +787,8 @@ export async function createModule(
     .from('modules')
     .insert({
       campaign_id: campaignId,
+      course_id: course.id,
+      course_sort_order: course.sortOrder,
       sort_order: maxOrder + 1,
       objectives_es: [],
       key_takeaways_es: [],
@@ -788,12 +830,13 @@ export async function createModule(
 export async function cloneModule(
   sourceModuleId: string,
   opts: {
-    targetCourseId?: string | null
+    /** Curso donde queda la copia. Obligatorio: no hay módulos sueltos. */
+    targetCourseId: string
     courseSortOrder?: number
     /** Sufijo del título, p. ej. " (copia)". Vacío = mismo título que el original. */
     titleSuffix?: string
     onProgress?: (done: number, total: number) => void
-  } = {},
+  },
 ): Promise<{ id: string }> {
   const src = await getModuleWithSectionsRaw(sourceModuleId)
   const suffix = opts.titleSuffix ?? ''
@@ -809,7 +852,7 @@ export async function cloneModule(
 
   const basePayload = {
     campaign_id: src.campaign_id,
-    course_id: opts.targetCourseId ?? null,
+    course_id: opts.targetCourseId,
     course_sort_order: opts.courseSortOrder ?? 0,
     icon: src.icon,
     duration_min: src.duration_min,
@@ -827,6 +870,8 @@ export async function cloneModule(
     key_takeaways_en: src.key_takeaways_en,
     key_takeaways_pt: src.key_takeaways_pt,
     sound_theme: src.sound_theme,
+    // Solo si existe: sin el SQL 48 la columna no está y el insert fallaría.
+    ...(src.vocabulary ? { vocabulary: src.vocabulary } : {}),
     is_published: false,
     copied_from: sourceModuleId,
   }
@@ -1517,7 +1562,9 @@ export async function saveGeneratedSection(
 export async function saveGeneratedModule(
   campaignId: string,
   generated: GeneratedModule,
-  images: GenSourceImage[] = [],
+  images: GenSourceImage[],
+  /** Curso donde nace el módulo (obligatorio: no hay módulos sueltos). */
+  course: { id: string; sortOrder: number },
 ): Promise<string> {
   const { metadata, sections } = generated
   const { id: moduleId } = await createModule(campaignId, {
@@ -1530,7 +1577,7 @@ export async function saveGeneratedModule(
     subtitle_es: metadata.subtitle_es,
     subtitle_en: metadata.subtitle_en,
     subtitle_pt: metadata.subtitle_pt,
-  })
+  }, course)
 
   const meta = {
     objectives_es: metadata.objectives_es,

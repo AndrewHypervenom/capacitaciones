@@ -1124,7 +1124,7 @@ export async function analyzeDocument(opts: {
 }
 
 export interface AssistRequest {
-  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum' | 'pronunciation_plan' | 'pronunciation_module_plan'
+  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum' | 'pronunciation_plan' | 'pronunciation_module_plan' | 'vocabulary_module'
   contentType: 'section' | 'meta'
   sourceLang: string
   targetLangs?: string[]
@@ -1176,6 +1176,11 @@ export interface AssistRequest {
    * Práctica de pronunciación sobre el módulo entero (cursos de idiomas): todas
    * las secciones con sus bloques numerados, para que la IA elija los puntos.
    */
+  /** Vocabulario del módulo (cursos de idiomas): el texto de cada sección. */
+  vocabulary?: {
+    targetLang: string
+    sections: Array<{ index: number; heading?: string; text: string }>
+  }
   pronunciationModule?: {
     targetLang: string
     sections: Array<{
@@ -1198,6 +1203,11 @@ export interface PronunciationPlan {
     why?: string
     phrases: Array<{ text: string; ipa?: string; translation?: string; tip?: string }>
   }>
+}
+
+/** Lo que devuelve la IA al armar el vocabulario del módulo. */
+export interface VocabularyPlan {
+  terms: Array<{ text: string; ipa?: string; meaning?: string; kind?: string }>
 }
 
 /** Lo mismo sobre el módulo entero: cada práctica dice además en qué sección va. */

@@ -32,6 +32,7 @@ import {
   Map as MapIcon,
   MessageSquareHeart,
   Mic,
+  BookA,
   Monitor,
   PhoneCall,
   Plus,
@@ -48,6 +49,7 @@ import {
   Unlink,
   Unlock,
   Users,
+  Trash2,
   X,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -74,7 +76,6 @@ import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
   updateCourse,
-  removeModuleFromCourse,
   reorderCourseModules,
   getCourseCampaigns,
   setCourseCampaign,
@@ -103,7 +104,8 @@ import { getAudiencePopulation, matchesAudience, ruleIsEmpty, isLearnerRole, typ
 import { getOrganizations, getOrgUnits, createOrgUnit } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import { COUNTRIES } from '@/lib/countries'
-import { cloneModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import { cloneModule, deleteModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
+import { deletionToast } from '@/lib/deletionToast'
 import { setCourseOwner } from '@/services/ownership.service'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
 import { ModuleLibraryModal } from '@/admin/components/ModuleLibraryModal'
@@ -117,6 +119,8 @@ import { SurveyPanel } from '@/admin/components/SurveyPanel'
 import { Toggle } from '@/components/ui/Toggle'
 import { CertificatePensumPanel } from '@/admin/components/CertificatePensumPanel'
 import { TranslationModal } from '@/admin/components/TranslationModal'
+import { CourseVocabularyModal } from '@/admin/components/CourseVocabularyModal'
+import { ModuleRemoveDialog } from '@/admin/components/ModuleRemoveDialog'
 import { getCourseTranslationState } from '@/services/translation.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
 import { getAccessibleCampaigns, isTestScopeError } from '@/services/campaigns.service'
@@ -475,6 +479,7 @@ export default function CourseEditor() {
   // Traducción diferida: cuántas piezas del curso siguen solo en español.
   const [transPending, setTransPending] = useState(0)
   const [translateOpen, setTranslateOpen] = useState(false)
+  const [vocabOpen, setVocabOpen] = useState(false)
   // Estado del mundo del curso: undefined = cargando, null = no existe, objeto = existe (draft/published)
   const [world, setWorld] = useState<WorldRow | null | undefined>(undefined)
   const [publishingWorld, setPublishingWorld] = useState(false)
@@ -528,6 +533,12 @@ export default function CourseEditor() {
     label: string
     pending: PendingSurgery
   } | null>(null)
+  // Durante la ventana de Deshacer de una unión, el módulo absorbido sigue en
+  // el curso (ya no se deja suelto) pero no cuenta: la lista no lo muestra.
+  const hiddenModuleIds = pendingSurgery?.pending.hiddenModuleIds ?? []
+  // Papelera de un módulo en la pestaña Módulos: despublicar o borrar.
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; title: string; published: boolean } | null>(null)
+  const [removeBusy, setRemoveBusy] = useState<'unpublish' | 'delete' | null>(null)
 
   // Asignaciones — `*Base` = lo que hay en BD; `draft*` = edición local pendiente de guardar
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -547,6 +558,17 @@ export default function CourseEditor() {
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([])
   // Todas las personas activas, para listar en «Alcance» a quién le llega por la regla.
   const [audiencePeople, setAudiencePeople] = useState<AudiencePerson[]>([])
+  // Idioma que se estudia YA GUARDADO (no el del formulario): el vocabulario se
+  // arma con la voz del curso tal como la verá quien aprende.
+  const savedLanguageTarget = (course as { language_target?: string | null } | null)?.language_target ?? null
+  // Módulos vivos del curso, en su orden, para el vocabulario de todo el curso.
+  const vocabModules = useMemo(
+    () => (course?.modules ?? [])
+      .filter((m) => !m.deleted_at)
+      .sort((a, b) => a.course_sort_order - b.course_sort_order)
+      .map((m) => ({ id: m.id, title: rowText(m) || m.slug })),
+    [course?.modules],
+  )
   const unitNames = useMemo(() => new Map(orgUnits.map((x) => [x.id, x.name])), [orgUnits])
   const [assignments, setAssignments] = useState<CourseAssignmentRow[]>([])
   const [userSearch, setUserSearch] = useState('')
@@ -1433,6 +1455,11 @@ export default function CourseEditor() {
     )
   }
 
+  // Lo que muestra la pestaña Módulos (sin el absorbido de una unión en curso).
+  const listedModules = hiddenModuleIds.length
+    ? course.modules.filter((m) => !hiddenModuleIds.includes(m.id))
+    : course.modules
+
   // ─── Handlers ──────────────────────────────────────────────────
 
   /**
@@ -1975,13 +2002,38 @@ export default function CourseEditor() {
     }
   }
 
-  const handleRemoveModule = async (moduleId: string) => {
+  // Un módulo ya no se «saca» del curso: quedaba suelto, sin curso, y nadie lo
+  // volvía a encontrar (2026-09-18). La papelera ofrece despublicarlo (se queda
+  // en el curso como borrador) o borrarlo con el flujo de siempre.
+  const handleUnpublishModule = async () => {
+    if (!removeTarget) return
+    setRemoveBusy('unpublish')
     try {
-      await removeModuleFromCourse(moduleId)
+      await toggleModulePublished(removeTarget.id, false)
+      toast.success(t('admin.courses.remove_module.unpublished_ok', { title: removeTarget.title }))
       invalidateModulesCache()
+      setRemoveTarget(null)
       await reload()
-    } catch {
-      toast.error(t('admin.courses.error_save'))
+    } catch (e) {
+      toast.error(t('admin.courses.error_save'), errMsg(e))
+    } finally {
+      setRemoveBusy(null)
+    }
+  }
+
+  const handleDeleteModule = async () => {
+    if (!removeTarget) return
+    setRemoveBusy('delete')
+    try {
+      const result = await deleteModule(removeTarget.id)
+      toast.success(deletionToast(result, t('admin.modules.deleted_ok'), removeTarget.title))
+      invalidateModulesCache()
+      setRemoveTarget(null)
+      await reload()
+    } catch (e) {
+      toast.error(t('admin.modules.error_delete'), errMsg(e))
+    } finally {
+      setRemoveBusy(null)
     }
   }
 
@@ -3697,6 +3749,20 @@ export default function CourseEditor() {
                     )}
                   </div>
                 )}
+                {/* Vocabulario de todo el curso: Claude lee las secciones de
+                    cada módulo y elige las palabras que se subrayan. Solo con el
+                    idioma ya guardado (si no, sonaría con otra voz). */}
+                {savedLanguageTarget && form.language_target === savedLanguageTarget && vocabModules.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2 border-t border-line/70 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[12.5px] font-medium text-text">{t('admin.courses.vocab.card_title')}</p>
+                      <p className="text-[11.5px] leading-snug text-text-muted">{t('admin.courses.vocab.card_hint')}</p>
+                    </div>
+                    <Button variant="glass" size="sm" onClick={() => setVocabOpen(true)} className="shrink-0">
+                      <BookA className="h-3.5 w-3.5" /> {t('admin.courses.vocab.button', { count: vocabModules.length })}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -3960,20 +4026,20 @@ export default function CourseEditor() {
             <p className="text-[12px] text-text-muted mb-3">
               {t('admin.courses.course_modules_hint')}
             </p>
-            {course.modules.some((m) => !m.is_published) && (
+            {listedModules.some((m) => !m.is_published) && (
               <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3.5 py-2.5 mb-3">
                 <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-[12px] text-text-muted">{t('admin.courses.draft_modules_notice')}</p>
               </div>
             )}
-            {course.modules.length === 0 ? (
+            {listedModules.length === 0 ? (
               <GlassCard intensity="subtle" rounded="2xl" className="text-center p-8">
                 <BookOpen className="h-8 w-8 text-text-muted mx-auto mb-2" />
                 <p className="text-[13px] text-text-muted">{t('admin.courses.no_modules')}</p>
               </GlassCard>
             ) : (
               <div className="space-y-2">
-                {course.modules.map((mod, idx) => {
+                {listedModules.map((mod, idx) => {
                   const picked = selectedForMerge.includes(mod.id)
                   const sectionCount = sectionCountById[mod.id] ?? 0
                   return (
@@ -3990,7 +4056,7 @@ export default function CourseEditor() {
                     <div className="flex items-center gap-3 px-4 py-3">
                       {/* Marcar dos o más módulos hace aparecer la barra de unir.
                           Sin modos ni menús: la casilla está siempre a la vista. */}
-                      {course.modules.length > 1 && (
+                      {listedModules.length > 1 && (
                         <Tooltip label={t('admin.courses.tip_select_merge')} className="shrink-0">
                           <button
                             onClick={() => toggleMergeSelection(mod.id)}
@@ -4074,7 +4140,7 @@ export default function CourseEditor() {
                         <Tooltip label={t('admin.courses.tip_move_down')} className="shrink-0">
                           <button
                             onClick={() => handleMoveModule(idx, 1)}
-                            disabled={idx === course.modules.length - 1}
+                            disabled={idx === listedModules.length - 1}
                             className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/8 disabled:opacity-30 disabled:pointer-events-none transition-colors"
                             aria-label={t('admin.courses.move_down')}
                           >
@@ -4127,13 +4193,13 @@ export default function CourseEditor() {
                             {t('admin.courses.edit')}
                           </Link>
                         </Tooltip>
-                        <Tooltip label={t('admin.courses.tip_remove_module')} className="shrink-0" maxWidth={230}>
+                        <Tooltip label={t('admin.courses.tip_delete_module')} className="shrink-0" maxWidth={230}>
                           <button
-                            onClick={() => handleRemoveModule(mod.id)}
-                            aria-label={t('admin.courses.remove_from_course')}
+                            onClick={() => setRemoveTarget({ id: mod.id, title: rowText(mod), published: mod.is_published })}
+                            aria-label={t('admin.courses.remove_module.title')}
                             className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-danger hover:bg-danger/8 transition-colors"
                           >
-                            <X className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </Tooltip>
                       </div>
@@ -4221,6 +4287,27 @@ export default function CourseEditor() {
             </Link>
           </div>
         </div>
+      )}
+
+      {removeTarget && (
+        <ModuleRemoveDialog
+          title={removeTarget.title}
+          isPublished={removeTarget.published}
+          busy={removeBusy}
+          onUnpublish={() => { void handleUnpublishModule() }}
+          onDelete={() => { void handleDeleteModule() }}
+          onClose={() => setRemoveTarget(null)}
+        />
+      )}
+
+      {vocabOpen && course && savedLanguageTarget && (
+        <CourseVocabularyModal
+          courseTitle={rowText(course)}
+          campaignId={course.campaign_id}
+          targetLang={savedLanguageTarget}
+          modules={vocabModules}
+          onClose={() => setVocabOpen(false)}
+        />
       )}
 
       {translateOpen && (
