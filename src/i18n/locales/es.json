@@ -3270,7 +3270,13 @@
       "language_on": "En cada módulo aparece «Pronunciación del módulo»: la IA lee el módulo completo y decide en qué secciones y en qué punto conviene practicar en voz alta.",
       "language_off": "Actívalo si el curso enseña un idioma. Así la práctica de pronunciación se puede pedir para todo el módulo y no sección por sección.",
       "language_studied": "Idioma que se estudia",
-      "language_superadmin_only": "solo el superadmin lo cambia"
+      "language_superadmin_only": "solo el superadmin lo cambia",
+      "slug_label": "Dirección del curso (URL)",
+      "slug_from_title": "Sugerir desde el título",
+      "slug_hint": "Es lo que aparece en el enlace del curso. Solo minúsculas, números y guiones.",
+      "slug_changed_hint": "Al guardar, el curso queda en esta dirección y la anterior (/courses/{{old}}) deja de funcionar. El progreso de la gente no se toca.",
+      "slug_invalid": "La dirección debe tener entre 3 y 80 caracteres: minúsculas, números y guiones entre palabras.",
+      "slug_taken": "Esa dirección ya la usa otro curso. Elige otra."
     },
     "simulations": {
       "save": "Guardar",

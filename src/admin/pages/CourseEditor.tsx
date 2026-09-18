@@ -85,6 +85,8 @@ import {
   uploadCourseCover,
   COVER_MAX_BYTES,
   getCourseStats,
+  slugify,
+  isValidCourseSlug,
   type CourseWithModules,
   type CourseCampaignRow,
   type CourseAssignmentRow,
@@ -497,6 +499,7 @@ export default function CourseEditor() {
     is_onboarding: false,
     desktop_only: false,
     language_target: null as string | null,
+    slug: '',
     cover_fit: 'cover' as 'cover' | 'contain',
     // Límite de tiempo para terminarlo (ver src/lib/courseDeadline.ts).
     deadline_mode: 'none' as DeadlineMode,
@@ -681,6 +684,7 @@ export default function CourseEditor() {
       is_onboarding: c.is_onboarding ?? false,
       desktop_only: c.desktop_only ?? false,
       language_target: c.language_target ? normalizePronLang(c.language_target) : null,
+      slug: c.slug,
       cover_fit: c.cover_fit ?? 'cover',
       // Si el SQL del plazo todavía no se corrió, las columnas llegan
       // `undefined` y el curso se comporta como si no tuviera límite.
@@ -1449,6 +1453,14 @@ export default function CourseEditor() {
       if (!overwrite) return false
     }
 
+    // La dirección se valida antes de escribir nada: un guardado a medias
+    // (ficha sí, dirección no) confundiría más que un aviso claro.
+    const slugChanged = isSuperAdmin && form.slug !== course.slug
+    if (slugChanged && !isValidCourseSlug(form.slug)) {
+      toast.error(t('admin.courses.slug_invalid'))
+      return false
+    }
+
     setSaving(true)
     try {
       await updateCourse(course.id, {
@@ -1474,6 +1486,9 @@ export default function CourseEditor() {
         // Solo el superadmin la manda: a los demás la base se la ignoraría
         // igual (trigger guard_course_language_target).
         ...(languageReady && isSuperAdmin ? { language_target: form.language_target } : {}),
+        // Solo el superadmin cambia la dirección; a los demás la base se la
+        // ignora (trigger guard_course_slug).
+        ...(slugChanged ? { slug: form.slug } : {}),
         cover_fit: form.cover_fit,
         // El plazo se guarda coherente: las columnas del modo que NO está
         // activo se limpian, para que apagar y volver a encender no reviva una
@@ -1491,7 +1506,13 @@ export default function CourseEditor() {
       return true
     } catch (e) {
       console.error('[CourseEditor] handleSaveInfo', e)
-      toast.error(t('admin.courses.error_save'), errMsg(e))
+      // Dirección ocupada: la tiene otro curso (courses.slug es UNIQUE).
+      const code = (e as { code?: string } | null)?.code
+      if (slugChanged && (code === '23505' || /slug_taken/.test(errMsg(e)))) {
+        toast.error(t('admin.courses.slug_taken'))
+      } else {
+        toast.error(t('admin.courses.error_save'), errMsg(e))
+      }
       return false
     } finally {
       setSaving(false)
@@ -3247,6 +3268,71 @@ export default function CourseEditor() {
                 })}
               </p>
             </div>
+
+            {/* ── Dirección del curso (/courses/<slug>) ─────────────────────
+                Solo el superadmin la cambia. Se crea del título al nacer el
+                curso y antes quedaba fija para siempre (p. ej. «curso-carlos»).
+                Al cambiarla, la vieja deja de existir: todo enlace de la app se
+                arma con la actual y el progreso va por id, no por dirección. */}
+            {isSuperAdmin && (
+              <div>
+                <label
+                  htmlFor="course-slug"
+                  className="block text-[12px] font-medium text-text-muted mb-1.5"
+                >
+                  {t('admin.courses.slug_label')}
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                  <div
+                    className={cn(
+                      inputCls,
+                      'flex min-w-0 flex-1 items-center gap-0 p-0 overflow-hidden',
+                      form.slug !== course.slug && !isValidCourseSlug(form.slug) && 'border-red-500/60',
+                    )}
+                  >
+                    <span className="shrink-0 select-none pl-3 text-[12px] text-text-subtle">/courses/</span>
+                    <input
+                      id="course-slug"
+                      value={form.slug}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          // Se limpia mientras se escribe: sin tildes, sin
+                          // mayúsculas, espacios → guiones.
+                          slug: e.target.value
+                            .toLowerCase()
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .replace(/[\s_]+/g, '-')
+                            .replace(/[^a-z0-9-]/g, '')
+                            .replace(/-{2,}/g, '-')
+                            .slice(0, 80),
+                        })
+                      }
+                      onBlur={() => setForm((f) => ({ ...f, slug: f.slug.replace(/^-+|-+$/g, '') }))}
+                      spellCheck={false}
+                      autoComplete="off"
+                      className="min-w-0 flex-1 bg-transparent py-2 pr-3 text-[13px] text-text outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({ ...form, slug: slugify(form.title_es).replace(/^-+|-+$/g, '') || form.slug })
+                    }
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-line px-3 py-2 text-[12px] font-medium text-text-muted transition-colors hover:bg-glass/8 hover:text-text"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {t('admin.courses.slug_from_title')}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-text-subtle">
+                  {form.slug !== course.slug
+                    ? t('admin.courses.slug_changed_hint', { old: course.slug })
+                    : t('admin.courses.slug_hint')}
+                </p>
+              </div>
+            )}
 
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

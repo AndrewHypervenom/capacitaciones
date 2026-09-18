@@ -494,7 +494,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithModules
   return data ? sortCourseModules(data as unknown as CourseWithModules) : null
 }
 
-function slugify(s: string): string {
+export function slugify(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
@@ -504,6 +504,15 @@ function slugify(s: string): string {
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .slice(0, 60)
+}
+
+/**
+ * ¿Sirve como dirección de curso? Minúsculas, números y guiones sueltos entre
+ * palabras, de 3 a 80 caracteres. La base impone la misma regla (trigger
+ * `guard_course_slug`); esto solo evita mandar algo que va a rebotar.
+ */
+export function isValidCourseSlug(s: string): boolean {
+  return s.length >= 3 && s.length <= 80 && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(s)
 }
 
 export async function createCourse(

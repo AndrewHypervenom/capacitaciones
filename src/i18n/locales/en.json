@@ -3270,7 +3270,13 @@
       "language_on": "Every module shows \"Module pronunciation\": the AI reads the whole module and decides in which sections, and where in them, speaking practice pays off.",
       "language_off": "Turn it on if the course teaches a language. Pronunciation practice can then be requested for the whole module instead of section by section.",
       "language_studied": "Language studied",
-      "language_superadmin_only": "only the superadmin can change it"
+      "language_superadmin_only": "only the superadmin can change it",
+      "slug_label": "Course address (URL)",
+      "slug_from_title": "Suggest from title",
+      "slug_hint": "This is what shows in the course link. Lowercase letters, numbers and hyphens only.",
+      "slug_changed_hint": "When you save, the course moves to this address and the old one (/courses/{{old}}) stops working. People's progress is not affected.",
+      "slug_invalid": "The address must be 3 to 80 characters: lowercase letters, numbers and hyphens between words.",
+      "slug_taken": "Another course already uses that address. Pick a different one."
     },
     "simulations": {
       "save": "Save",

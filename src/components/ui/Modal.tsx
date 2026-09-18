@@ -177,10 +177,13 @@ export function Modal({
         </div>
 
         {/* ── Cuerpo: lo ÚNICO que se desplaza ── */}
-        <div className="relative min-h-0 flex-1">
+        {/* Columna flex y no `h-full`: el diálogo solo tiene max-h (no altura
+            definida), así que un 100% no se resuelve, el cuerpo crecía con el
+            contenido y el overflow-hidden de fuera lo cortaba SIN scroll. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={bodyRef}
-            className="h-full overflow-y-auto overscroll-contain px-5 pb-4 pt-0.5"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4 pt-0.5"
           >
             {children}
           </div>

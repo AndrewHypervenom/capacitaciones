@@ -3270,7 +3270,13 @@
       "language_on": "Cada módulo mostra «Pronúncia do módulo»: a IA lê o módulo inteiro e decide em quais seções, e em que ponto delas, vale a pena praticar em voz alta.",
       "language_off": "Ative se o curso ensina um idioma. Assim a prática de pronúncia pode ser pedida para o módulo inteiro e não seção por seção.",
       "language_studied": "Idioma estudado",
-      "language_superadmin_only": "só o superadmin altera"
+      "language_superadmin_only": "só o superadmin altera",
+      "slug_label": "Endereço do curso (URL)",
+      "slug_from_title": "Sugerir a partir do título",
+      "slug_hint": "É o que aparece no link do curso. Só letras minúsculas, números e hifens.",
+      "slug_changed_hint": "Ao salvar, o curso passa para este endereço e o anterior (/courses/{{old}}) deixa de funcionar. O progresso das pessoas não é afetado.",
+      "slug_invalid": "O endereço deve ter de 3 a 80 caracteres: letras minúsculas, números e hifens entre as palavras.",
+      "slug_taken": "Outro curso já usa esse endereço. Escolha outro."
     },
     "simulations": {
       "save": "Salvar",
