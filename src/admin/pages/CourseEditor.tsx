@@ -120,6 +120,7 @@ import { Toggle } from '@/components/ui/Toggle'
 import { CertificatePensumPanel } from '@/admin/components/CertificatePensumPanel'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { CourseVocabularyModal } from '@/admin/components/CourseVocabularyModal'
+import { CourseDescriptionAiModal } from '@/admin/components/CourseDescriptionAiModal'
 import { ModuleRemoveDialog } from '@/admin/components/ModuleRemoveDialog'
 import { getCourseTranslationState } from '@/services/translation.service'
 import { getCourseWorld, syncCourseWorldById, setCourseWorldPublished, getLinkableWorlds, linkWorldToCourse, unlinkWorldFromCourse, type WorldRow } from '@/services/worlds.service'
@@ -480,6 +481,8 @@ export default function CourseEditor() {
   const [transPending, setTransPending] = useState(0)
   const [translateOpen, setTranslateOpen] = useState(false)
   const [vocabOpen, setVocabOpen] = useState(false)
+  // Descripción con IA (sale solo del contenido del curso).
+  const [descAiOpen, setDescAiOpen] = useState(false)
   // Estado del mundo del curso: undefined = cargando, null = no existe, objeto = existe (draft/published)
   const [world, setWorld] = useState<WorldRow | null | undefined>(undefined)
   const [publishingWorld, setPublishingWorld] = useState(false)
@@ -3306,9 +3309,23 @@ export default function CourseEditor() {
               />
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-text-muted mb-1.5">
-                {t('admin.courses.field_description')} ({lang.toUpperCase()})
-              </label>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <label className="block text-[12px] font-medium text-text-muted">
+                  {t('admin.courses.field_description')} ({lang.toUpperCase()})
+                </label>
+                <Tooltip label={t('admin.courses.desc_ai.button_hint')} maxWidth={260} anchor="element">
+                  <button
+                    type="button"
+                    onClick={() => setDescAiOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-brand-magenta/30 bg-brand-magenta/8 px-2.5 py-1 text-[11.5px] font-medium text-brand-magenta transition-colors hover:bg-brand-magenta/15"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    {form[`description_${lang}`].trim()
+                      ? t('admin.courses.desc_ai.button_redo')
+                      : t('admin.courses.desc_ai.button')}
+                  </button>
+                </Tooltip>
+              </div>
               <RichTextArea
                 value={form[`description_${lang}`]}
                 onChange={(v) => setForm({ ...form, [`description_${lang}`]: v })}
@@ -4297,6 +4314,20 @@ export default function CourseEditor() {
           onUnpublish={() => { void handleUnpublishModule() }}
           onDelete={() => { void handleDeleteModule() }}
           onClose={() => setRemoveTarget(null)}
+        />
+      )}
+
+      {descAiOpen && course && (
+        <CourseDescriptionAiModal
+          courseId={course.id}
+          courseTitle={form[`title_${lang}`].trim() || rowText(course)}
+          campaignId={course.campaign_id}
+          lang={lang}
+          level={form.level}
+          languageTarget={savedLanguageTarget}
+          current={form[`description_${lang}`]}
+          onApply={(text) => setForm((f) => ({ ...f, [`description_${lang}`]: text }))}
+          onClose={() => setDescAiOpen(false)}
         />
       )}
 

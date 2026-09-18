@@ -9,6 +9,9 @@ import {
 } from '@/services/ai.service'
 import { saveGeneratedModule } from '@/services/modules.service'
 import { createCourse } from '@/services/courses.service'
+import { loadCourseSources, generateCourseDescription, hasEnoughSource } from '@/services/courseDescription.service'
+import { supabase } from '@/lib/supabase'
+import { currentAiLang } from '@/lib/aiLang'
 import { consumeAiOperation, isQuotaExceeded, refundAiOperation } from '@/services/aiQuota.service'
 import { invalidateModulesCache } from '@/hooks/useModules'
 import { cropCaptures, suggestModuleSectionRange, type ExtractedDocument, type ExtractedImage } from '@/lib/documentExtract'
@@ -149,6 +152,14 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
       await saveGeneratedModule(campaignId, generated, images, { id: course.id, sortOrder: 1 })
       invalidateModulesCache()
 
+      // 4) Descripción del curso, escrita SOLO con el módulo recién creado. Antes
+      // el curso nacía con la descripción vacía. Es un extra: si falla (o la
+      // función aún no tiene el modo desplegado), el curso queda igual de bien.
+      if (!incomplete && !signal.aborted) {
+        bgTask.update(taskId, { detail: i18n.t('admin.courses.ai_step_description') })
+        await writeInitialDescription(course.id, description).catch(() => {})
+      }
+
       const action = {
         label: i18n.t('admin.courses.ai_open_course'),
         run: () => globalNavigate(`/admin/courses/${course.id}`),
@@ -171,4 +182,21 @@ export function runCourseAiGeneration(input: CourseAiInput): void {
       }
     }
   })()
+}
+
+/** Descripción de un curso recién creado con IA, desde su propio contenido. */
+async function writeInitialDescription(courseId: string, courseTitle: string): Promise<void> {
+  const lang = currentAiLang()
+  const modules = await loadCourseSources(courseId, lang)
+  if (!hasEnoughSource(modules)) return
+  const out = await generateCourseDescription({
+    courseTitle,
+    lang,
+    modules,
+    length: 'medium',
+    include: ['outcomes', 'audience'],
+  })
+  if (out.insufficient || !out.description) return
+  const patch = { [`description_${lang}`]: out.description } as { description_es: string }
+  await supabase.from('courses').update(patch).eq('id', courseId)
 }

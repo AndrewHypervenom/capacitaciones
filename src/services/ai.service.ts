@@ -1124,7 +1124,7 @@ export async function analyzeDocument(opts: {
 }
 
 export interface AssistRequest {
-  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum' | 'pronunciation_plan' | 'pronunciation_module_plan' | 'vocabulary_module'
+  action: 'translate' | 'improve' | 'split_plan' | 'merge_plan' | 'pensum' | 'pronunciation_plan' | 'pronunciation_module_plan' | 'vocabulary_module' | 'course_description'
   contentType: 'section' | 'meta'
   sourceLang: string
   targetLangs?: string[]
@@ -1176,6 +1176,28 @@ export interface AssistRequest {
    * Práctica de pronunciación sobre el módulo entero (cursos de idiomas): todas
    * las secciones con sus bloques numerados, para que la IA elija los puntos.
    */
+  /**
+   * Descripción del curso: el contenido entero del curso, que es la única
+   * fuente con la que la IA puede escribir (ver courseDescription.service).
+   */
+  courseDescription?: {
+    courseTitle: string
+    level?: string
+    totalMinutes?: number
+    languageTarget?: string | null
+    length: 'short' | 'medium' | 'long'
+    include: string[]
+    instruction?: string
+    current?: string
+    modules: Array<{
+      title: string
+      subtitle?: string | null
+      minutes?: number
+      objectives?: string[]
+      takeaways?: string[]
+      sections: Array<{ heading: string; text: string }>
+    }>
+  }
   /** Vocabulario del módulo (cursos de idiomas): el texto de cada sección. */
   vocabulary?: {
     targetLang: string
