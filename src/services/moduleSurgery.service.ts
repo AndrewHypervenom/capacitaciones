@@ -128,6 +128,18 @@ function blocksText(value: unknown, key = ''): string {
   return ''
 }
 
+/**
+ * Texto de la sección para leerlo en el modal: el cuerpo o, si la sección se
+ * armó con bloques (cuerpo vacío), el texto de sus bloques en párrafos.
+ */
+export function sectionReadableText(s: DbSectionRow): string[] {
+  const body = sectionBody(s).filter((l) => l.trim())
+  if (body.length > 0) return body
+  return (s.blocks_data ?? [])
+    .map((b) => blocksText(b).replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+}
+
 export interface SectionProfile {
   /** Caracteres de texto para leer (cuerpo + bloques). */
   chars: number
@@ -329,13 +341,15 @@ export interface MergeAiPlan extends Partial<PartMeta> {
 
 /** Lo que devuelve la Edge Function, tal cual (en snake_case). */
 interface RawSplitPlan {
+  /** Cada parte trae first_section + first_heading (dónde empieza) y sus textos. */
+  parts?: unknown
+  /** Formas viejas, sin first_section en las partes. */
   cuts?: unknown
   cut_reasons?: unknown
   summary?: unknown
   /** Forma vieja, de cuando solo había un corte (EF sin redesplegar). */
   cut_index?: unknown
   cut_reason?: unknown
-  parts?: unknown
 }
 
 /**
@@ -362,12 +376,79 @@ const asTexts = (v: unknown) => {
   return typeof list === 'string' && list.trim() ? [list.trim()] : []
 }
 
-/** Pasa la respuesta cruda de la IA a la forma del modal, sin fiarse de su forma. */
-function readSplitPlan(raw: RawSplitPlan, sectionCount: number): SplitAiPlan {
-  const out: SplitAiPlan = {}
+/** Para comparar títulos: sin tildes, mayúsculas, signos ni espacios de más. */
+const foldHeading = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+
+/**
+ * Pasa la respuesta cruda de la IA a la forma del modal, sin fiarse de su forma.
+ *
+ * Cada parte dice dónde empieza con DOS datos: el número de su primera sección
+ * y el título de esa sección copiado. El número solo se equivocaba de a uno
+ * (daba la ÚLTIMA sección de la parte anterior) y la fonética acababa en la
+ * parte de gramática; el título copiado desempata: si apunta a otra sección,
+ * manda el título.
+ */
+function readSplitPlan(raw: RawSplitPlan, headings: string[]): SplitAiPlan {
+  const out: SplitAiPlan = { summary: asText(raw.summary) }
+  const n = headings.length
+  const folded = headings.map(foldHeading)
+  const list = (v: unknown) => {
+    const items = asTexts(v).filter(Boolean)
+    return items.length > 0 ? items : undefined
+  }
+
+  const rawParts = unwrap(raw.parts)
+  const parts = (Array.isArray(rawParts) ? rawParts : []).map((p) => {
+    const part = (unwrap(p) ?? {}) as Record<string, unknown>
+    return {
+      start: startOf(part),
+      reason: asText(part.reason) ?? '',
+      text: {
+        title_es: asText(part.title_es),
+        subtitle_es: asText(part.subtitle_es),
+        objectives_es: list(part.objectives_es),
+        key_takeaways_es: list(part.key_takeaways_es),
+        closing_es: asText(part.closing_es),
+        intro_es: asText(part.intro_es),
+      } as SplitAiPart,
+    }
+  })
+
+  function startOf(part: Record<string, unknown>): number | undefined {
+    const byNumber = typeof part.first_section === 'number' ? Math.round(part.first_section) : undefined
+    const heading = typeof part.first_heading === 'string' ? foldHeading(part.first_heading) : ''
+    if (heading) {
+      const matches = folded.flatMap((h, i) => (h === heading ? [i] : []))
+      // Si el título se repite, el más cercano al número que dio.
+      if (matches.length > 0) {
+        return matches.reduce((best, i) =>
+          byNumber !== undefined && Math.abs(i - byNumber) < Math.abs(best - byNumber) ? i : best,
+        )
+      }
+    }
+    return byNumber
+  }
+
+  if (parts.some((p) => p.start !== undefined)) {
+    // La parte 1 empieza en 0 siempre; las demás, donde digan, en orden y sin
+    // repetir. Los textos viajan pegados a su parte aunque vengan desordenadas.
+    const valid = parts
+      .map((p, k) => (k === 0 ? { ...p, start: 0 } : p))
+      .filter((p): p is typeof p & { start: number } => p.start !== undefined && p.start >= 0 && p.start <= n - 1)
+      .sort((a, b) => a.start - b.start)
+      .filter((p, i, arr) => i === 0 || p.start !== arr[i - 1].start)
+    if (valid[0]?.start !== 0) valid.unshift({ start: 0, reason: '', text: {} })
+    out.cuts = valid.slice(1).map((p) => p.start)
+    out.cutReasons = valid.slice(1).map((p) => p.reason)
+    out.parts = valid.map((p) => p.text)
+    return out
+  }
+
+  // Formas viejas: lista de cortes suelta, o un solo corte (EF sin redesplegar).
+  const rawCuts = unwrap(raw.cuts)
   let cuts: number[] | undefined
   let reasons: string[] = []
-  const rawCuts = unwrap(raw.cuts)
   if (Array.isArray(rawCuts)) {
     cuts = rawCuts.map(Number)
     reasons = asTexts(raw.cut_reasons)
@@ -376,34 +457,15 @@ function readSplitPlan(raw: RawSplitPlan, sectionCount: number): SplitAiPlan {
     reasons = [asText(raw.cut_reason) ?? '']
   }
   if (cuts) {
-    // Las razones siguen a su corte aunque la IA los mande desordenados.
     const pairs = cuts
       .map((c, i) => ({ c: Math.round(c), r: reasons[i] ?? '' }))
-      .filter((p) => Number.isFinite(p.c) && p.c >= 1 && p.c <= sectionCount - 1)
+      .filter((p) => Number.isFinite(p.c) && p.c >= 1 && p.c <= n - 1)
       .sort((a, b) => a.c - b.c)
       .filter((p, i, arr) => i === 0 || p.c !== arr[i - 1].c)
     out.cuts = pairs.map((p) => p.c)
     out.cutReasons = pairs.map((p) => p.r)
   }
-  out.summary = asText(raw.summary)
-  const rawParts = unwrap(raw.parts)
-  if (Array.isArray(rawParts)) {
-    out.parts = rawParts.map((p) => {
-      const part = (unwrap(p) ?? {}) as Record<string, unknown>
-      const list = (v: unknown) => {
-        const items = asTexts(v).filter(Boolean)
-        return items.length > 0 ? items : undefined
-      }
-      return {
-        title_es: asText(part.title_es),
-        subtitle_es: asText(part.subtitle_es),
-        objectives_es: list(part.objectives_es),
-        key_takeaways_es: list(part.key_takeaways_es),
-        closing_es: asText(part.closing_es),
-        intro_es: asText(part.intro_es),
-      }
-    })
-  }
+  if (parts.length > 0) out.parts = parts.map((p) => p.text)
   return out
 }
 
@@ -439,7 +501,7 @@ export async function planSplitWithAi(opts: {
 }): Promise<SplitAiPlan> {
   const mod = await getModuleWithSectionsRaw(opts.moduleId)
   const summary = toSurgeryModule(mod)
-  const sectionCount = mod.module_sections.length
+  const headings = summary.sections.map((s) => s.heading_es)
 
   const ask = async (want: SurgeryAiWant[], cuts?: number[]) => {
     const { data } = await moduleAiAssist({
@@ -457,7 +519,7 @@ export async function planSplitWithAi(opts: {
         modules: [summary],
       },
     })
-    return readSplitPlan((data ?? {}) as RawSplitPlan, sectionCount)
+    return readSplitPlan((data ?? {}) as RawSplitPlan, headings)
   }
 
   const plan = await ask(opts.want, opts.cuts)

@@ -23,7 +23,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { AiReviewNotice } from '@/components/ui/AiReviewNotice'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { consumeAiOperation, isQuotaExceeded } from '@/services/aiQuota.service'
-import { rowText, rowList } from '@/lib/contentLang'
+import { rowText } from '@/lib/contentLang'
 import {
   chunkEven,
   estimateSectionMinutes,
@@ -31,6 +31,7 @@ import {
   getSurgeryImpact,
   planSplitWithAi,
   sectionProfile,
+  sectionReadableText,
   splitDuration,
   splitModule,
   type DbModuleWithSections,
@@ -387,7 +388,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
     const toSection = (s: DbSectionRow): PreviewSection => ({
       id: s.id,
       heading: rowText(s, 'heading') || t('admin.surgery.untitled_section'),
-      body: rowList(s, 'body'),
+      body: sectionReadableText(s),
       hasQuiz: (s.section_quizzes ?? []).length > 0,
       hasMedia: !!s.media_url,
     })
@@ -805,7 +806,7 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
                           <AnimatePresence initial={false}>
                             {peek === s.id && (
                               <SectionBody
-                                lines={rowList(s, 'body')}
+                                lines={sectionReadableText(s)}
                                 empty={t('admin.surgery.section_empty')}
                               />
                             )}
