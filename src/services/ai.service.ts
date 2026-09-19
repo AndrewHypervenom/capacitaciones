@@ -1136,15 +1136,20 @@ export interface AssistRequest {
    */
   surgery?: {
     want: Array<'cut' | 'meta' | 'bridge'>
+    /** split_plan: cortes ya decididos por el capacitador (inicio de cada parte nueva). */
+    cuts?: number[]
+    /** Forma vieja de `cuts`, con un solo corte. */
     cutIndex?: number
     /** Qué corregir respecto al intento anterior ("más corto", "sin tecnicismos"). */
     instruction?: string
     modules: Array<{
       title_es: string
       subtitle_es?: string | null
+      duration_min?: number
       objectives_es?: string[]
       key_takeaways_es?: string[]
-      sections: Array<{ heading_es: string; excerpt_es: string }>
+      /** `profile_es`: qué trae la sección (video, preguntas, texto, minutos). */
+      sections: Array<{ heading_es: string; excerpt_es: string; profile_es?: string }>
     }>
   }
   /**

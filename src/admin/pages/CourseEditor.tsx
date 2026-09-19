@@ -4376,9 +4376,9 @@ export default function CourseEditor() {
           moduleId={splitModuleId}
           campaignId={course.campaign_id}
           onClose={() => setSplitModuleId(null)}
-          onApplied={async ({ pending }) => {
+          onApplied={async ({ pending, parts }) => {
             setSplitModuleId(null)
-            setPendingSurgery({ key: Date.now(), label: t('admin.surgery.split_done'), pending })
+            setPendingSurgery({ key: Date.now(), label: t('admin.surgery.split_done', { count: parts }), pending })
             await afterSurgery()
           }}
         />
