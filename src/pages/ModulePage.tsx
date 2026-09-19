@@ -797,6 +797,10 @@ export default function ModulePage() {
     // premio que se acaba de ganar (y nadie volvería a buscarlo).
     if (unlockedSims.length > 0) { setUnlockOpen(true); return; }
     if (nextModule) setTimeout(() => nav(`/modules/${nextModule.id}`), 600);
+    // Último módulo del curso: el siguiente paso (mundo, práctica, examen) vive
+    // en la página del curso. Quedarse aquí dejaba al aprendiz sin salida y
+    // tenía que volver al panel y entrar otra vez al curso.
+    else if (backCourse) setTimeout(() => nav(backTo), 600);
   };
 
   /**
@@ -932,6 +936,12 @@ export default function ModulePage() {
         {nextModule && (
           <Button variant={completed ? 'neon' : 'glass'} size="md" onClick={() => nav(`/modules/${nextModule.id}`)}>
             {t('module.next')} <ChevronRight className="h-4 w-4" />
+          </Button>
+        )}
+        {/* Último módulo: la salida es el curso, donde está lo que sigue. */}
+        {!nextModule && backCourse && (
+          <Button variant={completed ? 'neon' : 'glass'} size="md" onClick={() => nav(backTo)}>
+            {t('module.course_next_step')} <ChevronRight className="h-4 w-4" />
           </Button>
         )}
       </div>
