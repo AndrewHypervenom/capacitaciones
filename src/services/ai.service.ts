@@ -1223,6 +1223,8 @@ export interface PronunciationPlan {
     after_index: number
     title: string
     why?: string
+    /** Cómo se muestran las frases; la IA lo elige según el tipo de práctica. */
+    layout?: string
     phrases: Array<{ text: string; ipa?: string; translation?: string; tip?: string }>
   }>
 }

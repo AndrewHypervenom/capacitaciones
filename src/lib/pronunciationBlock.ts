@@ -12,6 +12,8 @@ export function buildPronunciationBlock(s: Suggestion, targetLang: string, lang:
     type: 'pronunciation',
     lang: normalizePronLang(targetLang),
     title: ml(s.title),
+    // Solo si es uno de los tres válidos; si no, el bloque usa su diseño por defecto.
+    ...(s.layout === 'list' || s.layout === 'grid' || s.layout === 'steps' ? { layout: s.layout } : {}),
     phrases: (s.phrases ?? [])
       .filter((p) => p.text?.trim())
       .map((p) => ({ text: p.text.trim(), ipa: p.ipa?.trim() || undefined, translation: ml(p.translation), tip: ml(p.tip) })),

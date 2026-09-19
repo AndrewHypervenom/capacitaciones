@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, Eye, EyeOff, Mic, RotateCcw, Volume2, X } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, Mic, RotateCcw, Undo2, Volume2, X } from 'lucide-react'
 import type { ContentBlock, PronunciationBlock } from '@/types/blocks'
 import { buildPronunciationBlock } from '@/lib/pronunciationBlock'
 import type { PronunciationPlan } from '@/services/ai.service'
@@ -34,14 +34,24 @@ export function PronunciationPlanCard({
   const target = normalizePronLang(plan.target_lang || 'en-US')
   const [chosen, setChosen] = useState<Set<number>>(() => new Set(suggestions.map((_, i) => i)))
   const [previewing, setPreviewing] = useState<Set<number>>(() => new Set())
+  // Frases quitadas ("índice:frase"): se ven tachadas y no se insertan.
+  const [dropped, setDropped] = useState<Set<string>>(() => new Set())
   const langLabel = PRONUNCIATION_LANGS.find((l) => l.value === target)?.label ?? target
 
-  const flip = (set: React.Dispatch<React.SetStateAction<Set<number>>>, i: number) => set((prev) => {
+  const flip = <T,>(set: React.Dispatch<React.SetStateAction<Set<T>>>, i: T) => set((prev) => {
     const next = new Set(prev)
     if (next.has(i)) next.delete(i)
     else next.add(i)
     return next
   })
+
+  /** La práctica con solo las frases que siguen puestas. */
+  const kept = (s: Suggestion, i: number): Suggestion => ({
+    ...s,
+    phrases: (s.phrases ?? []).filter((_, k) => !dropped.has(`${i}:${k}`)),
+  })
+  const willInsert = (s: Suggestion, i: number) => chosen.has(i) && kept(s, i).phrases.length > 0
+  const insertCount = suggestions.filter((s, i) => willInsert(s, i)).length
 
   const afterIndex = (s: Suggestion) => Math.max(-1, Math.min(blocks.length - 1, Math.round(Number(s.after_index))))
 
@@ -57,8 +67,8 @@ export function PronunciationPlanCard({
   const insert = () => onInsert(
     suggestions
       .map((s, i) => ({ s, i }))
-      .filter(({ i }) => chosen.has(i))
-      .map(({ s }) => ({ afterIndex: afterIndex(s), block: buildPronunciationBlock(s, target, lang) }))
+      .filter(({ s, i }) => willInsert(s, i))
+      .map(({ s, i }) => ({ afterIndex: afterIndex(s), block: buildPronunciationBlock(kept(s, i), target, lang) }))
       .filter((x) => x.block.phrases.length > 0),
   )
 
@@ -88,7 +98,8 @@ export function PronunciationPlanCard({
       {plan.reason && <p className="text-[11px] text-text-muted leading-snug">{plan.reason}</p>}
 
       {suggestions.map((s, i) => {
-        const on = chosen.has(i)
+        const keptPhrases = kept(s, i).phrases.length
+        const on = chosen.has(i) && keptPhrases > 0
         const open = previewing.has(i)
         return (
           <div
@@ -103,6 +114,7 @@ export function PronunciationPlanCard({
                 id={`pron-sug-${i}`}
                 type="checkbox"
                 checked={on}
+                disabled={keptPhrases === 0}
                 onChange={() => flip(setChosen, i)}
                 className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-neon-green cursor-pointer"
               />
@@ -110,6 +122,9 @@ export function PronunciationPlanCard({
                 <p className="text-[12px] font-semibold text-text">{s.title}</p>
                 <p className="text-[10.5px] text-text-subtle">{where(afterIndex(s))}</p>
                 {s.why && <p className="text-[10.5px] text-text-muted mt-0.5">{s.why}</p>}
+                {keptPhrases === 0 && (
+                  <p className="text-[10.5px] text-amber-600 dark:text-amber-400 mt-0.5">{i18n.t('admin.modules.pron_module.all_removed')}</p>
+                )}
               </label>
               <button
                 type="button"
@@ -133,12 +148,16 @@ export function PronunciationPlanCard({
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
                   {i18n.t('admin.modules.ai_panel.pron_preview_label')}
                 </p>
-                <PronunciationBlockRenderer block={buildPronunciationBlock(s, target, lang)} language={lang} />
+                <PronunciationBlockRenderer block={buildPronunciationBlock(kept(s, i), target, lang)} language={lang} />
               </div>
             ) : (
               <ul className={cn('pl-5 space-y-0.5', !on && 'opacity-60')}>
-                {(s.phrases ?? []).map((p, k) => (
-                  <li key={k} className="flex items-center gap-1.5 text-[11px] text-text-muted min-w-0">
+                {(s.phrases ?? []).map((p, k) => {
+                  const key = `${i}:${k}`
+                  const gone = dropped.has(key)
+                  const hint = gone ? i18n.t('admin.modules.pron_module.phrase_restore') : i18n.t('admin.modules.pron_module.phrase_remove')
+                  return (
+                  <li key={k} className={cn('flex items-center gap-1.5 text-[11px] text-text-muted min-w-0', gone && 'opacity-50')}>
                     <button
                       type="button"
                       onClick={() => void speak(p.text, target)}
@@ -147,10 +166,24 @@ export function PronunciationPlanCard({
                     >
                       <Volume2 className="h-3 w-3" />
                     </button>
-                    <span className="font-medium text-text" lang={target}>{p.text}</span>
-                    {p.translation && <span className="truncate">— {p.translation}</span>}
+                    <span className={cn('font-medium text-text', gone && 'line-through')} lang={target}>{p.text}</span>
+                    {p.translation && <span className={cn('min-w-0 flex-1 truncate', gone && 'line-through')}>— {p.translation}</span>}
+                    <Tooltip label={hint} anchor="element">
+                      <button
+                        type="button"
+                        onClick={() => flip(setDropped, key)}
+                        aria-label={hint}
+                        className={cn(
+                          'ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
+                          gone ? 'text-neon-green hover:bg-neon-green/10' : 'text-text-subtle hover:bg-danger/10 hover:text-danger',
+                        )}
+                      >
+                        {gone ? <Undo2 className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                      </button>
+                    </Tooltip>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
           </div>
@@ -160,12 +193,12 @@ export function PronunciationPlanCard({
       {suggestions.length > 0 && (
         <Button
           size="sm"
-          disabled={chosen.size === 0}
+          disabled={insertCount === 0}
           onClick={insert}
           className="w-full justify-center"
         >
           <CheckCircle2 className="h-3.5 w-3.5" />
-          {i18n.t('admin.modules.ai_panel.pron_insert', { count: chosen.size })}
+          {i18n.t('admin.modules.ai_panel.pron_insert', { count: insertCount })}
         </Button>
       )}
     </div>

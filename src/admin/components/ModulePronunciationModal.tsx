@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, Loader2, Mic, RotateCcw, Volume2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, Loader2, Mic, RotateCcw, Trash2, Undo2, Volume2, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { AiCreditsNotice } from '@/components/ui/AiCreditsNotice'
@@ -11,11 +11,14 @@ import { PronunciationBlockRenderer } from '@/components/modules/blocks/Pronunci
 import { moduleAiAssist, type ModulePronunciationPlan } from '@/services/ai.service'
 import { consumeAiOperation, isQuotaExceeded, refundAiOperation } from '@/services/aiQuota.service'
 import { getModuleWithSectionsRaw, setSectionBlocks, type DbSectionRow } from '@/services/modules.service'
-import type { ContentBlock } from '@/types/blocks'
+import type { ContentBlock, PronunciationBlock } from '@/types/blocks'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { toast } from '@/stores/toastStore'
 import { blockPlainText } from '@/lib/blockPlainText'
 import { initialContentLang, rowText } from '@/lib/contentLang'
 import { PRONUNCIATION_LANGS, speak } from '@/lib/speech'
 import { cn } from '@/lib/cn'
+import { Tooltip } from '@/components/ui/Tooltip'
 
 type Lang = 'es' | 'en' | 'pt'
 type Suggestion = ModulePronunciationPlan['suggestions'][number]
@@ -82,13 +85,21 @@ export function ModulePronunciationModal({
   onApplied: () => void
 }) {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const lang = initialContentLang() as Lang
+  // Prácticas que ya están puestas y que se quitaron desde aquí (id de sección
+  // + posición). Se ocultan al momento; el editor relee al cerrar.
+  const [removedExisting, setRemovedExisting] = useState<Set<string>>(new Set())
+  const [removingKey, setRemovingKey] = useState<string | null>(null)
   const [phase, setPhase] = useState<'intro' | 'loading' | 'plan' | 'saving' | 'done'>('intro')
   const [error, setError] = useState<string | null>(null)
   const [snaps, setSnaps] = useState<SectionSnap[]>([])
   const [plan, setPlan] = useState<ModulePronunciationPlan | null>(null)
   const [chosen, setChosen] = useState<Set<number>>(new Set())
   const [previewing, setPreviewing] = useState<Set<number>>(new Set())
+  // Frases que el capacitador quitó de una práctica ("índice:frase"). Se ven
+  // tachadas y se pueden devolver; no entran ni en la vista previa ni al insertar.
+  const [dropped, setDropped] = useState<Set<string>>(new Set())
   const [applied, setApplied] = useState<Applied[]>([])
   const [skipped, setSkipped] = useState(0)
   const [undone, setUndone] = useState(false)
@@ -96,12 +107,20 @@ export function ModulePronunciationModal({
   const langLabel = PRONUNCIATION_LANGS.find((l) => l.value === targetLang)?.label ?? targetLang
   const busy = phase === 'loading' || phase === 'saving'
 
-  const flip = (set: React.Dispatch<React.SetStateAction<Set<number>>>, i: number) => set((prev) => {
+  const flip = <T,>(set: React.Dispatch<React.SetStateAction<Set<T>>>, i: T) => set((prev) => {
     const next = new Set(prev)
     if (next.has(i)) next.delete(i)
     else next.add(i)
     return next
   })
+
+  /** La práctica con solo las frases que siguen puestas. */
+  const kept = (s: Suggestion, i: number): Suggestion => ({
+    ...s,
+    phrases: s.phrases.filter((_, k) => !dropped.has(`${i}:${k}`)),
+  })
+  /** Entra al insertar: marcada y con al menos una frase. */
+  const willInsert = (s: Suggestion, i: number) => chosen.has(i) && kept(s, i).phrases.length > 0
 
   const analyze = async () => {
     setPhase('loading')
@@ -142,9 +161,11 @@ export function ModulePronunciationModal({
         throw new Error(t('admin.modules.ai_panel.pron_outdated_function'))
       }
 
-      // Se limpia lo que la IA pueda devolver fuera de rango y se deja una
-      // práctica por sección (la regla del prompt, por si no la cumple).
-      const seen = new Set<number>()
+      // Se limpia lo que la IA pueda devolver fuera de rango. Una sección densa
+      // puede llevar varias prácticas (hasta 3), pero nunca dos tras el mismo
+      // bloque: antes se dejaba solo una por sección y todo salía con el mismo molde.
+      const seen = new Set<string>()
+      const perSection = new Map<number, number>()
       const suggestions = d.suggestions
         .map((s) => {
           const si = Math.round(Number(s.section_index))
@@ -156,11 +177,20 @@ export function ModulePronunciationModal({
         })
         .filter((s): s is Suggestion => !!s)
         .sort((a, b) => a.section_index - b.section_index || a.after_index - b.after_index)
-        .filter((s) => (seen.has(s.section_index) ? false : (seen.add(s.section_index), true)))
+        .filter((s) => {
+          const key = `${s.section_index}:${s.after_index}`
+          const n = perSection.get(s.section_index) ?? 0
+          if (seen.has(key) || n >= 3) return false
+          seen.add(key)
+          perSection.set(s.section_index, n + 1)
+          return true
+        })
+        .slice(0, 12)
 
       setPlan({ ...d, target_lang: targetLang, suggestions })
       setChosen(new Set(suggestions.map((_, i) => i)))
       setPreviewing(new Set())
+      setDropped(new Set())
       setPhase('plan')
     } catch (e) {
       if (charged) await refundAiOperation('assist').catch(() => {})
@@ -190,8 +220,8 @@ export function ModulePronunciationModal({
       const byId = new Map(fresh.module_sections.map((s) => [s.id, s]))
       const bySection = new Map<number, Suggestion[]>()
       plan.suggestions.forEach((s, i) => {
-        if (!chosen.has(i)) return
-        bySection.set(s.section_index, [...(bySection.get(s.section_index) ?? []), s])
+        if (!willInsert(s, i)) return
+        bySection.set(s.section_index, [...(bySection.get(s.section_index) ?? []), kept(s, i)])
       })
 
       const done: Applied[] = []
@@ -247,7 +277,61 @@ export function ModulePronunciationModal({
     }
   }
 
+  /** Las prácticas de pronunciación que el módulo YA tiene, sección por sección. */
+  const existing = useMemo(() => sections.flatMap((sec, si) => {
+    const all = Array.isArray(sec.blocks_data) ? (sec.blocks_data as ContentBlock[]) : []
+    return all
+      .map((b, bi) => ({ b, bi }))
+      .filter(({ b }) => b.type === 'pronunciation')
+      .map(({ b, bi }) => ({
+        key: `${sec.id}:${bi}`,
+        // Al quitar una, las siguientes de la sección corren de posición cuando
+        // el editor relee: lo quitado se recuerda por contenido, no por índice.
+        gone: `${sec.id}:${JSON.stringify(b)}`,
+        sectionId: sec.id,
+        sectionIndex: si,
+        sectionName: rowText(sec, 'heading'),
+        blockIndex: bi,
+        block: b as PronunciationBlock,
+        raw: JSON.stringify(sec.blocks_data ?? null),
+      }))
+  }).filter((x) => !removedExisting.has(x.gone)), [sections, removedExisting])
+
+  /**
+   * Quita una práctica ya puesta. Se relee la sección justo antes: si alguien la
+   * cambió mientras tanto, la posición ya no es fiable y no se toca nada.
+   */
+  const removeExisting = async (x: (typeof existing)[number]) => {
+    const title = x.block.title?.[lang] || x.block.title?.es || x.block.phrases[0]?.text || ''
+    const ok = await confirm({
+      title: t('admin.modules.pron_module.existing_remove_title'),
+      description: t('admin.modules.pron_module.existing_remove_desc', { title, count: x.block.phrases.length }),
+      confirmLabel: t('admin.modules.pron_module.existing_remove_cta'),
+    })
+    if (!ok) return
+    setRemovingKey(x.key)
+    setError(null)
+    try {
+      const fresh = await getModuleWithSectionsRaw(moduleId)
+      const row = fresh.module_sections.find((r) => r.id === x.sectionId)
+      if (!row || JSON.stringify(row.blocks_data ?? null) !== x.raw) {
+        setError(t('admin.modules.pron_module.existing_changed'))
+        return
+      }
+      const all = Array.isArray(row.blocks_data) ? (row.blocks_data as ContentBlock[]) : []
+      await setSectionBlocks(x.sectionId, all.filter((_, k) => k !== x.blockIndex))
+      setRemovedExisting((prev) => new Set(prev).add(x.gone))
+      toast.success(t('admin.modules.pron_module.existing_removed'))
+      onApplied()
+    } catch (e) {
+      setError((e as Error).message === 'NO_ROWS_UPDATED' ? t('admin.modules.pron_module.no_permission') : (e as Error).message)
+    } finally {
+      setRemovingKey(null)
+    }
+  }
+
   const suggestions = plan?.suggestions ?? []
+  const insertCount = suggestions.filter((s, i) => willInsert(s, i)).length
   const insertedCount = useMemo(
     () => applied.reduce((n, a) => n + a.after.length - a.before.length, 0),
     [applied],
@@ -270,9 +354,9 @@ export function ModulePronunciationModal({
           <Button variant="glass" size="sm" onClick={analyze} disabled={busy}>
             <RotateCcw className="h-3.5 w-3.5" /> {t('admin.modules.ai_panel.regenerate')}
           </Button>
-          <Button size="sm" onClick={insert} disabled={busy || chosen.size === 0}>
+          <Button size="sm" onClick={insert} disabled={busy || insertCount === 0}>
             {phase === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-            {t('admin.modules.ai_panel.pron_insert', { count: chosen.size })}
+            {t('admin.modules.ai_panel.pron_insert', { count: insertCount })}
           </Button>
         </>
       )
@@ -329,6 +413,45 @@ export function ModulePronunciationModal({
                 </li>
               ))}
             </ul>
+
+            {existing.length > 0 && (
+              <section className="space-y-1.5 pt-1">
+                <p className="text-[12px] font-semibold text-text">
+                  {t('admin.modules.pron_module.existing_title', { count: existing.length })}
+                </p>
+                <p className="text-[11.5px] text-text-subtle">{t('admin.modules.pron_module.existing_hint')}</p>
+                <ul className="max-h-[36vh] divide-y divide-line/60 overflow-y-auto rounded-xl border border-line custom-scrollbar">
+                  {existing.map((x) => {
+                    const title = x.block.title?.[lang] || x.block.title?.es || t('admin.modules.pron_module.existing_untitled')
+                    const removing = removingKey === x.key
+                    return (
+                      <li key={x.key} className="flex items-center gap-2.5 px-3 py-2">
+                        <Mic className="h-3.5 w-3.5 shrink-0 text-neon-magenta" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[12.5px] font-medium text-text">{title}</p>
+                          <p className="truncate text-[11px] text-text-subtle">
+                            {t('admin.modules.pron_module.section_n', { n: x.sectionIndex + 1, name: x.sectionName || t('common.untitled') })}
+                            {' · '}
+                            <span lang={x.block.lang}>{x.block.phrases.map((p) => p.text).join(' · ')}</span>
+                          </p>
+                        </div>
+                        <Tooltip label={t('admin.modules.pron_module.existing_remove_title')} anchor="element">
+                          <button
+                            type="button"
+                            onClick={() => void removeExisting(x)}
+                            disabled={!!removingKey}
+                            aria-label={t('admin.modules.pron_module.existing_remove_title')}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-danger/8 hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+                          >
+                            {removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          </button>
+                        </Tooltip>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            )}
           </>
         )}
 
@@ -342,8 +465,32 @@ export function ModulePronunciationModal({
                 {t('admin.modules.pron_module.nothing')}
               </p>
             )}
+            {suggestions.length > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-glass-border/15 px-3 py-2">
+                <p className="text-[11.5px] text-text-muted">
+                  {t('admin.modules.pron_module.pick_hint', { count: insertCount, total: suggestions.length })}
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setChosen(new Set(suggestions.map((_, i) => i)))}
+                    className="rounded-lg px-2 py-1 text-[11px] font-semibold text-text-muted hover:bg-glass/8 hover:text-text"
+                  >
+                    {t('admin.modules.pron_module.pick_all')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChosen(new Set())}
+                    className="rounded-lg px-2 py-1 text-[11px] font-semibold text-text-muted hover:bg-glass/8 hover:text-text"
+                  >
+                    {t('admin.modules.pron_module.pick_none')}
+                  </button>
+                </div>
+              </div>
+            )}
             {suggestions.map((s, i) => {
-              const on = chosen.has(i)
+              const keptPhrases = kept(s, i).phrases.length
+              const on = chosen.has(i) && keptPhrases > 0
               const open = previewing.has(i)
               const snap = snaps[s.section_index]
               return (
@@ -359,6 +506,7 @@ export function ModulePronunciationModal({
                       id={`pron-mod-${i}`}
                       type="checkbox"
                       checked={on}
+                      disabled={keptPhrases === 0}
                       onChange={() => flip(setChosen, i)}
                       className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-neon-green"
                     />
@@ -372,6 +520,9 @@ export function ModulePronunciationModal({
                       <p className="text-[13px] font-semibold text-text">{s.title}</p>
                       <p className="text-[11px] text-text-subtle">{where(s)}</p>
                       {s.why && <p className="mt-0.5 text-[11px] text-text-muted">{s.why}</p>}
+                      {keptPhrases === 0 && (
+                        <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">{t('admin.modules.pron_module.all_removed')}</p>
+                      )}
                     </label>
                     <button
                       type="button"
@@ -394,12 +545,15 @@ export function ModulePronunciationModal({
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
                         {t('admin.modules.ai_panel.pron_preview_label')}
                       </p>
-                      <PronunciationBlockRenderer block={buildPronunciationBlock(s, targetLang, lang)} language={lang} />
+                      <PronunciationBlockRenderer block={buildPronunciationBlock(kept(s, i), targetLang, lang)} language={lang} />
                     </div>
                   ) : (
                     <ul className={cn('space-y-0.5 pl-5', !on && 'opacity-60')}>
-                      {s.phrases.map((p, k) => (
-                        <li key={k} className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-text-muted">
+                      {s.phrases.map((p, k) => {
+                        const key = `${i}:${k}`
+                        const gone = dropped.has(key)
+                        return (
+                        <li key={k} className={cn('group flex min-w-0 items-center gap-1.5 text-[11.5px] text-text-muted', gone && 'opacity-50')}>
                           <button
                             type="button"
                             onClick={() => void speak(p.text, targetLang)}
@@ -408,10 +562,26 @@ export function ModulePronunciationModal({
                           >
                             <Volume2 className="h-3 w-3" />
                           </button>
-                          <span className="font-medium text-text" lang={targetLang}>{p.text}</span>
-                          {p.translation && <span className="truncate">— {p.translation}</span>}
+                          <span className={cn('font-medium text-text', gone && 'line-through')} lang={targetLang}>{p.text}</span>
+                          {p.translation && <span className={cn('min-w-0 flex-1 truncate', gone && 'line-through')}>— {p.translation}</span>}
+                          <Tooltip label={gone ? t('admin.modules.pron_module.phrase_restore') : t('admin.modules.pron_module.phrase_remove')} anchor="element">
+                            <button
+                              type="button"
+                              onClick={() => flip(setDropped, key)}
+                              aria-label={gone ? t('admin.modules.pron_module.phrase_restore') : t('admin.modules.pron_module.phrase_remove')}
+                              className={cn(
+                                'ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
+                                gone
+                                  ? 'text-neon-green hover:bg-neon-green/10'
+                                  : 'text-text-subtle hover:bg-danger/10 hover:text-danger',
+                              )}
+                            >
+                              {gone ? <Undo2 className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                            </button>
+                          </Tooltip>
                         </li>
-                      ))}
+                        )
+                      })}
                     </ul>
                   )}
                 </div>
