@@ -464,6 +464,11 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
           )
         } else if (plan.cuts) {
           toast.info(t('admin.surgery.ai_no_split'))
+        } else {
+          // Ni cortes ni "no separes": la respuesta no sirvió. Se dice, en vez
+          // de dejar la línea donde estaba como si la IA la hubiera elegido.
+          toast.error(t('admin.surgery.ai_no_cuts'))
+          return
         }
         setAiSummary(plan.summary ?? null)
       }

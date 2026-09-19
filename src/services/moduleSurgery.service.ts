@@ -389,7 +389,14 @@ const foldHeading = (s: string) =>
  * parte de gramática; el título copiado desempata: si apunta a otra sección,
  * manda el título.
  */
-function readSplitPlan(raw: RawSplitPlan, headings: string[]): SplitAiPlan {
+export function readSplitPlan(input: RawSplitPlan, headings: string[]): SplitAiPlan {
+  // Envoltorio de más ({ "respuesta": { parts: … } }): se entra a la única clave.
+  let raw = input
+  const keys = Object.keys(raw ?? {})
+  if (!('parts' in raw) && !('cuts' in raw) && keys.length === 1) {
+    const inner = unwrap((raw as Record<string, unknown>)[keys[0]])
+    if (inner && typeof inner === 'object' && !Array.isArray(inner)) raw = inner as RawSplitPlan
+  }
   const out: SplitAiPlan = { summary: asText(raw.summary) }
   const n = headings.length
   const folded = headings.map(foldHeading)
@@ -519,7 +526,13 @@ export async function planSplitWithAi(opts: {
         modules: [summary],
       },
     })
-    return readSplitPlan((data ?? {}) as RawSplitPlan, headings)
+    const plan = readSplitPlan((data ?? {}) as RawSplitPlan, headings)
+    // Si pidió cortes y no vino ninguno, la respuesta cruda queda en la consola
+    // para poder ver qué mandó la IA (el modal avisa con un error).
+    if (want.includes('cut') && plan.cuts === undefined) {
+      console.warn('[planSplitWithAi] la IA no devolvió cortes', data)
+    }
+    return plan
   }
 
   const plan = await ask(opts.want, opts.cuts)

@@ -1503,7 +1503,8 @@
       "balance_label": "How it is split",
       "ai_summary_label": "AI reasoning",
       "ai_no_split": "The AI thinks this module works better without splitting. Your cuts were left as they were.",
-      "ai_empty": "The AI returned no titles or texts for the parts. Press «Redo with AI» or write them yourself."
+      "ai_empty": "The AI returned no titles or texts for the parts. Press «Redo with AI» or write them yourself.",
+      "ai_no_cuts": "The AI did not return where to cut. Press «Apply AI» again or move the cuts yourself."
     },
     "preview": {
       "title": "Preview",

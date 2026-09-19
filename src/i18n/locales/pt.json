@@ -1503,7 +1503,8 @@
       "balance_label": "Como fica a divisão",
       "ai_summary_label": "Critério da IA",
       "ai_no_split": "A IA acha que este módulo funciona melhor sem separar. Seus cortes ficaram como estavam.",
-      "ai_empty": "A IA não devolveu títulos nem textos para as partes. Clique em «Refazer com a IA» ou escreva-os à mão."
+      "ai_empty": "A IA não devolveu títulos nem textos para as partes. Clique em «Refazer com a IA» ou escreva-os à mão.",
+      "ai_no_cuts": "A IA não devolveu onde cortar. Clique em «Aplicar IA» de novo ou mova os cortes à mão."
     },
     "preview": {
       "title": "Pré-visualização",
