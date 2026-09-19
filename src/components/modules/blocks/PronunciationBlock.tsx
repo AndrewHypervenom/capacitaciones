@@ -9,6 +9,7 @@ import {
   voiceInfoFor, type ListenError, type PronunciationResult, type SpeechRate, type VoiceInfo, normalizePronLang,
 } from '@/lib/speech';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { ipaToReadable } from '@/lib/ipaReadable';
 import { cn } from '@/lib/cn';
 
 interface Props {
@@ -145,7 +146,8 @@ function PhraseCard({ phrase, number, lang, language, canListen, speaking, onPla
   const translation = pick(phrase.translation, language);
   const tip = pick(phrase.tip, language);
   const ipa = phrase.ipa?.replace(/^\/|\/$/g, '');
-  const sounds = pick(phrase.sounds, language);
+  // Lo generado antes de «Así suena» solo trae AFI: se arma desde ahí.
+  const sounds = pick(phrase.sounds, language) || ipaToReadable(ipa, language);
 
   const record = () => {
     if (recording) { stopRef.current?.(); return; }
@@ -174,13 +176,13 @@ function PhraseCard({ phrase, number, lang, language, canListen, speaking, onPla
   return (
     <div
       className={cn(
-        'group relative flex h-full flex-col overflow-hidden rounded-2xl border bg-surface transition-all duration-300 ease-apple',
+        'group relative flex h-full flex-col overflow-hidden rounded-2xl border bg-surface transition-[border-color,box-shadow] duration-300 ease-apple',
         hero ? 'p-5 sm:p-6' : 'p-4',
         speaking
           ? 'border-neon-green/40 shadow-[0_0_0_4px_rgb(var(--neon-green)/0.06)]'
           : recording
             ? 'border-neon-magenta/40 shadow-[0_0_0_4px_rgb(var(--neon-magenta)/0.06)]'
-            : 'border-line hover:-translate-y-0.5 hover:border-text-subtle/30 hover:shadow-card-hover',
+            : 'border-line hover:border-text-subtle/30 hover:shadow-card-hover',
       )}
     >
       {/* Frase + escuchar */}
@@ -195,21 +197,26 @@ function PhraseCard({ phrase, number, lang, language, canListen, speaking, onPla
           >
             {phrase.text}
           </p>
-          {/* Así suena: la pronunciación con letras normales, para quien no lee AFI. */}
+          {/* Las dos versiones: «Así suena» con letras normales (la que todos
+              leen) y el AFI exacto debajo, rotulado y más discreto. */}
           {sounds && (
-            <p className={cn('mt-1 leading-snug', hero ? 'text-[15px]' : 'text-[13px]')}>
+            <p className={cn('mt-1.5 leading-snug', hero ? 'text-[16px]' : 'text-[14px]')}>
               <span className="mr-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-text-subtle">
                 {t('module.blocks.pronunciation.sounds_label')}
               </span>
               <span className="font-semibold tracking-wide text-neon-green">{sounds}</span>
             </p>
           )}
-          {(ipa || translation) && (
-            <p className={cn('mt-1 leading-relaxed', hero ? 'text-[14px]' : 'text-[12.5px]')}>
-              {ipa && <span className="font-mono text-text-subtle">/{ipa}/</span>}
-              {ipa && translation && <span className="mx-1.5 text-text-subtle/60">·</span>}
-              {translation && <span className="text-text-muted">{translation}</span>}
+          {ipa && (
+            <p className={cn('mt-0.5 leading-snug', hero ? 'text-[13px]' : 'text-[12px]')}>
+              <span className="mr-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-text-subtle">
+                {t('module.blocks.pronunciation.ipa_label')}
+              </span>
+              <span className="font-mono text-text-subtle">/{ipa}/</span>
             </p>
+          )}
+          {translation && (
+            <p className={cn('mt-1.5 leading-relaxed text-text-muted', hero ? 'text-[14px]' : 'text-[12.5px]')}>{translation}</p>
           )}
         </div>
         <Tooltip label={speaking ? t('module.blocks.pronunciation.stop') : t('module.blocks.pronunciation.listen')} anchor="element">

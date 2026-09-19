@@ -804,7 +804,8 @@
         "wrong_region": "Este equipamento não tem voz de {{want}}: você ouve «{{name}}» ({{got}}), com outra pronúncia. Teste no Microsoft Edge ou instale a voz de {{want}} no Windows (Configurações › Hora e idioma › Fala).",
         "word_meaning": "Significado",
         "word_slow": "Devagar",
-        "sounds_label": "Soa assim"
+        "sounds_label": "Soa assim",
+        "ipa_label": "Fonética"
       }
     },
     "view_feedback_progress": "Ver Feedback e Progresso",

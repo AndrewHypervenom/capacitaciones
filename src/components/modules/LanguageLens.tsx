@@ -6,6 +6,7 @@ import { Snail, Square, Volume2 } from 'lucide-react';
 import type { ModuleVocabulary, VocabTerm } from '@/types/blocks';
 import type { Language } from '@/stores/userStore';
 import { normalizePronLang, speak, stopSpeaking } from '@/lib/speech';
+import { ipaToReadable } from '@/lib/ipaReadable';
 import { cn } from '@/lib/cn';
 
 /** Hover con intención: pasar de largo sobre un párrafo no abre nada. */
@@ -384,7 +385,8 @@ const WordCard = forwardRef<HTMLDivElement, CardProps>(function WordCard(
   const top = below ? anchor.bottom + GAP : anchor.top - GAP - h;
   const ipa = term.ipa?.trim().replace(/^[/[]|[/\]]$/g, '');
   const meaning = pick(term.meaning, language);
-  const sounds = pick(term.sounds, language);
+  // Vocabulario generado antes de «Así suena»: se arma desde el AFI.
+  const sounds = pick(term.sounds, language) || ipaToReadable(ipa, language);
   const kind = pick(term.kind, language);
 
   return (
@@ -421,7 +423,14 @@ const WordCard = forwardRef<HTMLDivElement, CardProps>(function WordCard(
             <span className="font-semibold tracking-wide text-neon-green">{sounds}</span>
           </p>
         )}
-        {ipa && <p className={cn('font-mono text-text-subtle', sounds ? 'mt-0.5 text-[11.5px]' : 'mt-1 text-[12.5px]')}>/{ipa}/</p>}
+        {ipa && (
+          <p className={cn('leading-snug', sounds ? 'mt-0.5 text-[11.5px]' : 'mt-1 text-[12.5px]')}>
+            <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
+              {t('module.blocks.pronunciation.ipa_label')}
+            </span>
+            <span className="font-mono text-text-subtle">/{ipa}/</span>
+          </p>
+        )}
         {meaning && (
           <div className="mt-2.5 border-t border-line/70 pt-2.5">
             <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wider text-text-subtle">

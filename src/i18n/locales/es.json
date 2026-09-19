@@ -804,7 +804,8 @@
         "wrong_region": "Este equipo no tiene voz de {{want}}: se oye «{{name}}» ({{got}}), con otra pronunciación. Prueba en Microsoft Edge o instala la voz de {{want}} en Windows (Configuración › Hora e idioma › Voz).",
         "word_meaning": "Significado",
         "word_slow": "Lento",
-        "sounds_label": "Así suena"
+        "sounds_label": "Así suena",
+        "ipa_label": "Fonética"
       }
     },
     "view_feedback_progress": "Ver Feedback y Progreso",

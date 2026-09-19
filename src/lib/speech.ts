@@ -138,17 +138,29 @@ function stopKeepAlive() {
 }
 
 /**
- * Cola de aire al final. Las voces "Natural" en línea sueltan la última sílaba
- * justo cuando la frase termina ("Desculpe" sonaba "deskul"). Se le añaden
- * comas y un punto: no se leen en voz alta, pero cada coma vale una pausa, y
- * esa pausa es el margen que necesita la cola del audio.
+ * Lo que de verdad se le pasa a la voz: solo palabras.
+ *
+ * Las voces leían en voz alta los signos («barra», «punto», «exclamación»),
+ * sobre todo los sueltos: «¿Tudo bem?», «tarde / noite» y la antigua cola
+ * « , , .» que se añadía al final. Aquí se quitan todos. Lo que separa frases
+ * (. ! ? ; : … / – —) se vuelve una coma entre palabras, que da la pausa sin
+ * que ninguna voz la pronuncie. Se conservan el guion y el apóstrofo DENTRO de
+ * una palabra («bem-vindo», «don't»).
  */
-function withTail(text: string): string {
-  return `${text.trim()}${' '}, , .`
+export function speakableText(text: string): string {
+  return text
+    // Guion o apóstrofo que no está entre dos letras: es un signo, no parte de la palabra.
+    .replace(/(?<!\p{L})['’-]|['’-](?!\p{L})/gu, ',')
+    .replace(/[.!?;:…/\\|–—]+/g, ',')
+    .replace(/[^\p{L}\p{N}\p{M}\s,'’-]/gu, ' ')
+    .replace(/\s*,[\s,]*/g, ', ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,]+|[\s,]+$/g, '')
 }
 
 export async function speak(text: string, lang: string, opts: { rate?: number; onEnd?: () => void } = {}): Promise<boolean> {
-  if (!speechSupported() || !text.trim()) return false
+  text = speakableText(text)
+  if (!speechSupported() || !text) return false
   lang = normalizePronLang(lang)
   const voices = await loadVoices()
   const synth = window.speechSynthesis
@@ -157,7 +169,7 @@ export async function speak(text: string, lang: string, opts: { rate?: number; o
   // Cancelar y hablar en el mismo suspiro deja a Chrome en un estado en el que
   // se pierde el arranque: un respiro de un cuadro basta.
   await new Promise((r) => setTimeout(r, 60))
-  const u = new SpeechSynthesisUtterance(withTail(text))
+  const u = new SpeechSynthesisUtterance(text)
   const voice = pickMaleVoice(voices, lang)
   if (voice) u.voice = voice
   u.lang = voice?.lang ?? lang

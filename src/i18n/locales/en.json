@@ -804,7 +804,8 @@
         "wrong_region": "This device has no {{want}} voice: you are hearing “{{name}}” ({{got}}), with a different pronunciation. Try Microsoft Edge or install the {{want}} voice in Windows (Settings › Time & language › Speech).",
         "word_meaning": "Meaning",
         "word_slow": "Slow",
-        "sounds_label": "Sounds like"
+        "sounds_label": "Sounds like",
+        "ipa_label": "Phonetics"
       }
     },
     "view_feedback_progress": "View Feedback and Progress",
