@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { loadYouTubeIframeAPI, type PlayerLike } from '@/lib/youtube'
 import { mapYouTubeError, sdkLoadError, type VideoPlayerError } from '@/lib/videoError'
+import { noteActivity } from '@/lib/userActivity'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -99,6 +100,8 @@ export function YouTubePlayer({
 
             // Sondeo de tiempo (la API no emite un evento continuo como <video>).
             pollRef.current = setInterval(() => {
+              // Video corriendo = alguien mirando (el cronómetro del módulo no se pausa).
+              if (player.getPlayerState?.() === YT_PLAYING) noteActivity()
               cbRef.current.onTimeUpdate?.()
               // Esperamos a que la duración esté disponible para señalar "metadata lista"
               // una sola vez (así el reanudar/duración funcionan igual que con <video>).

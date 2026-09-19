@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { loadVimeoPlayerAPI, vimeoEmbedUrl } from '@/lib/vimeo'
 import { mapVimeoError, sdkLoadError, type VideoPlayerError } from '@/lib/videoError'
 import type { PlayerLike } from '@/lib/youtube'
+import { noteActivity } from '@/lib/userActivity'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -139,6 +140,8 @@ export function VimeoPlayer({
       playerRef.current = handle
 
       player.on('timeupdate', (d: any) => {
+        // Solo se emite reproduciendo: alguien mirando (cronómetro del módulo).
+        noteActivity()
         cache.time = d.seconds
         if (d.duration) cache.duration = d.duration
       })

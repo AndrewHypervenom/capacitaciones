@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { getModuleTime, upsertModuleTime } from '@/services/moduleTime.service';
+import { msSinceActivity, noteActivity, startActivityTracking } from '@/lib/userActivity';
 
 /**
  * Cronómetro de tiempo ACTIVO dedicado a un módulo por un aprendiz.
  *
  * Mide el tiempo real desde que la persona entra al módulo hasta que lo marca
  * como completado, contando SOLO mientras la pestaña está visible (se pausa al
- * cambiar de pestaña o minimizar). Al completarse el módulo el valor queda
- * congelado y ya no vuelve a correr.
+ * cambiar de pestaña o minimizar) y hay alguien frente a ella: tras IDLE_MS sin
+ * mouse, teclado, scroll, toques ni video reproduciéndose se pausa y descuenta
+ * el rato muerto desde la última señal (ver lib/userActivity). Al completarse
+ * el módulo el valor queda congelado y ya no vuelve a correr.
  *
  * Persistencia en dos capas:
  *   1. localStorage (por usuario+módulo): caché inmediata, sobrevive recargas y
@@ -29,9 +32,17 @@ interface StoredTime {
 }
 
 const DB_HEARTBEAT_MS = 30_000;
+// Sin señales de vida durante este rato el cronómetro se pausa.
+const IDLE_MS = 5 * 60_000;
+// Con el foco dentro de un iframe (PDF, YouTube pausado) sus eventos no llegan a
+// la página: se da más margen para no cortar a quien lee un PDF largo.
+const IFRAME_IDLE_MS = 15 * 60_000;
 
+// v2: las cachés anteriores pueden traer horas infladas de antes de la pausa por
+// inactividad; como la reconciliación toma el mayor, volverían a subir a la BD
+// lo que el SQL de limpieza recortó. La BD (volcada cada 30 s) es la fuente.
 function storageKey(userId: string | undefined, moduleId: string | undefined): string {
-  return `learningai.moduleTime:${userId || 'anon'}:${moduleId || 'none'}`;
+  return `learningai.moduleTime.v2:${userId || 'anon'}:${moduleId || 'none'}`;
 }
 
 function readStored(key: string): StoredTime {
@@ -152,8 +163,16 @@ export function useModuleTimer(
 
     let interval: ReturnType<typeof setInterval> | null = null;
     let heartbeat: ReturnType<typeof setInterval> | null = null;
+    // Pausado por inactividad (la pestaña sigue visible y el intervalo sigue
+    // vivo para notar cuando la persona vuelve).
+    let idle = false;
+
+    startActivityTracking();
+    noteActivity();
 
     const now = () => Date.now();
+    const idleLimit = () =>
+      document.activeElement?.tagName === 'IFRAME' ? IFRAME_IDLE_MS : IDLE_MS;
 
     const accumulate = () => {
       if (sessionStartRef.current !== null) {
@@ -169,7 +188,33 @@ export function useModuleTimer(
       });
     };
 
+    // Cierra el tramo en la última señal de vida: el rato muerto no cuenta.
+    const goIdle = () => {
+      if (sessionStartRef.current !== null) {
+        // Puede dar negativo: el latido ya plegó al acumulado parte del rato
+        // posterior a la última señal y aquí se devuelve.
+        const lastActiveAt = now() - msSinceActivity();
+        baseElapsedRef.current = Math.max(
+          0,
+          baseElapsedRef.current + (lastActiveAt - sessionStartRef.current),
+        );
+        sessionStartRef.current = null;
+      }
+      idle = true;
+      persist();
+      flushToDb(null);
+      setElapsedMs(baseElapsedRef.current);
+    };
+
     const tick = () => {
+      if (idle) {
+        if (msSinceActivity() >= idleLimit()) return;
+        idle = false;
+        sessionStartRef.current = now();
+      } else if (msSinceActivity() >= idleLimit()) {
+        goIdle();
+        return;
+      }
       const live =
         baseElapsedRef.current +
         (sessionStartRef.current !== null ? now() - sessionStartRef.current : 0);
@@ -177,12 +222,14 @@ export function useModuleTimer(
     };
 
     const start = () => {
+      idle = false;
       if (sessionStartRef.current === null) sessionStartRef.current = now();
       if (interval === null) interval = setInterval(tick, 1000);
       // Latido: vuelca a la BD cada 30 s el acumulado del tramo en curso, para
       // no perder tiempo si la pestaña se cierra en seco sin disparar pausa.
       if (heartbeat === null) {
         heartbeat = setInterval(() => {
+          if (idle) return; // lo inactivo ya se volcó al pausarse
           accumulate();
           sessionStartRef.current = now(); // reabrimos el tramo tras plegarlo
           persist();
@@ -209,7 +256,10 @@ export function useModuleTimer(
 
     const onVisibility = () => {
       if (document.hidden) pause();
-      else start();
+      else {
+        noteActivity();
+        start();
+      }
     };
 
     // Arrancamos si la pestaña está visible.
