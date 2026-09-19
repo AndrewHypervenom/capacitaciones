@@ -1502,7 +1502,8 @@
       "remove_cut": "Quitar este corte (une las dos partes)",
       "balance_label": "Cómo queda repartido",
       "ai_summary_label": "Criterio de la IA",
-      "ai_no_split": "La IA cree que este módulo se entiende mejor sin separar. Dejé tus cortes como estaban."
+      "ai_no_split": "La IA cree que este módulo se entiende mejor sin separar. Dejé tus cortes como estaban.",
+      "ai_empty": "La IA no devolvió títulos ni textos para las partes. Pulsa «Rehacer con la IA» o escríbelos a mano."
     },
     "preview": {
       "title": "Vista previa",

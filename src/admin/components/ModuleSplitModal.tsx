@@ -506,7 +506,12 @@ export function ModuleSplitModal({ moduleId, campaignId, onClose, onApplied }: M
       })
       setAppliedWant(want)
       setDraftOpen(true)
-      toast.success(t('admin.surgery.ai_done'))
+      // Pidió textos y no llegó ninguno: decir "listo" con todo vacío engaña.
+      const gotText = parts.some(
+        (p) => p.title_es || p.subtitle_es || p.objectives_es?.length || p.intro_es || p.closing_es,
+      )
+      if ((wantMeta || wantBridge) && !gotText) toast.error(t('admin.surgery.ai_empty'))
+      else toast.success(t('admin.surgery.ai_done'))
     } catch (e) {
       if (isQuotaExceeded(e)) {
         toast.error(t('admin.surgery.ai_quota'))

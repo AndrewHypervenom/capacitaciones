@@ -338,16 +338,38 @@ interface RawSplitPlan {
   parts?: unknown
 }
 
+/**
+ * Haiku a veces entrega una lista u objeto anidado como TEXTO con el JSON
+ * adentro ("parts": "[{...}]"). Se abre antes de leerlo: si no, se pierde en
+ * silencio todo lo que la IA sí redactó.
+ */
+function unwrap(v: unknown): unknown {
+  if (typeof v !== 'string') return v
+  const t = v.trim()
+  if (!(t.startsWith('[') || t.startsWith('{'))) return v
+  try {
+    return JSON.parse(t)
+  } catch {
+    return v
+  }
+}
+
 const asText = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
-const asTexts = (v: unknown) => (Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x : '')) : [])
+const asTexts = (v: unknown) => {
+  const list = unwrap(v)
+  if (Array.isArray(list)) return list.map((x) => (typeof x === 'string' ? x : ''))
+  // Una sola frase donde se esperaba una lista: mejor una lista de una.
+  return typeof list === 'string' && list.trim() ? [list.trim()] : []
+}
 
 /** Pasa la respuesta cruda de la IA a la forma del modal, sin fiarse de su forma. */
 function readSplitPlan(raw: RawSplitPlan, sectionCount: number): SplitAiPlan {
   const out: SplitAiPlan = {}
   let cuts: number[] | undefined
   let reasons: string[] = []
-  if (Array.isArray(raw.cuts)) {
-    cuts = raw.cuts.map(Number)
+  const rawCuts = unwrap(raw.cuts)
+  if (Array.isArray(rawCuts)) {
+    cuts = rawCuts.map(Number)
     reasons = asTexts(raw.cut_reasons)
   } else if (typeof raw.cut_index === 'number') {
     cuts = [raw.cut_index]
@@ -364,22 +386,42 @@ function readSplitPlan(raw: RawSplitPlan, sectionCount: number): SplitAiPlan {
     out.cutReasons = pairs.map((p) => p.r)
   }
   out.summary = asText(raw.summary)
-  if (Array.isArray(raw.parts)) {
-    out.parts = raw.parts.map((p) => {
-      const part = (p ?? {}) as Record<string, unknown>
+  const rawParts = unwrap(raw.parts)
+  if (Array.isArray(rawParts)) {
+    out.parts = rawParts.map((p) => {
+      const part = (unwrap(p) ?? {}) as Record<string, unknown>
+      const list = (v: unknown) => {
+        const items = asTexts(v).filter(Boolean)
+        return items.length > 0 ? items : undefined
+      }
       return {
         title_es: asText(part.title_es),
         subtitle_es: asText(part.subtitle_es),
-        objectives_es: Array.isArray(part.objectives_es) ? asTexts(part.objectives_es).filter(Boolean) : undefined,
-        key_takeaways_es: Array.isArray(part.key_takeaways_es)
-          ? asTexts(part.key_takeaways_es).filter(Boolean)
-          : undefined,
+        objectives_es: list(part.objectives_es),
+        key_takeaways_es: list(part.key_takeaways_es),
         closing_es: asText(part.closing_es),
         intro_es: asText(part.intro_es),
       }
     })
   }
   return out
+}
+
+/**
+ * ¿Trae el plan lo que se pidió para CADA parte? Una por parte, y cada una con
+ * título (si se pidió 'meta') y con sus enlaces (si se pidió 'bridge').
+ */
+function partsComplete(plan: SplitAiPlan, count: number, want: SurgeryAiWant[]): boolean {
+  const parts = plan.parts ?? []
+  if (parts.length !== count) return false
+  return parts.every((p, k) => {
+    if (want.includes('meta') && !p.title_es) return false
+    if (want.includes('bridge')) {
+      if (k > 0 && !p.intro_es) return false
+      if (k < count - 1 && !p.closing_es) return false
+    }
+    return true
+  })
 }
 
 /**
@@ -396,22 +438,43 @@ export async function planSplitWithAi(opts: {
   instruction?: string
 }): Promise<SplitAiPlan> {
   const mod = await getModuleWithSectionsRaw(opts.moduleId)
-  const { data } = await moduleAiAssist({
-    action: 'split_plan',
-    contentType: 'meta',
-    sourceLang: 'es',
-    fields: {},
-    moduleTitle: pickLang(mod.title_es, mod.title_en, mod.title_pt, 'es'),
-    surgery: {
-      want: opts.want,
-      cuts: opts.cuts,
-      // Para una EF sin redesplegar, que solo entiende un corte.
-      cutIndex: opts.cuts?.[0],
-      instruction: opts.instruction?.trim() || undefined,
-      modules: [toSurgeryModule(mod)],
-    },
-  })
-  return readSplitPlan((data ?? {}) as RawSplitPlan, mod.module_sections.length)
+  const summary = toSurgeryModule(mod)
+  const sectionCount = mod.module_sections.length
+
+  const ask = async (want: SurgeryAiWant[], cuts?: number[]) => {
+    const { data } = await moduleAiAssist({
+      action: 'split_plan',
+      contentType: 'meta',
+      sourceLang: 'es',
+      fields: {},
+      moduleTitle: pickLang(mod.title_es, mod.title_en, mod.title_pt, 'es'),
+      surgery: {
+        want,
+        cuts,
+        // Para una EF sin redesplegar, que solo entiende un corte.
+        cutIndex: cuts?.[0],
+        instruction: opts.instruction?.trim() || undefined,
+        modules: [summary],
+      },
+    })
+    return readSplitPlan((data ?? {}) as RawSplitPlan, sectionCount)
+  }
+
+  const plan = await ask(opts.want, opts.cuts)
+
+  // Los textos de cada parte (títulos, objetivos, enlaces) se piden junto con
+  // los cortes para gastar una sola llamada. Pero cuando la IA elige cuántas
+  // partes, a veces redacta menos de las que cortó o las deja vacías. En ese
+  // caso se pide otra vez SOLO el texto, ya con los cortes fijos: ahí sabe
+  // exactamente cuántas partes redactar.
+  const textWant = opts.want.filter((w) => w !== 'cut')
+  if (textWant.length === 0) return plan
+  const cuts = opts.want.includes('cut') && plan.cuts && plan.cuts.length > 0 ? plan.cuts : opts.cuts
+  if (!cuts || cuts.length === 0) return plan
+  if (partsComplete(plan, cuts.length + 1, textWant)) return plan
+
+  const text = await ask(textWant, cuts)
+  return { ...plan, parts: text.parts }
 }
 
 /** Igual que `planSplitWithAi`, para la unión. `moduleIds` va en orden final. */
