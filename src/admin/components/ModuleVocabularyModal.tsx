@@ -269,6 +269,12 @@ export function ModuleVocabularyModal({
                       placeholder={t('admin.modules.vocab.ipa_ph')}
                       className="w-full bg-transparent font-mono text-[11px] text-text-subtle outline-none placeholder:text-text-subtle/50"
                     />
+                    <input
+                      value={term.sounds?.[lang] ?? ''}
+                      onChange={(e) => patch(i, { sounds: { ...(term.sounds ?? { es: '', en: '', pt: '' }), [lang]: e.target.value } })}
+                      placeholder={t('admin.modules.vocab.sounds_ph')}
+                      className="w-full bg-transparent text-[11px] font-semibold text-text-subtle outline-none placeholder:font-normal placeholder:text-text-subtle/50"
+                    />
                   </div>
                   <input
                     value={term.meaning?.[lang] ?? ''}

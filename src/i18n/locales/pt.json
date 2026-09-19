@@ -802,7 +802,8 @@
         "voice_is": "Voz: {{name}}",
         "wrong_region": "Este equipamento não tem voz de {{want}}: você ouve «{{name}}» ({{got}}), com outra pronúncia. Teste no Microsoft Edge ou instale a voz de {{want}} no Windows (Configurações › Hora e idioma › Fala).",
         "word_meaning": "Significado",
-        "word_slow": "Devagar"
+        "word_slow": "Devagar",
+        "sounds_label": "Soa assim"
       }
     },
     "view_feedback_progress": "Ver Feedback e Progresso",
@@ -4959,7 +4960,8 @@
         "pron_layout": "Exibir",
         "pron_layout_list": "Lista",
         "pron_layout_grid": "2 colunas",
-        "pron_layout_steps": "Uma de cada vez"
+        "pron_layout_steps": "Uma de cada vez",
+        "pron_sounds_ph": "Soa assim, com letras normais ({{lang}}), ex. o-bri-GA-du"
       },
       "title": "Módulos",
       "subtitle": "Conteúdo de aprendizagem organizado por módulo.",
@@ -5390,7 +5392,8 @@
         "regen_title": "Montar o vocabulário de novo?",
         "regen_body": "A nova lista substitui a salva, inclusive os significados que você corrigiu à mão. Nada muda para quem aprende até você clicar em «Salvar».",
         "regen_confirm": "Montar de novo",
-        "missing_column": "Falta rodar o SQL 48 (vocabulário do módulo) no banco de dados."
+        "missing_column": "Falta rodar o SQL 48 (vocabulário do módulo) no banco de dados.",
+        "sounds_ph": "Soa assim (ex. TAR-chi)"
       }
     },
     "chat_logs": {

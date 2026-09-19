@@ -145,6 +145,7 @@ function PhraseCard({ phrase, number, lang, language, canListen, speaking, onPla
   const translation = pick(phrase.translation, language);
   const tip = pick(phrase.tip, language);
   const ipa = phrase.ipa?.replace(/^\/|\/$/g, '');
+  const sounds = pick(phrase.sounds, language);
 
   const record = () => {
     if (recording) { stopRef.current?.(); return; }
@@ -194,6 +195,15 @@ function PhraseCard({ phrase, number, lang, language, canListen, speaking, onPla
           >
             {phrase.text}
           </p>
+          {/* Así suena: la pronunciación con letras normales, para quien no lee AFI. */}
+          {sounds && (
+            <p className={cn('mt-1 leading-snug', hero ? 'text-[15px]' : 'text-[13px]')}>
+              <span className="mr-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-text-subtle">
+                {t('module.blocks.pronunciation.sounds_label')}
+              </span>
+              <span className="font-semibold tracking-wide text-neon-green">{sounds}</span>
+            </p>
+          )}
           {(ipa || translation) && (
             <p className={cn('mt-1 leading-relaxed', hero ? 'text-[14px]' : 'text-[12.5px]')}>
               {ipa && <span className="font-mono text-text-subtle">/{ipa}/</span>}

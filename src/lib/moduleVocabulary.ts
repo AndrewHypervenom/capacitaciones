@@ -68,6 +68,7 @@ export async function generateModuleVocabulary(opts: {
     out.push({
       text,
       ipa: x.ipa?.trim().replace(/^[/[]|[/\]]$/g, '') || undefined,
+      sounds: x.sounds?.trim() ? { ...empty, [lang]: x.sounds.trim() } : undefined,
       meaning: x.meaning?.trim() ? { ...empty, [lang]: x.meaning.trim() } : undefined,
       kind: x.kind?.trim() ? { ...empty, [lang]: x.kind.trim().toLowerCase() } : undefined,
     })

@@ -359,6 +359,11 @@ export interface PronunciationPhrase {
   text: string;
   /** Transcripción fonética (AFI), opcional. */
   ipa?: string;
+  /**
+   * La pronunciación escrita como se habla, con letras normales del idioma del
+   * sitio ("o-bri-GA-du"): para quien no entiende el AFI.
+   */
+  sounds?: ML;
   /** Qué significa, en el idioma del sitio. */
   translation?: ML;
   /** Consejo de pronunciación para hispanohablantes / lusohablantes. */
@@ -394,6 +399,8 @@ export interface VocabTerm {
   text: string;
   /** Transcripción AFI, sin barras. */
   ipa?: string;
+  /** La pronunciación escrita como se habla ("TAR-chi"), en el idioma del sitio. */
+  sounds?: ML;
   /** Qué significa en el módulo, en el idioma del sitio. */
   meaning?: ML;
   /** Clase de palabra corta ("verbo", "saludo"…), en el idioma del sitio. */

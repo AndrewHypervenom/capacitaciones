@@ -384,6 +384,7 @@ const WordCard = forwardRef<HTMLDivElement, CardProps>(function WordCard(
   const top = below ? anchor.bottom + GAP : anchor.top - GAP - h;
   const ipa = term.ipa?.trim().replace(/^[/[]|[/\]]$/g, '');
   const meaning = pick(term.meaning, language);
+  const sounds = pick(term.sounds, language);
   const kind = pick(term.kind, language);
 
   return (
@@ -411,7 +412,16 @@ const WordCard = forwardRef<HTMLDivElement, CardProps>(function WordCard(
             </span>
           )}
         </div>
-        {ipa && <p className="mt-1 font-mono text-[12.5px] text-text-subtle">/{ipa}/</p>}
+        {/* Así suena primero (letras normales); el AFI queda debajo, más discreto. */}
+        {sounds && (
+          <p className="mt-1.5 text-[14px] leading-snug">
+            <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
+              {t('module.blocks.pronunciation.sounds_label')}
+            </span>
+            <span className="font-semibold tracking-wide text-neon-green">{sounds}</span>
+          </p>
+        )}
+        {ipa && <p className={cn('font-mono text-text-subtle', sounds ? 'mt-0.5 text-[11.5px]' : 'mt-1 text-[12.5px]')}>/{ipa}/</p>}
         {meaning && (
           <div className="mt-2.5 border-t border-line/70 pt-2.5">
             <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wider text-text-subtle">

@@ -1752,6 +1752,13 @@ function PronunciationEditor({ block, onChange, lang }: { block: ContentBlock & 
           />
           <input
             type="text"
+            value={p.sounds?.[lang] ?? ''}
+            onChange={(e) => setPhrase(i, { sounds: { ...(p.sounds ?? empty), [lang]: e.target.value } })}
+            placeholder={i18n.t('admin.modules.be.pron_sounds_ph', { lang })}
+            className="w-full bg-transparent text-[12.5px] font-semibold text-text-muted placeholder:font-normal placeholder:text-text-subtle outline-none"
+          />
+          <input
+            type="text"
             value={p.translation?.[lang] ?? ''}
             onChange={(e) => setPhrase(i, { translation: { ...(p.translation ?? empty), [lang]: e.target.value } })}
             placeholder={i18n.t('admin.modules.be.pron_translation_ph', { lang })}

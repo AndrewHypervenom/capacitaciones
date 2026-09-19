@@ -802,7 +802,8 @@
         "voice_is": "Voz: {{name}}",
         "wrong_region": "Este equipo no tiene voz de {{want}}: se oye «{{name}}» ({{got}}), con otra pronunciación. Prueba en Microsoft Edge o instala la voz de {{want}} en Windows (Configuración › Hora e idioma › Voz).",
         "word_meaning": "Significado",
-        "word_slow": "Lento"
+        "word_slow": "Lento",
+        "sounds_label": "Así suena"
       }
     },
     "view_feedback_progress": "Ver Feedback y Progreso",
@@ -4959,7 +4960,8 @@
         "pron_layout": "Mostrar",
         "pron_layout_list": "Lista",
         "pron_layout_grid": "2 columnas",
-        "pron_layout_steps": "Una a la vez"
+        "pron_layout_steps": "Una a la vez",
+        "pron_sounds_ph": "Así suena, con letras normales ({{lang}}), p. ej. o-bri-GA-du"
       },
       "title": "Módulos",
       "subtitle": "Contenido de aprendizaje organizado por módulo.",
@@ -5390,7 +5392,8 @@
         "regen_title": "¿Volver a armar el vocabulario?",
         "regen_body": "La lista nueva reemplaza a la guardada, incluidos los significados que hayas corregido a mano. Hasta que pulses «Guardar» no cambia nada para quien aprende.",
         "regen_confirm": "Volver a armar",
-        "missing_column": "Falta correr el SQL 48 (vocabulario del módulo) en la base de datos."
+        "missing_column": "Falta correr el SQL 48 (vocabulario del módulo) en la base de datos.",
+        "sounds_ph": "Así suena (ej. TAR-chi)"
       }
     },
     "chat_logs": {

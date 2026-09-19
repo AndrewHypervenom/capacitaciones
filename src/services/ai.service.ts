@@ -1225,13 +1225,13 @@ export interface PronunciationPlan {
     why?: string
     /** Cómo se muestran las frases; la IA lo elige según el tipo de práctica. */
     layout?: string
-    phrases: Array<{ text: string; ipa?: string; translation?: string; tip?: string }>
+    phrases: Array<{ text: string; ipa?: string; sounds?: string; translation?: string; tip?: string }>
   }>
 }
 
 /** Lo que devuelve la IA al armar el vocabulario del módulo. */
 export interface VocabularyPlan {
-  terms: Array<{ text: string; ipa?: string; meaning?: string; kind?: string }>
+  terms: Array<{ text: string; ipa?: string; sounds?: string; meaning?: string; kind?: string }>
 }
 
 /** Lo mismo sobre el módulo entero: cada práctica dice además en qué sección va. */

@@ -16,6 +16,12 @@ export function buildPronunciationBlock(s: Suggestion, targetLang: string, lang:
     ...(s.layout === 'list' || s.layout === 'grid' || s.layout === 'steps' ? { layout: s.layout } : {}),
     phrases: (s.phrases ?? [])
       .filter((p) => p.text?.trim())
-      .map((p) => ({ text: p.text.trim(), ipa: p.ipa?.trim() || undefined, translation: ml(p.translation), tip: ml(p.tip) })),
+      .map((p) => ({
+        text: p.text.trim(),
+        ipa: p.ipa?.trim() || undefined,
+        sounds: p.sounds?.trim() ? ml(p.sounds.trim()) : undefined,
+        translation: ml(p.translation),
+        tip: ml(p.tip),
+      })),
   }
 }

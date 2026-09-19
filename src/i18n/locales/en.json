@@ -802,7 +802,8 @@
         "voice_is": "Voice: {{name}}",
         "wrong_region": "This device has no {{want}} voice: you are hearing “{{name}}” ({{got}}), with a different pronunciation. Try Microsoft Edge or install the {{want}} voice in Windows (Settings › Time & language › Speech).",
         "word_meaning": "Meaning",
-        "word_slow": "Slow"
+        "word_slow": "Slow",
+        "sounds_label": "Sounds like"
       }
     },
     "view_feedback_progress": "View Feedback and Progress",
@@ -4959,7 +4960,8 @@
         "pron_layout": "Display",
         "pron_layout_list": "List",
         "pron_layout_grid": "2 columns",
-        "pron_layout_steps": "One at a time"
+        "pron_layout_steps": "One at a time",
+        "pron_sounds_ph": "Sounds like, in plain letters ({{lang}}), e.g. oh-bree-GAH-doo"
       },
       "title": "Modules",
       "subtitle": "Learning content organized by module.",
@@ -5390,7 +5392,8 @@
         "regen_title": "Build the vocabulary again?",
         "regen_body": "The new list replaces the saved one, including any meanings you corrected by hand. Nothing changes for learners until you press “Save”.",
         "regen_confirm": "Build again",
-        "missing_column": "SQL 48 (module vocabulary) still needs to be run on the database."
+        "missing_column": "SQL 48 (module vocabulary) still needs to be run on the database.",
+        "sounds_ph": "Sounds like (e.g. TAR-chee)"
       }
     },
     "chat_logs": {
