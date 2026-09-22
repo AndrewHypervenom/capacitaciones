@@ -3861,7 +3861,11 @@
         "no_description": "Esta simulación todavía no tiene descripción: el aprendiz entraría sin saber de qué se trata."
       },
       "ai_gen_moments_one": "{{count}} momento de conversación",
-      "ai_gen_moments_other": "{{count}} momentos de conversación"
+      "ai_gen_moments_other": "{{count}} momentos de conversación",
+      "share": "Compartir",
+      "shared": "Compartida",
+      "share_group_off": "Compartir con {{orgs}}: su gente podrá practicarla. Se aplica al guardar.",
+      "share_group_on": "Compartida con {{orgs}}. Pulsa para dejar de compartirla (se aplica al guardar). Si cuelga de un curso compartido, igual se comparte con él."
     },
     "ai_authored": {
       "tag": "IA",

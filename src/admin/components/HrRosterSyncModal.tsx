@@ -23,7 +23,7 @@ import {
   type RosterPerson, type SyncEntry, type SyncAction, type ApplyResult, type StatusKind,
   type UnitLookup,
 } from '@/services/hrSync.service'
-import { getOrganizations, getAllOrgUnits, indexUnits, findUnit } from '@/services/org.service'
+import { getActiveOrgId, getAllOrgUnits, indexUnits, findUnit } from '@/services/org.service'
 import { Tooltip } from '@/components/ui/Tooltip'
 import type { Campaign, OrgUnit } from '@/types/database'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
@@ -191,8 +191,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
         }),
         // El catálogo de CR y áreas. Si falla, la carga sigue: simplemente no se
         // proponen cambios de CR.
-        getOrganizations()
-          .then((orgs) => (orgs[0] ? getAllOrgUnits(orgs[0].id) : []))
+        getActiveOrgId().then((id) => (id ? getAllOrgUnits(id) : []))
           .catch(() => [] as OrgUnit[]),
       ])
       if (parsed.length === 0) {

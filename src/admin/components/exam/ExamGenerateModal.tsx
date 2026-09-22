@@ -431,7 +431,7 @@ export function ExamGenerateModal({
    qué módulos están vacíos — que son justo los que antes se rellenaban con
    conocimiento general del modelo sin que nadie se enterara. */
 function SourceCard({ source, enough }: { source: CourseSource | null; enough: boolean }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   if (!source) {
     return (
@@ -466,7 +466,7 @@ function SourceCard({ source, enough }: { source: CourseSource | null; enough: b
               ? t('admin.exam.source_body', {
                   modules: source.modules,
                   sections: source.sections,
-                  chars: source.chars.toLocaleString('es-CO'),
+                  chars: source.chars.toLocaleString(i18n.language),
                   defaultValue:
                     'El texto escrito de {{modules}} módulos y {{sections}} secciones ({{chars}} caracteres). Nada más: no busca en internet ni usa lo que el modelo sabe por su cuenta. Si algo no está escrito en tus módulos, no puede salir en el examen.',
                 })
@@ -479,7 +479,7 @@ function SourceCard({ source, enough }: { source: CourseSource | null; enough: b
           {source.truncated && (
             <p className="mt-1.5 text-[11.5px] leading-relaxed text-neon-magenta">
               {t('admin.exam.source_truncated', {
-                chars: SOURCE_CHAR_LIMIT.toLocaleString('es-CO'),
+                chars: SOURCE_CHAR_LIMIT.toLocaleString(i18n.language),
                 defaultValue:
                   'El curso es muy largo: se leyeron los primeros {{chars}} caracteres. Para cubrir el final, pide otra tanda con una indicación que apunte a esos módulos.',
               })}
@@ -1645,7 +1645,7 @@ function FilePanel({
   ) => Promise<Map<string, string>>
   onDone: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [rows, setRows] = useState<ParsedImportRow[] | null>(null)
   const [doc, setDoc] = useState<ExtractedDocument | null>(null)
   const [reading, setReading] = useState<ExtractProgress | null>(null)
@@ -1947,7 +1947,7 @@ function FilePanel({
               <p className="text-[13px] font-medium text-text">{doc.fileName}</p>
               <p className="text-[11.5px] text-text-muted">
                 {t('admin.exam.doc_read', {
-                  chars: doc.text.length.toLocaleString('es-CO'),
+                  chars: doc.text.length.toLocaleString(i18n.language),
                   defaultValue: '{{chars}} caracteres leídos',
                 })}
                 {doc.contextImages.length > 0 &&

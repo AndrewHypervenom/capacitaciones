@@ -344,7 +344,7 @@ export function SectionTemplateGallery({ open, onClose, onSelect, onSelectAi }: 
                 <div className="flex items-start justify-between mb-5">
                   <div>
                     <NeonBadge color="green" dot className="mb-2">
-                      Editor · Secciones
+                      {i18n.t('admin.modules.editor_chrome.gallery_crumb')}
                     </NeonBadge>
                     <GradientHeading as="h2" variant="white" size="headline">
                       Elige un template

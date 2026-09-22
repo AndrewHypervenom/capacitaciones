@@ -10,7 +10,7 @@ import { getMyPeopleIds } from '@/services/org.service'
 import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
 import { useAuth } from '@/hooks/useAuth'
 import { FilterDropdown } from '@/admin/components/FilterDropdown'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getActiveOrgUnits } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import { hideInactiveUnlessSuperAdmin } from '@/lib/activeUsers'
 import { fold } from '@/lib/normalize'
@@ -270,8 +270,7 @@ export default function SimulationFeedbackPanel() {
      siempre porque es lo que hay que poder elegir. */
   useEffect(() => {
     let vivo = true
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getActiveOrgUnits()
       .then((list) => { if (vivo) setUnits(list) })
       .catch(() => { if (vivo) setUnits([]) })
     return () => { vivo = false }

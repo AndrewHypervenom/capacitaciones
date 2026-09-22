@@ -4,6 +4,7 @@ import { throwAiError, useAiCreditsStore } from '@/lib/aiCredits'
 import { unloopScenario, deferEndings, collapseEndings, minTurnsFor, isEndNode } from '@/lib/scenarioFlow'
 import type { ContentBlock } from '@/types/blocks'
 import { rowText, rowList } from '@/lib/contentLang'
+import { aiOrgField } from '@/services/org.service'
 
 export interface CacheUsage {
   cache_creation_input_tokens: number
@@ -867,7 +868,7 @@ async function runGenerateSimulation(
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, ...aiOrgField() }),
       signal,
     },
   )
@@ -988,7 +989,7 @@ async function postGenerateModule(
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, ...aiOrgField() }),
       signal,
     },
   )
@@ -1108,7 +1109,7 @@ export async function analyzeDocument(opts: {
       },
       // El idioma sale de la interfaz: la propuesta de módulos se escribe en el
       // idioma del sitio aunque el documento esté en otro.
-      body: JSON.stringify({ language: currentAiLang(), ...opts }),
+      body: JSON.stringify({ language: currentAiLang(), ...opts, ...aiOrgField() }),
     },
   )
 
@@ -1259,7 +1260,7 @@ export async function moduleAiAssist(opts: AssistRequest): Promise<{ data: Recor
       },
       // Solo lo usan los modos que ESCRIBEN texto nuevo (separar/unir/pénsum);
       // traducir y mejorar se guían por sourceLang/targetLangs.
-      body: JSON.stringify({ language: currentAiLang(), ...opts }),
+      body: JSON.stringify({ language: currentAiLang(), ...opts, ...aiOrgField() }),
     },
   )
 

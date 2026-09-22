@@ -7,7 +7,7 @@ import { fold } from '@/lib/normalize'
 import { COUNTRIES, OPERATION_COUNTRIES } from '@/lib/countries'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Tooltip } from '@/components/ui/Tooltip'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getActiveOrganization, getOrgUnits } from '@/services/org.service'
 import {
   countAudience, ruleIsEmpty, getAudiencePopulation, matchesAudience,
   type AudienceRule, type AudiencePerson,
@@ -133,6 +133,8 @@ interface Props {
 export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 }: Props) {
   const { t } = useTranslation()
   const [orgId, setOrgId] = useState('')
+  // Países de la org activa (LATAM: CO/MX/AR · Brasil: BR).
+  const [orgCountryCodes, setOrgCountryCodes] = useState<string[]>([])
   const [units, setUnits] = useState<OrgUnit[]>([])
   const [reach, setReach] = useState<
     { matched: number; staff: number; total: number; clients: number } | null
@@ -141,11 +143,12 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
 
   useEffect(() => {
     let alive = true
-    getOrganizations()
-      .then((orgs) => {
-        const id = orgs[0]?.id ?? ''
+    getActiveOrganization()
+      .then((active) => {
+        const id = active?.id ?? ''
         if (!alive) return
         setOrgId(id)
+        setOrgCountryCodes(active?.countries ?? [])
         return id ? getOrgUnits(id) : []
       })
       .then((list) => { if (alive && list) setUnits(list) })
@@ -210,15 +213,20 @@ export function AudienceRulePicker({ value, onChange, disabled, peopleCount = 0 
     }
   }, [censo, value.countries, value.areaIds, value.isMandatory, value.includeClients])
 
-  // Solo los países donde hay operación. Si una regla vieja trae otro país, se
-  // pinta igual: esconderlo haría desaparecer de la vista una condición que
-  // sigue vigente, y nadie entendería por qué el curso no le llega a alguien.
+  // Solo los países donde hay operación, y de ellos los de la org activa: un
+  // curso de LATAM no se le ofrece a Brasil por país (para eso se comparte).
+  // Si una regla vieja trae otro país, se pinta igual: esconderlo haría
+  // desaparecer de la vista una condición que sigue vigente, y nadie entendería
+  // por qué el curso no le llega a alguien.
   const paises = useMemo(() => {
+    const base = orgCountryCodes.length
+      ? OPERATION_COUNTRIES.filter((c) => orgCountryCodes.includes(c.code))
+      : OPERATION_COUNTRIES
     const extra = value.countries
-      .filter((c) => !OPERATION_COUNTRIES.some((x) => x.code === c))
+      .filter((c) => !base.some((x) => x.code === c))
       .map((c) => COUNTRIES.find((x) => x.code === c) ?? { code: c, name: c, flag: '' })
-    return [...OPERATION_COUNTRIES, ...extra]
-  }, [value.countries])
+    return [...base, ...extra]
+  }, [value.countries, orgCountryCodes])
 
   const toggle = (key: 'countries' | 'operationIds' | 'areaIds', id: string) => {
     if (disabled) return

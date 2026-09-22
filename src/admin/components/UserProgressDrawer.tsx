@@ -23,7 +23,7 @@ import { getUserCourseDetailAdmin, type AdminCourseDetail } from '@/services/not
 import { getUserGamification, type GamificationSummary } from '@/services/progress.service'
 import type { Profile } from '@/types/database'
 import { rowText } from '@/lib/contentLang'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getUnitsOfAllOrgs } from '@/services/org.service'
 import { countryLabelWithFlag } from '@/lib/countries'
 import { useAuthStore } from '@/stores/authStore'
 import { ProgressPositionModal } from '@/admin/components/ProgressPositionModal'
@@ -98,8 +98,7 @@ export function UserProgressDrawer({ user, onClose }: UserProgressDrawerProps) {
 
     // Catálogo de CR y áreas, para ponerle nombre a los uuid del encabezado.
     // Sin él se enseña el país y los otros dos chips salen como "sin dato".
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getUnitsOfAllOrgs()
       .then((list) => { if (alive) setUnitNames(new Map(list.map((u) => [u.id, u.name]))) })
       .catch(() => {})
 

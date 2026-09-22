@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getTestUnitIds } from '@/services/org.service'
+import { getActiveOrgId, getTestUnitIds } from '@/services/org.service'
 import { chunk } from '@/lib/chunk'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import type { Campaign, CollaboratorProfile } from '@/types/database'
@@ -240,7 +240,13 @@ export async function getAccessibleCampaigns(opts: {
   if (isSuperAdmin) {
     const { data, error } = await supabase.from('campaigns').select('*').order('created_at')
     if (error) throw error
-    const all = (data ?? []) as Campaign[]
+    // El superadmin ve todas las orgs, pero trabaja en UNA a la vez: la que
+    // eligió en el selector del panel. Sin esto, Módulos, Mundos, Arenas y
+    // Simulaciones mezclaban LATAM y Brasil en la misma lista.
+    const activeOrgId = await getActiveOrgId()
+    const all = ((data ?? []) as Campaign[]).filter(
+      (c) => !activeOrgId || !c.org_id || c.org_id === activeOrgId,
+    )
     // Con el Modo pruebas apagado, para el superadmin las campañas de prueba
     // sencillamente no existen: ni en selectores ni en conteos.
     return shouldHideTestData(true) && !includeTest ? all.filter((c) => !isTestCampaign(c)) : all

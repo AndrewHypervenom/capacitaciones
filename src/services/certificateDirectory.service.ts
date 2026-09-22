@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getAllOrgUnits, getOrganizations } from '@/services/org.service'
+import { getUnitsOfAllOrgs } from '@/services/org.service'
 
 /**
  * Directorio de certificados para Admin → Certificados: cada diploma emitido
@@ -77,8 +77,7 @@ export async function getCertificateDirectory(): Promise<CertificateEntry[]> {
     readCertificates(),
     readPeople(),
     readAll<RawCourse>('courses', 'id, title_es, icon').catch(() => readAll<RawCourse>('courses', 'id, title_es')),
-    getOrganizations()
-      .then((orgs) => (orgs[0] ? getAllOrgUnits(orgs[0].id) : []))
+    getUnitsOfAllOrgs()
       .catch(() => []),
   ])
   const personById = new Map(people.map((p) => [p.id, p]))

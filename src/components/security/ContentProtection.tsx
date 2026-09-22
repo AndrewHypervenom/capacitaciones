@@ -42,7 +42,7 @@ function isEditable(target: EventTarget | null) {
 }
 
 export function ContentProtection() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { role, profile, user } = useAuth();
   const { pathname } = useLocation();
 
@@ -61,7 +61,7 @@ export function ContentProtection() {
      * si ese texto aparece pegado en otro sitio, ya se sabe por dónde salió.
      */
     const replacement = () => {
-      const when = new Date().toLocaleDateString('es-CO', {
+      const when = new Date().toLocaleDateString(i18n.language, {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',

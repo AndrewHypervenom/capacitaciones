@@ -185,6 +185,22 @@ export async function getUnitsOfAllOrgs(): Promise<OrgUnit[]> {
   return lists.flat()
 }
 
+/**
+ * Las orgs HERMANAS (mismo grupo) de la dueña de un contenedor: con quién se
+ * puede compartir un curso. LATAM → [Brasil], Brasil → [LATAM]. Una org sin
+ * grupo no tiene hermanas: su contenido no se comparte con nadie.
+ */
+export async function getSisterOrgsOfCampaign(campaignId: string | null): Promise<Organization[]> {
+  if (!campaignId) return []
+  const { data } = await supabase.from('campaigns').select('org_id').eq('id', campaignId).maybeSingle()
+  const ownerId = (data as { org_id?: string | null } | null)?.org_id ?? null
+  if (!ownerId) return []
+  const orgs = await getOrganizations()
+  const owner = orgs.find((o) => o.id === ownerId)
+  if (!owner?.group_id) return []
+  return orgs.filter((o) => o.group_id === owner.group_id && o.id !== owner.id)
+}
+
 /** Todas las orgs, también las ocultas. Solo para mover personas. */
 export async function getOrganizationsIncludingHidden(): Promise<Organization[]> {
   const { data, error } = await supabase.from('organizations').select('*').order('name')

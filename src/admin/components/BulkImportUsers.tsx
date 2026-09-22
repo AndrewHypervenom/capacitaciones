@@ -19,7 +19,7 @@ import {
   type SheetGrid, type ColumnMapping, type ExtractedRow,
 } from '@/lib/parseUsersSheet'
 import { COUNTRY_OPTIONS, countryLabelWithFlag } from '@/lib/countries'
-import { getOrganizations, getOrgUnits, indexUnits, findUnit } from '@/services/org.service'
+import { getActiveOrgUnits, indexUnits, findUnit, orgBodyField } from '@/services/org.service'
 import type { OrgUnit } from '@/types/database'
 import type { Campaign } from '@/types/database'
 
@@ -245,11 +245,10 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
   const [defaultPwdValue, setDefaultPwdValue] = useState('')
 
   // El catálogo se pide una vez al abrir. Si el SQL de la reestructura no se ha
-  // corrido, `getOrgUnits` devuelve vacío y todo esto se comporta como antes.
+  // corrido, `getActiveOrgUnits` devuelve vacío y todo esto se comporta como antes.
   useEffect(() => {
     let alive = true
-    getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    getActiveOrgUnits()
       .then((list) => { if (alive) setUnits(list) })
       .catch(() => { if (alive) setUnits([]) })
     return () => { alive = false }
@@ -659,7 +658,7 @@ export function BulkImportUsers({ isSuperAdmin, campaigns, defaultPasswordOn = f
               'Content-Type': 'application/json',
               Authorization: `Bearer ${session?.access_token}`,
             },
-            body: JSON.stringify({ rows: batch }),
+            body: JSON.stringify({ rows: batch, ...orgBodyField() }),
           },
         )
         const json = await res.json()

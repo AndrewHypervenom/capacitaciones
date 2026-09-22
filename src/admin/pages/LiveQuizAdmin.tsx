@@ -83,7 +83,7 @@ function initials(name: string): string {
 // Número que cuenta hasta su valor con animación suave
 function CountUp({ value, className, style }: { value: number; className?: string; style?: CSSProperties }) {
   const mv = useMotionValue(value)
-  const text = useTransform(mv, (v) => Math.round(v).toLocaleString())
+  const text = useTransform(mv, (v) => Math.round(v).toLocaleString(i18n.language))
   useEffect(() => {
     const controls = animate(mv, value, { duration: 0.7, ease: [0.16, 1, 0.3, 1] })
     return controls.stop

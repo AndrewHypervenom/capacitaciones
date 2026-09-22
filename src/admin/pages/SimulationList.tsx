@@ -15,7 +15,7 @@ import {
   type ChoiceScenarioRow,
 } from '@/services/choiceScenarios.admin.service'
 import { getAudiences, type AudienceRule } from '@/services/audiences.service'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getActiveOrgUnits } from '@/services/org.service'
 import { ownedDeleteConfirm } from '@/lib/ownedDeleteConfirm'
 import { NewSimulationModal } from '@/admin/components/simulation/NewSimulationModal'
 import { AiDraftsPanel } from '@/admin/components/simulation/AiDraftsPanel'
@@ -45,7 +45,7 @@ export default function SimulationList() {
   const nav = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { campaignId: authCampaignId, isSuperAdmin, user } = useAuth()
+  const { campaignId: authCampaignId, creationCampaignId: homeSpace, isSuperAdmin, user } = useAuth()
 
   const ALL_CAMPAIGNS = '__all__'
   /* Ya no hay programas en pantalla: se listan todas las simulaciones a las que
@@ -76,14 +76,13 @@ export default function SimulationList() {
     })
       .then((data) => {
         const ids = data.map((c) => c.id)
-        setCreationCampaignId(authCampaignId && ids.includes(authCampaignId) ? authCampaignId : ids[0] ?? '')
+        setCreationCampaignId(homeSpace && ids.includes(homeSpace) ? homeSpace : ids[0] ?? '')
       })
       .catch(() => {})
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getActiveOrgUnits()
       .then(setUnits)
       .catch(() => setUnits([]))
-  }, [isSuperAdmin, authCampaignId, user?.id])
+  }, [isSuperAdmin, authCampaignId, homeSpace, user?.id])
 
   useEffect(() => {
     // El esqueleto solo en la primera carga: los refrescos de fondo (volver a la
@@ -93,8 +92,14 @@ export default function SimulationList() {
     Promise.all([
       getAllScenariosAdmin(ALL_CAMPAIGNS),
       getAllChoiceScenariosAdmin(ALL_CAMPAIGNS),
+      getAccessibleCampaigns({ isSuperAdmin, homeCampaignId: authCampaignId, userId: user?.id ?? null }),
     ])
-      .then(([d, c]) => {
+      .then(([dAll, cAll, accessible]) => {
+        /* Solo las de la org activa: lo que la otra org del grupo comparte se
+         * ve (la base lo deja leer) pero no se edita desde aquí. */
+        const own = new Set(accessible.map((x) => x.id))
+        const d = dAll.filter((r) => !r.campaign_id || own.has(r.campaign_id))
+        const c = cAll.filter((r) => !r.campaign_id || own.has(r.campaign_id))
         setDialogueRows(d)
         setChoiceRows(c)
         const courseIds = [...new Set([...d, ...c].map((r) => r.course_id).filter((x): x is string => !!x))]

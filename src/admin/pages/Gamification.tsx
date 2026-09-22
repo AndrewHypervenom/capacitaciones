@@ -821,7 +821,7 @@ function XPSourcesCard({ levels, lang }: { levels: XPLevel[]; lang: Lang }) {
             </div>
             <div className="text-right">
               <div className="text-[11px] uppercase tracking-wider text-text-subtle">XP</div>
-              <div className="text-[15px] font-semibold tabular-nums text-text">{total.toLocaleString()}</div>
+              <div className="text-[15px] font-semibold tabular-nums text-text">{total.toLocaleString(lang)}</div>
             </div>
           </div>
         </div>

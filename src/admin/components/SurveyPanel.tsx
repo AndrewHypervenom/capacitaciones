@@ -259,6 +259,7 @@ function CommentCard({
   }
   labels: { q1: string; q2: string; retro: string; followup: string }
 }) {
+  const { i18n } = useTranslation()
   const tone = TONE[toneOf((c.q1 + c.q2) / 2)]
   const date = new Date(c.at)
   return (
@@ -270,7 +271,7 @@ function CommentCard({
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line/60 bg-subtle/30 px-3.5 py-2 text-[11px] text-text-subtle">
         <span className="tabular-nums">
-          {date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+          {date.toLocaleDateString(i18n.language, { day: 'numeric', month: 'short', year: 'numeric' })}
         </span>
         <span className="text-text-subtle/40">·</span>
         {/* Las dos notas con su rótulo: "1/10 · 6/10" suelto no dice cuál era

@@ -144,13 +144,15 @@ export default function Arena() {
     enabled: isModalOpen,
   })
 
-  const { isSuperAdmin, campaignId, user, loading: authLoading } = useAuth()
+  const { isSuperAdmin, campaignId, creationCampaignId: homeSpace, user, loading: authLoading } = useAuth()
   // El capacitador ve/gestiona sus campañas (casa + colaboraciones); el superadmin todas.
-  const scopedToCampaign = !isSuperAdmin
+  // También el superadmin: sus contenedores son los de la org activa (ver
+  // getAccessibleCampaigns), así la lista no mezcla LATAM y Brasil.
+  const scopedToCampaign = true
   /* Ya no hay programas en pantalla. El espacio interno donde se guarda un
      quiz nuevo sale solo (el de casa, o el primero con acceso). */
   const creationCampaignId =
-    (campaignId && campaigns.some((c) => c.id === campaignId) ? campaignId : campaigns[0]?.id) ?? ''
+    (homeSpace && campaigns.some((c) => c.id === homeSpace) ? homeSpace : campaigns[0]?.id) ?? ''
 
   useEffect(() => {
     if (authLoading) return

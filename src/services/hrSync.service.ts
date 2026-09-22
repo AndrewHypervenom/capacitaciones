@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { normalizeNationalId, type ExtractedRow } from '@/lib/parseUsersSheet'
 import { fold } from '@/lib/normalize'
 import type { OrgUnit } from '@/types/database'
-import { findUnit, type UnitIndex } from '@/services/org.service'
+import { findUnit, type UnitIndex, orgBodyField } from '@/services/org.service'
 import { updateUserEmail } from '@/services/userEmail.service'
 
 /**
@@ -1104,6 +1104,7 @@ export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
             method: 'POST',
             headers: await authHeader(),
             body: JSON.stringify({
+              ...orgBodyField(),
               rows: group.map((e) => ({
                 email: e.email,
                 display_name: e.name || undefined,

@@ -29,7 +29,7 @@ import {
 import { AttemptAnswers } from './progress/AttemptAnswers';
 import { rowText } from '@/lib/contentLang'
 import { Tooltip } from '@/components/ui/Tooltip';
-import { getOrganizations, getOrgUnits } from '@/services/org.service';
+import { getUnitsOfAllOrgs } from '@/services/org.service';
 import { countryLabelWithFlag } from '@/lib/countries';
 
 const MIN_FEEDBACK_CHARS = 8;
@@ -243,8 +243,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
      vez al abrir el panel; sin él los uuid no tendrían nombre. */
   useEffect(() => {
     let alive = true;
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getUnitsOfAllOrgs()
       .then((list) => { if (alive) setUnitNames(new Map(list.map((u) => [u.id, u.name]))); })
       .catch(() => { /* Sin catálogo el panel sigue: se ve "Unidad sin nombre". */ });
     return () => { alive = false; };

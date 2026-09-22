@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/services/auth.service'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
+import { OrgSwitcher } from '@/admin/components/OrgSwitcher'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher'
 import { TestModeSwitch } from '@/admin/components/TestModeSwitch'
@@ -291,6 +292,9 @@ export function AdminNav() {
 
           {/* "Ver como": alterna al instante entre gestión y vista de aprendiz. */}
           <ViewSwitcher variant="block" className="mt-3" onSwitch={() => setIsOpen(false)} />
+
+          {/* Superadmin: con qué organización trabaja el panel (LATAM, Brasil…). */}
+          <OrgSwitcher className="mt-3" />
 
           {/* Presencia en vivo: quién más del staff está conectado ahora. */}
           <WorkspacePresenceBar className="mt-3" />

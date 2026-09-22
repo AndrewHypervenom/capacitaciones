@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { aiOrgField } from '@/services/org.service'
 
 export interface HelpChatMessage {
   role: 'user' | 'assistant'
@@ -27,7 +28,7 @@ export async function sendHelpMessage(opts: {
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(opts),
+      body: JSON.stringify({ ...opts, ...aiOrgField() }),
     },
   )
 

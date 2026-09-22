@@ -16,6 +16,7 @@ import {
 } from '@/types/exam'
 import type { ContentBlock, QuizBlock, VideoMarkerRaw } from '@/types/blocks'
 import { pickLang } from '@/lib/contentLang'
+import { aiOrgField } from '@/services/org.service'
 
 /* ────────────────────────────────────────────────────────────────────────────
    Examen final — lado del capacitador / superadmin.
@@ -1162,7 +1163,7 @@ async function callGenerateExam(
       },
       // El idioma sale de la interfaz: con el sitio en portugués el examen se
       // escribe en portugués aunque el curso o el documento estén en español.
-      body: JSON.stringify({ language: currentAiLang(), ...body }),
+      body: JSON.stringify({ language: currentAiLang(), ...body, ...aiOrgField() }),
       signal,
     },
   )

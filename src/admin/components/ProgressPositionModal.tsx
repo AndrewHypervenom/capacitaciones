@@ -55,7 +55,7 @@ interface Props {
  * temario o con el onboarding terminado, sin tener que recorrerlo a mano.
  */
 export function ProgressPositionModal({ userId, userName, courseId, courseTitle, onClose, onDone }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const reduce = useReducedMotion()
 
   const [data, setData] = useState<AdminCourseSteps | 'loading' | 'error'>('loading')
@@ -242,7 +242,7 @@ export function ProgressPositionModal({ userId, userName, courseId, courseTitle,
             <p className="px-1 text-[11.5px] text-text-subtle">
               {t('admin.users.adjust_last', {
                 who: data.last_adjustment.by_name ?? '—',
-                date: new Date(data.last_adjustment.at).toLocaleString(),
+                date: new Date(data.last_adjustment.at).toLocaleString(i18n.language),
                 where: data.last_adjustment.label ?? '—',
               })}
             </p>

@@ -14,6 +14,13 @@ export function extractVimeoId(input: string): string | null {
     /player\.vimeo\.com\/video\/(\d{6,12})(?:\?.*?h=([a-zA-Z0-9]+))?/,
     // ID pelado, con o sin hash
     /^(\d{6,12})(?:\/([a-zA-Z0-9]+))?$/,
+    // El id al final de otra ruta: vimeo.com/manage/videos/ID (lo que copia
+    // quien subió el video desde su panel), channels/x/ID, showcase/N/video/ID,
+    // groups/x/videos/ID. Rutas enumeradas y no "cualquier número al final": un
+    // enlace a un showcase (vimeo.com/showcase/N) es una colección, no un video.
+    // El hash se exige hexadecimal, que es como los da Vimeo: si no, un
+    // /settings al final del enlace se tomaría por hash.
+    /vimeo\.com\/(?:manage\/videos|channels\/[^/?#\s"']+|groups\/[^/?#\s"']+\/videos|(?:showcase|album)\/\d+\/video)\/(\d{6,12})(?:\/([0-9a-f]{6,}))?(?![0-9A-Za-z])/,
   ]
   for (const p of patterns) {
     const m = s.match(p)

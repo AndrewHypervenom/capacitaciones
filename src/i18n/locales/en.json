@@ -3861,7 +3861,11 @@
         "no_description": "This simulation has no description yet: the learner would go in without knowing what it is about."
       },
       "ai_gen_moments_one": "{{count}} conversation moment",
-      "ai_gen_moments_other": "{{count}} conversation moments"
+      "ai_gen_moments_other": "{{count}} conversation moments",
+      "share": "Share",
+      "shared": "Shared",
+      "share_group_off": "Share with {{orgs}}: their people will be able to practice it. Applied when you save.",
+      "share_group_on": "Shared with {{orgs}}. Click to stop sharing (applied when you save). If it belongs to a shared course, it's still shared with it."
     },
     "ai_authored": {
       "tag": "AI",

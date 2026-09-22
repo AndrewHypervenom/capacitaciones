@@ -101,8 +101,8 @@ import { setUserIsClient } from '@/services/clients.service'
 import { AudienceRulePicker, normalizeRule, audienceReadyToPublish, audienceSummary } from '@/admin/components/AudienceRulePicker'
 import { scrollToCard } from '@/lib/scrollToCard'
 import { getAudiencePopulation, matchesAudience, ruleIsEmpty, isLearnerRole, type AudiencePerson } from '@/services/audiences.service'
-import { getOrganizations, getOrgUnits, createOrgUnit } from '@/services/org.service'
-import type { OrgUnit } from '@/types/database'
+import { getActiveOrgId, getOrgUnits, createOrgUnit, getSisterOrgsOfCampaign } from '@/services/org.service'
+import type { Organization, OrgUnit } from '@/types/database'
 import { COUNTRIES } from '@/lib/countries'
 import { cloneModule, deleteModule, getLibraryModules, toggleModulePublished, type DbModuleRow } from '@/services/modules.service'
 import { deletionToast } from '@/lib/deletionToast'
@@ -422,6 +422,16 @@ export default function CourseEditor() {
   const canMarkClients = isSuperAdmin || (canCreateLearners && !isRh)
 
   const [course, setCourse] = useState<CourseWithModules | null>(null)
+  // Orgs hermanas del grupo (LATAM ↔ Brasil): con quién se puede compartir.
+  const [sisterOrgs, setSisterOrgs] = useState<Organization[]>([])
+  const courseCampaignId = course?.campaign_id ?? null
+  useEffect(() => {
+    let alive = true
+    getSisterOrgsOfCampaign(courseCampaignId)
+      .then((list) => { if (alive) setSisterOrgs(list) })
+      .catch(() => { if (alive) setSisterOrgs([]) })
+    return () => { alive = false }
+  }, [courseCampaignId])
   // ¿Ya existe `courses.is_onboarding` (SQL 41)? `select *` solo la trae si existe.
   const onboardingReady = !!course && 'is_onboarding' in course
   // Igual con `courses.desktop_only` (SQL 45): sin la columna, el interruptor
@@ -855,10 +865,10 @@ export default function CourseEditor() {
   const [orgId, setOrgId] = useState('')
   useEffect(() => {
     let alive = true
-    getOrganizations()
-      .then((orgs) => {
-        if (alive) setOrgId(orgs[0]?.id ?? '')
-        return orgs[0] ? getOrgUnits(orgs[0].id, 'category') : []
+    getActiveOrgId()
+      .then((id) => {
+        if (alive) setOrgId(id ?? '')
+        return id ? getOrgUnits(id, 'category') : []
       })
       .then((list) => { if (alive) setCategories(list) })
       .catch(() => { if (alive) setCategories([]) })
@@ -937,9 +947,8 @@ export default function CourseEditor() {
       new Set([authCampaignId, ...accessibleCampaigns.map((c) => c.id)].filter(Boolean)),
     ) as string[]
     let active = true
-    getOrganizations()
-      .then((orgs) => {
-        const orgId = orgs[0]?.id
+    getActiveOrgId()
+      .then((orgId) => {
         if (!orgId) return
         getOrgUnits(orgId).then((u) => { if (active) setOrgUnits(u) }).catch(() => {})
         getAudiencePopulation(orgId).then((p) => { if (active) setAudiencePeople(p) }).catch(() => {})
@@ -1944,6 +1953,22 @@ export default function CourseEditor() {
       toast.success(t('admin.courses.visibility_saved'))
     } catch {
       setForm((f) => ({ ...f, visibility: prev }))
+      toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  /* Compartir con las orgs hermanas del grupo (LATAM ↔ Brasil). Se guarda al
+   * instante, como el catálogo. `is_shareable` va con él: es lo que deja a la
+   * otra org inscribir a su gente (la regla de course_assignments lo exige). */
+  const sharedWithGroup = course.shared_with_group === true
+  const handleSetShared = async (on: boolean) => {
+    if (sharedWithGroup === on) return
+    try {
+      await updateCourse(course.id, { shared_with_group: on, is_shareable: on })
+      setCourse({ ...course, shared_with_group: on, is_shareable: on })
+      invalidateModulesCache()
+      toast.success(t('admin.courses.share_group_saved'))
+    } catch {
       toast.error(t('admin.courses.error_save'))
     }
   }
@@ -4504,6 +4529,36 @@ export default function CourseEditor() {
               label={t('admin.courses.catalog_open_title', 'Además, abierto en el catálogo')}
             />
           </div>
+
+          {/* Compartir con la otra org del grupo. Solo sale si hay con quién. */}
+          {sisterOrgs.length > 0 && (
+            <div className={cn(
+              'flex items-start gap-3 rounded-2xl border p-4',
+              sharedWithGroup ? 'border-primary/40 bg-primary/[0.04]' : 'border-line',
+            )}>
+              <span className={cn(
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                sharedWithGroup ? 'bg-primary/12 text-primary' : 'bg-subtle text-text-muted',
+              )}>
+                <Share2 className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-text">
+                  {t('admin.courses.share_group_title', { orgs: sisterOrgs.map((o) => o.name).join(', ') })}
+                </p>
+                <p className="text-[12px] text-text-muted leading-relaxed mt-0.5">
+                  {sharedWithGroup
+                    ? t('admin.courses.share_group_on', { orgs: sisterOrgs.map((o) => o.name).join(', ') })
+                    : t('admin.courses.share_group_off')}
+                </p>
+              </div>
+              <Toggle
+                on={sharedWithGroup}
+                onClick={() => handleSetShared(!sharedWithGroup)}
+                label={t('admin.courses.share_group_title', { orgs: sisterOrgs.map((o) => o.name).join(', ') })}
+              />
+            </div>
+          )}
 
           {/* OBLIGATORIO.
               `course_audiences.is_mandatory` existía y se guardaba desde el

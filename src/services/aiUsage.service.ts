@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getActiveOrgId } from '@/services/org.service'
 
 // La tabla ai_usage_logs aún no está en los tipos generados de la BD; se accede
 // sin tipar (cast). profiles sí va tipado. Ver supabase/sql/ai_usage_logs.sql.
@@ -129,18 +130,25 @@ function dayKey(iso: string): string {
  * sola pasada. Para el volumen de esta plataforma alcanza con una consulta.
  */
 export async function fetchAiUsage(filters: AiUsageFilters): Promise<AiUsageData> {
-  let q = logs()
-    .select('id,created_at,user_id,function_name,operation,model,input_tokens,output_tokens,cache_creation_input_tokens,cache_read_input_tokens,cost_usd,metadata')
-    .order('created_at', { ascending: false })
-    .limit(FETCH_LIMIT)
+  const orgId = await getActiveOrgId()
+  const build = (byOrg: boolean) => {
+    let q = logs()
+      .select('id,created_at,user_id,function_name,operation,model,input_tokens,output_tokens,cache_creation_input_tokens,cache_read_input_tokens,cost_usd,metadata')
+      .order('created_at', { ascending: false })
+      .limit(FETCH_LIMIT)
+    // Cada tenant paga su IA: el panel muestra el gasto de la org activa.
+    if (byOrg && orgId) q = q.eq('org_id', orgId)
+    if (filters.functionName && filters.functionName !== 'all') q = q.eq('function_name', filters.functionName)
+    if (filters.model && filters.model !== 'all') q = q.eq('model', filters.model)
+    if (filters.userId && filters.userId !== 'all') q = q.eq('user_id', filters.userId)
+    if (filters.from) q = q.gte('created_at', filters.from)
+    if (filters.to) q = q.lte('created_at', filters.to)
+    return q
+  }
 
-  if (filters.functionName && filters.functionName !== 'all') q = q.eq('function_name', filters.functionName)
-  if (filters.model && filters.model !== 'all') q = q.eq('model', filters.model)
-  if (filters.userId && filters.userId !== 'all') q = q.eq('user_id', filters.userId)
-  if (filters.from) q = q.gte('created_at', filters.from)
-  if (filters.to) q = q.lte('created_at', filters.to)
-
-  const { data, error } = await q
+  let { data, error } = await build(true)
+  // Sin la columna org_id (SQL 64 sin correr) se muestra todo, como antes.
+  if (error && /org_id/.test(error.message ?? '')) ({ data, error } = await build(false))
   if (error) throw error
 
   let rows = (data ?? []) as AiUsageRow[]
@@ -262,7 +270,10 @@ async function fetchPrevCost(
   const prevFrom = new Date(fromMs - span).toISOString()
   const prevTo = new Date(fromMs).toISOString()
 
+  const orgId = await getActiveOrgId()
   let q = logs().select('cost_usd').gte('created_at', prevFrom).lt('created_at', prevTo).limit(FETCH_LIMIT)
+  // Sin la columna org_id esto falla y la comparación sale vacía: no rompe nada.
+  if (orgId) q = q.eq('org_id', orgId)
   if (filters.functionName && filters.functionName !== 'all') q = q.eq('function_name', filters.functionName)
   if (filters.model && filters.model !== 'all') q = q.eq('model', filters.model)
   if (filters.userId && filters.userId !== 'all') q = q.eq('user_id', filters.userId)

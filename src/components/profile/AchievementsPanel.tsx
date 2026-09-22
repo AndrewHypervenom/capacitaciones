@@ -125,7 +125,7 @@ export function AchievementsPanel({ xp, streak, earned, lang, hideLocked = false
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[20px] font-bold tabular-nums text-text">{xp.toLocaleString()}</div>
+              <div className="text-[20px] font-bold tabular-nums text-text">{xp.toLocaleString(lang)}</div>
               <div className="text-[11px] text-text-subtle">XP</div>
             </div>
           </div>

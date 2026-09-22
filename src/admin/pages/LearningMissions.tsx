@@ -109,7 +109,7 @@ export default function LearningMissions() {
   const [form, setForm] = useState<MissionForm>(emptyForm())
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const { isSuperAdmin, campaignId, loading: authLoading } = useAuth()
+  const { isSuperAdmin, campaignId, creationCampaignId, loading: authLoading } = useAuth()
   // El capacitador solo ve/gestiona su propia campaña; el superadmin ve todas.
   const scopedToCampaign = !isSuperAdmin
 
@@ -145,7 +145,7 @@ export default function LearningMissions() {
   }, [authLoading, scopedToCampaign, campaignId])
 
   const openModal = () => {
-    setForm({ ...emptyForm(), campaign_id: campaignId ?? campaigns[0]?.id ?? '' })
+    setForm({ ...emptyForm(), campaign_id: creationCampaignId ?? campaignId ?? campaigns[0]?.id ?? '' })
     setIsModalOpen(true)
   }
 

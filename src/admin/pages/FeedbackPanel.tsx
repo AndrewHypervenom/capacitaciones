@@ -3,7 +3,7 @@ import i18n from '@/i18n'
 import { ChevronDown, ChevronRight, Download, Loader2, Search, Globe2, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { readAllPages } from '@/services/readAllPages'
-import { getMyPeopleIds, getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getMyPeopleIds, getActiveOrgUnits } from '@/services/org.service'
 import { getAudience, matchesAudience, type AudienceRule } from '@/services/audiences.service'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/hooks/useAuth'
@@ -131,8 +131,7 @@ export default function FeedbackPanel() {
      siempre porque es lo que hay que poder elegir. */
   useEffect(() => {
     let vivo = true
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getActiveOrgUnits()
       .then((list) => { if (vivo) setUnits(list) })
       .catch(() => { if (vivo) setUnits([]) })
     return () => { vivo = false }
@@ -1053,7 +1052,7 @@ function AttemptsList({ loading, attempts, levelMap }: {
               <div className="text-text tabular-nums font-medium shrink-0 w-10 text-right">{a.score}%</div>
               <div className="shrink-0"><StarDisplay value={getStarsDisplay(a.score)} size={13} /></div>
               <div className="text-text-muted tabular-nums shrink-0 w-24 text-right">
-                {new Date(a.completed_at).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' })}
+                {new Date(a.completed_at).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short', year: 'numeric' })}
               </div>
             </div>
           )

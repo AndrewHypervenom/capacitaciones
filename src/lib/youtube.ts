@@ -5,8 +5,15 @@
 
 /** Extrae el ID de 11 caracteres desde una URL de YouTube o desde el ID pelado. */
 export function extractYouTubeId(input: string): string | null {
+  // El `(?![A-Za-z0-9_-])` final impide quedarse con los primeros 11 caracteres
+  // de algo más largo: un id mal copiado debe rechazarse, no reproducir otro video.
   const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/,
+    // youtu.be/ID · /embed/ID (también youtube-nocookie) · /shorts/ID · /live/ID
+    // (transmisiones grabadas, muy comunes en capacitación) · /v/ID
+    /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed|shorts|live|v)\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/,
+    // watch?v=ID, con `v` en cualquier posición: al compartir desde el celular
+    // llega como watch?app=desktop&v=ID o watch?feature=shared&v=ID.
+    /youtube\.com\/watch\?(?:[^#\s"']*&)?v=([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/,
     /^([A-Za-z0-9_-]{11})$/,
   ]
   for (const p of patterns) {

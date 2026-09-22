@@ -1771,7 +1771,11 @@ export default function ModuleEditor() {
       return {
         ...pickKeys(section, SECTION_GUARD_KEYS),
         // El quiz va dentro de la sección: se guarda con ella y se pisa con ella.
-        section_quizzes: (section.section_quizzes ?? []).map((q) => pickKeys(q, QUIZ_GUARD_KEYS)),
+        // Las preguntas sin id todavía no existen en la base (la en blanco que
+        // traen las plantillas con quiz): compararlas daría un aviso falso.
+        section_quizzes: (section.section_quizzes ?? [])
+          .filter((q) => q.id)
+          .map((q) => pickKeys(q, QUIZ_GUARD_KEYS)),
       }
     },
     [selectedSectionId],
@@ -1917,30 +1921,27 @@ export default function ModuleEditor() {
       }
       const sectionStyle = styleMap[template] ?? 'default'
 
-      const newSection = await upsertSection({
-        module_id: mod.id,
-        sort_order: sections.length,
-        heading_es: t('admin.modules.new_section_heading'),
-        body_es: [],
-        callout_kind: hasCallout ? 'tip' : null,
-        section_style: sectionStyle,
-      })
-
-      const blank: DbSectionRow = {
-        id: newSection.id,
+      /* Se inserta EXACTAMENTE lo que queda en pantalla. Antes solo viajaban
+       * cuatro campos y la base rellenaba el resto con sus defaults
+       * (body_en = [], media_size = 'full', media_align = 'center'…), distintos
+       * de los de aquí. El guardia de versiones compara la sección de pantalla
+       * con la de la base, así que el PRIMER guardado de toda sección nueva
+       * avisaba "Hay una versión más nueva" sin que nadie más la hubiera tocado.
+       * Con "Cancelar" —lo prudente ante ese aviso— no se guardaba nada. */
+      const fields = {
         module_id: mod.id,
         sort_order: sections.length,
         heading_es: t('admin.modules.new_section_heading'),
         heading_en: null,
         heading_pt: null,
-        body_es: [],
+        body_es: [] as string[],
         body_en: null,
         body_pt: null,
-        callout_kind: hasCallout ? 'tip' : null,
+        callout_kind: hasCallout ? ('tip' as const) : null,
         callout_es: null,
         callout_en: null,
         callout_pt: null,
-        media_type: hasMedia ? 'image' : null,
+        media_type: hasMedia ? ('image' as const) : null,
         media_url: null,
         media_caption_es: null,
         media_caption_en: null,
@@ -1951,6 +1952,14 @@ export default function ModuleEditor() {
         section_style: sectionStyle,
         video_markers: template === 'video-interactive' ? [] : null,
         blocks_data: null,
+      }
+      const newSection = await upsertSection(fields)
+
+      const blank: DbSectionRow = {
+        ...fields,
+        id: newSection.id,
+        // La pregunta en blanco de las plantillas con quiz solo existe en
+        // pantalla hasta el primer guardado (sin id): el guardia la ignora.
         section_quizzes: hasQuiz ? [{
           id: '',
           section_id: newSection.id,
@@ -2126,7 +2135,7 @@ export default function ModuleEditor() {
 
         <div className="flex items-center justify-between px-4 py-2 border-b border-glass-border/8">
           <span className="text-[10px] uppercase tracking-wider text-text-subtle font-semibold">
-            Secciones
+            {t('admin.modules.editor_chrome.sections_title')}
           </span>
           <button
             onClick={() => setGalleryOpen(true)}
@@ -2230,7 +2239,7 @@ export default function ModuleEditor() {
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
               : <Plus className="h-3.5 w-3.5" />
             }
-            Nueva sección
+            {t('admin.modules.editor_chrome.add_section')}
           </button>
         </div>
       </div>

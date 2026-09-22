@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine, Briefcase, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 
 import { supabase } from '@/lib/supabase'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getActiveOrgUnits, getActiveOrganization } from '@/services/org.service'
 import {
   getPeoplePage,
   countClients,
@@ -41,12 +41,13 @@ import { BulkImportUsers } from '@/admin/components/BulkImportUsers'
 import { HrRosterSyncModal } from '@/admin/components/HrRosterSyncModal'
 import { DefaultPasswordModal } from '@/admin/components/DefaultPasswordModal'
 import { ChangeEmailModal } from '@/admin/components/ChangeEmailModal'
+import { MovePersonOrgModal } from '@/admin/components/MovePersonOrgModal'
 import { getDefaultPassword } from '@/services/appSettings.service'
 import { setUsersActive } from '@/services/hrSync.service'
 import { logActivity } from '@/services/audit.service'
 import { checkEmailAvailable, type ExistingAccount } from '@/services/userEmail.service'
 import { COUNTRIES, OPERATION_COUNTRIES } from '@/lib/countries'
-import type { Profile, Campaign, OrgUnit } from '@/types/database'
+import type { Profile, Campaign, OrgUnit, Organization } from '@/types/database'
 
 // URL pública del sitio (la que se entrega al usuario junto a sus credenciales).
 const SITE_URL = 'https://capacitaciones-chi.vercel.app/'
@@ -231,6 +232,18 @@ export default function UserList() {
   const [inviteIsClient, setInviteIsClient] = useState(false)
   const [inviteClientName, setInviteClientName] = useState('')
   const [units, setUnits] = useState<OrgUnit[] | null>(null)
+  // Org con la que se trabaja: sus países son los que se ofrecen al dar de alta.
+  const [activeOrg, setActiveOrg] = useState<Organization | null>(null)
+  useEffect(() => {
+    getActiveOrganization().then(setActiveOrg).catch(() => setActiveOrg(null))
+  }, [])
+  const orgCountries = useMemo(
+    () =>
+      activeOrg?.countries?.length
+        ? OPERATION_COUNTRIES.filter((c) => activeOrg.countries!.includes(c.code))
+        : OPERATION_COUNTRIES,
+    [activeOrg],
+  )
   const [unitsIgnored, setUnitsIgnored] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
@@ -252,6 +265,8 @@ export default function UserList() {
   // Cambio del correo de ingreso de una persona (solo superadmin). Se hace al
   // momento, como la baja o el restablecimiento: no es un borrador.
   const [emailUser, setEmailUser] = useState<ProfileWithEmail | null>(null)
+  // Cambiar de organización (LATAM ↔ Brasil): solo superadmin.
+  const [moveOrgUser, setMoveOrgUser] = useState<ProfileWithEmail | null>(null)
   // Dispositivos con ingreso biométrico por persona (solo informativo).
   const [passkeys, setPasskeys] = useState<Record<string, { count: number; lastUsedAt: string | null }>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -289,10 +304,16 @@ export default function UserList() {
   // y él no está en ella. Pedírselos obligaría a inventarle un CR, y un CR
   // inventado acaba metiéndolo en la audiencia de un curso interno — justo lo
   // que esta función viene a impedir.
-  const needsCountry = inviteRole === 'learner' && !inviteIsClient
-  // Área y CR también: un aprendiz sin ellos queda "en el aire" — no le llegan
-  // los cursos de su área ni de su CR, ni sale al filtrar por ellos.
-  const missingCountry = needsCountry && (!inviteCountry || !inviteArea || !inviteOperation)
+  //
+  // El país además decide la ORGANIZACIÓN (CO/MX/AR → LATAM, BR → Brasil), así
+  // que ahora se le pide también al staff: un capacitador o RH sin país nacería
+  // sin organización y, con el aislamiento, no vería nada.
+  const needsCountry = !inviteIsClient && inviteRole !== 'superadmin'
+  // Área y CR solo al aprendiz: un aprendiz sin ellos queda "en el aire" — no
+  // le llegan los cursos de su área ni de su CR, ni sale al filtrar por ellos.
+  const needsUnits = inviteRole === 'learner' && !inviteIsClient
+  const missingCountry =
+    (needsCountry && !inviteCountry) || (needsUnits && (!inviteArea || !inviteOperation))
   /** Un cliente sin nombre de cliente no se distingue del siguiente. */
   const missingClientName = inviteIsClient && !inviteClientName.trim()
   const operationOptions = useMemo(
@@ -516,8 +537,7 @@ export default function UserList() {
     setInviting(true)
     // El catálogo de CR y áreas se pide solo al abrir el alta, y una vez.
     if (units === null) {
-      getOrganizations()
-        .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+      getActiveOrgUnits()
         .then(setUnits)
         .catch(() => setUnits([]))
     }
@@ -575,6 +595,9 @@ export default function UserList() {
             areaId: inviteIsClient ? null : inviteArea || null,
             isClient: inviteIsClient,
             clientName: inviteIsClient ? inviteClientName.trim() : null,
+            // Org activa: la usa el servidor cuando el país no la decide (un
+            // cliente de otro país). Solo el superadmin puede elegirla.
+            orgId: activeOrg?.id ?? null,
           }),
         },
       )
@@ -1228,7 +1251,9 @@ export default function UserList() {
                       // de la audiencia del curso): otro país no casaría con ningún curso.
                       // Al CLIENTE sí se le ofrece la lista entera: es de fuera y
                       // puede estar donde sea, y su país no decide ninguna audiencia.
-                      ...[...(inviteIsClient ? COUNTRIES : OPERATION_COUNTRIES)]
+                      // Y solo los de la organización activa: desde LATAM no se
+                      // da de alta a alguien de Brasil (el país decide la org).
+                      ...[...(inviteIsClient ? COUNTRIES : orgCountries)]
                         .sort((a, b) => a.name.localeCompare(b.name, 'es'))
                         .map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` })),
                     ]}
@@ -1243,15 +1268,15 @@ export default function UserList() {
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
                     {t('admin.users.area_label')}
-                    {needsCountry && <span className="ml-0.5 text-[#10D451]">*</span>}
+                    {needsUnits && <span className="ml-0.5 text-[#10D451]">*</span>}
                   </label>
                   <Select
                     value={inviteArea}
                     onChange={setInviteArea}
-                    placeholder={needsCountry ? t('admin.users.pick_area') : t('admin.users.area_optional')}
+                    placeholder={needsUnits ? t('admin.users.pick_area') : t('admin.users.area_optional')}
                     disabled={units === null}
                     options={[
-                      ...(needsCountry ? [] : [{ value: '', label: t('admin.users.area_optional') }]),
+                      ...(needsUnits ? [] : [{ value: '', label: t('admin.users.area_optional') }]),
                       ...areaOptions,
                     ]}
                   />
@@ -1259,17 +1284,17 @@ export default function UserList() {
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-text-muted mb-1.5">
                     {t('admin.users.cr_label')}
-                    {needsCountry && <span className="ml-0.5 text-[#10D451]">*</span>}
+                    {needsUnits && <span className="ml-0.5 text-[#10D451]">*</span>}
                   </label>
                   <Select
                     value={inviteOperation}
                     onChange={setInviteOperation}
-                    placeholder={needsCountry ? t('admin.users.pick_cr') : t('admin.users.cr_optional')}
+                    placeholder={needsUnits ? t('admin.users.pick_cr') : t('admin.users.cr_optional')}
                     disabled={units === null}
                     searchable
                     searchPlaceholder={t('admin.users.cr_search')}
                     options={[
-                      ...(needsCountry ? [] : [{ value: '', label: t('admin.users.cr_optional') }]),
+                      ...(needsUnits ? [] : [{ value: '', label: t('admin.users.cr_optional') }]),
                       ...operationOptions,
                     ]}
                   />
@@ -1596,7 +1621,7 @@ export default function UserList() {
                             label={
                               user.deactivated_at
                                 ? t('admin.users.inactive_since', {
-                                    date: new Date(user.deactivated_at).toLocaleDateString(),
+                                    date: new Date(user.deactivated_at).toLocaleDateString(i18n.language),
                                     reason: user.deactivation_reason ?? '—',
                                   })
                                 : t('admin.users.inactive_hint')
@@ -1677,7 +1702,7 @@ export default function UserList() {
                         const c = COUNTRIES.find((x) => x.code === user.country)
                         return c ? `${c.flag} ${c.name} · ` : ''
                       })()}
-                      {t('admin.users.client_since', { date: new Date(user.created_at).toLocaleDateString() })}
+                      {t('admin.users.client_since', { date: new Date(user.created_at).toLocaleDateString(i18n.language) })}
                     </div>
                   </div>
                 ) : isSuperAdmin ? (
@@ -1752,6 +1777,19 @@ export default function UserList() {
                         aria-label={t('admin.users.manage_courses')}
                       >
                         <RotateCcw className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {/* Cambiar de organización (LATAM ↔ Brasil). El superadmin no
+                      tiene org: las ve todas. */}
+                  {isSuperAdmin && user.role !== 'superadmin' && (
+                    <Tooltip label={t('admin.users.move_org_hint')} className="shrink-0" maxWidth={260}>
+                      <button
+                        onClick={() => setMoveOrgUser(user)}
+                        className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg text-text-subtle hover:text-text hover:bg-glass/6 transition-colors"
+                        aria-label={t('admin.users.move_org')}
+                      >
+                        <ArrowRightLeft className="h-4 w-4" />
                       </button>
                     </Tooltip>
                   )}
@@ -1997,6 +2035,14 @@ export default function UserList() {
           onClose={() => setEmailUser(null)}
           onSaved={(email) => applyNewEmail(emailUser.id, email)}
           describeTaken={(existing) => describeTakenEmail(existing, t)}
+        />
+      )}
+
+      {moveOrgUser && (
+        <MovePersonOrgModal
+          user={moveOrgUser}
+          onClose={() => setMoveOrgUser(null)}
+          onMoved={() => { void refreshData() }}
         />
       )}
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getActiveOrgUnits } from '@/services/org.service'
 import { getAudiences, type AudienceRule } from '@/services/audiences.service'
 import type { OrgUnit } from '@/types/database'
 
@@ -21,8 +21,7 @@ export function useCrFilter(courseIds: (string | null | undefined)[]) {
 
   useEffect(() => {
     let alive = true
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getActiveOrgUnits()
       .then((list) => { if (alive) setUnits(list) })
       .catch(() => { if (alive) setUnits([]) })
     return () => { alive = false }

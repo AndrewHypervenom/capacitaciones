@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Play, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, Play, Plus, Share2, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { resolveCreationCampaignId } from '@/stores/campaignScopeStore'
@@ -34,6 +34,9 @@ import { useUnsavedWork } from '@/hooks/useUnsavedWork'
 import { SaveDock } from '@/admin/components/SaveDock'
 import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { rowText } from '@/lib/contentLang'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { getSisterOrgsOfCampaign } from '@/services/org.service'
+import type { Organization } from '@/types/database'
 
 type Tab = 'meta' | 'nodes'
 
@@ -42,6 +45,8 @@ interface MetaState {
   title_es: string; title_en: string; title_pt: string
   description: string; client_name: string; client_company: string; objective: string
   start_node_id: string; is_published: boolean
+  /** Compartida con la org hermana del grupo (LATAM ↔ Brasil). */
+  shared_with_group: boolean
 }
 
 type NodesMap = Record<string, ChoiceNodeData>
@@ -59,7 +64,7 @@ const defaultMeta = (): MetaState => ({
   slug: '', level: 'basico',
   title_es: '', title_en: '', title_pt: '',
   description: '', client_name: '', client_company: '', objective: '',
-  start_node_id: 'start', is_published: false,
+  start_node_id: 'start', is_published: false, shared_with_group: false,
 })
 
 const defaultNodes = (): NodesMap => ({
@@ -91,6 +96,7 @@ function rowToState(row: ChoiceScenarioRow): { meta: MetaState; nodes: NodesMap 
       description: row.description ?? '', client_name: row.client_name ?? '',
       client_company: row.client_company ?? '', objective: row.objective ?? '',
       start_node_id: row.start_node_id, is_published: row.is_published,
+      shared_with_group: row.shared_with_group === true,
     },
     nodes: withClientStart(row.nodes as unknown as NodesMap, row.start_node_id),
   }
@@ -117,6 +123,15 @@ export default function ChoiceSimEditor() {
   const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<Tab>('meta')
   const [meta, setMeta] = useState<MetaState>(defaultMeta)
+  // Orgs hermanas del grupo: con quién se puede compartir esta simulación.
+  const [sisterOrgs, setSisterOrgs] = useState<Organization[]>([])
+  useEffect(() => {
+    let alive = true
+    getSisterOrgsOfCampaign(campaignId || null)
+      .then((list) => { if (alive) setSisterOrgs(list) })
+      .catch(() => { if (alive) setSisterOrgs([]) })
+    return () => { alive = false }
+  }, [campaignId])
   const [nodes, setNodes] = useState<NodesMap>(defaultNodes)
   const [selectedNodeId, setSelectedNodeId] = useState('start')
   const [rowId, setRowId] = useState<string | null>(isNew ? null : id ?? null)
@@ -298,6 +313,7 @@ export default function ChoiceSimEditor() {
         start_node_id: meta.start_node_id,
         nodes: nodes as unknown as import('@/types/database').Json,
         is_published: meta.is_published,
+        shared_with_group: meta.shared_with_group,
       }
 
       if (rowId) {
@@ -413,6 +429,28 @@ export default function ChoiceSimEditor() {
             {meta.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             <span className="hidden sm:inline">{meta.is_published ? 'Despublicar' : 'Publicar'}</span>
           </Button>
+          {/* Compartir con la otra org del grupo (LATAM ↔ Brasil). Si la
+              simulación cuelga de un curso compartido, ya se comparte con él. */}
+          {sisterOrgs.length > 0 && (
+            <Tooltip
+              label={meta.shared_with_group
+                ? t('admin.simulations.share_group_on', { orgs: sisterOrgs.map((o) => o.name).join(', ') })
+                : t('admin.simulations.share_group_off', { orgs: sisterOrgs.map((o) => o.name).join(', ') })}
+              maxWidth={280}
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMeta((m) => ({ ...m, shared_with_group: !m.shared_with_group }))}
+                className={meta.shared_with_group ? 'text-primary' : undefined}
+              >
+                <Share2 className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {meta.shared_with_group ? t('admin.simulations.shared') : t('admin.simulations.share')}
+                </span>
+              </Button>
+            </Tooltip>
+          )}
           {/* Guardar vive en la barra única del pie (SaveDock). */}
         </div>
       </div>

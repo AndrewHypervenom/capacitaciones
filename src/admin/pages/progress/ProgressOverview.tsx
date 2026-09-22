@@ -1,6 +1,7 @@
 // src/admin/pages/progress/ProgressOverview.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import { useSearchParams } from 'react-router-dom';
 import {
   Users, UserCheck, Award, Gauge, HeartHandshake, ClipboardCheck, Download,
@@ -34,13 +35,13 @@ import { scoreHex, useSearchHotkey, Highlight } from './ModulesChrome';
 import { StatStrip } from './ProgressChrome';
 import { CourseProgressDrawer } from './CourseProgressDrawer';
 import { pickLang } from '@/lib/contentLang';
-import { getOrganizations, getOrgUnits } from '@/services/org.service';
+import { getActiveOrgUnits } from '@/services/org.service';
 import { supabase } from '@/lib/supabase';
 import { shouldHideTestData } from '@/stores/testModeStore';
 
 /** Miles separados. Un "2015" a secas se lee mal al lado de un porcentaje. */
 const fmt = (n: number | null | undefined) =>
-  n === null || n === undefined ? '—' : n.toLocaleString('es');
+  n === null || n === undefined ? '—' : n.toLocaleString(i18n.language);
 
 /* ────────────────────────────────────────────────────────────────────────────
    Panorama de Progreso.
@@ -182,8 +183,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
      todo lo demás. Pedirlo bajo demanda dejaría los selectores vacíos. */
   useEffect(() => {
     let alive = true;
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getActiveOrgUnits()
       .then((list) => { if (alive) setUnits(list); })
       .catch(() => { if (alive) setUnits([]); });
     return () => { alive = false; };

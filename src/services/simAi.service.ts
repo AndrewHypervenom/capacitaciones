@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Language } from '@/stores/userStore'
+import { aiOrgField } from '@/services/org.service'
 
 /** Un turno de la conversación (para mandar el historial a la IA). */
 export interface SimTurn {
@@ -64,7 +65,7 @@ async function post<T>(
           Authorization: `Bearer ${session.access_token}`,
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, ...aiOrgField() }),
         signal: timeoutCtrl.signal,
       },
     )

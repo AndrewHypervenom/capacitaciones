@@ -21,7 +21,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/motion'
 import { cn } from '@/lib/cn'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getActiveOrgUnits } from '@/services/org.service'
 
 // ─── Rangos ──────────────────────────────────────────────────────────
 // El tamaño de la franja va pegado al rango. "Hoy" va en franjas de 5 minutos
@@ -112,8 +112,7 @@ export default function Traffic() {
   const [operationId, setOperationId] = useState<string>('all')
   const [crOptions, setCrOptions] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id, 'operation') : []))
+    void getActiveOrgUnits('operation')
       .then((list) => setCrOptions(list.map((u) => ({ id: u.id, name: u.name }))))
       .catch(() => setCrOptions([]))
   }, [])

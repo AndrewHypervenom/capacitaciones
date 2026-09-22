@@ -100,7 +100,7 @@ type Phase = 'join' | 'lobby' | 'question' | 'answered' | 'leaderboard' | 'ended
 // ─── Componente ────────────────────────────────────────────────────────────────
 export default function LiveQuizPlay() {
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { profile } = useAuth()
 
   // Unirse
@@ -554,7 +554,7 @@ export default function LiveQuizPlay() {
                       {entry.display_name}
                     </div>
                     <div className="text-[11px] font-bold tabular-nums" style={{ color: MEDALS[rank] }}>
-                      {entry.score.toLocaleString()}
+                      {entry.score.toLocaleString(i18n.language)}
                     </div>
                     <motion.div
                       className="w-20 rounded-t-xl flex items-end justify-center pb-2"
@@ -640,7 +640,7 @@ export default function LiveQuizPlay() {
                 className="flex items-center gap-1 text-[13px] font-bold tabular-nums text-text-muted"
               >
                 <Star className="h-3.5 w-3.5 fill-current" style={{ color: '#d97706' }} />
-                {myScore.toLocaleString()}
+                {myScore.toLocaleString(i18n.language)}
               </motion.div>
             )}
           </div>
@@ -708,7 +708,7 @@ export default function LiveQuizPlay() {
                       transition={{ delay: 0.2 }}
                       className="text-[14px] font-bold text-text-muted"
                     >
-                      {t('livequiz.points', { points: questionScore.toLocaleString() })}
+                      {t('livequiz.points', { points: questionScore.toLocaleString(i18n.language) })}
                     </motion.span>
                   )}
                 </div>
@@ -857,7 +857,7 @@ export default function LiveQuizPlay() {
                 {t('livequiz.your_position')}{' '}
                 <span className="font-black text-text">#{myPos + 1}</span>
                 {'  ·  '}
-                <span className="font-bold" style={{ color: '#10D451' }}>{t('livequiz.points_suffix', { points: myFinalScore.toLocaleString() })}</span>
+                <span className="font-bold" style={{ color: '#10D451' }}>{t('livequiz.points_suffix', { points: myFinalScore.toLocaleString(i18n.language) })}</span>
               </p>
             )}
           </div>
@@ -888,7 +888,7 @@ export default function LiveQuizPlay() {
                     {mine && <span className="text-[11px] text-text-subtle ml-1">{t('livequiz.you')}</span>}
                   </span>
                   <span className="text-[13px] font-bold tabular-nums" style={{ color: '#10D451' }}>
-                    {entry.score.toLocaleString()}
+                    {entry.score.toLocaleString(i18n.language)}
                   </span>
                   <span className="text-[11px] text-text-subtle tabular-nums">
                     {entry.correct}/{quiz?.questions.length}

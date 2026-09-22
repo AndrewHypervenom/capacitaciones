@@ -143,14 +143,16 @@ export default function Worlds() {
   const [regionCounts, setRegionCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
-  const { isSuperAdmin, campaignId, user, loading: authLoading } = useAuth()
+  const { isSuperAdmin, campaignId, creationCampaignId: homeSpace, user, loading: authLoading } = useAuth()
   // El capacitador ve/gestiona los mundos de sus campañas (casa + colaboraciones);
   // el superadmin ve todos.
-  const scopedToCampaign = !isSuperAdmin
+  // También el superadmin: sus contenedores son los de la org activa (ver
+  // getAccessibleCampaigns), así la lista no mezcla LATAM y Brasil.
+  const scopedToCampaign = true
   /* Ya no hay programas en pantalla. El espacio interno donde se guarda un
      mundo nuevo sale solo: el de su curso si tiene, si no el de casa. */
   const creationCampaignId =
-    (campaignId && campaigns.some((c) => c.id === campaignId) ? campaignId : campaigns[0]?.id) ?? ''
+    (homeSpace && campaigns.some((c) => c.id === homeSpace) ? homeSpace : campaigns[0]?.id) ?? ''
   const crFilter = useCrFilter(worlds.map((w) => w.course_id))
 
   // ── Modal de creación / edición del mundo (una sola pantalla) ──

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { backdropDismiss } from '@/lib/backdropDismiss'
 import {
   ArrowLeft, CheckCircle2, Eye, EyeOff, ListChecks, Loader2, Menu, PhoneIncoming, PhoneOutgoing, Play, Plus, Trash2, X,
+  Share2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -39,6 +40,9 @@ import { useUndoHistory } from '@/hooks/useUndoHistory'
 import { PresenceStack } from '@/components/presence/PresenceStack'
 import { EditingBanner } from '@/components/presence/EditingBanner'
 import { initialContentLang, rowText } from '@/lib/contentLang'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { getSisterOrgsOfCampaign } from '@/services/org.service'
+import type { Organization } from '@/types/database'
 
 type Lang = 'es' | 'en' | 'pt'
 type Tab = 'meta' | 'nodes' | 'checklist'
@@ -55,6 +59,8 @@ interface MetaState {
   empathy_keywords: string[]
   start_node_id: string
   is_published: boolean
+  /** Compartida con la org hermana del grupo (LATAM ↔ Brasil). */
+  shared_with_group: boolean
   course_id: string | null; pass_score: number
 }
 
@@ -84,6 +90,7 @@ const defaultMeta = (): MetaState => ({
   empathy_keywords: ['entiendo', 'comprendo', 'lamento', 'disculpa', 'sorry', 'understand', 'entendo'],
   start_node_id: 'start',
   is_published: false,
+  shared_with_group: false,
   course_id: null,
   pass_score: 70,
 })
@@ -124,6 +131,7 @@ function rowToState(row: ScenarioRow): { meta: MetaState; nodes: NodesMap; check
       empathy_keywords: row.empathy_keywords ?? [],
       start_node_id: row.start_node_id,
       is_published: row.is_published,
+      shared_with_group: row.shared_with_group === true,
       course_id: row.course_id ?? null,
       pass_score: row.pass_score ?? 70,
     },
@@ -168,6 +176,15 @@ export default function SimulationEditor() {
   const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<Tab>('meta')
   const [meta, setMeta] = useState<MetaState>(defaultMeta)
+  // Orgs hermanas del grupo: con quién se puede compartir esta simulación.
+  const [sisterOrgs, setSisterOrgs] = useState<Organization[]>([])
+  useEffect(() => {
+    let alive = true
+    getSisterOrgsOfCampaign(campaignId || null)
+      .then((list) => { if (alive) setSisterOrgs(list) })
+      .catch(() => { if (alive) setSisterOrgs([]) })
+    return () => { alive = false }
+  }, [campaignId])
   const [nodes, setNodes] = useState<NodesMap>(defaultNodes)
   const [checklist, setChecklist] = useState<ChecklistItem[]>(defaultChecklist)
   const [selectedNodeId, setSelectedNodeId] = useState<string>('start')
@@ -388,6 +405,7 @@ export default function SimulationEditor() {
         checklist_items: checklist as unknown as import('@/types/database').Json,
         nodes: nodes as unknown as import('@/types/database').Json,
         is_published: meta.is_published,
+        shared_with_group: meta.shared_with_group,
       }
 
       if (rowId) {
@@ -532,6 +550,28 @@ export default function SimulationEditor() {
             {meta.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             <span className="hidden sm:inline">{meta.is_published ? 'Despublicar' : 'Publicar'}</span>
           </Button>
+          {/* Compartir con la otra org del grupo (LATAM ↔ Brasil). Si la
+              simulación cuelga de un curso compartido, ya se comparte con él. */}
+          {sisterOrgs.length > 0 && (
+            <Tooltip
+              label={meta.shared_with_group
+                ? t('admin.simulations.share_group_on', { orgs: sisterOrgs.map((o) => o.name).join(', ') })
+                : t('admin.simulations.share_group_off', { orgs: sisterOrgs.map((o) => o.name).join(', ') })}
+              maxWidth={280}
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMeta((m) => ({ ...m, shared_with_group: !m.shared_with_group }))}
+                className={meta.shared_with_group ? 'text-primary' : undefined}
+              >
+                <Share2 className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {meta.shared_with_group ? t('admin.simulations.shared') : t('admin.simulations.share')}
+                </span>
+              </Button>
+            </Tooltip>
+          )}
           {/* Guardar vive en la barra única del pie (SaveDock). */}
         </div>
       </div>

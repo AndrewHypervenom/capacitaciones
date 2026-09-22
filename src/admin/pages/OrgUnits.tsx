@@ -16,7 +16,7 @@ import { SaveDock } from '@/admin/components/SaveDock'
 import { usePageDraft } from '@/admin/hooks/usePageDraft'
 import {
   countCoursesByCategory, countPeopleByUnit, createOrgUnit, getAllOrgUnits,
-  getOrganizations, renameOrgUnit, deleteOrgUnit, setOrgUnitTest,
+  getOrganizations, getActiveOrgId, renameOrgUnit, deleteOrgUnit, setOrgUnitTest,
 } from '@/services/org.service'
 import type { Organization, OrgUnit, OrgUnitKind } from '@/types/database'
 
@@ -107,7 +107,7 @@ export default function OrgUnits() {
     getOrganizations()
       .then((list) => {
         setOrgs(list)
-        setOrgId((prev) => prev || list[0]?.id || '')
+        void getActiveOrgId().then((active) => setOrgId((prev) => prev || active || list[0]?.id || ''))
         if (list.length === 0) setLoading(false)
       })
       .catch(() => setLoading(false))

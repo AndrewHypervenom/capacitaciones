@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useAuthStore } from '@/stores/authStore'
+import { readActiveOrgSpaceSync } from '@/services/org.service'
 
 interface CampaignScopeState {
   /** Campaña en la que el staff está trabajando ahora mismo en el panel. */
@@ -40,7 +42,12 @@ export function resolveCreationCampaignId(
   accessibleIds: string[],
 ): string {
   const scoped = useCampaignScope.getState().activeCampaignId
-  for (const candidate of [urlCampaignId, scoped]) {
+  // Superadmin: lo que crea va al contenedor de la org que tiene elegida en el
+  // panel (LATAM o Brasil). Se mira el rol porque el valor vive en el
+  // navegador y en un PC compartido podría quedar de otra sesión.
+  const orgSpace =
+    useAuthStore.getState().profile?.role === 'superadmin' ? readActiveOrgSpaceSync() : null
+  for (const candidate of [urlCampaignId, orgSpace, scoped]) {
     if (candidate && accessibleIds.includes(candidate)) return candidate
   }
   return accessibleIds[0] ?? ''

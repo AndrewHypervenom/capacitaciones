@@ -72,7 +72,7 @@ export default function LearnerDashboard() {
   }, []);
 
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const reduce = useReducedMotion();
   const { name, language, reset } = useUserStore();
   // A PROPÓSITO no se usa `useModules()` aquí. Para un superadmin esa consulta
@@ -772,7 +772,7 @@ export default function LearnerDashboard() {
                   {/* Si hoy hay evento, se dice justo al lado del contador: es
                       donde el aprendiz mira para saber cuanto lleva. */}
                   <XPBoostPill lang={language as Lang} />
-                  {xp.toLocaleString()} XP
+                  {xp.toLocaleString(i18n.language)} XP
                 </span>
               </div>
               <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">

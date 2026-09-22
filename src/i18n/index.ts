@@ -31,6 +31,17 @@ export async function ensureLanguage(lng: string): Promise<void> {
   try {
     const mod = await CARGADORES[base]();
     i18n.addResourceBundle(base, 'translation', mod.default, true, true);
+    /* `resolvedLanguage` se calcula SOLO dentro de `changeLanguage`, y se queda
+     * con el primer idioma que ya tenga textos. Si se cambió a 'pt' antes de que
+     * llegara este diccionario —pulsar PT en el selector, o entrar con un perfil
+     * en portugués desde un navegador que recordaba otro idioma— quedó en 'es'
+     * y así se quedaba: la pantalla en portugués, pero el certificado, la
+     * encuesta (guardaba lang: 'es') y el botón del selector en español.
+     * Volver a pedir el idioma activo lo recalcula ya con el diccionario aquí;
+     * la segunda vuelta de `ensureLanguage` sale en la línea de arriba. */
+    if ((i18n.language || '').split('-')[0] === base && i18n.resolvedLanguage !== base) {
+      await i18n.changeLanguage(i18n.language);
+    }
   } catch {
     /* Sin red o archivo caído: se queda en español. Un idioma que no llega no
        puede dejar la aplicación en blanco. */

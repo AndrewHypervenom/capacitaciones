@@ -1348,7 +1348,7 @@ export function InteractiveVideoModule({
         {isEmbed && !showOverlay && !videoError && (
           <button
             type="button"
-            aria-label={playing ? 'Pausar' : 'Reproducir'}
+            aria-label={playing ? t('video.controls.pause') : t('video.controls.play')}
             onClick={togglePlay}
             className="absolute inset-0 z-10 w-full h-full cursor-pointer bg-transparent"
           />
@@ -1799,7 +1799,7 @@ export function InteractiveVideoModule({
               <button
                 type="button"
                 onClick={togglePlay}
-                aria-label={playing ? 'Pausar' : 'Reproducir'}
+                aria-label={playing ? t('video.controls.pause') : t('video.controls.play')}
                 className={cn(ctrlBtn, 'text-white/90 hover:text-white')}
               >
                 {playing
@@ -1814,7 +1814,7 @@ export function InteractiveVideoModule({
                 <button
                   type="button"
                   onClick={toggleMute}
-                  aria-label={muted || volume === 0 ? 'Activar sonido' : 'Silenciar'}
+                  aria-label={muted || volume === 0 ? t('video.controls.unmute') : t('video.controls.mute')}
                   className={cn(ctrlBtn, 'text-white/70 hover:text-white')}
                 >
                   {muted || volume === 0
@@ -1827,7 +1827,7 @@ export function InteractiveVideoModule({
                   min={0}
                   max={1}
                   step={0.05}
-                  aria-label="Volumen"
+                  aria-label={t('video.controls.volume')}
                   value={muted ? 0 : volume}
                   onChange={handleVolumeChange}
                   className={cn(
@@ -1948,7 +1948,7 @@ export function InteractiveVideoModule({
                 <button
                   type="button"
                   onClick={handlePiP}
-                  title="Picture in Picture"
+                  aria-label={t('video.controls.pip')}
                   className={cn(ctrlBtn, 'hidden sm:block text-white/70 hover:text-white')}
                 >
                   <PictureInPicture2 className={ctrlIconSm} />
@@ -1959,7 +1959,7 @@ export function InteractiveVideoModule({
               <button
                 type="button"
                 onClick={handleFullscreen}
-                aria-label={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+                aria-label={fullscreen ? t('video.controls.exit_fullscreen') : t('video.controls.fullscreen')}
                 className={cn(ctrlBtn, 'text-white/70 hover:text-white')}
               >
                 {fullscreen

@@ -14,7 +14,7 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toastStore'
 import { supabase } from '@/lib/supabase'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
+import { getActiveOrgUnits } from '@/services/org.service'
 import {
   getActivityLog, getActivityPulse, getActivityActors, getEntityActivity,
   type ActivityLogRow, type ActivityAction, type EntityType, type ActivityPulse, type ActivityLogFilters,
@@ -253,8 +253,7 @@ export default function ActivityLog() {
   // Opciones de filtro (una vez).
   useEffect(() => {
     getActivityActors().then(setActorOptions).catch((e) => console.error('activity actors error:', e))
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
+    void getActiveOrgUnits()
       .then((units) => setCampaignOptions(units.filter((u) => u.kind === 'operation').map((u) => ({ id: u.id, name: u.name }))))
       .catch((e) => console.error('CR options error:', e))
   }, [])

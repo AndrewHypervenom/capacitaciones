@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BLOCK_REGISTRY, type BlockType, type BlockMeta } from '@/types/blocks';
 import { cn } from '@/lib/cn';
+import { fold } from '@/lib/normalize';
 import i18n from '@/i18n';
 
 interface Props {
@@ -10,12 +11,17 @@ interface Props {
   anchorRef?: React.RefObject<HTMLElement>;
 }
 
-const GROUPS: Array<{ key: BlockMeta['group']; label: string }> = [
-  { key: 'text', label: 'Texto' },
-  { key: 'media', label: 'Media' },
-  { key: 'interactive', label: 'Interactivo' },
-  { key: 'layout', label: 'Layout' },
-];
+const GROUPS: BlockMeta['group'][] = ['text', 'media', 'interactive', 'layout'];
+
+/* El registro guarda los nombres en español; aquí se traducen al idioma del
+ * sitio (el español del registro queda como respaldo). Antes el menú salía en
+ * español en las tres interfaces y el buscador solo encontraba en español. */
+const localizedBlocks = (): BlockMeta[] =>
+  BLOCK_REGISTRY.map((b) => ({
+    ...b,
+    label: i18n.t(`admin.modules.be.insert.items.${b.type}.label`, b.label),
+    description: i18n.t(`admin.modules.be.insert.items.${b.type}.desc`, b.description),
+  }));
 
 export function BlockInsertMenu({ onSelect, onClose }: Props) {
   const [query, setQuery] = useState('');
@@ -33,17 +39,17 @@ export function BlockInsertMenu({ onSelect, onClose }: Props) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  const filtered = query
-    ? BLOCK_REGISTRY.filter(
-        (b) =>
-          b.label.toLowerCase().includes(query.toLowerCase()) ||
-          b.description.toLowerCase().includes(query.toLowerCase()),
-      )
-    : BLOCK_REGISTRY;
+  const blocks = localizedBlocks();
+  // Sin tildes: en portugués el bloque es "Vídeo" y se busca escribiendo "video".
+  const q = fold(query);
+  const filtered = q
+    ? blocks.filter((b) => fold(b.label).includes(q) || fold(b.description).includes(q))
+    : blocks;
 
-  const grouped = GROUPS.map((g) => ({
-    ...g,
-    items: filtered.filter((b) => b.group === g.key),
+  const grouped = GROUPS.map((key) => ({
+    key,
+    label: i18n.t(`admin.modules.be.insert.groups.${key}`),
+    items: filtered.filter((b) => b.group === key),
   })).filter((g) => g.items.length > 0);
 
   return (

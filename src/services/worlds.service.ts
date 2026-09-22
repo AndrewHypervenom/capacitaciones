@@ -7,6 +7,7 @@ import { bgTask } from '@/stores/bgTaskStore'
 import i18n from '@/i18n'
 import { currentAiLang } from '@/lib/aiLang'
 import { rowText } from '@/lib/contentLang'
+import { aiOrgField } from '@/services/org.service'
 
 /**
  * Puntaje mínimo (%) por defecto para niveles/quizzes generados con IA. Sin un
@@ -79,7 +80,7 @@ async function postGenerateWorld(body: Record<string, unknown>, signal?: AbortSi
       },
       // El idioma sale de la interfaz: con el sitio en portugués el mundo se escribe
       // en portugués aunque el módulo de origen esté en español.
-      body: JSON.stringify({ language: currentAiLang(), ...body }),
+      body: JSON.stringify({ language: currentAiLang(), ...body, ...aiOrgField() }),
       signal,
     },
   )
