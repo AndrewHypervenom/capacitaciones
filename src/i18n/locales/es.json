@@ -1398,6 +1398,11 @@
     }
   },
   "admin": {
+    "content_filters": {
+      "pick_title_courses": "Elige un país, área o CR, o busca un curso",
+      "pick_title_modules": "Elige un país, área o CR, o busca un módulo o curso",
+      "pick_hint": "La lista sale cuando eliges para quién es o escribes al menos 2 letras. Así carga solo lo que necesitas."
+    },
     "surgery": {
       "split_title": "Separar módulo",
       "split_hint": "Arrastra cada línea de corte. Pasa el ratón entre dos secciones para añadir otro corte.",
@@ -3404,7 +3409,14 @@
         "error": "No se pudo generar la descripción.",
         "load_error": "No se pudo leer el contenido del curso: {{message}}",
         "quota_label": "Descripción del curso «{{course}}»"
-      }
+      },
+      "share_group_title": "Compartir con {{orgs}}",
+      "share_group_on": "La gente de {{orgs}} lo ve en su catálogo si está abierto, y su equipo puede inscribir a su gente. Solo tu organización lo edita, y cada una ve el avance de su propia gente. Revisa que tenga su versión en portugués.",
+      "share_group_off": "Solo lo ve tu organización.",
+      "share_group_saved": "Listo: se actualizó con quién se comparte el curso",
+      "shared_with_me_title": "Compartidos por tu grupo",
+      "shared_with_me_hint": "Cursos que la otra organización del grupo comparte contigo. No se editan desde aquí: puedes inscribir a tu gente, y verás solo su avance.",
+      "enroll_my_people": "Inscribir a mi gente"
     },
     "simulations": {
       "save": "Guardar",

@@ -4,7 +4,7 @@ import {
   getAudiencePopulation, isLearnerRole, matchesAudience, ruleIsEmpty,
   type AudiencePerson, type AudienceRule,
 } from '@/services/audiences.service'
-import { getOrganizations } from '@/services/org.service'
+import { getActiveOrgId } from '@/services/org.service'
 import type { AdminCourse } from '@/services/courses.service'
 
 /* `nobody`: sin regla y sin nadie marcado a mano. Existe pero no le llega a
@@ -56,27 +56,31 @@ async function manualCounts(): Promise<Map<string, number>> {
  * A cuánta gente le llega cada curso: por regla (sobre el censo de aprendices de
  * la casa, el mismo que usa el editor) y a mano. `null` mientras carga: la
  * pantalla dice «…», no un 0 que parezca verdad.
+ *
+ * Con `enabled` en false no consulta nada: el censo y las asignaciones son las
+ * lecturas más pesadas del panel y no se piden hasta que alguien filtra.
  */
 export function useCourseReach(
   courses: AdminCourse[],
   audiences: Map<string, AudienceRule>,
   isSuperAdmin: boolean,
   refreshKey: number,
+  enabled = true,
 ) {
   const [people, setPeople] = useState<AudiencePerson[] | null>(null)
   const [byHand, setByHand] = useState<Map<string, number> | null>(null)
 
   useEffect(() => {
+    if (!enabled) return
     let alive = true
-    getOrganizations()
-      .then((orgs) => (orgs[0] ? getAudiencePopulation(orgs[0].id) : []))
+    getActiveOrgId().then((id) => (id ? getAudiencePopulation(id) : []))
       .then((p) => { if (alive) setPeople(p) })
       .catch(() => { if (alive) setPeople([]) })
     manualCounts()
       .then((m) => { if (alive) setByHand(m) })
       .catch(() => { if (alive) setByHand(new Map()) })
     return () => { alive = false }
-  }, [refreshKey])
+  }, [refreshKey, enabled])
 
   return useMemo(() => {
     const learners = (people ?? []).filter((p) => isLearnerRole(p.role) && p.is_client !== true)

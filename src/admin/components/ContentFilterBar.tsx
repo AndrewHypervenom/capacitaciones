@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getActiveOrgId, getAllOrgUnits } from '@/services/org.service'
 import type { AudienceRule } from '@/services/audiences.service'
@@ -8,8 +8,12 @@ import { FilterDropdown } from '@/admin/components/FilterDropdown'
 import { EMPTY_AUDIENCE, reachesFilter } from '@/admin/components/courseReach'
 import { OPERATION_COUNTRIES } from '@/lib/countries'
 import { fold } from '@/lib/normalize'
+import { GlassCard } from '@/components/ui/GlassCard'
 
 export type ContentStatusFilter = 'all' | 'published' | 'draft'
+
+/** Letras mínimas para que la búsqueda cuente como elección. */
+const MIN_SEARCH = 2
 
 /**
  * Buscador + país / área / CR + estado: la MISMA barra en Cursos y Módulos.
@@ -17,6 +21,10 @@ export type ContentStatusFilter = 'all' | 'published' | 'draft'
  * la regla del curso (ver `reachesFilter`): un curso solo por país sigue
  * saliendo al elegir un CR de ese país, porque le llega. Lo que no cuelga de
  * ningún curso no le llega a nadie por regla y se esconde con esos filtros.
+ *
+ * La lista NO se muestra hasta elegir país / área / CR o buscar: no satura la
+ * base con todo el catálogo de golpe y acostumbra a pensar «¿para quién?».
+ * El estado (publicado / borrador) solo no basta: sigue siendo todo.
  */
 export function useContentFilters() {
   const [search, setSearch] = useState('')
@@ -37,6 +45,12 @@ export function useContentFilters() {
 
   const reachOn = !!(country || area || cr)
   const active = !!(search.trim() || reachOn || status !== 'all')
+  /** ¿Ya eligió algo que acote la lista? Hasta entonces no se pinta nada. */
+  const hasSelection = reachOn || fold(search).trim().length >= MIN_SEARCH
+  /* Una vez elegido algo, lo que se cargó se queda: quitar el filtro no vuelve
+     a esconder los datos ya leídos ni obliga a pedirlos otra vez. */
+  const [armed, setArmed] = useState(false)
+  if (hasSelection && !armed) setArmed(true)
 
   const clear = () => {
     setSearch(''); setCountry(''); setArea(''); setCr(''); setStatus('all')
@@ -57,7 +71,7 @@ export function useContentFilters() {
 
   return {
     search, setSearch, country, setCountry, area, setArea, cr, setCr, status, setStatus,
-    units, reachOn, active, clear, matches,
+    units, reachOn, active, hasSelection, armed, clear, matches,
   }
 }
 
@@ -117,5 +131,17 @@ export function ContentFilterBar({ filters, searchPlaceholder }: {
         ]}
       />
     </div>
+  )
+}
+
+/** Lo que se ve mientras no se ha elegido país / área / CR ni buscado nada. */
+export function ContentFilterPrompt({ kind }: { kind: 'courses' | 'modules' }) {
+  const { t } = useTranslation()
+  return (
+    <GlassCard intensity="subtle" padding="none" rounded="3xl" className="p-6 text-center sm:p-10">
+      <SlidersHorizontal className="mx-auto mb-3 h-9 w-9 text-text-muted" />
+      <p className="mb-1.5 text-[14px] font-medium text-text">{t(`admin.content_filters.pick_title_${kind}`)}</p>
+      <p className="mx-auto max-w-md text-[12.5px] text-text-muted">{t('admin.content_filters.pick_hint')}</p>
+    </GlassCard>
   )
 }

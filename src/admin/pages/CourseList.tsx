@@ -55,7 +55,9 @@ import { rowText } from '@/lib/contentLang'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { CourseReachTable } from '@/admin/components/CourseReachTable'
 import { useCourseReach } from '@/admin/components/courseReach'
-import { ContentFilterBar, useContentFilters } from '@/admin/components/ContentFilterBar'
+import { ContentFilterBar, ContentFilterPrompt, useContentFilters } from '@/admin/components/ContentFilterBar'
+import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
+import { getActiveOrgId } from '@/services/org.service'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
@@ -102,6 +104,10 @@ export default function CourseList() {
   /** El catálogo de CR y áreas, para escribir la regla con nombres. */
   const units = filters.units
   const [courses, setCourses] = useState<AdminCourse[]>([])
+  // Cursos que la otra org del grupo comparte (LATAM ↔ Brasil): no se editan
+  // desde aquí, solo se inscribe a la gente propia.
+  const [sharedWithMe, setSharedWithMe] = useState<AdminCourse[]>([])
+  const [enrollFor, setEnrollFor] = useState<AdminCourse | null>(null)
   /** Regla de audiencia por curso: qué país / área / CR tiene definidos. */
   const [audiences, setAudiences] = useState<Map<string, AudienceRule>>(new Map())
   /** Del aviso de arriba: deja solo los publicados que no le llegan a nadie. */
@@ -270,8 +276,17 @@ export default function CourseList() {
     // Esqueleto solo la primera vez: los refrescos de fondo no deben parpadear.
     if (courses.length === 0) setLoading(true)
     setError(null)
-    getAllCourses()
-      .then((cs) => {
+    Promise.all([getAllCourses(), getActiveOrgId()])
+      .then(([all, activeOrgId]) => {
+        /* La lista es de la org ACTIVA. Lo que la otra org del grupo comparte
+         * va aparte (se puede inscribir gente, no editar), y lo del resto de
+         * orgs no sale: el superadmin lo ve cambiando de org en el selector. */
+        const cs = activeOrgId ? all.filter((c) => c.campaign_org_id === activeOrgId) : all
+        setSharedWithMe(
+          activeOrgId
+            ? all.filter((c) => c.campaign_org_id !== activeOrgId && c.shared_with_group && c.is_published)
+            : [],
+        )
         setCourses(cs)
         /* Las reglas, en una sola consulta para toda la lista. Es lo que
          * permite decir curso por curso si ya sabe a quién le llega o si
@@ -289,7 +304,8 @@ export default function CourseList() {
 
   /** A cuánta gente le llega cada curso (por regla y a mano). Lo leen las
    *  tarjetas, el aviso y la tabla: una sola fuente, un solo número. */
-  const reach = useCourseReach(courses, audiences, isSuperAdmin, refreshKey)
+  // El censo es lo más pesado del panel: no se pide hasta que se filtra.
+  const reach = useCourseReach(courses, audiences, isSuperAdmin, refreshKey, filters.armed)
 
   /**
    * Publicados que de verdad no le llegan a NADIE: sin regla y sin personas
@@ -553,9 +569,11 @@ export default function CourseList() {
 
       {/* Qué se está viendo, en palabras, y cómo volver a verlo todo. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-text-muted">
-        <span className="tabular-nums">
-          {t('admin.courses.showing_count', { count: visibleCourses.length, total: courses.length })}
-        </span>
+        {(filters.hasSelection || onlyNobody) && (
+          <span className="tabular-nums">
+            {t('admin.courses.showing_count', { count: visibleCourses.length, total: courses.length })}
+          </span>
+        )}
         {filters.reachOn && <span>{t('admin.courses.reach_filter_hint')}</span>}
         {filtersOn && (
           <button onClick={clearFilters} className="font-medium text-primary hover:underline">
@@ -592,6 +610,9 @@ export default function CourseList() {
             {t('admin.courses.new_course')}
           </Button>
         </GlassCard>
+      ) : !filters.hasSelection && !onlyNobody ? (
+        /* Nada hasta elegir para quién o buscar: no se pinta el catálogo entero. */
+        <ContentFilterPrompt kind="courses" />
       ) : (
         <>
         {/* Publicados que no le llegan a nadie: ni regla ni personas a mano.
@@ -819,6 +840,40 @@ export default function CourseList() {
         </>}
         </>
       ))}
+
+      {/* Compartidos por la otra org del grupo: se inscribe a la gente propia,
+          el curso lo sigue editando su dueña. */}
+      {view === 'mine' && !loading && sharedWithMe.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-[15px] font-semibold text-text">{t('admin.courses.shared_with_me_title')}</h2>
+          <p className="mt-1 mb-4 text-[12.5px] text-text-muted">{t('admin.courses.shared_with_me_hint')}</p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {sortByTitle(sharedWithMe).map((c) => (
+              <GlassCard key={c.id} intensity="subtle" padding="none" rounded="2xl" className="flex items-center gap-3 p-4">
+                <span className="text-2xl" aria-hidden>{c.icon}</span>
+                <p className="min-w-0 flex-1 truncate text-[14px] font-semibold text-text">{rowText(c)}</p>
+                <Button
+                  variant="glass"
+                  className="flex shrink-0 items-center gap-1.5"
+                  onClick={() => setEnrollFor(c)}
+                  disabled={!homeSpace}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  {t('admin.courses.enroll_my_people')}
+                </Button>
+              </GlassCard>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {enrollFor && homeSpace && (
+        <EnrollLearnersModal
+          course={{ id: enrollFor.id, title_es: rowText(enrollFor) }}
+          campaignId={homeSpace}
+          onClose={() => setEnrollFor(null)}
+        />
+      )}
 
       {/* Modal de creación */}
       {showCreate && (

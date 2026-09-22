@@ -425,6 +425,8 @@ export interface Database {
           is_published: boolean
           sort_order: number
           is_shareable: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from: string | null
           created_by: string | null
           cert_conditions: CertConditions
@@ -473,6 +475,8 @@ export interface Database {
           language_target?: string | null
           sort_order?: number
           is_shareable?: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from?: string | null
           created_by?: string | null
           cert_conditions?: CertConditions
@@ -519,6 +523,8 @@ export interface Database {
           language_target?: string | null
           sort_order?: number
           is_shareable?: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           cert_conditions?: CertConditions
           sim_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
           sim_unlock_module_id?: string | null
@@ -974,6 +980,8 @@ export interface Database {
            */
           unlock_mode: 'from_start' | 'after_module' | 'after_all'
           is_shareable: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from: string | null
           /** Perfil que la creó (o que la copió del catálogo). Ver RPC get_simulation_authors. */
           created_by: string | null
@@ -1012,6 +1020,8 @@ export interface Database {
           /** En qué punto del curso aparece (ver Row.unlock_mode). */
           unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from?: string | null
           /** Lo pone el DEFAULT auth.uid() de la BD; no hace falta enviarlo. */
           created_by?: string | null
@@ -1050,6 +1060,8 @@ export interface Database {
           /** En qué punto del curso aparece (ver Row.unlock_mode). */
           unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from?: string | null
         }
         Relationships: []
@@ -1218,6 +1230,8 @@ export interface Database {
           /** En qué punto del curso aparece (ver scenarios.unlock_mode). */
           unlock_mode: 'from_start' | 'after_module' | 'after_all'
           is_shareable: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from: string | null
           /** Perfil que la creó (o que la copió del catálogo). Ver RPC get_simulation_authors. */
           created_by: string | null
@@ -1245,6 +1259,8 @@ export interface Database {
           /** En qué punto del curso aparece (ver scenarios.unlock_mode). */
           unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from?: string | null
           /** Lo pone el DEFAULT auth.uid() de la BD; no hace falta enviarlo. */
           created_by?: string | null
@@ -1272,6 +1288,8 @@ export interface Database {
           /** En qué punto del curso aparece (ver scenarios.unlock_mode). */
           unlock_mode?: 'from_start' | 'after_module' | 'after_all'
           is_shareable?: boolean
+          /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
+          shared_with_group?: boolean
           copied_from?: string | null
         }
         Relationships: []

@@ -21,7 +21,7 @@ import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import { ContentFilterBar, useContentFilters } from '@/admin/components/ContentFilterBar'
+import { ContentFilterBar, ContentFilterPrompt, useContentFilters } from '@/admin/components/ContentFilterBar'
 import { AiAuthoredBadge, AI_AUTHORED_TINT } from '@/admin/components/AiAuthoredBadge'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
@@ -87,7 +87,8 @@ export default function ModuleList() {
   }, [focusId, loading, modules])
 
   useEffect(() => {
-    if (!campaignIds) return
+    // Nada se lee hasta elegir país / área / CR o buscar (ver useContentFilters).
+    if (!campaignIds || !filters.armed) return
     // Esqueleto solo la primera vez: los refrescos de fondo no deben parpadear.
     if (modules.length === 0) setLoading(true)
     setError(null)
@@ -104,12 +105,12 @@ export default function ModuleList() {
       .finally(() => setLoading(false))
     // `modules` solo decide el esqueleto; no puede volver a disparar la carga.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaignIds, t, refreshKey])
+  }, [campaignIds, t, refreshKey, filters.armed])
 
   // Trae lo último al volver a esta pestaña o cuando otra guarda un módulo/curso.
   useFreshOnFocus(() => setRefreshKey((k) => k + 1), {
     topics: ['modules', 'courses'],
-    enabled: !!campaignIds,
+    enabled: !!campaignIds && filters.armed,
   })
 
   const handleTogglePublished = async (mod: DbModuleRow) => {
@@ -311,9 +312,11 @@ export default function ModuleList() {
 
       {/* Qué se está viendo, en palabras, y cómo volver a verlo todo. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-text-muted">
-        <span className="tabular-nums">
-          {t('admin.modules.showing_count', { count: visibleCount, total: modules.length })}
-        </span>
+        {filters.hasSelection && (
+          <span className="tabular-nums">
+            {t('admin.modules.showing_count', { count: visibleCount, total: modules.length })}
+          </span>
+        )}
         {filters.reachOn && <span>{t('admin.modules.reach_filter_hint')}</span>}
         {filters.active && (
           <button onClick={filters.clear} className="font-medium text-primary hover:underline">
@@ -337,6 +340,8 @@ export default function ModuleList() {
               <div key={i} className="h-20 rounded-2xl animate-pulse glass" />
             ))}
           </div>
+        ) : !filters.hasSelection ? (
+          <ContentFilterPrompt kind="modules" />
         ) : modules.length === 0 ? (
           <GlassCard intensity="subtle" padding="none" rounded="3xl" className="text-center p-6 sm:p-10 md:p-12">
             <BookOpen className="h-10 w-10 text-text-muted mx-auto mb-3" />

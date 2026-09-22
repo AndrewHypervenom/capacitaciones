@@ -444,7 +444,12 @@ export async function getCoursesForCampaign(campaignId: string): Promise<CourseW
 }
 
 /** Curso del CMS con el nombre de su campaña dueña (para la vista "todas"). */
-export type AdminCourse = CourseWithModules & { campaign_name: string | null }
+export type AdminCourse = CourseWithModules & {
+  campaign_name: string | null
+  /** Org dueña (la de su contenedor). `null` si el contenedor no se ve: pasa
+   *  con un curso que COMPARTE la otra org del grupo (su contenedor es ajeno). */
+  campaign_org_id: string | null
+}
 
 /**
  * Todos los cursos de todas las campañas (solo superadmin; la RLS lo permite),
@@ -454,12 +459,16 @@ export async function getAllCourses(): Promise<AdminCourse[]> {
   const { data, error } = await supabase
     .from('courses')
     // Desambiguamos el embed (FK directa vs. puente course_campaigns).
-    .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name)`)
+    .select(`*, ${COURSE_MODULES_SELECT}, campaigns!courses_campaign_id_fkey(name, org_id)`)
     .order('sort_order')
     .order('created_at')
   if (error) throw error
-  return ((data ?? []) as unknown as (CourseWithModules & { campaigns: { name: string } | null })[])
-    .map((c) => ({ ...sortCourseModules(c), campaign_name: c.campaigns?.name ?? null }))
+  return ((data ?? []) as unknown as (CourseWithModules & { campaigns: { name: string; org_id: string | null } | null })[])
+    .map((c) => ({
+      ...sortCourseModules(c),
+      campaign_name: c.campaigns?.name ?? null,
+      campaign_org_id: c.campaigns?.org_id ?? null,
+    }))
 }
 
 /**
