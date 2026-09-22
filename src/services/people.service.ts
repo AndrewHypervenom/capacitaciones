@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { chunk } from '@/lib/chunk'
 import { fold } from '@/lib/normalize'
-import { getMyPeopleIds, getTestUnitIds } from '@/services/org.service'
+import { getActiveOrgId, getMyPeopleIds, getTestUnitIds } from '@/services/org.service'
 import { getTestCampaignIds } from '@/services/campaigns.service'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import type { Profile } from '@/types/database'
@@ -73,7 +73,7 @@ async function testExclusions(isSuperAdmin: boolean): Promise<{ campaigns: strin
 export async function getPeoplePage(q: PeoplePageQuery): Promise<PeoplePage> {
   const pageSize = q.pageSize ?? PEOPLE_PAGE_SIZE
   const exclude = await testExclusions(q.isSuperAdmin)
-  const { data, error } = await supabase.rpc('admin_people_page', {
+  const args = {
     p_scope: q.scope,
     p_search: fold(q.search),
     p_status: q.status,
@@ -82,7 +82,15 @@ export async function getPeoplePage(q: PeoplePageQuery): Promise<PeoplePage> {
     p_exclude_units: exclude.units,
     p_limit: pageSize,
     p_offset: q.page * pageSize,
-  })
+  }
+  // El superadmin ve la gente de la org que eligió en el selector. Al resto la
+  // base ya lo acota a la suya.
+  const orgId = q.isSuperAdmin ? await getActiveOrgId().catch(() => null) : null
+  let { data, error } = await supabase.rpc('admin_people_page', orgId ? { ...args, p_org: orgId } : args)
+  // Sin el SQL 70 la función aún no acepta `p_org`: se pide como antes.
+  if (error && orgId && isMissingFunction(error)) {
+    ;({ data, error } = await supabase.rpc('admin_people_page', args))
+  }
   if (!error) {
     const rows = (data ?? []) as { profile: Profile; total_count: number }[]
     return { rows: rows.map((r) => r.profile), total: Number(rows[0]?.total_count ?? 0) }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getPendingAttempts } from '@/services/activity.service';
 import { getAllAudiences, matchesAudience } from '@/services/audiences.service';
-import { getTestUnitIds } from '@/services/org.service';
+import { getTestUnitIds, getActiveOrgId } from '@/services/org.service';
 import { getSurveyResults, type SurveyResults } from '@/services/survey.service';
 import { getExamResults } from '@/services/exams.admin.service';
 import type { ExamResultRow } from '@/types/exam';
@@ -464,12 +464,14 @@ export function useProgramData(
               campaign_id: string | null; avatar_url: string | null; created_at: string | null;
               job_title: string | null; country: string | null; email: string | null;
               operation_id: string | null; area_id: string | null; is_client: boolean | null;
-            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country, email, operation_id, area_id, is_client'),
-            supabase.from('campaigns').select('id, name, deleted_at, is_test').order('name'),
+              org_id: string | null;
+            }>('profiles', 'id, display_name, role, campaign_id, avatar_url, created_at, job_title, country, email, operation_id, area_id, is_client, org_id'),
+            supabase.from('campaigns').select('id, name, deleted_at, is_test, org_id').order('name'),
             fetchAll<{
               id: string; title_es: string; title_en: string | null; title_pt: string | null;
               campaign_id: string | null; is_published: boolean; icon: string | null; deleted_at: string | null;
-            }>('courses', 'id, title_es, title_en, title_pt, campaign_id, is_published, icon, deleted_at'),
+              shared_with_group: boolean | null;
+            }>('courses', 'id, title_es, title_en, title_pt, campaign_id, is_published, icon, deleted_at, shared_with_group'),
             fetchAll<{ course_id: string; user_id: string; is_mandatory: boolean; assigned_at: string | null }>(
               'course_assignments', 'course_id, user_id, is_mandatory, assigned_at',
             ),
@@ -546,11 +548,22 @@ export function useProgramData(
         // cumplimiento, el avance medio y el total de personas hablan de una
         // compañía que no es esta. Su progreso individual sigue existiendo y se
         // ve en su ficha; lo que no hace es promediar con el de nadie.
-        const profileRows = rowsOf(profilesRes).filter((p) => p.is_client !== true);
+        // ORGANIZACIÓN ACTIVA: el superadmin ve todas las orgs, pero el tablero
+        // es de la que tiene elegida en el selector (LATAM o Brasil). Sin esto,
+        // cambiar de org no cambiaba ni una cifra. Al resto del staff ya se lo
+        // acota la base (solo su org).
+        const activeOrgId = isSuperAdmin ? await getActiveOrgId() : null;
+        const profileRows = rowsOf(profilesRes).filter(
+          (p) => p.is_client !== true && (!activeOrgId || p.org_id === activeOrgId),
+        );
         // Las campañas también se borran en suave: una eliminada no puede seguir
         // ofreciéndose como filtro ni ponerle nombre a una columna del Excel.
-        const campaignRaw = ok<{ id: string; name: string; deleted_at: string | null; is_test?: boolean | null }>(campaignsRes as never)
+        const campaignAll = ok<{ id: string; name: string; deleted_at: string | null; is_test?: boolean | null; org_id?: string | null }>(campaignsRes as never)
           .filter((c) => !c.deleted_at);
+        const orgCampaignIds = activeOrgId
+          ? new Set(campaignAll.filter((c) => c.org_id === activeOrgId).map((c) => c.id))
+          : null;
+        const campaignRaw = orgCampaignIds ? campaignAll.filter((c) => orgCampaignIds.has(c.id)) : campaignAll;
         // Ids de prueba a esconder. Si `is_test` todavía no existe en la base,
         // el conjunto queda vacío y el tablero se comporta como siempre.
         const hiddenUnitIds = new Set(hideTest ? await getTestUnitIds() : []);
@@ -561,7 +574,10 @@ export function useProgramData(
           .filter((c) => !hiddenCampaignIds.has(c.id))
           .map(({ id, name }) => ({ id, name }));
         const courseRows = rowsOf(coursesRes)
-          .filter((c) => !c.campaign_id || !hiddenCampaignIds.has(c.campaign_id));
+          .filter((c) => !c.campaign_id || !hiddenCampaignIds.has(c.campaign_id))
+          // De la org activa, más los que la otra org del grupo le comparte (su
+          // gente también los cursa).
+          .filter((c) => !orgCampaignIds || (!!c.campaign_id && orgCampaignIds.has(c.campaign_id)) || c.shared_with_group === true);
         const assignRows = rowsOf(assignRes);
         const audiences = audienceRes.status === 'fulfilled' ? audienceRes.value : new Map();
         const moduleRows = rowsOf(modulesRes);

@@ -1,3 +1,4 @@
+import { getActiveOrgId } from '@/services/org.service'
 import { supabase } from '@/lib/supabase'
 import {
   secondsSinceSeen,
@@ -228,6 +229,13 @@ type Rpc = { data: any; error: any }
  * unas pocas docenas de números.
  */
 export async function fetchTrafficHistory(f: TrafficFilters): Promise<TrafficHistory> {
+  // Organización activa del selector del panel: el tráfico es de UNA org a la
+  // vez. Sin el SQL 71 las funciones no aceptan `p_org` y se piden como antes.
+  const orgId = await getActiveOrgId().catch(() => null)
+  if (orgId) {
+    const withOrg = await loadHistory(f, true, orgId)
+    if (!withOrg.missingCr) return withOrg.history
+  }
   const withCr = await loadHistory(f, true)
   // Sin el SQL del CR (firma con p_operation) la base responde "función no
   // encontrada": se repite como antes, sin el corte, y el panel lo avisa.
@@ -241,8 +249,9 @@ export async function fetchTrafficHistory(f: TrafficFilters): Promise<TrafficHis
 async function loadHistory(
   f: TrafficFilters,
   useCr: boolean,
+  orgId: string | null = null,
 ): Promise<{ history: TrafficHistory; missingCr: boolean }> {
-  const common = { p_from: f.from, p_to: f.to }
+  const common = orgId ? { p_from: f.from, p_to: f.to, p_org: orgId } : { p_from: f.from, p_to: f.to }
   const campaign = { p_campaign: f.campaignId }
   const role = { p_role: f.role }
   const op = useCr ? { p_operation: f.operationId } : {}

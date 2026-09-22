@@ -2398,6 +2398,8 @@ export interface Database {
           p_exclude_units: string[]
           p_limit: number
           p_offset: number
+          /** Solo superadmin: acotar a una organización (SQL 70). */
+          p_org?: string | null
         }
         Returns: {
           profile: Database['public']['Tables']['profiles']['Row']

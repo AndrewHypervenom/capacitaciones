@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { FolderOpen, Users, Upload, BookOpen, ArrowRight, Eye, Target, Trophy, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
-import { getMyPeopleIds, getTestUnitIds } from '@/services/org.service'
+import { getActiveOrgId, getMyPeopleIds, getTestUnitIds } from '@/services/org.service'
 import { getAccessibleCampaigns, getTestCampaignIds } from '@/services/campaigns.service'
 import { shouldHideTestData } from '@/stores/testModeStore'
 import { useAuth } from '@/hooks/useAuth'
@@ -59,12 +59,15 @@ export default function AdminDashboard() {
       const notTest = <T extends { not: (c: string, op: string, v: string) => T }>(q: T): T =>
         testIds.length ? q.not('campaign_id', 'in', `(${testIds.join(',')})`) : q
 
+      // Organización activa: el superadmin ve las cifras de la org que eligió en
+      // el selector (sus contenedores ya vienen acotados a ella en `scope`).
+      const activeOrgId = await getActiveOrgId().catch(() => null)
       const [modsCount, scensCount, usersCount, crCount] = await Promise.all([
         isSuperAdmin
-          ? notTest(supabase.from('modules').select('id', { count: 'exact', head: true }))
+          ? notTest(supabase.from('modules').select('id', { count: 'exact', head: true }).in('campaign_id', scope))
           : supabase.from('modules').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
         isSuperAdmin
-          ? notTest(supabase.from('scenarios').select('id', { count: 'exact', head: true }))
+          ? notTest(supabase.from('scenarios').select('id', { count: 'exact', head: true }).in('campaign_id', scope))
           : supabase.from('scenarios').select('id', { count: 'exact', head: true }).in('campaign_id', scope),
         // El capacitador solo cuenta las personas de sus campañas y nunca a superadmins.
         // Y NADIE cuenta a los clientes: es gente de paso a la que se le dio un
@@ -72,7 +75,8 @@ export default function AdminDashboard() {
         // no representan a nadie de la compañía.
         isSuperAdmin
           ? (() => {
-              const q = notTest(supabase.from('profiles').select('id', { count: 'exact', head: true })).eq('is_client', false)
+              let q = notTest(supabase.from('profiles').select('id', { count: 'exact', head: true })).eq('is_client', false)
+              if (activeOrgId) q = q.eq('org_id', activeOrgId)
               return testUnits.length ? q.or(`operation_id.is.null,operation_id.not.in.(${testUnits.join(',')})`) : q
             })()
           : (myPeople
@@ -80,7 +84,9 @@ export default function AdminDashboard() {
               : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope)
             ).neq('role', 'superadmin').eq('is_client', false),
         // CR: el eje con el que hoy se reparte la formación (el programa se retiró).
-        supabase.from('org_units').select('id', { count: 'exact', head: true }).eq('kind', 'operation'),
+        activeOrgId
+          ? supabase.from('org_units').select('id', { count: 'exact', head: true }).eq('kind', 'operation').eq('org_id', activeOrgId)
+          : supabase.from('org_units').select('id', { count: 'exact', head: true }).eq('kind', 'operation'),
       ])
       setStats({
         campaigns: crCount.count ?? 0,
