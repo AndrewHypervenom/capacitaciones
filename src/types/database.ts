@@ -231,6 +231,14 @@ export interface Database {
           name: string
           logo_url: string | null
           is_active: boolean
+          /** Grupo de organizaciones hermanas (Positivos+ = LATAM + Brasil):
+           *  solo dentro del grupo se comparte contenido. SQL 58. */
+          group_id?: string | null
+          /** Contenedor interno donde cae el progreso de su gente. SQL 60. */
+          default_campaign_id?: string | null
+          /** Países que pertenecen a esta org (LATAM: CO/MX/AR · Brasil: BR).
+           *  El país de la persona decide su org. SQL 61. */
+          countries?: string[] | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -2135,6 +2143,11 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
+      // Mueve a una persona de organización con su progreso. Solo superadmin. SQL 60/61.
+      admin_move_person_org: {
+        Args: { p_user: string; p_org: string; p_operation?: string | null; p_area?: string | null }
+        Returns: Json
+      }
       // -- Examen final (SQL 2026-08-11_course_exams.sql) --
       get_exam_state: {
         Args: { p_course_id: string }

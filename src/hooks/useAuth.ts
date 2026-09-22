@@ -1,5 +1,6 @@
 import { useAuthStore } from '@/stores/authStore'
 import { IS_LEARNER_PREVIEW } from '@/lib/previewMode'
+import { readActiveOrgSpaceSync } from '@/services/org.service'
 
 export function useAuth() {
   const { session, profile, loading } = useAuthStore()
@@ -18,6 +19,12 @@ export function useAuth() {
     isAuthenticated: !!session,
     role,
     campaignId: profile?.campaign_id ?? null,
+    // Dónde se guarda el contenido que esta persona CREA. Es su contenedor de
+    // casa, salvo el superadmin: él crea en la org que tiene elegida en el
+    // panel (Brasil → contenedor de Brasil). `campaignId` NO cambia: con él se
+    // lee su propio progreso de aprendiz.
+    creationCampaignId:
+      (role === 'superadmin' ? readActiveOrgSpaceSync() : null) ?? profile?.campaign_id ?? null,
     isSuperAdmin: role === 'superadmin',
     isCapacitador: role === 'capacitador',
     // Recursos Humanos: administra GENTE, no contenido. No tiene campaña ni la

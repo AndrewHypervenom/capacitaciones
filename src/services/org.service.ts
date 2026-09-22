@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { fold } from '@/lib/normalize'
+import { useAuthStore } from '@/stores/authStore'
 import type { Organization, OrgUnit, OrgUnitKind } from '@/types/database'
 
 /* ─── Organizaciones y unidades ────────────────────────────────────────────
@@ -69,6 +70,151 @@ export async function getOrganizations(): Promise<Organization[]> {
 
 export function invalidateOrganizations(): void {
   orgsCache = null
+}
+
+/* ─── Organización activa ────────────────────────────────────────────────────
+ *
+ * Con una sola org, «la primera de la lista» bastaba. Con LATAM y Brasil, eso
+ * elegía por orden alfabético (Brasil antes que LATAM) y vació los CR de todo
+ * el panel. Ahora cada pantalla pregunta por la org ACTIVA:
+ *
+ *   · Staff de una org → la suya (`profiles.org_id`). No elige.
+ *   · Superadmin       → la que eligió en el selector del panel; si no eligió,
+ *                        la de su perfil. Ve todas, pero trabaja en una a la vez.
+ *
+ * Sin org (o con la suya oculta) devuelve null: la pantalla queda vacía en vez
+ * de mostrar el catálogo de otra org.
+ */
+
+const ACTIVE_ORG_KEY = 'lai.activeOrgId'
+/** Contenedor interno de la org activa: donde cae lo que crea el superadmin. */
+const ACTIVE_SPACE_KEY = 'lai.activeOrgSpace'
+
+function writeStored(key: string, value: string | null | undefined): void {
+  try {
+    if (value) localStorage.setItem(key, value)
+    else localStorage.removeItem(key)
+  } catch {
+    /* sin almacenamiento: se vuelve a calcular en la próxima carga */
+  }
+}
+
+/**
+ * Lectura SÍNCRONA del contenedor de la org activa del superadmin (la usa
+ * `useAuth`). Se refresca cada vez que se resuelve la org activa.
+ */
+export function readActiveOrgSpaceSync(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_SPACE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function readStoredOrgId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_ORG_KEY)
+  } catch {
+    return null
+  }
+}
+
+export async function getActiveOrganization(): Promise<Organization | null> {
+  const profile = useAuthStore.getState().profile
+  if (!profile) return null
+  const orgs = await getOrganizations()
+  if (profile.role === 'superadmin') {
+    const stored = readStoredOrgId()
+    const active =
+      orgs.find((o) => o.id === stored) ??
+      orgs.find((o) => o.id === profile.org_id) ??
+      orgs[0] ??
+      null
+    writeStored(ACTIVE_SPACE_KEY, active?.default_campaign_id ?? null)
+    return active
+  }
+  return orgs.find((o) => o.id === profile.org_id) ?? null
+}
+
+export async function getActiveOrgId(): Promise<string | null> {
+  return (await getActiveOrganization())?.id ?? null
+}
+
+/**
+ * El superadmin cambia de org. Se recarga la página: cada pantalla leyó su
+ * catálogo al montarse, y cambiar de empresa a medias (filtros de una, lista
+ * de otra) es peor que un parpadeo.
+ */
+export function setActiveOrgId(orgId: string, spaceId?: string | null): void {
+  writeStored(ACTIVE_ORG_KEY, orgId)
+  writeStored(ACTIVE_SPACE_KEY, spaceId ?? null)
+  window.location.reload()
+}
+
+/**
+ * Para el body de las Edge Functions de IA: con qué org (y con qué clave de
+ * Claude) trabaja el superadmin. A cualquier otro rol el servidor lo ignora
+ * y usa la org de su perfil, así que para ellos no se manda nada.
+ */
+export function aiOrgField(): { _orgId?: string } {
+  if (useAuthStore.getState().profile?.role !== 'superadmin') return {}
+  const stored = readStoredOrgId()
+  return stored ? { _orgId: stored } : {}
+}
+
+/** Igual que aiOrgField, para las altas (create-user, create-users-bulk). */
+export function orgBodyField(): { orgId?: string } {
+  const { _orgId } = aiOrgField()
+  return _orgId ? { orgId: _orgId } : {}
+}
+
+/** CR/áreas/categorías vivos de la org activa (para ELEGIR). */
+export async function getActiveOrgUnits(kind?: OrgUnitKind): Promise<OrgUnit[]> {
+  const orgId = await getActiveOrgId()
+  return orgId ? getOrgUnits(orgId, kind) : []
+}
+
+/**
+ * Las unidades de TODAS las orgs, archivadas incluidas. Solo para ponerle
+ * NOMBRE a un uuid (la ficha de una persona de Brasil vista desde LATAM, un
+ * certificado viejo): nunca para ofrecer opciones.
+ */
+export async function getUnitsOfAllOrgs(): Promise<OrgUnit[]> {
+  const orgs = await getOrganizations()
+  const lists = await Promise.all(orgs.map((o) => getAllOrgUnits(o.id).catch(() => [] as OrgUnit[])))
+  return lists.flat()
+}
+
+/** Todas las orgs, también las ocultas. Solo para mover personas. */
+export async function getOrganizationsIncludingHidden(): Promise<Organization[]> {
+  const { data, error } = await supabase.from('organizations').select('*').order('name')
+  if (error) {
+    if (isMissingSchema(error)) return []
+    throw error
+  }
+  return (data ?? []) as Organization[]
+}
+
+/**
+ * Pasa a una persona a otra org con su progreso (RPC, solo superadmin). El CR
+ * y el área tienen que ser de la org destino; el país de la persona también
+ * (la base lo rechaza si no).
+ */
+export async function movePersonToOrg(input: {
+  userId: string
+  orgId: string
+  operationId?: string | null
+  areaId?: string | null
+}): Promise<{ progressRowsMoved: number }> {
+  const { data, error } = await supabase.rpc('admin_move_person_org', {
+    p_user: input.userId,
+    p_org: input.orgId,
+    p_operation: input.operationId ?? null,
+    p_area: input.areaId ?? null,
+  })
+  if (error) throw error
+  const res = (data ?? {}) as { progress_rows_moved?: number }
+  return { progressRowsMoved: res.progress_rows_moved ?? 0 }
 }
 
 /* ─── Unidades (operaciones y áreas) ─────────────────────────────────────── */
