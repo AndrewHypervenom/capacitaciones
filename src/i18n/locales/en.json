@@ -1385,6 +1385,16 @@
       "d_when": "Date and time",
       "d_browser": "Browser",
       "d_detail": "Detail"
+    },
+    "controls": {
+      "play": "Play",
+      "pause": "Pause",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "fullscreen": "Full screen",
+      "exit_fullscreen": "Exit full screen",
+      "volume": "Volume",
+      "pip": "Picture in picture"
     }
   },
   "admin": {
@@ -2451,7 +2461,23 @@
       "adjust_warn_title_one": "Real progress on {{count}} step will be erased",
       "adjust_warn_title_other": "Real progress on {{count}} steps will be erased",
       "adjust_warn_body": "Their attempts, answers, world or exam for those steps are deleted and cannot be undone. If the course is no longer complete, the certificate is removed too.",
-      "adjust_footnote": "Everything before the chosen point is marked done and the rest is left to do. The person gets a notice and their screen updates on its own."
+      "adjust_footnote": "Everything before the chosen point is marked done and the rest is left to do. The person gets a notice and their screen updates on its own.",
+      "move_org": "Change organization",
+      "move_org_hint": "Move this person to another organization (LATAM ↔ Brazil) with their progress.",
+      "move_org_target": "Target organization",
+      "move_org_pick": "Choose the organization",
+      "move_org_hidden": "still hidden",
+      "move_org_cr": "CR",
+      "move_org_area": "Area",
+      "move_org_none": "Unassigned",
+      "move_org_no_units": "This organization has none yet",
+      "move_org_no_country": "no country",
+      "move_org_country_mismatch": "This person's country ({{country}}) doesn't belong to {{org}}. Change their country first.",
+      "move_org_note": "Moves to {{org}} with all their progress. Their certificates and assigned courses stay. Without a CR or area they will be unclassified there.",
+      "move_org_save": "Move",
+      "move_org_done": "{{name}} is now in {{org}}",
+      "move_org_done_hint_one": "Moved {{count}} progress record.",
+      "move_org_done_hint_other": "Moved {{count}} progress records."
     },
     "hr": {
       "title": "Sync with HR",
@@ -4972,7 +4998,109 @@
         "pron_layout_list": "List",
         "pron_layout_grid": "2 columns",
         "pron_layout_steps": "One at a time",
-        "pron_sounds_ph": "Sounds like, in plain letters ({{lang}}), e.g. oh-bree-GAH-doo"
+        "pron_sounds_ph": "Sounds like, in plain letters ({{lang}}), e.g. oh-bree-GAH-doo",
+        "insert": {
+          "groups": {
+            "text": "Text",
+            "media": "Media",
+            "interactive": "Interactive",
+            "layout": "Layout"
+          },
+          "items": {
+            "paragraph": {
+              "label": "Paragraph",
+              "desc": "Free text block"
+            },
+            "heading": {
+              "label": "Heading",
+              "desc": "H2 or H3 heading"
+            },
+            "list": {
+              "label": "List",
+              "desc": "Bulleted or numbered list"
+            },
+            "quote": {
+              "label": "Quote",
+              "desc": "Quote with author"
+            },
+            "code": {
+              "label": "Snippet",
+              "desc": "Technical text with highlighting and copy"
+            },
+            "divider": {
+              "label": "Divider",
+              "desc": "Dividing line"
+            },
+            "columns": {
+              "label": "Columns",
+              "desc": "2- or 3-column layout"
+            },
+            "image": {
+              "label": "Image",
+              "desc": "Image with caption and alignment"
+            },
+            "video": {
+              "label": "Video",
+              "desc": "YouTube, upload or interactive"
+            },
+            "callout": {
+              "label": "Callout",
+              "desc": "Tip, warning or note box"
+            },
+            "quiz": {
+              "label": "Quiz",
+              "desc": "Multiple-choice question"
+            },
+            "flashcard": {
+              "label": "Flashcards",
+              "desc": "Cards with a 3D flip"
+            },
+            "accordion": {
+              "label": "Accordion",
+              "desc": "Collapsible sections"
+            },
+            "tabs": {
+              "label": "Tabs",
+              "desc": "Tabbed content"
+            },
+            "timeline": {
+              "label": "Timeline",
+              "desc": "Events over time"
+            },
+            "comparison": {
+              "label": "Comparison",
+              "desc": "Comparison table"
+            },
+            "game-sort": {
+              "label": "Sort Steps",
+              "desc": "Drag-into-order game"
+            },
+            "game-classify": {
+              "label": "Classify Cases",
+              "desc": "Drag cases into categories game"
+            },
+            "cards": {
+              "label": "Cards",
+              "desc": "Grid of cards with icons"
+            },
+            "stat": {
+              "label": "Stats",
+              "desc": "Metrics with highlighted numbers"
+            },
+            "hotspot": {
+              "label": "Interactive image",
+              "desc": "Image with clickable points"
+            },
+            "pdf": {
+              "label": "PDF Document",
+              "desc": "PDF to review, with viewer and download"
+            },
+            "pronunciation": {
+              "label": "Pronunciation",
+              "desc": "Listen to a phrase and repeat it aloud"
+            }
+          }
+        }
       },
       "title": "Modules",
       "subtitle": "Learning content organized by module.",
@@ -4982,6 +5110,11 @@
       "draft": "draft",
       "sections_count": "{{n}} sections",
       "no_course_group": "No course",
+      "search_ph": "Search module or course…",
+      "showing_count_one": "{{count}} of {{total}} module",
+      "showing_count_other": "{{count}} of {{total}} modules",
+      "reach_filter_hint": "Showing the modules of the courses a person with your selection receives. Modules without a course reach no one, so they are hidden.",
+      "filter_empty": "No module matches these filters.",
       "move_title": "Move to another program",
       "move_hint": "Choose which program to move the module “{{title}}” to.",
       "move_placeholder": "Choose the target program…",
@@ -5405,6 +5538,11 @@
         "regen_confirm": "Build again",
         "missing_column": "SQL 48 (module vocabulary) still needs to be run on the database.",
         "sounds_ph": "Sounds like (e.g. TAR-chee)"
+      },
+      "editor_chrome": {
+        "sections_title": "Sections",
+        "add_section": "New section",
+        "gallery_crumb": "Editor · Sections"
       }
     },
     "chat_logs": {
@@ -6261,6 +6399,9 @@
       "more": "Show {{count}} more",
       "list_title": "Open in Progress › Modules",
       "list_body": "The full table as before: CR, course and date filters, outdated certificates and Excel."
+    },
+    "org_switcher": {
+      "hint": "Organization you are working in: its CRs, areas and categories are what you see across the panel."
     }
   },
   "themes": {

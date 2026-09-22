@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, Search, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -38,8 +38,6 @@ import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { getAudiences, ruleIsEmpty, type AudienceRule } from '@/services/audiences.service'
-import { getOrganizations, getAllOrgUnits } from '@/services/org.service'
-import type { OrgUnit } from '@/types/database'
 import { audienceSummary } from '@/admin/components/AudienceRulePicker'
 import { AiCreditsNotice, AiCreditsDot } from '@/components/ui/AiCreditsNotice'
 import { AiQuotaNotice } from '@/components/ui/AiQuotaNotice'
@@ -56,9 +54,8 @@ import { deletionToast } from '@/lib/deletionToast'
 import { rowText } from '@/lib/contentLang'
 import { TranslationModal } from '@/admin/components/TranslationModal'
 import { CourseReachTable } from '@/admin/components/CourseReachTable'
-import { reachesFilter, useCourseReach } from '@/admin/components/courseReach'
-import { OPERATION_COUNTRIES } from '@/lib/countries'
-import { fold } from '@/lib/normalize'
+import { useCourseReach } from '@/admin/components/courseReach'
+import { ContentFilterBar, useContentFilters } from '@/admin/components/ContentFilterBar'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
@@ -75,17 +72,11 @@ const COURSE_SORT_KEY = 'admin-courses-sort'
 type CourseLayout = 'cards' | 'reach'
 const COURSE_LAYOUT_KEY = 'admin-courses-layout'
 
-/** Un curso sin fila en `course_audiences` se lee igual que uno con la regla vacía. */
-const EMPTY_RULE: AudienceRule = {
-  everyone: false, countries: [], operationIds: [], areaIds: [], isMandatory: false,
-  includeClients: false,
-}
-
 export default function CourseList() {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const navigate = useNavigate()
-  const { user, campaignId: authCampaignId, isSuperAdmin, canApproveCourses } = useAuth()
+  const { user, campaignId: authCampaignId, creationCampaignId: homeSpace, isSuperAdmin, canApproveCourses } = useAuth()
   // Curso abierto en la vista previa (modal con la página del aprendiz).
   const [previewCourse, setPreviewCourse] = useState<AdminCourse | null>(null)
   // El pulso que señala la vista previa late hasta que se usa una vez y luego
@@ -105,21 +96,16 @@ export default function CourseList() {
      se elige solo, por dentro, y nadie tiene que saber que existe. */
   const selectedCampaignId = ALL_CAMPAIGNS
   const [creationCampaignId, setCreationCampaignId] = useState<string>('')
-  /* Buscador y filtros, COMUNES a tarjetas y tabla. País, área y CR responden
-     «¿qué le llega a alguien de…?» con la semántica de la regla: un curso solo
-     por país sigue saliendo al elegir un CR de ese país, porque le llega. */
-  const [search, setSearch] = useState('')
-  const [countryFilter, setCountryFilter] = useState('')
-  const [areaFilter, setAreaFilter] = useState('')
-  const [crFilter, setCrFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all')
+  /* Buscador y filtros, COMUNES a tarjetas y tabla, y los mismos que en
+     Módulos (ver ContentFilterBar). */
+  const filters = useContentFilters()
+  /** El catálogo de CR y áreas, para escribir la regla con nombres. */
+  const units = filters.units
   const [courses, setCourses] = useState<AdminCourse[]>([])
   /** Regla de audiencia por curso: qué país / área / CR tiene definidos. */
   const [audiences, setAudiences] = useState<Map<string, AudienceRule>>(new Map())
   /** Del aviso de arriba: deja solo los publicados que no le llegan a nadie. */
   const [onlyNobody, setOnlyNobody] = useState(false)
-  /** El catálogo de CR y áreas, para escribir la regla con nombres. */
-  const [units, setUnits] = useState<OrgUnit[]>([])
   // El orden elegido se recuerda: quien trabaja alfabéticamente no quiere
   // volver a elegirlo cada vez que entra al panel.
   const [sort, setSort] = useState<CourseSort>(() => {
@@ -266,25 +252,18 @@ export default function CourseList() {
       .then((data) => {
         const ids = data.map((c) => c.id)
         setCreationCampaignId(
-          authCampaignId && ids.includes(authCampaignId)
-            ? authCampaignId
+          homeSpace && ids.includes(homeSpace)
+            ? homeSpace
             : resolveCreationCampaignId(null, ids),
         )
       })
       .catch(() => {})
-  }, [isSuperAdmin, authCampaignId, user?.id])
+  }, [isSuperAdmin, authCampaignId, homeSpace, user?.id])
 
   useEffect(() => {
     if (!focusId || loading) return
     focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [focusId, loading, courses])
-
-  useEffect(() => {
-    getOrganizations()
-      .then((orgs) => (orgs[0] ? getAllOrgUnits(orgs[0].id) : []))
-      .then(setUnits)
-      .catch(() => setUnits([]))
-  }, [])
 
   useEffect(() => {
     if (!selectedCampaignId) return
@@ -363,25 +342,19 @@ export default function CourseList() {
     }
   }, [sort])
 
-  const filtersOn = !!(search.trim() || countryFilter || areaFilter || crFilter || statusFilter !== 'all' || onlyNobody)
+  const filtersOn = filters.active || onlyNobody
 
   const clearFilters = () => {
-    setSearch(''); setCountryFilter(''); setAreaFilter(''); setCrFilter('')
-    setStatusFilter('all'); setOnlyNobody(false)
+    filters.clear()
+    setOnlyNobody(false)
   }
 
-  const visibleCourses = useMemo(() => {
-    const q = fold(search)
-    const f = { country: countryFilter, area: areaFilter, cr: crFilter }
-    return sortByTitle(
-      courses.filter((c) => {
-        if (statusFilter !== 'all' && (statusFilter === 'published') !== c.is_published) return false
-        if (q && !fold(rowText(c)).includes(q)) return false
-        if (onlyNobody && !(c.is_published && reach.get(c.id)?.group === 'nobody')) return false
-        return reachesFilter(audiences.get(c.id) ?? EMPTY_RULE, f)
-      }),
-    )
-  }, [courses, sortByTitle, search, statusFilter, countryFilter, areaFilter, crFilter, onlyNobody, audiences, reach])
+  const visibleCourses = sortByTitle(
+    courses.filter((c) => {
+      if (onlyNobody && !(c.is_published && reach.get(c.id)?.group === 'nobody')) return false
+      return filters.matches({ texts: [rowText(c)], isPublished: c.is_published, rule: audiences.get(c.id) })
+    }),
+  )
 
   const handleCreate = async () => {
     if (!newTitle.trim() || !creationCampaignId) return
@@ -576,60 +549,14 @@ export default function CourseList() {
         )}
       </div>
 
-      <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
-        <div className="relative sm:col-span-2 lg:col-span-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('admin.courses.reach_search_ph')}
-            aria-label={t('admin.courses.reach_search_ph')}
-            className="min-h-[44px] w-full rounded-xl border border-line bg-surface py-2.5 pl-9 pr-3 text-[14px] text-text outline-none focus:border-primary"
-          />
-        </div>
-        <FilterDropdown
-          value={countryFilter}
-          onChange={setCountryFilter}
-          options={[
-            { value: '', label: t('admin.courses.reach_any_country') },
-            ...OPERATION_COUNTRIES.map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` })),
-          ]}
-        />
-        <FilterDropdown
-          value={areaFilter}
-          onChange={setAreaFilter}
-          searchable
-          options={[
-            { value: '', label: t('admin.courses.reach_any_area') },
-            ...units.filter((u) => u.kind === 'area').map((u) => ({ value: u.id, label: u.name })),
-          ]}
-        />
-        <FilterDropdown
-          value={crFilter}
-          onChange={setCrFilter}
-          searchable
-          options={[
-            { value: '', label: t('admin.courses.reach_any_cr') },
-            ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
-          ]}
-        />
-        <FilterDropdown
-          value={statusFilter}
-          onChange={(v) => setStatusFilter(v as typeof statusFilter)}
-          options={[
-            { value: 'all', label: t('admin.courses.reach_status_all') },
-            { value: 'published', label: t('admin.courses.published') },
-            { value: 'draft', label: t('admin.courses.draft') },
-          ]}
-        />
-      </div>
+      <ContentFilterBar filters={filters} searchPlaceholder={t('admin.courses.reach_search_ph')} />
 
       {/* Qué se está viendo, en palabras, y cómo volver a verlo todo. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-text-muted">
         <span className="tabular-nums">
           {t('admin.courses.showing_count', { count: visibleCourses.length, total: courses.length })}
         </span>
-        {(countryFilter || areaFilter || crFilter) && <span>{t('admin.courses.reach_filter_hint')}</span>}
+        {filters.reachOn && <span>{t('admin.courses.reach_filter_hint')}</span>}
         {filtersOn && (
           <button onClick={clearFilters} className="font-medium text-primary hover:underline">
             {t('admin.courses.clear_filters')}

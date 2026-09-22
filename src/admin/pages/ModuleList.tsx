@@ -13,17 +13,15 @@ import {
 import { getAllCourses, type CourseWithModules } from '@/services/courses.service'
 import { getAccessibleCampaigns } from '@/services/campaigns.service'
 import { getAudiences, type AudienceRule } from '@/services/audiences.service'
-import { getOrganizations, getOrgUnits } from '@/services/org.service'
 import { toast } from '@/stores/toastStore'
 import { deletionToast } from '@/lib/deletionToast'
-import type { OrgUnit } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import { FilterDropdown } from '@/admin/components/FilterDropdown'
+import { ContentFilterBar, useContentFilters } from '@/admin/components/ContentFilterBar'
 import { AiAuthoredBadge, AI_AUTHORED_TINT } from '@/admin/components/AiAuthoredBadge'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ensureVideoQuizTimes } from '@/admin/lib/ensureVideoQuizTimes'
@@ -53,9 +51,9 @@ export default function ModuleList() {
   /* Ya no hay programas en pantalla: se listan TODOS los módulos a los que se
      tiene acceso (la base decide cuáles). `campaignIds` es solo fontanería. */
   const [campaignIds, setCampaignIds] = useState<string[] | null>(null)
-  /** CR: deja solo los cursos cuya regla le llega (o que van a todo el mundo). */
-  const [crFilter, setCrFilter] = useState('')
-  const [units, setUnits] = useState<OrgUnit[]>([])
+  /* Buscador y filtros: los mismos que en Cursos (ver ContentFilterBar). País,
+     área y CR miran la regla del curso del que cuelga cada módulo. */
+  const filters = useContentFilters()
   const [audiences, setAudiences] = useState<Map<string, AudienceRule>>(new Map())
   const [modules, setModules] = useState<DbModuleRow[]>([])
   const [courses, setCourses] = useState<CourseWithModules[]>([])
@@ -79,10 +77,6 @@ export default function ModuleList() {
     })
       .then((data) => setCampaignIds(data.map((c) => c.id)))
       .catch(() => setCampaignIds([]))
-    void getOrganizations()
-      .then((orgs) => (orgs[0] ? getOrgUnits(orgs[0].id) : []))
-      .then(setUnits)
-      .catch(() => setUnits([]))
   }, [isSuperAdmin, authCampaignId, user?.id])
 
   // Traer a la vista el módulo resaltado (la lista puede ser larga).
@@ -147,10 +141,18 @@ export default function ModuleList() {
   }
 
   // Agrupar módulos por curso para reflejar la jerarquía Campaña → Curso → Módulo.
-  const { courseGroups, orphans } = useMemo(() => {
+  const { courseGroups, orphans, visibleCount } = useMemo(() => {
+    const courseTitle = new Map(courses.map((c) => [c.id, rowText(c)]))
     const byCourse = new Map<string, DbModuleRow[]>()
     const orphanList: DbModuleRow[] = []
     for (const m of modules) {
+      // El título del curso también se busca: «inducción» trae sus módulos.
+      const passes = filters.matches({
+        texts: [rowText(m), m.course_id ? courseTitle.get(m.course_id) ?? '' : ''],
+        isPublished: m.is_published,
+        rule: m.course_id ? audiences.get(m.course_id) : null,
+      })
+      if (!passes) continue
       if (m.course_id) {
         const arr = byCourse.get(m.course_id) ?? []
         arr.push(m)
@@ -170,14 +172,12 @@ export default function ModuleList() {
         ),
       }))
       .filter((g) => g.modules.length > 0)
-      .filter((g) => {
-        if (!crFilter) return true
-        const rule = audiences.get(g.id)
-        return !!rule && (rule.everyone || rule.operationIds.includes(crFilter))
-      })
-    // Con un CR elegido, los sueltos no le llegan a nadie: no se listan.
-    return { courseGroups: groups, orphans: crFilter ? [] : orphanList }
-  }, [modules, courses, crFilter, audiences])
+    // Se cuenta lo que se pinta (un módulo de un curso fuera de la lista no sale).
+    const shown = groups.reduce((n, g) => n + g.modules.length, 0) + orphanList.length
+    return { courseGroups: groups, orphans: orphanList, visibleCount: shown }
+    // `filters.matches` cambia con cada filtro, que ya van en las dependencias.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modules, courses, audiences, filters.search, filters.country, filters.area, filters.cr, filters.status])
 
   const renderModule = (mod: DbModuleRow, idx: number) => (
     <GlassCard
@@ -307,20 +307,20 @@ export default function ModuleList() {
         </div>
       </div>
 
-      {/* Filtro por CR: los módulos de los cursos que le llegan a ese CR. */}
-      {units.some((u) => u.kind === 'operation') && (
-        <div className="mb-6">
-          <FilterDropdown
-            value={crFilter}
-            onChange={setCrFilter}
-            options={[
-              { value: '', label: t('admin.progress_overview.all_operations', 'Todos los CR') },
-              ...units.filter((u) => u.kind === 'operation').map((u) => ({ value: u.id, label: u.name })),
-            ]}
-            className="max-w-xs"
-          />
-        </div>
-      )}
+      <ContentFilterBar filters={filters} searchPlaceholder={t('admin.modules.search_ph')} />
+
+      {/* Qué se está viendo, en palabras, y cómo volver a verlo todo. */}
+      <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-text-muted">
+        <span className="tabular-nums">
+          {t('admin.modules.showing_count', { count: visibleCount, total: modules.length })}
+        </span>
+        {filters.reachOn && <span>{t('admin.modules.reach_filter_hint')}</span>}
+        {filters.active && (
+          <button onClick={filters.clear} className="font-medium text-primary hover:underline">
+            {t('admin.courses.clear_filters')}
+          </button>
+        )}
+      </div>
 
       {/* Error */}
       {error && (
@@ -349,6 +349,8 @@ export default function ModuleList() {
               </Button>
             </Link>
           </GlassCard>
+        ) : visibleCount === 0 ? (
+          <p className="py-10 text-center text-[13px] text-text-muted">{t('admin.modules.filter_empty')}</p>
         ) : (
           <FadeIn className="space-y-8" y={14}>
             {courseGroups.map((group) => (

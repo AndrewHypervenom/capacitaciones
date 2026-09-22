@@ -1385,6 +1385,16 @@
       "d_when": "Fecha y hora",
       "d_browser": "Navegador",
       "d_detail": "Detalle"
+    },
+    "controls": {
+      "play": "Reproducir",
+      "pause": "Pausar",
+      "mute": "Silenciar",
+      "unmute": "Activar sonido",
+      "fullscreen": "Pantalla completa",
+      "exit_fullscreen": "Salir de pantalla completa",
+      "volume": "Volumen",
+      "pip": "Imagen en imagen"
     }
   },
   "admin": {
@@ -2451,7 +2461,23 @@
       "adjust_warn_title_one": "Se borra el avance real de {{count}} paso",
       "adjust_warn_title_other": "Se borra el avance real de {{count}} pasos",
       "adjust_warn_body": "Sus intentos, respuestas, mundo o examen de esos pasos se eliminan y no hay deshacer. Si el curso deja de estar completo, también se retira el certificado.",
-      "adjust_footnote": "Lo anterior al punto elegido queda hecho y lo demás por hacer. La persona recibe un aviso y su pantalla se pone al día sola."
+      "adjust_footnote": "Lo anterior al punto elegido queda hecho y lo demás por hacer. La persona recibe un aviso y su pantalla se pone al día sola.",
+      "move_org": "Cambiar de organización",
+      "move_org_hint": "Pasar a esta persona a otra organización (LATAM ↔ Brasil) con su progreso.",
+      "move_org_target": "Organización destino",
+      "move_org_pick": "Elige la organización",
+      "move_org_hidden": "aún oculta",
+      "move_org_cr": "CR",
+      "move_org_area": "Área",
+      "move_org_none": "Sin asignar",
+      "move_org_no_units": "Esta organización aún no tiene",
+      "move_org_no_country": "sin país",
+      "move_org_country_mismatch": "El país de esta persona ({{country}}) no es de {{org}}. Cámbiale primero el país.",
+      "move_org_note": "Pasa a {{org}} con todo su progreso. Sus certificados y cursos asignados se quedan. Si no le pones CR ni área, quedará sin clasificar ahí.",
+      "move_org_save": "Mover",
+      "move_org_done": "{{name}} ahora está en {{org}}",
+      "move_org_done_hint_one": "Se llevó {{count}} registro de progreso.",
+      "move_org_done_hint_other": "Se llevó {{count}} registros de progreso."
     },
     "hr": {
       "title": "Sincronizar con Talento Humano",
@@ -4972,7 +4998,109 @@
         "pron_layout_list": "Lista",
         "pron_layout_grid": "2 columnas",
         "pron_layout_steps": "Una a la vez",
-        "pron_sounds_ph": "Así suena, con letras normales ({{lang}}), p. ej. o-bri-GA-du"
+        "pron_sounds_ph": "Así suena, con letras normales ({{lang}}), p. ej. o-bri-GA-du",
+        "insert": {
+          "groups": {
+            "text": "Texto",
+            "media": "Media",
+            "interactive": "Interactivo",
+            "layout": "Layout"
+          },
+          "items": {
+            "paragraph": {
+              "label": "Párrafo",
+              "desc": "Bloque de texto libre"
+            },
+            "heading": {
+              "label": "Título",
+              "desc": "Encabezado H2 o H3"
+            },
+            "list": {
+              "label": "Lista",
+              "desc": "Lista bullet o numerada"
+            },
+            "quote": {
+              "label": "Cita",
+              "desc": "Blockquote con autor"
+            },
+            "code": {
+              "label": "Fragmento",
+              "desc": "Texto técnico con resaltado y copiado"
+            },
+            "divider": {
+              "label": "Separador",
+              "desc": "Línea divisoria"
+            },
+            "columns": {
+              "label": "Columnas",
+              "desc": "Layout de 2 o 3 columnas"
+            },
+            "image": {
+              "label": "Imagen",
+              "desc": "Imagen con caption y alineación"
+            },
+            "video": {
+              "label": "Video",
+              "desc": "YouTube, upload o interactivo"
+            },
+            "callout": {
+              "label": "Callout",
+              "desc": "Caja de tip, advertencia, etc."
+            },
+            "quiz": {
+              "label": "Quiz",
+              "desc": "Pregunta de opción múltiple"
+            },
+            "flashcard": {
+              "label": "Flashcards",
+              "desc": "Tarjetas con flip 3D"
+            },
+            "accordion": {
+              "label": "Acordeón",
+              "desc": "Secciones colapsables"
+            },
+            "tabs": {
+              "label": "Tabs",
+              "desc": "Contenido en pestañas"
+            },
+            "timeline": {
+              "label": "Timeline",
+              "desc": "Lista de eventos en el tiempo"
+            },
+            "comparison": {
+              "label": "Comparación",
+              "desc": "Tabla comparativa"
+            },
+            "game-sort": {
+              "label": "Ordenar Pasos",
+              "desc": "Juego de arrastrar en orden"
+            },
+            "game-classify": {
+              "label": "Clasificar Casos",
+              "desc": "Juego de arrastrar casos a contenedores"
+            },
+            "cards": {
+              "label": "Tarjetas",
+              "desc": "Grid de tarjetas con ícono"
+            },
+            "stat": {
+              "label": "Datos",
+              "desc": "Métricas con números destacados"
+            },
+            "hotspot": {
+              "label": "Imagen interactiva",
+              "desc": "Imagen con puntos clicables"
+            },
+            "pdf": {
+              "label": "Documento PDF",
+              "desc": "PDF para revisar, con visor y descarga"
+            },
+            "pronunciation": {
+              "label": "Pronunciación",
+              "desc": "Escuchar una frase y repetirla en voz alta"
+            }
+          }
+        }
       },
       "title": "Módulos",
       "subtitle": "Contenido de aprendizaje organizado por módulo.",
@@ -4982,6 +5110,11 @@
       "draft": "borrador",
       "sections_count": "{{n}} secciones",
       "no_course_group": "Sin curso",
+      "search_ph": "Buscar módulo o curso…",
+      "showing_count_one": "{{count}} de {{total}} módulo",
+      "showing_count_other": "{{count}} de {{total}} módulos",
+      "reach_filter_hint": "Se muestran los módulos de los cursos que le llegan a una persona con lo que elegiste. Los módulos sin curso no le llegan a nadie, por eso no salen.",
+      "filter_empty": "Ningún módulo coincide con estos filtros.",
       "move_title": "Mover a otro programa",
       "move_hint": "Elige a qué programa mover el módulo “{{title}}”.",
       "move_placeholder": "Elige el programa destino…",
@@ -5405,6 +5538,11 @@
         "regen_confirm": "Volver a armar",
         "missing_column": "Falta correr el SQL 48 (vocabulario del módulo) en la base de datos.",
         "sounds_ph": "Así suena (ej. TAR-chi)"
+      },
+      "editor_chrome": {
+        "sections_title": "Secciones",
+        "add_section": "Nueva sección",
+        "gallery_crumb": "Editor · Secciones"
       }
     },
     "chat_logs": {
@@ -6261,6 +6399,9 @@
       "more": "Ver {{count}} más",
       "list_title": "Ver en Progreso › Módulos",
       "list_body": "La tabla completa de siempre: filtros por CR, curso y fechas, certificados desactualizados y Excel."
+    },
+    "org_switcher": {
+      "hint": "Organización con la que trabajas: sus CR, áreas y categorías son las que ves en todo el panel."
     }
   },
   "themes": {
