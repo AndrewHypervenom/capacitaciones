@@ -185,30 +185,35 @@ export function AdminNav() {
   ];
 
   /**
-   * Recursos Humanos administra GENTE, no contenido: se queda con el panel, la
-   * lista de personas y el progreso.
+   * Recursos Humanos administra GENTE, no contenido: carga la base de Talento
+   * Humano (altas), ve a las personas y lee estadísticas. Nada más.
    *
-   * Se filtra con una lista BLANCA sobre el menú ya construido, en vez de ir
-   * añadiendo condiciones dentro de cada grupo. Así una pantalla nueva no se
-   * le cuela a RH sin que alguien lo decida a propósito: lo que no está aquí,
-   * no se ve. Falla cerrado, que es el lado correcto en el que equivocarse.
+   * Menú PROPIO y plano, no un filtro sobre el del staff: así una pantalla
+   * nueva no se le cuela a RH sin que alguien lo decida a propósito, y sus tres
+   * entradas no quedan escondidas dentro de grupos plegables. Las rutas se
+   * cierran igual en AdminRouter; esto es la puerta, aquello la pared.
    */
-  const RH_ALLOWED = ['/admin', '/admin/users', '/admin/progress']
-  const links = isRh
-    ? adminLinks
-        .map((c) => ({ ...c, items: c.items.filter((i) => RH_ALLOWED.includes(i.to)) }))
-        .filter((c) => c.items.length > 0)
-    : adminLinks
+  const rhLinks: MenuCategory[] = [{
+    title: '',
+    items: [
+      { to: '/admin', label: t('admin.nav.rh_home', 'Inicio'), end: true },
+      { to: '/admin/users', label: t('admin.nav.rh_people', 'Personas'), end: false },
+      { to: '/admin/progress', label: t('admin.nav.rh_stats', 'Estadísticas'), end: false },
+    ],
+  }]
+  const links = isRh ? rhLinks : adminLinks
 
   // Ni el capacitador ni RH deben ver la palabra "Admin" como título del panel.
   const panelTitle = isSuperAdmin ? t('nav.admin', 'Admin') : t('nav.manage', 'Gestión')
 
-  const roleColor: NeonColor = isSuperAdmin ? 'amber' : isCapacitador ? 'violet' : 'neutral'
+  const roleColor: NeonColor = isSuperAdmin ? 'amber' : isCapacitador ? 'violet' : isRh ? 'magenta' : 'neutral'
   const roleLabel = isSuperAdmin
     ? t('roles.superadmin')
     : isCapacitador
       ? t('roles.capacitador')
-      : t('roles.learner')
+      : isRh
+        ? t('roles.rh')
+        : t('roles.learner')
 
   const handleLogout = async () => {
     try { await signOut() } catch { /* ignore */ }

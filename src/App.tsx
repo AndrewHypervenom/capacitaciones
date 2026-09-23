@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { presenceChannelsFor, usePresenceStore } from '@/stores/presenceStore';
 import { getAccessibleCampaigns } from '@/services/campaigns.service';
 import { startTrafficTracking, stopTrafficTracking, trackRoute } from '@/lib/trafficTracker';
@@ -249,6 +249,12 @@ function LanguageSync() {
   return null;
 }
 
+/** Juegos del aprendiz que viven fuera del AppShell: RH no juega, vuelve a su panel. */
+function NotForRh({ children }: { children: React.ReactNode }) {
+  const { isRh } = useAuth();
+  return isRh ? <Navigate to="/admin" replace /> : <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -307,10 +313,10 @@ export default function App() {
             enlace. Ningún cert_id emitido puede llamarse así. */}
         <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/verify/:certId" element={<PublicCertificate />} />
-        <Route path="/mission/:id" element={<MissionPlayer />} />
-        <Route path="/arena" element={<ArenaHub />} />
-        <Route path="/arena/:id" element={<ArenaPlayer />} />
-        <Route path="/world" element={<WorldMap />} />
+        <Route path="/mission/:id" element={<NotForRh><MissionPlayer /></NotForRh>} />
+        <Route path="/arena" element={<NotForRh><ArenaHub /></NotForRh>} />
+        <Route path="/arena/:id" element={<NotForRh><ArenaPlayer /></NotForRh>} />
+        <Route path="/world" element={<NotForRh><WorldMap /></NotForRh>} />
         {/* Admin CMS — solo accesible para admin/superadmin (AdminGuard dentro) */}
         <Route path="/admin/*" element={<AdminRouter />} />
         {/* Sin comodín, cualquier enlace viejo dejaba la pantalla en negro. */}

@@ -75,14 +75,15 @@ export default function AdminDashboard() {
         // no representan a nadie de la compañía.
         isSuperAdmin
           ? (() => {
-              let q = notTest(supabase.from('profiles').select('id', { count: 'exact', head: true })).eq('is_client', false)
+              // RH tampoco es plantilla que se forma: no suma a «personas».
+              let q = notTest(supabase.from('profiles').select('id', { count: 'exact', head: true })).eq('is_client', false).neq('role', 'rh')
               if (activeOrgId) q = q.eq('org_id', activeOrgId)
               return testUnits.length ? q.or(`operation_id.is.null,operation_id.not.in.(${testUnits.join(',')})`) : q
             })()
           : (myPeople
               ? supabase.from('profiles').select('id', { count: 'exact', head: true }).in('id', myPeople.length ? myPeople : [''])
               : supabase.from('profiles').select('id', { count: 'exact', head: true }).in('campaign_id', scope)
-            ).neq('role', 'superadmin').eq('is_client', false),
+            ).neq('role', 'superadmin').neq('role', 'rh').eq('is_client', false),
         // CR: el eje con el que hoy se reparte la formación (el programa se retiró).
         activeOrgId
           ? supabase.from('org_units').select('id', { count: 'exact', head: true }).eq('kind', 'operation').eq('org_id', activeOrgId)

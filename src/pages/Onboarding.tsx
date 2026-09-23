@@ -46,9 +46,9 @@ export function Onboarding() {
 
       setProfile({ ...profile, onboarded: true })
 
-      // El staff (superadmin/capacitador) va directo a su panel de gestión;
+      // El staff (superadmin/capacitador/RH) va directo a su panel de gestión;
       // el aprendiz se queda en su dashboard (AppShell ya renderiza el Outlet).
-      if (profile.role === 'superadmin' || profile.role === 'capacitador') {
+      if (profile.role === 'superadmin' || profile.role === 'capacitador' || profile.role === 'rh') {
         navigate('/admin', { replace: true })
       }
     } catch (err) {

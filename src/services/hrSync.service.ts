@@ -948,6 +948,13 @@ export interface ApplyOptions {
    * bajas propuestas y las puede exportar; no las ejecuta.
    */
   canDeactivate: boolean
+  /**
+   * Recursos Humanos: con la base solo DA DE ALTA. Correcciones de datos,
+   * reactivaciones y bajas se quedan en el superadmin (la reactivación pasa
+   * además por `set-user-status`, que rechaza a RH). Igual que `canDeactivate`,
+   * la interfaz esconde esas filas y aquí se vuelven a filtrar.
+   */
+  createOnly?: boolean
   onProgress?: (
     done: number,
     total: number,
@@ -1063,24 +1070,24 @@ function chunk<T>(list: T[], size: number): T[][] {
  * personas no depende de que una sola llamada aguante.
  */
 export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
-  const { entries, fileName, period, reason, canDeactivate, onProgress } = opts
+  const { entries, fileName, period, reason, canDeactivate, createOnly = false, onProgress } = opts
   const included = entries.filter((e) => e.include)
   const toCreate = included.filter((e) => e.action === 'create')
   const proposedDeactivations = included.filter((e) => e.action === 'deactivate')
   /* El candado real. La interfaz esconde el botón, pero quien llame a esta
    * función sin ser superadmin tampoco da de baja a nadie. */
-  const toDeactivate = canDeactivate ? proposedDeactivations : []
-  const toReactivate = included.filter((e) => e.action === 'reactivate')
+  const toDeactivate = canDeactivate && !createOnly ? proposedDeactivations : []
+  const toReactivate = createOnly ? [] : included.filter((e) => e.action === 'reactivate')
   const unchanged = included.filter((e) => e.action === 'unchanged')
   // Una reactivación también puede traer datos corregidos.
-  const toUpdate = included.filter((e) => e.changes.length > 0 && e.action !== 'create')
+  const toUpdate = createOnly ? [] : included.filter((e) => e.changes.length > 0 && e.action !== 'create')
 
   const total = toCreate.length + toDeactivate.length + toReactivate.length + toUpdate.length
   let done = 0
   const result: ApplyResult = {
     created: [], deactivated: 0, reactivated: 0, unchanged: unchanged.length,
     updated: 0, fieldsUpdated: 0, emailsChanged: 0,
-    deactivationsBlocked: canDeactivate ? 0 : proposedDeactivations.length,
+    deactivationsBlocked: proposedDeactivations.length - toDeactivate.length,
     errors: [],
   }
 
@@ -1230,7 +1237,7 @@ export async function applySync(opts: ApplyOptions): Promise<ApplyResult> {
       })),
       /* Bajas que se propusieron y no se aplicaron por no ser superadmin. Quedan
        * escritas para que se puedan retomar, no para que se pierdan. */
-      deactivations_blocked: canDeactivate
+      deactivations_blocked: toDeactivate.length > 0 || proposedDeactivations.length === 0
         ? []
         : proposedDeactivations.map((e) => ({ id: e.person!.id, email: e.email })),
       created: result.created.map((r) => ({ email: r.email, status: r.status })),

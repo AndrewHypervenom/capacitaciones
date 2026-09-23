@@ -19,6 +19,9 @@ function ScrollToTop() {
   return null;
 }
 
+/** Lo único de fuera del panel que RH puede abrir: su perfil y los certificados. */
+const RH_ALLOWED_OUTSIDE_PANEL = /^\/(profile|certificate)(\/|$)/;
+
 export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
   const location = useLocation();
   const { isAuthenticated, loading, profile } = useAuth();
@@ -50,6 +53,13 @@ export function AppShell({ requireAuth = true }: { requireAuth?: boolean }) {
 
   if (requireAuth && profile && !profile.onboarded) {
     return <Onboarding />;
+  }
+
+  // Recursos Humanos no tiene nada que hacer en la zona del aprendiz (cursos,
+  // módulos, logros, exámenes…): su sitio es el panel de gestión. Solo se le
+  // deja su perfil y ver certificados, que el panel de progreso enlaza.
+  if (requireAuth && profile?.role === 'rh' && !RH_ALLOWED_OUTSIDE_PANEL.test(location.pathname)) {
+    return <Navigate to="/admin" replace />;
   }
 
   return (

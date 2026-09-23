@@ -29,6 +29,7 @@ import AdminDashboard from './pages/AdminDashboard'
 const NewModulePage = lazy(() => import('./pages/NewModulePage'))
 const ImportContent = lazy(() => import('./pages/ImportContent'))
 const UserList = lazy(() => import('./pages/UserList'))
+const RhDashboard = lazy(() => import('./pages/RhDashboard'))
 const UserProfile = lazy(() => import('./pages/UserProfile'))
 const LiveQuizAdmin = lazy(() => import('./pages/LiveQuizAdmin'))
 const ModuleList = lazy(() => import('./pages/ModuleList'))
@@ -166,6 +167,20 @@ export default function AdminRouter() {
             contenedor con scroll, para que la barra lateral y el aviso de modo
             pruebas no parpadeen al cambiar de pantalla. */}
         <Suspense fallback={<RouteFallback />}>
+        {isRh ? (
+          /* Recursos Humanos: cargar la base de TH (altas), ver personas y leer
+             estadísticas. Árbol de rutas PROPIO y cerrado: esconder el menú no
+             bastaba, con escribir /admin/courses en la barra entraba al editor.
+             Lo que no está aquí lleva al inicio. */
+          <Routes>
+            <Route index element={<RhDashboard />} />
+            <Route path="users" element={<UserList />} />
+            <Route path="users/:id" element={<UserProfile />} />
+            <Route path="progress" element={<ProgressHub />} />
+            <Route path="overview" element={<Navigate to="/admin/progress?view=modules&tab=overview" replace />} />
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Routes>
+        ) : (
         <Routes>
           <Route index element={<AdminDashboard />} />
           {/* Programas retirados: el enlace viejo lleva a CR. */}
@@ -233,6 +248,7 @@ export default function AdminRouter() {
           {/* Ruta desconocida del panel: sin esto se veía la barra y un área vacía. */}
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
+        )}
         </Suspense>
       </div>
       {/* Vale para CUALQUIER vista del panel: avisa si alguien más está aquí. */}

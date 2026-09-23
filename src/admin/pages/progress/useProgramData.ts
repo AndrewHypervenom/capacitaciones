@@ -692,6 +692,10 @@ export function useProgramData(
         // ── Personas ──────────────────────────────────────────────────────
         const personById = new Map<string, ProgramPerson>();
         for (const p of profileRows) {
+          // Recursos Humanos no estudia ni se mide: fuera de la tabla, de los
+          // KPIs y del Excel. Antes caía en el `: 'learner'` de abajo y se
+          // contaba como aprendiz.
+          if (p.role === 'rh') continue;
           const role = (p.role === 'superadmin' || p.role === 'capacitador' ? p.role : 'learner') as ProgramPerson['role'];
           if (excludeSuperadmins && role === 'superadmin') continue;
           // Gente del entorno de pruebas: fuera de la tabla, de los KPIs y del

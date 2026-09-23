@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, UserPlus, UserRoundPlus, Shield, Trash2, Copy, Check, Clock, BarChart3, Search, Upload, Pencil, X, RotateCcw, IdCard, ImageDown, KeyRound, UserMinus, UserCheck, Users, Fingerprint, BadgeCheck, Replace, PenLine, Briefcase, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
@@ -167,7 +167,16 @@ export default function UserList() {
   const [progressUser, setProgressUser] = useState<ProfileWithEmail | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   // Sincronización de altas y bajas contra la base de Talento Humano.
-  const [hrOpen, setHrOpen] = useState(false)
+  // «Cargar base de Talento Humano» desde el inicio de RH llega con ?th=1 y
+  // abre el asistente directo. Se limpia para que recargar no lo reabra.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [hrOpen, setHrOpen] = useState(() => searchParams.get('th') === '1' && (isSuperAdmin || isRh))
+  useEffect(() => {
+    if (searchParams.get('th') !== '1') return
+    const next = new URLSearchParams(searchParams)
+    next.delete('th')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
   const [togglingId, setTogglingId] = useState<string | null>(null)
   // Permiso de "puede crear aprendices" guardándose para un capacitador.
   // Contraseña predeterminada para usuarios nuevos (ajuste global de superadmin).
@@ -284,7 +293,9 @@ export default function UserList() {
   // SOLO si el superadmin lo habilitó: el permiso se concede uno por uno, no
   // viene con el rol. Las BAJAS siguen siendo solo del superadmin: ese es el
   // punto de control del proceso de Talento Humano y no se delega.
-  const canCreateUsers = isSuperAdmin || (canCreateLearners && assignableCampaigns.length > 0)
+  // RH da de alta SOLO con la base de Talento Humano: una sola puerta, la del
+  // archivo que cargan cada mes o quincena, en vez de tres formas de crear gente.
+  const canCreateUsers = isSuperAdmin || (canCreateLearners && !isRh && assignableCampaigns.length > 0)
   /* Recursos Humanos SI carga la base maestra: dar de alta y mantener los datos
    * de la gente es literalmente su trabajo. Lo que no puede es dar de baja — eso
    * se queda en el superadmin, y el asistente lo esconde y `applySync` lo vuelve
@@ -982,9 +993,9 @@ export default function UserList() {
         <div>
           <h1 className="text-[18px] sm:text-[22px] font-bold text-text">{t('admin.users.title')}</h1>
           <p className="text-text-muted text-[13px] mt-1">
-            {isSuperAdmin ? t('admin.users.subtitle') : t('admin.users.subtitle_campaign')}
+            {isSuperAdmin ? t('admin.users.subtitle') : isRh ? t('admin.users.subtitle_rh') : t('admin.users.subtitle_campaign')}
           </p>
-          {showNoPermissionHint && (
+          {showNoPermissionHint && !isRh && (
             <p className="text-text-subtle text-[12px] mt-1">
               {t('admin.users.no_create_permission')}
             </p>
@@ -1027,13 +1038,16 @@ export default function UserList() {
             </>
           )}
           {canSyncRoster && (
-            <Tooltip label={t('admin.hr.button_hint')} maxWidth={260}>
+            <Tooltip label={isRh ? t('admin.hr.button_hint_rh') : t('admin.hr.button_hint')} maxWidth={260}>
             <button
               onClick={() => setHrOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]"
+              className={isRh
+                ? 'flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-black min-h-[44px]'
+                : 'flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium text-text bg-subtle border border-line min-h-[44px]'}
+              style={isRh ? { background: '#10D451' } : undefined}
             >
-              <Users className="h-4 w-4" />
-              {t('admin.hr.button')}
+              {isRh ? <Upload className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+              {isRh ? t('admin.hr.button_rh') : t('admin.hr.button')}
             </button>
             </Tooltip>
           )}
@@ -2018,6 +2032,7 @@ export default function UserList() {
         <HrRosterSyncModal
           campaigns={campaigns}
           canDeactivate={isSuperAdmin}
+          createOnly={isRh}
           onClose={() => setHrOpen(false)}
           onApplied={refreshData}
         />

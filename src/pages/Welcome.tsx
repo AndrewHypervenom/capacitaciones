@@ -90,7 +90,7 @@ const revealGroup: Variants = {
 
 export default function Welcome() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading, profile, isAdminOrCapacitador } = useAuth();
+  const { isAuthenticated, loading: authLoading, profile, isAdminOrCapacitador, isRh } = useAuth();
   const { t } = useTranslation();
   const reduce = !!useReducedMotion();
   const inactiveAccount = useAuthStore((s) => s.inactiveAccount);
@@ -102,9 +102,11 @@ export default function Welcome() {
   // que `isAuthenticated` ya es true pero `profile` sigue null tras el login.
   useEffect(() => {
     if (authLoading || !isAuthenticated || !profile) return;
-    const target = isAdminOrCapacitador && profile.onboarded ? '/admin' : '/dashboard';
+    // Recursos Humanos no es aprendiz: va siempre a su panel (carga de la base
+    // y estadísticas), igual que el resto del staff.
+    const target = (isAdminOrCapacitador || isRh) && profile.onboarded ? '/admin' : '/dashboard';
     navigate(target, { replace: true });
-  }, [isAuthenticated, authLoading, profile, isAdminOrCapacitador, navigate]);
+  }, [isAuthenticated, authLoading, profile, isAdminOrCapacitador, isRh, navigate]);
 
   // Solo los NÚMEROS viven en el estado; la etiqueta se traduce al renderizar.
   // Si se guardara el texto ya traducido, cambiar de idioma dejaría las

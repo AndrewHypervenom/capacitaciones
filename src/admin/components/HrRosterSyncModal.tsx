@@ -46,6 +46,13 @@ interface HrRosterSyncModalProps {
    * filtrarlas, así que esto es la puerta y no la pared.
    */
   canDeactivate: boolean
+  /**
+   * Recursos Humanos: con la base solo DA DE ALTA a quien no tiene cuenta. Las
+   * correcciones de datos, reactivaciones y bajas que el archivo proponga se
+   * ven en el reporte, pero las aplica el superadmin. `applySync` lo vuelve a
+   * filtrar.
+   */
+  createOnly?: boolean
   onClose: () => void
   onApplied: () => void | Promise<void>
 }
@@ -76,7 +83,7 @@ function currentPeriod(): string {
  * pantalla muestra y deja corregir cómo se interpretó cada valor de estado antes
  * de aplicar. Ver `diffNovelties`.
  */
-export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied }: HrRosterSyncModalProps) {
+export function HrRosterSyncModal({ campaigns, canDeactivate, createOnly = false, onClose, onApplied }: HrRosterSyncModalProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -116,7 +123,8 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
   const [campaignOverrides, setCampaignOverrides] = useState<Record<string, string>>({})
   const [reason, setReason] = useState('')
   const [confirmRisky, setConfirmRisky] = useState(false)
-  const [tab, setTab] = useState<Tab>('update')
+  const firstTab: Tab = createOnly ? 'create' : 'update'
+  const [tab, setTab] = useState<Tab>(firstTab)
 
   const [applying, setApplying] = useState(false)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
@@ -222,7 +230,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
       setTuning(parsed.find((g) => next[g.name].include)?.name ?? parsed[0].name)
       setRoster(people)
       setUnits(catalog)
-      setTab('update')
+      setTab(firstTab)
       setStep('review')
     } catch {
       setGrids([])
@@ -230,7 +238,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
     } finally {
       setReading(false)
     }
-  }, [t])
+  }, [t, firstTab])
 
   // Arrastrar y soltar: comportamiento único del sitio (sin parpadeo al pasar
   // sobre los hijos y aviso claro si el archivo no es una hoja de cálculo).
@@ -350,12 +358,13 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
     // mano sobre la que salió del archivo o del valor por defecto.
     return base.map((e) => ({
       ...e,
-      include: decisions[e.key] ?? e.include,
+      // Solo altas: lo demás se muestra en el reporte pero nunca va marcado.
+      include: createOnly && e.action !== 'create' ? false : (decisions[e.key] ?? e.include),
       campaignId: campaignOverrides[e.key] !== undefined
         ? (campaignOverrides[e.key] || null)
         : (e.campaignId ?? defaultCampaignId),
     }))
-  }, [extracted, roster, statusKinds, missingStatusAs, campaignByName, decisions, campaignOverrides, unitLookup, unitNames, canUpdate, defaultCampaignId])
+  }, [extracted, roster, statusKinds, missingStatusAs, campaignByName, decisions, campaignOverrides, unitLookup, unitNames, canUpdate, defaultCampaignId, createOnly])
 
   /** Filas del archivo que corresponden a alguien que ya tiene cuenta. */
   const matchedCount = useMemo(() => entries.filter((e) => e.person).length, [entries])
@@ -403,6 +412,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
   const toggleAll = (action: SyncAction, include: boolean) => {
     // Las bajas no se marcan en bloque si quien mira no puede darlas.
     if (action === 'deactivate' && include && !canDeactivate) return
+    if (createOnly && action !== 'create') return
     setDecisions((prev) => {
       const next = { ...prev }
       for (const e of entries) {
@@ -429,6 +439,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
         period,
         reason: effectiveReason,
         canDeactivate,
+        createOnly,
         onProgress: (done, total) => setProgress({ done, total }),
       })
       setResult(res)
@@ -495,7 +506,8 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
         // Una baja propuesta que quien mira no puede ejecutar sale marcada como
         // tal: el reporte sirve para tramitarla con el superadmin, no para
         // aparentar que se aplicó.
-        e.action === 'deactivate' && !canDeactivate
+        (e.action === 'deactivate' && !canDeactivate) ||
+        (createOnly && e.action !== 'create' && e.action !== 'unchanged' && e.action !== 'skipped')
           ? t('admin.hr.only_superadmin_short')
           : e.include ? t('admin.hr.yes') : t('admin.hr.no'),
       ]),
@@ -535,7 +547,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
     </div>
   )
 
-  const tabs: { id: Tab; label: string; n: number; icon: typeof UserPlus; tone: string }[] = [
+  const allTabs: { id: Tab; label: string; n: number; icon: typeof UserPlus; tone: string }[] = [
     { id: 'update', label: t('admin.hr.tab_update'), n: counts.update, icon: PencilLine, tone: '#B33D9E' },
     { id: 'deactivate', label: t('admin.hr.tab_deactivate'), n: counts.deactivate, icon: UserMinus, tone: '#ef4444' },
     { id: 'create', label: t('admin.hr.tab_create'), n: counts.create, icon: UserPlus, tone: '#10D451' },
@@ -543,6 +555,12 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
     { id: 'unchanged', label: t('admin.hr.tab_unchanged'), n: counts.unchanged, icon: CheckCircle2, tone: '#64748b' },
     { id: 'skipped', label: t('admin.hr.tab_skipped'), n: counts.skipped, icon: MinusCircle, tone: '#64748b' },
   ]
+  // RH solo da altas: las pestañas de lo que no puede aplicar ni aparecen.
+  const tabs = createOnly
+    ? allTabs.filter((x) => x.id === 'create' || x.id === 'unchanged' || x.id === 'skipped')
+    : allTabs
+  /** Lo que el archivo propone y RH no aplica: correcciones, reactivaciones y bajas. */
+  const forSuperadmin = createOnly ? counts.update + counts.reactivate + counts.deactivate : 0
 
   return createPortal(
     <AnimatePresence>
@@ -931,7 +949,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
 
                   {/* El roster llego sin los campos nuevos: proponer correcciones
                       sin saber que dice hoy el perfil seria adivinar. */}
-                  {!canUpdate && (
+                  {!canUpdate && !createOnly && (
                     <p className="flex items-center gap-2 rounded-xl border border-line bg-subtle/60 p-3 text-[12px] text-text-muted">
                       <AlertCircle className="h-4 w-4 shrink-0" />
                       {t('admin.hr.updates_unavailable')}
@@ -940,7 +958,13 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
 
                   {/* Recursos Humanos ve las bajas y las puede exportar; no las
                       ejecuta. El candado de verdad esta en `applySync`. */}
-                  {!canDeactivate && counts.deactivate > 0 && (
+                  {createOnly && forSuperadmin > 0 && (
+                    <p className="flex items-center gap-2 rounded-xl border border-line bg-subtle/60 p-3 text-[12px] text-text-muted">
+                      <Lock className="h-4 w-4 shrink-0" />
+                      {t('admin.hr.create_only_locked', { n: forSuperadmin })}
+                    </p>
+                  )}
+                  {!createOnly && !canDeactivate && counts.deactivate > 0 && (
                     <p className="flex items-center gap-2 rounded-xl border border-line bg-subtle/60 p-3 text-[12px] text-text-muted">
                       <Lock className="h-4 w-4 shrink-0" />
                       {t('admin.hr.deactivate_locked', { n: counts.deactivate })}
@@ -1058,7 +1082,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, onClose, onApplied
                         </thead>
                         <tbody className="divide-y divide-line">
                           {tabEntries.slice(0, VISIBLE_ROWS).map((e) => {
-                            const selectable =
+                            const selectable = createOnly ? e.action === 'create' :
                               e.action === 'create' ||
                               e.action === 'reactivate' ||
                               e.action === 'update' ||

@@ -111,6 +111,9 @@ export function matchesAudience(
   // Los clientes van ANTES que todo lo demás, incluido `everyone`: son gente de
   // fuera, y el contenido interno solo les llega si alguien lo dijo a propósito.
   if (person.is_client === true && !rule.includeClients) return false
+  // Recursos Humanos administra gente, no estudia: ninguna regla le llega, ni
+  // `everyone`. Lo mismo hace `audience_matches` en la base (SQL 76).
+  if (person.role === 'rh') return false
   // Un APRENDIZ sin área NI CR no está en ningún grupo: no viene de la base de
   // Talento Humano (que siempre trae los dos) ni del alta, que los exige. Es una
   // cuenta de prueba o de paso, y recibe SOLO lo que se le asigne a mano. Sin
