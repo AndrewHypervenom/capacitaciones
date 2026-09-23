@@ -186,7 +186,7 @@ export function AdminNav() {
 
   /**
    * Recursos Humanos administra GENTE, no contenido: carga la base de Talento
-   * Humano (altas), ve a las personas y lee estadísticas. Nada más.
+   * Humano (altas) y ve a las personas. Nada de formación: no califica ni mide.
    *
    * Menú PROPIO y plano, no un filtro sobre el del staff: así una pantalla
    * nueva no se le cuela a RH sin que alguien lo decida a propósito, y sus tres
@@ -198,7 +198,6 @@ export function AdminNav() {
     items: [
       { to: '/admin', label: t('admin.nav.rh_home', 'Inicio'), end: true },
       { to: '/admin/users', label: t('admin.nav.rh_people', 'Personas'), end: false },
-      { to: '/admin/progress', label: t('admin.nav.rh_stats', 'Estadísticas'), end: false },
     ],
   }]
   const links = isRh ? rhLinks : adminLinks

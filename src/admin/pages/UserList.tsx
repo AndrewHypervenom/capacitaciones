@@ -991,7 +991,7 @@ export default function UserList() {
     <div className="p-4 sm:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-[18px] sm:text-[22px] font-bold text-text">{t('admin.users.title')}</h1>
+          <h1 className="text-[18px] sm:text-[22px] font-bold text-text">{isRh ? t('admin.nav.rh_people') : t('admin.users.title')}</h1>
           <p className="text-text-muted text-[13px] mt-1">
             {isSuperAdmin ? t('admin.users.subtitle') : isRh ? t('admin.users.subtitle_rh') : t('admin.users.subtitle_campaign')}
           </p>
@@ -1774,6 +1774,8 @@ export default function UserList() {
                       </button>
                     </Tooltip>
                   )}
+                  {/* RH no mira avance de formación: no es su oficio. */}
+                  {!isRh && (
                   <Tooltip label={t('admin.users.view_progress_hint')} className="shrink-0" maxWidth={240}>
                     <button
                       onClick={() => setProgressUser(user)}
@@ -1783,6 +1785,7 @@ export default function UserList() {
                       <BarChart3 className="h-4 w-4" />
                     </button>
                   </Tooltip>
+                  )}
                   {isSuperAdmin && (
                     <Tooltip label={t('admin.users.manage_courses_hint')} className="shrink-0" maxWidth={240}>
                       <button

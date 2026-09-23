@@ -168,16 +168,14 @@ export default function AdminRouter() {
             pruebas no parpadeen al cambiar de pantalla. */}
         <Suspense fallback={<RouteFallback />}>
         {isRh ? (
-          /* Recursos Humanos: cargar la base de TH (altas), ver personas y leer
-             estadísticas. Árbol de rutas PROPIO y cerrado: esconder el menú no
+          /* Recursos Humanos: cargar la base de TH (altas) y ver personas. Las
+             estadísticas de formación (avance, notas, bandeja) no son suyas. Árbol de rutas PROPIO y cerrado: esconder el menú no
              bastaba, con escribir /admin/courses en la barra entraba al editor.
              Lo que no está aquí lleva al inicio. */
           <Routes>
             <Route index element={<RhDashboard />} />
             <Route path="users" element={<UserList />} />
             <Route path="users/:id" element={<UserProfile />} />
-            <Route path="progress" element={<ProgressHub />} />
-            <Route path="overview" element={<Navigate to="/admin/progress?view=modules&tab=overview" replace />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         ) : (

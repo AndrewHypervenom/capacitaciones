@@ -8,7 +8,6 @@ import SimulationFeedbackPanel from './SimulationFeedbackPanel'
 import ProgressOverview from './progress/ProgressOverview'
 import { tint } from './progress/ProgressChrome'
 import { cn } from '@/lib/cn'
-import { useAuth } from '@/hooks/useAuth'
 
 type ProgressView = 'worlds' | 'modules' | 'simulations'
 /** Dentro de Módulos: el tablero de dirección o la bandeja de evaluación. */
@@ -32,9 +31,6 @@ function readLastView(): ProgressView | null {
 
 export default function ProgressHub() {
   const [searchParams, setSearchParams] = useSearchParams()
-  // Recursos Humanos solo LEE estadísticas: la Bandeja es para calificar, así
-  // que ni la pestaña ni el atajo del Panorama le aparecen.
-  const { isRh } = useAuth()
 
   const raw = searchParams.get('view')
   const view: ProgressView | null =
@@ -81,21 +77,21 @@ export default function ProgressHub() {
     // Dos trabajos distintos que antes compartían una sola pantalla saturada:
     // el Panorama responde "¿cómo va el programa?" y la Bandeja "¿qué me falta
     // calificar?". Separarlos es lo que le devolvió el aire a esta vista.
-    const tab: ModulesTab = searchParams.get('tab') === 'inbox' && !isRh ? 'inbox' : 'overview'
+    const tab: ModulesTab = searchParams.get('tab') === 'inbox' ? 'inbox' : 'overview'
     return (
       <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
         <ViewTabs
           current="modules"
           onSelect={select}
           onBack={goBack}
-          modulesTab={isRh ? undefined : tab}
-          onModulesTab={isRh ? undefined : selectTab}
+          modulesTab={tab}
+          onModulesTab={selectTab}
         />
         {/* El Panorama scrollea por su cuenta; la Bandeja gestiona su propio
             alto y no debe heredar scroll del contenedor (rompería sus sticky). */}
         <div className={cn('flex-1', tab === 'overview' ? 'overflow-auto' : 'overflow-hidden')}>
           {tab === 'overview'
-            ? <ProgressOverview onOpenInbox={isRh ? undefined : () => selectTab('inbox')} />
+            ? <ProgressOverview onOpenInbox={() => selectTab('inbox')} />
             : <TrainerFeedbackPanel />}
         </div>
       </div>

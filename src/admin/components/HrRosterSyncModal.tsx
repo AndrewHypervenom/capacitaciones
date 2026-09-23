@@ -585,7 +585,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, createOnly = false
               <div className="min-w-0 space-y-2">
                 <h3 className="flex items-center gap-2 text-[16px] font-semibold text-text">
                   <FileSpreadsheet className="h-4 w-4 text-text-muted" />
-                  {t('admin.hr.title')}
+                  {createOnly ? t('admin.hr.button_rh') : t('admin.hr.title')}
                 </h3>
                 {stepper}
               </div>
@@ -602,7 +602,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, createOnly = false
               {/* ── Paso 1: alcance + archivo ─────────────────────────────── */}
               {step === 'file' && (
                 <div className="space-y-4">
-                  <p className="text-[13px] text-text-muted">{t('admin.hr.help')}</p>
+                  <p className="text-[13px] text-text-muted">{createOnly ? t('admin.hr.help_rh') : t('admin.hr.help')}</p>
 
                   <div className="grid gap-3 sm:max-w-[240px]">
                     <Field label={t('admin.hr.period')}>
@@ -616,7 +616,7 @@ export function HrRosterSyncModal({ campaigns, canDeactivate, createOnly = false
                   </div>
 
                   <p className="rounded-xl border border-line bg-subtle/60 p-3 text-[12px] text-text-muted">
-                    {t('admin.hr.no_scope_hint')}
+                    {createOnly ? t('admin.hr.no_scope_hint_rh') : t('admin.hr.no_scope_hint')}
                   </p>
 
                   <input

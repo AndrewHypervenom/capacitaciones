@@ -82,7 +82,7 @@ export default function UserProfile() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
-  const { isSuperAdmin, displayName } = useAuth()
+  const { isSuperAdmin, isRh, displayName } = useAuth()
   const reduce = useReducedMotion()
 
   const lang = (i18n.resolvedLanguage ?? 'es') as Lang
@@ -98,7 +98,9 @@ export default function UserProfile() {
   // La lectura falló (red/gateway/token), que no es lo mismo que "no existe".
   const [loadFailed, setLoadFailed] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
-  const [tab, setTab] = useState<TabId>('trayectoria')
+  // RH no mira formación (avance, notas, certificados): de la ficha solo le
+  // sirven los datos de la persona.
+  const [tab, setTab] = useState<TabId>(isRh ? 'datos' : 'trayectoria')
 
   // Edición del perfil (solo superadmin). El servicio updateProfile ya recibe el
   // userId destino; la RLS profiles_update_superadmin autoriza filas ajenas.
@@ -207,6 +209,10 @@ export default function UserProfile() {
 
       // Certificados y gamificación: ambos degradan solos si la RLS no autoriza
       // (devuelven [] / null), así que nunca tumban la hoja de vida.
+      if (isRh) {
+        setLoading(false)
+        return
+      }
       getUserCertificates(id).then((rows) => alive && setCerts(rows)).catch(() => {})
       getUserGamification(id).then((g) => alive && setGame(g)).catch(() => {})
 
@@ -222,7 +228,7 @@ export default function UserProfile() {
       }
     })()
     return () => { alive = false }
-  }, [id, reloadKey])
+  }, [id, reloadKey, isRh])
 
   const fmtDate = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short', year: 'numeric' }) : null
@@ -306,14 +312,16 @@ export default function UserProfile() {
     )
   }
 
-  const heroStats: HeroStat[] = coursesDenied ? [] : [
+  const heroStats: HeroStat[] = coursesDenied || isRh ? [] : [
     { id: 'total', icon: BookOpen, label: t('admin.users.assigned_courses'), value: stats.total },
     { id: 'completed', icon: CheckCircle2, label: t('admin.users.courses_completed'), value: stats.completed },
     { id: 'certs', icon: Award, label: t('admin.users.certifications'), value: stats.certs, accent: '#0ca23e' },
     { id: 'avg', icon: BarChart3, label: t('admin.users.avg_score'), value: stats.avg, suffix: '%', accent: '#B33D9E' },
   ]
 
-  const tabs: ProfileTab[] = [
+  const tabs: ProfileTab[] = isRh ? [
+    { id: 'datos', label: t('admin.users.tab_person_data', 'Datos'), icon: UserIcon },
+  ] : [
     { id: 'trayectoria', label: t('profile.tab_journey', 'Trayectoria'), icon: Trophy },
     { id: 'certificados', label: t('profile.tab_certificates', 'Certificados'), icon: Award, count: certItems.length },
     { id: 'cursos', label: t('admin.users.courses_progress'), icon: GraduationCap, count: assigned.length },
