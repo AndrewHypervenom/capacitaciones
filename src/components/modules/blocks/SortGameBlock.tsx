@@ -115,10 +115,14 @@ function SortableStep({
   id,
   index,
   text,
+  selected,
+  onTap,
 }: {
   id: string;
   index: number;
   text: string;
+  selected: boolean;
+  onTap: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
@@ -133,12 +137,17 @@ function SortableStep({
       }}
       {...attributes}
       {...withNoSelectDrag(listeners)}
+      onClick={onTap}
       onContextMenu={(e) => e.preventDefault()}
+      aria-pressed={selected}
       className={cn(
         'flex items-center gap-0 rounded-xl border transition-colors duration-200 select-none overflow-hidden',
-        'cursor-grab active:cursor-grabbing outline-none',
+        // touch-manipulation: sin él, el doble toque de zoom del celular compite
+        // con el «mantener pulsado» que activa el arrastre.
+        'cursor-grab active:cursor-grabbing outline-none touch-manipulation',
         'border-neon-green/30 hover:border-neon-green/60',
         'focus-visible:border-neon-green focus-visible:ring-2 focus-visible:ring-neon-green/30',
+        selected && 'border-neon-green bg-neon-green/10 ring-2 ring-neon-green/40',
         isDragging && 'opacity-60 shadow-lg',
       )}
     >
@@ -196,11 +205,23 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   const [items, setItems] = useState(() => (processes[0] ? shuffled(processes[0].steps) : []));
   const [phase, setPhase] = useState<Phase>('playing');
   const [usedHelp, setUsedHelp] = useState<boolean[]>(() => new Array(processes.length).fill(false));
-  const [elapsed, setElapsed] = useState(0);
   const [savedTime, setSavedTime] = useState(0);
   const [showBlockedPop, setShowBlockedPop] = useState(false);
 
-  const timerRef = useRef<any>(null);
+  // Tiempo del proceso en curso: basta con la hora de arranque. Antes era un
+  // contador en estado que volvía a pintar el juego entero cada segundo, también
+  // en mitad de un arrastre, y eso se notaba como tirones (NPS: «se traba mucho»).
+  const startedAtRef = useRef(0);
+  useEffect(() => { startedAtRef.current = Date.now(); }, []);
+  const restartClock = () => { startedAtRef.current = Date.now(); };
+
+  // Alternativa a arrastrar: tocar un paso y después tocar el lugar al que va.
+  // En el celular, mantener pulsado y arrastrar con el scroll de por medio es lo
+  // que más falla.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Con el ratón, soltar un paso dispara además un clic sobre él (se movió junto
+  // con el puntero); sin este aviso cada arrastre lo dejaba seleccionado.
+  const justDraggedRef = useRef(false);
 
   // Candado de guardado: qué finalización YA se registró en la base.
   //
@@ -242,7 +263,8 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
     setProcessIdx(0);
     setItems(processes[0] ? shuffled(processes[0].steps) : []);
     setUsedHelp(new Array(processes.length).fill(false));
-    setElapsed(0);
+    setSelectedId(null);
+    restartClock();
     setPhase('playing');
     // `processes` se recalcula en cada render; `sig` es la dependencia real.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -300,7 +322,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
             score: settled.score,
             attempt_number: settled.attempt,
             status: pct === 100 ? 'completed' : 'failed',
-            time_spent_seconds: elapsed || null,
+            time_spent_seconds: savedTime || null,
             submitted_answers: {
               mensaje: "Juego de ordenar completado",
               intento: settled.attempt,
@@ -338,23 +360,21 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
 
       void guardarProgresoEnSupabase();
     }
-  }, [phase, userId, campaignId, block, elapsed, moduleId, sectionId, processes, usedHelp, language]);
+  }, [phase, userId, campaignId, block, savedTime, moduleId, sectionId, processes, usedHelp, language]);
 
   // Si el bloque se desmonta a mitad de un arrastre (cerrar el modal de vista
   // previa, cambiar de sección), el <body> se quedaría sin poder seleccionar.
   useEffect(() => endDragUx, []);
 
-  // ─── EFFECTS DE TEMPORIZADOR Y CONTROL DE FASES ───
+  // Esc suelta la selección hecha con un toque.
   useEffect(() => {
-    if (phase === 'playing') {
-      timerRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (phase === 'success' || phase === 'error') setSavedTime(elapsed);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [phase, elapsed]);
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId]);
 
+  // ─── CONTROL DE FASES ───
   useEffect(() => {
     if (phase !== 'success') return;
     const isLastProcess = processIdx === processes.length - 1;
@@ -377,8 +397,42 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   const feedbackWrong = currentProcess.feedback_wrong?.[language] || currentProcess.feedback_wrong?.es || t('module.blocks.sort.default_wrong');
 
   // MANEJADORES DE ACCIONES
+  const handleDragStart = () => {
+    beginDragUx();
+    justDraggedRef.current = true;
+    setSelectedId(null);
+  };
+
+  // El clic que sigue a soltar llega enseguida; si no llega (táctil), el aviso se
+  // apaga solo para no comerse el siguiente toque de verdad.
+  const releaseDragGuard = () => {
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+  };
+
+  const handleDragCancel = () => {
+    endDragUx();
+    releaseDragGuard();
+  };
+
+  /** Primer toque: elige el paso. Segundo toque en otro paso: lo lleva a ese lugar. */
+  const handleTap = (stepId: string) => {
+    if (justDraggedRef.current) { justDraggedRef.current = false; return; }
+    setInteracted(true);
+    if (!selectedId) { setSelectedId(stepId); return; }
+    if (selectedId !== stepId) {
+      setItems((prev) => {
+        const from = prev.findIndex((s) => s.id === selectedId);
+        const to   = prev.findIndex((s) => s.id === stepId);
+        if (from < 0 || to < 0) return prev;
+        return arrayMove(prev, from, to);
+      });
+    }
+    setSelectedId(null);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     endDragUx();
+    releaseDragGuard();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     setInteracted(true);
@@ -392,6 +446,8 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
 
   const handleVerify = async () => {
     const isCorrect = items.every((item, i) => item.id === correctOrder[i]);
+    setSelectedId(null);
+    setSavedTime(Math.round((Date.now() - startedAtRef.current) / 1000));
 
     if (isCorrect) {
       setPhase('success');
@@ -409,7 +465,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
   };
 
   const handleRetry = () => {
-    setElapsed(0);
+    restartClock();
     setItems(shuffled(currentProcess.steps));
     setPhase('playing');
   };
@@ -422,7 +478,7 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
     } else {
       setProcessIdx(nextIdx);
       setItems(shuffled(processes[nextIdx].steps));
-      setElapsed(0);
+      restartClock();
       setPhase('playing');
       playSound('complete');
     }
@@ -443,7 +499,8 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
     setItems(shuffled(processes[0].steps));
     firstWrongRef.current = {};
     setUsedHelp(new Array(processes.length).fill(false));
-    setElapsed(0);
+    setSelectedId(null);
+    restartClock();
     setPhase('playing');
   };
 
@@ -518,9 +575,9 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                   <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
-                    onDragStart={beginDragUx}
+                    onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
-                    onDragCancel={endDragUx}
+                    onDragCancel={handleDragCancel}
                   >
                     <SortableContext
                       items={items.map((s) => s.id)}
@@ -533,13 +590,18 @@ export default function SortGameBlock({ block, language, userId, campaignId, mod
                             id={step.id}
                             index={index}
                             text={step.text[language] || step.text.es}
+                            selected={selectedId === step.id}
+                            onTap={() => handleTap(step.id)}
                           />
                         ))}
                       </div>
                     </SortableContext>
                   </DndContext>
-                  <p className="text-[11px] text-text-subtle/70 text-center pt-1">
-                    {t('module.blocks.sort.drag_hint')}
+                  <p className={cn(
+                    'text-[11px] text-center pt-1',
+                    selectedId ? 'text-neon-green/80' : 'text-text-subtle/70',
+                  )}>
+                    {selectedId ? t('module.blocks.sort.tap_target') : t('module.blocks.sort.drag_hint')}
                   </p>
                   <button
                     onClick={handleVerify}

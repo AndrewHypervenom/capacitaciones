@@ -19,6 +19,8 @@ import { Select } from '@/components/ui/Select';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { countryLabel, countryLabelWithFlag } from '@/lib/countries';
 import { UserProgressDrawer } from '@/admin/components/UserProgressDrawer';
+import { SurveyAuthorLine } from '@/admin/components/SurveyAuthorLine';
+import type { SurveyAuthor } from '@/services/survey.service';
 import type { Profile, OrgUnit } from '@/types/database';
 import { downloadWorkbook, xlsDate, xlsHours, type Sheet, type SheetRow } from '@/lib/exportXlsx';
 import { formatElapsed } from '@/hooks/useModuleTimer';
@@ -984,6 +986,9 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
         rowsOut.push({
           [L.course]: c.title,
           [L.date]: xlsDate(cm.at, i18n.language),
+          [L.person]: cm.author?.name ?? '',
+          [L.email]: cm.author?.email ?? '',
+          [L.crCol]: cm.author?.cr ?? '',
           [t('admin.progress_overview.col_q1', 'Promedio pregunta 1')]: cm.q1,
           [t('admin.progress_overview.col_q2', 'Promedio pregunta 2')]: cm.q2,
           [L.comment]: cm.text,
@@ -1620,6 +1625,8 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
           courses={visibleCourses}
           byCourse={surveys.byCourse}
           lang={i18n.language}
+          people={people}
+          onPerson={setDrawerPerson}
         />
       )}
       </>
@@ -3228,8 +3235,10 @@ function MatrixSection({
 /* ══ Satisfacción ══════════════════════════════════════════════════════════ */
 
 function SurveyTab({
-  loading, loaded, nps, courses, byCourse, lang,
+  loading, loaded, nps, courses, byCourse, lang, people, onPerson,
 }: {
+  people: ProgramPerson[];
+  onPerson: (p: ProgramPerson) => void;
   loading: boolean;
   loaded: boolean;
   nps: { score: number | null; promoters: number; passives: number; detractors: number; total: number };
@@ -3240,15 +3249,17 @@ function SurveyTab({
   const { t } = useTranslation();
 
   const comments = useMemo(() => {
-    const out: Array<{ course: string; at: string; q1: number; q2: number; text: string }> = [];
+    const out: Array<{ course: string; at: string; q1: number; q2: number; text: string; author: SurveyAuthor | null }> = [];
     for (const c of courses) {
       for (const cm of byCourse[c.id]?.comments ?? []) {
         if (!cm.text?.trim()) continue;
-        out.push({ course: c.title, at: cm.at, q1: cm.q1, q2: cm.q2, text: cm.text });
+        out.push({ course: c.title, at: cm.at, q1: cm.q1, q2: cm.q2, text: cm.text, author: cm.author ?? null });
       }
     }
     return out.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 12);
   }, [courses, byCourse]);
+
+  const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
 
   const answered = useMemo(
     () => courses.filter((c) => (byCourse[c.id]?.total ?? 0) > 0),
@@ -3347,7 +3358,7 @@ function SurveyTab({
         <Rise delay={0.1} className="lg:col-span-3">
           <SectionCard
             title={t('admin.progress_overview.comments_title', 'Lo que escribieron')}
-            subtitle={t('admin.progress_overview.comments_sub', 'Comentarios anónimos de la encuesta de cierre')}
+            subtitle={t('admin.progress_overview.comments_sub', 'Comentarios de la encuesta de cierre y quién los escribió')}
             icon={<MessageSquareQuote className="h-4 w-4" />}
             accent={VIOLET}
           >
@@ -3360,6 +3371,16 @@ function SurveyTab({
                   <blockquote className="text-[12.5px] leading-relaxed text-text [overflow-wrap:anywhere]">
                     “{c.text}”
                   </blockquote>
+                  {(() => {
+                    const person = c.author ? peopleById.get(c.author.userId) : undefined;
+                    return (
+                      <SurveyAuthorLine
+                        author={c.author}
+                        onOpen={person ? () => onPerson(person) : undefined}
+                        className="mt-3"
+                      />
+                    );
+                  })()}
                   <figcaption className="mt-3 flex items-center justify-between gap-2 text-[11px] text-text-subtle">
                     <span className="truncate">{c.course}</span>
                     <span className="flex shrink-0 items-center gap-2">

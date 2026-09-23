@@ -758,7 +758,8 @@
         "all_first_try": "Perfeito! Você concluiu todos os processos na primeira tentativa.",
         "default_correct": "Correto! Essa é a ordem exata.",
         "default_wrong": "A ordem não está correta. Revise os passos e tente novamente.",
-        "drag_hint": "Arraste os passos para ordená-los. No celular, mantenha pressionado um passo e arraste."
+        "drag_hint": "Arraste os passos para ordená-los, ou toque em um passo e depois toque no lugar onde ele vai.",
+        "tap_target": "Agora toque no lugar onde ele vai (ou toque no mesmo passo para soltar)."
       },
       "classify": {
         "all_assigned": "Todos os casos foram atribuídos",
@@ -772,7 +773,8 @@
         "perfect": "Perfeito! Você classificou todos os casos corretamente.",
         "good_try": "Boa tentativa. Revise os casos marcados em vermelho e tente novamente.",
         "review_material": "Revise o material e tente novamente.",
-        "drag_hint": "Arraste cada caso para sua categoria. No celular, mantenha pressionado o caso e arraste.",
+        "drag_hint": "Arraste cada caso para sua categoria, ou toque nele e depois toque na categoria.",
+        "tap_to_place": "Toque aqui para colocá-lo",
         "assign_all_one": "Atribua todos os casos para continuar ({{count}} restante)",
         "assign_all_other": "Atribua todos os casos para continuar ({{count}} restantes)"
       },
@@ -3086,6 +3088,10 @@
         "hist_tip": "{{n}} deram {{score}} ({{pct}}%)",
         "comments_title": "Comentários",
         "no_comments": "Responderam à pesquisa, mas ninguém deixou comentário.",
+        "author_unknown": "Autor desconhecido",
+        "author_inactive": "Conta inativa",
+        "author_copy": "Copiar e-mail",
+        "author_copied": "Copiado",
         "followup_label": "Contou o que aconteceu",
         "tag_retro": "de memória",
         "save_error": "Não foi possível salvar a configuração da pesquisa."
@@ -4154,7 +4160,7 @@
       "stats_unavailable": "Não foi possível consultar todos os dados. As estatísticas estão indisponíveis; recarregue a página para tentar novamente.",
       "survey_empty_desc": "A pesquisa é respondida ao encerrar o curso, logo antes do certificado. Assim que chegar a primeira resposta, o NPS aparece aqui.",
       "comments_title": "O que escreveram",
-      "comments_sub": "Comentários anônimos da pesquisa de encerramento",
+      "comments_sub": "Comentários da pesquisa de encerramento e quem os escreveu",
       "col_person": "Pessoa",
       "col_email": "E-mail",
       "col_role": "Papel",
@@ -7706,7 +7712,7 @@
     "badge": "Último passo",
     "badge_retro": "Faltou perguntar a você",
     "title": "Como foi o curso para você?",
-    "lead": "São 30 segundos e sua resposta é anônima. Ao enviá-la você vê seu certificado.",
+    "lead": "São 30 segundos. Seu instrutor verá sua resposta com seu nome e poderá procurar você para saber mais. Ao enviá-la você vê seu certificado.",
     "lead_retro": "Você terminou este curso antes de esta pesquisa existir. Responda uma vez e volte ao seu certificado de sempre: ele mantém a data e o código de verificação.",
     "instructor_role": "Instrutor",
     "time_left": "Tempo restante",

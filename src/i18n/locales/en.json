@@ -758,7 +758,8 @@
         "all_first_try": "Perfect! You completed all processes on the first try.",
         "default_correct": "Correct! That's the exact order.",
         "default_wrong": "The order is not correct. Review the steps and try again.",
-        "drag_hint": "Drag the steps to reorder them. On a phone, press and hold a step, then drag it."
+        "drag_hint": "Drag the steps to reorder them, or tap a step and then tap where it belongs.",
+        "tap_target": "Now tap where it belongs (or tap the same step to let go)."
       },
       "classify": {
         "all_assigned": "All cases have been assigned",
@@ -772,7 +773,8 @@
         "perfect": "Perfect! You classified all cases correctly.",
         "good_try": "Good try. Review the cases marked in red and try again.",
         "review_material": "Review the material and try again.",
-        "drag_hint": "Drag each case to its category. On a phone, press and hold the case, then drag it.",
+        "drag_hint": "Drag each case to its category, or tap it and then tap the category.",
+        "tap_to_place": "Tap here to place it",
         "assign_all_one": "Assign all cases to continue ({{count}} remaining)",
         "assign_all_other": "Assign all cases to continue ({{count}} remaining)"
       },
@@ -3086,6 +3088,10 @@
         "hist_tip": "{{n}} gave it {{score}} ({{pct}}%)",
         "comments_title": "Comments",
         "no_comments": "They answered the survey, but nobody left a comment.",
+        "author_unknown": "Unknown author",
+        "author_inactive": "Inactive account",
+        "author_copy": "Copy email",
+        "author_copied": "Copied",
         "followup_label": "They told us what happened",
         "tag_retro": "from memory",
         "save_error": "The survey settings could not be saved."
@@ -4154,7 +4160,7 @@
       "stats_unavailable": "Some data could not be retrieved. Statistics are unavailable; reload the page to try again.",
       "survey_empty_desc": "The survey is answered when closing the course, right before the certificate. As soon as the first answer arrives, the NPS shows up here.",
       "comments_title": "What they wrote",
-      "comments_sub": "Anonymous comments from the closing survey",
+      "comments_sub": "Closing survey comments and who wrote them",
       "col_person": "Person",
       "col_email": "Email",
       "col_role": "Role",
@@ -7706,7 +7712,7 @@
     "badge": "Last step",
     "badge_retro": "We forgot to ask you",
     "title": "How did the course go?",
-    "lead": "It takes 30 seconds and your answer is anonymous. Once you send it, you'll see your certificate.",
+    "lead": "It takes 30 seconds. Your trainer will see your answer with your name and may reach out to learn more. Once you send it, you will see your certificate.",
     "lead_retro": "You finished this course before this survey existed. Answer it once and you're back to your certificate: it keeps its original date and verification code.",
     "instructor_role": "Trainer",
     "time_left": "Time left",

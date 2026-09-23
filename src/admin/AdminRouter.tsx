@@ -42,6 +42,7 @@ const ChoiceSimEditor = lazy(() => import('./pages/ChoiceSimEditor'))
 const ProgressHub = lazy(() => import('./pages/ProgressHub'))
 const CertificatesAccess = lazy(() => import('./pages/CertificatesAccess'))
 const LearningMissions = lazy(() => import('./pages/LearningMissions'))
+const GamesHub = lazy(() => import('@/pages/GamesHub'))
 const Worlds = lazy(() => import('./pages/Worlds'))
 const WorldDetail = lazy(() => import('./pages/WorldDetail'))
 const ChatLogs = lazy(() => import('./pages/ChatLogs'))
@@ -237,6 +238,7 @@ export default function AdminRouter() {
           <Route path="simulations/choice/:id" element={<ChoiceSimEditor />} />
           <Route path="missions" element={isSuperAdmin ? <LearningMissions /> : <Navigate to="/admin" replace />} />
           {/* Arena se unificó dentro de Mundos: las arenas viven dentro de cada mundo. */}
+          <Route path="games" element={isSuperAdmin ? <GamesHub admin /> : <Navigate to="/admin" replace />} />
           <Route path="arena" element={<Navigate to="/admin/worlds" replace />} />
           <Route path="worlds" element={<Worlds />} />
           <Route path="worlds/:id" element={<WorldDetail />} />

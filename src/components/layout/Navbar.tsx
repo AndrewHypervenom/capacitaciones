@@ -70,6 +70,7 @@ export function Navbar() {
             <NavLink to="/dashboard" className={linkClass} end>
               {t('nav.dashboard')}
             </NavLink>
+            <NavLink to="/games" className={linkClass}>Juegos</NavLink>
             <NavLink to="/courses" className={linkClass}>
               {t('nav.explore')}
             </NavLink>

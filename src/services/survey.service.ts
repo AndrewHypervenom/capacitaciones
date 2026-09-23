@@ -324,6 +324,17 @@ export async function getSurveyContext(
 
 /* ── Resultados (panel) ────────────────────────────────────────────────────── */
 
+/** Quién escribió una respuesta, para que el capacitador pueda buscarlo. */
+export interface SurveyAuthor {
+  userId: string
+  name: string | null
+  email: string | null
+  avatarUrl: string | null
+  /** Nombre del CR (operación) de la persona. */
+  cr: string | null
+  isActive: boolean
+}
+
 export interface SurveyComment {
   at: string
   q1: number
@@ -333,6 +344,8 @@ export interface SurveyComment {
   lang: string
   /** La contestó después de estar ya certificado: opinión de memoria. */
   retro: boolean
+  /** null si no se pudo saber (SQL 77 sin correr o cuenta borrada). */
+  author?: SurveyAuthor | null
 }
 
 export interface SurveyResults {
@@ -374,10 +387,55 @@ const EMPTY_RESULTS: SurveyResults = {
   mixed_modes: false,
 }
 
+interface AuthorRow {
+  at: string
+  q1: number
+  q2: number
+  user_id: string
+  name: string | null
+  email: string | null
+  avatar_url: string | null
+  cr: string | null
+  is_active: boolean
+}
+
 /**
- * Resultados agregados. Vienen sin `user_id`: el capacitador ve promedios y
- * comentarios, nunca quién los escribió. Ese anonimato es lo que hace que la
- * gente conteste de verdad en vez de poner 10 en todo.
+ * Pega a cada comentario quién lo escribió. La encuesta dejó de ser anónima el
+ * 2026-09-23, también hacia atrás: los capacitadores necesitan hablar con la
+ * persona para ampliar su opinión. Los autores llegan por otra RPC
+ * (`get_course_survey_authors`, SQL 77) y se cruzan por fecha de envío + notas,
+ * que es lo que ambas devuelven de cada respuesta. Si esa RPC falla (SQL sin
+ * correr) los comentarios siguen saliendo, solo que sin nombre.
+ */
+async function attachAuthors(courseId: string, comments: SurveyComment[]): Promise<SurveyComment[]> {
+  if (comments.length === 0) return comments
+  // Fuera de los tipos generados hasta regenerarlos tras el SQL 77.
+  const { data, error } = await (supabase as any).rpc('get_course_survey_authors', {
+    p_course_id: courseId,
+  })
+  if (error || !Array.isArray(data)) return comments
+  const pool = [...(data as AuthorRow[])]
+  return comments.map((c) => {
+    const t = new Date(c.at).getTime()
+    const i = pool.findIndex((a) => new Date(a.at).getTime() === t && a.q1 === c.q1 && a.q2 === c.q2)
+    if (i < 0) return { ...c, author: null }
+    const [a] = pool.splice(i, 1)
+    return {
+      ...c,
+      author: {
+        userId: a.user_id,
+        name: a.name,
+        email: a.email,
+        avatarUrl: a.avatar_url,
+        cr: a.cr,
+        isActive: a.is_active,
+      },
+    }
+  })
+}
+
+/**
+ * Resultados agregados, con el autor de cada comentario (ver attachAuthors).
  */
 export async function getSurveyResults(courseId: string): Promise<SurveyResults> {
   try {
@@ -400,7 +458,8 @@ export async function getSurveyResults(courseId: string): Promise<SurveyResults>
     if (error) {
       throw error
     }
-    return { ...EMPTY_RESULTS, ...(data as Partial<SurveyResults> | null) }
+    const results = { ...EMPTY_RESULTS, ...(data as Partial<SurveyResults> | null) }
+    return { ...results, comments: await attachAuthors(courseId, results.comments ?? []) }
   } catch {
     return { ...EMPTY_RESULTS, unavailable: true }
   }

@@ -128,6 +128,7 @@ export function AdminNav() {
       items: [
         // Mundos ahora contiene también las arenas de competencia (antes sección aparte).
         { to: '/admin/worlds', label: t('admin.nav.worlds', 'Mundos'), end: false },
+        ...(isSuperAdmin ? [{ to: '/admin/games', label: 'Zona de juegos', end: false }] : []),
         // Misiones: solo superadmin.
         ...(isSuperAdmin ? [{ to: '/admin/missions', label: t('admin.nav.missions', 'Misiones'), end: false }] : []),
         { to: '/admin/quiz', label: t('admin.nav.quiz_live', 'Quizzes'), end: false },

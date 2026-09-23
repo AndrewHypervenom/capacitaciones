@@ -13,10 +13,13 @@ import {
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
+  pointerWithin,
+  rectIntersection,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
@@ -93,6 +96,18 @@ const chipClass =
   'px-3 py-2 rounded-lg glass border border-glass-border/20 text-[13px] text-text select-none';
 
 /**
+ * Se suelta donde está el puntero o el dedo, no donde cae la mayor parte del
+ * fantasma. Con la detección por área (la de fábrica) un caso largo soltado cerca
+ * del borde de una categoría "rebotaba" a la bandeja o a la categoría vecina, y el
+ * aprendiz sentía que el juego se trababa. Si el puntero quedó entre dos zonas se
+ * usa el área como respaldo.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const byPointer = pointerWithin(args);
+  return byPointer.length > 0 ? byPointer : rectIntersection(args);
+};
+
+/**
  * Caso arrastrable: ratón, dedo (mantener pulsado) y teclado. Antes usaba el
  * arrastre HTML5, que no existe en pantallas táctiles: en el celular no había
  * forma de clasificar nada.
@@ -100,10 +115,14 @@ const chipClass =
 function DraggableCase({
   id,
   fromCategory,
+  selected,
+  onSelect,
   children,
 }: {
   id: string;
   fromCategory: string | null;
+  selected: boolean;
+  onSelect: () => void;
   children: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -115,11 +134,18 @@ function DraggableCase({
       ref={setNodeRef}
       {...attributes}
       {...withNoSelectDrag(listeners)}
+      // Tocar sin arrastrar lo selecciona (luego se toca la categoría). El clic
+      // no sube a la zona que lo contiene: esa zona también escucha clics.
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
       onContextMenu={(e) => e.preventDefault()}
+      aria-pressed={selected}
       className={cn(
         chipClass,
-        'cursor-grab active:cursor-grabbing outline-none transition-colors hover:border-neon-green/30',
+        // touch-manipulation: sin él, el doble toque de zoom del celular compite
+        // con el «mantener pulsado» que activa el arrastre.
+        'cursor-grab active:cursor-grabbing outline-none transition-colors hover:border-neon-green/30 touch-manipulation',
         'focus-visible:border-neon-green focus-visible:ring-2 focus-visible:ring-neon-green/30',
+        selected && 'border-neon-green bg-neon-green/10 ring-2 ring-neon-green/40',
         isDragging && 'opacity-40',
       )}
     >
@@ -133,16 +159,23 @@ function DropZone({
   id,
   className,
   activeClassName,
+  onPlace,
   children,
 }: {
   id: string;
   className?: string;
   activeClassName?: string;
+  /** Hay un caso seleccionado con un toque: tocar la zona lo pone aquí. */
+  onPlace?: () => void;
   children: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className={cn(className, isOver && activeClassName)}>
+    <div
+      ref={setNodeRef}
+      onClick={onPlace}
+      className={cn(className, onPlace && 'cursor-pointer', isOver && activeClassName)}
+    >
       {children}
     </div>
   );
@@ -169,6 +202,10 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
   // Caso que se está arrastrando ahora mismo (para pintar el "fantasma" que
   // sigue al dedo o al cursor).
   const [activeCase, setActiveCase] = useState<ClassifyCase | null>(null);
+  // Alternativa a arrastrar: tocar un caso y después tocar su categoría. Nació de
+  // un comentario de NPS («se traba mucho» al arrastrar): en el celular, mantener
+  // pulsado y arrastrar con el scroll de por medio es lo que más falla.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Ratón: arrastra tras 6 px. Dedo: mantener pulsado 180 ms (así un deslizamiento
   // normal sigue haciendo scroll). Teclado: Espacio + flechas.
@@ -178,39 +215,71 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
     useSensor(KeyboardSensor),
   );
 
-  // SEGUIMIENTO EN TIEMPO REAL: Controladores de tiempo y fallas analíticas
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [fallosDetectados, setFallosDetectados] = useState(0);
-  const timerRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (!submitted) {
-      timerRef.current = setInterval(() => {
-        setElapsedSeconds((p) => p + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [submitted]);
+  // Tiempo del intento: basta con la hora de arranque. Antes era un contador en
+  // estado que volvía a pintar el juego entero cada segundo, también en mitad de
+  // un arrastre, y eso se notaba como tirones.
+  const startedAtRef = useRef(0);
+  useEffect(() => { startedAtRef.current = Date.now(); }, []);
 
   // Si el bloque se desmonta a mitad de un arrastre, el <body> se quedaría sin
   // poder seleccionar texto.
   useEffect(() => endDragUx, []);
 
+  // Esc suelta la selección hecha con un toque.
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId]);
+
+  /** Categoría donde está hoy un caso (null = sigue en la bandeja). */
+  const categoryOf = (caseId: string) =>
+    block.categories.find((c) => assigned[c.id]?.some((a) => a.id === caseId))?.id ?? null;
+
+  // Soltar un caso donde empezó dispara además un clic sobre él; sin este aviso
+  // quedaba seleccionado tras el arrastre.
+  const justDraggedRef = useRef(false);
+  const releaseDragGuard = () => {
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+  };
+
+  const toggleSelect = (caseId: string) => {
+    if (justDraggedRef.current) { justDraggedRef.current = false; return; }
+    if (submitted) return;
+    setInteracted(true);
+    setSelectedId((cur) => (cur === caseId ? null : caseId));
+  };
+
+  const placeSelected = (zone: string) => {
+    if (!selectedId || submitted) return;
+    const fromCategory = categoryOf(selectedId);
+    if (zone === UNASSIGNED_ZONE) {
+      handleDropOnUnassigned(selectedId, fromCategory);
+    } else {
+      const toCategoryId = zone.slice(ZONE.length);
+      if (toCategoryId !== fromCategory) handleDropOnCategory(toCategoryId, selectedId, fromCategory);
+    }
+    setSelectedId(null);
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     beginDragUx();
     setInteracted(true);
+    setSelectedId(null);
+    justDraggedRef.current = true;
     setActiveCase(block.cases.find((c) => c.id === event.active.id) ?? null);
   };
 
   const handleDragCancel = () => {
     endDragUx();
+    releaseDragGuard();
     setActiveCase(null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     endDragUx();
+    releaseDragGuard();
     setActiveCase(null);
     const { active, over } = event;
     if (!over || submitted) return;
@@ -275,7 +344,6 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
     });
     const erroresEnEsteIntento = casosFallidos.length;
 
-    setFallosDetectados(erroresEnEsteIntento);
     setSubmitted(true);
 
     const correct = block.cases.filter((c) =>
@@ -335,7 +403,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
         score: settled.score,
         attempt_number: settled.attempt,
         status: pct >= 70 ? 'completed' : 'failed',
-        time_spent_seconds: elapsedSeconds,
+        time_spent_seconds: Math.round((Date.now() - startedAtRef.current) / 1000),
         submitted_answers: {
           aciertos: correct,
           total_cases: total,
@@ -360,8 +428,8 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
     setAssigned(Object.fromEntries(block.categories.map((c) => [c.id, []])));
     setUnassigned(shuffleArray(block.cases));
     setSubmitted(false);
-    setElapsedSeconds(0);
-    setFallosDetectados(0);
+    setSelectedId(null);
+    startedAtRef.current = Date.now();
   };
 
   // Aviso "ya completado" (intento previo en la base, sin interacción esta sesión).
@@ -397,6 +465,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
 
       <DndContext
         sensors={sensors}
+        collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
@@ -404,6 +473,7 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
         {!submitted && (
           <DropZone
             id={UNASSIGNED_ZONE}
+            onPlace={selectedId && categoryOf(selectedId) ? () => placeSelected(UNASSIGNED_ZONE) : undefined}
             className={cn(
               'min-h-[64px] rounded-xl border border-dashed border-glass-border/30 p-3 flex flex-wrap gap-2',
               'transition-colors',
@@ -417,7 +487,13 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
               </p>
             ) : (
               unassigned.map((c) => (
-                <DraggableCase key={c.id} id={c.id} fromCategory={null}>
+                <DraggableCase
+                  key={c.id}
+                  id={c.id}
+                  fromCategory={null}
+                  selected={selectedId === c.id}
+                  onSelect={() => toggleSelect(c.id)}
+                >
                   {c.text[language] || c.text.es}
                 </DraggableCase>
               ))
@@ -433,20 +509,27 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
               <DropZone
                 key={cat.id}
                 id={`${ZONE}${cat.id}`}
+                onPlace={selectedId && !submitted ? () => placeSelected(`${ZONE}${cat.id}`) : undefined}
+                // Sin `scale` al pasar por encima: agrandar la zona en pleno
+                // arrastre corría las demás y el destino se movía bajo el dedo.
                 className={cn(
-                  'rounded-xl border-2 border-dashed p-3 min-h-[100px] transition-all duration-200',
+                  'rounded-xl border-2 border-dashed p-3 min-h-[100px] transition-colors duration-150',
                   style.border,
                   submitted && style.bg,
+                  selectedId && !submitted && 'border-solid',
                 )}
-                activeClassName={cn('scale-[1.01]', style.bg)}
+                activeClassName={cn('border-solid', style.bg)}
               >
                 <p className={cn('text-[11px] font-bold uppercase tracking-widest mb-2', style.text)}>
                   {cat.name[language] || cat.name.es}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {casesInCat.length === 0 && !submitted && (
-                    <p className="text-[11px] text-text-subtle/40 w-full text-center py-2">
-                      {t('module.blocks.classify.drop_here')}
+                    <p className={cn(
+                      'text-[11px] w-full text-center py-2',
+                      selectedId ? 'text-neon-green/80' : 'text-text-subtle/40',
+                    )}>
+                      {selectedId ? t('module.blocks.classify.tap_to_place') : t('module.blocks.classify.drop_here')}
                     </p>
                   )}
                   {casesInCat.map((c) => {
@@ -469,7 +552,13 @@ export function ClassifyGameBlockRenderer({ block, language, userId, campaignId,
                       );
                     }
                     return (
-                      <DraggableCase key={c.id} id={c.id} fromCategory={cat.id}>
+                      <DraggableCase
+                        key={c.id}
+                        id={c.id}
+                        fromCategory={cat.id}
+                        selected={selectedId === c.id}
+                        onSelect={() => toggleSelect(c.id)}
+                      >
                         {c.text[language] || c.text.es}
                       </DraggableCase>
                     );

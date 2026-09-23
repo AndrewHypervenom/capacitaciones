@@ -33,6 +33,7 @@ import { cn } from '@/lib/cn'
 
 /** Vistas donde ningún flotante debe aparecer: examen, juego o impresión. */
 const HIDDEN_ROUTES = [
+  /^\/games\/drive\//,          // conducción inmersiva: controles dentro del juego
   /^\/$/, /^\/login/, /^\/reset-password/, /^\/verify\//,
   /^\/certificate/,             // se imprime / descarga como PDF
   /^\/quiz/,                    // quiz en vivo: cada segundo y cada clic cuentan

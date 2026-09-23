@@ -9,6 +9,7 @@ import type { Json } from '@/types/database'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
+import { DRIVING_ICON, validRoadQuestions } from '@/components/games/drivingModel'
 
 export type QuizStatus = 'draft' | 'published'
 export type ThemeType = 'airline' | 'bank' | 'health' | 'corporate' | 'tech'
@@ -128,6 +129,7 @@ export function normalizeArenaRow(row: Record<string, unknown>): ArenaQuiz {
 }
 
 interface Props {
+  driving?: boolean
   /** Arena existente a editar; null para crear una nueva. */
   editing: ArenaQuiz | null
   /** Espacio interno donde se guarda al crear (el del mundo). No se enseña. */
@@ -146,6 +148,7 @@ interface Props {
  */
 export function ArenaEditorModal({
   editing,
+  driving = false,
   defaultCampaignId,
   worldId,
   crumb,
@@ -155,13 +158,14 @@ export function ArenaEditorModal({
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [form, setForm] = useState<QuizForm>(emptyForm())
   // Acordeón: qué preguntas están desplegadas (por id). Al editar un quiz existente
   // arrancan colapsadas para manejar bancos largos; las nuevas se abren solas.
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({})
 
   // Tamaño de sección efectivo (nunca 0 para no dividir por cero al agrupar).
-  const sectionSize = Math.max(MIN_SECTION_SIZE, form.section_size || DEFAULT_SECTION_SIZE)
+  const sectionSize = driving ? 1 : Math.max(MIN_SECTION_SIZE, form.section_size || DEFAULT_SECTION_SIZE)
 
   // Deshacer dentro del quiz (Ctrl+Z): borrar una pregunta o una opción por
   // error ya no obliga a reescribirla. El primer vuelco del formulario (abajo)
@@ -186,13 +190,13 @@ export function ArenaEditorModal({
       // Quiz existente: todas colapsadas (excepto la 1ª) para no abrumar.
       setOpenSteps(steps.length > 0 ? { [steps[0].id]: true } : {})
     } else {
-      const fresh = { ...emptyForm(), campaign_id: defaultCampaignId ?? '' }
+      const fresh = { ...emptyForm(), campaign_id: defaultCampaignId ?? '', ...(driving ? { theme_icon: DRIVING_ICON, section_size: 1, xp_per_question: 10 } : {}) }
       setForm(fresh)
       // Quiz nuevo: la única pregunta arranca abierta.
       setOpenSteps(fresh.steps.length > 0 ? { [fresh.steps[0].id]: true } : {})
     }
     adoptUndo()
-  }, [editing, defaultCampaignId, adoptUndo])
+  }, [editing, defaultCampaignId, adoptUndo, driving])
 
   const toggleStep = (stepId: string) =>
     setOpenSteps(o => ({ ...o, [stepId]: !o[stepId] }))
@@ -262,6 +266,10 @@ export function ArenaEditorModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.title.trim() || saving) return
+    setSaveError('')
+    if (driving && !validRoadQuestions(form.steps)) {
+      setSaveError('Completa todas las preguntas, agrega al menos dos opciones y marca una única respuesta correcta en cada semáforo.'); return
+    }
     setSaving(true)
 
     const payload = {
@@ -269,14 +277,15 @@ export function ArenaEditorModal({
       description: form.description.trim(),
       campaign_id: form.campaign_id || null,
       world_id: worldId ?? null,
-      theme_icon: form.theme_icon || '⚔️',
+      theme_icon: driving ? DRIVING_ICON : form.theme_icon || '⚔️',
       theme_color: form.theme_color,
       theme_type: form.theme_type,
-      xp_per_question: form.xp_per_question,
-      section_size: sectionSize,
+      xp_per_question: driving ? 10 : form.xp_per_question,
+      section_size: driving ? 1 : sectionSize,
       steps: form.steps.filter(s => s.question.trim()) as unknown as Json,
     }
 
+    try {
     if (editing) {
       const { data, error } = await supabase
         .from('arena_quizzes')
@@ -288,7 +297,7 @@ export function ArenaEditorModal({
         onSaved(normalizeArenaRow(data))
         onClose()
       } else {
-        console.error('Error updating arena:', error)
+        setSaveError('No se pudo guardar. Intenta de nuevo.'); console.error('Error updating arena:', error)
       }
     } else {
       const { data, error } = await supabase
@@ -300,17 +309,18 @@ export function ArenaEditorModal({
         onSaved(normalizeArenaRow(data))
         onClose()
       } else {
-        console.error('Error saving arena:', error)
+        setSaveError('No se pudo guardar. Intenta de nuevo.'); console.error('Error saving arena:', error)
       }
     }
-    setSaving(false)
+    } catch { setSaveError('No se pudo guardar. Comprueba tu conexión e intenta de nuevo.') }
+    finally { setSaving(false) }
   }
 
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(4px)' }}
-      {...backdropDismiss(onClose)}
+      {...backdropDismiss(() => { if (!saving) onClose() })}
     >
       <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div
@@ -320,10 +330,10 @@ export function ArenaEditorModal({
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line shrink-0">
           <h2 className="text-[16px] font-semibold text-text">
-            {editing ? i18n.t('common.edit_quiz') : i18n.t('common.new_quiz')}
+            {driving ? (editing ? 'Editar juego de autos' : 'Crear juego de autos') : editing ? i18n.t('common.edit_quiz') : i18n.t('common.new_quiz')}
           </h2>
           <button
-            onClick={onClose}
+            onClick={onClose} disabled={saving}
             className="h-10 w-10 flex items-center justify-center rounded-lg text-text-muted hover:text-text hover:bg-glass/6 transition-colors"
           >
             <X className="h-4 w-4" />
@@ -332,12 +342,14 @@ export function ArenaEditorModal({
 
         {crumb && (
           <div className="px-4 sm:px-6 py-2 text-[11.5px] text-text-muted border-b border-line bg-green-500/[0.04] shrink-0">
-            <span className="text-green-600 dark:text-green-400 font-medium">{crumb}</span> · este quiz vive dentro del mundo
+            <span className="text-green-600 dark:text-green-400 font-medium">{crumb}</span>{!driving && ' · este quiz vive dentro del mundo'}
           </div>
         )}
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden min-h-0">
+          {saveError && <p role="alert" className="px-6 py-3 text-danger">{saveError}</p>}
+          {driving && <p className="px-6 py-3 text-sm text-text-muted">Cada pregunta es un semáforo. Agrega explicaciones para ayudar a estudiar. Práctica sin notas ni XP.</p>}
           <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto flex-1">
             {/* Título */}
             <div>
@@ -362,6 +374,7 @@ export function ArenaEditorModal({
               />
             </div>
 
+            {!driving && <>
             {/* Tipo de tema */}
             <div>
               <div>
@@ -407,6 +420,7 @@ export function ArenaEditorModal({
               </div>
             </div>
 
+            </>}
             {/* Preguntas */}
             <div>
               <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -429,6 +443,7 @@ export function ArenaEditorModal({
                 )}
               </div>
 
+              {!driving && <>
               {/* Control: cuántas preguntas agrupa cada sección (parada del mapa). */}
               <div className="mb-3 rounded-xl border border-line bg-bg/50 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -474,6 +489,7 @@ export function ArenaEditorModal({
                 </div>
               </div>
 
+              </>}
               <div className="space-y-3">
                 {form.steps.map((step, si) => {
                   const isOpen = openSteps[step.id] ?? false
@@ -613,11 +629,11 @@ export function ArenaEditorModal({
                   style={{ background: 'rgba(16,212,81,0.12)', color: '#10D451', border: '1px solid rgba(16,212,81,0.25)' }}>
                   <Plus className="h-3.5 w-3.5" /> {i18n.t('common.add_question')}
                 </button>
-                <button type="button" onClick={addSection}
+                {!driving && <button type="button" onClick={addSection}
                   className="flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-xl text-[12px] font-medium transition-colors"
                   style={{ background: `${form.theme_color}14`, color: form.theme_color, border: `1px solid ${form.theme_color}33` }}>
                   <Plus className="h-3.5 w-3.5" /> {i18n.t('admin.arena.add_section_full', { size: sectionSize, defaultValue: `Sección (${sectionSize} preguntas)` })}
-                </button>
+                </button>}
               </div>
             </div>
           </div>
@@ -626,7 +642,7 @@ export function ArenaEditorModal({
           <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t border-line shrink-0">
             <button
               type="button"
-              onClick={onClose}
+              onClick={onClose} disabled={saving}
               className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] text-text-muted hover:text-text hover:bg-glass/6 transition-colors border border-line"
             >
               {i18n.t('common.cancel')}
@@ -637,7 +653,7 @@ export function ArenaEditorModal({
               className="flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-[13px] font-medium transition-colors disabled:opacity-50"
               style={{ background: 'rgba(16,212,81,0.14)', color: '#10D451', border: '1px solid rgba(16,212,81,0.28)' }}
             >
-              {saving ? i18n.t('common.saving') : editing ? i18n.t('common.save_changes') : i18n.t('common.create_quiz')}
+              {saving ? i18n.t('common.saving') : editing ? i18n.t('common.save_changes') : driving ? 'Crear juego' : i18n.t('common.create_quiz')}
             </button>
           </div>
         </form>

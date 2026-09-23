@@ -16,6 +16,7 @@ import {
 import { Avatar } from '@/components/ui/Avatar'
 import { InstructorBadge } from '@/components/course/InstructorBadge'
 import { Tooltip } from '@/components/ui/Tooltip'
+import { SurveyAuthorLine } from './SurveyAuthorLine'
 import { Toggle } from '@/components/ui/Toggle'
 import { NumberField } from '@/components/ui/NumberField'
 import { Select } from '@/components/ui/Select'
@@ -29,6 +30,7 @@ import {
   listCourseInstructors,
   saveSurveyConfig,
   type CourseInstructorOption,
+  type SurveyComment,
   surveyQuestionKeys,
   surveyScoreLabelKeys,
   type Q1Mode,
@@ -248,15 +250,7 @@ function CommentCard({
   c,
   labels,
 }: {
-  c: {
-    at: string
-    q1: number
-    q2: number
-    text: string
-    followup: string | null
-    lang: string
-    retro: boolean
-  }
+  c: SurveyComment
   labels: { q1: string; q2: string; retro: string; followup: string }
 }) {
   const { i18n } = useTranslation()
@@ -331,6 +325,10 @@ function CommentCard({
             </p>
           </div>
         )}
+      </div>
+
+      <div className="border-t border-line/60 px-3.5 py-2">
+        <SurveyAuthorLine author={c.author} />
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -31,11 +32,12 @@ export function PasskeyInvite() {
   const { t } = useTranslation();
   const { isAuthenticated, user, profile } = useAuth();
   const reduce = !!useReducedMotion();
+  const playing = useLocation().pathname.startsWith('/games/drive/');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated || !user?.id || !profile) return;
+    if (playing || !isAuthenticated || !user?.id || !profile) return;
     if (!supportsPasskeys() || inviteDismissed()) return;
 
     let alive = true;
@@ -52,7 +54,7 @@ export function PasskeyInvite() {
     }, DELAY_MS);
 
     return () => { alive = false; clearTimeout(timer); };
-  }, [isAuthenticated, user?.id, profile]);
+  }, [isAuthenticated, user?.id, profile, playing]);
 
   const close = (permanent: boolean) => {
     if (permanent) dismissInvite();
@@ -85,7 +87,7 @@ export function PasskeyInvite() {
 
   return createPortal(
     <AnimatePresence>
-      {open && (
+      {open && !playing && (
         <motion.div
           key="passkey-invite"
           initial={{ opacity: 0 }}

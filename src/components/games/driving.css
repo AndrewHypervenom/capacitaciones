@@ -1,0 +1,267 @@
+.road-page{min-height:100dvh;background:#0b1223;color:#e7f0ff;padding:24px;font-family:Inter,system-ui,sans-serif}
+.road-page *{box-sizing:border-box}
+.road-header{max-width:1550px;margin:0 auto 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.road-header a,.road-header button{display:flex;align-items:center;gap:8px;font-size:12px;color:#acbdd8}
+.road-brand{font-size:12px;letter-spacing:2px;font-weight:800;text-align:center}
+.road-brand small{display:block;font-size:9px;letter-spacing:2px;margin-top:5px;color:#7f96b7}
+.road-layout{max-width:1550px;margin:auto;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);gap:24px;align-items:start}
+.road-visual{position:sticky;top:24px;min-width:0;border-radius:28px;overflow:hidden;border:1px solid #34445f}
+.road-scene{height:calc(100dvh - 130px);min-height:460px;max-height:900px;background:#101b38}
+.road-scene canvas{display:block;width:100%;height:100%}
+.road-scene-top{position:absolute;top:24px;left:22px;right:22px;display:flex;justify-content:space-between;gap:10px;pointer-events:none}
+.road-pill{border:1px solid #52628080;border-radius:20px;background:#0c172bcc;padding:8px 12px;color:#c3d5ed;font-size:10px;letter-spacing:1px}
+.road-dashboard{position:absolute;bottom:20px;left:20px;right:20px;border:1px solid #53678988;background:#101c32df;backdrop-filter:blur(12px);border-radius:18px;padding:18px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.road-dashboard small{font-size:9px;letter-spacing:2px;color:#9db1cc;display:block}
+.road-dashboard strong{font-size:32px;font-weight:800}
+.road-dashboard em{font-size:11px;font-style:normal;color:#9db1cc}
+.road-signal{display:flex;align-items:center;gap:9px;font-size:12px}
+.road-signal i{width:12px;height:12px;border-radius:50%;display:block}
+.road-signal .red{background:#ff5b77;box-shadow:0 0 16px #ff5b77}
+.road-signal .green{background:#52f0ca;box-shadow:0 0 16px #52f0ca}
+.road-dashboard button{padding:10px}
+.road-panel{padding:28px;background:linear-gradient(145deg,#19263b,#111c2f);border:1px solid #304059;border-radius:28px;min-width:0}
+.road-eyebrow{font-size:10px;color:#52f0ca;letter-spacing:2px;font-weight:700}
+.road-panel h1{font-size:27px;font-weight:750;line-height:1.2;margin:12px 0 24px;overflow-wrap:anywhere}
+.road-panel h2{font-size:26px;font-weight:700;line-height:1.25;margin:18px 0}
+.road-panel h3{font-weight:700;margin:18px 0 10px}
+.road-progress{height:5px;background:#304059;border-radius:10px;margin-bottom:28px;overflow:hidden}
+.road-progress>div{height:100%;background:#52f0ca;transition:width .3s}
+.road-intro p{font-size:14px;line-height:1.8;color:#b5c5dd;margin-bottom:20px}
+.road-big-icon{font-size:55px}
+.road-primary{width:100%;min-height:50px;background:#52f0ca;color:#092b2c;display:flex;justify-content:center;align-items:center;gap:10px;border-radius:13px;font-size:14px;font-weight:750;margin-top:20px;padding:12px}
+.road-primary:hover{background:#82ffe0}
+.road-question-label{font-size:10px;color:#99b0cf;display:flex;justify-content:space-between;letter-spacing:1.5px;margin-bottom:20px}
+.road-question-label span{color:#52f0ca}
+.road-question{font-size:20px;line-height:1.5;margin-bottom:24px;overflow-wrap:anywhere}
+.road-options{display:grid;gap:12px}
+.road-options button{display:flex;align-items:center;gap:13px;border:1px solid #425471;background:#17253b;border-radius:13px;text-align:left;min-height:60px;padding:14px;font-size:14px;overflow-wrap:anywhere}
+.road-options button:hover:not(:disabled){border-color:#52f0ca;background:#1b3445}
+.road-options b{display:grid;place-items:center;flex-shrink:0;width:30px;height:30px;border-radius:9px;background:#293c56;font-size:12px}
+.road-options .is-wrong{opacity:.6;border-color:#ee7790}
+.road-options .is-correct{border-color:#52f0ca;background:#173f3e}
+.road-feedback{padding:16px;border-radius:13px;border:1px solid #c4915655;background:#af763315;font-size:13px;line-height:1.7;margin-top:20px;color:#efd2a8}
+.road-feedback strong{display:block;margin-bottom:6px}
+.road-feedback.success{border-color:#52f0ca55;background:#52f0ca10;color:#b4ffea}
+.road-hint{font-size:13px;color:#b5c5dd;margin-top:20px;line-height:1.7}
+.road-hint summary{cursor:pointer;padding:10px 0}
+.road-muted{font-size:12px!important;color:#879fbd!important;margin-top:16px}
+.road-result{display:flex;align-items:center;gap:20px;padding:20px;border-radius:15px;background:#52f0ca10}
+.road-result strong{font-size:44px;color:#52f0ca}
+.road-result span{font-size:13px;max-width:130px}
+.road-review{padding-left:18px;font-size:13px}
+.road-review li{margin:15px 0}
+.road-review p{font-size:12px;margin:5px 0}
+.road-page button:focus-visible,.road-page a:focus-visible,.road-page summary:focus-visible{outline:3px solid #52f0ca;outline-offset:4px}
+.road-fallback{position:absolute;inset:25% 10%;text-align:center;font-size:40px}
+.road-fallback p{font-size:14px;background:#101b38;padding:15px}
+.road-game-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:18px}
+.road-card{padding:24px;border:1px solid #34445f;background:#17253b;border-radius:22px}
+.road-card h2{font-size:21px;margin:12px 0;font-weight:700;overflow-wrap:anywhere}
+.road-card p{font-size:13px;line-height:1.7;color:#b5c5dd}
+.road-card-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
+.road-card-actions button,.road-card-actions a{padding:10px 12px;border:1px solid #526280;border-radius:10px;font-size:12px}
+.road-card-actions button:disabled{opacity:.5}
+.road-hub{max-width:1200px;margin:auto}
+.road-hub h1{font-size:38px;font-weight:800;letter-spacing:-1px;margin:30px 0 12px}
+.road-hub>p{color:#b5c5dd;max-width:700px;line-height:1.8;margin-bottom:24px}
+.road-hub .road-primary{width:auto;display:inline-flex;margin:0 0 28px}
+.road-error{padding:16px;border:1px solid #ff5b7780;border-radius:12px;margin:16px 0;color:#ffc3ce}
+.road-empty{padding:40px;border:1px dashed #526280;border-radius:20px;color:#b5c5dd}
+@media(max-width:1000px){.road-layout{grid-template-columns:1fr}
+.road-visual{position:relative;top:0}
+.road-scene{height:43vh;min-height:310px}
+.road-panel{padding:24px}
+}
+@media(max-width:500px){.road-page{padding:14px}
+.road-header{flex-wrap:wrap}
+.road-brand{order:-1;width:100%;margin:4px 0 10px}
+.road-scene-top{left:12px;right:12px;top:14px}
+.road-pill{font-size:8px;padding:7px}
+.road-dashboard{left:10px;right:10px;bottom:10px;padding:12px}
+.road-panel h1{font-size:24px}
+.road-panel{padding:20px}
+.road-hub h1{font-size:30px}
+}
+@media(prefers-reduced-motion:reduce){.road-progress>div{transition:none}
+}
+
+@media(max-width:500px){.road-dashboard{position:relative;inset:auto;margin:10px}.road-scene{height:300px;min-height:300px}}
+
+/* Cinematic driving presentation; the editor and catalogue retain their layout. */
+.road-game{background:radial-gradient(ellipse at 15% 0%,#203039 0,transparent 45%),#090f17;padding:22px 28px}
+.road-game .road-header{max-width:1760px;margin-bottom:18px}
+.road-game .road-brand{font-size:16px;font-style:italic;letter-spacing:4px}
+.road-game .road-brand small{font-style:normal;letter-spacing:2.2px;color:#8c9fa9;font-size:8px;margin-top:7px}
+.road-toolbar{max-width:1760px;margin:0 auto 16px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.road-location{display:flex;align-items:center;gap:9px;font-size:10px;letter-spacing:1.5px;color:#e7dfcd}
+.road-location>span:last-child{color:#72818c}
+.road-live-dot{display:block;width:6px;height:6px;border-radius:50%;background:#e9bc7b;box-shadow:0 0 12px #d79c4c}
+.road-controls{display:flex;gap:6px}
+.road-controls button{display:flex;align-items:center;gap:7px;min-height:36px;padding:8px 11px;border:1px solid #ffffff17;background:#ffffff04;border-radius:7px;font-size:10px;color:#b7c5cd}
+.road-controls button:hover,.road-controls button[aria-pressed=true]{background:#ffffff12;border-color:#c9b18a66;color:#f0d1a5}
+.road-game .road-layout{max-width:1760px;grid-template-columns:minmax(0,1.9fr) minmax(330px,1fr);gap:20px}
+.road-game .road-visual{border-radius:14px;border:1px solid #9eb2c32b;box-shadow:0 24px 70px #0006;top:20px;background:#172029}
+.road-game .road-scene{height:calc(100dvh - 175px);min-height:540px;max-height:850px;background:#b49c8d}
+.road-game .road-scene-top{top:20px;left:20px;right:20px;z-index:2}
+.road-game .road-pill{background:#11202acc;border:1px solid #d7e2e52b;font-size:9px;letter-spacing:1.5px;border-radius:5px;backdrop-filter:blur(8px)}
+.road-cinematic-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,#03101855,transparent 20%,transparent 66%,#030b18b0);box-shadow:inset 0 0 90px #04101b44}
+.road-navigation{position:absolute;left:22px;bottom:136px;display:flex;gap:12px;align-items:center;color:#f4e9d5;padding:13px 16px;border-left:2px solid #e7be80;background:linear-gradient(90deg,#0a1a27c9,#0a1a2733);border-radius:0 6px 6px 0;backdrop-filter:blur(6px)}
+.road-navigation small{font-size:8px;letter-spacing:1.6px;color:#c4b89e;display:block}
+.road-navigation strong{display:block;font-size:14px;font-weight:500;margin-top:5px}
+.road-navigation>span{font-size:28px;margin-left:20px}
+.road-game .road-dashboard{z-index:2;bottom:20px;left:20px;right:20px;border:1px solid #b6cad030;background:#0e1c2cd9;border-radius:10px;padding:15px 20px;backdrop-filter:blur(16px)}
+.road-speedometer{display:flex;align-items:center;gap:14px}
+.road-speedometer>svg{color:#eac489}
+.road-game .road-dashboard strong{font-size:42px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-2px;line-height:1.15}
+.road-game .road-dashboard em{letter-spacing:0;font-size:10px}
+.road-game .road-dashboard small{font-size:8px;color:#92a8b9;letter-spacing:2px}
+.road-game .road-signal{font-size:11px}
+.road-game .road-signal i{width:8px;height:8px}
+.road-game .road-panel{border-radius:14px;padding:28px;background:linear-gradient(155deg,#182631,#101923);border:1px solid #b4cad31e;box-shadow:0 16px 55px #0002}
+.road-game .road-eyebrow{color:#e4bd85;font-size:9px;letter-spacing:1.8px}
+.road-game .road-panel h1{font-size:26px;letter-spacing:-.7px;margin-bottom:22px}
+.road-game .road-panel h2{font-size:28px;letter-spacing:-.8px}
+.road-game .road-progress{height:3px;background:#293945}
+.road-game .road-progress>div{background:linear-gradient(90deg,#b48b59,#f4d59e)}
+.road-game .road-options button{background:#ffffff03;border-color:#b6c7d02b;border-radius:9px;transition:background .2s,border-color .2s,transform .2s}
+.road-game .road-options button:hover:not(:disabled){transform:translateX(3px);background:#e7bd8710;border-color:#e7bd8790}
+.road-game .road-options b{background:#a8b9ce0e;border:1px solid #a8b9ce22;border-radius:6px;color:#a8b9ce}
+.road-game .road-primary{background:linear-gradient(115deg,#edce9c,#d7b17b);color:#1f2428;border-radius:8px;box-shadow:0 4px 24px #e0b77613}
+.road-game .road-primary:hover{filter:brightness(1.08)}
+.road-game .road-big-icon{display:grid;place-items:center;width:68px;height:68px;color:#e4bd85;background:#e4bd8509;border:1px solid #e4bd852a;border-radius:17px}
+.road-game .road-question{font-size:18px;line-height:1.6}
+.road-game .road-question-label{font-size:9px}
+.road-game .road-options .is-correct{background:#2b7b661f;border-color:#62e3b6}
+.road-game .road-options .is-wrong{border-color:#d48486;background:#a53d4410}
+.road-game:fullscreen{overflow-y:auto}
+@media(min-width:1500px){.road-game .road-layout{grid-template-columns:minmax(0,2.35fr) minmax(350px,1fr)}}
+@media(max-width:1000px){
+ .road-game .road-layout{grid-template-columns:1fr}
+ .road-game .road-visual{position:relative;top:0}
+ .road-game .road-scene{height:55vh;min-height:420px}
+ .road-game .road-panel{padding:25px}
+}
+@media(max-width:600px){
+ .road-game{padding:12px}
+ .road-toolbar{align-items:flex-start;flex-wrap:wrap;gap:12px}
+ .road-location{font-size:8px;letter-spacing:1px}
+ .road-controls{margin-left:auto}
+ .road-controls button{min-height:40px;font-size:10px}
+ .road-game .road-header{margin-bottom:20px}
+ .road-game .road-brand{font-size:15px}
+ .road-game .road-scene{height:340px;min-height:340px}
+ .road-game .road-dashboard{position:relative;inset:auto;margin:10px;padding:12px}
+ .road-game .road-dashboard strong{font-size:32px}
+ .road-game .road-signal{font-size:10px}
+ .road-game .road-navigation{bottom:115px;left:13px;padding:9px 12px}
+ .road-navigation strong{font-size:12px}
+ .road-navigation>svg{width:18px}
+ .road-game .road-scene-top{left:12px;right:12px;top:14px}
+ .road-game .road-pill{font-size:7px;padding:7px;letter-spacing:1px}
+ .road-cinematic-shade{bottom:95px}
+ .road-game .road-panel{padding:22px}
+}
+@media(prefers-reduced-motion:reduce){.road-game .road-options button{transition:none}.road-game .road-options button:hover:not(:disabled){transform:none}}
+
+
+.road-driver-record{position:absolute;right:21px;top:65px;display:flex;align-items:center;gap:8px;padding:8px 11px;background:#11202ab0;color:#ead0a3;border-radius:5px;font-size:15px;backdrop-filter:blur(6px)}
+.road-driver-record small{display:block;font-size:7px;letter-spacing:1.2px;color:#d0c6b2;margin-top:2px}
+.road-route-checkpoints{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:16px}
+.road-route-checkpoints>span{display:grid;place-items:center;min-width:24px;height:24px;border:1px solid #8298a033;border-radius:50%;color:#718797;font-size:9px}
+.road-route-checkpoints>span.current{color:#efd19f;border-color:#efd19f99;background:#efd19f0c;box-shadow:0 0 12px #edc9920c}
+.road-route-checkpoints>span.completed{color:#81d4b0;border-color:#81d4b044;background:#81d4b010}
+.road-route-checkpoints>.road-route-count{border:0;border-radius:0;font-size:11px}
+.road-keyboard-hints{margin-top:26px;padding-top:16px;border-top:1px solid #ffffff0a;display:flex;gap:15px;flex-wrap:wrap;color:#738796;font-size:9px}
+.road-keyboard-hints kbd{display:inline-grid;place-items:center;min-width:17px;height:18px;margin-right:3px;border:1px solid #ffffff20;border-bottom-width:2px;border-radius:3px;font-family:inherit;color:#a3b6c3}
+.road-controls button:disabled{opacity:.4;cursor:wait}
+@media(max-width:600px){.road-driver-record{top:48px;right:12px;font-size:12px}.road-driver-record small{font-size:6px}.road-controls{width:100%;justify-content:flex-end;gap:4px}.road-controls button{padding:8px;font-size:9px}.road-keyboard-hints{display:none}}
+
+
+/* Immersive viewport: no page columns, external cards, or document scrolling. */
+.road-page.road-game{position:fixed;inset:0;z-index:45;width:100%;height:100dvh;min-height:0;padding:0;overflow:hidden;isolation:isolate;background:#14222d}
+.road-game .road-layout,.road-game .road-visual{position:absolute;inset:0;width:100%;height:100%;max-width:none;margin:0;display:block;min-width:0;min-height:0;border:0;border-radius:0;overflow:hidden;box-shadow:none}
+.road-game .road-scene{position:absolute;inset:0;width:100%;height:100%;min-height:0;max-height:none}
+.road-game .road-scene>canvas{position:absolute;inset:0;z-index:0}
+.road-css3d{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
+.road-world-board{pointer-events:auto;transform-style:preserve-3d;will-change:transform;backface-visibility:hidden}
+.road-game .road-hologram{position:relative;width:100%;max-height:var(--board-max-height,65vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#7fc7c855 #061d28;border-radius:15px;padding:23px;background:linear-gradient(135deg,#0b263af7,#071a2cf5);border:1px solid #8ae4e6b0;box-shadow:0 0 0 5px #0e283da6,0 0 0 6px #61e7e92b,0 20px 60px #0008,inset 0 0 35px #61e7e90b;outline:1px solid #b2fffe15;outline-offset:-8px}
+.road-hologram::before{content:"";position:absolute;top:0;left:26px;right:26px;height:2px;background:linear-gradient(90deg,transparent,#95fff2,transparent);pointer-events:none}
+.road-game .road-hologram h1{font-size:21px;margin:9px 0 15px;letter-spacing:-.5px}
+.road-game .road-hologram h2{font-size:25px;margin:14px 0}
+.road-game .road-hologram .road-eyebrow{color:#8cf1e8}
+.road-game .road-hologram .road-question{font-size:18px;margin-bottom:17px}
+.road-game .road-hologram .road-question-label{margin-bottom:14px}
+.road-game .road-hologram .road-options{gap:9px}
+.road-game .road-hologram .road-options button{padding:12px;min-height:49px;font-size:14px;background:#123347a6;border-color:#86c6d244}
+.road-game .road-hologram .road-options button:hover:not(:disabled){transform:none;border-color:#9cf2eb;background:#2c6e7855}
+.road-game .road-hologram .road-options .is-correct{border-color:#7dffd3;background:#1f695555}
+.road-game .road-hologram .road-options .is-wrong{border-color:#ec9aab;background:#8c34442b}
+.road-game .road-hologram .road-progress{margin-bottom:20px}
+.road-game .road-hologram .road-route-checkpoints{margin-bottom:10px}
+.road-game .road-hologram .road-primary{background:linear-gradient(110deg,#a8efe4,#75c9d2);margin-top:16px}
+.road-game .road-hologram .road-feedback{margin-top:14px;padding:12px;font-size:12px}
+.road-game .road-hologram .road-hint{margin-top:12px}
+.road-game .road-hologram .road-keyboard-hints{margin-top:18px;padding-top:12px}
+.road-game .road-header{position:absolute;top:max(20px,env(safe-area-inset-top));left:28px;right:28px;z-index:10;max-width:none;margin:0;padding:0;pointer-events:none}
+.road-game .road-header>a,.road-game .road-header>button{pointer-events:auto;background:#091c2aba;backdrop-filter:blur(12px);border:1px solid #b2dbdf33;border-radius:8px;padding:9px 12px;min-height:38px;color:#e5f4f7}
+.road-game .road-brand{text-shadow:0 2px 12px #000}
+.road-game .road-toolbar{position:absolute;top:78px;left:28px;right:28px;z-index:10;max-width:none;margin:0;pointer-events:none}
+.road-game .road-controls{pointer-events:auto}
+.road-game .road-controls button{background:#091c2aba;backdrop-filter:blur(12px);color:#dbe9f0;border-color:#b2dbdf33;min-height:38px}
+.road-game .road-location{background:#091c2aaa;padding:10px 12px;border-radius:5px}
+.road-game .road-scene-top{top:137px;left:28px;right:28px;z-index:5}
+.road-game .road-driver-record{top:178px;right:28px;z-index:5;pointer-events:none}
+.road-game .road-cinematic-shade{z-index:1;bottom:0;background:linear-gradient(180deg,#04101ad9,transparent 24%,transparent 72%,#03111bd9)}
+.road-game .road-navigation{bottom:129px;left:28px;z-index:5;pointer-events:none}
+.road-game .road-dashboard{position:absolute;left:28px;right:auto;bottom:max(22px,env(safe-area-inset-bottom));width:350px;max-width:calc(100% - 56px);margin:0;z-index:6;padding:12px 18px}
+.road-game .road-dashboard button{min-width:40px;min-height:40px}
+.road-game .road-dashboard strong{font-size:36px}
+.road-game .road-look-hint{position:absolute;left:50%;bottom:35px;transform:translateX(-50%);z-index:5;pointer-events:none;color:#d1e5eeaa;font-size:10px;letter-spacing:1px;text-shadow:0 2px 6px #000}
+.road-driving-message{position:absolute;top:35%;left:50%;transform:translate(-50%,-50%);z-index:5;text-align:center;color:#ecfff7;text-shadow:0 3px 18px #000;pointer-events:none}
+.road-driving-message>span{display:inline-block;color:#a3ffe3;border:1px solid #a3ffe34d;background:#0b3434a6;border-radius:20px;padding:8px 20px;font-size:11px;letter-spacing:4px}
+.road-driving-message strong{display:block;font-size:clamp(26px,4vw,54px);font-weight:700;margin-top:12px;letter-spacing:-1px}
+.road-driving-message p{margin-top:8px;font-size:13px;color:#c7dae4}
+.road-game>p[role=status]{position:absolute;bottom:115px;left:28px;z-index:20;max-width:320px;background:#0b2238;padding:10px;border-radius:8px}
+.road-game .road-fallback{position:absolute;inset:150px 18px 100px;z-index:7;font-size:14px;text-align:left;overflow:auto}
+.road-game .road-fallback>p{max-width:470px;margin:0 auto 12px;padding:10px;background:#18394b;font-size:12px;border-radius:7px}
+.road-game .road-fallback-board{max-width:470px;margin:auto}
+.road-fallback-board .road-world-board{position:relative!important;width:100%!important;transform:none!important}
+.road-game .has-no-webgl .road-hologram{max-height:none}
+@media(max-width:700px){
+ .road-game .road-header{top:max(10px,env(safe-area-inset-top));left:12px;right:12px;gap:6px}
+ .road-game .road-brand{font-size:13px;letter-spacing:3px}
+ .road-game .road-brand small{display:none}
+ .road-game .road-header>a,.road-game .road-header>button{font-size:10px;padding:7px 9px;min-height:34px}
+ .road-game .road-toolbar{top:88px;left:12px;right:12px;display:block}
+ .road-game .road-location{display:none}
+ .road-game .road-controls{margin:0;width:100%;justify-content:flex-end}
+ .road-game .road-controls button{font-size:9px;min-height:34px;padding:7px 8px}
+ .road-game .road-scene-top{top:133px;left:12px;right:12px}
+ .road-game .road-driver-record{display:none}
+ .road-game .road-dashboard{bottom:max(10px,env(safe-area-inset-bottom));left:12px;right:12px;max-width:none;width:auto;padding:8px 12px;border-radius:10px}
+ .road-game .road-dashboard strong{font-size:29px}
+ .road-game .road-navigation{display:none}
+ .road-game .road-look-hint{display:none}
+ .road-game .road-hologram{padding:17px;border-radius:12px}
+ .road-game .road-hologram h1{font-size:18px;margin:7px 0 12px}
+ .road-game .road-hologram .road-question{font-size:16px}
+ .road-game .road-hologram .road-options button{font-size:13px;min-height:48px}
+ .road-game .road-hologram .road-keyboard-hints{display:none}
+ .road-game .road-hologram .road-eyebrow{font-size:8px}
+ .road-game .road-hologram .road-progress{margin-bottom:14px}
+ .road-game .road-hologram .road-question-label{font-size:8px}
+ .road-game .road-hologram .road-intro p{font-size:13px}
+ .road-game .road-hologram .road-big-icon{display:none}
+ .road-game .road-fallback{inset:174px 18px 86px}
+ .road-game .road-driving-message{width:90%;top:40%}
+}
+@media(max-height:540px) and (min-width:701px){
+ .road-game .road-toolbar{top:65px}
+ .road-game .road-scene-top{display:none}
+ .road-game .road-driver-record,.road-game .road-navigation,.road-game .road-look-hint{display:none}
+ .road-game .road-header{top:10px}
+ .road-game .road-dashboard{bottom:10px;padding:7px 12px}
+ .road-game .road-dashboard strong{font-size:25px}
+}
+
+html.road-immersive-active,html.road-immersive-active body{overflow:hidden!important;scrollbar-gutter:auto!important}.road-world-board::before{content:"";position:absolute;inset:-5px;border:1px solid #9ffffa33;border-radius:19px;transform:translateZ(-12px);pointer-events:none;box-shadow:0 0 28px #51e9de1a}

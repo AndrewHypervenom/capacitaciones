@@ -34,6 +34,7 @@ export default function ArenaHub() {
       .from('arena_quizzes')
       .select('*')
       .eq('status', 'published')
+      .neq('theme_icon', '🚗')
       .order('created_at', { ascending: false })
 
     if (campaignId) query = query.eq('campaign_id', campaignId)

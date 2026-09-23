@@ -78,6 +78,7 @@ export function FeedbackWidget() {
   const originRef = useRef({ path: location.pathname, label: pageLabelFor(location.pathname) })
 
   const panelRef = useRef<HTMLDivElement>(null)
+  const playing = location.pathname.startsWith('/games/drive/')
   const visible = isAuthenticated && shouldShowFeedbackFab(location.pathname)
 
   // Datos de contacto por defecto: los que ya conocemos, editables.
@@ -88,11 +89,11 @@ export function FeedbackWidget() {
 
   // Invitación sutil la primera vez, ya con el usuario ubicado en el sitio.
   useEffect(() => {
-    if (!visible || open || dockHidden) return
+    if (playing || !visible || open || dockHidden) return
     if (localStorage.getItem(INVITE_KEY)) return
     const id = setTimeout(() => setShowInvite(true), 6000)
     return () => clearTimeout(id)
-  }, [visible, open])
+  }, [visible, open, playing, dockHidden])
 
   // Al abrirse —desde el botón, el menú o "Mis sugerencias"— congelamos desde
   // qué pantalla se está opinando y preseleccionamos lo que podemos deducir.
@@ -182,7 +183,7 @@ export function FeedbackWidget() {
     <>
       {/* ── Invitación (una sola vez) ───────────────────────────── */}
       <AnimatePresence>
-        {showInvite && !open && !dockHidden && (
+        {showInvite && !playing && !open && !dockHidden && (
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
