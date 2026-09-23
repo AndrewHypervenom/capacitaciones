@@ -1,8 +1,8 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarClock, Loader2, Lock, Monitor, Plus } from 'lucide-react';
+import { Award, CalendarClock, Loader2, Lock, Monitor, Plus } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useModuleDone, keyOfCourseModule, type ModuleKey } from '@/stores/progressStore';
@@ -17,6 +17,7 @@ import { blockedByDevice } from '@/lib/device';
 import { useDeviceKind } from '@/hooks/useDeviceKind';
 import { pickLang } from '@/lib/contentLang';
 import type { CourseJourney } from '@/lib/courseJourney';
+import type { CourseCompletion } from '@/services/certification.service';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Tarjeta de curso ÚNICA del sitio. La usan el catálogo (/courses) y el panel
@@ -31,6 +32,17 @@ import type { CourseJourney } from '@/lib/courseJourney';
    táctil no hay hover y la tarjeta se queda en su forma de reposo, que ya
    dice todo lo necesario.
    ──────────────────────────────────────────────────────────────────────────── */
+
+/** «12 sep.» (con año solo si no es el actual): cabe junto al botón. */
+function shortDate(iso: string, language: string): string {
+  const d = new Date(iso);
+  const locale = language === 'en' ? 'en-US' : language === 'pt' ? 'pt-BR' : 'es-CO';
+  return d.toLocaleDateString(locale, {
+    day: 'numeric',
+    month: 'short',
+    ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+  });
+}
 
 /** Curva corporativa (misma que `ease-apple` de Tailwind y el kit de motion). */
 export const ease = [0.16, 1, 0.3, 1] as const;
@@ -82,10 +94,15 @@ export interface CourseCardProps {
   reduce: boolean;
   /** Recorrido completo del curso (useCourseJourneys). Sin él, solo módulos. */
   journey?: CourseJourney;
+  /** Fecha, nota y certificado si ya lo terminó (useCourseCompletions). */
+  completion?: CourseCompletion;
+  /** Terminado pero con el certificado vencido: toca recertificarse. */
+  recertDue?: boolean;
 }
 
-export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: CourseCardProps) {
+export function CourseCard({ course, index = 0, onEnrolled, reduce, journey, completion, recertDue = false }: CourseCardProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const language = useUserStore((s) => s.language);
   // Rol REAL (no el de useAuth, que en la vista previa finge ser aprendiz): al
   // capacitador/superadmin le sirve saber de qué campaña es cada curso incluso
@@ -139,7 +156,9 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
   // termine creyendo que ya sale el diploma. Ver Curso -> Certificacion.
   const comingSoon = !!course.cert_conditions?.coming_soon;
 
-  const badge = deadline.state === 'overdue'
+  const badge = recertDue
+    ? { text: t('courses.recert_badge'), tone: 'warn' as const }
+    : deadline.state === 'overdue'
     ? { text: t('courses.deadline_expired'), tone: 'danger' as const }
     : deadline.state === 'soon'
       ? { text: t('courses.deadline_soon_badge'), tone: 'danger' as const }
@@ -151,8 +170,11 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
             ? { text: t('courses.status_completed'), tone: 'primary' as const }
             : null;
 
-  const deadlineText =
-    deadline.dueMs === null
+  // Terminado: el plazo ya no le dice nada. `deadlineInfo` conserva la fecha
+  // pero deja daysLeft en 0, y eso se leía «Vence hoy» en un curso hecho.
+  const deadlineText = completed
+    ? null
+    : deadline.dueMs === null
       ? daysFromEnroll > 0
         ? t('courses.deadline_from_enroll', { count: daysFromEnroll })
         : null
@@ -165,6 +187,9 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
 
   const title = pickCourseText(course.title_es, course.title_en, course.title_pt, language);
   const pctLabel = `${Math.round(pct * 100)}%`;
+  // Sin empezar, «0% · 0 de 5 módulos» es ruido repetido en cada tarjeta: se
+  // dice solo cuántos módulos tiene, igual que en el catálogo.
+  const started = completed || done > 0 || (journey?.done ?? 0) > 0;
   // Con más de una etapa el texto habla de PASOS, no de módulos: si no, el
   // porcentaje de al lado (que ya cuenta el curso entero) y esta frase
   // contarían cosas distintas.
@@ -187,6 +212,29 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
   // en sus propios cursos asignados: el programa se retiró del sitio (09-16).
   const category = course.category_name && !(isStaff && course.isAssigned) ? course.category_name : null;
   const hasImage = courseHasCardImage(course);
+
+  // Curso terminado: cuándo, con qué nota y acceso directo al certificado. El
+  // diploma se emite al abrir /certificate (ahí pasa la encuesta), así que el
+  // botón sale aunque todavía no haya cert_id; solo lo retiene «en construcción».
+  const showDone = completed && course.isAssigned;
+  const doneLine = showDone && completion
+    ? [
+        recertDue && completion.recert === 'requested'
+          ? t('courses.recert_requested')
+          : recertDue && completion.recertSince
+          ? t('courses.recert_due', { date: shortDate(completion.recertSince, language) })
+          : completion.completedAt
+            ? t('courses.completed_on', { date: shortDate(completion.completedAt, language) })
+            : null,
+        completion.score != null ? t('courses.completed_score', { score: completion.score }) : null,
+      ].filter(Boolean) as string[]
+    : [];
+  const showCertButton = showDone && !comingSoon;
+  const openCertificate = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(`/certificate/${course.id}`);
+  };
 
   return (
     <MotionLink
@@ -290,7 +338,7 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
       <div className="flex flex-1 flex-col justify-center gap-2 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="grid min-w-0 gap-0.5">
-            {course.isAssigned ? (
+            {course.isAssigned && started ? (
               <span className="flex items-baseline gap-1.5 text-[13px] font-bold tabular-nums text-text">
                 {pctLabel}
                 <span className="truncate text-[12px] font-medium text-text-subtle">{stepsText}</span>
@@ -314,10 +362,10 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
             <span
               className={cn(
                 'inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold',
-                completed ? 'text-primary' : 'text-text',
+                completed && !recertDue ? 'text-primary' : 'text-text',
               )}
             >
-              {completed ? t('courses.cta_review') : done > 0 ? t('courses.cta_continue') : t('courses.cta_start')}
+              {recertDue ? t('courses.recert_badge') : completed ? t('courses.cta_review') : done > 0 ? t('courses.cta_continue') : t('courses.cta_start')}
               <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">→</span>
             </span>
           ) : (
@@ -332,6 +380,35 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
             </motion.button>
           )}
         </div>
+
+        {(doneLine.length > 0 || showCertButton) && (
+          <div className="flex items-center justify-between gap-3">
+            <span
+              className={cn(
+                'flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11.5px] font-medium',
+                recertDue ? 'text-amber-600 dark:text-amber-400' : 'text-text-subtle',
+              )}
+            >
+              {doneLine.map((m, i) => (
+                <span key={m} className="inline-flex items-center gap-1.5">
+                  {i > 0 && <span className="text-text-subtle/50">·</span>}
+                  {m}
+                </span>
+              ))}
+            </span>
+            {showCertButton && (
+              <motion.button
+                type="button"
+                onClick={openCertificate}
+                whileTap={reduce ? undefined : { scale: 0.94 }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1 text-[12px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary"
+              >
+                <Award className="h-3.5 w-3.5" aria-hidden />
+                {t('courses.cta_certificate')}
+              </motion.button>
+            )}
+          </div>
+        )}
 
         {deadlineText && (
           <div
@@ -378,6 +455,8 @@ export function CourseGrid({
   reduce,
   trailing,
   journeys,
+  completions,
+  recertDue,
 }: {
   courses: LearnerCourse[];
   onEnrolled?: () => void;
@@ -386,6 +465,10 @@ export function CourseGrid({
   trailing?: ReactNode;
   /** Recorridos por id de curso (useCourseJourneys). */
   journeys?: Record<string, CourseJourney>;
+  /** Fecha, nota y certificado de los cursos terminados (useCourseCompletions). */
+  completions?: Record<string, CourseCompletion>;
+  /** ¿Le toca recertificarse en este curso? */
+  recertDue?: (c: LearnerCourse) => boolean;
 }) {
   return (
     <motion.div
@@ -401,6 +484,8 @@ export function CourseGrid({
             onEnrolled={onEnrolled}
             reduce={reduce}
             journey={journeys?.[c.id]}
+            completion={completions?.[c.id]}
+            recertDue={recertDue?.(c) ?? false}
           />
         ))}
       </AnimatePresence>

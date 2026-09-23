@@ -283,6 +283,121 @@ export async function getUserCertificates(userId: string): Promise<UserCertifica
   })
 }
 
+/** Lo que la tarjeta de un curso YA completado cuenta de él. */
+export interface CourseCompletion {
+  /** Certificado emitido, si lo hay (puede faltar: se emite al abrirlo). */
+  certId: string | null
+  /** Nota 0-100: la del certificado o, sin él, el resumen de actividad. */
+  score: number | null
+  /** Cuándo lo terminó: emisión del certificado o último módulo cerrado. */
+  completedAt: string | null
+  /** Vencimiento del certificado por `valid_months`, o null si no vence. */
+  expiresAt: string | null
+  /** Le toca recertificarse: el capacitador lo pidió o el certificado venció. */
+  recert: 'requested' | 'expired' | null
+  /** Desde cuándo: el pedido del capacitador o el vencimiento. */
+  recertSince: string | null
+}
+
+/**
+ * Fecha, nota y certificado de los cursos que el usuario ya completó, en UNA
+ * tanda: certificados y tiempos de módulo van en una consulta cada uno; solo
+ * los cursos terminados SIN certificado piden su nota al RPC de actividad (son
+ * pocos, y sin nota la tarjeta sigue saliendo).
+ *
+ * Nunca revienta: si algo falla, el curso queda sin esos datos y la tarjeta se
+ * pinta igual que antes.
+ */
+export async function getCourseCompletions(
+  userId: string,
+  courses: Array<{ id: string; moduleIds: string[]; validMonths: number | null }>,
+): Promise<Record<string, CourseCompletion>> {
+  const out: Record<string, CourseCompletion> = {}
+  if (courses.length === 0) return out
+  const ids = courses.map((c) => c.id)
+
+  const [certsRes, timesRes, recertRes] = await Promise.all([
+    supabase
+      .from('certifications')
+      .select('cert_id, course_id, score, issued_at')
+      .eq('user_id', userId)
+      .in('course_id', ids),
+    supabase
+      .from('module_time')
+      .select('module_id, completed_at')
+      .eq('user_id', userId)
+      .not('completed_at', 'is', null),
+    // SQL 75. Sin él (función inexistente) se cae al vencimiento calculado aquí;
+    // el pedido manual del capacitador solo se ve con la función corrida.
+    supabase.rpc('my_course_recert_status' as never, { p_course_ids: ids } as never),
+  ])
+  type RecertRow = { course_id: string; needs_recert: boolean; reason: string | null; expires_at: string | null; recert_requested_at: string | null }
+  const recertByCourse = new Map<string, RecertRow>()
+  const recertOk = !recertRes.error && Array.isArray(recertRes.data)
+  if (recertOk) for (const r of recertRes.data as RecertRow[]) recertByCourse.set(r.course_id, r)
+
+  const certByCourse = new Map<string, { cert_id: string; score: number | null; issued_at: string }>()
+  for (const c of certsRes.data ?? []) certByCourse.set(c.course_id, c)
+  const doneAt = new Map<string, string>()
+  for (const r of timesRes.data ?? []) if (r.completed_at) doneAt.set(r.module_id, r.completed_at)
+
+  await Promise.all(
+    courses.map(async (c) => {
+      const cert = certByCourse.get(c.id)
+      // Último módulo cerrado del curso = cuándo terminó el temario.
+      const lastModule = c.moduleIds.reduce<string | null>((acc, mid) => {
+        const d = doneAt.get(mid)
+        return d && (!acc || d > acc) ? d : acc
+      }, null)
+
+      let score = cert?.score ?? null
+      let completedAt = cert?.issued_at ?? lastModule
+      if (!cert) {
+        try {
+          const { data, error } = await supabase.rpc('get_course_activity_summary', {
+            p_course_id: c.id,
+            p_user_id: userId,
+          })
+          if (!error && data != null) {
+            const d = data as { score: number | null; completed_at: string | null }
+            if (d.score != null) score = d.score
+            completedAt = completedAt ?? d.completed_at ?? null
+          }
+        } catch {
+          /* sin nota: la tarjeta sale sin ella */
+        }
+      }
+
+      let expiresAt: string | null = null
+      let recert: CourseCompletion['recert'] = null
+      let recertSince: string | null = null
+      const rr = recertByCourse.get(c.id)
+      if (recertOk) {
+        expiresAt = rr?.expires_at ?? null
+        if (rr?.needs_recert) {
+          recert = rr.reason === 'requested' ? 'requested' : 'expired'
+          recertSince = recert === 'requested' ? rr.recert_requested_at : rr.expires_at
+        }
+      } else if (cert && c.validMonths && c.validMonths > 0) {
+        const d = new Date(cert.issued_at)
+        d.setMonth(d.getMonth() + c.validMonths)
+        expiresAt = d.toISOString()
+        if (d.getTime() < Date.now()) { recert = 'expired'; recertSince = expiresAt }
+      }
+
+      out[c.id] = {
+        certId: cert?.cert_id ?? null,
+        score: score == null ? null : Math.round(Math.max(0, Math.min(100, score))),
+        completedAt,
+        expiresAt,
+        recert,
+        recertSince,
+      }
+    }),
+  )
+  return out
+}
+
 // ─── Verificación pública (LinkedIn) ─────────────────────────────────────
 
 /**

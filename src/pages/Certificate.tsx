@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { invalidateCourseCompletionsCache } from '@/hooks/useCourseCompletions';
 import { useNavigate, Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Download, Lock, Linkedin, Link2, RefreshCw } from 'lucide-react';
@@ -208,6 +209,7 @@ export default function Certificate() {
       if (st.all_met && !st.certified && !held) {
         try {
           await issueCertification(courseId);
+          invalidateCourseCompletionsCache();
           const fresh = await getCourseCertStatus(courseId);
           if (active) setStatus(fresh);
         } catch {

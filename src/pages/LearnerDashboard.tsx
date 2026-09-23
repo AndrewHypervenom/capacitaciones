@@ -48,6 +48,8 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { CourseGrid, courseProgress, pickCourseText } from '@/components/course/CourseCard';
 import { useCourseJourneys } from '@/hooks/useCourseJourneys';
+import { useCourseCompletions } from '@/hooks/useCourseCompletions';
+import { CompletedCoursesSection } from '@/components/course/CompletedCoursesSection';
 import { onboardingGate } from '@/lib/onboarding';
 import { OnboardingBanner, LockedCatalogCard } from '@/components/course/OnboardingGate';
 import { useDeadlineToasts } from '@/hooks/useDeadlineToasts';
@@ -170,6 +172,18 @@ export default function LearnerDashboard() {
   );
   const homeCourseIds = useMemo(() => new Set(homeCourses.map((c) => c.id)), [homeCourses]);
 
+  // Lo ya terminado baja a «Completados», plegado: no le roba sitio a lo que
+  // falta. Con el certificado vencido vuelve arriba a recertificarse.
+  const { completions, isFinished, needsRecert } = useCourseCompletions(sortedDashboardCourses, journeys);
+  const pendingCourses = useMemo(
+    () => sortedDashboardCourses.filter((c) => !isFinished(c)),
+    [sortedDashboardCourses, isFinished],
+  );
+  const finishedCourses = useMemo(
+    () => sortedDashboardCourses.filter(isFinished),
+    [sortedDashboardCourses, isFinished],
+  );
+
   // Definiciones vivas (editables por el superadmin); caen a los defaults de
   // fábrica si la BD aún no cargó. Solo las habilitadas cuentan y se muestran.
   const allBadgeDefs = useGamificationStore((s) => s.badgeDefs);
@@ -263,7 +277,7 @@ export default function LearnerDashboard() {
         title: pickCourseText(c.title_es, c.title_en, c.title_pt, language),
         // Un curso sin nada asignado no está completo: no hay nada que dar por
         // hecho. Y con simulador o examen pendientes, tampoco lo está.
-        complete: p.completed,
+        complete: p.completed && !needsRecert(c),
         pct: Math.round(p.pct * 100),
         done: p.done,
         total: p.total,
@@ -275,7 +289,7 @@ export default function LearnerDashboard() {
         .filter((c) => !c.complete)
         .sort((a, b) => b.pct - a.pct),
     };
-  }, [sortedDashboardCourses, isModuleDone, language, journeys]);
+  }, [sortedDashboardCourses, isModuleDone, language, journeys, needsRecert]);
 
   const coursesTotal = sortedDashboardCourses.length;
   const coursesDone = courseStatus.finished.length;
@@ -654,9 +668,11 @@ export default function LearnerDashboard() {
               </div>
             )}
             <CourseGrid
-              courses={sortedDashboardCourses}
+              courses={pendingCourses}
               reduce={reduce}
               journeys={journeys}
+              completions={completions}
+              recertDue={needsRecert}
               trailing={
                 gate.active ? (
                   <LockedCatalogCard gate={gate} />
@@ -683,6 +699,13 @@ export default function LearnerDashboard() {
                 </MotionLink>
                 )
               }
+            />
+            <CompletedCoursesSection
+              courses={finishedCourses}
+              reduce={reduce}
+              journeys={journeys}
+              completions={completions}
+              className="mt-10"
             />
           </section>
 

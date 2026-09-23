@@ -4,10 +4,8 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowDownAZ,
-  Check,
-  ChevronDown,
+  ArrowRight,
   GraduationCap,
-  Layers,
   Search,
   SlidersHorizontal,
   X,
@@ -23,13 +21,20 @@ import { Select } from '@/components/ui/Select';
 // no puede verse de dos formas según por dónde llegues.
 import { CourseGrid, courseProgress, ease, pickCourseText as pickText } from '@/components/course/CourseCard';
 import { useCourseJourneys } from '@/hooks/useCourseJourneys';
+import { useCourseCompletions } from '@/hooks/useCourseCompletions';
+import { CompletedCoursesSection } from '@/components/course/CompletedCoursesSection';
 import { cn } from '@/lib/cn';
 import { onboardingGate } from '@/lib/onboarding';
 import { OnboardingBanner, LockedCatalogCard } from '@/components/course/OnboardingGate';
 
 export { courseProgress };
 
-type Filter = 'all' | 'mandatory' | 'optional' | 'in_progress' | 'completed';
+// Tres estados, no cinco: «Completados» ya es su propia sección plegada y
+// «Opcionales» era solo el reverso de «Obligatorios».
+type Filter = 'all' | 'mandatory' | 'in_progress';
+
+/** Tarjetas del catálogo antes de «Ver todos»: dos filas en escritorio. */
+const CATALOG_PREVIEW = 6;
 
 // 'smart' es el orden de siempre (estado → obligatorio → alfabético). Las otras
 // dos son alfabéticas puras: quien busca un curso por nombre no quiere que el
@@ -91,15 +96,17 @@ export default function Courses() {
     [allCourses, journeys, isModuleDone, journeysLoaded, journeysFailed],
   );
   const courses = gate.active ? gate.courses : allCourses;
+  // Fecha, nota y certificado de lo ya terminado; y quién toca recertificar.
+  const { completions, isFinished, needsRecert } = useCourseCompletions(courses, journeys);
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('smart');
   const [level, setLevel] = useState<string>(ANY);
+  // Categoría del CATÁLOGO (la tira de cápsulas sobre «Explorar catálogo»).
   const [category, setCategory] = useState<string>(ANY);
-  const [grouped, setGrouped] = useState(true);
+  const [showAllCatalog, setShowAllCatalog] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const searchRef = useRef<HTMLInputElement>(null);
 
   // "/" enfoca la búsqueda, como en cualquier catálogo que se respete. Se ignora
@@ -118,12 +125,6 @@ export default function Courses() {
   }, []);
 
   /* ── Opciones de los filtros, sacadas de los cursos que hay de verdad ──── */
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    courses.forEach((c) => c.category_name && set.add(c.category_name));
-    return [...set].sort((a, b) => a.localeCompare(b, language, { sensitivity: 'base' }));
-  }, [courses, language]);
-
   const levels = useMemo(() => {
     const set = new Set<string>();
     courses.forEach((c) => c.level && set.add(c.level));
@@ -134,7 +135,6 @@ export default function Courses() {
   // un curso), vale "todas" en vez de dejar la pantalla vacía sin motivo. Se
   // resuelve al derivar, NO con un useEffect que llame a setState: el efecto
   // provoca un render extra y deja un parpadeo con la lista vacía.
-  const categorySel = category !== ANY && !categories.includes(category) ? ANY : category;
   const levelSel = level !== ANY && !levels.includes(level) ? ANY : level;
 
   /* ── Filtrado en capas ──────────────────────────────────────────────────
@@ -149,10 +149,9 @@ export default function Courses() {
         if (!text.includes(q)) return false;
       }
       if (levelSel !== ANY && c.level !== levelSel) return false;
-      if (categorySel !== ANY && c.category_name !== categorySel) return false;
       return true;
     });
-  }, [courses, query, levelSel, categorySel]);
+  }, [courses, query, levelSel]);
 
   const matchesFilter = useCallback(
     (c: LearnerCourse, f: Filter) => {
@@ -163,12 +162,8 @@ export default function Courses() {
       switch (f) {
         case 'mandatory':
           return c.isMandatory;
-        case 'optional':
-          return !c.isMandatory;
         case 'in_progress':
           return done > 0 && !completed;
-        case 'completed':
-          return completed;
         default:
           return true;
       }
@@ -224,28 +219,35 @@ export default function Courses() {
     (c.isAssigned &&
       (c.onHome || courseProgress(c, isModuleDone, journeys[c.id]).done > 0));
   const myCourses = arrange(filtered.filter(isMine));
+  // Lo ya terminado baja a «Completados», plegado (igual que en el inicio).
+  const myPending = myCourses.filter((c) => !isFinished(c));
+  const myFinished = myCourses.filter(isFinished);
   const exploreCourses = arrange(filtered.filter((c) => !isMine(c)));
 
-  // Catálogo agrupado por CATEGORÍA. Antes era por programa, que se retiró del
-  // sitio (2026-09-15): lo que era "programa" pasó a ser la categoría del curso.
-  // Sin useMemo a propósito: agrupar una lista ya calculada es barato.
-  const exploreGroups = (() => {
-    const map = new Map<string, LearnerCourse[]>();
+  // Catálogo por CATEGORÍA, pero en una sola rejilla con una tira de cápsulas
+  // encima. Antes cada categoría era un bloque con su propio título: con varias
+  // de un solo curso la página se volvía una escalera de filas medio vacías.
+  const catalogCategories = (() => {
+    const map = new Map<string, number>();
     exploreCourses.forEach((c) => {
       const key = c.category_name ?? '';
-      const list = map.get(key);
-      if (list) list.push(c);
-      else map.set(key, [c]);
+      map.set(key, (map.get(key) ?? 0) + 1);
     });
     return [...map.entries()].sort((a, b) => {
-      // Los sin categoría, al final.
+      // Los sin categoría, al final; el resto de mayor a menor y luego A-Z.
       if (!a[0]) return 1;
       if (!b[0]) return -1;
-      return a[0].localeCompare(b[0], language, { sensitivity: 'base' });
+      return b[1] - a[1] || a[0].localeCompare(b[0], language, { sensitivity: 'base' });
     });
   })();
-
-  const showGroups = grouped && exploreGroups.length > 1;
+  const categorySel = category !== ANY && !catalogCategories.some(([k]) => k === category) ? ANY : category;
+  const catalogList =
+    categorySel === ANY ? exploreCourses : exploreCourses.filter((c) => (c.category_name ?? '') === categorySel);
+  // Buscando o con una categoría elegida se ve todo: ahí el recorte escondería
+  // justo lo que se pidió.
+  const catalogClipped =
+    !showAllCatalog && categorySel === ANY && query.trim() === '' && catalogList.length > CATALOG_PREVIEW + 1;
+  const catalogShown = catalogClipped ? catalogList.slice(0, CATALOG_PREVIEW) : catalogList;
 
   /* ── Resumen del avance: una sola línea, sin tablero de KPIs ─────────── */
   const stats = useMemo(() => {
@@ -272,9 +274,7 @@ export default function Courses() {
   const filters: Array<{ id: Filter; label: string }> = [
     { id: 'all', label: t('courses.filter_all') },
     { id: 'mandatory', label: t('courses.filter_mandatory') },
-    { id: 'optional', label: t('courses.filter_optional') },
     { id: 'in_progress', label: t('courses.filter_in_progress') },
-    { id: 'completed', label: t('courses.filter_completed') },
   ];
 
   const counts = filters.reduce<Record<Filter, number>>(
@@ -282,22 +282,22 @@ export default function Courses() {
       acc[f.id] = base.filter((c) => matchesFilter(c, f.id)).length;
       return acc;
     },
-    { all: 0, mandatory: 0, optional: 0, in_progress: 0, completed: 0 },
+    { all: 0, mandatory: 0, in_progress: 0 },
   );
 
   // Cuántos filtros "de segundo nivel" están puestos: lo único que necesita
   // saber el botón que abre el panel.
-  const advancedCount = (levelSel !== ANY ? 1 : 0) + (categorySel !== ANY ? 1 : 0);
+  const advancedCount = (levelSel !== ANY ? 1 : 0) + (sort !== 'smart' ? 1 : 0);
   const hasAny = advancedCount > 0 || filter !== 'all' || query.trim().length > 0;
 
   const clearAll = () => {
     setFilter('all');
     setLevel(ANY);
     setCategory(ANY);
+    setSort('smart');
     setQuery('');
   };
 
-  const hasAdvanced = levels.length > 1 || categories.length > 1;
 
   /* ── Cargando ───────────────────────────────────────────────────────────── */
   if (loading || !gate.settled) {
@@ -340,57 +340,65 @@ export default function Courses() {
           {t('courses.back_to_home')}
         </Link>
 
-        <h1 className="text-[32px] font-semibold tracking-[-0.03em] text-text sm:text-[40px]">
-          {t('courses.title')}
-        </h1>
-        <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-text-muted">
-          {t('courses.subtitle')}
-        </p>
+        <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-[32px] font-semibold tracking-[-0.03em] text-text sm:text-[40px]">
+              {t('courses.title')}
+            </h1>
+            <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-text-muted">
+              {t('courses.subtitle')}
+            </p>
+          </div>
+
+          {/* Avance: una cifra y un hilo, a la derecha del título. Antes iba
+              debajo, apilado con el aviso de obligatorios, y empujaba todo. */}
+          {!gate.active && stats.assigned > 0 && (
+            <div className="w-full shrink-0 md:w-72">
+              <div className="mb-2 flex items-baseline justify-between gap-4">
+                <span className="text-[12.5px] text-text-muted">
+                  {t('courses.progress_summary', { done: stats.completed, total: stats.assigned })}
+                </span>
+                <span className="text-[20px] font-semibold tracking-tight text-text">
+                  <CountUp value={Math.round(stats.pct * 100)} suffix="%" />
+                </span>
+              </div>
+              <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
+                <motion.div
+                  className="h-full rounded-full bg-primary"
+                  initial={{ width: reduce ? `${stats.pct * 100}%` : 0 }}
+                  animate={{ width: `${stats.pct * 100}%` }}
+                  transition={{ duration: reduce ? 0 : 1.2, ease, delay: 0.3 }}
+                />
+              </div>
+              {stats.mandatoryPending > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilter('mandatory')}
+                  className="mt-2.5 inline-flex items-center gap-1.5 whitespace-nowrap text-left text-[12px] text-text-muted transition-colors hover:text-text"
+                >
+                  <span className="relative flex h-1.5 w-1.5">
+                    {!reduce && (
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-60" />
+                    )}
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-danger" />
+                  </span>
+                  {t('courses.mandatory_pending', { n: stats.mandatoryPending })}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {gate.active && <OnboardingBanner gate={gate} reduce={reduce} className="mt-8 max-w-2xl" />}
-
-        {!gate.active && stats.assigned > 0 && (
-          <div className="mt-8 max-w-sm">
-            <div className="mb-2 flex items-baseline justify-between gap-4 text-[13px]">
-              <span className="text-text-muted">
-                {t('courses.progress_summary', { done: stats.completed, total: stats.assigned })}
-              </span>
-              <span className="font-semibold text-text">
-                <CountUp value={Math.round(stats.pct * 100)} suffix="%" />
-              </span>
-            </div>
-            <div className="h-[3px] w-full overflow-hidden rounded-full bg-subtle">
-              <motion.div
-                className="h-full rounded-full bg-primary"
-                initial={{ width: reduce ? `${stats.pct * 100}%` : 0 }}
-                animate={{ width: `${stats.pct * 100}%` }}
-                transition={{ duration: reduce ? 0 : 1.2, ease, delay: 0.3 }}
-              />
-            </div>
-            {stats.mandatoryPending > 0 && (
-              <button
-                type="button"
-                onClick={() => setFilter('mandatory')}
-                className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] text-text-muted transition-colors hover:text-text"
-              >
-                <span className="relative flex h-1.5 w-1.5">
-                  {!reduce && (
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-60" />
-                  )}
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-danger" />
-                </span>
-                {t('courses.mandatory_pending', { n: stats.mandatoryPending })}
-              </button>
-            )}
-          </div>
-        )}
       </motion.header>
 
       {/* ── Barra de mando: búsqueda + cápsulas. Lo demás vive en el panel ─ */}
       {courses.length > 0 && (
         <div className="sticky top-12 z-30 -mx-4 mb-10 border-b border-line/60 bg-bg/85 px-4 pt-3 pb-2.5 backdrop-blur-xl sm:-mx-8 sm:px-8">
-          <div className="flex items-center gap-2">
-            <div className="group relative w-full max-w-[19rem]">
+          {/* En el celular: buscador + filtros arriba y las cápsulas debajo (antes
+              el buscador se comía la fila y las cápsulas quedaban fuera). */}
+          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+            <div className="group relative min-w-0 flex-1 sm:max-w-[19rem]">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle transition-colors group-focus-within:text-text" />
               <input
                 ref={searchRef}
@@ -428,7 +436,7 @@ export default function Courses() {
             </div>
 
             {/* Cápsulas de estado: la pastilla se desliza entre ellas. */}
-            <div className="-mx-1 flex flex-1 items-center gap-0.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="-mx-1 order-last flex w-full items-center gap-0.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:order-none sm:w-auto sm:flex-1">
               {filters.map((f) => {
                 const active = filter === f.id;
                 return (
@@ -458,26 +466,24 @@ export default function Courses() {
               })}
             </div>
 
-            {(hasAdvanced || exploreGroups.length > 1) && (
-              <button
-                onClick={() => setPanelOpen((o) => !o)}
-                aria-expanded={panelOpen}
-                className={cn(
-                  'relative shrink-0 rounded-full border px-3 py-2 text-[13px] transition-colors duration-300',
-                  panelOpen || advancedCount > 0
-                    ? 'border-text-subtle text-text'
-                    : 'border-line text-text-subtle hover:text-text',
+            <button
+              onClick={() => setPanelOpen((o) => !o)}
+              aria-expanded={panelOpen}
+              className={cn(
+                'relative shrink-0 rounded-full border px-3 py-2 text-[13px] transition-colors duration-300',
+                panelOpen || advancedCount > 0
+                  ? 'border-text-subtle text-text'
+                  : 'border-line text-text-subtle hover:text-text',
+              )}
+            >
+              <span className="flex items-center gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t('courses.filters')}</span>
+                {advancedCount > 0 && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
                 )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t('courses.filters')}</span>
-                  {advancedCount > 0 && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
-                  )}
-                </span>
-              </button>
-            )}
+              </span>
+            </button>
           </div>
 
           {/* Panel plegado: campaña, nivel, categoría, orden y agrupación. */}
@@ -504,19 +510,6 @@ export default function Courses() {
                       compact
                     />
                   )}
-                  {categories.length > 1 && (
-                    <Select
-                      value={categorySel}
-                      onChange={setCategory}
-                      options={[
-                        { value: ANY, label: t('courses.filter_category_all') },
-                        ...categories.map((c) => ({ value: c, label: c })),
-                      ]}
-                      leadingIcon={<Layers className="h-4 w-4 text-text-subtle" />}
-                      aria-label={t('courses.filter_category_label')}
-                      compact
-                    />
-                  )}
                   {/* Orden. Separado del filtro porque son cosas distintas: uno
                       decide QUÉ cursos se ven y el otro EN QUÉ ORDEN. */}
                   <Select
@@ -534,24 +527,6 @@ export default function Courses() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 pb-3 pt-1">
-                  {exploreGroups.length > 1 && (
-                    <button
-                      onClick={() => setGrouped((g) => !g)}
-                      role="switch"
-                      aria-checked={grouped}
-                      className="inline-flex items-center gap-2 text-[13px] text-text-muted transition-colors hover:text-text"
-                    >
-                      <span
-                        className={cn(
-                          'flex h-4 w-4 items-center justify-center rounded-[5px] border transition-colors duration-300',
-                          grouped ? 'border-primary bg-primary text-on-primary' : 'border-line',
-                        )}
-                      >
-                        {grouped && <Check className="h-3 w-3" strokeWidth={3} />}
-                      </span>
-                      {t('courses.group_by_campaign')}
-                    </button>
-                  )}
                   <AnimatePresence initial={false}>
                     {hasAny && (
                       <motion.button
@@ -601,7 +576,23 @@ export default function Courses() {
                   subtitle={t('courses.my_courses_subtitle')}
                   count={myCourses.length}
                 />
-                <CourseGrid courses={myCourses} reduce={reduce} journeys={journeys} />
+                {myPending.length > 0 && (
+                  <CourseGrid
+                    courses={myPending}
+                    reduce={reduce}
+                    journeys={journeys}
+                    completions={completions}
+                    recertDue={needsRecert}
+                  />
+                )}
+                <CompletedCoursesSection
+                  courses={myFinished}
+                  reduce={reduce}
+                  journeys={journeys}
+                  completions={completions}
+                  forceOpen={query.trim() !== ''}
+                  className={myPending.length > 0 ? 'mt-10' : undefined}
+                />
               </motion.section>
             )}
           </AnimatePresence>
@@ -636,50 +627,55 @@ export default function Courses() {
                   count={exploreCourses.length}
                 />
 
-                {showGroups ? (
-                  <div className="space-y-10">
-                    {exploreGroups.map(([name, list]) => {
-                      const isOpen = !collapsed[name];
+                {/* Tira de categorías: filtra la rejilla en su sitio. */}
+                {catalogCategories.length > 1 && (
+                  <div className="-mx-1 mb-6 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {[[ANY, exploreCourses.length] as [string, number], ...catalogCategories].map(([key, n]) => {
+                      const active = categorySel === key;
                       return (
-                        <div key={name || '__none__'}>
-                          <button
-                            onClick={() => setCollapsed((s) => ({ ...s, [name]: !!isOpen }))}
-                            aria-expanded={isOpen}
-                            className="group mb-4 flex w-full items-center gap-2 border-b border-line/70 pb-2 text-left transition-colors hover:border-text-subtle/40"
-                          >
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle transition-colors group-hover:text-text-muted">
-                              {name || t('courses.category_none')}
-                            </span>
-                            <span className="text-[11px] tabular-nums text-text-subtle/70">{list.length}</span>
+                        <button
+                          key={key || '__none__'}
+                          type="button"
+                          onClick={() => setCategory(key)}
+                          aria-pressed={active}
+                          className={cn(
+                            'relative shrink-0 rounded-full border px-3.5 py-1.5 text-[12.5px] transition-colors duration-300',
+                            active
+                              ? 'border-transparent font-medium text-text'
+                              : 'border-line text-text-subtle hover:border-text-subtle/40 hover:text-text-muted',
+                          )}
+                        >
+                          {active && (
                             <motion.span
-                              animate={{ rotate: isOpen ? 180 : 0 }}
-                              transition={{ duration: reduce ? 0 : 0.35, ease }}
-                              className="ml-auto text-text-subtle"
-                            >
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            </motion.span>
-                          </button>
-                          <AnimatePresence initial={false}>
-                            {isOpen && (
-                              <motion.div
-                                initial={reduce ? false : { opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                transition={{ duration: 0.38, ease }}
-                                className="overflow-hidden"
-                              >
-                                <div className="pt-1">
-                                  <CourseGrid courses={list} onEnrolled={reload} reduce={reduce} journeys={journeys} />
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
+                              layoutId="catalog-category-pill"
+                              aria-hidden
+                              className="absolute inset-0 rounded-full bg-subtle"
+                              transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
+                            />
+                          )}
+                          <span className="relative z-10">
+                            {key === ANY ? t('courses.filter_category_all') : key || t('courses.category_none')}
+                            <span className="ml-1.5 text-[11px] tabular-nums text-text-subtle">{n}</span>
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
-                ) : (
-                  <CourseGrid courses={exploreCourses} onEnrolled={reload} reduce={reduce} journeys={journeys} />
+                )}
+
+                <CourseGrid courses={catalogShown} onEnrolled={reload} reduce={reduce} journeys={journeys} />
+
+                {catalogClipped && (
+                  <div className="mt-8 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllCatalog(true)}
+                      className="group inline-flex items-center gap-2 rounded-full border border-line px-5 py-2.5 text-[13px] font-medium text-text-muted transition-colors duration-300 hover:border-text-subtle/50 hover:text-text"
+                    >
+                      {t('courses.catalog_show_all', { count: catalogList.length })}
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform duration-500 ease-apple group-hover:translate-x-0.5" />
+                    </button>
+                  </div>
                 )}
               </motion.section>
             )}
