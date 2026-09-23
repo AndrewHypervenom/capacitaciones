@@ -58,6 +58,7 @@ import { useCourseReach } from '@/admin/components/courseReach'
 import { ContentFilterBar, ContentFilterPrompt, useContentFilters } from '@/admin/components/ContentFilterBar'
 import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { getActiveOrgId } from '@/services/org.service'
+import { EntityIcon } from '@/components/ui/EntityIcon'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
@@ -850,7 +851,7 @@ export default function CourseList() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {sortByTitle(sharedWithMe).map((c) => (
               <GlassCard key={c.id} intensity="subtle" padding="none" rounded="2xl" className="flex items-center gap-3 p-4">
-                <span className="text-2xl" aria-hidden>{c.icon}</span>
+                <EntityIcon value={c.icon} fallback="🎓" size={24} className="shrink-0" />
                 <p className="min-w-0 flex-1 truncate text-[14px] font-semibold text-text">{rowText(c)}</p>
                 <Button
                   variant="glass"
