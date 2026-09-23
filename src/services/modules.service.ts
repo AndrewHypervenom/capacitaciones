@@ -966,6 +966,26 @@ export async function getModulesRaw(campaignId: string): Promise<DbModuleRow[]> 
 }
 
 /**
+ * Los módulos de varias campañas en UNA consulta (por tandas: una URL con
+ * cientos de ids da 400). Una consulta por campaña en paralelo se pasaba del
+ * tiempo límite de la base con las reglas por organización y tumbaba la lista.
+ */
+export async function getModulesForCampaigns(campaignIds: string[]): Promise<DbModuleRow[]> {
+  const CHUNK = 50
+  const out: DbModuleRow[] = []
+  for (let i = 0; i < campaignIds.length; i += CHUNK) {
+    const { data, error } = await supabase
+      .from('modules')
+      .select('*, module_sections(id)')
+      .in('campaign_id', campaignIds.slice(i, i + CHUNK))
+      .order('sort_order')
+    if (error) throw error
+    out.push(...((data ?? []) as unknown as DbModuleRow[]))
+  }
+  return out
+}
+
+/**
  * Módulos disponibles para la Biblioteca de módulos: superadmin ve TODOS (para
  * traer cualquier módulo a cualquier curso); el capacitador solo los de las
  * campañas de las que es miembro (casa + colaboraciones). La RLS ya acota, pero

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  getModulesRaw,
+  getModulesForCampaigns,
   toggleModulePublished,
   deleteModule,
   type DbModuleRow,
@@ -93,7 +93,7 @@ export default function ModuleList() {
     if (modules.length === 0) setLoading(true)
     setError(null)
     Promise.all([
-      Promise.all(campaignIds.map((id) => getModulesRaw(id))).then((lists) => lists.flat()),
+      getModulesForCampaigns(campaignIds),
       getAllCourses().catch(() => [] as CourseWithModules[]),
     ])
       .then(([mods, crs]) => {

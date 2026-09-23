@@ -61,11 +61,14 @@ export function useContentFilters() {
   /**
    * ¿Pasa los filtros? `texts` son los textos donde buscar (título propio y,
    * en Módulos, el del curso); `rule` es la regla del curso del que cuelga,
-   * `null` si no cuelga de ninguno.
+   * `null` si no cuelga de ninguno. Lo que no cuelga de un curso no llega a
+   * nadie: país / área / CR no lo esconden (si no, un módulo suelto no se
+   * encontraría nunca para borrarlo); solo lo acotan el texto y el estado.
    */
   const matches = (item: { texts: string[]; isPublished: boolean; rule: AudienceRule | null | undefined }) => {
     if (status !== 'all' && (status === 'published') !== item.isPublished) return false
     if (q && !item.texts.some((s) => fold(s).includes(q))) return false
+    if (item.rule === null) return true
     return reachesFilter(item.rule ?? EMPTY_AUDIENCE, { country, area, cr })
   }
 

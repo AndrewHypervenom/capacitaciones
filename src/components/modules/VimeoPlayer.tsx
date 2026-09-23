@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { loadVimeoPlayerAPI, vimeoEmbedUrl } from '@/lib/vimeo'
-import { mapVimeoError, sdkLoadError, type VideoPlayerError } from '@/lib/videoError'
+import { isBenignVimeoError, mapVimeoError, sdkLoadError, type VideoPlayerError } from '@/lib/videoError'
 import type { PlayerLike } from '@/lib/youtube'
 import { noteActivity } from '@/lib/userActivity'
 
@@ -153,7 +153,8 @@ export function VimeoPlayer({
       player.on('ended', () => cbRef.current.onEnded?.())
       // Fallo con el reproductor ya en pie (se cayó la red a mitad, el CDN no
       // respondió, el video cambió de privacidad).
-      player.on('error', (e: any) => fail(mapVimeoError(e)))
+      // Un play() interrumpido por pause() también llega por aquí y no es fallo.
+      player.on('error', (e: any) => { if (!isBenignVimeoError(e)) fail(mapVimeoError(e)) })
       // Fallo al montar: video borrado, hash de "no listado" que ya no vale, o el
       // dominio no está autorizado en la privacidad del video. El evento `error`
       // no cubre este caso porque el reproductor nunca llega a existir.

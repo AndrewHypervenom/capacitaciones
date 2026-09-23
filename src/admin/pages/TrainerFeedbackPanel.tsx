@@ -1238,7 +1238,7 @@ export const TrainerFeedbackPanel: React.FC = () => {
                 maxWidth={260}
                 label={
                   level === 'cr' ? t('admin.trainer_panel.help_lvl_crs', 'CR = centro de resultados: así llama Talento Humano a la operación donde trabaja la persona. Cada tarjeta agrupa a la gente de esa operación. Ábrela para ver sus cursos.')
-                    : level === 'course' ? t('admin.trainer_panel.help_lvl_courses', 'Los cursos en los que esta gente ha entregado algo. Ábrelo para ver sus módulos.')
+                    : level === 'course' ? t('admin.trainer_panel.help_lvl_courses', 'Los cursos en los que estas personas han entregado algo. Ábrelo para ver sus módulos.')
                     : level === 'module' ? t('admin.trainer_panel.help_lvl_modules', 'Los módulos del curso con entregas. Ábrelo para ver quién entregó.')
                     : level === 'learner' ? t('admin.trainer_panel.help_lvl_learners', 'Las personas que entregaron aquí. Ábrelas para ver su ficha completa.')
                     : t('admin.trainer_panel.help_lvl_activities', 'Cada tarjeta es UNA entrega: una actividad que esta persona resolvió. Ábrela para leer sus respuestas y darle retroalimentación.')

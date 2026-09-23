@@ -43,6 +43,17 @@ export function isRetryable(err: VideoPlayerError): boolean {
 }
 
 /**
+ * Vimeo reenvía por su evento `error` el rechazo del `play()` interno cuando un
+ * `pause()` lo alcanza antes de arrancar ("The play() request was interrupted by
+ * a call to pause()"): un quiz del video que pausa justo al dar play, o un doble
+ * clic. El video está sano y sigue en pausa donde debía; tratarlo como fallo le
+ * tapaba el video al aprendiz con el aviso y generaba reportes falsos de "red".
+ */
+export function isBenignVimeoError(e: unknown): boolean {
+  return ((e ?? {}) as { name?: string }).name === 'AbortError'
+}
+
+/**
  * Errores del SDK de Vimeo. Llegan por dos vías con la misma forma `{ name, message }`:
  * el evento `error` del reproductor ya creado y el rechazo de `player.ready()`
  * cuando el video ni siquiera pudo montarse.
