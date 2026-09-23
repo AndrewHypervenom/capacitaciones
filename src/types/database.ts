@@ -416,6 +416,7 @@ export interface Database {
           cover_url: string | null
           cover_url_mobile: string | null
           cover_url_tablet: string | null
+          cover_url_card: string | null
           cover_fit: 'cover' | 'contain'
           icon: string
           color: string
@@ -464,6 +465,7 @@ export interface Database {
           cover_url?: string | null
           cover_url_mobile?: string | null
           cover_url_tablet?: string | null
+          cover_url_card?: string | null
           cover_fit?: 'cover' | 'contain'
           icon?: string
           color?: string
@@ -512,6 +514,7 @@ export interface Database {
           cover_url?: string | null
           cover_url_mobile?: string | null
           cover_url_tablet?: string | null
+          cover_url_card?: string | null
           cover_fit?: 'cover' | 'contain'
           icon?: string
           color?: string

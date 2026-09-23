@@ -139,7 +139,7 @@ import { DEADLINE_MAX_DAYS, type DeadlineMode } from '@/lib/courseDeadline'
 import type { Campaign, CertConditions, Profile, CourseEvaluationResult, CourseRecertStatus } from '@/types/database'
 import { DEFAULT_CERT_CONDITIONS } from '@/types/database'
 import { GlassCard } from '@/components/ui/GlassCard'
-import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover'
+import { CourseCover, CourseCardCover, courseHasCover, courseHasCardImage, COVER_BOX, CARD_COVER_BOX } from '@/components/course/CourseCover'
 import { LegacyCourseNoticeModal } from '@/components/course/LegacyCourseNotice'
 import { GradientHeading } from '@/components/ui/GradientHeading'
 import { NeonBadge } from '@/components/ui/NeonBadge'
@@ -211,8 +211,9 @@ type Lang = 'es' | 'en' | 'pt'
 
 const COLOR_PRESETS = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#14B8A6']
 
-/** Columnas de portada (una imagen independiente por tipo de pantalla). */
-type CoverSlot = 'cover_url' | 'cover_url_mobile' | 'cover_url_tablet'
+/** Columnas de portada (una imagen independiente por tipo de pantalla) + la
+ *  imagen 16:9 de la tarjeta del catálogo, que no depende de la pantalla. */
+type CoverSlot = 'cover_url' | 'cover_url_mobile' | 'cover_url_tablet' | 'cover_url_card'
 
 /** Metadata de cada slot: rótulo i18n, tamaño recomendado y rango de pantalla. */
 // Cada medida es la proporción EXACTA que COVER_BOX usa en ese rango de
@@ -220,7 +221,7 @@ type CoverSlot = 'cover_url' | 'cover_url_mobile' | 'cover_url_tablet'
 // y sin recorte, tanto en el hero del curso como en las tarjetas.
 // `box` es la proporción de ese slot: la miniatura se ve con la forma real que
 // tendrá la portada en ese dispositivo, no con la del monitor del capacitador.
-const COVER_SLOTS: { slot: CoverSlot; labelKey: string; size: string; range: string; box: string }[] = [
+const COVER_SLOTS: { slot: Exclude<CoverSlot, 'cover_url_card'>; labelKey: string; size: string; range: string; box: string }[] = [
   { slot: 'cover_url_mobile', labelKey: 'admin.courses.cover_slot_mobile', size: '1200×400', range: '<640px', box: 'aspect-[3/1]' },
   { slot: 'cover_url_tablet', labelKey: 'admin.courses.cover_slot_tablet', size: '1680×360', range: '640–895px', box: 'aspect-[14/3]' },
   { slot: 'cover_url', labelKey: 'admin.courses.cover_slot_desktop', size: '1664×320', range: '≥896px', box: 'aspect-[26/5]' },
@@ -3170,7 +3171,75 @@ export default function CourseEditor() {
       {/* ── Información ── */}
       {tab === 'info' && (
         <div className="space-y-5">
-          {/* Portada + vista previa (cómo se verá en la tarjeta, antes de publicar) */}
+          {/* Imagen de la TARJETA (16:9): la del catálogo y el panel del aprendiz.
+              La caja de subida es a la vez la vista previa: sin imagen propia
+              muestra el respaldo que verá el aprendiz (portada sobre desenfoque). */}
+          <GlassCard intensity="subtle" rounded="2xl" className="p-4 space-y-3">
+            <div className="min-w-0">
+              <h2 className="text-[13px] font-semibold text-text">{t('admin.courses.card_image_title')}</h2>
+              <p className="text-[11px] text-text-muted mt-0.5">{t('admin.courses.card_image_hint')}</p>
+            </div>
+            <div className="w-full max-w-sm space-y-1.5">
+              <div className="flex items-baseline justify-between gap-1">
+                <span className="text-[11px] font-semibold text-text">{t('admin.courses.card_image_slot')}</span>
+                <span className="text-[10px] text-text-subtle">{t('admin.courses.card_image_range')}</span>
+              </div>
+              <CoverDropBox
+                box={CARD_COVER_BOX}
+                background={
+                  courseHasCardImage(course)
+                    ? `linear-gradient(120deg, ${form.color}1F, ${form.color}08)`
+                    : `linear-gradient(135deg, ${form.color}40, ${form.color}0D)`
+                }
+                disabled={uploadingSlot === 'cover_url_card'}
+                onFile={(f) => handleCoverUpload(f, 'cover_url_card')}
+                onPick={() => {
+                  coverSlotRef.current = 'cover_url_card'
+                  coverInputRef.current?.click()
+                }}
+              >
+                <CourseCardCover course={course} fit={form.cover_fit} />
+                {uploadingSlot === 'cover_url_card' && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                  </div>
+                )}
+              </CoverDropBox>
+              <p className="text-[10px] text-text-subtle text-center">1280×720 px · 16:9</p>
+              {!course.cover_url_card && courseHasCover(course) && (
+                <p className="text-[11px] text-text-muted">{t('admin.courses.card_image_fallback')}</p>
+              )}
+              <div className="flex gap-1">
+                <Button
+                  variant="glass"
+                  size="sm"
+                  disabled={uploadingSlot === 'cover_url_card'}
+                  onClick={() => {
+                    coverSlotRef.current = 'cover_url_card'
+                    coverInputRef.current?.click()
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 !px-2 !py-1 text-[11px]"
+                >
+                  <ImagePlus className="h-3 w-3" />
+                  {course.cover_url_card ? t('admin.courses.cover_replace') : t('admin.courses.upload_cover')}
+                </Button>
+                {course.cover_url_card && (
+                  <Tooltip label={t('common.remove')} className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleCoverRemove('cover_url_card')}
+                      className="rounded-md border border-line px-1.5 text-text-muted hover:text-danger hover:border-danger/40 transition-colors"
+                      aria-label={t('common.remove')}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* Portada de cabecera, una por tipo de pantalla + vista previa */}
           <GlassCard intensity="subtle" rounded="2xl" className="p-4 space-y-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="min-w-0">
@@ -3180,7 +3249,7 @@ export default function CourseEditor() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {/* Ajuste: Rellenar (recorta) vs Ajustar (muestra completa, sin deformar) — aplica a todas las variantes */}
-                {courseHasCover(course) && (
+                {(courseHasCover(course) || !!course.cover_url_card) && (
                   <div className="flex rounded-lg border border-line p-0.5">
                     {(['cover', 'contain'] as const).map((fit) => (
                       <button
@@ -3279,31 +3348,22 @@ export default function CourseEditor() {
               })}
             </div>
 
-            {/* Simulación de la tarjeta real: mismo alto/proporción + insignia */}
-            <div className="relative w-full max-w-sm">
-              <div
-                className={cn('rounded-xl overflow-hidden border border-line', COVER_BOX)}
-                style={{
-                  background: courseHasCover(course)
-                    ? form.cover_fit === 'contain'
-                      ? `linear-gradient(120deg, ${form.color}22, ${form.color}0A)`
-                      : undefined
-                    : `linear-gradient(120deg, ${form.color}33, ${form.color}0D)`,
-                }}
-              >
-                <CourseCover
-                  course={course}
-                  className={cn('h-full w-full', form.cover_fit === 'contain' ? 'object-contain' : 'object-cover')}
-                />
-              </div>
-              <div
-                className="absolute -bottom-4 left-4 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md"
-                style={{ background: form.color }}
-              >
-                <GraduationCap className="h-5 w-5" />
-              </div>
+            {/* Cómo se ve en la cabecera del curso (misma caja que CoursePage) */}
+            <div
+              className={cn('w-full max-w-lg overflow-hidden rounded-xl border border-line', COVER_BOX)}
+              style={{
+                background: courseHasCover(course)
+                  ? form.cover_fit === 'contain'
+                    ? `linear-gradient(120deg, ${form.color}22, ${form.color}0A)`
+                    : undefined
+                  : `linear-gradient(120deg, ${form.color}33, ${form.color}0D)`,
+              }}
+            >
+              <CourseCover
+                course={course}
+                className={cn('h-full w-full', form.cover_fit === 'contain' ? 'object-contain' : 'object-cover')}
+              />
             </div>
-            <div className="h-3" aria-hidden />
           </GlassCard>
 
           <GlassCard intensity="subtle" rounded="2xl" className="p-4 sm:p-5 space-y-4">

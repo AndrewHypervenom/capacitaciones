@@ -132,9 +132,12 @@ export const COURSE_MEDIA_PRESET: OptimizeOptions = { maxPx: 1600, quality: 0.82
 /**
  * Portada, por tipo de pantalla. Es exactamente el ancho que pide cada slot en
  * el editor (COVER_SLOTS): subir más grande no se ve, solo se descarga.
+ * `cover_url_card` es la imagen 16:9 de la tarjeta del catálogo: la tarjeta
+ * mide ~400px de ancho, 1280 alcanza para pantallas de triple densidad.
  */
-export const COVER_MAX_PX: Record<'cover_url' | 'cover_url_mobile' | 'cover_url_tablet', number> = {
+export const COVER_MAX_PX: Record<'cover_url' | 'cover_url_mobile' | 'cover_url_tablet' | 'cover_url_card', number> = {
   cover_url_mobile: 1200,
   cover_url_tablet: 1680,
   cover_url: 1664,
+  cover_url_card: 1280,
 }

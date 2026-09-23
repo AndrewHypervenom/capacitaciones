@@ -1,9 +1,8 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { AnimatePresence, motion, useMotionTemplate, useMotionValue } from 'framer-motion';
-import { Building2, CalendarClock, CheckCircle2, GraduationCap, Loader2, Lock, Monitor, Plus } from 'lucide-react';
-import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CalendarClock, Loader2, Lock, Monitor, Plus } from 'lucide-react';
 import { useUserStore } from '@/stores/userStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useModuleDone, keyOfCourseModule, type ModuleKey } from '@/stores/progressStore';
@@ -11,8 +10,7 @@ import { invalidateLearnerCoursesCache } from '@/hooks/useLearnerCourses';
 import { selfEnroll, type LearnerCourse } from '@/services/courses.service';
 import { toast } from '@/stores/toastStore';
 import { Tooltip } from '@/components/ui/Tooltip';
-import { stripMarkdown } from '@/components/ui/RichText';
-import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover';
+import { CourseCardCover, courseHasCardImage, CARD_COVER_BOX } from '@/components/course/CourseCover';
 import { cn } from '@/lib/cn';
 import { deadlineInfo, deadlineMode, formatDueDate } from '@/lib/courseDeadline';
 import { blockedByDevice } from '@/lib/device';
@@ -25,11 +23,13 @@ import type { CourseJourney } from '@/lib/courseJourney';
    del aprendiz: antes eran dos tarjetas distintas y el mismo curso se veía de
    dos maneras según por dónde llegaras.
 
-   Lenguaje visual: en reposo, minimal — portada, título, una línea de datos en
-   texto plano y un hilo de progreso de 3px. Nada de cápsulas de colores
-   apiladas. Toda la riqueza vive en la interacción: elevación con resorte,
-   reflejo que sigue al cursor, zoom lento de la portada y un destello que la
-   barre.
+   Lenguaje visual («póster + vitrina», 2026-09-22): la imagen 16:9 ES la
+   tarjeta y se ve completa —el título ya viene escrito en ella—. El avance
+   corre como un hilo por el borde inferior de la imagen y debajo queda una
+   sola franja: porcentaje, pasos y acción. Sin descripción ni birrete. Al
+   pasar el cursor sube un panel de vidrio con el título y los datos; en
+   táctil no hay hover y la tarjeta se queda en su forma de reposo, que ya
+   dice todo lo necesario.
    ──────────────────────────────────────────────────────────────────────────── */
 
 /** Curva corporativa (misma que `ease-apple` de Tailwind y el kit de motion). */
@@ -72,42 +72,6 @@ export function courseProgress(
   return { total, done, pct: total > 0 ? done / total : 0, completed: total > 0 && done === total, journey };
 }
 
-/* ── Anillo de progreso alrededor del emblema ───────────────────────────────
-   Sustituye a la cápsula de estado ("sin empezar / en proceso"): dice lo mismo
-   sin una etiqueta más encima de la portada. */
-function ProgressRing({ pct, color, children }: { pct: number; color: string; children: ReactNode }) {
-  const reduce = useReducedMotion();
-  const R = 22;
-  const C = 2 * Math.PI * R;
-
-  return (
-    <div className="relative h-[52px] w-[52px]">
-      <svg viewBox="0 0 52 52" className="absolute inset-0 -rotate-90" aria-hidden>
-        <circle cx="26" cy="26" r={R} fill="none" stroke="rgb(var(--surface))" strokeWidth="3" />
-        <motion.circle
-          cx="26"
-          cy="26"
-          r={R}
-          fill="none"
-          stroke={color}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray={C}
-          initial={{ strokeDashoffset: reduce ? C * (1 - pct) : C }}
-          animate={{ strokeDashoffset: C * (1 - pct) }}
-          transition={{ duration: reduce ? 0 : 1.1, ease, delay: reduce ? 0 : 0.15 }}
-        />
-      </svg>
-      <div
-        className="absolute inset-[5px] flex items-center justify-center rounded-2xl text-white shadow-sm"
-        style={{ background: color }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export interface CourseCardProps {
   course: LearnerCourse;
   /** Posición en la rejilla: escalona la entrada. */
@@ -137,19 +101,6 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
   const { total, done, pct, completed } = courseProgress(course, isModuleDone, journey);
   const totalMin = course.modules.reduce((acc, m) => acc + m.duration_min, 0);
   const [enrolling, setEnrolling] = useState(false);
-
-  // Reflejo que sigue al cursor, por debajo del contenido: da profundidad sin
-  // teñir el texto.
-  const mx = useMotionValue(-300);
-  const my = useMotionValue(-300);
-  const halo = useMotionTemplate`radial-gradient(320px circle at ${mx}px ${my}px, ${course.color}1F, transparent 70%)`;
-
-  const onMove = (e: MouseEvent<HTMLElement>) => {
-    if (reduce) return;
-    const r = e.currentTarget.getBoundingClientRect();
-    mx.set(e.clientX - r.left);
-    my.set(e.clientY - r.top);
-  };
 
   const handleEnroll = async (e: MouseEvent) => {
     e.preventDefault();
@@ -211,205 +162,210 @@ export function CourseCard({ course, index = 0, onEnrolled, reduce, journey }: C
           ? t('courses.deadline_today')
           : t('courses.deadline_left', { count: deadline.daysLeft });
 
-  const meta = [
+
+  const title = pickCourseText(course.title_es, course.title_en, course.title_pt, language);
+  const pctLabel = `${Math.round(pct * 100)}%`;
+  // Con más de una etapa el texto habla de PASOS, no de módulos: si no, el
+  // porcentaje de al lado (que ya cuenta el curso entero) y esta frase
+  // contarían cosas distintas.
+  const stepsText =
+    journey && journey.present.length > 1
+      ? t('courses.journey_steps', { done: journey.done, count: journey.total })
+      : t('courses.progress', { done, count: total });
+
+  // Franja de abajo: lo mínimo para decidir sin abrir el curso. El panel de
+  // vidrio repite los datos completos al pasar el cursor.
+  const stripMeta = [totalMin > 0 ? `${totalMin} min` : null, t(`courses.level_${course.level}`)].filter(
+    Boolean,
+  ) as string[];
+  const panelMeta = [
     t('courses.modules_count', { count: total }),
     totalMin > 0 ? `${totalMin} min` : null,
     t(`courses.level_${course.level}`),
   ].filter(Boolean) as string[];
+  // Al APRENDIZ le mostramos la CATEGORÍA —de qué trata el curso—. Al staff no
+  // en sus propios cursos asignados: el programa se retiró del sitio (09-16).
+  const category = course.category_name && !(isStaff && course.isAssigned) ? course.category_name : null;
+  const hasImage = courseHasCardImage(course);
 
   return (
     <MotionLink
       to={`/courses/${course.slug}`}
       state={{ from: 'courses' }}
+      aria-label={title}
       layout={reduce ? undefined : 'position'}
       initial={reduce ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={reduce ? undefined : { opacity: 0, scale: 0.97, transition: { duration: 0.18 } }}
       transition={{ duration: 0.5, ease, delay: reduce ? 0 : Math.min(index * 0.04, 0.24) }}
       whileHover={reduce ? undefined : { y: -5 }}
-      onMouseMove={onMove}
-      className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface transition-shadow duration-500 ease-apple hover:shadow-card-hover"
+      className="group relative flex h-full flex-col overflow-hidden rounded-[20px] border border-line bg-surface transition-shadow duration-500 ease-apple hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
-      {!reduce && (
-        <motion.span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-          style={{ background: halo }}
-        />
-      )}
-
-      {/* Portada. El recorte (overflow-hidden) va en una capa interna: si lo
-          ponemos aquí, el emblema que sobresale por abajo queda cortado. */}
-      <div className={`relative shrink-0 ${COVER_BOX}`}>
-        <div
-          className="absolute inset-0 overflow-hidden"
-          style={{
-            background: courseHasCover(course)
-              ? course.cover_fit === 'contain'
-                ? `linear-gradient(120deg, ${course.color}1F, ${course.color}08)`
-                : undefined
-              : `linear-gradient(120deg, ${course.color}33, ${course.color}0A)`,
-          }}
-        >
-          <CourseCover
+      {/* Imagen 16:9 completa: ver CourseCardCover para el respaldo cuando el
+          curso todavía no tiene imagen de tarjeta. */}
+      <div
+        className={`relative shrink-0 overflow-hidden ${CARD_COVER_BOX}`}
+        style={{
+          background: hasImage
+            ? `linear-gradient(120deg, ${course.color}1F, ${course.color}08)`
+            : `linear-gradient(135deg, ${course.color}40, ${course.color}0D)`,
+        }}
+      >
+        {hasImage ? (
+          <CourseCardCover
             course={course}
-            alt={pickCourseText(course.title_es, course.title_en, course.title_pt, language)}
-            className={`h-full w-full transition-transform duration-[900ms] ease-apple group-hover:scale-[1.06] ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`}
+            alt={title}
+            fit={course.cover_fit}
             loading="lazy"
+            className="transition-transform duration-[900ms] ease-apple group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           />
-          {/* Destello que barre la portada al pasar el cursor */}
-          {!reduce && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-12 bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 transition-all duration-[900ms] ease-apple group-hover:left-[110%] group-hover:opacity-100"
-            />
-          )}
-        </div>
+        ) : (
+          // Sin ninguna imagen: el título va sobre el degradado del curso, porque
+          // la tarjeta no lo repite en texto en reposo.
+          <div className="absolute inset-0 flex items-center px-6">
+            <span className="line-clamp-3 text-balance text-[20px] font-semibold leading-tight tracking-tight text-text">
+              {title}
+            </span>
+          </div>
+        )}
 
-        <div className="absolute -bottom-6 left-4 z-10">
-          <ProgressRing pct={course.isAssigned ? pct : 0} color={course.color}>
-            {completed ? <CheckCircle2 className="h-5 w-5" /> : <GraduationCap className="h-5 w-5" />}
-          </ProgressRing>
-        </div>
+        {/* Destello que barre la imagen al pasar el cursor */}
+        {!reduce && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-12 bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 transition-all duration-[900ms] ease-apple group-hover:left-[110%] group-hover:opacity-100"
+          />
+        )}
 
         {badge && (
           <span
             className={cn(
               'absolute top-3 right-3 z-10 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm',
               badge.tone === 'danger'
-                ? 'bg-danger/15 ring-1 ring-inset ring-danger/50'
+                ? 'bg-danger/35 ring-1 ring-inset ring-danger/70'
                 : badge.tone === 'warn'
-                  ? 'bg-amber-500/20 ring-1 ring-inset ring-amber-500/50'
-                  : 'bg-primary/15 ring-1 ring-inset ring-primary/50',
+                  ? 'bg-amber-500/35 ring-1 ring-inset ring-amber-500/70'
+                  : 'bg-primary/30 ring-1 ring-inset ring-primary/70',
             )}
           >
             {badge.text}
           </span>
         )}
-      </div>
 
-      <div className="relative z-10 flex flex-1 flex-col px-5 pt-9 pb-5">
-        <h3 className="mb-1.5 text-[16px] font-semibold leading-snug tracking-tight text-text">
-          {pickCourseText(course.title_es, course.title_en, course.title_pt, language)}
-        </h3>
-        <p className="mb-4 line-clamp-2 text-[13px] leading-relaxed text-text-muted">
-          {stripMarkdown(
-            pickCourseText(course.description_es, course.description_en, course.description_pt, language),
-          )}
-        </p>
-
-        <div className="mt-auto">
-          {/* Datos en texto plano separados por puntos: la misma información que
-              tres cápsulas de colores, sin el ruido. */}
-          <div className="mb-3 flex flex-wrap items-center gap-x-1.5 text-[12px] text-text-subtle">
-            {meta.map((m, i) => (
-              <span key={m} className="inline-flex items-center gap-1.5">
-                {i > 0 && <span className="text-text-subtle/50">·</span>}
-                {m}
-              </span>
-            ))}
-            {/* Al APRENDIZ le mostramos la CATEGORÍA —de qué trata el curso—, que
-                es lo que le sirve para orientarse y filtrar. La campaña dueña es
-                información de gestión y desapareció de su vista: no le decía
-                nada y le hacía preguntarse a qué "programa" pertenecía.
-                Al staff tampoco: el programa se retiró del sitio (2026-09-16).
-                El Tooltip vive en un portal: el nombre completo no se recorta. */}
-            {(() => {
-              const etiqueta = course.category_name
-              if (!etiqueta) return null
-              if (isStaff && course.isAssigned) return null
-              return (
-                <Tooltip label={etiqueta}>
-                  <span className="ml-auto inline-flex max-w-[9rem] items-center gap-1 text-text-subtle">
-                    <Building2 className="h-3 w-3 shrink-0" aria-hidden />
-                    <span className="truncate">{etiqueta}</span>
-                  </span>
-                </Tooltip>
-              )
-            })()}
-          </div>
-
-          {deadlineText && (
-            <div
-              className={cn(
-                'mb-2.5 inline-flex items-center gap-1.5 text-[11.5px] font-medium',
-                deadline.state === 'overdue' || deadline.state === 'soon'
-                  ? 'text-danger'
-                  : 'text-text-subtle',
-              )}
-            >
-              {deadline.blocked ? (
-                <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              ) : (
-                <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              )}
-              {deadline.dueMs !== null ? (
-                <Tooltip label={formatDueDate(deadline.dueMs, language)}>
-                  <span>{deadlineText}</span>
-                </Tooltip>
-              ) : (
-                <span>{deadlineText}</span>
-              )}
-            </div>
-          )}
-
-          {course.desktop_only === true && (
-            <div
-              className={cn(
-                'mb-2.5 inline-flex items-center gap-1.5 text-[11.5px] font-medium',
-                deviceBlocked ? 'text-amber-600 dark:text-amber-400' : 'text-text-subtle',
-              )}
-            >
-              <Monitor className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              {deviceBlocked ? t('courses.desktop_only_blocked') : t('courses.desktop_only_note')}
-            </div>
-          )}
-
-          <div className="mb-2.5 h-[3px] w-full overflow-hidden rounded-full bg-subtle">
+        {/* Hilo de avance por el borde de la imagen. Se atenúa cuando sube el
+            panel para no competir con él. */}
+        {course.isAssigned && (
+          <div className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/25 transition-opacity duration-500 group-hover:opacity-[.35]">
             <motion.div
-              className="h-full rounded-full"
-              style={{ background: course.color }}
-              initial={{ width: reduce ? `${Math.round(pct * 100)}%` : 0 }}
-              animate={{ width: `${Math.round(pct * 100)}%` }}
+              className="h-full bg-primary shadow-[0_0_10px_rgba(16,212,81,0.7)]"
+              initial={{ width: reduce ? pctLabel : 0 }}
+              animate={{ width: pctLabel }}
               transition={{ duration: reduce ? 0 : 0.9, ease, delay: reduce ? 0 : 0.2 }}
             />
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] tabular-nums text-text-subtle">
-              {/* Con más de una etapa el texto habla de PASOS, no de módulos: si
-                  no, el número de al lado (que ya cuenta el curso entero) y esta
-                  frase contarían cosas distintas. */}
-              {journey && journey.present.length > 1
-                ? t('courses.journey_steps', { done: journey.done, count: journey.total })
-                : t('courses.progress', { done, count: total })}
-            </span>
+        )}
+
+        {/* Panel de vidrio: título y datos al pasar el cursor (o al llegar con
+            el teclado). Vive dentro del overflow-hidden, que lo esconde abajo. */}
+        <div className="pointer-events-none absolute inset-x-2.5 bottom-3.5 z-20 grid translate-y-[calc(100%+20px)] gap-1 rounded-[14px] bg-black/60 px-3 py-2.5 text-white backdrop-blur-md transition-transform duration-[550ms] ease-apple group-hover:translate-y-0 group-focus-visible:translate-y-0 motion-reduce:transition-none">
+          <span className="truncate text-[13px] font-semibold leading-snug">{title}</span>
+          <span className="flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-white/80">
+            {panelMeta.map((m, i) => (
+              <span key={m} className="inline-flex items-center gap-1.5">
+                {i > 0 && <span className="text-white/40">·</span>}
+                {m}
+              </span>
+            ))}
+            {category && (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <span className="text-white/40">·</span>
+                <span className="truncate">{category}</span>
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Franja: avance y acción */}
+      <div className="flex flex-1 flex-col justify-center gap-2 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="grid min-w-0 gap-0.5">
             {course.isAssigned ? (
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 text-[13px] font-medium',
-                  completed ? 'text-primary' : 'text-text',
-                )}
-              >
-                {completed
-                  ? t('courses.cta_review')
-                  : done > 0
-                    ? t('courses.cta_continue')
-                    : t('courses.cta_start')}
-                <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">→</span>
+              <span className="flex items-baseline gap-1.5 text-[13px] font-bold tabular-nums text-text">
+                {pctLabel}
+                <span className="truncate text-[12px] font-medium text-text-subtle">{stepsText}</span>
               </span>
             ) : (
-              <motion.button
-                onClick={handleEnroll}
-                disabled={enrolling}
-                whileTap={reduce ? undefined : { scale: 0.94 }}
-                className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-[12px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary disabled:opacity-60"
-              >
-                {enrolling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                {t('courses.enroll')}
-              </motion.button>
+              <span className="text-[13px] font-semibold text-text">
+                {t('courses.modules_count', { count: total })}
+              </span>
+            )}
+            <span className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-text-subtle">
+              {stripMeta.map((m, i) => (
+                <span key={m} className="inline-flex items-center gap-1.5">
+                  {i > 0 && <span className="text-text-subtle/50">·</span>}
+                  {m}
+                </span>
+              ))}
+            </span>
+          </div>
+
+          {course.isAssigned ? (
+            <span
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold',
+                completed ? 'text-primary' : 'text-text',
+              )}
+            >
+              {completed ? t('courses.cta_review') : done > 0 ? t('courses.cta_continue') : t('courses.cta_start')}
+              <span className="transition-transform duration-500 ease-apple group-hover:translate-x-1">→</span>
+            </span>
+          ) : (
+            <motion.button
+              onClick={handleEnroll}
+              disabled={enrolling}
+              whileTap={reduce ? undefined : { scale: 0.94 }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1 text-[12px] font-medium text-text-muted transition-colors duration-300 hover:border-primary/50 hover:text-primary disabled:opacity-60"
+            >
+              {enrolling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              {t('courses.enroll')}
+            </motion.button>
+          )}
+        </div>
+
+        {deadlineText && (
+          <div
+            className={cn(
+              'inline-flex items-center gap-1.5 text-[11.5px] font-medium',
+              deadline.state === 'overdue' || deadline.state === 'soon' ? 'text-danger' : 'text-text-subtle',
+            )}
+          >
+            {deadline.blocked ? (
+              <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            ) : (
+              <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            )}
+            {deadline.dueMs !== null ? (
+              <Tooltip label={formatDueDate(deadline.dueMs, language)}>
+                <span>{deadlineText}</span>
+              </Tooltip>
+            ) : (
+              <span>{deadlineText}</span>
             )}
           </div>
-        </div>
+        )}
+
+        {course.desktop_only === true && (
+          <div
+            className={cn(
+              'inline-flex items-center gap-1.5 text-[11.5px] font-medium',
+              deviceBlocked ? 'text-amber-600 dark:text-amber-400' : 'text-text-subtle',
+            )}
+          >
+            <Monitor className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {deviceBlocked ? t('courses.desktop_only_blocked') : t('courses.desktop_only_note')}
+          </div>
+        )}
       </div>
     </MotionLink>
   );

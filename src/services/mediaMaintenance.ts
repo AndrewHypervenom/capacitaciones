@@ -5,7 +5,7 @@
  * navegador antes de subir. Esto es la otra mitad: lo que lleva meses en los
  * buckets y sigue siendo el PNG original de 6 MB. Barre TODO el sitio:
  *
- *   · portadas de curso        courses.cover_url / _tablet / _mobile
+ *   · portadas de curso        courses.cover_url / _tablet / _mobile / _card
  *   · medios de sección        module_sections.media_url (solo las de tipo imagen)
  *   · imágenes de los bloques  module_sections.blocks_data → image / hotspot
  *                              (incluidas las anidadas dentro de `columns`)
@@ -50,7 +50,7 @@ export interface SiteImageProgress {
 }
 
 type CoverSlot = keyof typeof COVER_MAX_PX
-const COVER_SLOTS: CoverSlot[] = ['cover_url', 'cover_url_tablet', 'cover_url_mobile']
+const COVER_SLOTS: CoverSlot[] = ['cover_url', 'cover_url_tablet', 'cover_url_mobile', 'cover_url_card']
 
 /** Dónde está usada una imagen. Al final hay que repuntar cada uno de estos. */
 type Ref =
@@ -185,7 +185,7 @@ async function scan(scopes: MediaScope[]): Promise<Job[]> {
 
   if (scopes.includes('covers')) {
     const rows = await fetchAllRows<Record<string, string | null>>(
-      'courses', 'id, cover_url, cover_url_tablet, cover_url_mobile',
+      'courses', 'id, cover_url, cover_url_tablet, cover_url_mobile, cover_url_card',
     )
     for (const row of rows) {
       for (const slot of COVER_SLOTS) add(row[slot], { kind: 'cover', courseId: row.id!, slot })

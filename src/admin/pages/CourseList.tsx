@@ -31,8 +31,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { FileDropZone } from '@/components/ui/FileDropZone'
 import { Modal } from '@/components/ui/Modal'
 import { OptionToggleRow } from '@/components/ui/OptionToggleRow'
-import { CourseCover, courseHasCover, COVER_BOX } from '@/components/course/CourseCover'
-import { stripMarkdown } from '@/components/ui/RichText'
+import { CourseCardCover, courseHasCardImage, CARD_COVER_BOX } from '@/components/course/CourseCover'
 import { RichTextArea } from '@/components/ui/RichTextArea'
 import { FadeIn, PulseHint } from '@/components/ui/motion'
 import { GradientHeading } from '@/components/ui/GradientHeading'
@@ -657,29 +656,44 @@ export default function CourseList() {
               )}
               padding="none"
             >
-              {/* Portada / franja de color. El estado (publicado/borrador) va
-                  sobre la portada como pastilla de vidrio: se lee de un vistazo
-                  y deja el título libre en una sola línea. */}
+              {/* Imagen de la tarjeta, 16:9 completa: la misma que ve el aprendiz
+                  en el catálogo (estilo «póster + vitrina», 2026-09-22). El
+                  estado (publicado/borrador) va encima como pastilla de vidrio y
+                  el título sube en un panel al pasar el cursor. */}
               <div
-                className={`relative ${COVER_BOX}`}
+                className={`relative shrink-0 overflow-hidden ${CARD_COVER_BOX}`}
                 style={{
-                  background: courseHasCover(course)
-                    ? course.cover_fit === 'contain'
-                      ? `linear-gradient(120deg, ${course.color}22, ${course.color}0A)`
-                      : undefined
-                    : `linear-gradient(120deg, ${course.color}44, ${course.color}0D)`,
+                  background: courseHasCardImage(course)
+                    ? `linear-gradient(120deg, ${course.color}1F, ${course.color}08)`
+                    : `linear-gradient(135deg, ${course.color}40, ${course.color}0D)`,
                 }}
               >
-                <CourseCover course={course} className={`h-full w-full ${course.cover_fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
-                {/* Velo inferior: asegura contraste del avatar y del borde con el cuerpo */}
-                <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-black/45 to-transparent pointer-events-none" />
-                <div
-                  className="absolute -bottom-5 left-4 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg ring-2 ring-bg/70 transition-transform duration-300 ease-apple group-hover:scale-105"
-                  style={{ background: course.color }}
-                >
-                  <GraduationCap className="h-5 w-5" />
+                {courseHasCardImage(course) ? (
+                  <CourseCardCover
+                    course={course}
+                    alt={rowText(course)}
+                    fit={course.cover_fit}
+                    loading="lazy"
+                    className="transition-transform duration-[900ms] ease-apple group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center px-6">
+                    <span className="line-clamp-3 text-balance text-[20px] font-semibold leading-tight tracking-tight text-text">
+                      {rowText(course)}
+                    </span>
+                  </div>
+                )}
+                {/* Panel de vidrio con el título: dentro del overflow-hidden,
+                    que lo esconde por debajo hasta el hover. */}
+                <div className="pointer-events-none absolute inset-x-2.5 bottom-3.5 z-20 grid translate-y-[calc(100%+20px)] gap-1 rounded-[14px] bg-black/60 px-3 py-2.5 text-white backdrop-blur-md transition-transform duration-[550ms] ease-apple group-hover:translate-y-0 group-focus-within:translate-y-0 motion-reduce:transition-none">
+                  <span className="truncate text-[13px] font-semibold leading-snug">{rowText(course)}</span>
+                  <span className="text-[11.5px] text-white/80">
+                    {t('admin.courses.modules_count', { count: course.modules.length })}
+                    <span className="mx-1.5 text-white/40">·</span>
+                    {t(`admin.courses.level_${course.level}`)}
+                  </span>
                 </div>
-                <div className="absolute top-2 left-2">
+                <div className="absolute top-2 left-2 z-10">
                   <span
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide backdrop-blur-sm',
@@ -697,20 +711,14 @@ export default function CourseList() {
                     {course.is_published ? t('admin.courses.published') : t('admin.courses.draft')}
                   </span>
                 </div>
-                <div className="absolute top-2 right-2">
+                <div className="absolute top-2 right-2 z-10">
                   <ResourcePresence type="course" id={course.id} />
                 </div>
               </div>
 
-              <div className="flex-1 px-4 pt-8 pb-4">
-                <h3 className="text-[15px] font-semibold text-text leading-snug line-clamp-1 mb-1">
-                  {rowText(course)}
-                </h3>
-                {rowText(course, 'description') && (
-                  <p className="text-[12px] leading-relaxed text-text-muted line-clamp-2 mb-3">
-                    {stripMarkdown(rowText(course, 'description'))}
-                  </p>
-                )}
+              {/* Sin título ni descripción en reposo: el título ya viene en la
+                  imagen y sube en el panel al pasar el cursor. */}
+              <div className="flex-1 px-4 pt-3 pb-3">
                 {/* Datos del curso como pastillas: cada dato se lee solo, sin
                     puntos medios que se confunden con separadores de acciones. */}
                 <div className="flex items-center gap-1.5 flex-wrap">

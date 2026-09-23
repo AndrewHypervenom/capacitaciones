@@ -33,6 +33,68 @@ export interface CourseCoverSources {
   cover_url?: string | null
   cover_url_mobile?: string | null
   cover_url_tablet?: string | null
+  /** Imagen 16:9 de la tarjeta (catálogo / panel). No entra en COVER_BOX. */
+  cover_url_card?: string | null
+}
+
+/** Caja de la tarjeta del curso: 16:9 en todas las pantallas (1280×720). */
+export const CARD_COVER_BOX = 'w-full min-h-0 aspect-video'
+
+/** ¿La tarjeta tiene algo que pintar (su imagen propia o una portada de respaldo)? */
+export function courseHasCardImage(c: CourseCoverSources): boolean {
+  return Boolean(c.cover_url_card) || courseHasCover(c)
+}
+
+/**
+ * Imagen de la TARJETA. Con `cover_url_card` la pinta tal cual. Sin ella cae a
+ * la portada de cabecera, que es una franja: recortada a 16:9 solo se vería un
+ * tercio del ancho, así que va completa (contain) sobre una copia desenfocada
+ * de sí misma. De respaldo se prefiere la de celular (3:1): es la franja más
+ * alta y la que más llena la caja.
+ */
+export function CourseCardCover({
+  course,
+  className = '',
+  alt = '',
+  loading,
+  fit = 'cover',
+}: {
+  course: CourseCoverSources
+  /** Clases extra del <img> principal (p. ej. el zoom al pasar el cursor). */
+  className?: string
+  alt?: string
+  loading?: 'lazy' | 'eager'
+  fit?: 'cover' | 'contain'
+}) {
+  if (course.cover_url_card) {
+    return (
+      <img
+        src={course.cover_url_card}
+        alt={alt}
+        loading={loading}
+        className={`h-full w-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} ${className}`}
+      />
+    )
+  }
+  const banner = course.cover_url_mobile || course.cover_url_tablet || course.cover_url
+  if (!banner) return null
+  return (
+    <>
+      <img
+        src={banner}
+        alt=""
+        aria-hidden
+        loading={loading}
+        className="absolute inset-0 h-full w-full scale-125 object-cover opacity-70 blur-2xl"
+      />
+      <img
+        src={banner}
+        alt={alt}
+        loading={loading}
+        className={`relative h-full w-full object-contain ${className}`}
+      />
+    </>
+  )
 }
 
 /** ¿El curso tiene al menos una portada (en cualquier resolución)? */
