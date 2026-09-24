@@ -1177,12 +1177,16 @@ export default function CoursePage() {
         <SectionHead title={t('courses.content_title')} subtitle={t('courses.content_subtitle')} />
       </FadeIn>
 
-      {/* Lista, no rejilla de tarjetas: cada modulo es una fila separada por un
-          hairline. La jerarquia la marca el estado del numero, no un borde de
-          color por fila. */}
-      <FadeIn delay={0.05} className="divide-y divide-line border-y border-line">
+      {/* Rejilla de tarjetas numeradas: con mas de un modulo van en dos
+          columnas (de izquierda a derecha, fila a fila) y cada tarjeta lleva su
+          numero siempre visible, para que el orden del recorrido se lea de un
+          vistazo. Las paradas de practica ocupan la fila entera, en su punto. */}
+      <FadeIn
+        delay={0.05}
+        className={cn('grid grid-cols-1 gap-3', items.length > 1 && 'md:grid-cols-2')}
+      >
         {items.length === 0 && (
-          <div className="py-12 text-center text-[13.5px] text-text-muted">
+          <div className="col-span-full rounded-2xl border border-line py-12 text-center text-[13.5px] text-text-muted">
             {t('courses.no_modules')}
           </div>
         )}
@@ -1190,20 +1194,21 @@ export default function CoursePage() {
         {/* Práctica "al inicio": va ANTES del módulo 1, abierta desde el primer
             día. Su sitio en la lista ES el mensaje. */}
         {startStops.map((stop, i) => (
-          <PracticeStop
-            key={stop.key}
-            kind={stop.kind}
-            title={stop.title}
-            summary={stop.summary}
-            unlocked
-            unlockModuleTitle=""
-            passScore={stop.passScore}
-            difficulty={stop.difficulty}
-            level={stop.level}
-            color={course.color}
-            index={i}
-            onStart={() => goToSim(stop.pick)}
-          />
+          <div key={stop.key} className="col-span-full overflow-hidden rounded-2xl border border-line">
+            <PracticeStop
+              kind={stop.kind}
+              title={stop.title}
+              summary={stop.summary}
+              unlocked
+              unlockModuleTitle=""
+              passScore={stop.passScore}
+              difficulty={stop.difficulty}
+              level={stop.level}
+              color={course.color}
+              index={i}
+              onStart={() => goToSim(stop.pick)}
+            />
+          </div>
         ))}
 
         {items.map(({ module, status }, idx) => {
@@ -1217,34 +1222,44 @@ export default function CoursePage() {
             <Wrapper
               {...wrapperProps}
               className={cn(
-                'group flex items-center gap-4 px-2 py-4 transition-colors duration-300 sm:px-3',
+                'group flex h-full flex-col gap-3 rounded-2xl border p-4 transition-colors duration-300 sm:p-5',
+                status === 'available' ? 'border-transparent' : 'border-line',
                 interactive ? 'cursor-pointer hover:bg-subtle/60' : 'opacity-50',
               )}
+              style={
+                status === 'available'
+                  ? { boxShadow: `inset 0 0 0 1.5px ${course.color}` }
+                  : undefined
+              }
             >
-              {/* Estado */}
-              <div
-                className={cn(
-                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-medium tabular-nums transition-colors duration-300',
-                  status === 'completed' && 'bg-primary/10 text-primary',
-                  status === 'available' && 'text-white',
-                  status === 'locked' && 'bg-subtle text-text-subtle',
-                )}
-                style={status === 'available' ? { background: course.color } : undefined}
-              >
+              <div className="flex items-center gap-3">
+                {/* Numero: siempre visible; el color dice el estado */}
+                <div
+                  className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold tabular-nums transition-colors duration-300',
+                    status === 'completed' && 'bg-primary/10 text-primary',
+                    status === 'available' && 'text-white',
+                    status === 'locked' && 'bg-subtle text-text-subtle',
+                  )}
+                  style={status === 'available' ? { background: course.color } : undefined}
+                >
+                  {idx + 1}
+                </div>
+                <span className="flex-1 text-[11.5px] font-medium uppercase tracking-wide text-text-subtle">
+                  {t('module.of_modules', { idx: idx + 1, total: items.length })}
+                </span>
                 {status === 'completed' ? (
-                  <Check className="h-4 w-4" strokeWidth={3} />
+                  <Check className="h-4 w-4 text-primary" strokeWidth={3} />
                 ) : status === 'locked' ? (
-                  <Lock className="h-3.5 w-3.5" />
-                ) : (
-                  idx + 1
-                )}
+                  <Lock className="h-3.5 w-3.5 text-text-subtle" />
+                ) : null}
               </div>
 
               <div className="min-w-0 flex-1">
-                <h3 className="truncate text-[14.5px] font-medium tracking-tight text-text">
-                  {pickText(module.title_es, module.title_en, module.title_pt, language)}
+                <h3 className="line-clamp-2 text-[14.5px] font-medium tracking-tight text-text">
+                  {moduleTitle}
                 </h3>
-                <p className="truncate text-[12.5px] text-text-muted">
+                <p className="mt-0.5 line-clamp-2 text-[12.5px] text-text-muted">
                   {status === 'locked'
                     ? deadline.blocked
                       ? t('courses.deadline_module_locked_hint')
@@ -1253,14 +1268,15 @@ export default function CoursePage() {
                 </p>
               </div>
 
-              <div className="flex shrink-0 items-center gap-3 text-[12px] text-text-subtle">
-                <span className="hidden tabular-nums sm:inline">{module.duration_min} min</span>
+              <div className="flex items-center gap-3 text-[12px] text-text-subtle">
+                <span className="tabular-nums">{module.duration_min} min</span>
+                <span className="flex-1" />
                 {status === 'completed' && (
                   <>
                     {/* El modulo terminado deja de ser un callejon sin salida:
                         dice que se lleva por volver, o que ya lo cobro hoy. */}
                     {reviewedTodayIn(module) ? (
-                      <span className="hidden sm:inline">{t('courses.review_done_today', 'Repasado hoy')}</span>
+                      <span>{t('courses.review_done_today', 'Repasado hoy')}</span>
                     ) : (
                       <span
                         className={cn(
@@ -1284,20 +1300,21 @@ export default function CoursePage() {
             {/* Paradas de práctica que cuelgan de este módulo: van AQUÍ, dentro
                 del recorrido, no en una sección aparte al final. */}
             {stops.map((stop, i) => (
-              <PracticeStop
-                key={stop.key}
-                kind={stop.kind}
-                title={stop.title}
-                summary={stop.summary}
-                unlocked={moduleDone(module.id)}
-                unlockModuleTitle={moduleTitle}
-                passScore={stop.passScore}
-                difficulty={stop.difficulty}
-                level={stop.level}
-                color={course.color}
-                index={i}
-                onStart={() => goToSim(stop.pick)}
-              />
+              <div key={stop.key} className="col-span-full overflow-hidden rounded-2xl border border-line">
+                <PracticeStop
+                  kind={stop.kind}
+                  title={stop.title}
+                  summary={stop.summary}
+                  unlocked={moduleDone(module.id)}
+                  unlockModuleTitle={moduleTitle}
+                  passScore={stop.passScore}
+                  difficulty={stop.difficulty}
+                  level={stop.level}
+                  color={course.color}
+                  index={i}
+                  onStart={() => goToSim(stop.pick)}
+                />
+              </div>
             ))}
             </React.Fragment>
           );

@@ -1937,6 +1937,10 @@ export interface Database {
           description_pt: string | null
           steps_en: Json | null
           steps_pt: Json | null
+          course_id: string | null
+          level: string | null
+          deleted_at: string | null
+          deleted_by: string | null
         }
         Insert: {
           id?: string
@@ -1961,6 +1965,10 @@ export interface Database {
           description_pt?: string | null
           steps_en?: Json | null
           steps_pt?: Json | null
+          course_id?: string | null
+          level?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
         }
         Update: {
           id?: string
@@ -1985,6 +1993,10 @@ export interface Database {
           description_pt?: string | null
           steps_en?: Json | null
           steps_pt?: Json | null
+          course_id?: string | null
+          level?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
         }
         Relationships: []
       }
