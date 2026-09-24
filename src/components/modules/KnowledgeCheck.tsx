@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 import { playQuizSound } from '@/lib/sound';
 import { shuffledIndicesMoved } from '@/lib/quizShuffle';
 import { saveActivityAttempt } from '@/services/activity.service';
+import { toast } from '@/stores/toastStore';
 import {
   DEFAULT_QUIZ_POLICY,
   hasAttemptsLeft,
@@ -231,13 +232,39 @@ export function KnowledgeCheck({
     [optionCount, language, shuffleSeed],
   );
 
+  /**
+   * Opción que se está guardando. Mientras tanto el quiz NO está respondido:
+   * solo se da por respondido cuando la base confirma el intento.
+   *
+   * Antes se marcaba respondido en el navegador y el guardado iba aparte, sin
+   * esperar. Si fallaba, el quiz se veía contestado para siempre —no se podía
+   * volver a responder— pero la base no lo tenía, así que la compuerta del
+   * módulo lo seguía pidiendo y el aprendiz se quedaba trabado sin salida.
+   */
+  const [saving, setSaving] = useState<number | null>(null);
+
+  /** Guarda el intento y dice si la base lo confirmó de verdad. */
+  const persistAttempt = async (payload: Record<string, unknown>): Promise<boolean> => {
+    const { data, error } = await saveActivityAttempt({
+      user_id: userId,
+      campaign_id: campaignId,
+      module_id: moduleId,
+      section_id: sectionId || '',
+      game_type: 'KNOWLEDGE_CHECK',
+      time_spent_seconds: 0,
+      ...payload,
+    });
+    // `data` vacío = la operación no tocó ninguna fila: tampoco quedó guardado.
+    const ok = !error && Array.isArray(data) && data.length > 0;
+    if (!ok) toast.error(t('module.check_save_failed'));
+    return ok;
+  };
+
   // ─── ELEGIR OPCIÓN ────────────────────────────────────────────────────────
-  const choose = (i: number) => {
-    if (selected !== null) return;
+  const choose = async (i: number) => {
+    if (selected !== null || saving !== null) return;
     // Sin intentos solo se puede responder en modo práctica, y eso no puntúa.
     if (!practice && !hasAttemptsLeft(attemptsUsed, policy)) return;
-
-    setSelected(i);
 
     /* ── Modo práctica ────────────────────────────────────────────────────
        La NOTA ya está cerrada y no se toca: no gasta intento y su puntaje no
@@ -251,14 +278,9 @@ export function KnowledgeCheck({
        se convertía en setecientos desbloqueos a mano. */
     if (practice) {
       const ok = i === quiz.correct;
-      playQuizSound(ok ? 'correct' : 'wrong');
       if (userId && campaignId) {
-        void saveActivityAttempt({
-          user_id: userId,
-          campaign_id: campaignId,
-          module_id: moduleId,
-          section_id: sectionId || '',
-          game_type: 'KNOWLEDGE_CHECK',
+        setSaving(i);
+        const saved = await persistAttempt({
           /* Resolverlo aquí vale el MÍNIMO del módulo, no 0: el XP ya se
              perdió entero al agotar los intentos, y hundir además la nota es
              lo que dejaba el módulo cerrado y obligaba a desbloquear gente a
@@ -266,7 +288,6 @@ export function KnowledgeCheck({
              se queda con el mejor intento, no le quita nada ya ganado. */
           score: recordedScore(ok ? 100 : 0, 0, policy.minScore),
           status: ok ? 'completed' : 'failed',
-          time_spent_seconds: 0,
           submitted_answers: {
             quiz_key: quizKey ?? null,
             opcion_index: i,
@@ -280,16 +301,18 @@ export function KnowledgeCheck({
               : 'Practicando tras agotar los intentos: falló',
           },
         });
+        setSaving(null);
+        if (!saved) return; // sigue sin responder: puede volver a elegir
       }
+      setSelected(i);
+      playQuizSound(ok ? 'correct' : 'wrong');
       return;
     }
 
-    // 1. Actualizar estado local y store
-    recordCheck(moduleId, storeKey, i);
-    // Este intento ya se gastó, se acierte o no.
-    const usedNow = spendQuizAttempt(moduleId, storeKey);
-
     const isCorrectAnswer = i === quiz.correct;
+    // Número que tendrá este intento. Se gasta de verdad (spendQuizAttempt)
+    // solo cuando la base lo confirma: un guardado fallido no cuesta intento.
+    const usedNow = (useProgressStore.getState().quizAttempts[moduleId]?.[storeKey] ?? 0) + 1;
     /* Dos cosas distintas, y solo una puede llegar a cero:
        · La NOTA baja con el intento pero tiene SUELO en el mínimo del módulo,
          para que resolverlo nunca impida completar.
@@ -298,6 +321,46 @@ export function KnowledgeCheck({
        así que insistir borraba el error. */
     const score = recordedScore(isCorrectAnswer ? 100 : 0, usedNow, policy.minScore);
     const xpFactor = xpFactorForAttempt(usedNow);
+
+    // 1. Guardar en la base y esperar la confirmación (solo si hay ids; sin
+    //    ellos —vista sin sesión completa— se queda en el navegador como antes).
+    if (userId && campaignId) {
+      setSaving(i);
+      const saved = await persistAttempt({
+        score,
+        status: isCorrectAnswer ? 'completed' : 'failed',
+        submitted_answers: {
+          quiz_key: quizKey ?? null,
+          opcion_index: i,
+          aciertos: isCorrectAnswer ? 1 : 0,
+          total: 1,
+          errores: isCorrectAnswer ? 0 : 1,
+          pregunta: quiz.question[language],
+          opcion_elegida: quiz.options[language][i],
+          opcion_correcta: quiz.options[language][quiz.correct],
+          // Explícito para el panel del capacitador (no deducirlo del puntaje).
+          correcta: isCorrectAnswer,
+          // El número de intento es lo que convierte el detalle en información:
+          // "acertó" no dice lo mismo a la primera que a la tercera después de
+          // dos fallos.
+          intento: usedNow,
+          intentos_max: policy.maxAttempts || null,
+          mensaje_detalle: isCorrectAnswer
+            ? usedNow > 1
+              ? `Acertó en el intento ${usedNow}`
+              : null
+            : `Respondió "${quiz.options[language][i]}" — correcto era "${quiz.options[language][quiz.correct]}"`,
+        },
+      });
+      setSaving(null);
+      if (!saved) return; // sigue sin responder: puede volver a elegir
+    }
+
+    // 2. Confirmado: ahora sí queda respondido en pantalla y en el store.
+    setSelected(i);
+    recordCheck(moduleId, storeKey, i);
+    // Este intento ya se gastó, se acierte o no.
+    spendQuizAttempt(moduleId, storeKey);
 
     // Sonido de feedback (usa el tema del módulo activo).
     playQuizSound(isCorrectAnswer ? 'correct' : 'wrong');
@@ -316,45 +379,8 @@ export function KnowledgeCheck({
     recordQuizResult(isCorrectAnswer, redeemed, moduleId, xpFactor);
     if (!isCorrectAnswer) markQuizFailed(moduleId, storeKey);
 
-    // 2. Guardar intento en backend (solo si tenemos los ids necesarios)
-    if (userId && campaignId) {
-      const isCorrect = i === quiz.correct;
-      void saveActivityAttempt({
-        user_id: userId,
-        campaign_id: campaignId,
-        module_id: moduleId,
-        section_id: sectionId || '',
-        game_type: 'KNOWLEDGE_CHECK',
-        score,
-        status: isCorrect ? 'completed' : 'failed',
-        time_spent_seconds: 0,
-        submitted_answers: {
-          quiz_key: quizKey ?? null,
-          opcion_index: i,
-          aciertos: isCorrect ? 1 : 0,
-          total: 1,
-          errores: isCorrect ? 0 : 1,
-          pregunta: quiz.question[language],
-          opcion_elegida: quiz.options[language][i],
-          opcion_correcta: quiz.options[language][quiz.correct],
-          // Explícito para el panel del capacitador (no deducirlo del puntaje).
-          correcta: isCorrect,
-          // El número de intento es lo que convierte el detalle en información:
-          // "acertó" no dice lo mismo a la primera que a la tercera después de
-          // dos fallos.
-          intento: usedNow,
-          intentos_max: policy.maxAttempts || null,
-          mensaje_detalle: isCorrect
-            ? usedNow > 1
-              ? `Acertó en el intento ${usedNow}`
-              : null
-            : `Respondió "${quiz.options[language][i]}" — correcto era "${quiz.options[language][quiz.correct]}"`,
-        },
-      });
-    }
-
     // 3. Confetti si acertó
-    if (i === quiz.correct && !reducedMotion) {
+    if (isCorrectAnswer && !reducedMotion) {
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 800);
     }
@@ -461,8 +487,8 @@ export function KnowledgeCheck({
             return (
               <motion.button
                 key={i}
-                onClick={() => choose(i)}
-                disabled={answered || (!practice && attemptsLeft <= 0)}
+                onClick={() => void choose(i)}
+                disabled={answered || saving !== null || (!practice && attemptsLeft <= 0)}
                 initial={reducedMotion ? false : { opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{
@@ -481,6 +507,9 @@ export function KnowledgeCheck({
                   showState && !isSelected && showCorrect && 'glass border-neon-green/20 opacity-70',
                   showState && !isSelected && !showCorrect && 'glass border-glass-border/5 opacity-35',
                   answered && 'cursor-default',
+                  // Guardando: la elegida queda marcada y las demás se apagan.
+                  saving !== null && (saving === i ? 'border-neon-green/25 animate-pulse' : 'opacity-50'),
+                  saving !== null && 'cursor-wait',
                 )}
               >
                 {/* Badge de letra / check / X */}
@@ -537,6 +566,12 @@ export function KnowledgeCheck({
             );
           })}
         </div>
+
+        {saving !== null && (
+          <p className="mt-3 text-[12.5px] text-text-subtle" role="status">
+            {t('module.check_saving')}
+          </p>
+        )}
 
         {/* Explicación */}
         <AnimatePresence>

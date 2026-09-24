@@ -864,6 +864,8 @@
     "check_attempts_left_other": "· quedan {{count}} intentos",
     "check_attempts_budget_one": "{{count}} intento",
     "check_attempts_budget_other": "{{count}} intentos",
+    "check_saving": "Guardando tu respuesta…",
+    "check_save_failed": "No se pudo guardar tu respuesta. Revisa tu conexión y vuelve a elegirla.",
     "check_was_correct": "Era esta",
     "check_closed": "Sin intentos",
     "check_closed_title": "Se acabaron los intentos con XP para esta pregunta.",
