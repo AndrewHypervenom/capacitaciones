@@ -180,6 +180,11 @@ export default function ModuleList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modules, courses, audiences, filters.search, filters.country, filters.area, filters.cr, filters.status])
 
+  // Con más de un módulo, dos columnas de tarjetas: se leen de izquierda a
+  // derecha, fila a fila, y el número de cada tarjeta marca el orden.
+  const moduleGrid = (count: number) =>
+    cn('grid grid-cols-1 gap-3', count > 1 && 'lg:grid-cols-2')
+
   const renderModule = (mod: DbModuleRow, idx: number) => (
     <GlassCard
       key={mod.id}
@@ -187,7 +192,7 @@ export default function ModuleList() {
       rounded="2xl"
       ref={mod.id === focusId ? focusRef : undefined}
       className={cn(
-        'group hover:border-glass-border/15 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover',
+        'group h-full hover:border-glass-border/15 transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:shadow-card-hover',
         mod.is_published && 'hover:border-glass-border/15',
         // Lo escrito por IA se distingue de un vistazo, sin leer el título.
         mod.ai_generated && AI_AUTHORED_TINT,
@@ -195,28 +200,28 @@ export default function ModuleList() {
         mod.id === focusId && 'ring-2 ring-primary/70 border-primary/40',
       )}
     >
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4">
-        <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-          {/* Número */}
-          <span className="text-[11px] font-mono text-text-subtle w-5 shrink-0 text-right">
+      <div className="flex h-full flex-col gap-4 px-4 sm:px-5 py-4">
+        <div className="flex items-start gap-3 min-w-0">
+          {/* Número: el orden del módulo dentro del curso, visible de un vistazo */}
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-subtle text-[13px] font-semibold tabular-nums text-text">
             {idx + 1}
           </span>
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[15px] font-semibold text-text truncate">
-                {rowText(mod)}
-              </span>
+            <span className="block text-[15px] font-semibold leading-snug text-text line-clamp-2">
+              {rowText(mod)}
+            </span>
+            <div className="mt-1.5 flex items-center gap-2 flex-wrap">
               <NeonBadge color={mod.is_published ? 'green' : 'neutral'} dot={mod.is_published}>
                 {mod.is_published ? t('admin.modules.published') : t('admin.modules.draft')}
               </NeonBadge>
               {mod.ai_generated && <AiAuthoredBadge scope="module" />}
               <ResourcePresence type="module" id={mod.id} />
-            </div>
-            <div className="text-[12px] text-text-subtle mt-0.5">
-              {mod.duration_min} min ·{' '}
-              {t('admin.modules.sections_count', { n: mod.module_sections?.length ?? 0 })}
+              <span className="text-[12px] text-text-subtle">
+                {mod.duration_min} min ·{' '}
+                {t('admin.modules.sections_count', { n: mod.module_sections?.length ?? 0 })}
+              </span>
             </div>
           </div>
         </div>
@@ -224,7 +229,7 @@ export default function ModuleList() {
         {/* Acciones — con etiqueta de texto, igual que en Cursos: los iconos
             sueltos se confundían (el ojo de "despublicar" parecía "ver"). La
             vista previa es la principal; eliminar va al final y separada. */}
-        <div className="flex items-center gap-1.5 sm:shrink-0 flex-wrap opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
+        <div className="mt-auto flex items-center gap-1.5 flex-wrap border-t border-line pt-3 opacity-100 sm:opacity-70 sm:group-hover:opacity-100 transition-opacity">
           <PulseHint active={!previewHintSeen}>
             <button
               onClick={() => { markPreviewHintSeen(); setPreviewModule(mod) }}
@@ -254,7 +259,7 @@ export default function ModuleList() {
 
           <Link
             to={`/admin/modules/${mod.id}`}
-            className="min-h-[44px] flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:text-text hover:bg-glass/8 transition-colors"
+            className="ml-auto min-h-[44px] flex items-center justify-center gap-1 px-3 rounded-xl text-[13px] font-medium text-text-muted border border-line hover:text-text hover:bg-glass/8 transition-colors"
           >
             <Pencil className="h-3.5 w-3.5" />
             {t('admin.modules.edit')}
@@ -370,7 +375,7 @@ export default function ModuleList() {
                   <h3 className="text-[13px] font-semibold text-text truncate">{group.title}</h3>
                   <span className="text-[11px] text-text-subtle shrink-0">{group.modules.length}</span>
                 </div>
-                <div className="space-y-3">
+                <div className={moduleGrid(group.modules.length)}>
                   {group.modules.map((mod, idx) => renderModule(mod, idx))}
                 </div>
               </div>
@@ -387,7 +392,7 @@ export default function ModuleList() {
                   </h3>
                   <span className="text-[11px] text-text-subtle shrink-0">{orphans.length}</span>
                 </div>
-                <div className="space-y-3">
+                <div className={moduleGrid(orphans.length)}>
                   {orphans.map((mod, idx) => renderModule(mod, idx))}
                 </div>
               </div>
