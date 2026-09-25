@@ -24,7 +24,7 @@ import { MediaUploader } from './MediaUploader';
 import { DuplicateMediaNotice } from './DuplicateMediaNotice';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { LinkMenu } from '@/components/ui/RichTextArea';
-import { applyLink, removeLink, marksAtSelection, type LinkMark } from '@/lib/inlineMarkdown';
+import { applyLink, removeLink, marksAtSelection, toggleInlineMark, type LinkMark } from '@/lib/inlineMarkdown';
 import { uploadSectionMedia, deleteSectionMedia } from '@/services/modules.service';
 import { findDuplicateMedia, type DuplicateMatch } from '@/services/mediaDuplicates.service';
 import { shortFileHash } from '@/lib/fileHash';
@@ -121,12 +121,14 @@ function HeadingEditor({ block, onChange, lang }: { block: ContentBlock & { type
   );
 }
 
-/* ── Un ítem de lista: texto + enlace ─────────────────────────────
+/* ── Un ítem de lista: texto + dato copiable + enlace ─────────────
  * Los ítems son de un renglón, así que llevan un `<input>` y no el editor con
  * barra: seis barras de formato apiladas taparían el bloque entero. Pero el
  * enlace sí hacía falta, y usa el MISMO diálogo que el resto del sitio en vez de
- * uno propio que se desincronice. Negrita y cursiva se siguen escribiendo a
- * mano con `**`, y se renderizan igual. */
+ * uno propio que se desincronice. El dato copiable también: las listas son
+ * justo donde van los pasos con un comando (`QUERY SESSION …`) que el aprendiz
+ * tiene que pegar tal cual, y la protección de contenido no le deja copiarlo.
+ * Negrita y cursiva se siguen escribiendo a mano con `**`, y se renderizan igual. */
 function ListItemRow({
   bullet, value, placeholder, onChange, onRemove,
 }: {
@@ -141,11 +143,14 @@ function ListItemRow({
   // Enlace bajo el cursor, para que el botón se encienda y el diálogo llegue
   // con los campos puestos cuando se está editando uno que ya existe.
   const [link, setLink] = useState<LinkMark | undefined>(undefined)
+  const [copyOn, setCopyOn] = useState(false)
 
   const syncSel = () => {
     const el = inputRef.current
     if (!el) return
-    setLink(marksAtSelection(value, el.selectionStart ?? 0, el.selectionEnd ?? 0).link)
+    const marks = marksAtSelection(value, el.selectionStart ?? 0, el.selectionEnd ?? 0)
+    setLink(marks.link)
+    setCopyOn(!!marks.copy)
   }
 
   const restore = (from: number, to: number) => {
@@ -180,6 +185,33 @@ function ListItemRow({
         placeholder={placeholder}
         className="flex-1 bg-transparent text-[13.5px] text-text placeholder:text-text-subtle outline-none"
       />
+      <Tooltip
+        label={`${i18n.t('common.rich.copyable', 'Dato copiable')} · ${copyOn
+          ? i18n.t('common.rich.copyable_off_hint', 'Clic de nuevo para quitarlo')
+          : i18n.t('common.rich.copyable_hint', 'Correo, teléfono o código: sale con botón de copiar')}`}
+      >
+        <button
+          type="button"
+          aria-label={i18n.t('common.rich.copyable', 'Dato copiable')}
+          aria-pressed={copyOn}
+          // Sin esto el clic le quita el foco al input y con él la selección.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const el = inputRef.current
+            if (!el) return
+            const next = toggleInlineMark(
+              value, el.selectionStart ?? 0, el.selectionEnd ?? 0, 'copy',
+              i18n.t('common.rich.sample_bold', 'texto'),
+            )
+            onChange(next.value)
+            setCopyOn(!copyOn)
+            restore(next.start, next.end)
+          }}
+          className={cn(btnCls, copyOn && 'bg-primary/12 text-primary hover:bg-primary/15 hover:text-primary')}
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
+      </Tooltip>
       <LinkMenu
         open={linkOpen}
         setOpen={setLinkOpen}
