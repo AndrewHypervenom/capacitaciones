@@ -985,7 +985,10 @@ export default function CourseEditor() {
         .range(from, to),
     ).then(async ({ rows, error }) => {
       if (!active) return
-      if (!error) { setProfiles(rows); return }
+      // Al capacitador solo le salen APRENDICES. Asignarle un curso a otro
+      // capacitador no es cosa suya (eso lo hace el superadmin, que ve a todos),
+      // y el RPC de la base no garantiza traer solo aprendices: se filtra aquí.
+      if (!error) { setProfiles(rows.filter((p) => isLearnerRole(p.role))); return }
       const { rows: legacy } = await fetchAllProfilePages((from, to) =>
         supabase
           .from('profiles')
@@ -1163,6 +1166,15 @@ export default function CourseEditor() {
      mezclan con los aciertos, para que una lista filtrada nunca traiga ruido. */
   const userSearchSuggesting =
     !!userSearch.trim() && userSearchResult.hits.length === 0 && userSearchResult.suggestions.length > 0
+
+  /* ¿Es de un cliente? El RPC de asignables puede no traer `is_client`; el
+     censo sí lo trae, así que se completa con él. Sin esto, a un cliente se le
+     leería «Empleado» justo en la pantalla donde más importa distinguirlo. */
+  const clientInCensus = useMemo(
+    () => new Map(audiencePeople.map((x) => [x.id, x.is_client === true])),
+    [audiencePeople],
+  )
+  const isClientPerson = (p: Profile) => p.is_client ?? clientInCensus.get(p.id) ?? false
 
   const filteredProfiles = useMemo(() => {
     const base = userSearchSuggesting ? userSearchResult.suggestions : userSearchResult.hits
@@ -4744,12 +4756,13 @@ export default function CourseEditor() {
                 filteredProfiles.map((p) => {
                   const isAssigned = p.id in draftUsers
                   const isMandatory = draftUsers[p.id]
+                  const isClient = isClientPerson(p)
                   // Dónde está la persona, con los ejes nuevos: país · área · CR.
                   const country = COUNTRIES.find((c) => c.code === p.country)
                   const placeLabel = [
                     country ? `${country.flag} ${country.name}` : null,
                     // El cliente no tiene área ni CR: en su lugar va de dónde es.
-                    p.is_client ? (p.client_name || t('admin.users.client_badge')) : null,
+                    isClient ? (p.client_name || t('admin.users.client_badge')) : null,
                     p.area_id ? unitNames.get(p.area_id) : null,
                     p.operation_id ? unitNames.get(p.operation_id) : null,
                   ].filter(Boolean).join(' · ')
@@ -4780,7 +4793,7 @@ export default function CourseEditor() {
                                   que esta pantalla hace fácil: marcar de corrido
                                   a media lista y colarle a un cliente el curso
                                   interno de al lado. */}
-                              {p.is_client && (
+                              {isClient && (
                                 <span
                                   className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
                                   style={{ background: 'rgba(14,165,233,0.14)', color: '#0284c7' }}
@@ -4820,25 +4833,48 @@ export default function CourseEditor() {
                             solo recibe lo que se le asigne. */}
                         {canMarkClients && p.role === 'learner' && (
                           <Tooltip
-                            label={p.is_client
+                            label={isClient
                               ? t('admin.courses.client_toggle_on_tip')
                               : t('admin.courses.client_toggle_off_tip')}
                             className="shrink-0"
                             maxWidth={280}
                           >
                             <button
-                              onClick={() => handleToggleClient(p)}
-                              aria-pressed={p.is_client === true}
+                              onClick={() => handleToggleClient({ ...p, is_client: isClient })}
+                              aria-pressed={isClient}
                               className={cn(
                                 'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors border',
-                                p.is_client
+                                isClient
                                   ? 'border-sky-500/40 text-sky-500'
                                   : 'border-line text-text-subtle hover:text-text',
                               )}
-                              style={p.is_client ? { background: 'rgba(14,165,233,0.10)' } : undefined}
+                              style={isClient ? { background: 'rgba(14,165,233,0.10)' } : undefined}
                             >
-                              {p.is_client ? t('admin.courses.client_toggle_on_label') : t('admin.courses.client_toggle_off_label')}
+                              {isClient ? t('admin.courses.client_toggle_on_label') : t('admin.courses.client_toggle_off_label')}
                             </button>
+                          </Tooltip>
+                        )}
+                        {/* Sin permiso para marcar clientes, el capacitador igual
+                            necesita SABERLO antes de asignar: se le dice sin botón. */}
+                        {!canMarkClients && p.role === 'learner' && (
+                          <Tooltip
+                            label={isClient
+                              ? t('admin.courses.client_status_client_tip')
+                              : t('admin.courses.client_status_employee_tip')}
+                            className="shrink-0"
+                            maxWidth={280}
+                          >
+                            <span
+                              className={cn(
+                                'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold border',
+                                isClient ? 'border-sky-500/40 text-sky-500' : 'border-line text-text-subtle',
+                              )}
+                              style={isClient ? { background: 'rgba(14,165,233,0.10)' } : undefined}
+                            >
+                              {isClient
+                                ? t('admin.users.client_badge')
+                                : t('admin.courses.client_status_employee')}
+                            </span>
                           </Tooltip>
                         )}
                       </div>
