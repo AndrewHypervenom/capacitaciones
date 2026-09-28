@@ -9,6 +9,7 @@ import {
   type CourseExam,
   type ExamDifficulty,
   type ExamDomain,
+  type ExamDomainScore,
   type ExamOption,
   type ExamQuestion,
   type ExamQuestionKind,
@@ -1240,6 +1241,76 @@ export async function getExamResults(courseId: string): Promise<ExamResultRow[]>
     throw error
   }
   return (data ?? []) as unknown as ExamResultRow[]
+}
+
+/** Un intento ya cerrado, con lo que la persona marcó en cada pregunta. */
+export interface ExamAttemptDetail {
+  id: string
+  user_id: string
+  attempt_no: number
+  status: 'submitted' | 'expired'
+  started_at: string
+  submitted_at: string | null
+  score_pct: number | null
+  passed: boolean | null
+  question_ids: string[]
+  /** pregunta → ids de las opciones marcadas ("a", "b"…). Sin clave = en blanco. */
+  answers: Record<string, string[]>
+  domain_scores: ExamDomainScore[]
+}
+
+/**
+ * Detalle de los intentos de un curso para el panel de resultados y su Excel:
+ * los intentos cerrados (enviados o vencidos) y TODAS las preguntas que alguna
+ * vez salieron en ellos —también las que luego se desactivaron—, para poder
+ * decir qué marcó cada quien y cuál era la correcta.
+ *
+ * Se pide aparte y solo cuando alguien abre un detalle o exporta: las
+ * respuestas pesan, y la lista de resultados no las necesita.
+ */
+export async function getExamAttemptsDetail(courseId: string): Promise<{
+  attempts: ExamAttemptDetail[]
+  questions: Map<string, ExamQuestion>
+}> {
+  const attempts: ExamAttemptDetail[] = []
+  const PAGE = 500
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db
+      .from('exam_attempts')
+      .select('id, user_id, attempt_no, status, started_at, submitted_at, score_pct, passed, question_ids, answers, domain_scores')
+      .eq('course_id', courseId)
+      .in('status', ['submitted', 'expired'])
+      .order('started_at')
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    const rows = (data ?? []) as unknown as ExamAttemptDetail[]
+    attempts.push(...rows.map((a) => ({
+      ...a,
+      question_ids: a.question_ids ?? [],
+      answers: a.answers ?? {},
+      domain_scores: a.domain_scores ?? [],
+    })))
+    if (rows.length < PAGE) break
+  }
+
+  const ids = [...new Set(attempts.flatMap((a) => a.question_ids))]
+  const questions = new Map<string, ExamQuestion>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await db
+      .from('exam_questions')
+      .select('*')
+      .in('id', ids.slice(i, i + 200))
+    if (error) throw error
+    for (const q of (data ?? []) as unknown as ExamQuestion[]) questions.set(q.id, q)
+  }
+  return { attempts, questions }
+}
+
+/** ¿Acertó? Igual que el servidor: hay que marcar exactamente las correctas. */
+export function isAnswerCorrect(q: Pick<ExamQuestion, 'correct'>, marked: string[] | undefined): boolean {
+  if (!marked || marked.length === 0) return false
+  const want = new Set(q.correct ?? [])
+  return marked.length === want.size && marked.every((m) => want.has(m))
 }
 
 /** Concede intentos extra a alguien que los agotó (y levanta su refuerzo). */

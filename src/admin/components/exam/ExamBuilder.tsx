@@ -74,6 +74,7 @@ import {
 import { ExamQuestionModal, type QuestionDraft } from './ExamQuestionModal'
 import { ExamGenerateModal, type ExamFillPlan } from './ExamGenerateModal'
 import { ExamLevelPicker, LevelPill } from './ExamLevelBits'
+import { ExamResultsPanel } from './ExamResultsPanel'
 import { cn } from '@/lib/cn'
 import { rowText } from '@/lib/contentLang'
 import { RichTextInline, stripMarkdown } from '@/components/ui/RichText'
@@ -239,7 +240,6 @@ export function ExamBuilder({
   const [filterDomain, setFilterDomain] = useState('')
   /** Filtro del banco: dejar solo las preguntas que no son del nivel del examen. */
   const [onlyOffLevel, setOnlyOffLevel] = useState(false)
-  const [resultsOpen, setResultsOpen] = useState(false)
 
   /* ── Carga ── */
   const load = useCallback(async () => {
@@ -2137,164 +2137,15 @@ export function ExamBuilder({
         )}
       </section>
 
-      {/* ── 4. Resultados ── */}
-      {results.length > 0 && (
-        <section>
-          <button
-            onClick={() => setResultsOpen((v) => !v)}
-            aria-expanded={resultsOpen}
-            className="flex w-full items-center gap-3 rounded-2xl border border-line px-4 py-3.5 text-left transition-colors hover:bg-glass/5"
-          >
-            <Users className="h-4 w-4 shrink-0 text-text-muted" />
-            <div className="min-w-0 flex-1">
-              <span className="text-[14px] font-semibold text-text">
-                {t('admin.exam.results_title', 'Resultados del examen')}
-              </span>
-              <p className="mt-0.5 text-[12px] text-text-muted">
-                {t('admin.exam.results_summary', {
-                  n: results.length,
-                  passed: results.filter((r) => r.passed).length,
-                  defaultValue: 'Lo han presentado: {{n}} · aprobados: {{passed}}',
-                })}
-              </p>
-            </div>
-            <ChevronDown
-              className={cn(
-                'h-4 w-4 shrink-0 text-text-subtle transition-transform',
-                resultsOpen && 'rotate-180',
-              )}
-            />
-          </button>
-
-          {resultsOpen && (
-            <div className="mt-3 divide-y divide-line rounded-2xl border border-line">
-              {results.map((r) => {
-                const rows = studyByUser.get(r.user_id) ?? []
-                const studiedDone = rows.filter((s) => s.completedAt).length
-                const studiedMin = Math.round(
-                  rows.reduce((acc, s) => acc + s.creditedMs, 0) / 60_000,
-                )
-                return (
-                <div key={r.user_id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13.5px] font-medium text-text">
-                      {r.display_name ?? r.email ?? r.user_id.slice(0, 8)}
-                    </div>
-                    <div className="text-[11.5px] text-text-subtle">
-                      {t('admin.exam.results_attempts', {
-                        n: r.attempts,
-                        defaultValue: 'Intentos: {{n}}',
-                      })}
-                      {r.weak_domains.length > 0 && (
-                        <>
-                          {' · '}
-                          {t('admin.exam.results_weak', {
-                            list: r.weak_domains.map((d) => rowText(d, 'name')).join(', '),
-                            defaultValue: 'flojo en {{list}}',
-                          })}
-                        </>
-                      )}
-                      {r.reinforcement === 'pending' && (
-                        <>
-                          {' · '}
-                          <Tooltip
-                            label={t(
-                              'admin.exam.tip_reinforcing',
-                              'Tiene un repaso pendiente: no puede volver a presentar el examen hasta terminar los módulos de los temas que reprobó.',
-                            )}
-                            maxWidth={270}
-                          >
-                            <span className="cursor-help underline decoration-dotted underline-offset-2">
-                              {t('admin.exam.results_reinforcing', 'en refuerzo')}
-                            </span>
-                          </Tooltip>
-                        </>
-                      )}
-                      {/* Auditoría del repaso: no "dice que repasó", sino cuánto
-                          tiempo estuvo de verdad dentro de cada módulo de su
-                          ruta. El detalle va en el tooltip para no convertir la
-                          lista en una tabla. */}
-                      {rows.length > 0 && (
-                        <>
-                          {' · '}
-                          <Tooltip
-                            label={rows
-                              .map((s) =>
-                                t('admin.exam.study_line', {
-                                  title: s.moduleTitle,
-                                  min: Math.max(1, Math.round(s.creditedMs / 60_000)),
-                                  pct: s.progressPct,
-                                  depth: s.depthPct,
-                                  defaultValue:
-                                    '{{title}}: {{min}} min · leyó hasta el {{depth}}% ({{pct}}%)',
-                                }),
-                              )
-                              .join('\n')}
-                            maxWidth={320}
-                          >
-                            <span className="cursor-help underline decoration-dotted underline-offset-2">
-                              {t('admin.exam.results_study', {
-                                done: studiedDone,
-                                total: rows.length,
-                                min: studiedMin,
-                                defaultValue: 'repaso: {{done}}/{{total}} módulos · {{min}} min',
-                              })}
-                            </span>
-                          </Tooltip>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <Tooltip
-                    label={t('admin.exam.tip_best_score', {
-                      best: r.best_score ?? 0,
-                      last: r.last_score ?? 0,
-                      defaultValue: 'Mejor puntaje: {{best}}% · último intento: {{last}}%',
-                    })}
-                    anchor="element"
-                    describedBy
-                  >
-                    <span
-                      className={cn(
-                        'shrink-0 cursor-help text-[15px] font-semibold tabular-nums',
-                        r.passed ? 'text-primary' : 'text-neon-magenta',
-                      )}
-                    >
-                      {r.best_score ?? 0}%
-                    </span>
-                  </Tooltip>
-
-                  {r.passed ? (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-                      <GraduationCap className="h-3 w-3" />
-                      {t('exam.status_passed', 'Aprobado')}
-                    </span>
-                  ) : (
-                    <Tooltip
-                      label={t(
-                        'admin.exam.tip_grant',
-                        'Le suma un intento extra y le levanta la ruta de refuerzo pendiente: puede volver a presentarlo enseguida, sin esperar.',
-                      )}
-                      maxWidth={260}
-                    >
-                      <button
-                        onClick={() =>
-                          handleGrantAttempt(r.user_id, r.display_name ?? r.email ?? '')
-                        }
-                        className="shrink-0 rounded-full border border-line px-3 py-1 text-[11.5px] font-medium text-text-muted transition-colors hover:border-primary/50 hover:text-primary"
-                      >
-                        {t('admin.exam.grant_short', 'Dar otro intento')}
-                      </button>
-                    </Tooltip>
-                  )}
-                </div>
-                )
-              })}
-            </div>
-          )}
-        </section>
-      )}
+      {/* ── 4. Resultados: quién lo presentó, qué respondió y su Excel ── */}
+      <ExamResultsPanel
+        courseId={courseId}
+        courseTitle={courseTitle}
+        results={results}
+        domains={domains}
+        studyByUser={studyByUser}
+        onGrant={(userId, name) => void handleGrantAttempt(userId, name)}
+      />
 
       {/* Guardado inline: la barra del pie del editor también lo dispara. */}
       {dirty && (

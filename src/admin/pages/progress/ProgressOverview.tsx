@@ -950,6 +950,47 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
     })),
   });
 
+  /* Una fila por persona y curso. Las hojas de arriba son agregados y no se
+     pueden filtrar por nadie: quien buscaba el examen de UNA persona se llevaba
+     la operación entera. Esta respeta lo que se ve en la tabla (buscador y
+     filtro rápido). Si lo buscado es un curso y no una persona, la tabla de
+     personas queda vacía: ahí no se filtra por persona, solo por curso. */
+  const examPeopleSheet = (byCourse: typeof exams.byCourse): Sheet => {
+    const filtering = focus !== 'none' || (query.trim() !== '' && visiblePeople.length > 0);
+    const only = filtering ? new Set(visiblePeople.map((p) => p.id)) : null;
+    const personById = new Map(rows.map((p) => [p.id, p]));
+    const out: SheetRow[] = [];
+    for (const c of scopedCourses) {
+      for (const r of byCourse[c.id] ?? []) {
+        if (r.attempts === 0) continue;
+        if (only && !only.has(r.user_id)) continue;
+        const p = personById.get(r.user_id);
+        out.push({
+          [L.person]: p?.name ?? r.display_name ?? '',
+          [L.email]: p?.email ?? r.email ?? '',
+          [L.areaCol]: unitName(p?.areaId) ?? '',
+          [L.crCol]: unitName(p?.operationId) ?? '',
+          [L.course]: c.title,
+          [t('admin.progress_overview.exam_col_attempts_n', 'Intentos')]: r.attempts,
+          [t('admin.progress_overview.exam_col_best', 'Mejor nota')]: r.best_score ?? '',
+          [t('admin.progress_overview.exam_col_last', 'Última nota')]: r.last_score ?? '',
+          [t('admin.progress_overview.exam_col_result', 'Aprobó')]: r.passed ? L.yes : L.no,
+          [t('admin.progress_overview.exam_col_reinforcement', 'Refuerzo')]:
+            r.reinforcement === 'pending'
+              ? t('admin.progress_overview.state_pending', 'Pendiente')
+              : r.reinforcement === 'completed'
+                ? t('admin.progress_overview.exam_reinf_done', 'Hecho')
+                : '',
+          [t('admin.progress_overview.exam_weak_domain', 'Tema')]: (r.weak_domains ?? [])
+            .map((d) => `${pickLang(d.name_es, d.name_en, d.name_pt, lang)} (${d.pct ?? 0}%)`)
+            .join(' · '),
+          [L.date]: r.last_at ? new Date(r.last_at).toLocaleString(i18n.language) : '',
+        });
+      }
+    }
+    return { name: t('admin.progress_overview.sheet_exam_people', 'Examen por persona'), rows: out };
+  };
+
   const weakSheet = (summary: ExamSummary): Sheet => ({
     name: t('admin.progress_overview.sheet_weak', 'Temas flojos'),
     rows: summary.weakDomains.map<SheetRow>((d) => ({
@@ -1022,9 +1063,9 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             : kind === 'matrix' ? [matrixSheet()]
               : kind === 'certificates' ? [certificatesSheet()]
                 : kind === 'deliveries' ? [deliveriesSheet()]
-                  : kind === 'exam' ? [examSheet(summary), weakSheet(summary)]
+                  : kind === 'exam' ? [examSheet(summary), examPeopleSheet(examData), weakSheet(summary)]
                     : kind === 'survey' ? [surveySheet(surveyData), commentsSheet(surveyData)]
-                      : [peopleSheet(), coursesSheet(surveyData), matrixSheet(), certificatesSheet(), deliveriesSheet(), examSheet(summary), weakSheet(summary), surveySheet(surveyData), commentsSheet(surveyData)];
+                      : [peopleSheet(), coursesSheet(surveyData), matrixSheet(), certificatesSheet(), deliveriesSheet(), examSheet(summary), examPeopleSheet(examData), weakSheet(summary), surveySheet(surveyData), commentsSheet(surveyData)];
       // El nombre del archivo se lee fuera de la app —en el correo, en la
       // carpeta de Descargas—, así que va en el idioma del usuario y no con la
       // clave interna en inglés: "progreso-entregas-2026-08-15.xlsx".
