@@ -5,6 +5,7 @@ import { unloopScenario, deferEndings, collapseEndings, minTurnsFor, isEndNode }
 import type { ContentBlock } from '@/types/blocks'
 import { rowText, rowList } from '@/lib/contentLang'
 import { aiOrgField } from '@/services/org.service'
+import { fitVisionBudget } from '@/lib/documentExtract'
 
 export interface CacheUsage {
   cache_creation_input_tokens: number
@@ -973,10 +974,30 @@ export async function translateGenerated<T>(payload: T, signal?: AbortSignal, fr
   return data as T
 }
 
+/**
+ * Deja las imágenes del cuerpo dentro de lo que acepta la API por petición (100
+ * imágenes, 32 MB). Sin esto, un documento de 100 páginas con figuras + páginas de
+ * contexto haría fallar TODAS las llamadas de generación.
+ */
+function withVisionBudget<B extends { images?: DocImage[]; contextImages?: DocImage[] }>(
+  body: B,
+  opts: { maxImages?: number; keepContextOrder?: boolean } = {},
+): B {
+  const { images, contextImages } = body
+  if (!images?.length && !contextImages?.length) return body
+  const fit = fitVisionBudget(images, contextImages, opts)
+  return {
+    ...body,
+    ...(images ? { images: fit.figures } : {}),
+    ...(contextImages ? { contextImages: fit.pages } : {}),
+  }
+}
+
 async function postGenerateModule(
-  body: Record<string, unknown>,
+  body: Record<string, unknown> & { images?: DocImage[]; contextImages?: DocImage[] },
   signal?: AbortSignal,
 ): Promise<{ data: unknown; usage: CacheUsage }> {
+  body = withVisionBudget(body, { keepContextOrder: body.mode === 'detect-figures' })
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No autenticado')
 
@@ -1108,8 +1129,9 @@ export async function analyzeDocument(opts: {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       // El idioma sale de la interfaz: la propuesta de módulos se escribe en el
-      // idioma del sitio aunque el documento esté en otro.
-      body: JSON.stringify({ language: currentAiLang(), ...opts, ...aiOrgField() }),
+      // idioma del sitio aunque el documento esté en otro. Va con Haiku (200K de
+      // contexto): con la mitad de imágenes todavía cabe el texto del documento.
+      body: JSON.stringify({ language: currentAiLang(), ...withVisionBudget(opts, { maxImages: 50 }), ...aiOrgField() }),
     },
   )
 

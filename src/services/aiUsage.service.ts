@@ -139,7 +139,7 @@ export async function fetchAiUsage(filters: AiUsageFilters): Promise<AiUsageData
     // Cada tenant paga su IA: el panel muestra el gasto de la org activa.
     if (byOrg && orgId) q = q.eq('org_id', orgId)
     if (filters.functionName && filters.functionName !== 'all') q = q.eq('function_name', filters.functionName)
-    if (filters.model && filters.model !== 'all') q = q.eq('model', filters.model)
+    if (filters.model && filters.model !== 'all') q = q.ilike('model', `claude-${filters.model}%`)
     if (filters.userId && filters.userId !== 'all') q = q.eq('user_id', filters.userId)
     if (filters.from) q = q.gte('created_at', filters.from)
     if (filters.to) q = q.lte('created_at', filters.to)
@@ -275,7 +275,7 @@ async function fetchPrevCost(
   // Sin la columna org_id esto falla y la comparación sale vacía: no rompe nada.
   if (orgId) q = q.eq('org_id', orgId)
   if (filters.functionName && filters.functionName !== 'all') q = q.eq('function_name', filters.functionName)
-  if (filters.model && filters.model !== 'all') q = q.eq('model', filters.model)
+  if (filters.model && filters.model !== 'all') q = q.ilike('model', `claude-${filters.model}%`)
   if (filters.userId && filters.userId !== 'all') q = q.eq('user_id', filters.userId)
 
   const { data } = await q

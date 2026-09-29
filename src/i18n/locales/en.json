@@ -5663,6 +5663,7 @@
       "preset_month": "This month",
       "preset_all": "All",
       "model_all": "All models",
+      "model_opus": "Opus (top quality)",
       "model_sonnet": "Sonnet (quality)",
       "model_haiku": "Haiku (budget)",
       "filter_all_types": "All types",

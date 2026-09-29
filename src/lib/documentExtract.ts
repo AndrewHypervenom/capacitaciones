@@ -40,13 +40,20 @@ export const ACCEPTED_DOC_EXTENSIONS = [
 ].join(',')
 
 // Límites para controlar tamaño de la petición y costo de la visión.
-const MAX_IMAGES = 20
+// La API de Claude acepta hasta 100 imágenes por petición: ese es el techo real. Un
+// documento de 100 páginas con una imagen por página conserva todas sus figuras.
+export const MAX_REQUEST_IMAGES = 100
+const MAX_IMAGES = MAX_REQUEST_IMAGES
 const MIN_FIGURE_DIM = 160 // descarta logos/íconos diminutos
 const FIGURE_MAX_DIM = 1100 // techo de resolución de figuras (controla peso de la petición)
 const PDF_RENDER_MAX_DIM = 1500
+// Con muchas páginas se renderizan más livianas: 100 páginas a 1500 px no caben en una
+// petición (tope de 32 MB), y a 1200 px el texto de una página sigue siendo legible.
+const PDF_RENDER_MANY_PAGES_DIM = 1200
+const MANY_PAGES = 20
 const PDF_JPEG_QUALITY = 0.72
-// Modo manual: tope de páginas a rasterizar como contexto de layout (captura+paso juntos).
-const MANUAL_PAGE_CAP = 24
+// Tope de páginas a rasterizar como contexto (escaneados y modo manual).
+const PAGE_RENDER_CAP = MAX_REQUEST_IMAGES
 const FIGURE_JPEG_QUALITY = 0.82
 const MIN_EMBEDDED_IMAGE_B64 = 2000 // descarta íconos/viñetas diminutas (Word)
 
@@ -217,8 +224,8 @@ async function extractPdfFigures(
   pdfjs: typeof import('pdfjs-dist'),
   onPageDone?: () => void,
 ): Promise<ExtractedImage[]> {
-  const maxPages = Math.min(pdf.numPages, 30)
-  const pageNums = Array.from({ length: maxPages }, (_, i) => i + 1)
+  // Se recorren TODAS las páginas: el corte lo pone el tope de figuras, no la página.
+  const pageNums = Array.from({ length: pdf.numPages }, (_, i) => i + 1)
 
   // Contador compartido para cortar apenas juntamos suficientes figuras, sin
   // seguir decodificando imágenes de las páginas restantes.
@@ -286,9 +293,12 @@ async function extractPdfFigures(
 }
 
 /** Renderiza una página de PDF a un JPEG en base64 (sin prefijo data:). */
-async function renderPdfPage(page: import('pdfjs-dist').PDFPageProxy): Promise<string | null> {
+async function renderPdfPage(
+  page: import('pdfjs-dist').PDFPageProxy,
+  maxDim = PDF_RENDER_MAX_DIM,
+): Promise<string | null> {
   const base = page.getViewport({ scale: 1 })
-  const scale = Math.min(2, PDF_RENDER_MAX_DIM / Math.max(base.width, base.height))
+  const scale = Math.min(2, maxDim / Math.max(base.width, base.height))
   const viewport = page.getViewport({ scale })
 
   const canvas = document.createElement('canvas')
@@ -328,8 +338,7 @@ async function parsePdf(
 
   // Progreso: total = páginas de texto + páginas escaneadas por figuras. La barra
   // va de 0.08 a 0.98 a medida que cada página termina (texto o figuras).
-  const figurePages = Math.min(pdf.numPages, 30)
-  const totalUnits = pdf.numPages + figurePages
+  const totalUnits = pdf.numPages * 2 // texto + figuras, por página
   let doneUnits = 0
   onProgress?.({ stage: 'extracting', ratio: 0.08 })
   const tick = () => {
@@ -347,10 +356,14 @@ async function parsePdf(
         (async () => {
           const page = await pdf.getPage(n)
           const content = await page.getTextContent()
-          return content.items
+          const pageText = content.items
             .map((item) => ('str' in item ? item.str : ''))
             .join(' ')
             .trim()
+          // Modo manual: la página marcada en el texto deja emparejar cada captura
+          // ("Imagen N (página P)") con su paso aunque no viajen las páginas renderizadas.
+          return manualMode && pageText ? `[Página ${n}]
+${pageText}` : pageText
         })(),
         PAGE_TIMEOUT_MS,
         '',
@@ -369,12 +382,12 @@ async function parsePdf(
   const pageImages: ExtractedImage[] = []
   if (!text || manualMode) {
     onProgress?.({ stage: 'images', ratio: 0.9 })
-    const cap = manualMode ? MANUAL_PAGE_CAP : MAX_IMAGES
-    const maxPages = Math.min(pdf.numPages, cap)
+    const maxPages = Math.min(pdf.numPages, PAGE_RENDER_CAP)
+    const maxDim = maxPages > MANY_PAGES ? PDF_RENDER_MANY_PAGES_DIM : PDF_RENDER_MAX_DIM
     const nums = Array.from({ length: maxPages }, (_, i) => i + 1)
     const rendered = await mapWithConcurrency(nums, FIGURE_CONCURRENCY, async (n) => {
-      const page = await pdf.getPage(n)
-      return renderPdfPage(page)
+      const page = await withTimeout(pdf.getPage(n), PAGE_TIMEOUT_MS, null)
+      return page ? withTimeout(renderPdfPage(page, maxDim), PAGE_TIMEOUT_MS, null) : null
     })
     rendered.forEach((base64, i) => {
       if (base64) pageImages.push({ mediaType: 'image/jpeg', dataBase64: base64, page: i + 1 })
@@ -386,19 +399,28 @@ async function parsePdf(
 
 // ─── Word ─────────────────────────────────────────────────────
 
-/** Extrae las imágenes embebidas de un .docx (gráficos, capturas, fotos). */
+/**
+ * Extrae las imágenes embebidas de un .docx (gráficos, capturas, fotos), en orden de
+ * aparición. Se normalizan (JPEG, techo de resolución) como las de PDF y PowerPoint:
+ * una captura cruda de Word puede pesar varios MB o pasar de 2000 px, y con más de 20
+ * imágenes en una petición la API rechaza cualquiera que supere ese tamaño.
+ */
 async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]> {
   const mammoth = await import('mammoth')
-  const images: ExtractedImage[] = []
+  const raw: { contentType: string; dataBase64: string }[] = []
+  const seen = new Set<string>()
 
   await mammoth.default.convertToHtml(
     { arrayBuffer: buffer },
     {
       convertImage: mammoth.default.images.imgElement(async (image) => {
-        if (images.length < MAX_IMAGES && SUPPORTED_IMAGE_TYPES.has(image.contentType)) {
+        if (raw.length < MAX_IMAGES && SUPPORTED_IMAGE_TYPES.has(image.contentType)) {
           const dataBase64 = await image.readAsBase64String()
-          if (dataBase64.length >= MIN_EMBEDDED_IMAGE_B64) {
-            images.push({ mediaType: image.contentType as ExtractedImage['mediaType'], dataBase64 })
+          // La misma imagen repetida (logo de encabezado en cada página) cuenta una vez.
+          const sig = `${dataBase64.length}:${dataBase64.slice(0, 48)}`
+          if (dataBase64.length >= MIN_EMBEDDED_IMAGE_B64 && !seen.has(sig)) {
+            seen.add(sig)
+            raw.push({ contentType: image.contentType, dataBase64 })
           }
         }
         return { src: '' }
@@ -406,7 +428,17 @@ async function extractDocxImages(buffer: ArrayBuffer): Promise<ExtractedImage[]>
     },
   )
 
-  return images
+  const normalized = await mapWithConcurrency(raw, FIGURE_CONCURRENCY, async ({ contentType, dataBase64 }) => {
+    try {
+      const bytes = Uint8Array.from(atob(dataBase64), (c) => c.charCodeAt(0))
+      return await normalizeImageBlob(new Blob([bytes], { type: contentType }))
+    } catch {
+      return null
+    }
+  })
+  return normalized
+    .filter((b): b is string => !!b)
+    .map((dataBase64) => ({ mediaType: 'image/jpeg' as const, dataBase64 }))
 }
 
 // ─── PowerPoint (.pptx) ───────────────────────────────────────
@@ -705,8 +737,9 @@ async function parsePptx(
   // 2) Rasterización de cada diapositiva completa (layout real → contexto visual).
   onProgress?.({ stage: 'images', ratio: 0.5 })
   const { cx, cy } = await readSlideSize(await zip.files['ppt/presentation.xml']?.async('string'))
-  const scale = Math.min(2, PDF_RENDER_MAX_DIM / Math.max(cx, cy))
   const rasterCount = Math.min(slidePaths.length, PPTX_SLIDE_RASTER_CAP)
+  const maxDim = rasterCount > MANY_PAGES ? PDF_RENDER_MANY_PAGES_DIM : PDF_RENDER_MAX_DIM
+  const scale = Math.min(2, maxDim / Math.max(cx, cy))
   const slideImages: ExtractedImage[] = []
 
   for (let i = 0; i < rasterCount; i++) {
@@ -852,6 +885,59 @@ export async function cropCaptures(
     }
   }
   return out
+}
+
+// ─── Presupuesto de visión por petición ───────────────────────
+
+// Peso máximo (base64) de las imágenes de UNA petición. La API corta en 32 MB por
+// petición; se deja margen para el texto del documento y el resto del cuerpo.
+const MAX_REQUEST_IMAGE_B64 = 22 * 1024 * 1024
+
+/**
+ * Recorta las imágenes de una petición a lo que la API acepta (100 imágenes, ~22 MB).
+ *
+ * Las figuras van primero y se recortan SOLO por el final: `image_index` apunta a su
+ * posición y el guardado usa la lista completa, así que un prefijo conserva los índices.
+ * Las páginas de contexto llenan lo que sobre; si no caben todas, se toman repartidas a
+ * lo largo del documento (llevan su número de página, así que la IA sabe cuál es cuál).
+ * Con `keepContextOrder` se toma un prefijo de páginas: la detección de capturas refiere
+ * a la POSICIÓN de cada página en la lista enviada.
+ */
+export function fitVisionBudget<T extends { dataBase64: string }>(
+  figures: T[] | undefined,
+  pages: T[] | undefined,
+  opts: { maxImages?: number; keepContextOrder?: boolean } = {},
+): { figures: T[]; pages: T[] } {
+  const maxImages = opts.maxImages ?? MAX_REQUEST_IMAGES
+  let bytes = 0
+  const outFigures: T[] = []
+  for (const img of figures ?? []) {
+    if (outFigures.length >= maxImages || bytes + img.dataBase64.length > MAX_REQUEST_IMAGE_B64) break
+    outFigures.push(img)
+    bytes += img.dataBase64.length
+  }
+
+  const all = pages ?? []
+  const slots = maxImages - outFigures.length
+  if (!all.length || slots <= 0) return { figures: outFigures, pages: [] }
+
+  const roomBytes = MAX_REQUEST_IMAGE_B64 - bytes
+  const avg = all.reduce((n, p) => n + p.dataBase64.length, 0) / all.length
+  const fitByBytes = avg > 0 ? Math.floor(roomBytes / avg) : all.length
+  const take = Math.min(all.length, slots, fitByBytes)
+
+  const picked = take >= all.length || opts.keepContextOrder
+    ? all.slice(0, take)
+    : Array.from({ length: take }, (_, i) => all[Math.floor((i * all.length) / take)])
+
+  // Red final por si las páginas elegidas pesan más que el promedio.
+  const outPages: T[] = []
+  for (const p of picked) {
+    if (bytes + p.dataBase64.length > MAX_REQUEST_IMAGE_B64) break
+    outPages.push(p)
+    bytes += p.dataBase64.length
+  }
+  return { figures: outFigures, pages: outPages }
 }
 
 // ─── Orquestador ──────────────────────────────────────────────

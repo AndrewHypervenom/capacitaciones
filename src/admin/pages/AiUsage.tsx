@@ -40,8 +40,10 @@ function rangeFor(preset: Preset): { from?: string } {
 
 const MODEL_OPTIONS = [
   { value: 'all', labelKey: 'admin.ai_usage.model_all' },
-  { value: 'claude-sonnet-4-6', labelKey: 'admin.ai_usage.model_sonnet' },
-  { value: 'claude-haiku-4-5', labelKey: 'admin.ai_usage.model_haiku' },
+  // Por familia, no por versión: así el filtro cubre el historial y los modelos nuevos.
+  { value: 'opus', labelKey: 'admin.ai_usage.model_opus' },
+  { value: 'sonnet', labelKey: 'admin.ai_usage.model_sonnet' },
+  { value: 'haiku', labelKey: 'admin.ai_usage.model_haiku' },
 ]
 
 // ─── Formateo ────────────────────────────────────────────────────────
