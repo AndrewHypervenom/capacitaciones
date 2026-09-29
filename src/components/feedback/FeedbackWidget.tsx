@@ -25,6 +25,8 @@ import { cn } from '@/lib/cn'
 const TOTAL_STEPS = 5
 /** Una sola vez por navegador mostramos la invitación junto al botón. */
 const INVITE_KEY = 'site_feedback_invite_seen'
+/** Donde se estudia o se presenta algo: módulos, examen y juegos. */
+const STUDY_ROUTES = [/^\/modules\//, /^\/exam(\/|$)/, /^\/games\//, /^\/worlds?(\/|$)/, /^\/course\/[^/]+\/survey/]
 
 type Step = 0 | 1 | 2 | 3 | 4
 
@@ -88,13 +90,35 @@ export function FeedbackWidget() {
     if (profile?.phone) setPhone((p) => p || profile.phone || '')
   }, [user?.email, profile?.phone])
 
+  /* Pantallas de estudio: ahí la invitación no se muestra. En el celular es un
+     recuadro grande fijo abajo, y justo abajo viven los botones que cierran el
+     paso ("Marcar como completado", "Enviar examen"). Quedaba ENCIMA del botón:
+     el toque se lo llevaba la invitación, el botón se veía apagado detrás del
+     vidrio y la persona no podía terminar el módulo. */
+  const studyScreen = STUDY_ROUTES.some((re) => re.test(location.pathname))
+
   // Invitación sutil la primera vez, ya con el usuario ubicado en el sitio.
   useEffect(() => {
-    if (playing || !visible || open || dockHidden) return
+    if (playing || !visible || open || dockHidden || studyScreen) return
     if (localStorage.getItem(INVITE_KEY)) return
     const id = setTimeout(() => setShowInvite(true), 6000)
     return () => clearTimeout(id)
-  }, [visible, open, playing, dockHidden])
+  }, [visible, open, playing, dockHidden, studyScreen])
+
+  /* Una invitación, no un letrero fijo: se retira sola a los 12 s o en cuanto
+     la persona se pone a desplazarse (está leyendo, no quiere opinar). Antes
+     solo se iba con la X, y quien no la veía la tenía encima en cada página. */
+  useEffect(() => {
+    if (!showInvite) return
+    const dismiss = () => { setShowInvite(false); localStorage.setItem(INVITE_KEY, '1') }
+    const id = setTimeout(dismiss, 12_000)
+    // En captura: la app desplaza contenedores propios, no solo la ventana.
+    window.addEventListener('scroll', dismiss, { capture: true, passive: true, once: true })
+    return () => {
+      clearTimeout(id)
+      window.removeEventListener('scroll', dismiss, { capture: true })
+    }
+  }, [showInvite])
 
   // Al abrirse —desde el botón, el menú o "Mis sugerencias"— congelamos desde
   // qué pantalla se está opinando y preseleccionamos lo que podemos deducir.
@@ -184,7 +208,7 @@ export function FeedbackWidget() {
     <>
       {/* ── Invitación (una sola vez) ───────────────────────────── */}
       <AnimatePresence>
-        {showInvite && !playing && !open && !dockHidden && (
+        {showInvite && !playing && !open && !dockHidden && !studyScreen && (
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -192,7 +216,7 @@ export function FeedbackWidget() {
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             // Justo encima del rincón flotante, del lado donde esté.
             className={cn(
-              'fixed bottom-[4.75rem] z-[9991] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-border/10 glass-strong p-4 shadow-2xl shadow-black/30',
+              'fixed bottom-[4.75rem] z-[65] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-border/10 glass-strong p-4 shadow-2xl shadow-black/30',
               dockSide === 'left' ? 'left-4 sm:left-5' : 'right-4 sm:right-5',
             )}
           >

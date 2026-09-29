@@ -910,7 +910,10 @@ export default function ModulePage() {
         </div>
       )}
 
-      <div className="mt-10 flex flex-col items-center justify-end gap-3 border-t border-line pt-6 sm:flex-row">
+      {/* En el celular, aire debajo: los botones flotantes del rincón viven
+          abajo, y sin este espacio el "Marcar como completado" —lo último de la
+          página— quedaba a su altura y el toque se lo llevaban ellos. */}
+      <div className="mt-10 flex flex-col items-center justify-end gap-3 border-t border-line pb-28 pt-6 sm:flex-row sm:pb-0">
         {/* Sin halo ni icono latiendo: es una accion secundaria, no la principal. */}
         <button
           type="button"
