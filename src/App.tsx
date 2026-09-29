@@ -44,7 +44,6 @@ const LiveQuizPlay = lazy(() => import('@/pages/LiveQuizPlay'));
 const MissionPlayer = lazy(() => import('@/pages/MissionPlayer'));
 const GamesHub = lazy(() => import('@/pages/GamesHub'));
 const DrivingGame = lazy(() => import('@/pages/DrivingGame'));
-const ThreeLab = lazy(() => import('@/pages/ThreeLab'));
 const ArenaHub = lazy(() => import('@/pages/ArenaHub'));
 const ArenaPlayer = lazy(() => import('@/pages/ArenaPlayer'));
 const WorldMap = lazy(() => import('@/pages/WorldMap'));
@@ -319,8 +318,6 @@ export default function App() {
         <Route path="/verify/:certId" element={<PublicCertificate />} />
         <Route path="/mission/:id" element={<NotForRh><MissionPlayer /></NotForRh>} />
         <Route path="/games/drive/:id" element={<DrivingGame />} />
-        {/* Laboratorio para aprender Three.js: solo existe con `npm run dev`. */}
-        {import.meta.env.DEV && <Route path="/lab/three" element={<ThreeLab />} />}
         <Route path="/arena" element={<NotForRh><ArenaHub /></NotForRh>} />
         <Route path="/arena/:id" element={<NotForRh><ArenaPlayer /></NotForRh>} />
         <Route path="/world" element={<NotForRh><WorldMap /></NotForRh>} />
