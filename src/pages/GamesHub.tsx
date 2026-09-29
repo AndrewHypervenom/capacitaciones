@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { Plus, ArrowRight, Car, Pencil, Eye, Lock, Check, Sparkles, Trash2 } from 'lucide-react'
+import { Plus, ArrowRight, Car, Pencil, Eye, Lock, Check, Sparkles, Trash2, Activity } from 'lucide-react'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -10,6 +10,9 @@ import { DRIVING_ICON, validRoadQuestions } from '@/components/games/drivingMode
 import { LEVEL_LABEL, DEFAULT_PASS_PCT, isLevel, routeOf, unlockedIds, passedGames, deleteGames } from '@/services/drivingLevels.service'
 const Editor = lazy(() => import('@/admin/components/ArenaEditorModal').then(m => ({ default: m.ArenaEditorModal })))
 const RouteModal = lazy(() => import('@/admin/components/DrivingRouteModal').then(m => ({ default: m.DrivingRouteModal })))
+import '@/components/games/ergonomics.css'
+const ErgonomicsGame = lazy(() => import('@/components/games/ErgonomicsGame'))
+
 type DriveGame = ArenaQuiz & { course_id: string | null; level: string | null; min_score_pct: number | null }
 export default function GamesHub({ admin = false }: { admin?: boolean }) {
   const { user, loading: authLoading, isAuthenticated, isSuperAdmin, isRh, creationCampaignId } = useAuth()
@@ -21,6 +24,7 @@ export default function GamesHub({ admin = false }: { admin?: boolean }) {
   const [editing, setEditing] = useState<ArenaQuiz | null | undefined>(undefined)
   const [route, setRoute] = useState<string | null | undefined>(undefined)
   const [busy, setBusy] = useState<string | null>(null)
+  const [ergonomicsOpen, setErgonomicsOpen] = useState(false)
   const confirm = useConfirm()
   const userId = user?.id
   const load = useCallback(async () => {
@@ -98,6 +102,11 @@ export default function GamesHub({ admin = false }: { admin?: boolean }) {
     <h1 className="mb-3 mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Zona de juegos</h1>
     <p className="mb-6 max-w-2xl leading-relaxed text-text-muted">{admin ? 'Crea recorridos de estudio: cada pregunta se convierte en un semáforo. Genera una ruta por niveles desde un curso o arma un juego a mano, pruébalo y publícalo para tus aprendices.' : 'Pon en marcha lo que sabes. Recorre la ciudad, resuelve las preguntas y convierte cada semáforo rojo en una nueva oportunidad de aprender.'}</p>
     {admin && <div className="mb-7 flex flex-wrap gap-3"><button className={primary} onClick={() => setRoute(null)}><Sparkles size={18} /> Ruta por niveles con IA</button><button className={secondary + ' px-4 py-3 text-sm'} onClick={() => setEditing(null)}><Plus size={16} /> Crear juego a mano</button></div>}
+    {ergonomicsOpen ? <Suspense fallback={<div className="ergo-launch" role="status">Preparando tu espacio 3D…</div>}><ErgonomicsGame onClose={() => { setErgonomicsOpen(false); window.requestAnimationFrame(() => document.getElementById('open-ergonomics')?.focus()) }} /></Suspense> : <section className="ergo-launch" aria-labelledby="ergonomics-title">
+      <div><span className="ergo-eyebrow"><Activity size={15} /> NUEVA EXPERIENCIA · BIENESTAR EN 3D</span><h2 id="ergonomics-title">Tu próxima pausa empieza aquí.</h2><p>Transforma un puesto de trabajo, descubre cómo sentarte con comodidad y regálate una pausa activa con una guía en movimiento.</p><small>7 ajustes interactivos · 3 misiones · Pausa guiada de 80 segundos</small></div>
+      <button id="open-ergonomics" onClick={() => setErgonomicsOpen(true)}>Explorar pausa activa <ArrowRight size={17} /></button>
+    </section>}
+    <h2 className="mb-4 text-xl font-bold">Recorridos de estudio</h2>
     {error && <div className="my-4 rounded-xl border border-danger/40 bg-danger/5 p-4 text-sm text-danger" role="alert">{error} <button className="ml-2 font-semibold underline" onClick={() => void load()}>Reintentar</button></div>}
     {loading ? <p role="status" className="text-text-muted">Cargando recorridos…</p> : games.length === 0 ? <div className="rounded-2xl border border-dashed border-line/70 p-10 text-text-muted"><Car size={40} className="mb-4 text-neon-green" />{admin ? 'Tu primer circuito empieza aquí. Genera una ruta por niveles desde un curso o crea un juego con las preguntas que quieras.' : 'Todavía no hay recorridos publicados disponibles para ti.'}</div> : <>
       {routes.map(courseId => {

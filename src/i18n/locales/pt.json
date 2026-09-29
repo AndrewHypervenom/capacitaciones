@@ -6423,7 +6423,21 @@
       "not_passed": "Não aprovado",
       "best_short": "Melhor",
       "by_domain_title": "Por tema",
-      "question_n": "Pergunta {{n}}"
+      "question_n": "Pergunta {{n}}",
+      "x_points": "Ponto",
+      "x_kind": "Tipo de pergunta",
+      "x_difficulty": "Dificuldade",
+      "x_explanation": "Explicação",
+      "x_kind_single": "Uma resposta",
+      "x_kind_multi": "Várias respostas",
+      "x_kind_tf": "Verdadeiro / falso",
+      "x_level_basico": "Básico",
+      "x_level_medio": "Médio",
+      "x_level_avanzado": "Avançado",
+      "x_sheet_domains": "Por tema",
+      "x_total_q": "Perguntas",
+      "x_domain_pct": "Acerto do tema (%)",
+      "x_domain_ok": "Tema aprovado"
     },
     "test_mode": {
       "label": "Modo de testes",

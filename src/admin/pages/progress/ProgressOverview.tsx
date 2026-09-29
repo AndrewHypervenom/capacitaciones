@@ -23,6 +23,8 @@ import { SurveyAuthorLine } from '@/admin/components/SurveyAuthorLine';
 import type { SurveyAuthor } from '@/services/survey.service';
 import type { Profile, OrgUnit } from '@/types/database';
 import { downloadWorkbook, xlsDate, xlsHours, type Sheet, type SheetRow } from '@/lib/exportXlsx';
+import { getExamAttemptsDetail } from '@/services/exams.admin.service';
+import { buildExamDetailSheets, type ExamExportCourse } from '@/admin/lib/examExport';
 import { formatElapsed } from '@/hooks/useModuleTimer';
 import {
   useProgramData, npsFromHistogram, mergeNps, isCourseCompleted,
@@ -955,9 +957,54 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
      la operación entera. Esta respeta lo que se ve en la tabla (buscador y
      filtro rápido). Si lo buscado es un curso y no una persona, la tabla de
      personas queda vacía: ahí no se filtra por persona, solo por curso. */
-  const examPeopleSheet = (byCourse: typeof exams.byCourse): Sheet => {
+  /** A quién se limita el examen exportado: lo que se ve en la tabla. Si lo
+      buscado es un curso y no una persona, no se filtra por persona. */
+  const examPeopleOnly = (): Set<string> | null => {
     const filtering = focus !== 'none' || (query.trim() !== '' && visiblePeople.length > 0);
-    const only = filtering ? new Set(visiblePeople.map((p) => p.id)) : null;
+    return filtering ? new Set(visiblePeople.map((p) => p.id)) : null;
+  };
+
+  /* Detalle del examen: cada intento y cada respuesta (lo que marcó y cuál era
+     la correcta), igual que el Excel del editor del curso. Se pide curso por
+     curso y solo de los que tienen examen presentado en el alcance. */
+  const examDetailSheets = async (byCourse: typeof exams.byCourse): Promise<Sheet[]> => {
+    const only = examPeopleOnly();
+    const withExam = scopedCourses.filter((c) =>
+      (byCourse[c.id] ?? []).some((r) => r.attempts > 0 && (!only || only.has(r.user_id))));
+    const people = new Map<string, { name: string; email: string }>();
+    for (const c of withExam) {
+      for (const r of byCourse[c.id] ?? []) people.set(r.user_id, { name: r.display_name ?? '', email: r.email ?? '' });
+    }
+    for (const p of rows) if (people.has(p.id)) people.set(p.id, { name: p.name, email: p.email ?? '' });
+
+    const courses: ExamExportCourse[] = [];
+    const queue = [...withExam];
+    const worker = async () => {
+      for (;;) {
+        const c = queue.shift();
+        if (!c) return;
+        try {
+          const d = await getExamAttemptsDetail(c.id);
+          courses.push({
+            courseTitle: c.title,
+            attempts: d.attempts.filter((a) => !only || only.has(a.user_id)),
+            questions: d.questions,
+          });
+        } catch {
+          // Sin permiso o sin tabla: ese curso sale sin detalle, no tumba el Excel.
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
+    // El orden de llegada es el de la red: se devuelve en el de la pantalla.
+    const order = new Map(withExam.map((c, i) => [c.title, i]));
+    courses.sort((a, b) => (order.get(a.courseTitle) ?? 0) - (order.get(b.courseTitle) ?? 0));
+    const d = buildExamDetailSheets(courses, people, t, i18n.language, { withCourse: true });
+    return [d.attempts, d.domains, d.answers, d.analysis];
+  };
+
+  const examPeopleSheet = (byCourse: typeof exams.byCourse): Sheet => {
+    const only = examPeopleOnly();
     const personById = new Map(rows.map((p) => [p.id, p]));
     const out: SheetRow[] = [];
     for (const c of scopedCourses) {
@@ -1063,7 +1110,7 @@ export default function ProgressOverview({ onOpenInbox }: { onOpenInbox?: () => 
             : kind === 'matrix' ? [matrixSheet()]
               : kind === 'certificates' ? [certificatesSheet()]
                 : kind === 'deliveries' ? [deliveriesSheet()]
-                  : kind === 'exam' ? [examSheet(summary), examPeopleSheet(examData), weakSheet(summary)]
+                  : kind === 'exam' ? [examSheet(summary), examPeopleSheet(examData), ...(await examDetailSheets(examData)), weakSheet(summary)]
                     : kind === 'survey' ? [surveySheet(surveyData), commentsSheet(surveyData)]
                       : [peopleSheet(), coursesSheet(surveyData), matrixSheet(), certificatesSheet(), deliveriesSheet(), examSheet(summary), examPeopleSheet(examData), weakSheet(summary), surveySheet(surveyData), commentsSheet(surveyData)];
       // El nombre del archivo se lee fuera de la app —en el correo, en la

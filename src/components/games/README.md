@@ -49,3 +49,34 @@ Las pruebas usan sesiones y respuestas de Supabase simuladas y conducen de verda
 - Antes: todo lo estático se fusionaba en una malla por material al construir la ciudad; los materiales y la luz de la explosión se crean de antemano (crearlos en plena escena recompilaba shaders y daba tirones).
 - El bucle de dibujo no crea objetos por cuadro; las luces se actualizan cada 0.2 s y la telemetría solo avisa a React cuando cambia.
 - Audio generado en el navegador con compresor maestro; se reactiva solo si el navegador lo suspende. Efectos: choque, peatón, teletransporte, explosión y fanfarria de meta.
+
+## Pausa activa y ergonomía
+
+La misma Zona de juegos (`/games` y `/admin/games`) incluye una experiencia independiente de bienestar, cargada al pulsar «Explorar pausa activa». No necesita tablas, publicaciones ni servicios nuevos. Las misiones duran durante la apertura del juego y no modifican notas ni XP.
+
+- `ErgonomicsGame.tsx`: tres misiones, comparación sin alterar la respuesta, exploración y cuatro movimientos de 20 segundos. El cronómetro se pausa al ocultar la pestaña y espera confirmación entre movimientos.
+- `ErgonomicsScene.tsx`: puesto articulado en Three.js, cámaras, órbita, puntos seleccionables, iluminación, limpieza de recursos y alternativa sin WebGL.
+- `ergonomicsModel.ts`: reglas del personaje, escenarios y explicaciones. Los rangos son objetivos didácticos del avatar, no una evaluación médica ni medidas universales.
+- `ergonomics.css`: presentación adaptable. Todos los puntos de la escena tienen un control equivalente accesible mediante teclado.
+
+Referencias de contenido: [posturas](https://www.osha.gov/etools/computer-workstations/positions), [monitor](https://www.osha.gov/etools/computer-workstations/components/monitors), [silla y reposapiés](https://www.osha.gov/etools/computer-workstations/components/chairs). La pausa es una secuencia orientativa de movilidad suave que se adapta a la comodidad de cada persona.
+
+Prueba local (la carpeta `tests` está excluida del repositorio por la configuración existente): `npx playwright test -c tests/ergonomics.config.ts`. Cubre las tres misiones, comparación, temporizador, cierre, controles móviles y falta de WebGL con datos simulados, sin modificar datos reales.
+
+### Personaje humano, sonido y pantalla completa
+
+El personaje es `Business_Female_04` de Microsoft Rocketbox (MIT), convertido a GLB con el esqueleto y sus pesos de deformacion. El archivo `public/ergonomics/office-human.glb` incluye las texturas, materiales de piel y ropa y cabello con tarjetas transparentes. `ergonomicsPerson.ts` adapta las articulaciones al puesto mediante cinemática inversa para brazos y piernas. Ya no usa un cuerpo ensamblado a partir de primitivas. La carga tiene estados de espera y error y libera texturas, geometrías y esqueleto al cerrar.
+
+`ergonomicsGuides.ts` amplía cada ajuste con qué observar, tres pasos y una comprobación personal. Las medidas son objetivos didácticos del avatar, no medidas universales.
+
+`useErgoAmbience.ts` mezcla tres grabaciones CC0 **sin aves** (hojas y viento, arroyo, lluvia suave) en tres paisajes que se eligen en la barra del juego. Cada archivo es un bucle de 80–95 s con fundido cruzado ya aplicado y 0,5 s de relleno circular en ambos extremos, así que no hay cortes aunque el decodificador MP3 añada retardo. Las capas tienen duraciones distintas, empiezan en un punto aleatorio y el viento varía lentamente de nivel, para que el ambiente no se perciba repetido. Un filtro de paso alto quita el ruido grave y un recorte de agudos suaviza el siseo. Volumen, silencio y paisaje se recuerdan en `localStorage`; el audio se suspende con la pestaña oculta y el contexto se libera al cerrar. Los únicos sonidos generados son campanas suaves al terminar un movimiento o una misión, y respetan el silencio.
+
+La interfaz usa los tokens de color de la aplicación (verde y magenta de marca) y sigue el tema claro u oscuro; la escena 3D cambia su paleta al cambiar el tema. La escena usa un mapa de entorno para los reflejos, una ventana con paisaje, un haz de luz que explica el reflejo en pantalla, lámpara, planta con hojas y marcadores magenta (pendiente) o verdes (ajustado). Los ajustes y las vistas se animan suavemente.
+
+En la pausa activa, cabeza, cuello y pantalla quedan quietos (el monitor usa la altura de ojos sentada del puesto, no la del cuerpo en movimiento), las manos se mueven lejos del escritorio y una cámara guiada hace un plano cercano de la zona que se mueve en cada paso, con un desplazamiento lento. Arrastrar la escena toma el control de la cámara hasta el siguiente paso.
+
+Una voz guía masculina acompaña la pausa: presentación al entrar, instrucción al comenzar cada movimiento, un recordatorio a mitad (a los 8 s restantes), aviso al terminar cada paso y cierre. Son 11 frases pregeneradas con Kokoro (`em_alex`, Apache 2.0) en `public/ergonomics/voice/` (≈680 KB, se precargan al abrir la pausa), así que suena igual en todos los dispositivos, sin servicios externos. Mientras habla, el ambiente baja al 40 %. Pausar o salir de la pausa la silencia. Se puede desactivar con el interruptor «Voz guía», que se recuerda; el texto en pantalla sigue siendo la guía completa. Para cambiar una frase, edita el guion en `scripts/ergonomics-voice.py` y vuelve a generar ese archivo con la misma voz.
+
+Licencias y fuentes: `public/ergonomics/CREDITS.md` y `ROCKETBOX-LICENSE.txt`. Los recursos están alojados con la aplicación, sin dependencias de una API de avatares ni del servidor de audio original.
+
+La pantalla completa usa la API del navegador. Si no está disponible, se abre una vista ampliada con fondo inerte y foco de teclado contenido. Escape y el botón de reducir permiten salir y restauran el desplazamiento. En escritorio, los controles se desplazan por separado.

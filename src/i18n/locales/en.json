@@ -6423,7 +6423,21 @@
       "not_passed": "Not passed",
       "best_short": "Best",
       "by_domain_title": "By topic",
-      "question_n": "Question {{n}}"
+      "question_n": "Question {{n}}",
+      "x_points": "Point",
+      "x_kind": "Question type",
+      "x_difficulty": "Difficulty",
+      "x_explanation": "Explanation",
+      "x_kind_single": "Single answer",
+      "x_kind_multi": "Multiple answers",
+      "x_kind_tf": "True / false",
+      "x_level_basico": "Basic",
+      "x_level_medio": "Intermediate",
+      "x_level_avanzado": "Advanced",
+      "x_sheet_domains": "By topic",
+      "x_total_q": "Questions",
+      "x_domain_pct": "Topic score (%)",
+      "x_domain_ok": "Topic passed"
     },
     "test_mode": {
       "label": "Test mode",

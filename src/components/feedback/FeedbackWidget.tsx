@@ -38,6 +38,7 @@ export function FeedbackWidget() {
   /** El botón vive en el rincón compartido: de ahí salen lado y visibilidad. */
   const dockSide = useFloatingDockStore((s) => s.side)
   const dockHidden = useFloatingDockStore((s) => s.hidden)
+  const inlineGameActive = useFloatingDockStore((s) => s.inlineGameActive)
 
   // El panel se abre desde el botón flotante, desde el menú o desde "Mis
   // sugerencias": por eso su estado vive en un store compartido.
@@ -78,7 +79,7 @@ export function FeedbackWidget() {
   const originRef = useRef({ path: location.pathname, label: pageLabelFor(location.pathname) })
 
   const panelRef = useRef<HTMLDivElement>(null)
-  const playing = location.pathname.startsWith('/games/drive/')
+  const playing = inlineGameActive || location.pathname.startsWith('/games/drive/')
   const visible = isAuthenticated && shouldShowFeedbackFab(location.pathname)
 
   // Datos de contacto por defecto: los que ya conocemos, editables.

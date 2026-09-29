@@ -59,6 +59,7 @@ export function CornerDock() {
 
   const side = useFloatingDockStore((s) => s.side)
   const hidden = useFloatingDockStore((s) => s.hidden)
+  const inlineGameActive = useFloatingDockStore((s) => s.inlineGameActive)
   const helpMounted = useFloatingDockStore((s) => s.helpMounted)
   const setHidden = useFloatingDockStore((s) => s.setHidden)
   const toggleSide = useFloatingDockStore((s) => s.toggleSide)
@@ -74,7 +75,7 @@ export function CornerDock() {
   /** Último contenedor que scrolleó (null = la página). Lo usa "volver arriba". */
   const scrollerRef = useRef<HTMLElement | null>(null)
 
-  const routeAllows = !HIDDEN_ROUTES.some((re) => re.test(location.pathname))
+  const routeAllows = !inlineGameActive && !HIDDEN_ROUTES.some((re) => re.test(location.pathname))
   const showFeedback = shouldShowFeedbackFab(location.pathname)
   const panelOpen = helpOpen || feedbackOpen
   const visible = isAuthenticated && !IS_LEARNER_PREVIEW && routeAllows && (helpMounted || showFeedback)

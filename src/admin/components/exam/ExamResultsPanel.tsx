@@ -25,9 +25,15 @@ import { stripMarkdown } from '@/components/ui/RichText'
 import { downloadWorkbook, type Sheet, type SheetRow } from '@/lib/exportXlsx'
 import {
   getExamAttemptsDetail,
-  isAnswerCorrect,
   type ExamAttemptDetail,
 } from '@/services/exams.admin.service'
+import {
+  buildExamDetailSheets,
+  minutesBetween,
+  verdictLabels,
+  verdictOf,
+  type Verdict,
+} from '@/admin/lib/examExport'
 import type { ReinforcementStudyAudit } from '@/services/reinforcementStudy.service'
 import type { ExamDomain, ExamQuestion, ExamResultRow } from '@/types/exam'
 
@@ -46,18 +52,6 @@ import type { ExamDomain, ExamQuestion, ExamResultRow } from '@/types/exam'
 type Filter = 'all' | 'passed' | 'failed' | 'reinforcement'
 type Sort = 'recent' | 'name' | 'score'
 type Detail = { attempts: ExamAttemptDetail[]; questions: Map<string, ExamQuestion> }
-/** Cómo quedó una pregunta dentro de un intento. */
-type Verdict = 'correct' | 'wrong' | 'blank' | 'deleted'
-
-function verdictOf(q: ExamQuestion | undefined, marked: string[] | undefined): Verdict {
-  if (!q) return 'deleted'
-  if (!marked || marked.length === 0) return 'blank'
-  return isAnswerCorrect(q, marked) ? 'correct' : 'wrong'
-}
-
-const minutesBetween = (a: string, b: string | null) =>
-  b ? Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 60_000)) : null
-
 /** "Rubén Gutiérrez Joaquinero" → "RG". */
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -254,20 +248,7 @@ export function ExamResultsPanel({
         })
       : ''
 
-  const optionText = (q: ExamQuestion, ids: string[]) =>
-    ids
-      .map((id) => {
-        const o = q.options.find((x) => x.id === id)
-        return o ? stripMarkdown(rowText(o, 'text')) : id
-      })
-      .join(' | ')
-
-  const verdictLabel: Record<Verdict, string> = {
-    correct: t('admin.exam.v_correct', 'Correcta'),
-    wrong: t('admin.exam.v_wrong', 'Incorrecta'),
-    blank: t('admin.exam.v_blank', 'Sin responder'),
-    deleted: t('admin.exam.v_deleted', 'Pregunta eliminada'),
-  }
+  const verdictLabel = verdictLabels(t)
 
   /* ── Excel ─────────────────────────────────────────────────────────── */
 
@@ -312,98 +293,27 @@ export function ExamResultsPanel({
         })),
       }
 
-      const attemptsSheet: Sheet = {
-        name: t('admin.exam.x_sheet_attempts', 'Intentos'),
-        rows: attempts.map<SheetRow>((a) => {
-          const ok = a.question_ids.filter((id) => {
-            const q = d.questions.get(id)
-            return q && isAnswerCorrect(q, a.answers[id])
-          }).length
-          const blank = a.question_ids.filter((id) => !(a.answers[id]?.length)).length
-          return {
-            ...personCols(a.user_id),
-            [C.attempt]: a.attempt_no,
-            [t('admin.exam.x_status', 'Estado')]: a.status === 'expired'
-              ? t('admin.exam.x_expired', 'Se le acabó el tiempo')
-              : t('admin.exam.x_submitted', 'Enviado'),
-            [t('admin.exam.x_started', 'Inicio')]: fmtDate(a.started_at),
-            [t('admin.exam.x_submitted_at', 'Envío')]: fmtDate(a.submitted_at),
-            [t('admin.exam.x_minutes', 'Duración (min)')]: minutesBetween(a.started_at, a.submitted_at) ?? '',
-            [t('admin.exam.x_score', 'Nota (%)')]: a.score_pct ?? '',
-            [t('admin.exam.x_passed', 'Aprobó')]: a.passed ? C.yes : C.no,
-            [t('admin.exam.x_right', 'Correctas')]: `${ok}/${a.question_ids.length}`,
-            [t('admin.exam.x_blank', 'Sin responder')]: blank,
-            [t('admin.exam.x_by_domain', 'Por tema')]: a.domain_scores
-              .map((s) => `${rowText(s, 'name')}: ${s.pct}% (${s.correct}/${s.total})`)
-              .join(' · '),
-          }
-        }),
-      }
-
-      const answersRows: SheetRow[] = []
-      /* Análisis por pregunta: la pregunta que casi todos fallan suele decir
-         más del curso (o de la pregunta) que de las personas. */
-      const perQuestion = new Map<string, { seen: number; right: number; wrong: Map<string, number> }>()
-      for (const a of attempts) {
-        a.question_ids.forEach((id, i) => {
-          const q = d.questions.get(id)
-          const marked = a.answers[id] ?? []
-          const v = verdictOf(q, marked)
-          const editedAfter = !!q && !!a.submitted_at &&
-            Date.parse((q as { updated_at?: string }).updated_at ?? '') > Date.parse(a.submitted_at)
-          answersRows.push({
-            ...personCols(a.user_id),
-            [C.attempt]: a.attempt_no,
-            [t('admin.exam.x_n', 'N.º')]: i + 1,
-            [t('admin.exam.x_domain', 'Tema')]: domainName(q?.domain_id),
-            [t('admin.exam.x_question', 'Pregunta')]: q ? stripMarkdown(rowText(q, 'text')) : '',
-            [t('admin.exam.x_answered', 'Respondió')]: q ? optionText(q, marked) : marked.join(', '),
-            [t('admin.exam.x_right_answer', 'Respuesta correcta')]: q ? optionText(q, q.correct) : '',
-            [t('admin.exam.x_result', 'Resultado')]: verdictLabel[v],
-            [t('admin.exam.x_note', 'Observación')]: editedAfter
-              ? t('admin.exam.x_edited_after', 'La pregunta se editó después de este intento')
-              : '',
-          })
-          if (!q) return
-          const cur = perQuestion.get(id) ?? { seen: 0, right: 0, wrong: new Map() }
-          cur.seen++
-          if (v === 'correct') cur.right++
-          else if (v === 'wrong') {
-            const key = [...marked].sort().join(',')
-            cur.wrong.set(key, (cur.wrong.get(key) ?? 0) + 1)
-          }
-          perQuestion.set(id, cur)
-        })
-      }
-
-      const analysis: Sheet = {
-        name: t('admin.exam.x_sheet_questions', 'Análisis por pregunta'),
-        rows: [...perQuestion.entries()]
-          .map(([id, s]) => ({ q: d.questions.get(id)!, s }))
-          .sort((a, b) => a.s.right / a.s.seen - b.s.right / b.s.seen)
-          .map<SheetRow>(({ q, s }) => {
-            const top = [...s.wrong.entries()].sort((a, b) => b[1] - a[1])[0]
-            return {
-              [t('admin.exam.x_domain', 'Tema')]: domainName(q.domain_id),
-              [t('admin.exam.x_question', 'Pregunta')]: stripMarkdown(rowText(q, 'text')),
-              [t('admin.exam.x_right_answer', 'Respuesta correcta')]: optionText(q, q.correct),
-              [t('admin.exam.x_seen', 'Veces que salió')]: s.seen,
-              [t('admin.exam.x_hits', 'Aciertos')]: s.right,
-              [t('admin.exam.x_hit_rate', 'Acierto (%)')]: Math.round((s.right / s.seen) * 100),
-              [t('admin.exam.x_top_wrong', 'Respuesta incorrecta más elegida')]: top
-                ? `${optionText(q, top[0].split(','))} (${top[1]})`
-                : '',
-            }
-          }),
-      }
-
-      const answersSheet: Sheet = { name: t('admin.exam.x_sheet_answers', 'Respuestas'), rows: answersRows }
+      const detailSheets = buildExamDetailSheets(
+        [{
+          courseTitle,
+          attempts,
+          questions: d.questions,
+          domainNames: new Map(domains.map((x) => [x.id, rowText(x, 'name')])),
+        }],
+        new Map(who.map((r) => [r.user_id, { name: r.display_name ?? '', email: r.email ?? '' }])),
+        t,
+        i18n.language,
+      )
       const single = who.length === 1 ? who[0].display_name ?? '' : ''
       const base = fold(`examen ${courseTitle} ${single}`)
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '')
         .slice(0, 80)
-      await downloadWorkbook(base || 'examen', [summary, attemptsSheet, answersSheet, analysis])
+      await downloadWorkbook(
+        base || 'examen',
+        [summary, detailSheets.attempts, detailSheets.domains, detailSheets.answers, detailSheets.analysis],
+        { subtitle: single ? `${courseTitle} · ${single}` : courseTitle },
+      )
       toast.success(t('admin.exam.x_done', {
         n: who.length,
         defaultValue: 'Excel descargado: {{n}} persona(s) con todas sus respuestas',

@@ -51,6 +51,8 @@ interface FloatingDockState {
   side: DockSide
   hidden: boolean
   helpMounted: boolean
+  inlineGameActive: boolean
+  setInlineGameActive: (active: boolean) => void
   setSide: (side: DockSide) => void
   toggleSide: () => void
   setHidden: (hidden: boolean) => void
@@ -61,6 +63,8 @@ export const useFloatingDockStore = create<FloatingDockState>((set, get) => ({
   side: readSide(),
   hidden: readHidden(),
   helpMounted: false,
+  inlineGameActive: false,
+  setInlineGameActive: (inlineGameActive) => set({ inlineGameActive }),
   setSide: (side) => {
     persist(SIDE_KEY, side)
     set({ side })
