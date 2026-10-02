@@ -9,6 +9,7 @@ import {
   ArrowDown,
   ArrowLeft,
   UserCog,
+  FlaskConical,
   ArrowUp,
   BookOpen,
   CalendarClock,
@@ -76,6 +77,9 @@ import { supabase } from '@/lib/supabase'
 import {
   getCourseById,
   updateCourse,
+  getCourseTestEditors,
+  addCourseTestEditor,
+  removeCourseTestEditor,
   reorderCourseModules,
   getCourseCampaigns,
   setCourseCampaign,
@@ -146,6 +150,7 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 import { PRONUNCIATION_LANGS, normalizePronLang } from '@/lib/speech'
 import { fold } from '@/lib/normalize'
 import { Select } from '@/components/ui/Select'
+import { MultiSelect } from '@/components/ui/MultiSelect'
 import { NumberField } from '@/components/ui/NumberField'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { Button } from '@/components/ui/Button'
@@ -155,6 +160,8 @@ import { cn } from '@/lib/cn'
 import { prepareText, smartSearch } from '@/lib/smartSearch'
 import { toast } from '@/stores/toastStore'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { TestBadge } from '@/admin/components/TestModeSwitch'
+import { isTestModeOn, useTestMode } from '@/stores/testModeStore'
 import { useUnsavedWork } from '@/hooks/useUnsavedWork'
 import { useStaleGuard, type StaleGuard } from '@/hooks/useStaleGuard'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
@@ -563,6 +570,18 @@ export default function CourseEditor() {
   // puede administrar el curso, así que es una orden, no una preferencia.
   const [ownerTargetId, setOwnerTargetId] = useState('')
   const [savingOwner, setSavingOwner] = useState(false)
+  // Guardando la marca de curso de prueba (SQL 78).
+  const [savingTest, setSavingTest] = useState(false)
+  // Capacitadores invitados al curso de prueba: lo ven y lo editan sin quedar
+  // inscritos como aprendices (SQL 79).
+  const [testEditors, setTestEditors] = useState<string[]>([])
+  const [savingEditors, setSavingEditors] = useState(false)
+  useEffect(() => {
+    if (!isSuperAdmin || !course?.id || !course.is_test) return
+    let active = true
+    getCourseTestEditors(course.id).then((ids) => { if (active) setTestEditors(ids) })
+    return () => { active = false }
+  }, [isSuperAdmin, course?.id, course?.is_test])
   /* Campañas del candidato a dueño. Cambiar `created_by` NO da acceso: quién
      puede abrir el curso lo decide la campaña. Sin esto se puede dejar un curso
      a nombre de alguien que no lo ve —ya pasó— y nadie se entera. */
@@ -1983,6 +2002,66 @@ export default function CourseEditor() {
       toast.success(t('admin.courses.share_group_saved'))
     } catch {
       toast.error(t('admin.courses.error_save'))
+    }
+  }
+
+  /* Curso de prueba (SQL 78): la base lo esconde a todo el mundo salvo al
+   * superadmin con Modo pruebas encendido y a quien lo tenga asignado. Para
+   * marcarlo hay que estar EN Modo pruebas —si no, el curso desaparecería en
+   * la misma petición que lo marca—, así que se enciende antes de guardar y,
+   * si estaba apagado, se recarga para que todo el panel cambie de alcance. */
+  const isTestCourse = course.is_test === true
+  const handleSetTest = async (on: boolean) => {
+    if (isTestCourse === on || savingTest) return
+    const ok = await confirm({
+      title: on
+        ? t('admin.courses.test_mark_title', { name: course.title_es })
+        : t('admin.courses.test_unmark_title', { name: course.title_es }),
+      description: on ? t('admin.courses.test_mark_desc') : t('admin.courses.test_unmark_desc'),
+      confirmLabel: on ? t('admin.courses.test_mark_confirm') : t('admin.courses.test_unmark_confirm'),
+      tone: 'default',
+    })
+    if (!ok) return
+    const wasOn = isTestModeOn()
+    if (on && !wasOn) useTestMode.getState().setEnabled(true)
+    setSavingTest(true)
+    try {
+      await updateCourse(course.id, { is_test: on })
+      if (on && !wasOn) {
+        window.location.reload()
+        return
+      }
+      setCourse({ ...course, is_test: on })
+      invalidateModulesCache()
+      toast.success(on ? t('admin.courses.test_marked') : t('admin.courses.test_unmarked'))
+    } catch {
+      if (on && !wasOn) useTestMode.getState().setEnabled(false)
+      toast.error(t('admin.courses.error_save'))
+    } finally {
+      setSavingTest(false)
+    }
+  }
+
+  /* Invitar o quitar capacitadores: se guarda al instante, persona por persona,
+   * para que un fallo a mitad no deje la lista a medias sin saberlo. */
+  const testEditorCandidates = profiles.filter((p) => p.role === 'capacitador')
+  const handleSetTestEditors = async (next: string[]) => {
+    const added = next.filter((id) => !testEditors.includes(id))
+    const removed = testEditors.filter((id) => !next.includes(id))
+    if (added.length === 0 && removed.length === 0) return
+    setSavingEditors(true)
+    const prev = testEditors
+    setTestEditors(next)
+    try {
+      for (const id of added) await addCourseTestEditor(course.id, id)
+      for (const id of removed) await removeCourseTestEditor(course.id, id)
+      toast.success(t('admin.courses.test_editors_saved'))
+    } catch {
+      setTestEditors(prev)
+      getCourseTestEditors(course.id).then(setTestEditors)
+      toast.error(t('admin.courses.test_editors_error'))
+    } finally {
+      setSavingEditors(false)
     }
   }
 
@@ -4075,6 +4154,88 @@ export default function CourseEditor() {
             </div>
 
           </GlassCard>
+
+          {/* Curso de prueba: solo el superadmin pone o quita la marca. */}
+          {isSuperAdmin && (
+            <GlassCard
+              intensity="subtle"
+              rounded="2xl"
+              className={cn(
+                'p-4 space-y-3 transition-colors',
+                isTestCourse && 'border border-amber-500/25 bg-amber-500/[0.04]',
+              )}
+            >
+              <div className="flex items-start gap-2.5">
+                <div className={cn(
+                  'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                  isTestCourse ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-glass/8 text-text-muted',
+                )}>
+                  <FlaskConical className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-[13px] font-semibold text-text">{t('admin.courses.test_title')}</h2>
+                    {isTestCourse && <TestBadge />}
+                  </div>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {isTestCourse ? t('admin.courses.test_hint_on') : t('admin.courses.test_hint_off')}
+                  </p>
+                </div>
+                <div className="shrink-0 pt-0.5">
+                  {savingTest
+                    ? <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
+                    : <Toggle on={isTestCourse} onClick={() => handleSetTest(!isTestCourse)} label={t('admin.courses.test_title')} />}
+                </div>
+              </div>
+
+              {/* Quién más lo ve: capacitadores invitados (ven y editan) y, por
+                  la asignación de siempre, los aprendices o clientes que lo prueban. */}
+              {isTestCourse && (
+                <div className="space-y-2.5 border-t border-amber-500/15 pt-3">
+                  <div className="flex items-center gap-1.5">
+                    <UserCog className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                    <span className="text-[12px] font-medium text-text">{t('admin.courses.test_editors_title')}</span>
+                    {savingEditors && <Loader2 className="h-3 w-3 animate-spin text-text-subtle" />}
+                  </div>
+                  <MultiSelect
+                    values={testEditors}
+                    onChange={handleSetTestEditors}
+                    disabled={savingEditors}
+                    compact
+                    placeholder={t('admin.courses.test_editors_ph')}
+                    summary={(n) => t('admin.courses.test_editors_count', { count: n })}
+                    aria-label={t('admin.courses.test_editors_title')}
+                    options={testEditorCandidates.map((p) => ({ value: p.id, label: p.display_name || p.email || p.id }))}
+                  />
+                  {testEditors.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {testEditors.map((id) => {
+                        const p = profiles.find((x) => x.id === id)
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/[0.07] py-0.5 pl-2.5 pr-1 text-[11px] text-text"
+                          >
+                            {p?.display_name || p?.email || id.slice(0, 8)}
+                            <button
+                              type="button"
+                              onClick={() => handleSetTestEditors(testEditors.filter((x) => x !== id))}
+                              disabled={savingEditors}
+                              aria-label={t('admin.courses.test_editors_remove')}
+                              className="flex h-4 w-4 items-center justify-center rounded-full text-text-subtle transition-colors hover:bg-amber-500/15 hover:text-text disabled:opacity-40"
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <p className="text-[11px] leading-relaxed text-text-subtle">{t('admin.courses.test_editors_hint')}</p>
+                </div>
+              )}
+            </GlassCard>
+          )}
 
           {/* Dueño del curso. Solo el superadmin: de `created_by` depende quién
               puede administrar el curso, así que dejarlo abierto sería que un

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { healthFetch } from '@/lib/serviceHealth'
 import { withWriteNotifier } from '@/lib/writeNotifier'
+import { isTestModeOn } from '@/stores/testModeStore'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -11,13 +12,31 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env')
 }
 
+/**
+ * Con el Modo pruebas encendido, cada consulta a la API de datos lleva
+ * `x-test-mode: 1`. La base la usa para dejar ver los cursos de prueba al
+ * superadmin (SQL 78); a cualquier otro rol no le abre nada. Solo va a
+ * `/rest/v1/`: las Edge Functions tienen su propia lista de cabeceras CORS y
+ * una cabecera desconocida les tumbaría la petición previa.
+ */
+function withTestModeHeader(inner: typeof fetch): typeof fetch {
+  return (input, init) => {
+    if (!isTestModeOn()) return inner(input, init)
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (!url.includes('/rest/v1/')) return inner(input, init)
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+    headers.set('x-test-mode', '1')
+    return inner(input, { ...init, headers })
+  }
+}
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   // `fetch` instrumentado: mide latencia y fallos (5xx / timeouts de sentencia)
   // para poder avisar en pantalla cuando los servicios están degradados
   // (lib/serviceHealth.ts), y anuncia las escrituras de contenido a las demás
   // pestañas para que no se queden con la versión anterior (lib/writeNotifier.ts).
   // Ninguno de los dos cambia el comportamiento de las peticiones.
-  global: { fetch: withWriteNotifier(healthFetch) },
+  global: { fetch: withTestModeHeader(withWriteNotifier(healthFetch)) },
   auth: {
     persistSession: true,
     autoRefreshToken: true,

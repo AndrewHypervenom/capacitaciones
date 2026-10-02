@@ -212,6 +212,9 @@ export async function getLearnerCourses(
     // ofrecérselo que enseñarle un error. Sus cursos asignados no se tocan.
     .filter((c) => {
       if (preview || byUser.has(c.id) || byRule.has(c.id)) return true
+      // Un curso de prueba solo llega aquí si la base lo dejó ver (SQL 78):
+      // al superadmin con Modo pruebas, o a quien lo tiene asignado.
+      if (c.is_test) return true
       // El CLIENTE no tiene catálogo. Es gente de fuera: solo ve lo que alguien
       // de la casa le puso delante a propósito (asignado a mano, o un curso cuya
       // regla marca «incluye clientes»). Ofrecerle el catálogo abierto sería
@@ -526,7 +529,7 @@ export function isValidCourseSlug(s: string): boolean {
 
 export async function createCourse(
   campaignId: string,
-  data: { title_es: string; description_es?: string | null; icon?: string; color?: string },
+  data: { title_es: string; description_es?: string | null; icon?: string; color?: string; is_test?: boolean },
 ): Promise<Course> {
   const baseSlug = slugify(rowText(data)) || `curso-${Date.now().toString(36)}`
   // `created_by` no se estaba escribiendo nunca, así que TODOS los cursos de la
@@ -649,6 +652,36 @@ export async function updateCourse(
   updates: Partial<Omit<Course, 'id' | 'campaign_id' | 'created_at' | 'updated_at' | 'created_by' | 'copied_from'>>,
 ): Promise<void> {
   const { error } = await supabase.from('courses').update(updates).eq('id', courseId)
+  if (error) throw error
+}
+
+// ─── Capacitadores invitados a un curso de prueba (SQL 79) ─────────────────
+// Ven y editan el curso de prueba en el panel sin quedar inscritos como
+// aprendices. La lista la administra solo el superadmin (RLS).
+
+/** Ids de los capacitadores invitados. Vacío si el SQL 79 aún no se corrió. */
+export async function getCourseTestEditors(courseId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('course_test_editors' as never)
+    .select('user_id')
+    .eq('course_id', courseId)
+  if (error) return []
+  return ((data ?? []) as { user_id: string }[]).map((r) => r.user_id)
+}
+
+export async function addCourseTestEditor(courseId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('course_test_editors' as never)
+    .upsert({ course_id: courseId, user_id: userId } as never, { onConflict: 'course_id,user_id', ignoreDuplicates: true })
+  if (error) throw error
+}
+
+export async function removeCourseTestEditor(courseId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('course_test_editors' as never)
+    .delete()
+    .eq('course_id', courseId)
+    .eq('user_id', userId)
   if (error) throw error
 }
 

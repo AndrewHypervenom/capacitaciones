@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from 'lucide-react'
+import { ArrowDownAZ, BookOpen, ChevronRight, Clock, Eye, EyeOff, FileText, FlaskConical, GraduationCap, ImageDown, Languages, ListChecks, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFreshOnFocus } from '@/hooks/useFreshOnFocus'
 import { useAuth } from '@/hooks/useAuth'
@@ -58,6 +58,8 @@ import { ContentFilterBar, ContentFilterPrompt, useContentFilters } from '@/admi
 import { EnrollLearnersModal } from '@/admin/components/EnrollLearnersModal'
 import { getActiveOrgId } from '@/services/org.service'
 import { EntityIcon } from '@/components/ui/EntityIcon'
+import { TestBadge } from '@/admin/components/TestModeSwitch'
+import { isTestModeOn, useTestMode } from '@/stores/testModeStore'
 
 // Opción "Todas las campañas" en el selector de campaña (solo superadmin).
 const ALL_CAMPAIGNS = '__all__'
@@ -145,6 +147,9 @@ export default function CourseList() {
   const [showCreate, setShowCreate] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newDescription, setNewDescription] = useState('')
+  // Curso de prueba (solo superadmin): nace invisible para todos menos para
+  // el superadmin en Modo pruebas y quien lo tenga asignado. Ver SQL 78.
+  const [newIsTest, setNewIsTest] = useState(false)
   const [creating, setCreating] = useState(false)
 
   // Asistente "Crear curso con IA" (documento → 1 módulo → mundo, todo en borrador)
@@ -375,16 +380,26 @@ export default function CourseList() {
   const handleCreate = async () => {
     if (!newTitle.trim() || !creationCampaignId) return
     setCreating(true)
+    // Un curso de prueba solo se deja ver en Modo pruebas: hay que encenderlo
+    // ANTES de crearlo o la base no devolvería ni el curso recién creado.
+    const asTest = isSuperAdmin && newIsTest
+    const switchedMode = asTest && !isTestModeOn()
+    if (switchedMode) useTestMode.getState().setEnabled(true)
     try {
       const course = await createCourse(creationCampaignId, {
         title_es: newTitle.trim(),
         description_es: newDescription.trim() ? newDescription : null,
+        ...(asTest ? { is_test: true } : {}),
       })
       // El mundo gamificado es opcional: no se crea aquí. Se activa a demanda desde
       // el curso (toggle "mundo") o se genera con IA, para no gastar IA de más.
-      toast.success(t('admin.courses.created_ok'))
-      navigate(`/admin/courses/${course.id}`)
+      toast.success(t(asTest ? 'admin.courses.created_test_ok' : 'admin.courses.created_ok'))
+      // Si el modo se acaba de encender, carga completa: el resto del panel
+      // tiene que cambiar de alcance junto con el curso.
+      if (switchedMode) window.location.assign(`/admin/courses/${course.id}`)
+      else navigate(`/admin/courses/${course.id}`)
     } catch {
+      if (switchedMode) useTestMode.getState().setEnabled(false)
       toast.error(t('admin.courses.error_create'))
     } finally {
       setCreating(false)
@@ -729,6 +744,7 @@ export default function CourseList() {
                   <span className="inline-flex items-center rounded-full border border-line bg-glass/8 px-2.5 py-1 text-[11px] font-medium text-text-muted">
                     {t(`admin.courses.level_${course.level}`)}
                   </span>
+                  {course.is_test && <TestBadge />}
                   {course.visibility === 'catalog' && (
                     <NeonBadge color="cyan">{t('admin.courses.catalog_badge')}</NeonBadge>
                   )}
@@ -933,6 +949,16 @@ export default function CourseList() {
                 placeholder={t('admin.courses.field_description_ph')}
               />
             </div>
+            {isSuperAdmin && (
+              <OptionToggleRow
+                on={newIsTest}
+                onChange={setNewIsTest}
+                disabled={creating}
+                icon={<FlaskConical className="h-3.5 w-3.5" />}
+                title={t('admin.courses.test_create_title')}
+                description={t('admin.courses.test_create_hint')}
+              />
+            )}
           </div>
         </Modal>
       )}

@@ -176,6 +176,24 @@ export interface FlashcardBlock {
 export interface AccordionItem {
   question: ML;
   answer: ML;
+  /**
+   * URL de una imagen pequeña que acompaña la respuesta (una captura del campo
+   * que se explica, un ícono). Opcional y sin traducción: vale para los tres
+   * idiomas. Se muestra en miniatura y se amplía al tocarla.
+   */
+  image?: string;
+  /** Cómo se acomoda la imagen junto al texto. Sin definir = pequeña, a la izquierda, sin recortar. */
+  imageStyle?: AccordionImageStyle;
+}
+
+export type AccordionImageSize = 'sm' | 'md' | 'lg';
+export type AccordionImagePosition = 'left' | 'right' | 'top' | 'bottom';
+export type AccordionImageShape = 'original' | 'square' | 'landscape' | 'portrait';
+
+export interface AccordionImageStyle {
+  size?: AccordionImageSize;
+  position?: AccordionImagePosition;
+  shape?: AccordionImageShape;
 }
 
 export interface AccordionBlock {

@@ -428,6 +428,8 @@ export interface Database {
           is_shareable: boolean
           /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
           shared_with_group?: boolean
+          /** Curso de prueba: solo lo ven el superadmin con Modo pruebas y quien lo tenga asignado. SQL 78. */
+          is_test?: boolean
           copied_from: string | null
           created_by: string | null
           cert_conditions: CertConditions
@@ -479,6 +481,8 @@ export interface Database {
           is_shareable?: boolean
           /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
           shared_with_group?: boolean
+          /** Curso de prueba: solo lo ven el superadmin con Modo pruebas y quien lo tenga asignado. SQL 78. */
+          is_test?: boolean
           copied_from?: string | null
           created_by?: string | null
           cert_conditions?: CertConditions
@@ -528,6 +532,8 @@ export interface Database {
           is_shareable?: boolean
           /** Compartido con las orgs hermanas del grupo (LATAM ↔ Brasil). SQL 58. */
           shared_with_group?: boolean
+          /** Curso de prueba: solo lo ven el superadmin con Modo pruebas y quien lo tenga asignado. SQL 78. */
+          is_test?: boolean
           cert_conditions?: CertConditions
           sim_unlock_rule?: 'after_modules' | 'from_start' | 'after_module'
           sim_unlock_module_id?: string | null

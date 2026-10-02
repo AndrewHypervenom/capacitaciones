@@ -1,11 +1,12 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   GripVertical, Plus, Trash2, ChevronUp, ChevronDown, Copy,
   Type, AlignLeft, AlignCenter, AlignRight, WrapText, List, Image as ImageIcon, Video, Lightbulb,
   HelpCircle, CreditCard, ChevronDown as AccIcon, Layers, Code,
   Quote, Minus, Columns, Clock, Table, LayoutGrid, BarChart3, MapPin,
   FileText, Upload, Loader2, Mic, Volume2, Rows3, Columns2, GalleryHorizontal,
+  SlidersHorizontal, PanelLeft, PanelRight, PanelTop, PanelBottom, Square, RectangleHorizontal, RectangleVertical,
 } from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -17,8 +18,10 @@ import {
   type ContentBlock,
   type BlockType,
   type PronunciationLayout,
+  type AccordionImageStyle,
   emptyBlock,
 } from '@/types/blocks';
+import { ACC_IMAGE_DEFAULTS, resolveAccImageStyle } from '@/lib/accordionImage';
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { MediaUploader } from './MediaUploader';
 import { DuplicateMediaNotice } from './DuplicateMediaNotice';
@@ -767,7 +770,332 @@ function FlashcardEditor({ block, onChange, lang }: { block: ContentBlock & { ty
   );
 }
 
-function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { type: 'accordion' }; onChange: (b: ContentBlock) => void; lang: Lang }) {
+// Imagen pequeña de un ítem de acordeón. A propósito NO usa MediaUploader: un
+// acordeón de veinte ítems con veinte zonas de arrastre grandes vuelve el editor
+// interminable. Aquí es una píldora de una línea; con imagen, una miniatura con
+// cambiar/quitar. La subida es la misma (uploadSectionMedia optimiza la imagen).
+const ACC_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+const ACC_IMAGE_MAX = 10 * 1024 * 1024;
+
+/** Resumen de una línea del estilo elegido: «Mediana · a la derecha · cuadrada». */
+function accStyleSummary(look: Required<AccordionImageStyle>): string {
+  return [
+    i18n.t(`admin.modules.be.acc_size_${look.size}`),
+    i18n.t(`admin.modules.be.acc_pos_${look.position}`),
+    i18n.t(`admin.modules.be.acc_shape_${look.shape}`),
+  ].map((s, i) => (i ? s.toLowerCase() : s)).join(' · ');
+}
+
+/** Control segmentado compacto del panel «Ajustar». */
+function AccSegmented<T extends string>({
+  label, value, onChange, options,
+}: {
+  label: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; hint: string; text?: string; icon?: ReactNode }[];
+}) {
+  const current = options.find((o) => o.value === value);
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline gap-2">
+        <span className="text-[10.5px] font-semibold uppercase tracking-wider text-text-subtle">{label}</span>
+        {current && <span className="truncate text-[11px] text-text-muted">{current.hint}</span>}
+      </div>
+      <div role="radiogroup" aria-label={label} className="inline-flex rounded-lg border border-glass-border/15 bg-glass/[0.03] p-0.5">
+        {options.map((o) => {
+          const on = o.value === value;
+          return (
+            <Tooltip key={o.value} label={o.hint}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={on}
+                aria-label={o.hint}
+                onClick={() => onChange(o.value)}
+                className={cn(
+                  'flex h-7 min-w-[2rem] items-center justify-center rounded-md px-2 text-[11.5px] font-semibold transition-all duration-200',
+                  on
+                    ? 'bg-neon-green/10 text-neon-green shadow-sm ring-1 ring-neon-green/25'
+                    : 'text-text-subtle hover:bg-glass/[0.06] hover:text-text',
+                )}
+              >
+                {o.icon ?? o.text}
+              </button>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* Vista previa en miniatura: un ítem de acordeón abierto, con la imagen real
+ * acomodada como la verá el aprendiz. Las barras grises son el texto. Se anima
+ * con `layout` para que cada cambio se vea moverse, no saltar. */
+const PREVIEW_SIDE_W = { sm: '32%', md: '44%', lg: '58%' } as const;
+const PREVIEW_STACK_W = { sm: '42%', md: '66%', lg: '100%' } as const;
+const PREVIEW_ORIGINAL_MAX_H = { sm: 38, md: 54, lg: 78 } as const;
+const PREVIEW_ASPECT = { square: '1 / 1', landscape: '16 / 10', portrait: '3 / 4' } as const;
+const PREVIEW_DIRECTION = { left: 'row', right: 'row-reverse', top: 'column', bottom: 'column-reverse' } as const;
+
+function AccImagePreview({ url, look }: { url: string; look: Required<AccordionImageStyle> }) {
+  const side = look.position === 'left' || look.position === 'right';
+  const width = side ? PREVIEW_SIDE_W[look.size] : PREVIEW_STACK_W[look.size];
+  const spring = { type: 'spring', stiffness: 420, damping: 34 } as const;
+  return (
+    <div className="w-full sm:w-[184px]">
+      <div className="rounded-xl border border-neon-green/15 bg-surface/60 p-2.5 shadow-sm">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="h-1.5 w-3/5 rounded-full bg-text/25" />
+          <ChevronDown className="h-2.5 w-2.5 rotate-180 text-text-subtle" />
+        </div>
+        <div className="mb-2 h-px bg-glass-border/10" />
+        <div className="flex gap-2" style={{ flexDirection: PREVIEW_DIRECTION[look.position], alignItems: 'flex-start' }}>
+          <motion.div
+            layout
+            transition={spring}
+            className="shrink-0 overflow-hidden rounded-md border border-glass-border/15 bg-subtle p-0.5"
+            style={{ width }}
+          >
+            <motion.img
+              layout
+              transition={spring}
+              src={url}
+              alt=""
+              className="block w-full rounded-[4px]"
+              style={look.shape === 'original'
+                ? { height: 'auto', maxHeight: PREVIEW_ORIGINAL_MAX_H[look.size], objectFit: 'contain' }
+                : { aspectRatio: PREVIEW_ASPECT[look.shape], objectFit: 'cover' }}
+            />
+          </motion.div>
+          <motion.div layout transition={spring} className="min-w-0 flex-1 space-y-1.5 self-stretch pt-0.5" style={{ width: side ? undefined : '100%' }}>
+            <div className="h-1 w-full rounded-full bg-text/15" />
+            <div className="h-1 w-11/12 rounded-full bg-text/15" />
+            <div className="h-1 w-full rounded-full bg-text/15" />
+            <div className="h-1 w-2/3 rounded-full bg-text/15" />
+          </motion.div>
+        </div>
+      </div>
+      <p className="mt-1.5 text-center text-[10.5px] text-text-subtle">{i18n.t('admin.modules.be.acc_preview')}</p>
+    </div>
+  );
+}
+
+function AccordionImagePicker({
+  url, onChange, mediaContext, imageStyle, onStyleChange, onApplyAll,
+}: {
+  url?: string;
+  onChange: (url: string | undefined) => void;
+  mediaContext: MediaContext;
+  imageStyle?: AccordionImageStyle;
+  /** `undefined` = volver al estilo por defecto. */
+  onStyleChange: (style: AccordionImageStyle | undefined) => void;
+  /** Copia este estilo a los demás ítems. Sin él (un solo ítem) no se ofrece. */
+  onApplyAll?: () => void;
+}) {
+  const look = resolveAccImageStyle(imageStyle);
+  const isDefaultLook = look.size === ACC_IMAGE_DEFAULTS.size
+    && look.position === ACC_IMAGE_DEFAULTS.position
+    && look.shape === ACC_IMAGE_DEFAULTS.shape;
+  const [adjusting, setAdjusting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const canUpload = mediaContext.sectionId !== '';
+
+  const upload = async (file: File) => {
+    if (!ACC_IMAGE_ACCEPT.split(',').includes(file.type)) { toast.error(i18n.t('admin.modules.media_type_error')); return; }
+    if (file.size > ACC_IMAGE_MAX) { toast.error(i18n.t('admin.modules.media_size_error')); return; }
+    setUploading(true); setProgress(0);
+    try {
+      const next = await uploadSectionMedia(
+        file, mediaContext.campaignId, mediaContext.moduleId, mediaContext.sectionId, setProgress,
+      );
+      const prev = url;
+      onChange(next);
+      if (prev) deleteSectionMedia(prev, mediaContext.moduleId).catch(() => { /* limpieza de cupo, no bloquea */ });
+    } catch (err) {
+      console.error('[AccordionImagePicker] upload failed', err);
+      toast.error(i18n.t('admin.modules.media_upload_error'));
+    } finally {
+      setUploading(false); setProgress(0);
+    }
+  };
+
+  const { dragging, dropProps } = useFileDrop({
+    accept: ACC_IMAGE_ACCEPT,
+    disabled: !canUpload || uploading,
+    onFiles: (files) => upload(files[0]),
+    onReject: (name) => toast.error(i18n.t('common.drop_invalid', { name })),
+  });
+
+  const remove = async () => {
+    if (!url) return;
+    if (!(await confirmRemove('confirm.delete_media_title', 'confirm.delete_media_desc'))) return;
+    onChange(undefined);
+    deleteSectionMedia(url, mediaContext.moduleId).catch(() => { /* no bloquea */ });
+  };
+
+  const input = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept={ACC_IMAGE_ACCEPT}
+      className="hidden"
+      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) upload(f); }}
+    />
+  );
+
+  if (url) {
+    return (
+      <div {...dropProps} className={cn(
+        'rounded-xl border transition-colors',
+        dragging ? 'border-neon-green/40 bg-neon-green/5' : adjusting ? 'border-neon-green/20' : 'border-glass-border/10',
+      )}>
+        {input}
+        <div className="flex items-center gap-3 p-1.5 pr-3">
+          <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-glass-border/10 bg-subtle">
+            <img src={url} alt="" className="h-full w-full object-contain" />
+            {uploading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <Loader2 className="h-4 w-4 animate-spin text-white" />
+              </div>
+            )}
+          </div>
+          <span className="min-w-0 flex-1 truncate text-[11.5px] text-text-subtle">
+            {uploading ? `${progress}%` : accStyleSummary(look)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setAdjusting((v) => !v)}
+            aria-expanded={adjusting}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-colors',
+              adjusting
+                ? 'bg-neon-green/10 text-neon-green'
+                : 'text-text-muted hover:bg-glass/[0.06] hover:text-text',
+            )}
+          >
+            <SlidersHorizontal className="h-3 w-3" />
+            {i18n.t('admin.modules.be.acc_image_adjust')}
+          </button>
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={!canUpload || uploading}
+            className="text-[11.5px] font-medium text-text-muted hover:text-text transition-colors disabled:opacity-40">
+            {i18n.t('admin.modules.be.acc_image_change')}
+          </button>
+          <button type="button" onClick={remove} disabled={uploading}
+            title={i18n.t('admin.modules.media_clear')}
+            className="text-text-subtle hover:text-red-400 transition-colors disabled:opacity-40">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <AnimatePresence initial={false}>
+          {adjusting && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="grid gap-4 border-t border-glass-border/10 p-3 sm:grid-cols-[auto_1fr] sm:items-start">
+                <AccImagePreview url={url} look={look} />
+                <div className="space-y-3">
+                  <AccSegmented
+                    label={i18n.t('admin.modules.be.acc_image_size')}
+                    value={look.size}
+                    onChange={(size) => onStyleChange({ ...look, size })}
+                    options={[
+                      { value: 'sm', text: 'S', hint: i18n.t('admin.modules.be.acc_size_sm') },
+                      { value: 'md', text: 'M', hint: i18n.t('admin.modules.be.acc_size_md') },
+                      { value: 'lg', text: 'L', hint: i18n.t('admin.modules.be.acc_size_lg') },
+                    ]}
+                  />
+                  <AccSegmented
+                    label={i18n.t('admin.modules.be.acc_image_position')}
+                    value={look.position}
+                    onChange={(position) => onStyleChange({ ...look, position })}
+                    options={[
+                      { value: 'left', icon: <PanelLeft className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_pos_left') },
+                      { value: 'right', icon: <PanelRight className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_pos_right') },
+                      { value: 'top', icon: <PanelTop className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_pos_top') },
+                      { value: 'bottom', icon: <PanelBottom className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_pos_bottom') },
+                    ]}
+                  />
+                  <AccSegmented
+                    label={i18n.t('admin.modules.be.acc_image_shape')}
+                    value={look.shape}
+                    onChange={(shape) => onStyleChange({ ...look, shape })}
+                    options={[
+                      { value: 'original', icon: <ImageIcon className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_shape_original') },
+                      { value: 'square', icon: <Square className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_shape_square') },
+                      { value: 'landscape', icon: <RectangleHorizontal className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_shape_landscape') },
+                      { value: 'portrait', icon: <RectangleVertical className="h-3.5 w-3.5" />, hint: i18n.t('admin.modules.be.acc_shape_portrait') },
+                    ]}
+                  />
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+                    {onApplyAll && (
+                      <button
+                        type="button"
+                        onClick={onApplyAll}
+                        className="inline-flex items-center gap-1 text-[11.5px] font-medium text-neon-green/90 transition-colors hover:text-neon-green"
+                      >
+                        <Layers className="h-3 w-3" />
+                        {i18n.t('admin.modules.be.acc_apply_all')}
+                      </button>
+                    )}
+                    {!isDefaultLook && (
+                      <button
+                        type="button"
+                        onClick={() => onStyleChange(undefined)}
+                        className="text-[11.5px] text-text-subtle transition-colors hover:text-text"
+                      >
+                        {i18n.t('admin.modules.be.acc_reset')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  return (
+    <div {...dropProps} className="flex items-center gap-2">
+      {input}
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={!canUpload || uploading}
+        title={canUpload ? undefined : i18n.t('admin.modules.media_save_section_first')}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1 text-[11.5px] transition-colors disabled:opacity-40',
+          dragging
+            ? 'border-neon-green/50 text-neon-green bg-neon-green/5'
+            : 'border-glass-border/20 text-text-subtle hover:text-neon-green hover:border-neon-green/40',
+        )}
+      >
+        {uploading
+          ? <><Loader2 className="h-3 w-3 animate-spin" /> {progress}%</>
+          : <><ImageIcon className="h-3 w-3" /> {i18n.t('admin.modules.be.acc_image_add')}</>}
+      </button>
+    </div>
+  );
+}
+
+function AccordionEditor({
+  block, onChange, lang, mediaContext,
+}: {
+  block: ContentBlock & { type: 'accordion' };
+  onChange: (b: ContentBlock) => void;
+  lang: Lang;
+  mediaContext?: MediaContext;
+}) {
   return (
     <div className="space-y-2">
       {block.items.map((item, i) => (
@@ -793,6 +1121,44 @@ function AccordionEditor({ block, onChange, lang }: { block: ContentBlock & { ty
             rows={3}
             placeholder={i18n.t('admin.modules.be.ph_answer', { lang })}
           />
+          {/* La imagen no se traduce: vale para los tres idiomas. */}
+          {mediaContext && (
+            <AccordionImagePicker
+              url={item.image}
+              mediaContext={mediaContext}
+              imageStyle={item.imageStyle}
+              onChange={(url) => onChange({
+                ...block,
+                items: block.items.map((it, j) => {
+                  if (j !== i) return it;
+                  if (url) return { ...it, image: url };
+                  const { image: _drop, imageStyle: _dropStyle, ...rest } = it;
+                  return rest;
+                }),
+              })}
+              onStyleChange={(style) => onChange({
+                ...block,
+                items: block.items.map((it, j) => {
+                  if (j !== i) return it;
+                  if (style) return { ...it, imageStyle: style };
+                  const { imageStyle: _drop, ...rest } = it;
+                  return rest;
+                }),
+              })}
+              onApplyAll={block.items.length > 1 ? () => {
+                const style = item.imageStyle;
+                onChange({
+                  ...block,
+                  items: block.items.map((it) => {
+                    if (style) return { ...it, imageStyle: { ...style } };
+                    const { imageStyle: _drop, ...rest } = it;
+                    return rest;
+                  }),
+                });
+                toast.success(i18n.t('admin.modules.be.acc_applied_all', { count: block.items.length }));
+              } : undefined}
+            />
+          )}
         </div>
       ))}
       <button onClick={() => onChange({ ...block, items: [...block.items, { question: { es: '', en: '', pt: '' }, answer: { es: '', en: '', pt: '' } }] })}
@@ -1886,7 +2252,7 @@ function BlockRow({
       case 'video':       return <VideoEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'quiz':        return <QuizEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'flashcard':   return <FlashcardEditor block={b} onChange={onUpdate} lang={lang} />;
-      case 'accordion':   return <AccordionEditor block={b} onChange={onUpdate} lang={lang} />;
+      case 'accordion':   return <AccordionEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'tabs':        return <TabsEditor block={b} onChange={onUpdate} lang={lang} mediaContext={mediaContext} />;
       case 'timeline':    return <TimelineEditor block={b} onChange={onUpdate} lang={lang} />;
       case 'comparison':  return <ComparisonEditor block={b} onChange={onUpdate} lang={lang} />;
